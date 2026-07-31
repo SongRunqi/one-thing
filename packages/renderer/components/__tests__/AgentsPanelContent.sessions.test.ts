@@ -188,7 +188,8 @@ describe('空间页 · tab', () => {
     const wrapper = await mountPanel()
     await openHistory(wrapper)
     expect(wrapper.find('.agent-history').exists()).toBe(true)
-    expect(wrapper.find('.editor-footer').attributes('style')).toContain('display: none')
+    // save/cancel 随整张配置表单一起收起(表单现在是共享件 AgentConfigForm)。
+    expect(wrapper.find('.agent-config-form').attributes('style')).toContain('display: none')
   })
 })
 

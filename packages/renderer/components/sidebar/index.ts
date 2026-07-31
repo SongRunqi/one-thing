@@ -14,13 +14,18 @@ export { default as ActiveWorkSection } from './ActiveWorkSection.vue'
 export { default as ActiveWorkCard } from './ActiveWorkCard.vue'
 
 export {
+  ACTIVE_WORK_GROUPS,
   ACTIVE_WORK_STATUSES,
   activeWorkHydrationTargets,
   collectActiveWork,
+  groupActiveWorkCards,
+  hasActiveWorkSignal,
   isActiveWorkStatus,
+  resolveActiveWorkRowMeta,
   resolveActiveWorkStage,
   resolveActiveWorkTag,
   type ActiveWorkCardModel,
+  type ActiveWorkGroup,
   type ActiveWorkStage,
   type ActiveWorkTag,
   type ActiveWorkTone,
@@ -28,16 +33,18 @@ export {
 export { useActiveWork } from './useActiveWork'
 
 export {
+  SIDEBAR_RAIL_CATEGORIES,
+  SIDEBAR_RAIL_STORAGE_KEY,
   SIDEBAR_ROOM_FACE_LIMIT,
-  SIDEBAR_SECTION_IDS,
-  SIDEBAR_SECTIONS_STORAGE_KEY,
-  parseCollapsedSections,
-  serializeCollapsedSections,
+  resolveRailBadges,
+  resolveRailCategories,
+  resolveRailCategory,
   shouldShowActiveWorkSection,
   takeRoomFaces,
-  toggleCollapsedSection,
+  type SidebarRailBadges,
+  type SidebarRailCategory,
+  type SidebarRailCategoryId,
   type SidebarRoomFaces,
-  type SidebarSectionId,
 } from './sidebar-sections'
 
 export {

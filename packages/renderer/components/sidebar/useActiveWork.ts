@@ -29,7 +29,7 @@
  * 有 review 卡)冷启会漏一张,直到用户开房或一条广播落地。用一次可能的漏换掉
  * N 次必然的 IPC,这是本期刻意选的那一边。
  */
-import { computed, onBeforeUnmount, watch, type ComputedRef } from 'vue'
+import { computed, onBeforeUnmount, watch, type ComputedRef, type Ref } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useSessionsStore } from '@/stores/sessions'
@@ -70,22 +70,38 @@ export interface UseActiveWorkReturn {
   isRoomUnread: (roomSessionId: string) => boolean
 }
 
-export function useActiveWork(): UseActiveWorkReturn {
+export interface UseActiveWorkOptions {
+  /**
+   * 这条线开不开(默认开)。
+   *
+   * 方案三把这个 composable 从 `ActiveWorkSection` 提到了 `Sidebar.vue` ——
+   * rail 上「进行中」那一类的**徽标与计数**在别的类别被选中时也得算,所以它不能
+   * 再跟着那一区的 `v-if` 一起挂载/卸载。但 composable 不能条件调用,而 classic
+   * 与 web 端一次看板 IPC 都不许发(逐像素回滚闸 + 没有 rooms 协调器),于是把
+   * 门做成参数:关着的时候订阅不发、补齐不跑、卡片恒空。
+   */
+  enabled?: Ref<boolean> | ComputedRef<boolean>
+}
+
+export function useActiveWork(options: UseActiveWorkOptions = {}): UseActiveWorkReturn {
   const boardStore = useCollabBoardStore()
   const sessionsStore = useSessionsStore()
   const agentsStore = useAgentsStore()
   // 未读与「在忙」都取这一份场账(W7:同一份数据三种粒度),这里不新起口径。
   const ledger = useSceneLedger()
 
+  const enabled = computed(() => options.enabled ? options.enabled.value === true : true)
+
   // 广播是最便宜的那条热源,订阅一次就不用再管(store 自带去重)。
-  boardStore.ensureSubscribed()
+  // 门关着时一次都不订阅 —— classic 下「不碰看板」是有测试钉住的。
+  watch(enabled, (on) => { if (on) boardStore.ensureSubscribed() }, { immediate: true })
 
   /** 还在会话列表里的房。删掉的房留下的旧快照不该在左栏留一张死链卡。 */
   const knownRoomIds = computed(
     () => new Set((sessionsStore.roomSessions ?? []).map(room => room.id)),
   )
 
-  const cards = computed(() => collectActiveWork({
+  const cards = computed(() => !enabled.value ? [] : collectActiveWork({
     boards: boardStore.boards,
     identityOf: agentId => agentsStore.displayAgent(agentId),
     isKnownRoom: roomSessionId => knownRoomIds.value.has(roomSessionId),
@@ -121,8 +137,8 @@ export function useActiveWork(): UseActiveWorkReturn {
     for (const roomSessionId of targets) await boardStore.load(roomSessionId)
   }
 
-  watch(() => (sessionsStore.sessions ?? []).length, (count) => {
-    if (hydrationStarted || count === 0) return
+  watch(() => [enabled.value, (sessionsStore.sessions ?? []).length] as const, ([on, count]) => {
+    if (!on || hydrationStarted || count === 0) return
     hydrationStarted = true
     idle = scheduleIdle(() => { idle = null; void hydrate() })
   }, { immediate: true })

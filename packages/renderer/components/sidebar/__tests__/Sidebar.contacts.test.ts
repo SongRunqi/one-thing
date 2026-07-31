@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => {
     loadSessions: vi.fn(async () => {}),
     requestAgentDetail: vi.fn(),
     openAgentSpace: vi.fn(),
+    openAgentManager: vi.fn(),
     loadAgents: vi.fn(async () => []),
     sessionsStore: {
       sessions: [] as Array<Record<string, unknown>>,
@@ -86,6 +87,20 @@ vi.mock('@/stores/agents', () => ({
     loadAgents: mocks.loadAgents,
     requestAgentDetail: mocks.requestAgentDetail,
     openAgentSpace: mocks.openAgentSpace,
+    openAgentManager: mocks.openAgentManager,
+  }),
+}))
+/* 方案三把「进行中」的取数提到了 Sidebar 这一层(rail 的徽标在别的类别被选中时
+   也得算),所以这一份 store 在 classic 下也会被 new 出来 —— 门是 `enabled`
+   参数,关着的时候一次订阅、一次补齐都不发(Sidebar.workbench.test.ts 钉住)。 */
+vi.mock('@/stores/collabBoard', () => ({
+  useCollabBoardStore: () => ({
+    boards: {},
+    ensureSubscribed: vi.fn(),
+    load: vi.fn(async () => {}),
+    hasPendingAsk: () => false,
+    isRoomTurnActive: () => false,
+    typingAgents: () => [],
   }),
 }))
 vi.mock('../useSessionOrganizer', () => ({
@@ -216,7 +231,7 @@ describe('Sidebar 联系人区', () => {
     expect(rows[0].classes()).not.toContain('is-active')
   })
 
-  it('右键给「打开空间」+「配置 Agent」,两条都走归一的 openAgentSpace', async () => {
+  it('右键两条岔开:「配置 Agent」进管理页,「打开空间」进右栏', async () => {
     const wrapper = mountSidebar()
     await wrapper.findAll('.sidebar-contact-item')[1].trigger('contextmenu')
 
@@ -227,9 +242,12 @@ describe('Sidebar 联系人区', () => {
     ])
     expect(menu.props('show')).toBe(true)
 
+    /* 「配置 Agent」是名册面的动作(新建/退休/恢复/通览),仍去管理页;
+       点头像与「打开空间」才落右栏(agent-space-workbench.md P1)。 */
     menu.vm.$emit('select', 'configure-agent')
     await wrapper.vm.$nextTick()
-    expect(mocks.openAgentSpace).toHaveBeenCalledWith('fe', 'config')
+    expect(mocks.openAgentManager).toHaveBeenCalledWith('fe', 'config')
+    expect(mocks.openAgentSpace).not.toHaveBeenCalled()
   })
 
   /* 三入口归一(agent-im-chat-ui.md C3):右键必须真的把空间页停在那一面,

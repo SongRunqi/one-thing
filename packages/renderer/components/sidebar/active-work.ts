@@ -199,6 +199,100 @@ export function collectActiveWork(input: CollectActiveWorkInput): ActiveWorkCard
   return cards.sort((a, b) => (b.updatedAt - a.updatedAt) || a.taskId.localeCompare(b.taskId))
 }
 
+// ── 类内分组与行副文(方案三 · 样板 `.grp` / `.r .meta`)────────────────────
+//
+// 方案三的「进行中」面板不是一堆卡片,而是**分组 + 单行**:组头 `.grp` 说的是
+// 这一撮活处在哪一档(执行中 / 待你 / 已交付),行右端 `.meta` 说的是这一行的
+// 那一句"多久 / 等什么 / 什么时候交的"。两者都由既有字段推导,一个字段不新增。
+
+/** 三档分组,顺序即样板自上而下的顺序。`tone` 与状态标同源,不另起判定。 */
+export const ACTIVE_WORK_GROUPS: readonly { tone: ActiveWorkTone; label: string }[] = [
+  { tone: 'running', label: '执行中' },
+  { tone: 'awaiting', label: '待你' },
+  { tone: 'delivered', label: '已交付' },
+]
+
+export interface ActiveWorkGroup {
+  tone: ActiveWorkTone
+  label: string
+  cards: ActiveWorkCardModel[]
+}
+
+/**
+ * 把扁平清单摊成样板的三组。**空组不画组头** —— 一个永远在那儿的空标题占的是
+ * 左栏最贵的那段视线(与「没有活就整区不显示」同一条规矩)。
+ *
+ * 组内顺序照抄入参(`collectActiveWork` 已按 updatedAt 倒序排好),这里只分桶。
+ */
+export function groupActiveWorkCards(
+  cards: readonly ActiveWorkCardModel[],
+): ActiveWorkGroup[] {
+  return ACTIVE_WORK_GROUPS
+    .map(group => ({
+      tone: group.tone,
+      label: group.label,
+      cards: cards.filter(card => card.tag.tone === group.tone),
+    }))
+    .filter(group => group.cards.length > 0)
+}
+
+/**
+ * 这一类要不要亮徽标 —— 「有未读或在跑」。
+ *
+ * 已交付的活不催人:交付了就该安静地待在组里,不该在 rail 上闪一枚点。
+ */
+export function hasActiveWorkSignal(cards: readonly ActiveWorkCardModel[]): boolean {
+  return cards.some(card => card.tag.tone !== 'delivered')
+}
+
+const MINUTE_MS = 60_000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+
+function pad2(value: number): string {
+  return value < 10 ? `0${value}` : String(value)
+}
+
+/**
+ * 行右端那一句(样板三种形状:`12m` / `bash` / `09:21`)。
+ *
+ * - **执行中** → 距今多久(这活跑了多久还没完)
+ * - **待你**   → 等你什么(`tag.hint`:blockReason 或「等你放行」。**不去解析
+ *   那句中文里的工具名** —— 样板画的是 `bash`,但系统手上只有整句,截一段出来
+ *   是编造)
+ * - **已交付** → 交在什么时候(今天给钟点,昨天给「昨天」,更早给月/日)
+ *
+ * `now` 由调用方给(一处计时,不在每一行各起一个定时器),测试也因此可判定。
+ */
+export function resolveActiveWorkRowMeta(
+  card: Pick<ActiveWorkCardModel, 'tag' | 'updatedAt'>,
+  now: number,
+): string {
+  if (card.tag.tone === 'awaiting') return (card.tag.hint || '').trim()
+  if (!card.updatedAt) return ''
+
+  if (card.tag.tone === 'running') {
+    const elapsed = Math.max(0, now - card.updatedAt)
+    if (elapsed < MINUTE_MS) return '刚刚'
+    if (elapsed < HOUR_MS) return `${Math.floor(elapsed / MINUTE_MS)}m`
+    if (elapsed < DAY_MS) return `${Math.floor(elapsed / HOUR_MS)}h`
+    return `${Math.floor(elapsed / DAY_MS)}d`
+  }
+
+  const at = new Date(card.updatedAt)
+  const today = new Date(now)
+  const sameDay = at.getFullYear() === today.getFullYear()
+    && at.getMonth() === today.getMonth()
+    && at.getDate() === today.getDate()
+  if (sameDay) return `${pad2(at.getHours())}:${pad2(at.getMinutes())}`
+  const yesterday = new Date(now - DAY_MS)
+  const isYesterday = at.getFullYear() === yesterday.getFullYear()
+    && at.getMonth() === yesterday.getMonth()
+    && at.getDate() === yesterday.getDate()
+  if (isYesterday) return '昨天'
+  return `${at.getMonth() + 1}/${at.getDate()}`
+}
+
 // ── 跨房补齐:哪几间房值得拉一次看板 ──────────────────────────────────────
 //
 // `collabBoard` store 是「一间房一块板」(`load(roomSessionId)`),左栏却要跨房

@@ -1,30 +1,29 @@
 <template>
-  <!-- 没有在跑的活 = 整区不显示(2026-07-31 真机后用户拍板,推翻 §7 开放问题里
-       「塌陷成一行」的旧倾向)。判定在 `sidebar-sections.ts`,这里只听结果。 -->
-  <div
-    v-if="visible"
-    class="sidebar-active-work"
-  >
-    <button
-      type="button"
-      class="active-work-header sidebar-section-toggle"
-      :aria-expanded="!collapsed"
-      @click="$emit('toggle')"
+  <!-- 方案三:面板头(类别名 + 计数)由 `Sidebar.vue` 的 `.sidebar-pane-head`
+       画,这一区只剩「组头 + 行」。分区头/折叠钮随分区折叠一起退役了。 -->
+  <div class="sidebar-active-work">
+    <!-- rail 上四类恒在(见 sidebar-sections.ts 的说明),所以没有活时这一面
+         必须自己说话,否则点进来是一片空白。 -->
+    <p
+      v-if="groups.length === 0"
+      class="active-work-empty"
     >
-      <span
-        class="sidebar-section-caret"
-        :class="{ open: !collapsed }"
-        aria-hidden="true"
-      >›</span>
-      <span class="active-work-label">进行中</span>
-      <span class="active-work-count">{{ cards.length }}</span>
-    </button>
+      没有在跑的活
+    </p>
 
-    <template v-if="!collapsed">
+    <template
+      v-for="group in groups"
+      :key="group.tone"
+    >
+      <!-- 样板 `.sb3 .grp`:类内分组。空组不画(`groupActiveWorkCards` 已滤)。 -->
+      <div class="active-work-group grp">
+        {{ group.label }}
+      </div>
       <ActiveWorkCard
-        v-for="card in cards"
+        v-for="card in group.cards"
         :key="card.taskId"
         :card="card"
+        :meta="rowMeta(card)"
         :busy="isRoomBusy(card.roomSessionId)"
         :unread="isRoomUnread(card.roomSessionId)"
         :active="card.roomSessionId === openedSessionId"
@@ -36,31 +35,47 @@
 
 <script setup lang="ts">
 /**
- * 左栏第一区「进行中」(C1,docs/design/im-workbench-layout.md §3 W1)。
+ * 左栏「进行中」面板(方案三,样板 sidebar-4.html 第三格)。
  *
- * 顺序即优先级:这一区排在群聊/同事/直聊之前 —— 跟一群 agent 说话,本质是在盯
- * 一堆活,所以先看活,再看话。
- *
- * 这一层只做编排:清单与在场信号全部来自 `useActiveWork`(取数)与
- * `active-work.ts`(判定),卡片的三种状态由 `ActiveWorkCard` 一份模板画完。
+ * 这一层只做编排:清单与在场信号由 `Sidebar.vue` 取好发下来(rail 上这一类的
+ * 徽标与计数在别的类别被选中时也得算,所以取数必须待在更上面),判定全部在
+ * `active-work.ts`(纯函数),行的三种状态由 `ActiveWorkCard` 一份模板画完。
  */
-import { computed } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import ActiveWorkCard from './ActiveWorkCard.vue'
-import { useActiveWork } from './useActiveWork'
-import { shouldShowActiveWorkSection } from './sidebar-sections'
-import type { ActiveWorkCardModel } from './active-work'
+import {
+  groupActiveWorkCards,
+  resolveActiveWorkRowMeta,
+  type ActiveWorkCardModel,
+} from './active-work'
 
-withDefaults(defineProps<{ collapsed?: boolean }>(), { collapsed: false })
+const props = defineProps<{
+  cards: ActiveWorkCardModel[]
+  /** 这间房此刻有一轮在跑。函数由 `useActiveWork` 给,这里不重算。 */
+  isRoomBusy: (roomSessionId: string) => boolean
+  /** 这间房有未读。判定仍然只有 sessions store 那一处。 */
+  isRoomUnread: (roomSessionId: string) => boolean
+}>()
 
-defineEmits<{ open: [card: ActiveWorkCardModel]; toggle: [] }>()
+defineEmits<{ open: [card: ActiveWorkCardModel] }>()
 
 const sessionsStore = useSessionsStore()
-const { cards, isRoomBusy, isRoomUnread } = useActiveWork()
 
-/* 挂载与否是 `Sidebar.vue` 的门(带着一次看板取数,CSS 关不住 IPC);
-   露不露面是这一句。 */
-const visible = computed(() => shouldShowActiveWorkSection({ cardCount: cards.value.length }))
+const groups = computed(() => groupActiveWorkCards(props.cards))
+
+/**
+ * 「执行中」那一行的副文是"跑了多久",它得自己走。**一处计时** —— 一分钟一跳,
+ * 整区一个定时器,不是每行各起一个(左栏一屏可以有十几行)。
+ */
+const NOW_TICK_MS = 60_000
+const now = ref(Date.now())
+const timer = setInterval(() => { now.value = Date.now() }, NOW_TICK_MS)
+onUnmounted(() => clearInterval(timer))
+
+function rowMeta(card: ActiveWorkCardModel): string {
+  return resolveActiveWorkRowMeta(card, now.value)
+}
 
 /* 只读。变量名刻意不叫 `currentSessionId` —— 那个名字的赋值是
    stores/sessions.ts 的专属(workspace-ownership.test.ts 那道围栏)。 */
@@ -68,62 +83,28 @@ const openedSessionId = computed(() => sessionsStore.currentSessionId)
 </script>
 
 <style scoped>
-/* 分区容器与联系人/群聊两区同一套画线风(Sidebar.vue 的 `.sidebar-rooms`)。
-   这里自带一份是因为 scoped CSS 只够到子组件的根节点,够不到它的内部。 */
 .sidebar-active-work {
   flex-shrink: 0;
-  padding: 2px 12px 6px 24px;
   display: flex;
   flex-direction: column;
 }
 
-/* 分区头即折叠钮。画线风里"可折叠"由一枚发丝 caret 说,不加边框不加填充 ——
-   与群聊/联系人两区共用同一句法(`.sidebar-section-toggle`,那份写在
-   Sidebar.vue;scoped CSS 够不到子组件内部,所以这里自带一份)。 */
-.active-work-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 4px 4px 4px 0;
-  border: none;
-  background: transparent;
-  text-align: left;
-  font-family: inherit;
-  cursor: pointer;
+/* 样板 `.sb3 .grp`:小、静、不用宽字距(Linear 不这么做)。 */
+.active-work-empty {
+  margin: 0;
+  padding: 12px 14px 3px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
-.sidebar-section-caret {
-  display: inline-block;
+.active-work-group {
   flex: 0 0 auto;
-  font-size: 12px;
-  line-height: 1;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
-  transition: transform 0.12s ease;
-}
-
-.sidebar-section-caret.open {
-  transform: rotate(90deg);
-}
-
-.active-work-header:hover .active-work-label,
-.active-work-header:hover .sidebar-section-caret {
-  color: var(--ui-text-primary-fg, var(--text-primary, var(--text)));
-}
-
-.active-work-label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  padding: 12px 14px 3px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 47%, transparent);
   user-select: none;
 }
-
-.active-work-count {
-  font-size: 10px;
-  opacity: 0.7;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
-  user-select: none;
-}
-
-/* 空态那一行(`.active-work-empty`)已随「没有活就整区不显示」一同撤除。 */
 </style>

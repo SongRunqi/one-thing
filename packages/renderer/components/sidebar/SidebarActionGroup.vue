@@ -1,6 +1,6 @@
 <template>
   <div
-    :class="['sidebar-action-group', variant]"
+    :class="['sidebar-action-group', `is-${variant}`]"
     data-sidebar-action-group="true"
     :data-sidebar-action-group-location="variant"
   >
@@ -65,6 +65,15 @@ defineEmits<{
 <style scoped>
 .sidebar-action-group {
   display: inline-flex;
+  /* ⚠️ variant 类名必须带 `is-` 前缀,不能直接用 `sidebar` / `topbar`。
+     真机上这三颗一直是**竖排**的,根因是类名撞车:`variant="sidebar"` 让这个
+     元素多了一个 `sidebar` 类,而它又在 Sidebar.vue 的 scope 内(带着同一枚
+     data-v),于是侧栏根元素那条 `.sidebar` 的布局规则(display:flex +
+     flex-direction:column)**打到了这个按钮组身上** —— display 被改成 flex、方向变 column、
+     `margin-left:auto` 也失效。浏览器实测:命中它的 column 声明只有那一条。
+     下面这两行是显式兜底,真正的修复是上面模板里的 `is-` 前缀。 */
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
@@ -111,16 +120,16 @@ defineEmits<{
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
 }
 
-.sidebar-action-group.sidebar {
+.sidebar-action-group.is-sidebar {
   margin-left: auto;
   padding-right: 12px;
 }
 
-.sidebar-action-group.topbar {
+.sidebar-action-group.is-topbar {
   padding-right: 4px;
 }
 
-.sidebar-action-group.docked {
+.sidebar-action-group.is-docked {
   padding-right: 0;
 }
 </style>

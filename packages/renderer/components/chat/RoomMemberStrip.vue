@@ -2,7 +2,7 @@
   <div
     v-if="entries.length > 0 || addableAgents.length > 0"
     class="room-members"
-    :class="{ 'is-pair-dm': isPairDm }"
+    :class="{ 'is-pair-dm': isPairDm, 'is-space-target': openSpaceOnClick }"
   >
     <button
       v-for="entry in entries"
@@ -327,6 +327,13 @@ async function commit(update: {
   border-color: var(--ui-text-primary-fg, var(--text));
   /* Lift by stacking order, not by size: §3.6 bans hover scaling. */
   z-index: 1;
+}
+
+/* 左键=下钻到这个人的空间时,hover 用 accent 环 —— 与私聊房头、消息署名头像
+   同一句法(agent-space-workbench.md P3)。只在真会下钻的形态上给,
+   旧壳里那颗只开名册菜单的成员堆保持原样,免得承诺一件不会发生的事。 */
+.room-members.is-space-target .member-chip:hover {
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .member-chip:focus-visible {

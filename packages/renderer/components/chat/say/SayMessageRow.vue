@@ -432,11 +432,28 @@ function openAttachmentImage(attachment: MessageAttachment): void {
 }
 
 .say-avatar-btn {
+  position: relative;
   padding: 0;
   border: none;
   background: none;
   cursor: pointer;
   display: block;
+}
+
+/* 「可点」提示(agent-space-workbench.md P3):静止态与今天完全一致,hover 才
+   长出一圈 3px 外扩细环。三处头像(私聊房头 / 消息署名 / 群头成员堆)同一句法。 */
+.say-avatar-btn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  transition: border-color 0.12s ease;
+}
+
+.say-avatar-btn:hover::after,
+.say-avatar-btn:focus-visible::after {
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .say-avatar--self {

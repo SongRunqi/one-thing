@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     setWorkspaceRoot: vi.fn().mockResolvedValue(undefined),
     openFile: vi.fn().mockResolvedValue(undefined),
   },
+  openSession: vi.fn(),
   electronAPI: {
     listVariables: vi.fn(),
     listTerminals: vi.fn(),
@@ -36,6 +37,27 @@ vi.mock('@/components/editor/EditorWorkbench.vue', () => ({
 
 // 面板契约只有两条:绑哪间房、停在哪一层。里面那两层的行为由
 // MembersWorkbench 自己的单测盯住。
+vi.mock('@/components/agents/AgentSpace.vue', () => ({
+  default: {
+    name: 'AgentSpace',
+    props: ['agentId', 'showBack', 'backLabel', 'initialTab', 'work'],
+    emits: ['back', 'open-session', 'open-file', 'open-thread'],
+    template: `<div class="mock-agent-space">{{ agentId }}|{{ initialTab || '' }}
+      <button class="mock-space-session" @click="$emit('open-session', 'sess-7')" /></div>`,
+  },
+}))
+
+vi.mock('@/stores/agents', () => ({
+  DEFAULT_AGENT_ID: 'default',
+  useAgentsStore: () => ({
+    displayAgent: (id: string) => ({ id, name: id === 'lin' ? '小林' : '已注销' }),
+  }),
+}))
+
+vi.mock('@/stores/workspace', () => ({
+  useWorkspaceStore: () => ({ openSession: mocks.openSession }),
+}))
+
 vi.mock('../MembersWorkbench.vue', () => ({
   default: {
     name: 'MembersWorkbench',
@@ -54,6 +76,7 @@ vi.mock('../MembersWorkbench.vue', () => ({
 interface PanelApi {
   openMembers: (sessionId: string, agentId?: string, title?: string) => void
   openThread: (sessionId: string, title?: string) => void
+  openAgentTab: (agentId: string, tab?: string | null) => void
 }
 
 async function settle() {
@@ -143,5 +166,29 @@ describe('RightWorkbenchPanel — 成员 tab', () => {
     await settle()
     const labels = wrapper.findAll('.empty-action').map(node => node.text())
     expect(labels).not.toContain('成员')
+  })
+
+  /* 房外的人(直聊助理 / 已退休同事)落在自己的页签上
+     —— agent-space-workbench.md P1 的另一半分流。 */
+  it('openAgentTab 开一个以 TA 命名的页签,同一个人反复点只聚焦', async () => {
+    const { wrapper, api } = mountPanel()
+    api.openAgentTab('lin')
+    await settle()
+    api.openAgentTab('lin', 'files')
+    await settle()
+
+    expect(wrapper.findAll('.mock-agent-space')).toHaveLength(1)
+    expect(wrapper.find('.mock-agent-space').text()).toContain('lin|files')
+    expect(wrapper.find('.workbench-tab-label').text()).toContain('小林')
+  })
+
+  it('空间页里的会话行在主区开页签,右栏原地不动', async () => {
+    const { wrapper, api } = mountPanel()
+    api.openAgentTab('lin')
+    await settle()
+
+    await wrapper.find('.mock-space-session').trigger('click')
+    expect(mocks.openSession).toHaveBeenCalledWith('sess-7')
+    expect(wrapper.findAll('.mock-agent-space')).toHaveLength(1)
   })
 })

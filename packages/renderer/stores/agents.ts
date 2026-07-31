@@ -21,11 +21,26 @@ export const DEFAULT_AGENT_ID = 'default'
 export type AgentDetailTab = 'config' | 'sessions' | 'files' | 'search'
 
 /**
- * App 监听这个事件展开 Agents 面板。深层组件(消息署名、房头)够不到 App 的
+ * App 监听这个事件展开 Agents **管理页**。深层组件(消息署名、房头)够不到 App 的
  * emit 链,PracticeStrip 的 'practice:open-workspace' 是同款先例;两端各写一次
  * 字面量,由这条注释与 App.vue 里的同名常量配对。
+ *
+ * 注意:点头像**不再**走这条(agent-space-workbench.md P1)。这条现在只剩名册
+ * 管理的入口 —— 侧栏右键「配置 Agent」、设置里的 Agents 面板。
  */
 export const AGENT_OPEN_WORKSPACE_EVENT = 'agents:open-workspace'
+
+/**
+ * 「打开这个人的空间」——落点在**右栏工作台**,不再是全屏管理页
+ * (agent-space-workbench.md P1)。App 收到后分流:
+ * 是当前房的成员 → 成员 tab 内下钻;不是 → 单开一个 agent 页签。
+ */
+export const AGENT_OPEN_SPACE_EVENT = 'agents:open-space'
+
+export interface AgentOpenSpaceDetail {
+  agentId: string
+  tab?: AgentDetailTab | null
+}
 
 export const useAgentsStore = defineStore('agents', () => {
   const agents = ref<AgentDefinition[]>([])
@@ -64,12 +79,21 @@ export const useAgentsStore = defineStore('agents', () => {
   /**
    * 「进入我与 TA 的空间」的唯一入口(agent-im-chat-ui.md C3)。
    *
-   * 三处入口 —— dm 房头身份、群聊署名头像、侧栏联系人行右键 —— 归到这一个函数
-   * 上,所以"点头像会发生什么"只有一个答案。它本身不是新机制:寄存意图 + 请
-   * App 开面板,两步都是既有链路,这里只是把它们捆成一个名字,免得每个调用点
-   * 自己记得要派那个事件。
+   * 四处入口 —— dm 房头身份、群聊署名头像、消息头像、侧栏联系人行右键「打开
+   * 空间」—— 归到这一个函数上,所以"点头像会发生什么"只有一个答案。
+   *
+   * 落点是**右栏工作台**(agent-space-workbench.md P1):以前它请 App 展开
+   * 全屏 Agents 管理页,那等于点一下头像就把正在看的会话面顶掉。管理页仍在,
+   * 但只从侧栏右键「配置 Agent」/ 设置进,管的是名册。
    */
   function openAgentSpace(agentId: string, tab: AgentDetailTab | null = null): void {
+    if (!agentId) return
+    const detail: AgentOpenSpaceDetail = { agentId, tab }
+    window.dispatchEvent(new CustomEvent(AGENT_OPEN_SPACE_EVENT, { detail }))
+  }
+
+  /** 名册管理面的入口:停在某人的配置上,打开的是 Agents 管理页。 */
+  function openAgentManager(agentId: string, tab: AgentDetailTab | null = null): void {
     if (!agentId) return
     requestAgentDetail(agentId, tab)
     window.dispatchEvent(new CustomEvent(AGENT_OPEN_WORKSPACE_EVENT))
@@ -222,6 +246,7 @@ export const useAgentsStore = defineStore('agents', () => {
     pendingDetailTab,
     requestAgentDetail,
     openAgentSpace,
+    openAgentManager,
     consumeAgentDetailRequest,
     defaultAgent,
     findAgent,

@@ -26,13 +26,17 @@
         :title="`${head.agent?.title ? `${head.name} · ${head.agent.title}` : head.name} · 打开空间`"
         @click="openAgentSpace"
       >
-        <AgentAvatar
-          class="room-solo-avatar"
-          aria-hidden="true"
-          :avatar="head.agent?.avatar"
-          :avatar-image="head.agent?.avatarImage"
-          :size="28"
-        />
+        <!-- 环画在外层 span 上,不画在头像本身:图片头像是 <img>,
+             ::after 在替换元素上不渲染。 -->
+        <span class="room-solo-avatar-wrap">
+          <AgentAvatar
+            class="room-solo-avatar"
+            aria-hidden="true"
+            :avatar="head.agent?.avatar"
+            :avatar-image="head.agent?.avatarImage"
+            :size="28"
+          />
+        </span>
         <span class="room-solo-text">
           <b class="room-solo-name">{{ head.name }}</b>
           <i
@@ -301,7 +305,13 @@ function handleMoreSelect(id: string): void {
   gap: 10px;
   height: 46px;
   flex-shrink: 0;
-  padding: 0 16px;
+  /* 左缩进要给交通灯让位:侧栏收起(或收成 46px 的 rail)时,macOS 那三颗灯会探进
+     聊天区,房头内容不让就直接压在灯下面 —— 真机走查发现,旧壳(TabBar)一直有
+     一块 70px 保留位,R1 新写房头时漏了。
+     这里不抄那个死数:`--shell-lights-overhang` 由 App 按侧栏**当前实际宽度**
+     算出灯到底探出多少(展开时是 0,rail 态是 24px,全隐时是 70px),所以不会平白
+     多缩进一截。 */
+  padding: 0 16px 0 calc(16px + var(--shell-lights-overhang, 0px));
   min-width: 0;
   border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
   -webkit-app-region: drag;
@@ -366,6 +376,28 @@ function handleMoreSelect(id: string): void {
 
 .room-solo-open:hover {
   background: var(--ui-state-hover-bg, var(--hover));
+}
+
+/* 「可点」提示(agent-space-workbench.md P3):整块起底之外,头像上再长一圈
+   3px 外扩细环 —— 与 say 行头像、群头成员堆同一句法。 */
+.room-solo-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.room-solo-avatar-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  transition: border-color 0.12s ease;
+}
+
+.room-solo-open:hover .room-solo-avatar-wrap::after,
+.room-solo-open:focus-visible .room-solo-avatar-wrap::after {
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .room-solo-text {

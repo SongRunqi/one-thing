@@ -83,6 +83,13 @@
         />
       </SplitterPanel>
 
+      <!-- 折叠 = 整条侧栏卸下来(classic 与 workbench 同一套语义)。
+           方案三曾在 workbench 下把折叠画成一条 46px 的 rail,2026-07-31 撤掉:
+           macOS 的三颗交通灯横跨到窗口左起 ~70px,比 rail 还宽,于是黄绿两颗
+           压在聊天区上、横跨那条竖分隔线;顶栏又按"顶到窗口左缘"死留 84px,
+           没扣掉左边这 46px,标题被平白推远一截。左上角因此永远对不齐。
+           五个类别入口在收起态由顶栏那组按钮 + 浮层侧栏(hover 左缘)承接。 -->
+
       <!-- Main Content - No Header -->
       <SplitterPanel
         flex
@@ -238,7 +245,7 @@ import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { platformApi } from '@/platform'
 import { useCollabBoardStore } from '@/stores/collabBoard'
-import { AGENT_OPEN_WORKSPACE_EVENT } from '@/stores/agents'
+import { AGENT_OPEN_WORKSPACE_EVENT, AGENT_OPEN_SPACE_EVENT, type AgentOpenSpaceDetail } from '@/stores/agents'
 import {
   COLLAB_TAG_OPEN_CARD_EVENT,
   COLLAB_TAG_OPEN_FILE_EVENT,
@@ -496,6 +503,31 @@ const sidebarNoTransition = ref(false) // Disable transition during/after floati
 const sidebarDockedVisible = computed(() =>
   !sidebarCollapsed.value && !sidebarFloating.value && !sidebarFloatingClosing.value
 )
+
+/**
+ * 交通灯探出侧栏多少 —— 房头(RoomHeader)据此缩进,免得内容压在灯下面。
+ *
+ * macOS 的三颗灯横跨到窗口左起约 70px。旧壳(TabBar)一直有一块死板的 70px
+ * 保留位;房面是 R1 新写的,漏了这块 —— 侧栏一收,房头就顶到窗口左上角
+ * (真机走查发现)。这里仍然按侧栏**当前实际宽度**算而不是抄那个死数:折叠时
+ * 侧栏整条卸下(占 0,灯全探出来),展开时灯完全落在侧栏内(探出 0)。
+ *
+ * 写成根变量而不是逐层透传 prop:App 是唯一知道侧栏当前实际宽度的人,而
+ * 需要它的 RoomHeader 在三层之下。
+ */
+const TRAFFIC_LIGHTS_SPAN = 70
+const sidebarOccupiedWidth = computed(
+  () => sidebarDockedVisible.value ? sidebarWidth.value : 0,
+)
+const trafficLightsOverhang = computed(
+  () => Math.max(0, TRAFFIC_LIGHTS_SPAN - sidebarOccupiedWidth.value),
+)
+
+watch(trafficLightsOverhang, (px) => {
+  if (typeof document === 'undefined') return
+  document.documentElement.style.setProperty('--shell-lights-overhang', `${px}px`)
+}, { immediate: true })
+
 const reserveSidebarActions = ref(sidebarCollapsed.value)
 const sidebarActionAnimating = ref(false)
 const floatingCooldown = ref(false) // Prevent re-expansion after toggle
@@ -659,6 +691,37 @@ async function openMembersInRightWorkbench(detail: OpenMembersDetail) {
   rightWorkbenchRef.value?.openMembers(detail.sessionId, detail.agentId, detail.title)
 }
 
+/**
+ * 「打开这个人的空间」的唯一落点(agent-space-workbench.md P1)。
+ *
+ * 分流一句话:**够得着房就在房里下钻,够不着才单开一个页签**。
+ *  - 当前会话所属的房里有这个人 → 成员 tab 内下钻(空间页不占 tab 位,样板铁律);
+ *  - 直聊里的助理、已退休的同事、房外的人 → 以 TA 命名的 `agent` 页签。
+ *
+ * 两条都不再展开全屏 Agents 管理页 —— 点一下头像不该把正在看的会话面顶掉。
+ */
+async function openAgentSpaceInRightWorkbench(detail: AgentOpenSpaceDetail) {
+  const agentId = detail?.agentId
+  if (!agentId) return
+
+  const active = sessionsStore.sessions.find(session => session.id === workspaceStore.activeSessionId)
+  const roomSessionId = active?.kind === 'room' ? active.id : active?.collab?.roomSessionId || ''
+  const room = roomSessionId
+    ? sessionsStore.sessions.find(session => session.id === roomSessionId)?.room
+    : undefined
+  const isMember = !!room && (room.memberAgentIds?.includes(agentId) || room.pmAgentId === agentId)
+
+  inspectorOpen.value = true
+  await nextTick()
+  if (isMember && roomSessionId) {
+    // 单成员房(私聊)没有"成员"这回事 —— 那一格就叫「空间」。
+    const title = (room?.memberAgentIds?.length ?? 0) > 1 ? '成员' : '空间'
+    rightWorkbenchRef.value?.openMembers(roomSessionId, agentId, title)
+    return
+  }
+  rightWorkbenchRef.value?.openAgentTab(agentId, detail.tab ?? null)
+}
+
 // 群聊房间头部的看板直达入口(window 事件解耦:TabBar 深处 → 这里)
 async function openBoardInRightWorkbench() {
   inspectorOpen.value = true
@@ -737,6 +800,11 @@ onMounted(() => {
   window.addEventListener(COLLAB_TAG_OPEN_FILE_EVENT, event => {
     const filePath = (event as CustomEvent<{ filePath?: string }>).detail?.filePath
     if (filePath) void openFileInRightWorkbench(filePath)
+  })
+  // 点头像 → 右栏(P1)。三处头像与侧栏右键「打开空间」都派这一条。
+  window.addEventListener(AGENT_OPEN_SPACE_EVENT, event => {
+    const detail = (event as CustomEvent<AgentOpenSpaceDetail>).detail
+    if (detail?.agentId) void openAgentSpaceInRightWorkbench(detail)
   })
   registerCollabTags()
 })

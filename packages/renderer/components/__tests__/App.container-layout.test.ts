@@ -155,7 +155,10 @@ describe('App container layout', () => {
     expect(sidebar).toContain('min-width: var(--sidebar-docked-width)')
     expect(sidebar).toContain('max-width: var(--sidebar-docked-width)')
     expect(sidebar).toContain('.sidebar.floating .sidebar-content')
-    expect(sidebar).toContain(':aria-hidden="collapsed && !floating"')
+    /* 折叠 = 整块淡出,两种壳同一套语义(2026-07-31 撤掉 workbench 的 rail 折叠:
+       交通灯比 rail 宽,左上角对不齐)。判定收在 `contentHidden` 里。 */
+    expect(sidebar).toContain(':aria-hidden="contentHidden"')
+    expect(sidebar).toContain('props.collapsed && !props.floating')
     expect(sidebar).not.toContain('v-show="showContent"')
     expect(sidebar).not.toContain('const showContent = computed')
     expect(sidebar).not.toContain('width: collapsed.value')

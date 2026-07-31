@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-color-theme="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>样板 · Agent 空间进右栏(交付形态)</title>
+
+<!-- 项目自己的样式表。这一页的颜色、字号、边线全部由它们解出来,
+     所以样板里看到的就是应用里会出现的。 -->
+<link rel="stylesheet" href="../../../packages/renderer/styles/flexoki-colors.css">
+<link rel="stylesheet" href="../../../packages/renderer/styles/variables.css">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   本页样式分三段:
+   [页面外壳]  只服务这张样板,不进项目。
+   [搬运]      从项目源文件原样抄来的规则(注明出处),= 落地时不用写的部分。
+   [新增]      这次改动真正要新写的 CSS,一共 6 条,单列在最后。
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ───────────── [页面外壳] ───────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  /* 页面底色只是为了把面板衬出来,项目里右栏直接坐在应用底色上 */
+  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel)) 92%, var(--ui-border-default-border, var(--border)));
+  color: var(--ui-text-primary-fg, var(--text));
+  font-family: var(--type-body-font, var(--font-sans), -apple-system, "PingFang SC", sans-serif);
+  font-size: 13px;
+  padding: 40px 40px 100px;
+  -webkit-font-smoothing: antialiased;
+}
+.head { max-width: 1160px; margin: 0 auto 8px; }
+.head .kicker { font-family: var(--font-mono, monospace); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ui-text-faint-fg, var(--muted)); }
+.head h1 { font-size: 22px; font-weight: 600; margin-top: 10px; }
+.head p { margin-top: 11px; font-size: 13px; line-height: 1.85;
+  color: var(--ui-text-secondary-fg, var(--text-secondary)); max-width: 60em; }
+.head p b { color: var(--ui-text-primary-fg, var(--text)); font-weight: 600; }
+.head .theme { margin-top: 16px; display: flex; gap: 14px; align-items: baseline; }
+h2 { max-width: 1160px; margin: 48px auto 0; font-size: 13px; font-weight: 600; letter-spacing: .04em;
+  padding-bottom: 9px; display: flex; gap: 10px; align-items: baseline;
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border)); }
+h2 em { font-style: normal; font-size: 11.5px; font-weight: 400;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+.row { max-width: 1160px; margin: 22px auto 0; display: flex; gap: 26px; flex-wrap: wrap; }
+.cap { width: 336px; margin-top: 10px; font-size: 11.5px; line-height: 1.7;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+.cap b { color: var(--ui-text-primary-fg, var(--text)); font-weight: 600; }
+.note-list { max-width: 1160px; margin: 20px auto 0; padding-left: 18px; }
+.note-list li { font-size: 12.5px; line-height: 1.9;
+  color: var(--ui-text-secondary-fg, var(--text-secondary)); }
+.note-list li b { color: var(--ui-text-primary-fg, var(--text)); font-weight: 600; }
+.note-list li code, .cap code { font-family: var(--font-mono, monospace); font-size: 11.5px; }
+
+/* 样板里的"面板"= 右栏在 336px 宽时的样子(项目里可 22%–48% 拖拽) */
+.wb {
+  width: 336px; height: 640px; display: flex; flex-direction: column;
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  color: var(--ui-text-primary-fg, var(--text));
+}
+.wb.tall { height: 860px; }
+.wb.short { height: 300px; }
+
+/* ───────────── [搬运] styles/main.css:65 —— 全局滚动条(6px 发丝,轨道透明) ───────────── */
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted, #888)) 30%, transparent);
+  border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted, #888)) 50%, transparent); }
+
+/* ───────────── [搬运] components/common/Tabs.vue ───────────── */
+.app-tabs {
+  --app-tabs-border: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  --app-tabs-hover-bg: var(--ui-tab-bar-item-hover-bg, var(--ui-state-hover-bg, var(--bg-hover)));
+  --app-tabs-text: var(--ui-tab-bar-item-fg, var(--ui-text-secondary-fg, var(--text-secondary)));
+  --app-tabs-active-text: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
+  --app-tabs-accent: var(--ui-accent-primary-fg, var(--accent));
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  color: var(--ui-text-primary-fg, var(--text));
+  font-family: var(--type-label-font, var(--font-body));
+  font-size: var(--type-label-size, 13px);
+  line-height: var(--type-leading-control, 1.3);
+}
+.app-tabs-nav { position: relative; display: flex; align-items: stretch; flex: 0 0 auto;
+  min-width: 0; border-bottom: 1px solid var(--app-tabs-border); }
+.app-tabs-nav-scroll { display: flex; align-items: stretch; flex: 1 1 auto; min-width: 0;
+  overflow: auto hidden; scrollbar-width: none; }
+.app-tabs-nav-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 2px; padding: 0 6px; }
+.app-tabs-tab { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 1 auto; gap: 6px; min-width: 44px; min-height: 34px; max-width: 240px; padding: 0 14px;
+  border: 0; background: transparent; color: var(--app-tabs-text); font: inherit;
+  font-weight: var(--type-label-weight, 500); white-space: nowrap; cursor: pointer; }
+.app-tabs-tab:hover { color: var(--app-tabs-active-text); background: var(--app-tabs-hover-bg); }
+.app-tabs-tab.is-active { color: var(--app-tabs-active-text); }
+.app-tabs-tab-label { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; }
+.app-tabs--line .app-tabs-tab::after { position: absolute; content: ""; background: var(--app-tabs-accent);
+  opacity: 0; right: 12px; left: 12px; height: 2px; bottom: -1px; }
+.app-tabs--line .app-tabs-tab.is-active::after { opacity: 1; }
+
+/* ───────────── [改] components/workbench/RightWorkbenchPanel.vue —— 页签条改「丙 · 正字下划线」 ─────────────
+   删:尺寸线止点(.app-tabs-nav::before/::after)、卡尺括号 ⌞⌟、把活动色接到 --workbench-accent 的两行。
+   改:.workbench-tab-label 去 mono 换正文;.app-tabs-tab 的 min-width/padding/高度。
+   加:活动页签一条满宽 2px accent 底线。 */
+.right-workbench {
+  --workbench-accent: var(--ui-status-info-fg, var(--color-info, #39586f)); /* 仍供工具卡/图标用 */
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+}
+.right-workbench-tabs .app-tabs-tab { min-width: 0; padding: 0 13px; min-height: 38px; font-size: 12.5px; }
+.right-workbench-tabs .app-tabs-tab.is-active { font-weight: 600; }
+.right-workbench-tabs.app-tabs--line .app-tabs-tab.is-active::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: var(--ui-accent-primary-fg, var(--accent)); opacity: 1; }
+.workbench-tab-label { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font: inherit; }
+.workbench-tab-label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 关闭 ✕ 只在活动/悬停时出现,平时不吵 */
+.tab-x { display: inline-flex; margin-left: 2px; font-size: 12px; line-height: 1; opacity: 0;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+.app-tabs-tab.is-active .tab-x, .app-tabs-tab:hover .tab-x { opacity: 1; }
+.workbench-close { width: 24px; height: 24px; display: inline-flex; align-items: center;
+  justify-content: center; border: 0; background: transparent; border-radius: 0; cursor: pointer;
+  color: var(--ui-text-muted-fg, var(--muted)); }
+
+/* ───────────── [搬运] components/workbench/MembersWorkbench.vue ───────────── */
+.members-workbench { display: flex; flex-direction: column; height: 100%; min-height: 0;
+  overflow-y: auto; background: var(--ui-surface-panel-bg, var(--bg-panel)); }
+.space-back { display: flex; align-items: center; gap: 7px; width: 100%; padding: 11px 16px;
+  border: 0; border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: transparent; cursor: pointer; font-size: 11.5px;
+  color: var(--ui-text-muted-fg, var(--muted)); text-align: left; }
+.space-back:hover { color: var(--ui-text-primary-fg, var(--text)); }
+.space-hero { padding: 22px 18px 16px; text-align: center;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border))); }
+.space-avatar { margin: 0 auto 12px; display: block; font-size: 44px; line-height: 1; }
+.space-name { display: block; font-size: 16px; font-weight: 600; color: var(--ui-text-primary-fg, var(--text)); }
+.space-subtitle { display: block; margin-top: 3px; font-style: normal; font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--muted)); }
+.space-desc { margin: 12px 0 0; font-size: 12.5px; line-height: 1.75;
+  color: var(--ui-text-secondary-fg, var(--text)); text-align: left; }
+.space-tabs { display: flex;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border))); }
+.space-tab { flex: 1; padding: 11px 0; border: 0; background: transparent; cursor: pointer;
+  font-size: 12px; color: var(--ui-text-muted-fg, var(--muted)); }
+.space-tab.is-on { font-weight: 600; color: var(--ui-text-primary-fg, var(--text));
+  box-shadow: inset 0 -2px 0 var(--ui-text-primary-fg, var(--text)); }
+.space-tab:hover { color: var(--ui-text-primary-fg, var(--text)); }
+.member-group-head { padding: 14px 18px 6px; font-size: 11.5px; color: var(--ui-text-muted-fg, var(--muted)); }
+.member-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 7px 18px;
+  border: 0; background: transparent; cursor: pointer; color: inherit; text-align: left; }
+.member-row:hover { background: var(--ui-state-hover-bg, var(--hover)); }
+.member-mark-wrap { position: relative; flex-shrink: 0; display: inline-flex; }
+.member-dot { position: absolute; right: -1px; bottom: -1px; width: 11px; height: 11px;
+  border-radius: 50%; background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border: 2px solid var(--ui-surface-panel-bg, var(--bg-panel)); }
+.member-dot.is-busy { background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border-color: var(--ui-status-success-fg, var(--text-success)); }
+.member-text { min-width: 0; line-height: 1.35; }
+.member-name { display: block; font-size: 13px; font-weight: 600; color: var(--ui-text-primary-fg, var(--text)); }
+.member-detail { display: block; font-style: normal; font-size: 11.5px;
+  color: var(--ui-text-muted-fg, var(--muted)); }
+
+/* ───────────── [搬运] components/AgentsPanelContent.vue(账页表单与列表) ───────────── */
+.editor-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 2px 14px 0; }
+.editor-body { position: relative; display: flex; flex-direction: column; gap: 18px; padding-left: 16px; }
+.agent-field { display: flex; flex-direction: column; gap: 8px; }
+.field-label { position: relative; font-size: 11px; font-weight: var(--font-weight-semibold, 600);
+  letter-spacing: .05em; text-transform: uppercase; color: var(--ui-text-primary-fg, var(--text-primary)); }
+.editor-body .field-label::before { content: ''; position: absolute; left: -16px; top: 50%;
+  width: 10px; height: 2px; background: var(--ui-border-strong-border, var(--border-strong, var(--border))); }
+.ledger-input { width: 100%; box-sizing: border-box; appearance: none; background: transparent;
+  border: none; border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0; padding: 2px 2px 6px; font: inherit; font-size: 13px;
+  color: var(--ui-text-primary-fg, var(--text-primary)); outline: none; transition: border-color .12s ease; }
+.ledger-input:hover, .ledger-input:focus { border-bottom-color: var(--ui-accent-primary-fg, var(--accent)); }
+.ledger-textarea { width: 100%; box-sizing: border-box; resize: vertical; appearance: none;
+  background: transparent; border: none;
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0; padding: 4px 2px 8px 10px; font-family: var(--font-mono, monospace);
+  font-size: 12px; line-height: 1.6; color: var(--ui-text-primary-fg, var(--text-primary)); outline: none; }
+.ledger-textarea:hover, .ledger-textarea:focus { border-left-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent)); }
+.prompt-header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.prompt-counter { font-family: var(--font-mono, monospace); font-variant-numeric: tabular-nums;
+  font-size: 10px; color: var(--ui-text-faint-fg, var(--muted)); white-space: nowrap; }
+.field-hint { margin: 0; font-size: 11px; line-height: 1.5; color: var(--ui-text-faint-fg, var(--muted)); }
+.mode-switch { display: flex; align-items: baseline; gap: 10px; }
+.mode-option { appearance: none; background: transparent; border: none; border-bottom: 2px solid transparent;
+  padding: 0 0 2px; font-family: var(--font-mono, monospace); font-size: 11px;
+  color: var(--ui-text-muted-fg, var(--text-muted)); cursor: pointer; }
+.mode-option:hover { color: var(--ui-text-primary-fg, var(--text-primary)); }
+.mode-option.is-on { color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent)); }
+.mode-divider { width: 1px; align-self: stretch;
+  background: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 60%, transparent); }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 2px 14px; }
+.tool-line { position: relative; display: flex; align-items: baseline; gap: 6px; min-width: 0;
+  padding: 3px 0 3px 14px; appearance: none; background: transparent; border: none; text-align: left;
+  font-family: var(--font-mono, monospace); font-size: 11px;
+  color: var(--ui-text-muted-fg, var(--text-muted)); cursor: pointer; }
+.tool-line::before { content: ''; position: absolute; left: 0; top: 50%; width: 7px; height: 1px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border))); }
+.tool-line.is-on { color: var(--ui-text-primary-fg, var(--text-primary)); }
+.tool-line.is-on::before { width: 10px; height: 2px; background: var(--ui-accent-primary-fg, var(--accent)); }
+.tool-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-row { display: flex; align-items: baseline; gap: 10px; }
+.model-row-label { flex-shrink: 0; min-width: 54px; font-family: var(--font-mono, monospace);
+  font-size: 10px; letter-spacing: .04em; color: var(--ui-text-faint-fg, var(--muted)); }
+.ledger-select { flex: 1; min-width: 0; appearance: none; background: transparent; border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0; padding: 2px 2px 5px; font-family: var(--font-mono, monospace); font-size: 12px;
+  color: var(--ui-text-primary-fg, var(--text-primary)); outline: none; cursor: pointer; }
+.editor-footer { display: flex; justify-content: flex-end; gap: 18px; padding: 12px 2px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent); }
+.text-action { appearance: none; background: transparent; border: none; padding: 0;
+  font-family: var(--font-mono, monospace); font-size: 11px;
+  color: var(--ui-text-muted-fg, var(--text-muted)); cursor: pointer; }
+.text-action:hover { color: var(--ui-text-primary-fg, var(--text-primary)); text-decoration: underline;
+  text-underline-offset: 3px; text-decoration-color: var(--ui-accent-primary-fg, var(--accent)); }
+.text-action.is-primary { color: var(--ui-accent-primary-fg, var(--accent)); }
+.history-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.history-line { appearance: none; background: transparent; border: none; width: 100%; padding: 4px 0;
+  display: flex; align-items: baseline; gap: 8px; text-align: left; font-family: inherit; font-size: 12px;
+  line-height: 1.5; color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text))); cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 40%, transparent); }
+.history-rows li:last-child .history-line { border-bottom: none; }
+.history-line:hover { color: var(--ui-accent-primary-fg, var(--accent)); }
+.history-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-note { flex: 0 1 auto; font-size: 11px; color: var(--ui-text-faint-fg, var(--muted)); }
+.history-meta { flex: 0 0 auto; font-size: 11px; font-variant-numeric: tabular-nums;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+.history-count { min-width: 44px; text-align: right; }
+.history-group { display: flex; flex-direction: column; gap: 2px; }
+.history-group + .history-group { margin-top: 10px; }
+.history-group-title { font-family: var(--font-mono, monospace); font-size: 10px; letter-spacing: .04em;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+
+/* ═════════════ [新增] 这次要新写的全部 CSS —— 六条 ═════════════ */
+
+/* 新增 1:头像/署名的"可点"提示。静止态与今天完全一致,hover 才出环。 */
+.agent-open-target { position: relative; display: inline-flex; border-radius: 50%; cursor: pointer;
+  border: 0; background: transparent; padding: 0; }
+.agent-open-target::after { content: ''; position: absolute; inset: -3px; border-radius: 50%;
+  border: 1px solid transparent; transition: border-color .12s ease; }
+.agent-open-target:hover::after, .agent-open-target.is-hover::after {
+  border-color: var(--ui-accent-primary-fg, var(--accent)); }
+/* 署名文字同一个入口:hover 出下划线 */
+.agent-open-name { appearance: none; background: transparent; border: 0; padding: 0; font: inherit;
+  color: inherit; cursor: pointer; }
+.agent-open-name:hover, .agent-open-name.is-hover { text-decoration: underline; text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent)); }
+
+/* 新增 2:资料块下的动作行(今天管理页有 .profile-actions,右栏 hero 没有) */
+.space-actions { display: flex; justify-content: center; gap: 16px; margin-top: 12px; }
+
+/* 新增 3:空间页四面的滚动容器 */
+.space-face { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* 新增 4:窄栏(右栏)密度覆盖 —— 表单本身一个字段都不改 */
+.is-narrow .editor-scroll { padding: 12px 14px 14px 0; }
+.is-narrow .editor-body { padding-left: 30px; gap: 16px; }
+.is-narrow .ledger-textarea { min-height: 132px; }
+.is-narrow .tool-grid { grid-template-columns: 1fr 1fr; }
+.is-narrow .space-desc { margin-top: 10px; }
+
+/* 新增 5:列表面的分组头(会话/文件/搜索三面共用) */
+.face-group { padding: 14px 16px 4px; display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--font-mono, monospace); font-size: 10px; letter-spacing: .06em;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+.face-group .n { margin-left: auto; font-variant-numeric: tabular-nums; }
+.face-rows { padding: 0 16px; }
+
+/* 新增 6:搜索面的输入行 */
+.face-search { padding: 12px 16px 2px; }
+.face-search .ledger-input { font-size: 12.5px; }
+
+/* 新增 7:滚动条只在鼠标进了这一栏时显形(手法照抄 markdown.css:353 的代码块) */
+.wb .space-face:not(:hover)::-webkit-scrollbar-thumb,
+.wb .editor-scroll:not(:hover)::-webkit-scrollbar-thumb { background: transparent; }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <div class="kicker">样板 · Agent 空间(交付形态)</div>
+  <h1>点头像 → 右栏就是这个人;配置就在那一栏改</h1>
+  <p>
+    这一页直接 <code>&lt;link&gt;</code> 了项目的 <b>variables.css / flexoki-colors.css</b>,
+    控件用的是 <b>Tabs / RightWorkbenchPanel / MembersWorkbench / AgentsPanelContent 现有的类</b>
+    —— 颜色、字号、边线都是应用里真实解出来的那一套,换主题跟着变。
+    <b>新写的 CSS 只有页尾标注的六条</b>,外加页签条改「<b>丙 · 正字下划线</b>」的那一组增删(见样式段注释)。
+    左栏与中栏(聊天面)这次一个像素都不动,所以不在这里重画。
+  </p>
+  <div class="theme">
+    <button class="text-action" onclick="document.documentElement.dataset.theme='light'">light</button>
+    <button class="text-action" onclick="document.documentElement.dataset.theme='dark'">dark</button>
+    <span class="field-hint">切一下看主题跟随</span>
+  </div>
+</div>
+
+<h2>一 · 群聊里点开某人<em>成员 tab 内下钻,不占新页签</em></h2>
+<div class="row">
+
+  <!-- 配置面 -->
+  <div>
+    <div class="wb tall right-workbench">
+      <div class="app-tabs app-tabs--top app-tabs--line right-workbench-tabs">
+        <div class="app-tabs-nav">
+          <div class="app-tabs-nav-scroll">
+            <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span>线程</span>
+            </span></span><i class="tab-x">✕</i></button>
+            <button class="app-tabs-tab is-active"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><span>成员</span>
+            </span></span><i class="tab-x">✕</i></button>
+            <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6"/></svg><span>看板</span>
+            </span></span><i class="tab-x">✕</i></button>
+          </div>
+          <div class="app-tabs-nav-actions">
+            <button class="workbench-close">＋</button>
+            <button class="workbench-close">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="members-workbench is-narrow">
+        <button class="space-back">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          返回成员
+        </button>
+        <div class="space-hero">
+          <span class="space-avatar">🧭</span>
+          <b class="space-name">小林</b>
+          <i class="space-subtitle">架构 · 在忙 · castlabs 换核验证</i>
+          <p class="space-desc">盯架构边界与迁移。说话直接,先给结论再给依据。</p>
+          <div class="space-actions">
+            <button class="text-action">发消息</button>
+            <button class="text-action">看线程</button>
+          </div>
+        </div>
+        <div class="space-tabs">
+          <button class="space-tab is-on">配置</button>
+          <button class="space-tab">会话</button>
+          <button class="space-tab">文件</button>
+          <button class="space-tab">搜索</button>
+        </div>
+
+        <div class="space-face">
+          <div class="editor-scroll">
+            <div class="editor-body">
+              <label class="agent-field">
+                <span class="field-label">Name</span>
+                <input class="ledger-input" value="小林">
+              </label>
+              <div style="display:flex;gap:14px">
+                <label class="agent-field" style="flex:0 0 52px">
+                  <span class="field-label">Avatar</span>
+                  <input class="ledger-input" value="🧭" style="text-align:center">
+                </label>
+                <label class="agent-field" style="flex:1">
+                  <span class="field-label">Role</span>
+                  <input class="ledger-input" value="架构">
+                </label>
+              </div>
+              <div class="agent-field">
+                <div class="prompt-header">
+                  <span class="field-label">System Prompt</span>
+                  <span class="prompt-counter">412 字</span>
+                </div>
+                <textarea class="ledger-textarea">你是这个项目的架构负责人。先给结论,再给依据;拿不准就说拿不准。改动跨包时先说清依赖方向,再动手。</textarea>
+              </div>
+              <div class="agent-field">
+                <div class="prompt-header">
+                  <span class="field-label">Tools</span>
+                  <div class="mode-switch">
+                    <button class="mode-option is-on">follow global</button>
+                    <span class="mode-divider"></span>
+                    <button class="mode-option">allowlist</button>
+                  </div>
+                </div>
+                <div class="tool-grid">
+                  <button class="tool-line is-on"><span class="tool-name">read</span></button>
+                  <button class="tool-line is-on"><span class="tool-name">edit</span></button>
+                  <button class="tool-line"><span class="tool-name">bash</span></button>
+                  <button class="tool-line"><span class="tool-name">web_search</span></button>
+                </div>
+              </div>
+              <div class="agent-field">
+                <span class="field-label">Model</span>
+                <div class="model-row">
+                  <span class="model-row-label">provider</span>
+                  <select class="ledger-select"><option>claude</option></select>
+                </div>
+                <div class="model-row">
+                  <span class="model-row-label">model</span>
+                  <select class="ledger-select"><option>opus-5</option></select>
+                </div>
+              </div>
+              <div class="agent-field">
+                <span class="field-label">Boundaries</span>
+                <div class="model-row">
+                  <span class="model-row-label">approvals</span>
+                  <select class="ledger-select"><option>ask every time</option></select>
+                </div>
+                <div class="model-row">
+                  <span class="model-row-label">turns</span>
+                  <select class="ledger-select"><option>standard (100)</option></select>
+                </div>
+                <p class="field-hint">留空即跟随会话/全局设置。</p>
+              </div>
+              <div class="editor-footer">
+                <button class="text-action">cancel</button>
+                <button class="text-action is-primary">save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>配置面</b> — 就是管理页那张表单,原样搬进右栏(<code>.ledger-input</code> /
+      <code>.mode-switch</code> / <code>.tool-line</code> 一个类都没换),窄栏只调密度。改完就地 save。
+      面板<b>宽 336px</b> = 右栏默认宽度(项目里 22%–48% 可拖);高度是样板为了一屏看全拉的,
+      实际跟窗口走,内容滚动。</div>
+  </div>
+
+  <!-- 会话面 -->
+  <div>
+    <div class="wb right-workbench">
+      <div class="app-tabs app-tabs--top app-tabs--line right-workbench-tabs">
+        <div class="app-tabs-nav">
+          <div class="app-tabs-nav-scroll">
+            <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span>线程</span>
+            </span></span><i class="tab-x">✕</i></button>
+            <button class="app-tabs-tab is-active"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg><span>小林</span>
+            </span></span><i class="tab-x">✕</i></button>
+          </div>
+          <div class="app-tabs-nav-actions">
+            <button class="workbench-close">＋</button>
+            <button class="workbench-close">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="members-workbench is-narrow">
+        <div class="space-hero">
+          <span class="space-avatar">🧭</span>
+          <b class="space-name">小林</b>
+          <i class="space-subtitle">架构 · 同事</i>
+          <div class="space-actions">
+            <button class="text-action">发消息</button>
+            <button class="text-action">看线程</button>
+          </div>
+        </div>
+        <div class="space-tabs">
+          <button class="space-tab">配置</button>
+          <button class="space-tab is-on">会话</button>
+          <button class="space-tab">文件</button>
+          <button class="space-tab">搜索</button>
+        </div>
+        <div class="space-face">
+          <div class="face-group">与你的对话 <span class="n">3</span></div>
+          <div class="face-rows"><ol class="history-rows">
+            <li><button class="history-line"><span class="history-name">和小林的私聊</span><span class="history-meta">09:14</span><span class="history-meta history-count">128 条</span></button></li>
+            <li><button class="history-line"><span class="history-name">JSONL 存储改造</span><span class="history-meta">昨天</span><span class="history-meta history-count">54 条</span></button></li>
+            <li><button class="history-line"><span class="history-name">权限账页样式</span><span class="history-meta">07-28</span><span class="history-meta history-count">31 条</span></button></li>
+          </ol></div>
+
+          <div class="face-group">群聊 <span class="n">2</span></div>
+          <div class="face-rows"><ol class="history-rows">
+            <li><button class="history-line"><span class="history-name">浏览器重构</span><span class="history-note">房主</span><span class="history-meta">09:21</span></button></li>
+            <li><button class="history-line"><span class="history-name">设计评审</span><span class="history-meta">07-29</span></button></li>
+          </ol></div>
+
+          <div class="face-group">干过的活 <span class="n">41</span></div>
+          <div class="face-rows">
+            <div class="history-group">
+              <span class="history-group-title">castlabs 换核验证</span>
+              <ol class="history-rows">
+                <li><button class="history-line"><span class="history-name">执行会话 · 37 步</span><span class="history-meta">运行中</span></button></li>
+              </ol>
+            </div>
+            <div class="history-group">
+              <span class="history-group-title">多 profile 隔离</span>
+              <ol class="history-rows">
+                <li><button class="history-line"><span class="history-name">执行会话 · 22 步</span><span class="history-meta">07-30</span></button></li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="face-group">私下 <span class="n">7</span></div>
+          <div class="face-rows"><ol class="history-rows">
+            <li><button class="history-line"><span class="history-name">与阿澈</span><span class="history-meta">09:02</span><span class="history-meta history-count">7 条</span></button></li>
+          </ol></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>会话面</b> — 四栏就是履历页那四栏(<code>.history-line</code> 原样)。
+      点一行 → 会话在<b>主区开页签</b>,右栏不关不跳。上面 tab 条演示的是<b>非成员</b>的落点:
+      以 TA 命名的独立页签。</div>
+  </div>
+
+  <!-- 文件面 -->
+  <div>
+    <div class="wb right-workbench">
+      <div class="app-tabs app-tabs--top app-tabs--line right-workbench-tabs">
+        <div class="app-tabs-nav">
+          <div class="app-tabs-nav-scroll">
+            <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg><span>文件</span>
+            </span></span><i class="tab-x">✕</i></button>
+            <button class="app-tabs-tab is-active"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg><span>小林</span>
+            </span></span><i class="tab-x">✕</i></button>
+          </div>
+          <div class="app-tabs-nav-actions">
+            <button class="workbench-close">＋</button>
+            <button class="workbench-close">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="members-workbench is-narrow">
+        <div class="space-hero">
+          <span class="space-avatar">🧭</span>
+          <b class="space-name">小林</b>
+          <i class="space-subtitle">架构 · 同事</i>
+          <div class="space-actions">
+            <button class="text-action">发消息</button>
+            <button class="text-action">打开文件夹</button>
+          </div>
+        </div>
+        <div class="space-tabs">
+          <button class="space-tab">配置</button>
+          <button class="space-tab">会话</button>
+          <button class="space-tab is-on">文件</button>
+          <button class="space-tab">搜索</button>
+        </div>
+        <div class="space-face">
+          <div class="face-group">私聊文件 <span class="n">3</span></div>
+          <div class="face-rows"><ol class="history-rows">
+            <li><button class="history-line"><span class="history-name">profile-隔离对照.md</span><span class="history-meta">09:21</span><span class="history-meta history-count">4.2 KB</span></button></li>
+            <li><button class="history-line"><span class="history-name">castlabs-验证记录.md</span><span class="history-meta">09:06</span><span class="history-meta history-count">11 KB</span></button></li>
+            <li><button class="history-line"><span class="history-name">ua-实验/结果.json</span><span class="history-meta">昨天</span><span class="history-meta history-count">862 B</span></button></li>
+          </ol></div>
+
+          <div class="face-group">交付物 <span class="n">3</span></div>
+          <div class="face-rows">
+            <div class="history-group">
+              <span class="history-group-title">castlabs 换核验证</span>
+              <ol class="history-rows">
+                <li><button class="history-line"><span class="history-name">apps/electron/src/window/session-security.ts</span></button></li>
+                <li><button class="history-line"><span class="history-name">docs/audit/castlabs-2026-07.md</span></button></li>
+              </ol>
+            </div>
+            <div class="history-group">
+              <span class="history-group-title">多 profile 隔离</span>
+              <ol class="history-rows">
+                <li><button class="history-line"><span class="history-name">apps/electron/src/browser/session.ts</span></button></li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>文件面</b> — 点一行 → <b>右栏另开文件页签</b>(和行内 <code>&lt;file&gt;</code> 标签同一条链路)。
+      还原不出绝对路径的交付物保持今天的灰行不可点。</div>
+  </div>
+
+</div>
+
+<h2>二 · 私聊 · 搜索面<em>私聊右栏第二格叫「空间」,没有返回行</em></h2>
+<div class="row">
+
+  <div>
+    <div class="wb right-workbench">
+      <div class="app-tabs app-tabs--top app-tabs--line right-workbench-tabs">
+        <div class="app-tabs-nav">
+          <div class="app-tabs-nav-scroll">
+            <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span>线程</span>
+            </span></span><i class="tab-x">✕</i></button>
+            <button class="app-tabs-tab is-active"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg><span>空间</span>
+            </span></span><i class="tab-x">✕</i></button>
+            <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6"/></svg><span>看板</span>
+            </span></span><i class="tab-x">✕</i></button>
+          </div>
+          <div class="app-tabs-nav-actions">
+            <button class="workbench-close">＋</button>
+            <button class="workbench-close">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="members-workbench is-narrow">
+        <div class="space-hero">
+          <span class="space-avatar">🧭</span>
+          <b class="space-name">小林</b>
+          <i class="space-subtitle">架构 · 在忙 · 多 profile 代理继承</i>
+          <div class="space-actions">
+            <button class="text-action">看线程</button>
+            <button class="text-action">打开文件夹</button>
+          </div>
+        </div>
+        <div class="space-tabs">
+          <button class="space-tab">配置</button>
+          <button class="space-tab">会话</button>
+          <button class="space-tab">文件</button>
+          <button class="space-tab is-on">搜索</button>
+        </div>
+        <div class="space-face">
+          <div class="face-search">
+            <input class="ledger-input" value="castlabs">
+          </div>
+          <div class="face-group">会话 <span class="n">3</span></div>
+          <div class="face-rows"><ol class="history-rows">
+            <li><button class="history-line"><span class="history-name">castlabs 换核验证</span><span class="history-meta">运行中</span></button></li>
+            <li><button class="history-line"><span class="history-name">和小林的私聊</span><span class="history-meta">09:14</span></button></li>
+            <li><button class="history-line"><span class="history-name">浏览器重构</span><span class="history-note">群聊</span><span class="history-meta">09:21</span></button></li>
+          </ol></div>
+          <div class="face-group">文件 <span class="n">1</span></div>
+          <div class="face-rows"><ol class="history-rows">
+            <li><button class="history-line"><span class="history-name">castlabs-验证记录.md</span><span class="history-meta">11 KB</span></button></li>
+          </ol></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>搜索面</b> — 范围 = 这个人的会话名 / 群名 / 卡标题 / 文件名(现有本地过滤,
+      <b>不是全文检索</b>)。私聊房没有「返回成员」那一行。</div>
+  </div>
+
+  <!-- 成员列表(下钻前) -->
+  <div>
+    <div class="wb right-workbench">
+      <div class="app-tabs app-tabs--top app-tabs--line right-workbench-tabs">
+        <div class="app-tabs-nav">
+          <div class="app-tabs-nav-scroll">
+            <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span>线程</span>
+            </span></span><i class="tab-x">✕</i></button>
+            <button class="app-tabs-tab is-active"><span class="app-tabs-tab-label"><span class="workbench-tab-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><span>成员</span>
+            </span></span><i class="tab-x">✕</i></button>
+          </div>
+          <div class="app-tabs-nav-actions">
+            <button class="workbench-close">＋</button>
+            <button class="workbench-close">✕</button>
+          </div>
+        </div>
+      </div>
+      <div class="members-workbench">
+        <div class="member-group-head">在忙 — 2</div>
+        <button class="member-row">
+          <span class="member-mark-wrap agent-open-target is-hover"><span style="font-size:36px;line-height:1">🧭</span><i class="member-dot is-busy"></i></span>
+          <span class="member-text"><b class="member-name">小林</b><i class="member-detail">castlabs 换核验证</i></span>
+        </button>
+        <button class="member-row">
+          <span class="member-mark-wrap agent-open-target"><span style="font-size:36px;line-height:1">🌊</span><i class="member-dot is-busy"></i></span>
+          <span class="member-text"><b class="member-name">阿澈</b><i class="member-detail">元素拾取 P2</i></span>
+        </button>
+        <div class="member-group-head">空闲 — 2</div>
+        <button class="member-row">
+          <span class="member-mark-wrap agent-open-target"><span style="font-size:36px;line-height:1">📚</span><i class="member-dot"></i></span>
+          <span class="member-text"><b class="member-name">砚</b><i class="member-detail">资料</i></span>
+        </button>
+        <button class="member-row">
+          <span class="member-mark-wrap agent-open-target"><span style="font-size:36px;line-height:1">🤖</span><i class="member-dot"></i></span>
+          <span class="member-text"><b class="member-name">主助理</b><i class="member-detail">同事</i></span>
+        </button>
+      </div>
+    </div>
+    <div class="cap"><b>成员列表</b> — 今天就是这样,不改。点一行下钻到左边那一页;
+      头像这次也带上 hover 环(第一行是 hover 态)。</div>
+  </div>
+
+</div>
+
+<h2>三 · 头像的可点提示<em>三处共用一条规则,静止态与今天完全一致</em></h2>
+<div class="row">
+  <div>
+    <div class="wb short right-workbench" style="justify-content:center;gap:26px;padding:22px 18px">
+      <div style="display:flex;align-items:center;gap:16px">
+        <span class="agent-open-target"><span style="font-size:28px;line-height:1">🧭</span></span>
+        <span class="agent-open-target is-hover"><span style="font-size:28px;line-height:1">🧭</span></span>
+        <span class="field-hint">私聊房头 28px · 右为 hover</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <span class="agent-open-target"><span style="font-size:30px;line-height:1">🌊</span></span>
+        <span class="agent-open-target is-hover"><span style="font-size:30px;line-height:1">🌊</span></span>
+        <span class="field-hint">消息署名头像 30px</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <span class="agent-open-target"><span style="font-size:22px;line-height:1">📚</span></span>
+        <span class="agent-open-target is-hover"><span style="font-size:22px;line-height:1">📚</span></span>
+        <span class="field-hint">群聊房头成员堆 22px</span>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:16px">
+        <button class="agent-open-name" style="font-size:12.5px;font-weight:600">小林</button>
+        <button class="agent-open-name is-hover" style="font-size:12.5px;font-weight:600">小林</button>
+        <span class="field-hint">署名文字同一入口</span>
+      </div>
+    </div>
+    <div class="cap"><b>hover 语汇</b> — 3px 外扩细环,取主题 accent 色;署名出下划线。
+      <b>提示文字用系统原生 title</b>(今天已经有:「小林 · 打开空间」),不另做浮层组件。</div>
+  </div>
+
+  <div style="flex:1;min-width:420px">
+    <ul class="note-list">
+      <li><b>落点</b> — 房内成员 → 成员 tab 内下钻;非成员(直聊助理、退休同事) → 以 TA 命名的独立页签;私聊 → 「空间」页签。</li>
+      <li><b>会话行</b> → 主区开会话页签,右栏原地不动。<b>文件行</b> → 右栏开文件页签。<b>配置</b> → 就地改就地存。</li>
+      <li><b>Agents 管理页</b>不再是点头像的目的地,退回名册的事(新建 / 退休 / 恢复 / 通览)。</li>
+      <li><b>不动的</b>:左栏、中栏聊天面、直聊工程壳、权限审批、线程栏、看板、agents.json 字段与保存通道。</li>
+      <li><b>这一页没画的就是不做的</b>:头像浮层名片、全文检索、右栏拖拽排序、配置的高级项(toolGrants / workspace roots)—— 后两者仍留在 agents.json。</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

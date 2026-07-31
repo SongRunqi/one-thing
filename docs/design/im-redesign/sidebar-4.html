@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>左栏四方案 · Linear 式</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+
+  body { padding-bottom: 140px; }
+  .grid { max-width: 1180px; margin: 30px auto 0; display: grid;
+    grid-template-columns: repeat(2, 1fr); gap: 44px 34px; }
+  .cell > h3 { font-size: 13px; font-weight: 600; letter-spacing: .02em; display: flex; align-items: baseline; gap: 9px; }
+  .cell > h3 em { font-style: normal; font-size: 11.5px; color: var(--ink-3); font-weight: 400; letter-spacing: 0; }
+  .cell > p { font-size: 12.5px; color: var(--ink-2); line-height: 1.8; margin-top: 8px; }
+  .cell > p b { color: var(--ink); font-weight: 600; }
+  /* 框宽 = 侧栏真实宽度(268px):看到的就是真机比例 */
+  .frame { margin-top: 14px; height: 600px; width: 268px; border-radius: 10px; overflow: hidden;
+    display: flex; box-shadow: 0 0 0 1px rgba(20,18,12,.06), 0 10px 26px rgba(20,18,12,.07); }
+  .map { margin-top: 12px; font-size: 11.5px; color: var(--ink-3); line-height: 1.85; max-width: 30em; }
+  .map b { color: var(--ink-2); font-weight: 600; }
+  .map code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+
+  /* ══════════════════════════════════════════════════════════════════
+     Linear 式底子:几乎不画线,分层靠极淡填充与留白;全灰阶,颜色只留给状态。
+     四套共用这一层,**结构**才是它们的区别。
+     ══════════════════════════════════════════════════════════════════ */
+  .sb {
+    /* 侧栏面 */
+    --l-bg: #fbfaf8;
+    --l-fill: rgba(28, 27, 24, .045);      /* hover */
+    --l-fill-on: rgba(28, 27, 24, .075);   /* 当前项 */
+    --l-hair: rgba(28, 27, 24, .07);       /* 唯一允许的线:脚栏上沿 */
+    /* 墨阶三档 —— 不再更多 */
+    --l-ink: #26251f;                      /* 当前项 / 标题 */
+    --l-row: #4a4842;                      /* 普通行 */
+    --l-mute: #97948c;                     /* 分区标签 / 计数 / 副文 */
+    --l-run: #4f8a3d;                      /* 在跑 */
+    --l-wait: #b3711f;                     /* 待你 */
+    --l-radius: 6px;
+    --l-row-h: 30px;
+
+    width: 268px; display: flex; flex-direction: column; height: 100%;
+    background: var(--l-bg); color: var(--l-row);
+    font-size: 13px; line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sb .scroll { flex: 1; overflow: hidden; padding: 2px 0 8px; }
+
+  /* 行:通用底子。四套的行都从这儿长出来 */
+  .sb .r {
+    display: flex; align-items: center; gap: 8px;
+    height: var(--l-row-h); padding: 0 8px; margin: 0 6px;
+    border-radius: var(--l-radius); cursor: pointer;
+    color: var(--l-row); white-space: nowrap;
+  }
+  .sb .r:hover { background: var(--l-fill); color: var(--l-ink); }
+  .sb .r.on { background: var(--l-fill-on); color: var(--l-ink); font-weight: 500; }
+  .sb .r .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .sb .r .meta { font-size: 12px; color: var(--l-mute); font-variant-numeric: tabular-nums; }
+
+  /* 分区标签:小、静、不用宽字距(Linear 不这么做) */
+  .sb .sh {
+    display: flex; align-items: center; gap: 6px;
+    height: 26px; padding: 0 8px; margin: 10px 6px 1px;
+    border-radius: var(--l-radius); cursor: pointer;
+    color: var(--l-mute); font-size: 11.5px; font-weight: 500;
+  }
+  .sb .sh:hover { background: var(--l-fill); }
+  /* caret 是 SVG chevron,不是标点字符 —— 字符(`›`/`⌄`)的字重与重心随字体走,
+     旋转后必歪、12px 下描边不足 1px 发虚。与真实组件用的是同一段 svg。
+     展开 = 朝下(rotate 90),收起 = 朝右(0)。 */
+  .sb .sh .cv { width: 12px; height: 12px; flex-shrink: 0; color: var(--l-mute);
+    transform: rotate(90deg); transition: transform .13s ease; }
+  .sb .sh .cv.closed { transform: rotate(0deg); }
+  .sb .sh .n { margin-left: auto; font-variant-numeric: tabular-nums; opacity: .75; }
+  .sb .sh .add { margin-left: auto; opacity: 0; transition: opacity .12s; }
+  .sb .sh:hover .add { opacity: .8; }
+
+  /* 状态点:唯一的颜色 */
+  .sb .st { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--l-mute); }
+  .sb .st.run { background: var(--l-run); }
+  .sb .st.wait { background: var(--l-wait); }
+  .sb .unread { width: 5px; height: 5px; border-radius: 50%; background: var(--l-ink); flex-shrink: 0; }
+
+  .sb .av2 { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+    color: #fff; font-size: 8.5px; font-weight: 600; flex-shrink: 0; letter-spacing: -.02em; }
+  .sb .faces { display: flex; flex-shrink: 0; }
+  .sb .faces .av2 { width: 17px; height: 17px; margin-left: -5px; box-shadow: 0 0 0 1.5px var(--l-bg); }
+  .sb .faces .av2:first-child { margin-left: 0; }
+
+  /* 顶部:新会话 —— 一行普通行,不做成按钮块 */
+  .sb .top { padding: 10px 6px 2px; display: flex; align-items: center; gap: 6px; }
+  .sb .top .new {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    height: var(--l-row-h); padding: 0 8px; border-radius: var(--l-radius);
+    color: var(--l-row); cursor: pointer;
+  }
+  .sb .top .new:hover { background: var(--l-fill); color: var(--l-ink); }
+  .sb .top .ico { width: 28px; height: 28px; border-radius: var(--l-radius);
+    display: grid; place-items: center; color: var(--l-mute); cursor: pointer; }
+  .sb .top .ico:hover { background: var(--l-fill); color: var(--l-ink); }
+
+  /* 脚栏:唯一一条发丝线 */
+  .sb .foot { border-top: 1px solid var(--l-hair); padding: 7px 12px;
+    display: flex; align-items: center; gap: 4px; color: var(--l-mute); }
+  .sb .foot .ico { width: 26px; height: 26px; border-radius: var(--l-radius);
+    display: grid; place-items: center; cursor: pointer; }
+  .sb .foot .ico:hover { background: var(--l-fill); color: var(--l-ink); }
+  .sb .foot .sp { flex: 1; }
+  .sb .ic { stroke-width: 1.6; }
+
+  /* ══════════ 方案一 · 清单 ══════════ */
+  /* 分区 + 单行,活也压成一行:名字 + 状态点 + 负责人。密度最高。 */
+  .sb1 .r .who { font-size: 12px; color: var(--l-mute); }
+
+  /* ══════════ 方案二 · 双行卡 ══════════ */
+  /* 活给两行(名字 / 状态 · 耗时),不画边框,靠极淡填充成块。 */
+  .sb2 .work { margin: 0 6px 2px; padding: 7px 8px; border-radius: var(--l-radius); cursor: pointer; }
+  .sb2 .work:hover { background: var(--l-fill); }
+  .sb2 .work.on { background: var(--l-fill-on); }
+  .sb2 .work .t { display: flex; align-items: center; gap: 8px; color: var(--l-ink); }
+  .sb2 .work .t .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb2 .work .s { display: flex; align-items: center; gap: 6px; margin-top: 3px;
+    padding-left: 14px; font-size: 12px; color: var(--l-mute); }
+  .sb2 .work .s .run { color: var(--l-run); }
+  .sb2 .work .s .wait { color: var(--l-wait); }
+
+  /* ══════════ 方案三 · rail + 单类面板 ══════════ */
+  /* 方案三 = 上面一条全宽拖拽行,下面才是 rail + 面板 */
+  .sb3 .hdr { height: 44px; flex-shrink: 0; display: flex; align-items: center;
+    -webkit-app-region: drag; }
+  .sb3 .hdr .lights { width: 70px; flex-shrink: 0; display: flex; align-items: center;
+    gap: 8px; padding-left: 13px; }
+  .sb3 .hdr .lights i { width: 11px; height: 11px; border-radius: 50%; background: rgba(28,27,24,.13); }
+  .sb3 .hdr .hact { display: flex; align-items: center; gap: 10px; color: var(--l-mute); }
+  .sb3 .split { flex: 1; display: flex; min-height: 0; }
+  .sb3 .rail { width: 46px; display: flex; flex-direction: column; align-items: center;
+    padding: 4px 0 8px; gap: 2px; background: rgba(28,27,24,.025); }
+  .sb3 .rail .t { width: 30px; height: 30px; border-radius: var(--l-radius);
+    display: grid; place-items: center; color: var(--l-mute); cursor: pointer; position: relative; }
+  .sb3 .rail .t:hover { background: var(--l-fill); color: var(--l-ink); }
+  .sb3 .rail .t.on { background: var(--l-fill-on); color: var(--l-ink); }
+  .sb3 .rail .t .bdg { position: absolute; top: 4px; right: 4px;
+    width: 5px; height: 5px; border-radius: 50%; background: var(--l-ink); }
+  .sb3 .rail .sp { flex: 1; }
+  .sb3 .pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .sb3 .ph { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 14px; }
+  .sb3 .ph b { font-size: 13px; font-weight: 550; color: var(--l-ink); }
+  .sb3 .ph .n { margin-left: auto; font-size: 12px; color: var(--l-mute); font-variant-numeric: tabular-nums; }
+  .sb3 .grp { font-size: 11.5px; font-weight: 500; color: var(--l-mute); padding: 12px 14px 3px; }
+  .sb3 .r { margin: 0 8px; }
+
+  /* ══════════ 方案四 · 合流 ══════════ */
+  .sb4 .top { padding: 10px 8px 2px; display: block; }
+  .sb4 .search { height: 30px; border-radius: var(--l-radius); background: rgba(28,27,24,.04);
+    display: flex; align-items: center; gap: 8px; padding: 0 9px; font-size: 13px; color: var(--l-mute); }
+  .sb4 .chips { display: flex; gap: 4px; margin-top: 8px; padding: 0 1px; }
+  .sb4 .chip { font-size: 12px; padding: 3px 9px; border-radius: 5px; color: var(--l-mute); cursor: pointer; }
+  .sb4 .chip:hover { background: var(--l-fill); color: var(--l-ink); }
+  .sb4 .chip.on { background: var(--l-fill-on); color: var(--l-ink); font-weight: 500; }
+  .sb4 .chip .n { opacity: .6; margin-left: 3px; font-variant-numeric: tabular-nums; }
+  .sb4 .day { font-size: 11.5px; font-weight: 500; color: var(--l-mute); padding: 13px 14px 3px; }
+  .sb4 .line { display: flex; gap: 9px; padding: 6px 8px; margin: 0 6px;
+    border-radius: var(--l-radius); cursor: pointer; }
+  .sb4 .line:hover { background: var(--l-fill); }
+  .sb4 .line.on { background: var(--l-fill-on); }
+  .sb4 .kind { width: 18px; flex-shrink: 0; display: flex; justify-content: center;
+    padding-top: 2px; color: var(--l-mute); font-size: 11px; }
+  .sb4 .kind .av2 { width: 18px; height: 18px; }
+  .sb4 .body { flex: 1; min-width: 0; }
+  .sb4 .l1 { display: flex; align-items: baseline; gap: 8px; }
+  .sb4 .l1 b { font-size: 13px; font-weight: 500; color: var(--l-ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb4 .l1 time { margin-left: auto; font-size: 11.5px; color: var(--l-mute); flex-shrink: 0;
+    font-variant-numeric: tabular-nums; }
+  .sb4 .l2 { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--l-mute);
+    margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb4 .l2 .run { color: var(--l-run); }
+  .sb4 .l2 .wait { color: var(--l-wait); }
+
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <a class="back" href="index.html">← 四方案总览</a>
+  <div class="kicker">左栏 · 四套可直接搬的皮</div>
+  <h1>Sidebar 四方案</h1>
+  <p class="lead">
+    视觉语言取 <b>Linear</b> 的克制:<b>几乎不画线</b>(全篇只有脚栏上沿一条发丝),分层靠 4–7% 的极淡填充与留白;
+    行高 30px、圆角 6px、字号只留 13/12/11.5 三档;<b>全灰阶,颜色只给状态</b>(绿=在跑,琥珀=待你)。
+    四套的区别在<b>结构</b>不在皮:①单行清单 ②活给双行 ③图标 rail 分类切换 ④零分区合流。
+    宽度一律 <b>268px</b>(与真实侧栏同宽),四套共用一层 <code>.sb</code> 底子,挑中哪套整段搬走即可。
+  </p>
+</div>
+
+<div class="grid">
+
+  <div class="cell">
+    <h3>一 · 清单 <em>密度最高 · 改动最小</em></h3>
+    <p>分区 + 单行,<b>活也压成一行</b>(状态点 + 名字 + 负责人)。全靠留白与极淡填充分层,一条线都不画。一屏放得下最多东西,是四套里最安静的。</p>
+    <div class="frame">
+      <div class="sb sb1">
+        <div class="top">
+          <span class="new"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>新会话</span>
+          <span class="ico"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+        </div>
+        <div class="scroll">
+          <div class="sh"><svg class="cv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>进行中<span class="n">2</span></div>
+          <div class="r"><span class="st run"></span><span class="nm">castlabs 换核验证</span><span class="who">小林</span></div>
+          <div class="r"><span class="st wait"></span><span class="nm">元素拾取 P2</span><span class="who">阿澈</span></div>
+
+          <div class="sh"><svg class="cv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>群聊<span class="n">3</span></div>
+          <div class="r on"><span class="nm">浏览器重构</span><span class="faces"><span class="av2" style="background:#a02f6f">林</span><span class="av2" style="background:#24837b">澈</span><span class="av2" style="background:#5e409d">砚</span></span></div>
+          <div class="r"><span class="nm">设计评审</span><span class="unread"></span></div>
+          <div class="r"><span class="nm">发版排期</span></div>
+
+          <div class="sh"><svg class="cv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>联系人<span class="n">4</span></div>
+          <div class="r"><span class="av2" style="background:#a02f6f">林</span><span class="nm">小林</span><span class="meta">在忙</span></div>
+          <div class="r"><span class="av2" style="background:#24837b">澈</span><span class="nm">阿澈</span><span class="unread"></span></div>
+          <div class="r"><span class="av2" style="background:#5e409d">砚</span><span class="nm">砚</span></div>
+          <div class="r"><span class="av2" style="background:#26251f">助</span><span class="nm">主助理</span></div>
+
+          <div class="sh"><svg class="cv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>会话<span class="n">12</span></div>
+          <div class="r"><span class="nm">JSONL 存储改造</span><span class="meta">今天</span></div>
+          <div class="r"><span class="nm">权限账页样式</span><span class="meta">昨天</span></div>
+          <div class="r"><span class="nm">todo 第四批</span><span class="meta">周二</span></div>
+        </div>
+        <div class="foot">
+          <span class="ico"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg></span>
+          <span class="sp"></span>
+          <span class="ico"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></span>
+        </div>
+      </div>
+    </div>
+    <div class="map"><b>搬运对照</b> — <code>.sh</code> 分区头(点它折叠,<code>.cv.closed</code> 收起态);<code>.r</code> 一个类通吃活/群聊/联系人/会话四种行;<code>.st</code> 状态点;<code>.faces</code> 复用 <code>buildRoomMemberEntries</code> 前三个。</div>
+  </div>
+
+  <div class="cell">
+    <h3>二 · 双行卡 <em>层次最清楚</em></h3>
+    <p>只有<b>活</b>享受两行(名字 / 状态 · 耗时),对话仍是单行。块感靠极淡填充而不是描边——既分得开,又不像贴了一堆卡片。</p>
+    <div class="frame">
+      <div class="sb sb2">
+        <div class="top">
+          <span class="new"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>新会话</span>
+          <span class="ico"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+        </div>
+        <div class="scroll">
+          <div class="sh"><svg class="cv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>进行中<span class="n">2</span></div>
+          <div class="work on">
+            <div class="t"><span class="st run"></span><span class="nm">castlabs 换核验证</span>
+              <span class="av2" style="background:#a02f6f">林</span></div>
+            <div class="s"><span class="run">执行中</span><span>·</span><span>37 步 · 12m</span></div>
+          </div>
+          <div class="work">
+            <div class="t"><span class="st wait"></span><span class="nm">元素拾取 P2</span>
+              <span class="av2" style="background:#24837b">澈</span></div>
+            <div class="s"><span class="wait">待审批</span><span>·</span><span>等你放行 bash</span></div>
+          </div>
+
+          <div class="sh"><svg class="cv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>群聊<span class="n">3</span></div>
+          <div class="r"><span class="nm">浏览器重构</span><span class="faces"><span class="av2" style="background:#a02f6f">林</span><span class="av2" style="background:#24837b">澈</span><span class="av2" style="background:#5e409d">砚</span></span></div>
+          <div class="r"><span class="nm">设计评审</span><span class="unread"></span></div>
+          <div class="r"><span class="nm">发版排期</span></div>
+
+          <div class="sh"><svg class="cv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>联系人<span class="n">4</span></div>
+          <div class="r"><span class="av2" style="background:#a02f6f">林</span><span class="nm">小林</span><span class="meta">在忙</span></div>
+          <div class="r"><span class="av2" style="background:#24837b">澈</span><span class="nm">阿澈</span><span class="unread"></span></div>
+          <div class="r"><span class="av2" style="background:#5e409d">砚</span><span class="nm">砚</span></div>
+
+          <div class="sh"><svg class="cv closed" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>会话<span class="n">12</span></div>
+        </div>
+        <div class="foot">
+          <span class="ico"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg></span>
+          <span class="sp"></span>
+          <span class="ico"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></span>
+        </div>
+      </div>
+    </div>
+    <div class="map"><b>搬运对照</b> — <code>.work</code> → <code>ActiveWorkCard</code>(两行结构,无边框);<code>.r</code> 对话行与方案一同一套;状态词的颜色只有 <code>--l-run</code> / <code>--l-wait</code> 两个。</div>
+  </div>
+
+  <div class="cell">
+    <h3>三 · rail + 单类面板 <em>结构最不同 · 列表最长</em></h3>
+    <p>左侧 46px <b>图标 rail</b>,右侧<b>一次只显示一类</b>。同样 268px 宽,但每类都能铺满整个高度——房多、人多、会话多时不再互相挤压。代价:不能一眼看全。</p>
+    <div class="frame">
+      <div class="sb sb3">
+        <!-- 44px 全宽拖拽行:左 70px 是 macOS 交通灯保留位,右侧住着既有的三颗
+             操作按钮。rail 必须从它**下面**开始 —— 否则前两个图标被交通灯压住,
+             而且整行是 -webkit-app-region: drag,点不动。 -->
+        <div class="hdr">
+          <span class="lights"><i></i><i></i><i></i></span>
+          <span class="hact">
+            <svg class="ic" width="14" height="14" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h12"/></svg>
+            <svg class="ic" width="14" height="14" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <svg class="ic" width="14" height="14" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </span>
+        </div>
+        <div class="split">
+        <div class="rail">
+          <span class="t on" title="进行中"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span class="bdg"></span></span>
+          <span class="t" title="群聊"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg><span class="bdg"></span></span>
+          <span class="t" title="联系人"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></span>
+          <span class="t" title="会话"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <span class="sp"></span>
+          <span class="t" title="工作区面板"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></span>
+          <span class="t" title="新会话"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+          <span class="t" title="设置"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg></span>
+        </div>
+        <div class="pane">
+          <div class="ph"><b>进行中</b><span class="n">4</span></div>
+          <div class="scroll">
+            <div class="grp">执行中</div>
+            <div class="r on"><span class="st run"></span><span class="nm">castlabs 换核验证</span><span class="meta">12m</span></div>
+            <div class="grp">待你</div>
+            <div class="r"><span class="st wait"></span><span class="nm">元素拾取 P2</span><span class="meta">bash</span></div>
+            <div class="grp">已交付 · 今天</div>
+            <div class="r"><span class="st"></span><span class="nm">profile 隔离对照</span><span class="meta">09:21</span></div>
+            <div class="r"><span class="st"></span><span class="nm">CSP img-src blob:</span><span class="meta">昨天</span></div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </div>
+    <div class="map"><b>搬运对照</b> — <code>.rail .t</code> 四个类别(<code>.on</code> 当前,<code>.bdg</code> 该类有未读/在跑);<code>.grp</code> 类内分组(执行中/待你/已交付,或今天/更早)。类别切换替代了折叠。</div>
+  </div>
+
+  <div class="cell">
+    <h3>四 · 合流 <em>零分区 · 靠筛不靠记</em></h3>
+    <p>活、房、人、会话<b>按最近活跃时间混成一条</b>,每行一句副文(在忙什么 / 谁说的)。顶部搜索 + 筛选。永远不用问「它在哪一段」,代价是分类心智消失。</p>
+    <div class="frame">
+      <div class="sb sb4">
+        <div class="top">
+          <div class="search"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>搜索或新建…</div>
+          <div class="chips">
+            <span class="chip on">全部</span>
+            <span class="chip">在跑<span class="n">2</span></span>
+            <span class="chip">未读<span class="n">3</span></span>
+            <span class="chip">群</span>
+            <span class="chip">人</span>
+          </div>
+        </div>
+        <div class="scroll">
+          <div class="day">现在</div>
+          <div class="line on">
+            <span class="kind"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></span>
+            <div class="body">
+              <div class="l1"><b>castlabs 换核验证</b><time>12m</time></div>
+              <div class="l2"><span class="st run"></span><span class="run">执行中</span><span>· 小林 · 37 步</span></div>
+            </div>
+          </div>
+          <div class="line">
+            <span class="kind"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></span>
+            <div class="body">
+              <div class="l1"><b>元素拾取 P2</b><time>3m</time></div>
+              <div class="l2"><span class="st wait"></span><span class="wait">待你</span><span>· 阿澈 · 放行 bash</span></div>
+            </div>
+          </div>
+          <div class="day">今天</div>
+          <div class="line">
+            <span class="kind"><span class="av2" style="background:#bc5215;border-radius:5px">浏</span></span>
+            <div class="body">
+              <div class="l1"><b>浏览器重构</b><time>09:21</time></div>
+              <div class="l2"><span>砚:三家浏览器的对照整理好了</span></div>
+            </div>
+          </div>
+          <div class="line">
+            <span class="kind"><span class="av2" style="background:#a02f6f">林</span></span>
+            <div class="body">
+              <div class="l1"><b>小林</b><time>09:06</time></div>
+              <div class="l2"><span>跑完了:通过。指纹那批假设…</span></div>
+            </div>
+          </div>
+          <div class="line">
+            <span class="kind"><span class="av2" style="background:#5e409d;border-radius:5px">评</span></span>
+            <div class="body">
+              <div class="l1"><b>设计评审</b><time>昨天</time></div>
+              <div class="l2"><span>你:这版侧栏先按方案二走</span></div>
+            </div>
+          </div>
+          <div class="line">
+            <span class="kind">›</span>
+            <div class="body">
+              <div class="l1"><b>JSONL 存储改造</b><time>周二</time></div>
+              <div class="l2"><span>直聊 · 混合驱动跑通了惰性迁移</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="foot">
+          <span class="ico"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg></span>
+          <span class="sp"></span>
+          <span class="ico"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></span>
+        </div>
+      </div>
+    </div>
+    <div class="map"><b>搬运对照</b> — <code>.line</code> 一行通吃四种类型,<code>.kind</code> 换徽标即可(活=图标 / 群=方章 / 人=圆头像 / 直聊=<code>›</code>);排序键统一 <code>updatedAt</code>,chip 是纯前端过滤。</div>
+  </div>
+
+</div>
+
+<div class="section" style="margin-top:60px">
+  <h2>落地提示<em>四套都吃现成数据,不需要新增字段</em></h2>
+  <ul class="notes">
+    <li><b>共用底子在 <code>.sb</code></b>:五个变量(填充/发丝/三档墨阶)+ 通用行 <code>.r</code> + 分区头 <code>.sh</code> + 状态点 <code>.st</code>。
+        四套都从这儿长出来,换方案不用换底子。</li>
+    <li><b>颜色纪律</b>:除了状态点与头像,全篇没有第三种颜色。这是 Linear 简洁感的主要来源——
+        不是"少放东西",是"少放颜色和线"。</li>
+    <li><b>数据全是现成的</b>:活吃 <code>CollabTask</code>、头像堆吃 <code>buildRoomMemberEntries</code>、
+        未读吃 <code>isUnreadSession</code>、在忙吃 <code>findAgentDoingTask</code>,<b>一个字段都不用新增</b>。</li>
+    <li><b>折叠</b>:一/二 用分区头;三 用类别切换替代;四 用筛选 chip 替代。都已画出。</li>
+    <li><b>深色</b>:把 <code>.sb</code> 那五个变量取反即可(填充改成白色 4–7%),结构与间距一律不动。</li>
+  </ul>
+</div>
+
+</body>
+</html>

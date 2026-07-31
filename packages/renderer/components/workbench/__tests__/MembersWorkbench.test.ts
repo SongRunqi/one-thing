@@ -73,6 +73,22 @@ vi.mock('@/components/common/AgentAvatar.vue', () => ({
   default: { name: 'AgentAvatar', props: ['avatar', 'avatarImage', 'size'], template: '<i class="mock-avatar" />' },
 }))
 
+/* 下钻层是共享的 AgentSpace(它自己另有单测)。这里桩掉它:本组件的契约是
+   "把谁、停在哪一面、在忙什么交出去,并把回来的落点转给宿主",不是那一页长什么样。 */
+vi.mock('@/components/agents/AgentSpace.vue', () => ({
+  default: {
+    name: 'AgentSpace',
+    props: ['agentId', 'showBack', 'backLabel', 'initialTab', 'work'],
+    emits: ['back', 'open-session', 'open-file', 'open-thread'],
+    template: `<div class="mock-space" :data-agent="agentId" :data-back="String(showBack)"
+      :data-back-label="backLabel" :data-tab="initialTab || ''" :data-work="work?.title || ''">
+      <button class="mock-back" @click="$emit('back')" />
+      <button class="mock-open-session" @click="$emit('open-session', 'sess-9')" />
+      <button class="mock-open-file" @click="$emit('open-file', '/tmp/a.md')" />
+    </div>`,
+  },
+}))
+
 function mountPanel(props: Record<string, unknown> = {}) {
   return mount(MembersWorkbench, { props: { sessionId: 'room-1', ...props } })
 }
@@ -97,39 +113,43 @@ describe('MembersWorkbench', () => {
     const wrapper = mountPanel()
     await wrapper.find('.member-row').trigger('click')
 
-    expect(wrapper.find('.member-space').exists()).toBe(true)
+    const space = wrapper.find('.mock-space')
+    expect(space.exists()).toBe(true)
     expect(wrapper.find('.member-list').exists()).toBe(false)
-    expect(wrapper.find('.space-name').text()).toBe('小林')
-    expect(wrapper.find('.space-subtitle').text()).toBe('架构 · 同事')
-    expect(wrapper.find('.space-desc').text()).toContain('盯架构边界')
+    expect(space.attributes('data-agent')).toBe('lin')
     expect(wrapper.emitted('focus')?.[0]).toEqual(['lin'])
   })
 
   it('空间页带「返回成员」,回去还是那张表', async () => {
     const wrapper = mountPanel({ focusAgentId: 'lin' })
-    expect(wrapper.find('.space-back').exists()).toBe(true)
+    expect(wrapper.find('.mock-space').attributes('data-back')).toBe('true')
+    expect(wrapper.find('.mock-space').attributes('data-back-label')).toBe('返回成员(3)')
 
-    await wrapper.find('.space-back').trigger('click')
+    await wrapper.find('.mock-back').trigger('click')
     expect(wrapper.find('.member-list').exists()).toBe(true)
     expect(wrapper.emitted('focus')?.at(-1)).toEqual([''])
   })
 
-  it('计数行读履历页那份归类', async () => {
+  it('「在忙什么」跟着下钻的人走 —— 与列表段头同一份判定', () => {
     const wrapper = mountPanel({ focusAgentId: 'lin' })
-    const rows = wrapper.findAll('.space-row').map(node => node.text().replace(/\s+/g, ''))
-
-    expect(rows).toEqual(['与你的对话1', '群聊0', '干过的活0', '私下0'])
+    expect(wrapper.find('.mock-space').attributes('data-work')).toBe('编辑 session.ts')
   })
 
-  it('深面(文件 / 配置)不在右栏重做,点一下走既有空间页', async () => {
+  it('深面就地渲染:不再 openAgentSpace 跳去管理页(P2 的反向断言)', async () => {
+    const wrapper = mountPanel({ focusAgentId: 'lin', focusTab: 'files' })
+
+    expect(wrapper.find('.mock-space').attributes('data-tab')).toBe('files')
+    expect(mocks.openAgentSpace).not.toHaveBeenCalled()
+  })
+
+  it('空间页里的行由宿主落地:会话/文件都往上转,自己不导航', async () => {
     const wrapper = mountPanel({ focusAgentId: 'lin' })
-    const tabs = wrapper.findAll('.space-tab')
 
-    await tabs.at(2)!.trigger('click')
-    expect(mocks.openAgentSpace).toHaveBeenCalledWith('lin', 'config')
+    await wrapper.find('.mock-open-session').trigger('click')
+    await wrapper.find('.mock-open-file').trigger('click')
 
-    await tabs.at(1)!.trigger('click')
-    expect(mocks.openAgentSpace).toHaveBeenCalledWith('lin', 'files')
+    expect(wrapper.emitted('open-session')?.[0]).toEqual(['sess-9'])
+    expect(wrapper.emitted('open-file')?.[0]).toEqual(['/tmp/a.md'])
   })
 
   it('私聊(房里只有一个人)不画「返回成员」—— 返回的是一张只有 TA 的表', () => {
@@ -138,8 +158,8 @@ describe('MembersWorkbench', () => {
     ]
     const wrapper = mountPanel({ sessionId: 'dm-1', focusAgentId: 'lin' })
 
-    expect(wrapper.find('.member-space').exists()).toBe(true)
-    expect(wrapper.find('.space-back').exists()).toBe(false)
+    expect(wrapper.find('.mock-space').exists()).toBe(true)
+    expect(wrapper.find('.mock-space').attributes('data-back')).toBe('false')
   })
 
   it('外部把落点改成另一个人时面板跟着换', async () => {
@@ -147,10 +167,10 @@ describe('MembersWorkbench', () => {
       { id: 'room-1', kind: 'room', name: '浏览器重构', updatedAt: 2, room: { memberAgentIds: ['lin', 'che'] } },
     ]
     const wrapper = mountPanel({ focusAgentId: 'lin' })
-    expect(wrapper.find('.space-name').text()).toBe('小林')
+    expect(wrapper.find('.mock-space').attributes('data-agent')).toBe('lin')
 
     await wrapper.setProps({ focusAgentId: 'che' })
     await nextTick()
-    expect(wrapper.find('.space-name').text()).toBe('阿澈')
+    expect(wrapper.find('.mock-space').attributes('data-agent')).toBe('che')
   })
 })

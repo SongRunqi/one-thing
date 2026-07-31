@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-color-theme="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>右栏页签条 · 五种形态</title>
+
+<link rel="stylesheet" href="../../../packages/renderer/styles/flexoki-colors.css">
+<link rel="stylesheet" href="../../../packages/renderer/styles/variables.css">
+
+<style>
+/* ═══ [页面外壳] ═══ */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel)) 92%, var(--ui-border-default-border, var(--border)));
+  color: var(--ui-text-primary-fg, var(--text));
+  font-family: var(--type-body-font, var(--font-sans), -apple-system, "PingFang SC", sans-serif);
+  font-size: 13px; padding: 40px 40px 110px; -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1240px; margin: 0 auto; }
+.kicker { font-family: var(--font-mono, monospace); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ui-text-faint-fg, var(--muted)); }
+h1 { font-size: 22px; font-weight: 600; margin-top: 10px; }
+.lead { margin-top: 11px; font-size: 13px; line-height: 1.85; max-width: 64em;
+  color: var(--ui-text-secondary-fg, var(--text-secondary)); }
+.lead b { color: var(--ui-text-primary-fg, var(--text)); font-weight: 600; }
+.theme { margin-top: 14px; display: flex; gap: 14px; align-items: baseline; }
+.deck { display: grid; grid-template-columns: repeat(2, 380px); gap: 34px 44px; margin-top: 30px; }
+.item h3 { font-size: 13px; font-weight: 600; display: flex; align-items: baseline; gap: 9px; }
+.item h3 em { font-style: normal; font-size: 11.5px; font-weight: 400; color: var(--ui-text-faint-fg, var(--muted)); }
+.item .cap { margin-top: 9px; font-size: 11.5px; line-height: 1.75; color: var(--ui-text-faint-fg, var(--muted)); }
+.item .cap b { color: var(--ui-text-primary-fg, var(--text)); font-weight: 600; }
+.item .cap .cost { color: var(--ui-status-warning-fg, var(--text-warning, #ad8301)); }
+.pane { width: 380px; height: 250px; margin-top: 12px; display: flex; flex-direction: column;
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-panel-bg, var(--bg-panel)); overflow: hidden; }
+code { font-family: var(--font-mono, monospace); font-size: 11.5px; }
+
+/* 面板体(五个样品共用,不是这次的重点) */
+.body-stub { flex: 1; min-height: 0; padding: 16px 16px 0; }
+.stub-hero { display: flex; align-items: center; gap: 11px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border))); }
+.stub-hero .nm { font-size: 14px; font-weight: 600; display: block; }
+.stub-hero .sb { font-size: 11.5px; color: var(--ui-text-muted-fg, var(--muted)); }
+.stub-faces { display: flex; gap: 18px; padding: 11px 0;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  font-size: 12px; color: var(--ui-text-muted-fg, var(--muted)); }
+.stub-faces b { color: var(--ui-text-primary-fg, var(--text)); font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--ui-text-primary-fg, var(--text)); }
+.stub-rows { padding-top: 10px; font-size: 12px; color: var(--ui-text-secondary-fg, var(--text-secondary)); line-height: 2.1; }
+
+/* ═══ [搬运] Tabs.vue 的基座:五种形态都长在它上面 ═══ */
+.app-tabs { --app-tabs-border: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  --app-tabs-hover-bg: var(--ui-tab-bar-item-hover-bg, var(--ui-state-hover-bg, var(--bg-hover)));
+  --app-tabs-text: var(--ui-tab-bar-item-fg, var(--ui-text-secondary-fg, var(--text-secondary)));
+  --app-tabs-active-text: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
+  --app-tabs-accent: var(--ui-accent-primary-fg, var(--accent));
+  display: flex; flex-direction: column; min-width: 0; }
+.app-tabs-nav { position: relative; display: flex; align-items: stretch; flex: 0 0 auto; min-width: 0;
+  border-bottom: 1px solid var(--app-tabs-border); }
+.app-tabs-nav-scroll { display: flex; align-items: stretch; flex: 1 1 auto; min-width: 0; overflow: auto hidden; }
+.app-tabs-nav-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 2px; padding: 0 6px; }
+.app-tabs-tab { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 1 auto; gap: 6px; min-width: 44px; min-height: 34px; max-width: 240px; padding: 0 14px;
+  border: 0; background: transparent; color: var(--app-tabs-text); font: inherit; font-weight: 500;
+  white-space: nowrap; cursor: pointer; }
+.app-tabs-tab:hover { color: var(--app-tabs-active-text); background: var(--app-tabs-hover-bg); }
+.app-tabs-tab.is-active { color: var(--app-tabs-active-text); }
+.wbc { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; border-radius: 0; cursor: pointer;
+  color: var(--ui-text-muted-fg, var(--muted)); }
+.wbc:hover { background: var(--ui-state-hover-bg, var(--hover)); color: var(--ui-text-primary-fg, var(--text)); }
+.ic { flex: 0 0 auto; }
+.tab-x { display: inline-flex; margin-left: 2px; font-size: 12px; line-height: 1;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+
+/* ══════ 甲 · 现状(项目今天就是这样)══════
+   出处:RightWorkbenchPanel.vue —— mono 小字 + 三边卡尺括号 + 基线止点 */
+.h-jia { --wa: var(--ui-status-info-fg, var(--color-info, #39586f)); }
+.h-jia .app-tabs-nav::before, .h-jia .app-tabs-nav::after { content: ""; position: absolute; bottom: -1px;
+  width: 1px; height: 6px;
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent); }
+.h-jia .app-tabs-nav::before { left: 0; }
+.h-jia .app-tabs-nav::after { right: 0; }
+.h-jia .app-tabs-tab { min-width: 64px; padding: 0 10px;
+  font-family: var(--font-mono, monospace); font-size: 11px; letter-spacing: .02em; }
+.h-jia .app-tabs-tab.is-active { color: var(--wa); }
+.h-jia .app-tabs-tab.is-active::after { content: ""; position: absolute; right: 5px; bottom: -1px; left: 5px;
+  height: 5px; border-right: 1.5px solid var(--wa); border-bottom: 1.5px solid var(--wa); border-left: 1.5px solid var(--wa); }
+
+/* ══════ 乙 · 实底页签 ══════
+   活动页签抬成一块底,顶边一条 accent;正文字体,不再 mono */
+.h-yi .app-tabs-nav { background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel)) 88%, var(--ui-border-default-border, var(--border))); }
+.h-yi .app-tabs-tab { min-width: 0; padding: 0 12px; min-height: 36px; font-size: 12.5px; gap: 7px;
+  border-right: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 45%, transparent); }
+.h-yi .app-tabs-tab.is-active { background: var(--ui-surface-panel-bg, var(--bg-panel)); font-weight: 600;
+  box-shadow: inset 0 2px 0 var(--ui-accent-primary-fg, var(--accent)); margin-bottom: -1px; padding-bottom: 1px; }
+.h-yi .tab-x { opacity: 0; }
+.h-yi .app-tabs-tab.is-active .tab-x, .h-yi .app-tabs-tab:hover .tab-x { opacity: 1; }
+
+/* ══════ 丙 · 正字下划线 ══════
+   去 mono、去括号:正文 12.5px,活动页签一条满宽 2px accent 底线;整条更高更松 */
+.h-bing .app-tabs-nav { border-bottom-width: 1px; }
+.h-bing .app-tabs-tab { min-width: 0; padding: 0 13px; min-height: 38px; font-size: 12.5px; gap: 7px; }
+.h-bing .app-tabs-tab.is-active { font-weight: 600; }
+.h-bing .app-tabs-tab.is-active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; background: var(--ui-accent-primary-fg, var(--accent)); }
+.h-bing .tab-x { opacity: 0; }
+.h-bing .app-tabs-tab.is-active .tab-x, .h-bing .app-tabs-tab:hover .tab-x { opacity: 1; }
+
+/* ══════ 丁 · 图标条 + 标题行 ══════
+   页签只剩图标(28px 一格),下面单独一行写当前是谁 —— 336px 窄栏里横向最省 */
+.h-ding .app-tabs-nav { border-bottom: 0; }
+.h-ding .app-tabs-tab { min-width: 0; width: 34px; padding: 0; min-height: 32px; }
+.h-ding .app-tabs-tab .lbl { display: none; }
+.h-ding .app-tabs-tab.is-active { color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent); }
+.h-ding .title-row { display: flex; align-items: center; gap: 8px; padding: 7px 12px 8px;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  font-size: 12.5px; font-weight: 600; }
+.h-ding .title-row .sub { font-weight: 400; font-size: 11px; color: var(--ui-text-faint-fg, var(--muted)); }
+.h-ding .title-row .sp { margin-left: auto; }
+
+/* ══════ 戊 · 胶囊分段 ══════
+   整条是一个 segmented control:圆角容器,活动项抬起一块浮片 */
+.h-wu .app-tabs-nav { border-bottom: 1px solid var(--app-tabs-border); padding: 6px 8px; align-items: center; }
+.h-wu .app-tabs-nav-scroll { gap: 2px; border-radius: 8px; padding: 2px;
+  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel)) 86%, var(--ui-border-default-border, var(--border))); }
+.h-wu .app-tabs-tab { min-width: 0; padding: 0 11px; min-height: 26px; border-radius: 6px;
+  font-size: 12px; gap: 6px; }
+.h-wu .app-tabs-tab.is-active { background: var(--ui-surface-panel-bg, var(--bg-panel)); font-weight: 600;
+  color: var(--ui-text-primary-fg, var(--text));
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 40%, transparent); }
+.h-wu .app-tabs-tab:hover:not(.is-active) { background: transparent; color: var(--ui-text-primary-fg, var(--text)); }
+.h-wu .tab-x { opacity: .55; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">右栏页签条 · 五种形态</div>
+  <h1>四案看着一样,是因为顶上这条是同一个组件</h1>
+  <p class="lead">
+    上一轮四案差在<b>面板体</b>,页签条是既有的 <code>Tabs.vue</code> + <code>RightWorkbenchPanel.vue</code> 的
+    覆盖(mono 小字 + 三边卡尺括号),所以四张图顶部长得一模一样。
+    这一页只调那一条:<b>甲是现状</b>,乙丙丁戊四种改法。
+    面板体一律用案一的样子占位,不是这次要比的东西。<br>
+    改这条会<b>连带右栏所有页签</b>(线程 / 成员 / 文件 / 终端 / 浏览器 / 看板),不只是 Agent 那一页 —— 这是好事,一致。
+  </p>
+  <div class="theme">
+    <button class="wbc" style="width:auto;padding:0 6px;font-size:11px" onclick="document.documentElement.dataset.theme='light'">light</button>
+    <button class="wbc" style="width:auto;padding:0 6px;font-size:11px" onclick="document.documentElement.dataset.theme='dark'">dark</button>
+    <span style="font-size:11px;color:var(--ui-text-faint-fg,var(--muted))">切一下看主题跟随</span>
+  </div>
+
+  <div class="deck">
+
+    <!-- 甲 -->
+    <div class="item">
+      <h3>甲 · 现状<em>mono 小字 + 卡尺括号(今天就是这样)</em></h3>
+      <div class="pane">
+        <div class="app-tabs h-jia">
+          <div class="app-tabs-nav">
+            <div class="app-tabs-nav-scroll">
+              <button class="app-tabs-tab"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span class="lbl">线程</span></button>
+              <button class="app-tabs-tab is-active"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg><span class="lbl">小林</span><span class="tab-x">✕</span></button>
+              <button class="app-tabs-tab"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg><span class="lbl">文件</span></button>
+            </div>
+            <div class="app-tabs-nav-actions"><button class="wbc">＋</button><button class="wbc">✕</button></div>
+          </div>
+        </div>
+        <div class="body-stub">
+          <div class="stub-hero"><span style="font-size:30px;line-height:1">🧭</span>
+            <span><b class="nm">小林</b><i class="sb">架构 · 在忙</i></span></div>
+          <div class="stub-faces"><b>配置</b><span>会话</span><span>文件</span><span>搜索</span></div>
+          <div class="stub-rows">— NAME　小林<br>— ROLE　架构</div>
+        </div>
+      </div>
+      <div class="cap"><b>问题</b>:mono 小字读起来像日志;三边括号是个陌生记号,活动页签靠它认,
+        对比度低;＋ 与 ✕ 挤在右角,两个都是"关"的形状容易点错。</div>
+    </div>
+
+    <!-- 乙 -->
+    <div class="item">
+      <h3>乙 · 实底页签<em>活动那格抬成一块底 + 顶边 accent</em></h3>
+      <div class="pane">
+        <div class="app-tabs h-yi">
+          <div class="app-tabs-nav">
+            <div class="app-tabs-nav-scroll">
+              <button class="app-tabs-tab"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span class="lbl">线程</span></button>
+              <button class="app-tabs-tab is-active"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg><span class="lbl">小林</span><span class="tab-x">✕</span></button>
+              <button class="app-tabs-tab"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg><span class="lbl">文件</span></button>
+            </div>
+            <div class="app-tabs-nav-actions"><button class="wbc">＋</button></div>
+          </div>
+        </div>
+        <div class="body-stub">
+          <div class="stub-hero"><span style="font-size:30px;line-height:1">🧭</span>
+            <span><b class="nm">小林</b><i class="sb">架构 · 在忙</i></span></div>
+          <div class="stub-faces"><b>配置</b><span>会话</span><span>文件</span><span>搜索</span></div>
+          <div class="stub-rows">— NAME　小林<br>— ROLE　架构</div>
+        </div>
+      </div>
+      <div class="cap"><b>好</b>:活动页签和面板连成一片,"这一页属于这一格"最直白;关闭 ✕ 只在活动/悬停时出现,
+        平时不吵。<b>差</b>:条底加了一层灰,右栏顶部比现在重。<br>
+        <span class="cost">纯 CSS,改 <code>RightWorkbenchPanel.vue</code> 的 <code>:deep</code> 覆盖。</span></div>
+    </div>
+
+    <!-- 丙 -->
+    <div class="item">
+      <h3>丙 · 正字下划线<em>去 mono、去括号,满宽 2px 底线</em></h3>
+      <div class="pane">
+        <div class="app-tabs h-bing">
+          <div class="app-tabs-nav">
+            <div class="app-tabs-nav-scroll">
+              <button class="app-tabs-tab"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span class="lbl">线程</span></button>
+              <button class="app-tabs-tab is-active"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg><span class="lbl">小林</span><span class="tab-x">✕</span></button>
+              <button class="app-tabs-tab"><svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg><span class="lbl">文件</span></button>
+            </div>
+            <div class="app-tabs-nav-actions"><button class="wbc">＋</button></div>
+          </div>
+        </div>
+        <div class="body-stub">
+          <div class="stub-hero"><span style="font-size:30px;line-height:1">🧭</span>
+            <span><b class="nm">小林</b><i class="sb">架构 · 在忙</i></span></div>
+          <div class="stub-faces"><b>配置</b><span>会话</span><span>文件</span><span>搜索</span></div>
+          <div class="stub-rows">— NAME　小林<br>— ROLE　架构</div>
+        </div>
+      </div>
+      <div class="cap"><b>好</b>:最安静,和面板里「配置/会话/文件/搜索」那排是同一句法(都是底线),
+        整条只多两根线。<b>差</b>:两层下划线上下相邻,层级要靠字号和高度拉开。<br>
+        <span class="cost">纯 CSS,只删不加(卡尺括号与止点整块删掉)。</span></div>
+    </div>
+
+    <!-- 丁 -->
+    <div class="item">
+      <h3>丁 · 图标条 + 标题行<em>页签只剩图标,标题单独一行</em></h3>
+      <div class="pane">
+        <div class="app-tabs h-ding">
+          <div class="app-tabs-nav">
+            <div class="app-tabs-nav-scroll">
+              <button class="app-tabs-tab"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span class="lbl">线程</span></button>
+              <button class="app-tabs-tab is-active"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg><span class="lbl">小林</span></button>
+              <button class="app-tabs-tab"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg><span class="lbl">文件</span></button>
+              <button class="app-tabs-tab"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6"/></svg><span class="lbl">看板</span></button>
+            </div>
+            <div class="app-tabs-nav-actions"><button class="wbc">＋</button></div>
+          </div>
+          <div class="title-row">小林 <span class="sub">架构 · 同事</span><span class="sp"></span><button class="wbc">✕</button></div>
+        </div>
+        <div class="body-stub">
+          <div class="stub-hero"><span style="font-size:30px;line-height:1">🧭</span>
+            <span><b class="nm">小林</b><i class="sb">架构 · 在忙</i></span></div>
+          <div class="stub-faces"><b>配置</b><span>会话</span><span>文件</span><span>搜索</span></div>
+          <div class="stub-rows">— NAME　小林</div>
+        </div>
+      </div>
+      <div class="cap"><b>好</b>:336px 里能排七八个页签也不挤,标题有整行可写(长会话名不再截成三个字)。
+        <b>差</b>:图标得认;标题行占掉一行高;和身份块的名字重复一次。<br>
+        <span class="cost">需要动 <code>Tabs.vue</code> 模板(非活动页签隐藏文字 + 多一行标题槽),不是纯 CSS。</span></div>
+    </div>
+
+    <!-- 戊 -->
+    <div class="item">
+      <h3>戊 · 胶囊分段<em>整条一个 segmented control</em></h3>
+      <div class="pane">
+        <div class="app-tabs h-wu">
+          <div class="app-tabs-nav">
+            <div class="app-tabs-nav-scroll">
+              <button class="app-tabs-tab"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span class="lbl">线程</span></button>
+              <button class="app-tabs-tab is-active"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></svg><span class="lbl">小林</span><span class="tab-x">✕</span></button>
+              <button class="app-tabs-tab"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg><span class="lbl">文件</span></button>
+            </div>
+            <div class="app-tabs-nav-actions"><button class="wbc">＋</button></div>
+          </div>
+        </div>
+        <div class="body-stub">
+          <div class="stub-hero"><span style="font-size:30px;line-height:1">🧭</span>
+            <span><b class="nm">小林</b><i class="sb">架构 · 在忙</i></span></div>
+          <div class="stub-faces"><b>配置</b><span>会话</span><span>文件</span><span>搜索</span></div>
+          <div class="stub-rows">— NAME　小林<br>— ROLE　架构</div>
+        </div>
+      </div>
+      <div class="cap"><b>好</b>:活动项一眼可见,现代、干净,和面板里的画线风形成明确分工(上面是控件,下面是账页)。
+        <b>差</b>:圆角与浮片是全局里少见的语气,和设置页那套画线风不同宗;页签多了会挤(它不擅长滚动)。<br>
+        <span class="cost">纯 CSS。<b>注意</b>:主题不许定义圆角,所以这条的圆角是组件自带的固定值。</span></div>
+    </div>
+
+    <div class="item" style="align-self:end">
+      <div class="cap" style="margin-top:0">
+        <b>我的排序</b>:丙 → 乙 → 戊 → 丁 → 甲。<br><br>
+        <b>丙</b>最省事也最不打架 —— 它和面板里那排面签是同一句法,右栏整体只剩"字 + 线"两种东西;
+        现状那套 mono + 括号本来就是为「台面(Bench)」定的调子,放在"一个人"的页上格格不入。<br><br>
+        <b>乙</b>是想要"页签感"更强时的选择,代价是顶部多一层底色。<br><br>
+        <b>丁</b>只在你常开五六个页签时才值得 —— 它要改共用的 <code>Tabs.vue</code> 模板,
+        影响面比另外三个大。
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

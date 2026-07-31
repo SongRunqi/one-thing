@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-color-theme="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>四案对比 · 点开一个 Agent 之后看到什么</title>
+
+<!-- 项目自己的样式表:颜色/字号/边线都是应用里真解出来的那一套 -->
+<link rel="stylesheet" href="../../../packages/renderer/styles/flexoki-colors.css">
+<link rel="stylesheet" href="../../../packages/renderer/styles/variables.css">
+
+<style>
+/* ═══ [页面外壳] 只服务这张对比页,不进项目 ═══ */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel)) 92%, var(--ui-border-default-border, var(--border)));
+  color: var(--ui-text-primary-fg, var(--text));
+  font-family: var(--type-body-font, var(--font-sans), -apple-system, "PingFang SC", sans-serif);
+  font-size: 13px; padding: 40px 40px 110px; -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1500px; margin: 0 auto; }
+.kicker { font-family: var(--font-mono, monospace); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ui-text-faint-fg, var(--muted)); }
+h1 { font-size: 22px; font-weight: 600; margin-top: 10px; }
+.lead { margin-top: 11px; font-size: 13px; line-height: 1.85; max-width: 66em;
+  color: var(--ui-text-secondary-fg, var(--text-secondary)); }
+.lead b { color: var(--ui-text-primary-fg, var(--text)); font-weight: 600; }
+.theme { margin-top: 14px; display: flex; gap: 14px; align-items: baseline; }
+h2 { margin: 46px 0 0; font-size: 13px; font-weight: 600; letter-spacing: .04em;
+  padding-bottom: 9px; display: flex; gap: 10px; align-items: baseline;
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border)); }
+h2 em { font-style: normal; font-size: 11.5px; font-weight: 400; color: var(--ui-text-faint-fg, var(--muted)); }
+.deck { display: flex; gap: 26px; margin-top: 22px; align-items: flex-start; flex-wrap: wrap; }
+.cap { width: 336px; margin-top: 10px; font-size: 11.5px; line-height: 1.75;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+.cap.wide { width: 760px; }
+.cap b { color: var(--ui-text-primary-fg, var(--text)); font-weight: 600; }
+.cap .cost { color: var(--ui-status-warning-fg, var(--text-warning, #ad8301)); }
+code { font-family: var(--font-mono, monospace); font-size: 11.5px; }
+table.cmp { border-collapse: collapse; margin-top: 22px; width: 100%; font-size: 12.5px; }
+table.cmp th, table.cmp td { text-align: left; padding: 9px 12px; vertical-align: top;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 55%, transparent); }
+table.cmp th { font-family: var(--font-mono, monospace); font-size: 10.5px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ui-text-faint-fg, var(--muted)); font-weight: 500; }
+table.cmp td b { font-weight: 600; }
+table.cmp tr td:first-child { font-weight: 600; white-space: nowrap; }
+
+/* 样板面板 = 右栏在 336px 宽时的样子 */
+.wb { width: 336px; height: 780px; display: flex; flex-direction: column;
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-panel-bg, var(--bg-panel)); color: var(--ui-text-primary-fg, var(--text)); }
+.wb.main-area { width: 760px; height: 540px; }
+
+/* ═══ [搬运] components/common/Tabs.vue ═══ */
+.app-tabs { --app-tabs-border: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  --app-tabs-hover-bg: var(--ui-tab-bar-item-hover-bg, var(--ui-state-hover-bg, var(--bg-hover)));
+  --app-tabs-text: var(--ui-tab-bar-item-fg, var(--ui-text-secondary-fg, var(--text-secondary)));
+  --app-tabs-active-text: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
+  --app-tabs-accent: var(--ui-accent-primary-fg, var(--accent));
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  font-family: var(--type-label-font, var(--font-body)); font-size: var(--type-label-size, 13px);
+  line-height: var(--type-leading-control, 1.3); }
+.app-tabs-nav { position: relative; display: flex; align-items: stretch; flex: 0 0 auto; min-width: 0;
+  border-bottom: 1px solid var(--app-tabs-border); }
+.app-tabs-nav-scroll { display: flex; align-items: stretch; flex: 1 1 auto; min-width: 0; overflow: auto hidden; }
+.app-tabs-nav-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 2px; padding: 0 6px; }
+.app-tabs-tab { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 1 auto; gap: 6px; min-width: 44px; min-height: 34px; max-width: 240px; padding: 0 14px;
+  border: 0; background: transparent; color: var(--app-tabs-text); font: inherit;
+  font-weight: var(--type-label-weight, 500); white-space: nowrap; cursor: pointer; }
+.app-tabs-tab:hover { color: var(--app-tabs-active-text); background: var(--app-tabs-hover-bg); }
+.app-tabs-tab.is-active { color: var(--app-tabs-active-text); }
+.app-tabs-tab-label { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; }
+.app-tabs--line .app-tabs-tab::after { position: absolute; content: ""; background: var(--app-tabs-accent);
+  opacity: 0; right: 12px; left: 12px; height: 2px; bottom: -1px; }
+.app-tabs--line .app-tabs-tab.is-active::after { opacity: 1; }
+
+/* ═══ [搬运] components/workbench/RightWorkbenchPanel.vue ═══ */
+.right-workbench { --workbench-accent: var(--ui-status-info-fg, var(--color-info, #39586f));
+  --workbench-line: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent);
+  background: var(--ui-surface-panel-bg, var(--bg-panel)); }
+.right-workbench-tabs { --app-tabs-active-text: var(--workbench-accent); --app-tabs-accent: var(--workbench-accent); }
+.right-workbench-tabs .app-tabs-nav::before, .right-workbench-tabs .app-tabs-nav::after {
+  content: ""; position: absolute; bottom: -1px; width: 1px; height: 6px; background: var(--workbench-line); }
+.right-workbench-tabs .app-tabs-nav::before { left: 0; }
+.right-workbench-tabs .app-tabs-nav::after { right: 0; }
+.right-workbench-tabs.app-tabs--line .app-tabs-tab::after {
+  top: auto; right: 5px; bottom: -1px; left: 5px; height: 5px; background: transparent;
+  border-right: 1.5px solid var(--workbench-accent); border-bottom: 1.5px solid var(--workbench-accent);
+  border-left: 1.5px solid var(--workbench-accent); }
+.right-workbench-tabs .app-tabs-tab { min-width: 64px; padding: 0 10px; }
+.workbench-tab-label { display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; font-weight: 500; letter-spacing: .02em; }
+.workbench-close { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; border-radius: 0; cursor: pointer; color: var(--ui-text-muted-fg, var(--muted)); }
+
+/* ═══ [搬运] components/workbench/MembersWorkbench.vue ═══ */
+.members-workbench { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto;
+  background: var(--ui-surface-panel-bg, var(--bg-panel)); }
+.space-back { display: flex; align-items: center; gap: 7px; width: 100%; padding: 11px 16px; border: 0;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: transparent; cursor: pointer; font-size: 11.5px; color: var(--ui-text-muted-fg, var(--muted)); text-align: left; }
+.space-hero { padding: 22px 18px 16px; text-align: center;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border))); }
+.space-avatar { margin: 0 auto 12px; display: block; font-size: 44px; line-height: 1; }
+.space-name { display: block; font-size: 16px; font-weight: 600; color: var(--ui-text-primary-fg, var(--text)); }
+.space-subtitle { display: block; margin-top: 3px; font-style: normal; font-size: 12px; color: var(--ui-text-muted-fg, var(--muted)); }
+.space-desc { margin: 12px 0 0; font-size: 12.5px; line-height: 1.75; color: var(--ui-text-secondary-fg, var(--text)); text-align: left; }
+.space-tabs { display: flex; border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border))); }
+.space-tab { flex: 1; padding: 11px 0; border: 0; background: transparent; cursor: pointer; font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--muted)); }
+.space-tab.is-on { font-weight: 600; color: var(--ui-text-primary-fg, var(--text));
+  box-shadow: inset 0 -2px 0 var(--ui-text-primary-fg, var(--text)); }
+
+/* ═══ [搬运] components/AgentsPanelContent.vue(账页表单与列表) ═══ */
+.editor-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 2px 14px 0; }
+.editor-body { position: relative; display: flex; flex-direction: column; gap: 18px; padding-left: 16px; }
+.agent-field { display: flex; flex-direction: column; gap: 8px; }
+.field-label { position: relative; font-size: 11px; font-weight: var(--font-weight-semibold, 600);
+  letter-spacing: .05em; text-transform: uppercase; color: var(--ui-text-primary-fg, var(--text-primary)); }
+.editor-body .field-label::before { content: ''; position: absolute; left: -16px; top: 50%; width: 10px; height: 2px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border))); }
+.ledger-input { width: 100%; appearance: none; background: transparent; border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0; padding: 2px 2px 6px; font: inherit; font-size: 13px;
+  color: var(--ui-text-primary-fg, var(--text-primary)); outline: none; }
+.ledger-input:hover, .ledger-input:focus { border-bottom-color: var(--ui-accent-primary-fg, var(--accent)); }
+.ledger-textarea { width: 100%; resize: vertical; appearance: none; background: transparent; border: none;
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0; padding: 4px 2px 8px 10px; font-family: var(--font-mono, monospace); font-size: 12px;
+  line-height: 1.6; color: var(--ui-text-primary-fg, var(--text-primary)); outline: none; }
+.prompt-header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.prompt-counter { font-family: var(--font-mono, monospace); font-variant-numeric: tabular-nums; font-size: 10px;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+.field-hint { margin: 0; font-size: 11px; line-height: 1.5; color: var(--ui-text-faint-fg, var(--muted)); }
+.mode-switch { display: flex; align-items: baseline; gap: 10px; }
+.mode-option { appearance: none; background: transparent; border: none; border-bottom: 2px solid transparent;
+  padding: 0 0 2px; font-family: var(--font-mono, monospace); font-size: 11px;
+  color: var(--ui-text-muted-fg, var(--text-muted)); cursor: pointer; }
+.mode-option.is-on { color: var(--ui-accent-primary-fg, var(--accent)); border-bottom-color: var(--ui-accent-primary-fg, var(--accent)); }
+.mode-divider { width: 1px; align-self: stretch; background: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 60%, transparent); }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 2px 14px; }
+.tool-line { position: relative; display: flex; align-items: baseline; gap: 6px; min-width: 0;
+  padding: 3px 0 3px 14px; appearance: none; background: transparent; border: none; text-align: left;
+  font-family: var(--font-mono, monospace); font-size: 11px; color: var(--ui-text-muted-fg, var(--text-muted)); cursor: pointer; }
+.tool-line::before { content: ''; position: absolute; left: 0; top: 50%; width: 7px; height: 1px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border))); }
+.tool-line.is-on { color: var(--ui-text-primary-fg, var(--text-primary)); }
+.tool-line.is-on::before { width: 10px; height: 2px; background: var(--ui-accent-primary-fg, var(--accent)); }
+.model-row { display: flex; align-items: baseline; gap: 10px; }
+.model-row-label { flex-shrink: 0; min-width: 54px; font-family: var(--font-mono, monospace); font-size: 10px;
+  letter-spacing: .04em; color: var(--ui-text-faint-fg, var(--muted)); }
+.ledger-select { flex: 1; min-width: 0; appearance: none; background: transparent; border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0; padding: 2px 2px 5px; font-family: var(--font-mono, monospace); font-size: 12px;
+  color: var(--ui-text-primary-fg, var(--text-primary)); outline: none; cursor: pointer; }
+.editor-footer { display: flex; justify-content: flex-end; gap: 18px; padding: 12px 2px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent); }
+.text-action { appearance: none; background: transparent; border: none; padding: 0;
+  font-family: var(--font-mono, monospace); font-size: 11px; color: var(--ui-text-muted-fg, var(--text-muted)); cursor: pointer; }
+.text-action:hover { color: var(--ui-text-primary-fg, var(--text-primary)); text-decoration: underline;
+  text-underline-offset: 3px; text-decoration-color: var(--ui-accent-primary-fg, var(--accent)); }
+.text-action.is-primary { color: var(--ui-accent-primary-fg, var(--accent)); }
+.history-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.history-line { appearance: none; background: transparent; border: none; width: 100%; padding: 4px 0;
+  display: flex; align-items: baseline; gap: 8px; text-align: left; font-family: inherit; font-size: 12px;
+  line-height: 1.5; color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text))); cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 40%, transparent); }
+.history-rows li:last-child .history-line { border-bottom: none; }
+.history-line:hover { color: var(--ui-accent-primary-fg, var(--accent)); }
+.history-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-note { flex: 0 1 auto; font-size: 11px; color: var(--ui-text-faint-fg, var(--muted)); }
+.history-meta { flex: 0 0 auto; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ui-text-faint-fg, var(--muted)); }
+.history-count { min-width: 44px; text-align: right; }
+.history-group-title { font-family: var(--font-mono, monospace); font-size: 10px; letter-spacing: .04em;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+
+/* ═══ [四案共用的新增] 头像可点 + 分组头,四案都要 ═══ */
+.agent-open-target { position: relative; display: inline-flex; border-radius: 50%; cursor: pointer; }
+.agent-open-target::after { content: ''; position: absolute; inset: -3px; border-radius: 50%;
+  border: 1px solid transparent; transition: border-color .12s ease; }
+.agent-open-target:hover::after, .agent-open-target.is-hover::after { border-color: var(--ui-accent-primary-fg, var(--accent)); }
+.face-group { padding: 14px 16px 4px; display: flex; align-items: baseline; gap: 8px;
+  font-family: var(--font-mono, monospace); font-size: 10px; letter-spacing: .06em;
+  color: var(--ui-text-faint-fg, var(--muted)); }
+.face-group .n { margin-left: auto; font-variant-numeric: tabular-nums; }
+.face-rows { padding: 0 16px; }
+.space-actions { display: flex; justify-content: center; gap: 16px; margin-top: 12px; }
+.space-face { flex: 1; min-height: 0; overflow-y: auto; }
+.is-narrow .editor-scroll { padding: 12px 14px 14px 0; }
+.is-narrow .editor-body { padding-left: 30px; gap: 16px; }
+.is-narrow .ledger-textarea { min-height: 116px; }
+.is-narrow .tool-grid { grid-template-columns: 1fr 1fr; }
+
+/* ═══ [案二新增] 长卷:折叠段 ═══ */
+.fold { border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border))); }
+.fold-head { display: flex; align-items: baseline; gap: 9px; width: 100%; padding: 11px 16px; border: 0;
+  background: transparent; cursor: pointer; text-align: left;
+  font-family: var(--font-mono, monospace); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ui-text-primary-fg, var(--text)); }
+.fold-head .mark { color: var(--ui-text-faint-fg, var(--muted)); width: 10px; }
+.fold-head .n { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ui-text-faint-fg, var(--muted)); }
+.fold-head:hover { background: var(--ui-state-hover-bg, var(--hover)); }
+.fold-body { padding: 2px 0 12px; }
+.fold.is-closed .fold-body { display: none; }
+/* 长卷的身份条:横躺,不占一屏 */
+.ident-bar { display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border))); }
+.ident-bar .ident-txt { min-width: 0; flex: 1; line-height: 1.4; }
+.ident-bar .ident-name { display: block; font-size: 14px; font-weight: 600; }
+.ident-bar .ident-sub { display: block; font-style: normal; font-size: 11.5px; color: var(--ui-text-muted-fg, var(--muted)); }
+
+/* ═══ [案三新增] 档案页:主区全宽两栏 ═══ */
+.dossier { display: grid; grid-template-columns: 1fr 300px; height: 100%; min-height: 0;
+  background: var(--ui-surface-panel-bg, var(--bg-panel)); }
+.dossier-main { min-width: 0; display: flex; flex-direction: column; }
+.dossier-head { display: flex; align-items: center; gap: 14px; padding: 18px 22px 16px;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border))); }
+.dossier-head .dh-txt { min-width: 0; flex: 1; }
+.dossier-head .dh-name { font-size: 17px; font-weight: 600; display: block; }
+.dossier-head .dh-sub { font-style: normal; font-size: 12px; color: var(--ui-text-muted-fg, var(--muted)); }
+.dossier-head .dh-desc { margin-top: 6px; font-size: 12.5px; line-height: 1.7;
+  color: var(--ui-text-secondary-fg, var(--text-secondary)); }
+.dossier-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; padding: 0 22px; }
+.dossier-side { border-left: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  min-width: 0; overflow-y: auto; }
+
+/* ═══ [案四新增] 上下常驻:两段各自滚动 ═══ */
+.split { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.split-top { flex: 1 1 58%; min-height: 0; overflow-y: auto; }
+.split-rule { display: flex; align-items: center; gap: 8px; padding: 7px 16px; flex-shrink: 0;
+  border-top: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  font-family: var(--font-mono, monospace); font-size: 10.5px; letter-spacing: .06em;
+  color: var(--ui-text-muted-fg, var(--muted)); cursor: ns-resize; }
+.split-rule .seg { padding: 0 2px; cursor: pointer; }
+.split-rule .seg.is-on { color: var(--ui-text-primary-fg, var(--text)); font-weight: 600; }
+.split-bot { flex: 1 1 42%; min-height: 0; overflow-y: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">四案对比 · Agent 空间</div>
+  <h1>点开一个人之后,那一面长什么样</h1>
+  <p class="lead">
+    四案<b>共同的地盘不变</b>:头像可点、不跳 Agents 管理页、配置就地改、会话行去主区页签、文件行去右栏文件页签。
+    差别只在<b>那一面的信息架构</b>:分面切换 / 一页长卷 / 主区档案页 / 上下常驻。
+    四案用的都是项目现有的类(样式段注明出处),颜色字号是 <code>variables.css</code> 真解出来的,
+    每案末尾标了它自己要新写多少 CSS 与多少逻辑。
+  </p>
+  <div class="theme">
+    <button class="text-action" onclick="document.documentElement.dataset.theme='light'">light</button>
+    <button class="text-action" onclick="document.documentElement.dataset.theme='dark'">dark</button>
+    <span class="field-hint">切一下看主题跟随</span>
+  </div>
+
+  <table class="cmp">
+    <tr>
+      <th>案</th><th>一句话</th><th>导航层数</th><th>一屏能同时看到</th><th>占不占主区</th><th>代价</th>
+    </tr>
+    <tr>
+      <td>一 · 分面</td><td>右栏一页,四格切换</td><td>2(页签 → 面)</td><td>身份 + 一面</td><td>不占</td>
+      <td>新 CSS 6 条 · 无新机制</td>
+    </tr>
+    <tr>
+      <td>二 · 长卷</td><td>右栏一页到底,靠折叠</td><td>1(滚动/折叠)</td><td>身份 + 配置头 + 账目头</td><td>不占</td>
+      <td>新 CSS 5 条 · 无新机制</td>
+    </tr>
+    <tr>
+      <td>三 · 档案页</td><td>在主区开"这个人"的页签</td><td>1(页签即那一面)</td><td>配置全表 + 账目全栏</td><td><b>占一个主区页签</b></td>
+      <td class="cost">新 CSS 6 条 · <b>要给主区 tab 模型加 kind</b></td>
+    </tr>
+    <tr>
+      <td>四 · 上下常驻</td><td>右栏切两段,上人下账</td><td>1(两段都在)</td><td>配置 + 账目<b>同时</b></td><td>不占</td>
+      <td>新 CSS 6 条 · 无新机制</td>
+    </tr>
+  </table>
+
+  <h2>案一 · 分面<em>右栏页签内:身份 + 四格(配置 / 会话 / 文件 / 搜索)</em></h2>
+  <div class="deck">
+    <div>
+      <div class="wb right-workbench">
+        <div class="app-tabs app-tabs--top app-tabs--line right-workbench-tabs">
+          <div class="app-tabs-nav">
+            <div class="app-tabs-nav-scroll">
+              <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">线程</span></span></button>
+              <button class="app-tabs-tab is-active"><span class="app-tabs-tab-label"><span class="workbench-tab-label">成员</span></span></button>
+              <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">看板</span></span></button>
+            </div>
+            <div class="app-tabs-nav-actions"><button class="workbench-close">＋</button><button class="workbench-close">✕</button></div>
+          </div>
+        </div>
+        <div class="members-workbench is-narrow">
+          <button class="space-back">‹ 返回成员</button>
+          <div class="space-hero">
+            <span class="space-avatar">🧭</span>
+            <b class="space-name">小林</b>
+            <i class="space-subtitle">架构 · 在忙 · castlabs 换核验证</i>
+            <p class="space-desc">盯架构边界与迁移。说话直接,先给结论再给依据。</p>
+            <div class="space-actions"><button class="text-action">发消息</button><button class="text-action">看线程</button></div>
+          </div>
+          <div class="space-tabs">
+            <button class="space-tab is-on">配置</button><button class="space-tab">会话</button>
+            <button class="space-tab">文件</button><button class="space-tab">搜索</button>
+          </div>
+          <div class="space-face">
+            <div class="editor-scroll"><div class="editor-body">
+              <label class="agent-field"><span class="field-label">Name</span><input class="ledger-input" value="小林"></label>
+              <label class="agent-field"><span class="field-label">Role</span><input class="ledger-input" value="架构"></label>
+              <div class="agent-field">
+                <div class="prompt-header"><span class="field-label">System Prompt</span><span class="prompt-counter">412 字</span></div>
+                <textarea class="ledger-textarea">你是这个项目的架构负责人。先给结论,再给依据;拿不准就说拿不准。</textarea>
+              </div>
+              <div class="agent-field">
+                <div class="prompt-header"><span class="field-label">Tools</span>
+                  <div class="mode-switch"><button class="mode-option is-on">follow global</button><span class="mode-divider"></span><button class="mode-option">allowlist</button></div>
+                </div>
+                <div class="tool-grid">
+                  <button class="tool-line is-on">read</button><button class="tool-line is-on">edit</button>
+                  <button class="tool-line">bash</button><button class="tool-line">web_search</button>
+                </div>
+              </div>
+              <div class="agent-field"><span class="field-label">Model</span>
+                <div class="model-row"><span class="model-row-label">provider</span><select class="ledger-select"><option>claude</option></select></div>
+                <div class="model-row"><span class="model-row-label">model</span><select class="ledger-select"><option>opus-5</option></select></div>
+              </div>
+              <div class="editor-footer"><button class="text-action">cancel</button><button class="text-action is-primary">save</button></div>
+            </div></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>好</b>:每一面都干净,配置有整屏可用;身份块大,是"这个人"的门面。<br>
+        <b>差</b>:看配置时看不到账目,来回切;身份块吃掉约 200px,四格之下只剩半屏。<br>
+        <span class="cost">代价:新 CSS 6 条,无新机制。</span></div>
+    </div>
+
+    <div>
+      <div class="wb right-workbench">
+        <div class="app-tabs app-tabs--top app-tabs--line right-workbench-tabs">
+          <div class="app-tabs-nav">
+            <div class="app-tabs-nav-scroll">
+              <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">线程</span></span></button>
+              <button class="app-tabs-tab is-active"><span class="app-tabs-tab-label"><span class="workbench-tab-label">成员</span></span></button>
+            </div>
+            <div class="app-tabs-nav-actions"><button class="workbench-close">＋</button><button class="workbench-close">✕</button></div>
+          </div>
+        </div>
+        <div class="members-workbench is-narrow">
+          <button class="space-back">‹ 返回成员</button>
+          <div class="space-hero">
+            <span class="space-avatar">🧭</span><b class="space-name">小林</b>
+            <i class="space-subtitle">架构 · 同事</i>
+            <div class="space-actions"><button class="text-action">发消息</button><button class="text-action">看线程</button></div>
+          </div>
+          <div class="space-tabs">
+            <button class="space-tab">配置</button><button class="space-tab is-on">会话</button>
+            <button class="space-tab">文件</button><button class="space-tab">搜索</button>
+          </div>
+          <div class="space-face">
+            <div class="face-group">与你的对话 <span class="n">3</span></div>
+            <div class="face-rows"><ol class="history-rows">
+              <li><button class="history-line"><span class="history-name">和小林的私聊</span><span class="history-meta">09:14</span><span class="history-meta history-count">128 条</span></button></li>
+              <li><button class="history-line"><span class="history-name">JSONL 存储改造</span><span class="history-meta">昨天</span><span class="history-meta history-count">54 条</span></button></li>
+              <li><button class="history-line"><span class="history-name">权限账页样式</span><span class="history-meta">07-28</span><span class="history-meta history-count">31 条</span></button></li>
+            </ol></div>
+            <div class="face-group">群聊 <span class="n">2</span></div>
+            <div class="face-rows"><ol class="history-rows">
+              <li><button class="history-line"><span class="history-name">浏览器重构</span><span class="history-note">房主</span><span class="history-meta">09:21</span></button></li>
+              <li><button class="history-line"><span class="history-name">设计评审</span><span class="history-meta">07-29</span></button></li>
+            </ol></div>
+            <div class="face-group">干过的活 <span class="n">41</span></div>
+            <div class="face-rows">
+              <span class="history-group-title">castlabs 换核验证</span>
+              <ol class="history-rows"><li><button class="history-line"><span class="history-name">执行会话 · 37 步</span><span class="history-meta">运行中</span></button></li></ol>
+              <span class="history-group-title">多 profile 隔离</span>
+              <ol class="history-rows"><li><button class="history-line"><span class="history-name">执行会话 · 22 步</span><span class="history-meta">07-30</span></button></li></ol>
+            </div>
+            <div class="face-group">私下 <span class="n">7</span></div>
+            <div class="face-rows"><ol class="history-rows">
+              <li><button class="history-line"><span class="history-name">与阿澈</span><span class="history-meta">09:02</span><span class="history-meta history-count">7 条</span></button></li>
+            </ol></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">同一案的「会话」面。四栏是履历页原样。</div>
+    </div>
+  </div>
+
+  <h2>案二 · 长卷<em>右栏一页到底:横身份条 + 折叠段,不切面</em></h2>
+  <div class="deck">
+    <div>
+      <div class="wb right-workbench">
+        <div class="app-tabs app-tabs--top app-tabs--line right-workbench-tabs">
+          <div class="app-tabs-nav">
+            <div class="app-tabs-nav-scroll">
+              <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">线程</span></span></button>
+              <button class="app-tabs-tab is-active"><span class="app-tabs-tab-label"><span class="workbench-tab-label">小林</span></span></button>
+            </div>
+            <div class="app-tabs-nav-actions"><button class="workbench-close">＋</button><button class="workbench-close">✕</button></div>
+          </div>
+        </div>
+        <div class="members-workbench is-narrow">
+          <div class="ident-bar">
+            <span class="agent-open-target"><span style="font-size:34px;line-height:1">🧭</span></span>
+            <span class="ident-txt">
+              <b class="ident-name">小林</b>
+              <i class="ident-sub">架构 · 在忙 · castlabs 换核验证</i>
+            </span>
+            <button class="text-action">发消息</button>
+          </div>
+
+          <div class="fold">
+            <button class="fold-head"><span class="mark">▾</span>配置<span class="n">已保存 09:41</span></button>
+            <div class="fold-body">
+              <div class="editor-scroll" style="overflow:visible"><div class="editor-body">
+                <label class="agent-field"><span class="field-label">Name</span><input class="ledger-input" value="小林"></label>
+                <label class="agent-field"><span class="field-label">Role</span><input class="ledger-input" value="架构"></label>
+                <div class="agent-field">
+                  <div class="prompt-header"><span class="field-label">System Prompt</span><span class="prompt-counter">412 字</span></div>
+                  <textarea class="ledger-textarea">你是这个项目的架构负责人。先给结论,再给依据。</textarea>
+                </div>
+                <div class="agent-field">
+                  <div class="prompt-header"><span class="field-label">Tools</span>
+                    <div class="mode-switch"><button class="mode-option is-on">follow global</button><span class="mode-divider"></span><button class="mode-option">allowlist</button></div>
+                  </div>
+                  <div class="tool-grid"><button class="tool-line is-on">read</button><button class="tool-line is-on">edit</button>
+                    <button class="tool-line">bash</button><button class="tool-line">web_search</button></div>
+                </div>
+                <div class="editor-footer"><button class="text-action">cancel</button><button class="text-action is-primary">save</button></div>
+              </div></div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <button class="fold-head"><span class="mark">▾</span>会话<span class="n">183</span></button>
+            <div class="fold-body">
+              <div class="face-rows"><ol class="history-rows">
+                <li><button class="history-line"><span class="history-name">和小林的私聊</span><span class="history-meta">09:14</span><span class="history-meta history-count">128 条</span></button></li>
+                <li><button class="history-line"><span class="history-name">浏览器重构</span><span class="history-note">群聊</span><span class="history-meta">09:21</span></button></li>
+                <li><button class="history-line"><span class="history-name">JSONL 存储改造</span><span class="history-meta">昨天</span><span class="history-meta history-count">54 条</span></button></li>
+                <li><button class="history-line"><span class="history-name">执行会话 · 37 步</span><span class="history-note">castlabs</span><span class="history-meta">运行中</span></button></li>
+              </ol></div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <button class="fold-head"><span class="mark">▾</span>文件<span class="n">9</span></button>
+            <div class="fold-body">
+              <div class="face-rows"><ol class="history-rows">
+                <li><button class="history-line"><span class="history-name">profile-隔离对照.md</span><span class="history-meta">09:21</span><span class="history-meta history-count">4.2 KB</span></button></li>
+                <li><button class="history-line"><span class="history-name">castlabs-验证记录.md</span><span class="history-meta">09:06</span><span class="history-meta history-count">11 KB</span></button></li>
+              </ol></div>
+            </div>
+          </div>
+
+          <div class="fold is-closed">
+            <button class="fold-head"><span class="mark">▸</span>搜索<span class="n">—</span></button>
+            <div class="fold-body"></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>好</b>:没有"面"的概念,一路滚到底;身份条横躺只占 60px,信息密度最高;
+        折叠状态可以记住(常用的人只留配置展开)。<br>
+        <b>差</b>:配置长,滚动路径长;四块混在一条流里,"这个人的账"没有各自的地盘。<br>
+        <span class="cost">代价:新 CSS 5 条(折叠段 + 身份条),无新机制。</span></div>
+    </div>
+
+    <div class="cap" style="width:336px">
+      <b>折叠的默认态</b>:配置展开、会话展开、文件收起、搜索收起。<br><br>
+      这一案把「搜索」降级成一个折叠段而不是一格 —— 它是最少用的一面,
+      在案一里却和配置平起平坐占了 1/4 的格位。
+    </div>
+  </div>
+
+  <h2>案三 · 档案页<em>在主区开"这个人"的页签,全宽两栏</em></h2>
+  <div class="deck">
+    <div>
+      <div class="wb main-area">
+        <div class="dossier">
+          <div class="dossier-main">
+            <div class="dossier-head">
+              <span class="agent-open-target"><span style="font-size:46px;line-height:1">🧭</span></span>
+              <span class="dh-txt">
+                <b class="dh-name">小林</b> <i class="dh-sub">架构 · 同事 · 在忙 castlabs 换核验证</i>
+                <div class="dh-desc">盯架构边界与迁移。说话直接,先给结论再给依据。改动跨包时先说清依赖方向。</div>
+              </span>
+              <button class="text-action">发消息</button>
+              <button class="text-action">看线程</button>
+            </div>
+            <div class="editor-scroll">
+              <div class="dossier-cols">
+                <div class="editor-body" style="padding-left:16px">
+                  <label class="agent-field"><span class="field-label">Name</span><input class="ledger-input" value="小林"></label>
+                  <label class="agent-field"><span class="field-label">Role</span><input class="ledger-input" value="架构"></label>
+                  <div class="agent-field">
+                    <div class="prompt-header"><span class="field-label">System Prompt</span><span class="prompt-counter">412 字</span></div>
+                    <textarea class="ledger-textarea" style="min-height:150px">你是这个项目的架构负责人。先给结论,再给依据;拿不准就说拿不准。改动跨包时先说清依赖方向,再动手。</textarea>
+                  </div>
+                </div>
+                <div class="editor-body" style="padding-left:16px">
+                  <div class="agent-field">
+                    <div class="prompt-header"><span class="field-label">Tools</span>
+                      <div class="mode-switch"><button class="mode-option is-on">follow global</button><span class="mode-divider"></span><button class="mode-option">allowlist</button></div>
+                    </div>
+                    <div class="tool-grid"><button class="tool-line is-on">read</button><button class="tool-line is-on">edit</button>
+                      <button class="tool-line">bash</button><button class="tool-line">web_search</button>
+                      <button class="tool-line">web_fetch</button><button class="tool-line">todo</button></div>
+                  </div>
+                  <div class="agent-field"><span class="field-label">Model</span>
+                    <div class="model-row"><span class="model-row-label">provider</span><select class="ledger-select"><option>claude</option></select></div>
+                    <div class="model-row"><span class="model-row-label">model</span><select class="ledger-select"><option>opus-5</option></select></div>
+                  </div>
+                  <div class="agent-field"><span class="field-label">Boundaries</span>
+                    <div class="model-row"><span class="model-row-label">approvals</span><select class="ledger-select"><option>ask every time</option></select></div>
+                    <div class="model-row"><span class="model-row-label">turns</span><select class="ledger-select"><option>standard (100)</option></select></div>
+                  </div>
+                  <div class="editor-footer"><button class="text-action">cancel</button><button class="text-action is-primary">save</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="dossier-side">
+            <div class="face-group">与你的对话 <span class="n">3</span></div>
+            <div class="face-rows"><ol class="history-rows">
+              <li><button class="history-line"><span class="history-name">和小林的私聊</span><span class="history-meta">128 条</span></button></li>
+              <li><button class="history-line"><span class="history-name">JSONL 存储改造</span><span class="history-meta">54 条</span></button></li>
+              <li><button class="history-line"><span class="history-name">权限账页样式</span><span class="history-meta">31 条</span></button></li>
+            </ol></div>
+            <div class="face-group">群聊 <span class="n">2</span></div>
+            <div class="face-rows"><ol class="history-rows">
+              <li><button class="history-line"><span class="history-name">浏览器重构</span><span class="history-note">房主</span></button></li>
+              <li><button class="history-line"><span class="history-name">设计评审</span></button></li>
+            </ol></div>
+            <div class="face-group">干过的活 <span class="n">41</span></div>
+            <div class="face-rows"><ol class="history-rows">
+              <li><button class="history-line"><span class="history-name">执行会话 · 37 步</span><span class="history-meta">运行中</span></button></li>
+              <li><button class="history-line"><span class="history-name">执行会话 · 22 步</span><span class="history-meta">07-30</span></button></li>
+            </ol></div>
+            <div class="face-group">文件 <span class="n">9</span></div>
+            <div class="face-rows"><ol class="history-rows">
+              <li><button class="history-line"><span class="history-name">profile-隔离对照.md</span><span class="history-meta">4.2 KB</span></button></li>
+              <li><button class="history-line"><span class="history-name">castlabs-验证记录.md</span><span class="history-meta">11 KB</span></button></li>
+            </ol></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap wide"><b>好</b>:配置一屏全露(工具双列、模型与边界不用滚),账目常驻右侧;
+        右栏空出来照旧放线程,看人和看执行可以并排。<br>
+        <b>差</b>:占掉一个主区页签,会话页签条会混进"人";点个头像就顶掉正在看的会话面。<br>
+        <span class="cost">代价:新 CSS 6 条,<b>外加改主区 tab 模型</b> —— 今天 <code>workspace.ts</code> 的
+        tab 硬绑 <code>sessionId</code>(<code>createChatTab(sessionId)</code>、持久化按真会话校验、
+        <code>activeSessionId</code> watch 会切会话),要加 <code>kind: 'chat' | 'agent'</code>
+        并让 ChatContainer / 分屏 / 恢复三处都认它。这一案的工作量是其余三案的两倍以上。</span><br>
+        (页签条本身是既有 TabBar,这里没重画。)</div>
+    </div>
+  </div>
+
+  <h2>案四 · 上下常驻<em>右栏切两段:上=人与配置,下=账目,各自滚动</em></h2>
+  <div class="deck">
+    <div>
+      <div class="wb right-workbench">
+        <div class="app-tabs app-tabs--top app-tabs--line right-workbench-tabs">
+          <div class="app-tabs-nav">
+            <div class="app-tabs-nav-scroll">
+              <button class="app-tabs-tab"><span class="app-tabs-tab-label"><span class="workbench-tab-label">线程</span></span></button>
+              <button class="app-tabs-tab is-active"><span class="app-tabs-tab-label"><span class="workbench-tab-label">小林</span></span></button>
+            </div>
+            <div class="app-tabs-nav-actions"><button class="workbench-close">＋</button><button class="workbench-close">✕</button></div>
+          </div>
+        </div>
+        <div class="members-workbench is-narrow" style="overflow:hidden">
+          <div class="split">
+            <div class="split-top">
+              <div class="ident-bar">
+                <span class="agent-open-target"><span style="font-size:34px;line-height:1">🧭</span></span>
+                <span class="ident-txt"><b class="ident-name">小林</b><i class="ident-sub">架构 · 在忙 · castlabs 换核验证</i></span>
+                <button class="text-action">发消息</button>
+              </div>
+              <div class="editor-scroll" style="overflow:visible"><div class="editor-body">
+                <label class="agent-field"><span class="field-label">Name</span><input class="ledger-input" value="小林"></label>
+                <label class="agent-field"><span class="field-label">Role</span><input class="ledger-input" value="架构"></label>
+                <div class="agent-field">
+                  <div class="prompt-header"><span class="field-label">System Prompt</span><span class="prompt-counter">412 字</span></div>
+                  <textarea class="ledger-textarea">你是这个项目的架构负责人。先给结论,再给依据。</textarea>
+                </div>
+                <div class="agent-field">
+                  <div class="prompt-header"><span class="field-label">Tools</span>
+                    <div class="mode-switch"><button class="mode-option is-on">follow global</button><span class="mode-divider"></span><button class="mode-option">allowlist</button></div>
+                  </div>
+                  <div class="tool-grid"><button class="tool-line is-on">read</button><button class="tool-line is-on">edit</button>
+                    <button class="tool-line">bash</button><button class="tool-line">web_search</button></div>
+                </div>
+                <div class="editor-footer"><button class="text-action">cancel</button><button class="text-action is-primary">save</button></div>
+              </div></div>
+            </div>
+
+            <div class="split-rule">
+              <span class="seg is-on">会话</span><span>·</span><span class="seg">文件</span><span>·</span><span class="seg">搜索</span>
+              <span style="margin-left:auto">⋯ 拖动分栏</span>
+            </div>
+
+            <div class="split-bot">
+              <div class="face-group">与你的对话 <span class="n">3</span></div>
+              <div class="face-rows"><ol class="history-rows">
+                <li><button class="history-line"><span class="history-name">和小林的私聊</span><span class="history-meta">09:14</span><span class="history-meta history-count">128 条</span></button></li>
+                <li><button class="history-line"><span class="history-name">JSONL 存储改造</span><span class="history-meta">昨天</span><span class="history-meta history-count">54 条</span></button></li>
+              </ol></div>
+              <div class="face-group">群聊 <span class="n">2</span></div>
+              <div class="face-rows"><ol class="history-rows">
+                <li><button class="history-line"><span class="history-name">浏览器重构</span><span class="history-note">房主</span><span class="history-meta">09:21</span></button></li>
+                <li><button class="history-line"><span class="history-name">设计评审</span><span class="history-meta">07-29</span></button></li>
+              </ol></div>
+              <div class="face-group">干过的活 <span class="n">41</span></div>
+              <div class="face-rows"><ol class="history-rows">
+                <li><button class="history-line"><span class="history-name">执行会话 · 37 步</span><span class="history-meta">运行中</span></button></li>
+              </ol></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>好</b>:改配置的同时看得见这个人的账,不用切也不用滚回去;
+        分栏比可拖,想看账就把上面压扁。<br>
+        <b>差</b>:336px 宽再切两段,每段都矮;配置长表被压在一半高度里滚。<br>
+        <span class="cost">代价:新 CSS 6 条(分栏容器 + 分隔尺 + 两段滚动),分栏比例落 app-state,无新机制。</span></div>
+    </div>
+
+    <div class="cap" style="width:336px">
+      <b>分隔尺</b>兼三件事:分栏拖柄、下段的分段切换(会话/文件/搜索)、当前段的标题。<br><br>
+      它是这一案唯一的新控件 —— 其余全是既有类。
+    </div>
+  </div>
+
+  <h2>选哪个<em>四案都能落地,差别在你怎么用这一面</em></h2>
+  <table class="cmp">
+    <tr><th>如果你…</th><th>选</th></tr>
+    <tr><td>主要是"看看这个人是谁、点开一段会话"</td><td><b>案一</b> — 门面最像"人",四面各有地盘</td></tr>
+    <tr><td>经常调提示词、改工具,看账是顺带</td><td><b>案二</b> — 一页到底,配置离手最近,信息密度最高</td></tr>
+    <tr><td>把 agent 当"要认真编辑的档案"来管</td><td><b>案三</b> — 一屏全露,但要动主区 tab 模型,工作量翻倍</td></tr>
+    <tr><td>改配置时总想对着这个人干过的活</td><td><b>案四</b> — 唯一能同时看见配置与账目的</td></tr>
+  </table>
+
+</div>
+</body>
+</html>

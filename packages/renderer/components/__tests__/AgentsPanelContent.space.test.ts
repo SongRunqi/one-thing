@@ -273,7 +273,7 @@ describe('空间页 · 四面切换', () => {
     const wrapper = await mountPanel()
     for (const tab of ['会话', '文件', '搜索']) {
       await openTab(wrapper, tab)
-      expect(wrapper.find('.editor-footer').attributes('style')).toContain('display: none')
+      expect(wrapper.find('.agent-config-form').attributes('style')).toContain('display: none')
     }
   })
 

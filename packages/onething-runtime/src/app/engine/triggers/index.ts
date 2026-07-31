@@ -10,7 +10,6 @@ import {
 	type CoreTriggerContext,
 } from "@onething/core/engine";
 import { createGoalContinuationTrigger } from "./goal-continuation.js";
-import { createSkillReviewTrigger } from "./skill-review.js";
 import { createTurnEvaluationTrigger } from "./turn-evaluation.js";
 import { createSessionTocTrigger } from "./session-toc.js";
 
@@ -33,7 +32,9 @@ let builtinTriggersRegistered = false;
 export function registerBuiltinTriggers(): void {
 	if (builtinTriggersRegistered) return;
 	builtinTriggersRegistered = true;
-	triggerManager.register(createSkillReviewTrigger());
+	// Skill review is intentionally not registered: createSkillReviewTrigger()
+	// still exists in ./skill-review.ts — re-add the register() call to bring it
+	// back.
 	triggerManager.register(createGoalContinuationTrigger());
 	triggerManager.register(createTurnEvaluationTrigger());
 	triggerManager.register(createSessionTocTrigger());

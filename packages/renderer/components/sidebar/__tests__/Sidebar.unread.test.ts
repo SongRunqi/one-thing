@@ -70,6 +70,18 @@ vi.mock('@/stores/agents', () => ({
     requestAgentDetail: vi.fn(),
   }),
 }))
+/* 方案三把「进行中」的取数提到了 Sidebar 这一层,所以这一份 store 在 classic 下
+   也会被 new 出来 —— 门是 `enabled` 参数,关着时一次 IPC 都不发。 */
+vi.mock('@/stores/collabBoard', () => ({
+  useCollabBoardStore: () => ({
+    boards: {},
+    ensureSubscribed: vi.fn(),
+    load: vi.fn(async () => {}),
+    hasPendingAsk: () => false,
+    isRoomTurnActive: () => false,
+    typingAgents: () => [],
+  }),
+}))
 vi.mock('../useSessionOrganizer', () => ({
   useSessionOrganizer: () => ({
     getProjectGroupedSessions: () => [],

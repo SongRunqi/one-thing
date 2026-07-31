@@ -22,6 +22,7 @@ function cacheChatFonts(settings: { chat?: { chatFontEn?: string; chatFontZh?: s
 }
 
 function isThemeDebugEnabled(): boolean {
+  if (typeof localStorage?.getItem !== 'function') return false
   return import.meta.env.DEV && localStorage.getItem('onething:debug-theme') === '1'
 }
 
@@ -38,8 +39,14 @@ function getInitialTheme(): 'light' | 'dark' | 'system' {
     // loadSettings() will later update this to the actual setting
     return docTheme
   }
-  // Fallback to localStorage cache
-  const cached = localStorage.getItem('cached-theme')
+  /* Fallback to localStorage cache.
+   *
+   * 防御性取用不是洁癖:这一行跑在**模块作用域**(见下方 `initialTheme`),所以
+   * 任何 import 到这个 store 的组件,在测试环境里只要 localStorage 是个残桩就会
+   * 在 import 阶段整体炸掉 —— 排查起来像是"组件坏了",其实是主题缓存。 */
+  const cached = typeof localStorage?.getItem === 'function'
+    ? localStorage.getItem('cached-theme')
+    : null
   if (cached === 'light' || cached === 'dark') {
     if (isThemeDebugEnabled()) {
       console.log('[Theme] getInitialTheme: using localStorage cache:', cached)

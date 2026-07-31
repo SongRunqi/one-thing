@@ -1603,6 +1603,7 @@ function handleUpdateThinkingTime(time: number) {
 /* 头像变成可点入口时,按钮本身完全透明 —— 章还是那枚章(§3.6 禁 hover 缩放,
    所以"可点"只由圈线变实来说)。 */
 .room-avatar-btn {
+  position: relative;
   appearance: none;
   border: none;
   background: transparent;
@@ -1614,6 +1615,22 @@ function handleUpdateThinkingTime(time: number) {
 .room-avatar-btn:hover .room-avatar,
 .room-avatar-btn:focus-visible .room-avatar {
   border-color: var(--ui-text-primary-fg, var(--text));
+}
+
+/* 「可点」提示(agent-space-workbench.md P3):静止态与今天完全一致,hover 才
+   长出一圈 3px 外扩细环。三处头像(私聊房头 / 消息署名 / 群头成员堆)同一句法。 */
+.room-avatar-btn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  transition: border-color 0.12s ease;
+}
+
+.room-avatar-btn:hover::after,
+.room-avatar-btn:focus-visible::after {
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 /* The signature sits outside the frame, flush with the frame's left edge. */

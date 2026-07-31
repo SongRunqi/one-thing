@@ -137,7 +137,21 @@
           v-else-if="tab.type === 'members'"
           :session-id="tab.sessionId || ''"
           :focus-agent-id="tab.memberAgentId || ''"
+          :focus-tab="tab.detailTab || null"
           @focus="(agentId) => setMembersFocus(tab.id, agentId)"
+          @open-session="openSessionTab"
+          @open-file="openFile"
+          @open-thread="openThread"
+        />
+
+        <!-- 「这个人」的页签:房外的人(直聊助理 / 已退休同事)落在这里。 -->
+        <AgentSpace
+          v-else-if="tab.type === 'agent'"
+          :agent-id="tab.agentId || ''"
+          :initial-tab="tab.detailTab || null"
+          @open-session="openSessionTab"
+          @open-file="openFile"
+          @open-thread="openThread"
         />
 
         <!-- iframe fallback: apps/web host has no WebContentsView -->
@@ -221,7 +235,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
-import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Terminal, Users, X } from 'lucide-vue-next'
+import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Terminal, UserRound, Users, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import Tabs from '@/components/common/Tabs.vue'
@@ -232,14 +246,17 @@ import BrowserPanel from './browser/BrowserPanel.vue'
 import CollabBoardPanel from './CollabBoardPanel.vue'
 import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
 import MembersWorkbench from './MembersWorkbench.vue'
+import AgentSpace from '@/components/agents/AgentSpace.vue'
 import ThreadWorkbench from './ThreadWorkbench.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import { useTerminalsStore } from '@/stores/terminals'
+import { useAgentsStore, type AgentDetailTab } from '@/stores/agents'
+import { useWorkspaceStore } from '@/stores/workspace'
 import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members'
+type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent'
 
 interface WorkbenchTab {
   id: string
@@ -251,6 +268,10 @@ interface WorkbenchTab {
   sessionId?: string
   /** members tabs only: the member whose space page is drilled into ('' = 列表)。 */
   memberAgentId?: string
+  /** agent tabs only: 这一页是谁的空间。 */
+  agentId?: string
+  /** agent / members tabs only: 进来先停在哪一面。 */
+  detailTab?: AgentDetailTab | null
   /** review tabs only: bumped to force a refetch on reopen. */
   reviewNonce?: number
   /** terminal tabs only: the PTY instance rendered by this tab. */
@@ -385,6 +406,10 @@ function tabDisplayTitle(tab: WorkbenchTab): string {
     const descriptor = terminalsStore.terminals.find(t => t.id === tab.terminalId)
     if (descriptor?.title) return descriptor.title
   }
+  /* 改名之后页签跟着改 —— 名字是现查的,不是开页签那一刻的快照。 */
+  if (tab.type === 'agent' && tab.agentId) {
+    return useAgentsStore().displayAgent(tab.agentId).name || tab.title
+  }
   return tab.title
 }
 
@@ -427,6 +452,7 @@ function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'board') return ClipboardList
   if (type === 'thread') return ListTree
   if (type === 'members') return Users
+  if (type === 'agent') return UserRound
   return Files
 }
 
@@ -437,6 +463,7 @@ function tabCategorySlot(type: WorkbenchTabType): number {
   if (type === 'review') return 4
   if (type === 'thread') return 3
   if (type === 'members') return 2
+  if (type === 'agent') return 2
   return 5
 }
 
@@ -623,11 +650,51 @@ function openMembers(roomSessionId: string, agentId?: string, title?: string): v
   activeTabId.value = tab.id
 }
 
+/**
+ * 「这个人」的页签(agent-space-workbench.md P1)。
+ *
+ * 房内成员点头像走的是 `openMembers` 的下钻(不占 tab 位);够不到房的那些人
+ * —— 直聊里的助理、已退休的同事 —— 才落到这里,一人一页签(id 即 agent id,
+ * 同一个人反复点只会聚焦,不会攒页签)。
+ *
+ * 不进 `tabOptions`:页签必须绑一个人,picker 里点一下开不出有意义的空白页。
+ */
+function openAgentTab(agentId: string, tab?: AgentDetailTab | null): void {
+  if (!agentId) return
+  const title = useAgentsStore().displayAgent(agentId).name || '空间'
+  const existing = openTabs.value.find(item => item.type === 'agent' && item.agentId === agentId)
+  if (existing) {
+    existing.title = title
+    existing.detailTab = tab ?? null
+    activeTabId.value = existing.id
+    return
+  }
+
+  const created: WorkbenchTab = {
+    id: `agent-${agentId}`,
+    type: 'agent',
+    title,
+    agentId,
+    detailTab: tab ?? null,
+  }
+  openTabs.value = [...openTabs.value, created]
+  activeTabId.value = created.id
+}
+
 /** 面板里下钻/返回之后把落点写回 tab —— 关掉再开回来时停在同一层。 */
 function setMembersFocus(tabId: string, agentId: string): void {
   const tab = openTabs.value.find(item => item.id === tabId)
   if (!tab) return
   tab.memberAgentId = agentId || ''
+}
+
+/**
+ * 空间页里的会话行:在**主区**开页签,右栏原地不动
+ * (agent-space-workbench.md §2 落点表)。右栏不关也不跳 —— 一边看人,一边看会话。
+ */
+function openSessionTab(sessionId: string): void {
+  if (!sessionId) return
+  useWorkspaceStore().openSession(sessionId)
 }
 
 function threadTabTitle(title?: string): string {
@@ -731,6 +798,7 @@ defineExpose({
   openFolder,
   openThread,
   openMembers,
+  openAgentTab,
 })
 </script>
 
@@ -806,51 +874,36 @@ defineExpose({
 
 .right-workbench-tabs {
   height: 100%;
-  --app-tabs-active-text: var(--workbench-accent);
-  --app-tabs-accent: var(--workbench-accent);
 }
 
 .right-workbench-tabs :deep(.app-tabs-content) {
   padding: 0;
 }
 
-/* 尺寸线:页签基线两端立起止点,tab 条是一段被测量的长度 */
-.right-workbench-tabs :deep(.app-tabs-nav)::before,
-.right-workbench-tabs :deep(.app-tabs-nav)::after {
-  content: "";
-  position: absolute;
-  bottom: -1px;
-  width: 1px;
-  height: 6px;
-  background: var(--workbench-line);
-}
-
-.right-workbench-tabs :deep(.app-tabs-nav)::before {
-  left: 0;
-}
-
-.right-workbench-tabs :deep(.app-tabs-nav)::after {
-  right: 0;
-}
-
-/* 卡尺括号 ⌞⌟:活动页签的指示线改为三边开口括号 */
-.right-workbench .right-workbench-tabs :deep(.app-tabs--line .app-tabs-tab)::after {
-  top: auto;
-  right: 5px;
-  bottom: -1px;
-  left: 5px;
-  height: 5px;
-  background: transparent;
-  border-right: 1.5px solid var(--workbench-accent);
-  border-bottom: 1.5px solid var(--workbench-accent);
-  border-left: 1.5px solid var(--workbench-accent);
-}
-
-/* In a narrow panel the text ellipsizes away, but icon + close must survive:
-   10px padding ×2 + 15px icon + 6px gap + 20px close ≈ 64px. */
+/* 页签条形态「丙 · 正字下划线」(agent-space-workbench.md P4)。
+   删掉了基线止点与三边卡尺括号,回到 Tabs.vue 自带的满宽 2px 底线 ——
+   工作台的 mono + 括号是给「台面」定的调子,一个人的页上格格不入。
+   条更高一档(38px),与面板内那排面签(配置/会话/文件/搜索)拉开层级。 */
 .right-workbench-tabs :deep(.app-tabs-tab) {
-  min-width: 64px;
-  padding: 0 10px;
+  min-width: 0;
+  padding: 0 13px;
+  min-height: 38px;
+  font-size: 12.5px;
+}
+
+.right-workbench-tabs :deep(.app-tabs-tab.is-active) {
+  font-weight: var(--font-weight-semibold, 600);
+}
+
+/* 关闭 ✕ 只在活动/悬停时显形,平时不吵。 */
+.right-workbench-tabs :deep(.app-tabs-tab .app-tabs-close) {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.right-workbench-tabs :deep(.app-tabs-tab.is-active .app-tabs-close),
+.right-workbench-tabs :deep(.app-tabs-tab:hover .app-tabs-close) {
+  opacity: 1;
 }
 
 .right-workbench-tabs :deep(.app-tab-pane) {
@@ -862,12 +915,9 @@ defineExpose({
 .workbench-tab-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font: inherit;
 }
 
 .workbench-tab-label svg,
