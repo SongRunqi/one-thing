@@ -27,112 +27,25 @@
       <div
         v-show="props.active"
         ref="composerContainerRef"
-        v-memo="[props.active, isGenerating, effectiveSessionId, isAgentExecutionSession, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction, goalMusicOffset]"
+        v-memo="[props.active, isGenerating, effectiveSessionId, isAgentExecutionSession, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, isCollabSessionActive, goalMusicOffset]"
         class="composer-container"
         :style="{ '--goal-music-offset': goalMusicOffset + 'px' }"
       >
         <BackgroundJobsStatusBar />
         <GoalStatusBar :session-id="effectiveSessionId" />
 
-        <!-- Permission ledger: the request read as a key/value form in the
-             composer's blueprint language — hairline rows, mono cells, zero
-             fill. Scope is a column of the form, not a row of pill buttons,
-             so a standing grant can never be a mis-click on "Allow". -->
-        <div
+        <!-- 权限账页栏位:位置(composer 上方)与语义(按 toolCallId 应答、
+             scope 档位、快捷键)由 `PermissionLedger` 组件持有,房面共用同一个
+             (去复用重构 R1 §8 铁律 1)。 -->
+        <PermissionLedger
           v-if="currentPendingPermission"
-          class="session-permission-panel"
-        >
-          <div class="permission-row">
-            <span class="permission-key">tool</span>
-            <span class="permission-value">{{ permissionTool(currentPendingPermission.toolCall) }}</span>
-          </div>
-          <div class="permission-row">
-            <span class="permission-key">target</span>
-            <span class="permission-value">{{ permissionTarget(currentPendingPermission.toolCall) }}</span>
-          </div>
-          <div
-            v-if="permissionPreview(currentPendingPermission.toolCall)"
-            class="permission-row"
-          >
-            <span class="permission-key">{{ permissionDetailKey(currentPendingPermission.toolCall) }}</span>
-            <span class="permission-value is-dim">{{ permissionPreview(currentPendingPermission.toolCall) }}</span>
-          </div>
-          <div class="permission-row is-scope">
-            <span class="permission-key">scope</span>
-            <span class="permission-value">
-              <Button
-                v-for="option in scopeOptions"
-                :key="option.value"
-                unstyled
-                class="permission-scope-btn"
-                native-type="button"
-                :aria-pressed="permissionScope === option.value"
-                :title="option.hint"
-                @click="permissionScope = option.value"
-              >
-                {{ option.label }}
-              </Button>
-            </span>
-          </div>
-          <div
-            v-if="showRejectInstruction"
-            class="permission-row is-instruction"
-          >
-            <span class="permission-key">reason</span>
-            <textarea
-              v-model="rejectInstruction"
-              class="permission-instruction-input"
-              placeholder="Tell the assistant what to do instead..."
-              rows="2"
-              @keydown.stop
-            />
-          </div>
-          <div class="permission-foot">
-            <span class="permission-hint">
-              {{ queuedBehindPermission.length > 0
-                ? `${queuedBehindPermission.length} queued behind this permission`
-                : 'awaiting your decision' }}
-            </span>
-            <Button
-              v-if="showRejectInstruction"
-              unstyled
-              class="permission-btn reject"
-              native-type="button"
-              @click="rejectCurrentPermissionWithInstruction"
-            >
-              SEND REJECTION
-            </Button>
-            <template v-else>
-              <Button
-                unstyled
-                class="permission-btn reject"
-                native-type="button"
-                title="Reject this call"
-                @click="rejectCurrentPermission"
-              >
-                REJECT
-              </Button>
-              <Button
-                unstyled
-                class="permission-btn instruct"
-                native-type="button"
-                title="Reject and tell the assistant what to do instead"
-                @click="showRejectInstruction = true"
-              >
-                REJECT…
-              </Button>
-            </template>
-            <Button
-              unstyled
-              class="permission-btn allow"
-              native-type="button"
-              :title="`Allow (${permissionScopeLabel})`"
-              @click="approveCurrentPermission(permissionScope)"
-            >
-              ALLOW
-            </Button>
-          </div>
-        </div>
+          :tool-call="currentPendingPermission.toolCall"
+          :queued-count="queuedBehindPermission.length"
+          :collab-scope-only="isCollabSessionActive"
+          @allow="(toolCall, scope) => approveCurrentPermission(scope)"
+          @reject="rejectCurrentPermission"
+          @reject-with-instruction="(toolCall, reason) => rejectCurrentPermissionWithInstruction(reason)"
+        />
 
         <!-- IM typing line: rides just above the composer in rooms only. It
              self-guards on an empty roster, so a quiet room costs no row. -->
@@ -173,7 +86,6 @@
 </template>
 
 <script setup lang="ts">
-import Button from '@/components/common/Button.vue'
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
@@ -188,7 +100,8 @@ import GoalStatusBar from './GoalStatusBar.vue'
 import type { ChatMessage, ChatMessageMention, ChatMessageReplyTo, MessageAttachment, ToolCall } from '@/types'
 import { filterRoomMessages } from './message/room-grouping'
 import { isAgentExecutionSession as isAgentExecutionSessionKind } from '@/utils/agent-sessions'
-import { buildToolActivityTarget, buildToolPermissionTitle } from '@/stores/helpers/tool-display'
+import PermissionLedger from './permission/PermissionLedger.vue'
+import type { PermissionResponse } from './permission/permission-ledger'
 
 const props = withDefaults(defineProps<{
   sessionId?: string
@@ -278,17 +191,6 @@ const queuedBehindPermission = computed(() => {
   return queued
 })
 
-const showRejectInstruction = ref(false)
-const rejectInstruction = ref('')
-const permissionScope = ref<PermissionResponse>('once')
-
-watch(currentPendingPermission, () => {
-  showRejectInstruction.value = false
-  rejectInstruction.value = ''
-  // Never carry a standing scope across requests — each grant is chosen fresh.
-  permissionScope.value = 'once'
-})
-
 // Collab 会话(room/work)的授权面收窄为仅 once:workspace 级 grant 只按
 // {type, pattern, workspaceRoot} 匹配、无 agent/任务维度——在多 agent 语境下
 // 批一次 = 该目录所有 agent 的所有未来任务全免检(docs/multi-agent-collab.md
@@ -338,31 +240,6 @@ function handleReplyTo(replyTo: ChatMessageReplyTo) {
 
 watch(effectiveSessionId, () => {
   pendingReplyTo.value = null
-})
-
-const scopeOptions = computed(() => {
-  const options: Array<{ value: PermissionResponse; label: string; hint: string }> = [
-    { value: 'once', label: 'once', hint: 'Allow this call only' },
-  ]
-  if (isCollabSessionActive.value) return options
-  options.push({ value: 'session', label: 'session', hint: 'Allow for this session' })
-  const toolCall = currentPendingPermission.value?.toolCall
-  if (toolCall && canAllowWorkspace(toolCall)) {
-    options.push({ value: 'workdir', label: 'workspace', hint: 'Allow in this workspace' })
-  }
-  return options
-})
-
-const permissionScopeLabel = computed(() => {
-  return scopeOptions.value.find(option => option.value === permissionScope.value)?.label || 'once'
-})
-
-// A scope can disappear between requests (workspace is withheld for sensitive
-// reads); fall back rather than approve with a scope the UI no longer offers.
-watch(scopeOptions, options => {
-  if (!options.some(option => option.value === permissionScope.value)) {
-    permissionScope.value = 'once'
-  }
 })
 
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
@@ -518,51 +395,6 @@ function observeComposerHeight() {
   composerResizeObserver.observe(composer, { box: 'border-box' })
 }
 
-function permissionTitle(toolCall: ToolCall): string {
-  return buildToolPermissionTitle(toolCall)
-}
-
-function permissionTool(toolCall: ToolCall): string {
-  return String(toolCall.toolName || toolCall.toolId || 'tool').trim().toLowerCase()
-}
-
-// The ledger splits what the title fuses: `target` is the thing being acted
-// on, so drop the leading verb the permission title prepends ("Write <path>").
-function permissionTarget(toolCall: ToolCall): string {
-  const args = (toolCall.arguments || {}) as Record<string, unknown>
-  const direct = args.path ?? args.file_path ?? args.command ?? toolCall.changes?.filePath
-  if (direct) return String(direct).replace(/\s*\n\s*/g, ' ')
-  const activityTarget = buildToolActivityTarget(toolCall.toolName || toolCall.toolId, toolCall)
-  if (activityTarget) return activityTarget
-  const title = buildToolPermissionTitle(toolCall)
-  const [, remainder] = title.match(/^\S+\s+(.+)$/) || []
-  return remainder || title
-}
-
-function permissionDetailKey(toolCall: ToolCall): string {
-  return toolCall.changes ? 'diff' : 'detail'
-}
-
-function permissionPreview(toolCall: ToolCall): string {
-  if (toolCall.changes) return `+${toolCall.changes.additions || 0} -${toolCall.changes.deletions || 0}`
-  // The command already fills the `target` row for bash — don't print it twice.
-  return ''
-}
-
-type PermissionResponse = 'once' | 'session' | 'workdir'
-
-function canAllowWorkspace(toolCall: ToolCall): boolean {
-  const permissionType = String((toolCall as any).permissionType || toolCall.arguments?.permissionType || '')
-  const name = (toolCall.toolName || toolCall.toolId || '').toLowerCase()
-  // Sensitive file reads should not be granted workspace-wide in the first scope UX.
-  if (permissionType === 'sensitive_file_read') return false
-  // Repointing a capability is always a one-time answer — core refuses to turn
-  // it into a standing grant, so never offer the button either.
-  if (permissionType === 'capability_change') return false
-  if (name === 'read' && /\.env|\.pem$|\.key$|\.p12$|\.pfx$/i.test(permissionTitle(toolCall))) return false
-  return true
-}
-
 function approveCurrentPermission(response: PermissionResponse = 'once') {
   const toolCall = currentPendingPermission.value?.toolCall
   if (!toolCall) return
@@ -575,10 +407,10 @@ function rejectCurrentPermission() {
   messageListRef.value?.rejectTool(toolCall)
 }
 
-function rejectCurrentPermissionWithInstruction() {
+function rejectCurrentPermissionWithInstruction(reason?: string) {
   const toolCall = currentPendingPermission.value?.toolCall
   if (!toolCall) return
-  messageListRef.value?.rejectTool(toolCall, rejectInstruction.value.trim() || undefined)
+  messageListRef.value?.rejectTool(toolCall, reason)
 }
 
 async function waitForRestorePage(
@@ -920,7 +752,14 @@ defineExpose({
 
 <style scoped>
 .chat-panel {
-  --chat-content-width: min(var(--content-measure, 46rem), max(58%, calc(100% - 144px)));
+  /* 上限拆成一枚变量,公式本身一字不动:展开后与改造前逐字符等价。
+     以后要按外壳形态改聊天面宽度时**只准改 --content-measure /
+     --chat-measure-cap 这两枚输入变量,不准直接写 --chat-content-width**
+     —— `:root[data-shell-mode='workbench'] .chat-panel` 的特异性是 (0,3,1),
+     会压过本文件末尾窄窗 `@media` 里 (0,1,0) 的 `.chat-panel` 覆盖,
+     把 768 / 480 两个断点整个废掉。 */
+  --chat-measure-cap: max(58%, calc(100% - 144px));
+  --chat-content-width: min(var(--content-measure, 46rem), var(--chat-measure-cap));
   --chat-composer-width: var(--chat-content-width);
   --chat-composer-height: 0px;
 
@@ -1011,173 +850,6 @@ defineExpose({
   transition:
     width var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1)),
     margin var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1));
-}
-
-/* Permission ledger — the composer's blueprint frame, one row per field:
-   zero fill, one outline, hairline cell dividers, mono annotations. The
-   only colour is carried by the two decisions themselves. */
-.session-permission-panel {
-  --permission-frame: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
-  --permission-divider: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 30%, transparent);
-  --permission-allow-fg: var(--ui-status-success-fg, var(--text-success));
-  --permission-reject-fg: var(--ui-status-warning-fg, var(--text-warning));
-
-  width: var(--chat-composer-width);
-  margin: 0 var(--chat-content-column-right, auto) 8px var(--chat-content-column-left, auto);
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--permission-frame);
-  border-radius: var(--radius-xs, 4px);
-  background: transparent;
-  overflow: hidden;
-}
-
-.permission-row {
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  align-items: stretch;
-  min-height: 30px;
-  border-bottom: 1px solid var(--permission-divider);
-}
-
-.permission-key {
-  display: flex;
-  align-items: center;
-  padding: 0 11px;
-  border-right: 1px solid var(--permission-divider);
-  font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
-}
-
-.permission-value {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  padding: 0 11px;
-  font-family: var(--font-mono, monospace);
-  font-size: 11.5px;
-  color: var(--ui-text-primary-fg, var(--text));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.permission-value.is-dim {
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.permission-row.is-scope .permission-value {
-  padding: 0;
-}
-
-.permission-scope-btn {
-  min-height: 30px;
-  padding: 0 12px;
-  border: 0;
-  border-right: 1px solid var(--permission-divider);
-  background: transparent;
-  cursor: pointer;
-  font-family: var(--font-mono, monospace);
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--ui-text-muted-fg, var(--muted));
-  transition: color 0.16s ease, background 0.16s ease;
-}
-
-.permission-scope-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.permission-scope-btn[aria-pressed='true'] {
-  color: var(--permission-allow-fg);
-  background: color-mix(in srgb, var(--permission-allow-fg) 10%, transparent);
-}
-
-.permission-row.is-instruction {
-  align-items: start;
-}
-
-.permission-row.is-instruction .permission-key {
-  align-items: flex-start;
-  padding-top: 9px;
-}
-
-.permission-instruction-input {
-  min-width: 0;
-  min-height: 48px;
-  resize: vertical;
-  padding: 8px 11px;
-  border: 0;
-  background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-family: var(--font-mono, monospace);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-
-.permission-instruction-input:focus {
-  outline: none;
-  background: var(--ui-state-hover-bg, var(--hover));
-}
-
-.permission-foot {
-  display: flex;
-  align-items: stretch;
-  min-height: 32px;
-}
-
-.permission-hint {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  padding: 0 11px;
-  font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.permission-btn {
-  flex-shrink: 0;
-  min-height: 32px;
-  padding: 0 14px;
-  border: 0;
-  border-left: 1px solid var(--permission-divider);
-  border-radius: 0;
-  background: transparent;
-  cursor: pointer;
-  font-family: var(--font-mono, monospace);
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: var(--ui-text-muted-fg, var(--muted));
-  transition: background 0.16s ease;
-}
-
-.permission-btn.allow {
-  color: var(--permission-allow-fg);
-}
-
-.permission-btn.reject,
-.permission-btn.instruct {
-  color: var(--permission-reject-fg);
-}
-
-.permission-btn.allow:hover {
-  background: color-mix(in srgb, var(--permission-allow-fg) 12%, transparent);
-}
-
-.permission-btn.reject:hover,
-.permission-btn.instruct:hover {
-  background: color-mix(in srgb, var(--permission-reject-fg) 12%, transparent);
 }
 
 @media (max-width: 768px) {

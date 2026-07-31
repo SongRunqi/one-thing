@@ -325,6 +325,7 @@ import {
 import TabItem from './TabItem.vue'
 import AgentSelector from './AgentSelector.vue'
 import RoomMemberStrip from './RoomMemberStrip.vue'
+import { findAgentDoingTask } from './agent-activity'
 import RoomSettingsDialog from './RoomSettingsDialog.vue'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import SidebarActionGroup from '@/components/sidebar/SidebarActionGroup.vue'
@@ -571,21 +572,11 @@ const dmWorkBadge = computed<{ title: string; shortId: string; sessionId: string
   if (!agentId || !props.sessionId) return null
   try {
     const board = useCollabBoardStore().boardFor(props.sessionId)
-    if (!board) return null
-    const task = [...board.tasks]
-      .filter(candidate =>
-        candidate.status === 'doing' &&
-        candidate.assigneeAgentId === agentId &&
-        candidate.workSessionIds.length > 0)
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
-    if (!task) return null
-    const sessionId = task.workSessionIds[task.workSessionIds.length - 1]
-    if (!sessionId) return null
-    return {
-      title: (task.title || '').trim() || `#${task.id.slice(0, 8)}`,
-      shortId: `#${task.id.slice(0, 8)}`,
-      sessionId,
-    }
+    // 判定与 C1 左栏活卡片共用一份(agent-activity.ts);徽标要点得开,
+    // 所以这里额外要求真开过工作台。
+    const task = findAgentDoingTask(board, agentId, { requireWorkSession: true })
+    if (!task?.sessionId) return null
+    return { title: task.title, shortId: task.shortId, sessionId: task.sessionId }
   } catch {
     return null
   }

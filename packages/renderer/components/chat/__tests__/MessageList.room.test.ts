@@ -36,7 +36,11 @@ const mocks = await vi.hoisted(async () => {
     switchSession: vi.fn(),
   },
   settingsStore: {
-    settings: { general: {}, chat: {} },
+    // classic 是逐像素回滚闸:房间在 classic 下仍然走既有 MessageItem 组件树,
+    // 本文件钉的全部是那棵树的行为。workbench 下房间改走 say-only 新树
+    // (C2′,见 MessageList.say.test.ts),外壳形态因此必须显式写死 ——
+    // resolveShellMode 的默认值是 workbench。
+    settings: { ui: { shellMode: 'classic' }, general: {}, chat: {} },
   },
   platformApi: {
     capabilities: { shellTools: true },

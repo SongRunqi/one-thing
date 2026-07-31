@@ -225,6 +225,23 @@ export interface StorageSettings {
 	sessionFormat?: "legacy-json" | "jsonl";
 }
 
+/**
+ * Shell form factor (docs/design/im-workbench-layout.md §5 C0).
+ *
+ * - `workbench` 工作台式外壳:左栏以活为脊 + 账页流 + 右栏常驻(默认)。
+ * - `classic`   旧形态:与改造前逐像素一致。
+ *
+ * 这是 C0 的**回滚闸**——所有形态差异都写成 `:root[data-shell-mode='workbench']`
+ * 的 CSS 门或走 `resolveShellMode` 的判定,所以任何时候都能靠一行 settings.json
+ * 回到改造前的外壳。
+ */
+export type ShellMode = "workbench" | "classic";
+
+export interface UISettings {
+	/** 外壳形态,默认 'workbench'。 */
+	shellMode?: ShellMode;
+}
+
 export interface EvalsSettings {
 	repoDir?: string;
 	/** Total-size cap for .context.jsonl failure snapshots (bytes, default 2MB). */
@@ -248,6 +265,7 @@ export interface AppSettings {
 	skills?: SkillSettings;
 	storage?: StorageSettings;
 	evals?: EvalsSettings;
+	ui?: UISettings;
 }
 
 // Settings IPC Request/Response types

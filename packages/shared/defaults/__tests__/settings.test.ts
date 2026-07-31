@@ -324,6 +324,52 @@ describe('todo plan settings defaults', () => {
   })
 })
 
+describe('ui.shellMode (im-workbench-layout C0 回滚闸)', () => {
+  it('defaults to workbench', () => {
+    expect(createDefaultSettings().ui?.shellMode).toBe('workbench')
+    expect(mergeWithDefaults({}).ui?.shellMode).toBe('workbench')
+  })
+
+  it('survives the merge whitelist so settings.json edits actually take effect', () => {
+    expect(mergeSettings({ ui: { shellMode: 'classic' } }).ui?.shellMode).toBe('classic')
+    expect(mergeSettings({ ui: { shellMode: 'workbench' } }).ui?.shellMode).toBe('workbench')
+  })
+
+  it('falls back to workbench on a garbled value instead of silently rolling back', () => {
+    expect(mergeSettings({ ui: { shellMode: 'Classic' } }).ui?.shellMode).toBe('workbench')
+    expect(mergeSettings({ ui: { shellMode: 'stage' } }).ui?.shellMode).toBe('workbench')
+    expect(mergeSettings({ ui: {} }).ui?.shellMode).toBe('workbench')
+  })
+})
+
+describe('mergeWithDefaults 白名单漏键审计', () => {
+  /**
+   * `merged` 是白名单式重建,末尾的 `as AppSettings` 断言让漏列的键静默消失
+   * ——用户在 settings.json 里改了也不生效。这条测试拿一个「每个键都有值」的
+   * 探针过一遍 merge,把幸存集合钉死。
+   *
+   * `storage` / `evals` 是 C0 之前就存在的两个漏项,**不在 C0 范围内修**
+   * (修了会让 storage.sessionFormat 这类开关突然生效,属于另一件事);
+   * 列在这里是为了让第三个漏项一出现就红,并且修掉既有漏项的人知道要来改这里。
+   */
+  const KNOWN_DROPPED_KEYS = ['storage', 'evals'] as const
+
+  it('除两个既有漏项外,AppSettings 的每个键都活过 merge', () => {
+    const probe: Record<string, unknown> = {
+      ...createDefaultSettings(),
+      storage: { sessionFormat: 'jsonl' },
+      evals: { repoDir: '/tmp/evals' },
+      mcp: { servers: [] },
+      skills: {},
+    }
+
+    const merged = mergeWithDefaults(probe as Partial<AppSettings>) as unknown as Record<string, unknown>
+    const dropped = Object.keys(probe).filter(key => merged[key] === undefined)
+
+    expect(dropped.sort()).toEqual([...KNOWN_DROPPED_KEYS].sort())
+  })
+})
+
 describe('network settings defaults', () => {
   it('disables global proxy by default', () => {
     const settings = createDefaultSettings()

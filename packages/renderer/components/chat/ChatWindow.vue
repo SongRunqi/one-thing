@@ -18,9 +18,20 @@
       overflow="hidden"
       main-overflow="hidden"
     >
-      <!-- Tab Bar (replaces ChatHeader) -->
+      <!-- 房 / 私聊(workbench):房头取代 TabBar —— 换房走左栏,房头只剩身份
+           与动作(去复用重构 R1,§8.1)。直聊与 classic 一律走下面的旧壳。 -->
       <template #header>
+        <RoomHeader
+          v-if="roomSurfaceActive"
+          :session-id="effectiveSessionId"
+          :show-sidebar-toggle="showSidebarToggle"
+          :is-inspector-open="isInspectorOpen"
+          @toggle-sidebar="emit('toggleSidebar')"
+          @open-search="emit('openSearch')"
+          @toggle-inspector="emit('toggleInspector')"
+        />
         <TabBar
+          v-else
           :tabs="tabs"
           :active-tab-id="activeTabId"
           :session-id="effectiveSessionId"
@@ -51,7 +62,8 @@
           @toggle-inspector="emit('toggleInspector')"
           @toggle-side-panel="emit('toggleSidePanel')"
         />
-        <PracticeStrip v-if="showPracticeStrip" />
+        <!-- 练习条是直聊的东西,不进房(样板末节)。 -->
+        <PracticeStrip v-if="showPracticeStrip && !roomSurfaceActive" />
       </template>
 
       <!-- Panel body: tab content + composer footer, wrapped together so the
@@ -63,25 +75,35 @@
         @dragleave="handleContentDragLeave"
         @drop="handleContentDrop"
       >
-        <div class="tab-content">
-          <ChatPanel
-            ref="chatPanelRef"
-            :session-id="effectiveSessionId"
-            :active="true"
-            :footer-target="chatFooterRef"
-            :layout-transitioning="layoutTransitioning"
-            :outline-rail-target="outlineRailTarget"
-            @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
-            @open-file="handleOpenFile"
-            @review-goal="(goalSessionId) => emit('reviewGoal', goalSessionId)"
-            @switch-session="(sessionId) => emit('switchSession', sessionId)"
-          />
-        </div>
-
-        <div
-          ref="chatFooterRef"
-          class="chat-footer"
+        <!-- 分流是 v-if/v-else 级(§8 铁律 2):两套聊天面永不同时挂载。 -->
+        <RoomSurface
+          v-if="roomSurfaceActive"
+          ref="roomSurfaceRef"
+          :session-id="effectiveSessionId"
+          @switch-session="(sessionId) => emit('switchSession', sessionId)"
         />
+
+        <template v-else>
+          <div class="tab-content">
+            <ChatPanel
+              ref="chatPanelRef"
+              :session-id="effectiveSessionId"
+              :active="true"
+              :footer-target="chatFooterRef"
+              :layout-transitioning="layoutTransitioning"
+              :outline-rail-target="outlineRailTarget"
+              @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
+              @open-file="handleOpenFile"
+              @review-goal="(goalSessionId) => emit('reviewGoal', goalSessionId)"
+              @switch-session="(sessionId) => emit('switchSession', sessionId)"
+            />
+          </div>
+
+          <div
+            ref="chatFooterRef"
+            class="chat-footer"
+          />
+        </template>
 
         <Transition name="split-zone">
           <div
@@ -101,6 +123,10 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { MAIN_LEAF_ID, type SplitDirection } from '@/stores/workspace-tree'
 import TabBar from './TabBar.vue'
 import ChatPanel from './ChatPanel.vue'
+import RoomHeader from './room/RoomHeader.vue'
+import RoomSurface from './room/RoomSurface.vue'
+import { useSettingsStore } from '@/stores/settings'
+import { resolveShellMode } from '@/composables/useShellMode'
 import Container from '@/components/common/Container.vue'
 import BorderBox from '@/components/common/BorderBox.vue'
 import PracticeStrip from './PracticeStrip.vue'
@@ -200,6 +226,24 @@ async function refreshCacheStats() {
 
 const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
 
+/**
+ * 房 / 私聊新面的分流门(去复用重构 R1,§8 铁律 2/3)。
+ *
+ * **判据只有两条,没有第三条**:
+ *  1. `kind === 'room'` —— 群聊房、单成员 dm 房、agent 互聊 pair 房都是 room,
+ *     这正是 W-Q4 划的覆盖范围;直聊(`chat`)与执行会话(`work`/`agent`)不是,
+ *     它们本身就是工程驾驶舱,继续走 TabBar + ChatPanel 旧壳;
+ *  2. workbench 外壳 —— classic 是逐像素回滚闸,新面在那儿一行都不许挂。
+ *
+ * 门是 DOM 级的(`v-if` / `v-else`),两套聊天面在结构上不可能同时挂载。
+ * 判定与 `MessageList.saySurfaceActive` 同口径(那道门在房会话上从此空转,
+ * R3 才拆 —— 中间态不许两处同时改)。
+ */
+const settingsStore = useSettingsStore()
+const shellMode = computed(() => resolveShellMode(settingsStore.settings))
+const roomSurfaceActive = computed(() =>
+  currentSession.value?.kind === 'room' && shellMode.value === 'workbench')
+
 async function goToParentSession() {
   if (currentSession.value?.parentSessionId) {
     await sessionsStore.switchSession(currentSession.value.parentSessionId)
@@ -208,14 +252,20 @@ async function goToParentSession() {
 
 // ChatPanel ref for focusInput
 const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null)
+const roomSurfaceRef = ref<InstanceType<typeof RoomSurface> | null>(null)
 const chatFooterRef = ref<HTMLElement | null>(null)
 
+/** 只有一面挂着,所以"当前那一面"就是非空的那一个 ref。 */
+function activeSurface() {
+  return roomSurfaceActive.value ? roomSurfaceRef.value : chatPanelRef.value
+}
+
 function focusInput() {
-  chatPanelRef.value?.focusInput()
+  activeSurface()?.focusInput()
 }
 
 function insertPromptReference(promptId: string) {
-  chatPanelRef.value?.insertPromptReference(promptId)
+  activeSurface()?.insertPromptReference(promptId)
 }
 
 function activateTab(id: string) {
@@ -363,7 +413,7 @@ function handleContentDrop(e: DragEvent) {
 }
 
 async function scrollToMessage(messageId: string) {
-  return chatPanelRef.value?.scrollToMessage?.(messageId) ?? false
+  return activeSurface()?.scrollToMessage?.(messageId) ?? false
 }
 
 defineExpose({

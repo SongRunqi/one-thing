@@ -32,6 +32,22 @@ vi.mock('@/components/terminal/TerminalView.vue', () => ({
   },
 }))
 
+// The real thread panel pulls the chat/sessions stores and the whole StepsPanel
+// tree; the panel contract here is just "render a thread view for sessionId".
+vi.mock('../ThreadWorkbench.vue', () => ({
+  default: {
+    name: 'ThreadWorkbench',
+    props: ['sessionId'],
+    emits: ['openFile', 'titleResolved'],
+    template: `
+      <div class="mock-thread-workbench">
+        {{ sessionId }}
+        <button class="mock-thread-title" @click="$emit('titleResolved', '换核验证')">title</button>
+      </div>
+    `,
+  },
+}))
+
 vi.mock('@/components/editor/EditorWorkbench.vue', () => ({
   default: {
     name: 'EditorWorkbench',
@@ -197,6 +213,68 @@ describe('RightWorkbenchPanel', () => {
       expect.objectContaining({ cwd: '/repo', sessionId: 'session-1' }),
     )
     expect(wrapper.find('.mock-terminal-view').text()).toContain('pty-1')
+  })
+
+  // ── 右栏线程 tab(C3-B,docs/design/im-workbench-layout.md §3 W4)──────────
+  describe('thread tab', () => {
+    function mountPanel() {
+      return mount(RightWorkbenchPanel, {
+        props: { sessionId: 'session-1', workspaceRoot: '/repo' },
+      })
+    }
+
+    type ThreadApi = { openThread: (sessionId: string, title?: string) => void }
+
+    it('一个工作台会话只开一个 tab —— 再点一次是聚焦不是新开', async () => {
+      const wrapper = mountPanel()
+      const vm = wrapper.vm as unknown as ThreadApi
+
+      vm.openThread('work-1', '换核验证')
+      await settle()
+      vm.openThread('work-1', '换核验证')
+      await settle()
+
+      expect(wrapper.findAll('.mock-thread-workbench')).toHaveLength(1)
+      expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(1)
+      expect(wrapper.find('.mock-thread-workbench').text()).toContain('work-1')
+
+      // 另一个会话才开第二个 tab。
+      vm.openThread('work-2', '元素拾取')
+      await settle()
+      expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(2)
+    })
+
+    it('空 workSessionId 不开 tab(左栏对空串已经拦了一道,这里是第二道)', async () => {
+      const wrapper = mountPanel()
+      ;(wrapper.vm as unknown as ThreadApi).openThread('')
+      await settle()
+      expect(wrapper.find('.mock-thread-workbench').exists()).toBe(false)
+    })
+
+    it('会话名解析出来之后 tab 标题跟上去', async () => {
+      const wrapper = mountPanel()
+      ;(wrapper.vm as unknown as ThreadApi).openThread('work-1')
+      await settle()
+      expect(wrapper.find('.workbench-tab-label').text()).toBe('Thread')
+
+      await wrapper.find('.mock-thread-title').trigger('click')
+      await settle()
+      expect(wrapper.find('.workbench-tab-label').text()).toBe('换核验证')
+    })
+
+    it('线程不进 picker / 空态清单 —— 可选 tab 集合一个字不变(classic 逐像素闸)', () => {
+      const wrapper = mountPanel()
+      const labels = wrapper.findAll('.empty-action').map(button => button.text())
+      expect(labels).toEqual(['Files', 'Terminal', 'Browser', 'Board'])
+      expect(wrapper.text()).not.toContain('Thread')
+    })
+
+    it('看板 tab 原地不动(方案 C 不把看板迁全屏)', async () => {
+      const wrapper = mountPanel()
+      await wrapper.findAll('.empty-action').find(button => button.text() === 'Board')!.trigger('click')
+      await settle()
+      expect(wrapper.find('.workbench-tab-label').text()).toBe('Board')
+    })
   })
 
   it('re-adopts surviving PTYs as tabs on mount (renderer reload recovery)', async () => {

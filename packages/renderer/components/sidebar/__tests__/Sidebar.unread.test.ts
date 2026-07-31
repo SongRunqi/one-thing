@@ -55,6 +55,11 @@ vi.mock('@/stores/chat', () => ({
 vi.mock('@/stores/workspace', () => ({
   useWorkspaceStore: () => ({ openSession: vi.fn() }),
 }))
+// 外壳形态门(C1):这一组验的是与形态无关的未读徽标,钉死在 classic 上 ——
+// 「进行中」区不挂,左栏与从前逐像素一致。workbench 那一路见 Sidebar.workbench.test.ts。
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => ({ settings: { ui: { shellMode: 'classic' } } }),
+}))
 vi.mock('@/stores/agents', () => ({
   DEFAULT_AGENT_ID: 'default',
   useAgentsStore: () => ({

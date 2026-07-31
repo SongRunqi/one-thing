@@ -35,11 +35,19 @@ const mocks = vi.hoisted(() => {
         mocks.sessionsStore.sessions.find((item: any) => item.id === sessionId),
       ),
     },
+    // 外壳形态:这组用例全是直聊,所以走哪个档都该是旧壳(TabBar + ChatPanel)。
+    settingsStore: {
+      settings: { ui: { shellMode: 'workbench' }, general: {}, chat: {} } as Record<string, unknown>,
+    },
   }
 })
 
 vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => mocks.sessionsStore,
+}))
+
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => mocks.settingsStore,
 }))
 
 vi.mock('../TabBar.vue', () => ({
@@ -81,6 +89,16 @@ vi.mock('../TabBar.vue', () => ({
       </div>
     `,
   },
+}))
+
+// 房面(去复用重构 R1)在直聊上永不挂载,但它是 ChatWindow 的静态 import ——
+// 与 ChatPanel 一样打桩,免得把 InputBox 的整条依赖链拖进这组直聊测试。
+vi.mock('../room/RoomHeader.vue', () => ({
+  default: { name: 'RoomHeader', template: '<div class="mock-room-header" />' },
+}))
+
+vi.mock('../room/RoomSurface.vue', () => ({
+  default: { name: 'RoomSurface', template: '<div class="mock-room-surface" />' },
 }))
 
 vi.mock('../ChatPanel.vue', () => ({

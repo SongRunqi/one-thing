@@ -25,6 +25,11 @@ vi.mock('@/stores/chat', () => ({
   useChatStore: () => mocks.chatStore,
 }))
 
+// 外壳形态(R1 的房面闸要读它)。这组用例全是直聊,走哪个档都该是旧壳。
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => ({ settings: { ui: { shellMode: 'workbench' }, general: {}, chat: {} } }),
+}))
+
 vi.mock('@/components/chat/ChatWindow.vue', () => ({
   default: {
     name: 'ChatWindow',

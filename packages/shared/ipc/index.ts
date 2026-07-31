@@ -506,6 +506,8 @@ export type {
 	WechatChannelSettings,
 	ChannelSettings,
 	EvalsSettings,
+	ShellMode,
+	UISettings,
 	AppSettings,
 	GetSettingsResponse,
 	SaveSettingsRequest,

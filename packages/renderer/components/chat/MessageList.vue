@@ -40,60 +40,80 @@
           <span>{{ pageHistorySummary }}</span>
         </Button>
 
-        <template
-          v-for="(message, index) in messages"
-          :key="message.id || index"
-        >
-          <!-- Time break: its own row in the same flow, never a wrapper —
-               one message stays one measurable row. -->
-          <RoomTimeCapsule
-            v-if="isRoomRowVisible(index) && roomCapsuleLabel(index)"
-            :label="roomCapsuleLabel(index)"
-          />
+        <!-- 聊天面(say-only,C2′):群聊 / 私聊 / agent 互聊房走**另一棵组件树**。
+             它只画 say —— 署名、正文 markdown、附件、引用、一个「展开执行 →」;
+             工具卡 / StepsPanel / diff 全部留在右栏线程(W3/W4)。
+             这一层仍然是列表**外壳**:滚动跟随、锚点、分页、权限审批、导航轨
+             都还在下面这个组件里,新树不复制一份(见 SayChatFlow 文件头)。
+             classic 与直聊一个字节都碰不到这个分支。 -->
+        <SayChatFlow
+          v-if="saySurfaceActive"
+          :messages="messages"
+          :session-id="effectiveSessionId"
+          :dm-mode="isUserDmSession"
+          :pair-dm-mode="isPairDmSession"
+          :highlighted-message-id="highlightedMessageId"
+          @reply-to="(replyTo) => emit('replyTo', replyTo)"
+          @react="handleReact"
+          @jump-to-message="handleJumpToMessage"
+        />
 
-          <div
-            v-if="isRoomRowVisible(index)"
-            class="message-list-row"
-            :class="roomRowClass(index)"
-            :data-index="index"
-            :data-message-id="message.id"
+        <template v-if="!saySurfaceActive">
+          <template
+            v-for="(message, index) in messages"
+            :key="message.id || index"
           >
-            <MessageItem
-              :message="message"
-              :branches="getBranchesForMessage(message.id)"
-              :can-branch="canCreateBranch"
-              :is-highlighted="message.id === highlightedMessageId"
-              :room-mode="isRoomSession"
-              :dm-mode="isUserDmSession"
-              :pair-dm-mode="isPairDmSession"
-              :group-head="isRoomGroupHead(index)"
-              :group-tail="isRoomGroupTail(index)"
-              :group-collapsible="Boolean(roomGroupToggleFor(index))"
-              :group-collapsed="isRoomGroupCollapsed(index)"
-              :group-message-count="roomGroupMessageCount(index)"
-              @toggle-group="toggleRoomGroup(index)"
-              @edit="handleEdit"
-              @reply="(replyTo) => emit('replyTo', replyTo)"
-              @react="handleReact"
-              @jump-to-message="handleJumpToMessage"
-              @branch="handleBranch"
-              @go-to-branch="handleGoToBranch"
-              @text-selection="handleTextSelection"
-              @regenerate="handleRegenerate"
-              @execute-tool="handleExecuteTool"
-              @open-file="(filePath) => emit('openFile', filePath)"
-              @update-thinking-time="handleUpdateThinkingTime"
+            <!-- Time break: its own row in the same flow, never a wrapper —
+                 one message stays one measurable row. -->
+            <RoomTimeCapsule
+              v-if="isRoomRowVisible(index) && roomCapsuleLabel(index)"
+              :label="roomCapsuleLabel(index)"
             />
-          </div>
 
-          <!-- Goal outcome: belongs to the run, so it sits after the reply
-               that ended it rather than on the declaration that opened it. -->
-          <GoalSummaryCard
-            v-for="settledGoal in goalSummariesByIndex.get(index)"
-            :key="settledGoal.id"
-            :goal="settledGoal"
-            @review="emit('reviewGoal', props.sessionId || '')"
-          />
+            <div
+              v-if="isRoomRowVisible(index)"
+              class="message-list-row"
+              :class="roomRowClass(index)"
+              :data-index="index"
+              :data-message-id="message.id"
+            >
+              <MessageItem
+                :message="message"
+                :branches="getBranchesForMessage(message.id)"
+                :can-branch="canCreateBranch"
+                :is-highlighted="message.id === highlightedMessageId"
+                :room-mode="isRoomSession"
+                :dm-mode="isUserDmSession"
+                :pair-dm-mode="isPairDmSession"
+                :group-head="isRoomGroupHead(index)"
+                :group-tail="isRoomGroupTail(index)"
+                :group-collapsible="Boolean(roomGroupToggleFor(index))"
+                :group-collapsed="isRoomGroupCollapsed(index)"
+                :group-message-count="roomGroupMessageCount(index)"
+                @toggle-group="toggleRoomGroup(index)"
+                @edit="handleEdit"
+                @reply="(replyTo) => emit('replyTo', replyTo)"
+                @react="handleReact"
+                @jump-to-message="handleJumpToMessage"
+                @branch="handleBranch"
+                @go-to-branch="handleGoToBranch"
+                @text-selection="handleTextSelection"
+                @regenerate="handleRegenerate"
+                @execute-tool="handleExecuteTool"
+                @open-file="(filePath) => emit('openFile', filePath)"
+                @update-thinking-time="handleUpdateThinkingTime"
+              />
+            </div>
+
+            <!-- Goal outcome: belongs to the run, so it sits after the reply
+                 that ended it rather than on the declaration that opened it. -->
+            <GoalSummaryCard
+              v-for="settledGoal in goalSummariesByIndex.get(index)"
+              :key="settledGoal.id"
+              :goal="settledGoal"
+              @review="emit('reviewGoal', props.sessionId || '')"
+            />
+          </template>
         </template>
 
         <div
@@ -161,69 +181,12 @@
       </Button>
     </Transition>
 
-    <!-- Reject Reason Dialog -->
-    <Teleport to="body">
-      <Transition name="modal-fade">
-        <div
-          v-if="showRejectDialog"
-          class="reject-dialog-overlay"
-          @click.self="cancelReject"
-        >
-          <div class="reject-dialog">
-            <div class="reject-dialog-header">
-              <span class="reject-dialog-title">Reject reason</span>
-              <Button
-                unstyled
-                class="reject-dialog-close"
-                @click="cancelReject"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </Button>
-            </div>
-            <div class="reject-dialog-body">
-              <textarea
-                ref="rejectReasonInputRef"
-                v-model="rejectReason"
-                class="reject-reason-input"
-                placeholder="Reason for rejection (optional)..."
-                rows="3"
-                @keydown.enter.ctrl="confirmReject"
-                @keydown.enter.meta="confirmReject"
-                @keydown.escape="cancelReject"
-              />
-              <div class="reject-dialog-hint">
-                Ctrl+Enter to confirm · Esc to cancel
-              </div>
-            </div>
-            <div class="reject-dialog-footer">
-              <Button
-                unstyled
-                class="reject-dialog-btn reject-dialog-btn-cancel"
-                @click="cancelReject"
-              >
-                Cancel
-              </Button>
-              <Button
-                unstyled
-                class="reject-dialog-btn reject-dialog-btn-confirm"
-                @click="confirmReject"
-              >
-                Reject
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+    <!-- Reject Reason Dialog — 组件化后与房面共用同一个(去复用重构 R1)。 -->
+    <RejectReasonDialog
+      :visible="showRejectDialog"
+      @confirm="confirmReject"
+      @cancel="cancelReject"
+    />
 
     <!-- Room reaction failures (§3.6: a trace line, never a card). Rare and
          self-clearing — a chip that refused to toggle otherwise looks like a
@@ -253,6 +216,9 @@ import {
   type RoomMessageGroup,
   type RoomMessageLike,
 } from './message/room-grouping'
+import SayChatFlow from './say/SayChatFlow.vue'
+import RejectReasonDialog from './permission/RejectReasonDialog.vue'
+import { SAY_METRICS, shouldUseSayTypography } from './say/say-typography'
 import SelectionToolbar from './message/SelectionToolbar.vue'
 import EmptyState from './EmptyState.vue'
 import AssistantMessageNavRail from './AssistantMessageNavRail.vue'
@@ -267,7 +233,12 @@ import { ArrowDown } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
+import { resolveShellMode } from '@/composables/useShellMode'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
+import { useCollabReactions } from '@/composables/useCollabReactions'
+import { usePermissionResponder } from '@/composables/usePermissionResponder'
+import { useHistoryPagination } from '@/composables/useHistoryPagination'
+import type { PermissionResponse } from './permission/permission-ledger'
 import {
   useFollowScroll,
   shouldShowScrollToBottomButton,
@@ -331,50 +302,11 @@ function handleJumpToMessage(messageId: string) {
   void scrollToMessage(messageId, { preserveNavigation: true })
 }
 
-/** Failure trace for room actions taken from the list (self-clearing). */
-const reactionHint = ref('')
-let reactionHintTimer: ReturnType<typeof setTimeout> | null = null
-
-function showReactionHint(message: string): void {
-  reactionHint.value = message
-  if (reactionHintTimer) clearTimeout(reactionHintTimer)
-  reactionHintTimer = setTimeout(() => {
-    reactionHint.value = ''
-    reactionHintTimer = null
-  }, 4000)
-}
-
 /**
- * Toggle an emoji on a room message (§3.5 B). No optimistic write: the app
- * layer broadcasts `message:updated` and the store merges it, so the chip row
- * is always showing what was actually persisted.
- *
- * Which means a REFUSED write is invisible by construction — the chips simply
- * stay as they were, exactly as they would after a click that did nothing. The
- * reply is consumed for that reason (P2-19); the actor is not sent at all any
- * more, because the main process pins it to the user (P2-20).
- *
- * Every argument crossing the bridge is a PRIMITIVE — a reactive proxy cannot
- * survive structured clone (W7 血教训).
+ * Toggle an emoji on a room message (§3.5 B) —— 实现已抬进
+ * `useCollabReactions`(去复用重构 R1),房面与这里共用同一份。
  */
-async function handleReact(messageId: string, emoji: string) {
-  const sessionId = effectiveSessionId.value
-  if (!sessionId || !messageId || !emoji) return
-  try {
-    const response = await platformApi.reactToCollabMessage(
-      String(sessionId),
-      String(messageId),
-      String(emoji),
-      { type: 'user' },
-    )
-    if (response && response.success === false) {
-      showReactionHint(response.error || '这个表情没有记上')
-    }
-  } catch (error) {
-    console.error('[collab] reaction failed:', error)
-    showReactionHint(error instanceof Error ? error.message : String(error))
-  }
-}
+const { reactionHint, react: handleReact } = useCollabReactions(() => effectiveSessionId.value)
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
@@ -392,9 +324,7 @@ let searchHighlightTimer: ReturnType<typeof setTimeout> | null = null
 
 // Reject reason dialog state
 const showRejectDialog = ref(false)
-const rejectReason = ref('')
 const pendingRejectToolCall = ref<PermissionToolCall | null>(null)
-const rejectReasonInputRef = ref<HTMLTextAreaElement | null>(null)
 
 // Get the effective session for this panel (props.sessionId or fallback to global)
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -425,6 +355,19 @@ const isUserDmSession = computed(() => isRoomSession.value && isUserDmRoom(panel
  * 同一种发言,气泡上要看得出来。
  */
 const isPairDmSession = computed(() => isRoomSession.value && isAgentPairDmRoom(panelSession.value?.room))
+
+// ── 聊天面(say-only)分流门 ── docs/design/im-workbench-layout.md §3 W2 / W-Q4
+//
+// **判据只有两条,没有第三条**:
+//  1. `kind === 'room'` —— 群聊房、单成员 dm 房、agent 互聊 pair 房三者都是
+//     room,这正是 W-Q4 划的覆盖范围。直聊(kind='chat')与**执行会话**
+//     (kind='work')都不是 room:直聊本身就是工程驾驶舱,执行会话打开就是要看
+//     那一整套工具卡/StepsPanel —— 它们继续走既有 MessageItem 组件树。
+//  2. workbench 外壳 —— classic 是逐像素回滚闸,新树在那儿一行都不许挂。
+//
+// 门是 DOM 级的:两棵树从不同时挂载,所以"两套署名同时渲染"在结构上不可能。
+const shellMode = computed(() => resolveShellMode(settingsStore.settings))
+const saySurfaceActive = computed(() => isRoomSession.value && shellMode.value === 'workbench')
 
 const roomLayout = computed(() =>
   isRoomSession.value ? buildRoomMessageLayout(props.messages) : EMPTY_ROOM_LAYOUT,
@@ -541,6 +484,15 @@ function roomRowClass(index: number): string | undefined {
   return undefined
 }
 
+/** 聊天面排版档是否接管(用户有过显式排版选择就整档退让)。 */
+const sayTypographyActive = computed(() => shouldUseSayTypography({
+  shellMode: shellMode.value,
+  isSaySurface: saySurfaceActive.value,
+  messageListDensity: settingsStore.settings.general?.messageListDensity,
+  messageLineHeight: settingsStore.settings.general?.messageLineHeight,
+  chatFontSize: settingsStore.settings.chat?.chatFontSize,
+}))
+
 // Get current message list density setting
 const messageListDensity = computed(() => {
   return settingsStore.settings.general?.messageListDensity || 'comfortable'
@@ -593,15 +545,26 @@ const messageListStyles = computed(() => {
   const styles: Record<string, string> = {}
   const density = messageListDensity.value
   const densityTypography = getDensityTypography(density)
-  const fontSize = Number(chatFontSize.value) || densityTypography.fontSize
-  const lineHeight = Number(customLineHeight.value) || densityTypography.lineHeight
-  const contentSpacing = densityTypography.contentSpacing
+  // 聊天面档(C2′):say-only 的房/私聊面按方案 A 排版(13 / 1.72)。
+  // 它与用户的排版选择是**整档二选一**,不做逐项混合 —— 判据与那条「出厂默认
+  // 值不算用户选过」的退让闸都在 say/say-typography.ts 里。
+  const say = sayTypographyActive.value
+  const fontSize = say ? SAY_METRICS.fontSize : (Number(chatFontSize.value) || densityTypography.fontSize)
+  const lineHeight = say ? SAY_METRICS.lineHeight : (Number(customLineHeight.value) || densityTypography.lineHeight)
+  const contentSpacing = say ? SAY_METRICS.contentSpacing : densityTypography.contentSpacing
 
   if (customLineHeight.value) {
     styles['--message-line-height'] = String(customLineHeight.value)
   }
   if (chatFontSize.value) {
     styles['--message-font-size'] = `${chatFontSize.value}px`
+  }
+  // 字号/行高/回合间距一起改,派生量在下面按同一对数算 —— 三者绝不允许来自
+  // 不同的档(那正是"字号变了行高没变"的排版错位)。
+  if (say) {
+    styles['--message-font-size'] = `${SAY_METRICS.fontSize}px`
+    styles['--message-line-height'] = String(SAY_METRICS.lineHeight)
+    styles['--chat-turn-gap'] = `${SAY_METRICS.turnGapPx}px`
   }
   if (chatFontEn.value || chatFontZh.value) {
     styles['--font-body'] = buildFontFamily(chatFontEn.value, chatFontZh.value)
@@ -637,8 +600,6 @@ let measurementRefreshFrame: number | null = null
 let navResizeObserver: ResizeObserver | null = null
 let isAssistantOutlineNavigating = false
 let assistantOutlineCooldownTimer: ReturnType<typeof setTimeout> | null = null
-let isPrependingHistory = false
-let isLoadingNewerHistory = false
 let renderMeasureStart: number | null = null
 let renderMeasureSessionId = ''
 let renderMeasureMessageCount = 0
@@ -716,6 +677,27 @@ const scrollCoordinator = useMessageScrollCoordinator({
   onStateChange: updateScrollToBottomButton,
 })
 
+// 历史分页(向上补旧 / 向下补新)—— 与房面共用同一份实现与阈值(R1)。
+const historyPagination = useHistoryPagination({
+  scroller: messageListRef,
+  content: messageListContentRef,
+  getSessionId: () => effectiveSessionId.value,
+  getPageState: () => pageState.value,
+  isSwitching: () => follow.isSwitching(),
+  isFollowing,
+  clearScrollMode: () => scrollCoordinator.clear(),
+  getMessageRowById,
+  writeScrollTop: top => scrollCoordinator.writeScrollTop(top),
+  onLoaded: () => {
+    scheduleMeasurementRefresh()
+    scheduleNavMarkerUpdate()
+    scheduleAssistantOutlineUpdate()
+    scheduleVisibleUserMessageIndexUpdate()
+  },
+  onSettled: () => updateScrollToBottomButton(),
+})
+const { loadOlderHistoryIfNeeded, loadNewerHistoryIfNeeded } = historyPagination
+
 // Auto-scroll: while a response is streaming, keep the scroller pinned to its natural bottom.
 // Composer safety is real tail padding below the list content, so "follow" and
 // the real scrollbar bottom stay identical even as the composer changes height.
@@ -761,7 +743,7 @@ function updateScrollToBottomButton() {
 // fire an extra nudge here so a store bump doesn't have to wait for layout.
 watch([effectiveScrollVersion, () => props.messages.length], () => {
   if (props.messages.length === 0) return
-  if (isPrependingHistory) return
+  if (historyPagination.isPrepending()) return
   nextTick(() => scheduleFollowNudge('watch:scrollVersion+msgLen'))
 }, { flush: 'post' })
 
@@ -1008,7 +990,7 @@ watch(
     renderMeasureMessageCount = props.messages.length
     // Skip during session switch — snapshot restore will set the correct state
     if (follow.isSwitching()) return
-    if (isPrependingHistory) return
+    if (historyPagination.isPrepending()) return
 
     // Reset navigation highlight (don't highlight on new message arrival)
     hasNavigated.value = false
@@ -1415,79 +1397,8 @@ function captureTopAnchor(): TopAnchor | null {
   }
 }
 
-function restoreTopAnchor(anchor: TopAnchor | null) {
-  if (!anchor) return
-  const scroller = messageListRef.value
-  const row = getMessageRowById(anchor.messageId)
-  if (!scroller || !row) return
-  scrollCoordinator.writeScrollTop(row.offsetTop + anchor.offsetWithinMessage)
-}
-
-const HISTORY_AUTO_LOAD_THRESHOLD_RATIO = 1.75
-
-function getAutoLoadThreshold(el: HTMLElement): number {
-  // Use clientHeight-based threshold so it scales with viewport size
-  // and large messages don't require pixel-perfect top-edge hugging.
-  return Math.round(el.clientHeight * HISTORY_AUTO_LOAD_THRESHOLD_RATIO)
-}
-
-async function loadOlderHistoryIfNeeded(force = false) {
-  const sessionId = effectiveSessionId.value
-  const scroller = messageListRef.value
-  const state = pageState.value
-  if (follow.isSwitching()) return
-  if (!sessionId || !scroller || !state?.hasMoreBefore || state.isLoadingOlder || isPrependingHistory) return
-  if (!force && scroller.scrollTop > getAutoLoadThreshold(scroller)) return
-
-  const anchor = captureTopAnchor()
-  // Clear tail/anchor mode before prepend — the user has scrolled to the
-  // top to load history, so pinning to bottom or a stale anchor is wrong.
-  // Restore position is handled by restoreTopAnchor below.
-  scrollCoordinator.clear()
-  isPrependingHistory = true
-  const wasFollowing = isFollowing.value
-  try {
-    const loaded = await chatStore.loadOlderMessages(sessionId)
-    if (loaded) {
-      await nextTick()
-      restoreTopAnchor(anchor)
-      scheduleMeasurementRefresh()
-      scheduleNavMarkerUpdate()
-      scheduleAssistantOutlineUpdate()
-      scheduleVisibleUserMessageIndexUpdate()
-    }
-  } finally {
-    isFollowing.value = wasFollowing
-    isPrependingHistory = false
-    updateScrollToBottomButton()
-  }
-}
-
-async function loadNewerHistoryIfNeeded() {
-  const sessionId = effectiveSessionId.value
-  const scroller = messageListRef.value
-  const state = pageState.value
-  if (follow.isSwitching()) return
-  if (!sessionId || !scroller || !state?.hasMoreAfter || state.isLoadingOlder || isLoadingNewerHistory) return
-  
-  const distanceToBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
-  if (distanceToBottom > getAutoLoadThreshold(scroller)) return
-  
-  isLoadingNewerHistory = true
-  try {
-    const loaded = await chatStore.loadNewerMessages(sessionId)
-    if (loaded) {
-      await nextTick()
-      scheduleMeasurementRefresh()
-      scheduleNavMarkerUpdate()
-      scheduleAssistantOutlineUpdate()
-      scheduleVisibleUserMessageIndexUpdate()
-    }
-  } finally {
-    isLoadingNewerHistory = false
-    updateScrollToBottomButton()
-  }
-}
+// 历史分页已抬进 `useHistoryPagination`(去复用重构 R1),行为逐字不变;
+// 房面自带滚动容器,复用的是同一份阈值与锚点还原。见文件中部的 historyPagination。
 
 async function scrollToMessage(
   messageId: string,
@@ -2255,69 +2166,24 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
   }
 }
 
-// Handle tool confirmation (for permission-gated tool calls)
-type PermissionResponse = 'once' | 'session' | 'workdir'
-
-async function handleConfirmTool(toolCall: PermissionToolCall, response: PermissionResponse = 'once') {
-  const currentSession = panelSession.value
-  if (!currentSession) return
-
-  // Find the message containing this tool call
-  const message = props.messages.find(m =>
-    m.toolCalls?.some(tc => tc.id === toolCall.id)
-  )
-  const tc = message?.toolCalls?.find(t => t.id === toolCall.id)
-
-  // Find and update the corresponding step
-  const step = message?.steps?.find(s => s.toolCallId === toolCall.id)
-
-  if (!toolCall.canRespond) {
-    console.warn('[Frontend] Permission response ignored: no live prompt for tool call', toolCall.id)
-    return
-  }
-
-  // Use unified command channel to respond (EventBus → Permission validates
-  // channel). The tool call id is the durable correlation key — the manager
-  // resolves it to the pending prompt; requestId is a hint when we caught it.
-  console.log(`[Frontend] Responding to permission for tool call ${toolCall.id} with ${response}`)
-  try {
-    await platformApi.emitCommand(currentSession.id, {
-      type: 'command:permission-respond',
-      requestId: toolCall.permissionId,
-      toolCallId: toolCall.id,
-      decision: response,
-    })
-    // The backend will handle execution and resume - just update UI state
-    if (tc) {
-      tc.status = 'executing'
-      tc.requiresConfirmation = false
-    }
-    if (step) {
-      step.status = 'running'
-      if (message?.steps) {
-        message.steps = [...message.steps]
-      }
-    }
-  } catch (error) {
-    console.error('Failed to respond to permission:', error)
-  }
-}
+// Handle tool confirmation (for permission-gated tool calls).
+// 应答本身(emitCommand + 本地收尾)已抬进 `usePermissionResponder`,房面与这里
+// 共用同一份 —— 见去复用重构 R1 §8 铁律 1。
+const { confirmTool: handleConfirmTool, rejectTool: handleRejectTool } = usePermissionResponder({
+  getSessionId: () => panelSession.value?.id,
+  getMessages: () => props.messages,
+})
 
 // Open the reject reason dialog
 function openRejectDialog(toolCall: PermissionToolCall) {
   pendingRejectToolCall.value = toolCall
-  rejectReason.value = ''
   showRejectDialog.value = true
-  // Focus the textarea after dialog opens
-  nextTick(() => {
-    rejectReasonInputRef.value?.focus()
-  })
 }
 
 // Confirm rejection with reason
-function confirmReject() {
+function confirmReject(reason?: string) {
   if (pendingRejectToolCall.value) {
-    handleRejectTool(pendingRejectToolCall.value, rejectReason.value.trim() || undefined)
+    void handleRejectTool(pendingRejectToolCall.value, reason)
   }
   cancelReject()
 }
@@ -2325,66 +2191,7 @@ function confirmReject() {
 // Cancel the reject dialog
 function cancelReject() {
   showRejectDialog.value = false
-  rejectReason.value = ''
   pendingRejectToolCall.value = null
-}
-
-// Handle tool rejection with optional reason
-async function handleRejectTool(toolCall: PermissionToolCall, rejectReasonArg?: string) {
-  // Update the tool call status to cancelled/rejected
-  const currentSession = panelSession.value
-  if (!currentSession) return
-
-  // Find the message containing this tool call and update its status
-  const message = props.messages.find(m =>
-    m.toolCalls?.some(tc => tc.id === toolCall.id)
-  )
-
-  // Only send when the live permission manager has an emitted prompt; the
-  // local UI cleanup below still runs either way.
-  if (toolCall.canRespond) {
-    // Use unified command channel to reject (EventBus → Permission validates channel)
-    console.log(`[Frontend] Rejecting permission for tool call ${toolCall.id}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
-    try {
-      await platformApi.emitCommand(currentSession.id, {
-        type: 'command:permission-respond',
-        requestId: toolCall.permissionId,
-        toolCallId: toolCall.id,
-        decision: 'reject',
-        rejectReason: rejectReasonArg,
-      })
-    } catch (error) {
-      console.error('Failed to respond to permission:', error)
-    }
-  }
-
-  if (message) {
-    const rejectionMessage = rejectReasonArg
-      ? `The user rejected permission for this tool. Reason: ${rejectReasonArg}`
-      : 'The user rejected permission for this tool.'
-    const tc = message.toolCalls?.find(t => t.id === toolCall.id)
-    if (tc) {
-      tc.status = 'failed'
-      tc.error = rejectionMessage
-      tc.rejected = true
-      tc.rejectionReason = rejectReasonArg
-      tc.requiresConfirmation = false
-    }
-
-    // Update the corresponding step (step-own fields only; step.toolCall is
-    // the same reference as tc above, so its fields are already updated).
-    const step = message.steps?.find(s => s.toolCallId === toolCall.id)
-    if (step) {
-      step.status = 'failed'
-      step.error = rejectionMessage
-      step.rejected = true
-      step.rejectionReason = rejectReasonArg
-      // Force reactivity
-      if (message.steps) {
-        message.steps = [...message.steps]
-      }
-    }
-  }
 }
 
 // Handle updating thinking time for a message
@@ -2886,173 +2693,4 @@ defineExpose({
 
 }
 
-/* Reject Reason Dialog */
-.reject-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-max);
-}
-
-.reject-dialog {
-  background: var(--ui-surface-panel-bg, var(--panel));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 16px;
-  width: 90%;
-  max-width: 420px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-}
-
-.reject-dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.reject-dialog-title {
-  font-size: var(--type-headline-size);
-  font-weight: var(--type-headline-weight);
-  line-height: var(--type-headline-line-height);
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.reject-dialog-close {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ui-text-muted-fg, var(--muted));
-  transition: all 0.15s ease;
-}
-
-.reject-dialog-close:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.reject-dialog-body {
-  padding: 20px;
-}
-
-.reject-reason-input {
-  width: 100%;
-  min-height: 80px;
-  padding: 12px 14px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 10px;
-  background: var(--base);
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line-height);
-  resize: vertical;
-  font-family: inherit;
-  transition: border-color 0.15s ease;
-}
-
-.reject-reason-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.reject-reason-input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
-}
-
-.reject-dialog-hint {
-  margin-top: 8px;
-  font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line-height);
-  color: var(--ui-text-muted-fg, var(--muted));
-  text-align: right;
-}
-
-.reject-dialog-footer {
-  display: flex;
-  gap: 10px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-  justify-content: flex-end;
-}
-
-.reject-dialog-btn {
-  padding: 8px 18px;
-  border-radius: 8px;
-  font-size: var(--type-label-size);
-  font-weight: var(--type-label-weight);
-  line-height: var(--type-label-line-height);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border: 1px solid transparent;
-}
-
-.reject-dialog-btn-cancel {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-border-default-border, var(--border));
-}
-
-.reject-dialog-btn-cancel:hover {
-  background: var(--base);
-}
-
-.reject-dialog-btn-confirm {
-  background: linear-gradient(135deg, var(--ui-status-danger-fg, #b3403a) 0%, var(--ui-status-danger-fg, #b3403a) 100%);
-  color: white;
-  border-color: var(--ui-status-danger-fg, #b3403a);
-}
-
-.reject-dialog-btn-confirm:hover {
-  background: linear-gradient(135deg, var(--ui-status-danger-fg, #b3403a) 0%, var(--ui-status-danger-fg, #b3403a) 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
-}
-
-.reject-dialog-btn-confirm:active {
-  transform: translateY(0);
-}
-
-/* Modal fade transition */
-.modal-fade-enter-active,
-.modal-fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.modal-fade-enter-active .reject-dialog,
-.modal-fade-leave-active .reject-dialog {
-  transition: transform 0.2s ease, opacity 0.2s ease;
-}
-
-.modal-fade-enter-from,
-.modal-fade-leave-to {
-  opacity: 0;
-}
-
-.modal-fade-enter-from .reject-dialog,
-.modal-fade-leave-to .reject-dialog {
-  transform: scale(0.95) translateY(-10px);
-  opacity: 0;
-}
-
-/* Light theme adjustments */
-html[data-theme='light'] .reject-dialog-overlay {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-html[data-theme='light'] .reject-dialog {
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-}
 </style>

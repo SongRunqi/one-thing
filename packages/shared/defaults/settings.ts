@@ -17,6 +17,7 @@ import type {
   SoulMemoryReadSettings,
   SoulMemoryReviewSettings,
   SoulMemorySettings,
+  UISettings,
 } from '../ipc/settings.js'
 import type { VoiceSettings } from '../ipc/voice.js'
 import type { MusicRadioSource, MusicSettings } from '../ipc/music.js'
@@ -76,6 +77,14 @@ export const DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS: Required<SoulMemoryLoggingSet
   level: 'info',
   maxPreviewChars: 600,
   includeHttpErrorBody: true,
+}
+
+/**
+ * 外壳形态默认值(docs/design/im-workbench-layout.md §5 C0)。
+ * 默认 'workbench';改成 'classic' 即整体回滚到改造前的外壳。
+ */
+export const DEFAULT_UI_SETTINGS: Required<UISettings> = {
+  shellMode: 'workbench',
 }
 
 export const DEFAULT_SOUL_MEMORY_SETTINGS: Required<SoulMemorySettings> = {
@@ -472,6 +481,7 @@ export function createDefaultSettings(): AppSettings {
     network: JSON.parse(JSON.stringify(DEFAULT_NETWORK_SETTINGS)),
     channels: JSON.parse(JSON.stringify(DEFAULT_CHANNEL_SETTINGS)),
     acp: JSON.parse(JSON.stringify(DEFAULT_ACP_SETTINGS)),
+    ui: JSON.parse(JSON.stringify(DEFAULT_UI_SETTINGS)),
   }
 }
 
@@ -557,6 +567,11 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     mcp: settings.mcp,
     acp: normalizeACPSettings(settings.acp),
     skills: settings.skills,
+    // 必须显式列出:`merged` 是白名单式重建,漏掉的键会被静默丢弃
+    // (settings.json 里改了也不生效),而结尾的 `as AppSettings` 断言把这件事
+    // 藏了起来。C0 审计:`storage` 与 `evals` 就是这样两个既有漏项(见
+    // settings.test.ts 的「白名单漏键审计」,那条测试同时挡住第三个漏项)。
+    ui: normalizeUISettings(settings.ui),
   }
 
   stripProviderLocalAddress(merged.ai.providers)
@@ -567,6 +582,16 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
   }
 
   return merged as AppSettings
+}
+
+/**
+ * 只认 'classic' 一个显式值,其余(缺省/脏值)一律落到 'workbench'。
+ * 回滚闸必须是「写对才生效」,不能让一个拼错的字符串把用户悄悄留在旧外壳。
+ */
+export function normalizeUISettings(settings?: UISettings): Required<UISettings> {
+  return {
+    shellMode: settings?.shellMode === 'classic' ? 'classic' : DEFAULT_UI_SETTINGS.shellMode,
+  }
 }
 
 function normalizeChannelSettings(settings?: Partial<ChannelSettings>): ChannelSettings {

@@ -72,6 +72,11 @@ vi.mock('@/stores/chat', () => ({
 vi.mock('@/stores/workspace', () => ({
   useWorkspaceStore: () => ({ openSession: mocks.openSession }),
 }))
+// 外壳形态门(C1):联系人区的行为与形态无关,钉死在 classic 上 ——
+// 「进行中」区不挂,左栏与从前逐像素一致。
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => ({ settings: { ui: { shellMode: 'classic' } } }),
+}))
 vi.mock('@/stores/agents', () => ({
   DEFAULT_AGENT_ID: 'default',
   useAgentsStore: () => ({

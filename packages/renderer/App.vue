@@ -214,6 +214,7 @@ import { useChatStore } from '@/stores/chat'
 import { useThemeStore } from '@/stores/themes'
 import { useVoiceStore } from '@/stores/voice'
 import { useShortcuts } from '@/composables/useShortcuts'
+import { resolveInspectorDefaultOpen, resolveShellMode } from '@/composables/useShellMode'
 import { Sidebar } from '@/components/sidebar'
 import ChatContainer from '@/components/ChatContainer.vue'
 import Container from '@/components/common/Container.vue'
@@ -287,6 +288,73 @@ const rightWorkbenchRef = ref<InstanceType<typeof RightWorkbenchPanel> | null>(n
 const inspectorOpen = computed({
   get: () => chatStore.inspectorOpen,
   set: (val) => { chatStore.inspectorOpen = val }
+})
+
+/* ─── 工作台式外壳(im-workbench-layout.md §5 C0)─────────────────────────
+   workbench(默认)= 常驻左栏以活为脊 + 账页流 + 常驻右栏;
+   classic         = 改造前的外壳,逐像素不变(§6 回滚闸)。
+   形态推导全部走 useShellMode 的纯函数,两种模式的分野在那里有测试钉着。 */
+const shellMode = computed(() => resolveShellMode(settingsStore.settings))
+const isWorkbenchShell = computed(() => shellMode.value === 'workbench')
+
+/* `data-shell-mode` 是外壳形态的**唯一** CSS 门。C1–C4 的视觉差异一律写成
+   `:root[data-shell-mode='workbench'] …`,于是不需要每个组件各自 import 一次
+   判定、也不需要往下透传 prop —— 一个属性管住整棵树;classic 下属性值是
+   'classic',所有 workbench 规则一条都不命中,像素与改造前一致。
+   辅助窗也写:形态是全 app 的事实。 */
+watch(shellMode, (mode) => {
+  if (typeof document === 'undefined') return
+  document.documentElement.setAttribute('data-shell-mode', mode)
+}, { immediate: true })
+
+/* 右栏开合的持久化(W-Q2)。沿用右栏自己既有的那套 —— `inspectorPanelSize`
+   就住在 localStorage —— 而不是另开一条 appState 字段。 */
+const INSPECTOR_OPEN_STORAGE_KEY = 'inspectorOpen'
+
+function readStoredInspectorOpen(): boolean | null {
+  try {
+    const raw = localStorage.getItem(INSPECTOR_OPEN_STORAGE_KEY)
+    if (raw === 'true') return true
+    if (raw === 'false') return false
+  } catch {
+    // localStorage 不可用(隐私模式 / 测试夹具):当作没存过,走窗宽默认值。
+  }
+  return null
+}
+
+function writeStoredInspectorOpen(open: boolean): void {
+  try {
+    localStorage.setItem(INSPECTOR_OPEN_STORAGE_KEY, String(open))
+  } catch {
+    // 存不下就算了:下次启动退回按窗宽的默认值,不影响本次使用。
+  }
+}
+
+/**
+ * 右栏初值(W-Q2:≥1400px 默认展开,否则默认收起但入口保留)。
+ *
+ * 只在设置真的加载完之后跑一次 —— 在那之前 `settingsStore.settings` 还是内置
+ * 默认值(shellMode = 'workbench'),照它去开右栏会把 classic 用户也弹开。
+ * 「默认」不是「强制」:存过的用户选择永远胜出,手动收起的人不会每次被弹开。
+ */
+let inspectorDefaultApplied = false
+function applyInspectorDefaultOnce() {
+  if (inspectorDefaultApplied) return
+  inspectorDefaultApplied = true
+  if (isAuxiliaryWindow.value) return
+  inspectorOpen.value = resolveInspectorDefaultOpen({
+    shellMode: shellMode.value,
+    viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth,
+    stored: readStoredInspectorOpen(),
+  })
+}
+
+/* 之后的每一次开合(手动点、⌘ 面板、代码里打开某个文件)都记账:下次启动
+   照用户上次留下的样子,而不是把窗宽默认值再算一遍。 */
+watch(inspectorOpen, open => {
+  if (!inspectorDefaultApplied || isAuxiliaryWindow.value) return
+  if (!isWorkbenchShell.value) return
+  writeStoredInspectorOpen(open)
 })
 
 // Sidebar width (persisted)
@@ -566,6 +634,19 @@ async function openGoalReviewInRightWorkbench(sessionId: string) {
   rightWorkbenchRef.value?.openGoalReview(sessionId)
 }
 
+/**
+ * 右栏线程直达入口(工作台式外壳 C3,docs/design/im-workbench-layout.md §3 W4)。
+ *
+ * 与看板/文件夹入口同一条 window 事件解耦线路:派事件的地方(左栏活卡片、中栏
+ * 活动线的「展开 →」)离右栏都隔着好几层,不该为了开一个 tab 一路透传 ref。
+ */
+async function openThreadInRightWorkbench(workSessionId: string, title?: string) {
+  if (!workSessionId) return
+  inspectorOpen.value = true
+  await nextTick()
+  rightWorkbenchRef.value?.openThread(workSessionId, title)
+}
+
 // 群聊房间头部的看板直达入口(window 事件解耦:TabBar 深处 → 这里)
 async function openBoardInRightWorkbench() {
   inspectorOpen.value = true
@@ -626,6 +707,12 @@ onMounted(() => {
   window.addEventListener('onething:collab-open-folder', event => {
     const root = (event as CustomEvent<{ root?: string }>).detail?.root
     if (root) void openFolderInRightWorkbench(root)
+  })
+  // C3 契约(左栏活卡片 / 中栏活动线共用,形状不许改):
+  //   CustomEvent<{ workSessionId: string; title?: string; taskId?: string }>
+  window.addEventListener('onething:open-thread', event => {
+    const detail = (event as CustomEvent<{ workSessionId?: string; title?: string }>).detail
+    if (detail?.workSessionId) void openThreadInRightWorkbench(detail.workSessionId, detail.title)
   })
   window.addEventListener(COLLAB_TAG_OPEN_CARD_EVENT, event => {
     const taskId = (event as CustomEvent<{ taskId?: string }>).detail?.taskId
@@ -851,6 +938,8 @@ onMounted(async () => {
     sessionsStore.loadSessions(),
     settingsStore.loadSettings(),
   ])
+  // 右栏初值必须等真设置落地(在此之前 shellMode 读到的是内置默认值)。
+  applyInspectorDefaultOnce()
   void voiceStore.initialize().catch((e) => {
     console.warn('[App] voice init failed', e)
   })

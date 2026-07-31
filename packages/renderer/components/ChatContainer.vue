@@ -112,6 +112,8 @@ import ChatSidePanel from '@/components/chat/ChatSidePanel.vue'
 import PanelTree from '@/components/chat/PanelTree.vue'
 import Container from '@/components/common/Container.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useSettingsStore } from '@/stores/settings'
+import { resolveShellMode } from '@/composables/useShellMode'
 import type { SplitDirection } from '@/stores/workspace-tree'
 import type { PanelEvent } from '@/components/chat/panel-event'
 
@@ -172,8 +174,23 @@ const chatSideOutlineTarget = ref<HTMLElement | null>(null)
 const sidePanelAvailable = ref(false)
 const sidePanelCollapsed = ref(localStorage.getItem(CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY) === 'true')
 let chatResizeObserver: ResizeObserver | null = null
-const chatSidePanelWidth = computed(() => sidePanelCollapsed.value ? CHAT_SIDE_PANEL_COLLAPSED_WIDTH : CHAT_SIDE_PANEL_WIDTH)
-const sidePanelVisible = computed(() => sidePanelAvailable.value || !sidePanelCollapsed.value)
+const chatSidePanelWidth = computed(() =>
+  activeLeafOnRoomSurface.value || sidePanelCollapsed.value
+    ? CHAT_SIDE_PANEL_COLLAPSED_WIDTH
+    : CHAT_SIDE_PANEL_WIDTH)
+
+/**
+ * 房 / 私聊新面上没有 ChatSidePanel(去复用重构 R1,§8.2):它的活(大纲 / 文件 /
+ * 引用)并入右栏 tab 或房头动作。判定与 `ChatWindow.roomSurfaceActive` 同口径,
+ * 只是这里看的是**当前聚焦的那个 leaf** —— 侧栏本来就只服务它。
+ * classic 与直聊一个字节不变。
+ */
+const settingsStore = useSettingsStore()
+const activeLeafOnRoomSurface = computed(() =>
+  activeLeafSession.value?.kind === 'room' && resolveShellMode(settingsStore.settings) === 'workbench')
+
+const sidePanelVisible = computed(() =>
+  !activeLeafOnRoomSurface.value && (sidePanelAvailable.value || !sidePanelCollapsed.value))
 
 function updateSidePanelAvailability() {
   const width = chatPanelsRootRef.value?.getBoundingClientRect().width ?? 0

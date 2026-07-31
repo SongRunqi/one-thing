@@ -136,7 +136,10 @@ describe('App container layout', () => {
     expect(chatContainer).toContain('sidebar-position="right"')
     expect(chatContainer).toContain(':sidebar-width="chatSidePanelWidth"')
     expect(chatContainer).toContain('v-if="sidePanelVisible"')
-    expect(chatContainer).toContain('const sidePanelVisible = computed(() => sidePanelAvailable.value || !sidePanelCollapsed.value)')
+    // 侧栏的可见性口径没变(可用 或 未收起);R1 之后多一道房面闸 ——
+    // 房 / 私聊新面上没有 ChatSidePanel(§8.2),直聊与 classic 一个字节不变。
+    expect(chatContainer).toContain('(sidePanelAvailable.value || !sidePanelCollapsed.value)')
+    expect(chatContainer).toContain('!activeLeafOnRoomSurface.value &&')
     expect(chatContainer).toContain('const CHAT_SIDE_PANEL_COLLAPSED_WIDTH = 0')
     expect(chatContainer).toContain('@outline-target-change="handleSideOutlineTargetChange"')
     expect(chatContainer).toContain('@toggle-collapsed="toggleSidePanelCollapsed"')

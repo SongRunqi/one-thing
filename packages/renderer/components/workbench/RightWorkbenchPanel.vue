@@ -126,6 +126,13 @@
 
         <CollabBoardPanel v-else-if="tab.type === 'board'" />
 
+        <ThreadWorkbench
+          v-else-if="tab.type === 'thread'"
+          :session-id="tab.sessionId || ''"
+          @open-file="openFile"
+          @title-resolved="(title) => renameThreadTab(tab.id, title)"
+        />
+
         <!-- iframe fallback: apps/web host has no WebContentsView -->
         <section
           v-else-if="tab.type === 'browser'"
@@ -207,7 +214,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
-import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, Terminal, X } from 'lucide-vue-next'
+import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Terminal, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import Tabs from '@/components/common/Tabs.vue'
@@ -217,13 +224,14 @@ import TerminalView from '@/components/terminal/TerminalView.vue'
 import BrowserPanel from './browser/BrowserPanel.vue'
 import CollabBoardPanel from './CollabBoardPanel.vue'
 import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
+import ThreadWorkbench from './ThreadWorkbench.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import { useTerminalsStore } from '@/stores/terminals'
 import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board'
+type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread'
 
 interface WorkbenchTab {
   id: string
@@ -231,7 +239,7 @@ interface WorkbenchTab {
   title: string
   filePath?: string
   workspaceRoot?: string
-  /** review tabs only: the session whose goal is under review. */
+  /** review / thread tabs only: the session this tab is bound to. */
   sessionId?: string
   /** review tabs only: bumped to force a refetch on reopen. */
   reviewNonce?: number
@@ -407,6 +415,7 @@ function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'browser') return Globe2
   if (type === 'review') return GitCompare
   if (type === 'board') return ClipboardList
+  if (type === 'thread') return ListTree
   return Files
 }
 
@@ -415,6 +424,7 @@ function tabCategorySlot(type: WorkbenchTabType): number {
   if (type === 'browser') return 7
   if (type === 'board') return 8
   if (type === 'review') return 4
+  if (type === 'thread') return 3
   return 5
 }
 
@@ -532,6 +542,51 @@ function openGoalReview(reviewSessionId: string) {
   activeTabId.value = tab.id
 }
 
+/**
+ * 右栏「线程」tab(docs/design/im-workbench-layout.md §3 W4,C3-B)。
+ *
+ * **一个工作台会话最多一个 tab** —— 去重照 `openGoalReview` 的先例(那边按
+ * `sessionId` 找既有 review tab),只是这里连 nonce 都不需要:线程面板读的是
+ * chat store 里那份消息,活的,不存在"打开时是快照、后来变陈旧"这回事。
+ * tab id 直接用会话 id(与 `terminal-${terminalId}` 同一手法),去重再多一道保险。
+ *
+ * 不进 `tabOptions`:线程必须绑一个会话,picker 里点一下开不出有意义的空线程
+ * —— 与 `file` / `review` 同一档,只能从外部入口带着靶子进来。
+ */
+function openThread(threadSessionId: string, title?: string): void {
+  if (!threadSessionId) return
+  const existing = openTabs.value.find(
+    tab => tab.type === 'thread' && tab.sessionId === threadSessionId,
+  )
+  if (existing) {
+    if (title) existing.title = threadTabTitle(title)
+    activeTabId.value = existing.id
+    return
+  }
+
+  const tab: WorkbenchTab = {
+    id: `thread-${threadSessionId}`,
+    type: 'thread',
+    title: threadTabTitle(title) || 'Thread',
+    sessionId: threadSessionId,
+  }
+  openTabs.value = [...openTabs.value, tab]
+  activeTabId.value = tab.id
+}
+
+function threadTabTitle(title?: string): string {
+  const trimmed = (title || '').trim().split('\n')[0] || ''
+  if (!trimmed) return ''
+  return trimmed.length > 24 ? `${trimmed.slice(0, 24)}…` : trimmed
+}
+
+/** 会话名解析出来之后跟上去 —— 与 review tab 的重命名同一手法。 */
+function renameThreadTab(tabId: string, title: string) {
+  const tab = openTabs.value.find(item => item.id === tabId)
+  if (!tab) return
+  tab.title = threadTabTitle(title) || tab.title
+}
+
 /** The objective makes a far better tab title than a generic "Review". */
 function renameReviewTab(tabId: string, objective: string) {
   const tab = openTabs.value.find(item => item.id === tabId)
@@ -618,6 +673,7 @@ defineExpose({
   openGoalReview,
   openBoard,
   openFolder,
+  openThread,
 })
 </script>
 

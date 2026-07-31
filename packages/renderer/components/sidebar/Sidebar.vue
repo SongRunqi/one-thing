@@ -34,6 +34,18 @@
         ＋ 新会话
       </button>
 
+      <!-- 「进行中」活卡片区 — docs/design/im-workbench-layout.md §3 W1(C1)。
+           左栏的第一区是**活**不是对话:名字 + 负责人 + 状态标 + 进度。
+           两道门:
+            - `isWorkbenchShell` —— classic 是逐像素回滚闸,这一区连挂都不挂
+              (顺序重排走文件末尾的 `data-shell-mode` CSS 门,同样不碰 classic);
+            - `roomsEnabled` —— 看板是房的附属,web 端没有 rooms 协调器,
+              否则那儿会常驻一行永远为空的「没有在跑的活」。 -->
+      <ActiveWorkSection
+        v-if="isWorkbenchShell && roomsEnabled"
+        @open="openActiveWorkCard"
+      />
+
       <!-- 联系人(通讯录)分区 — docs/design/agent-im-dm.md §4.1 D1。
            一个 agent 一行,点开就是和 TA 的托管式私聊(单成员 dm 房,惰性建房)。
            数据源是名册而不是会话列表:没聊过的同事也该在通讯录里站着,否则
@@ -282,8 +294,12 @@ import SidebarActionGroup from './SidebarActionGroup.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
 import RoomCreateDialog from './RoomCreateDialog.vue'
+import ActiveWorkSection from './ActiveWorkSection.vue'
+import type { ActiveWorkCardModel } from './active-work'
 import { platformApi } from '@/platform'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useSettingsStore } from '@/stores/settings'
+import { resolveShellMode } from '@/composables/useShellMode'
 import { useSessionOrganizer, type SessionWithBranches } from './useSessionOrganizer'
 
 interface Props {
@@ -343,6 +359,40 @@ const pairDmUnread = computed(() =>
 
 function openRoom(sessionId: string): void {
   workspaceStore.openSession(sessionId)
+}
+
+// ── 外壳形态门(C0 的 useShellMode)────────────────────────────────────────
+// 「进行中」区是**结构**差异不是视觉差异(它带着一次取数),CSS 门关不掉一次
+// IPC,所以这一处必须是 JS 判定。视觉上的四区重排仍然走 `data-shell-mode`。
+// 没挂 pinia 的老单测取不到设置 store —— 退到 classic,也就是"什么都不变",
+// 这是测试兜底,不是产品默认(产品默认见 resolveShellMode)。
+let settingsStore: ReturnType<typeof useSettingsStore> | null = null
+try {
+  settingsStore = useSettingsStore()
+} catch {
+  settingsStore = null
+}
+const isWorkbenchShell = computed(
+  () => !!settingsStore && resolveShellMode(settingsStore.settings) === 'workbench',
+)
+
+/**
+ * 点一张活卡片 = 打开这张卡所在的房(与群聊行同一条 `openSession` 链路)
+ * + 右栏切到这张卡的线程(C3,§3 W1「卡片点击 = 打开该卡对应的房 + 右栏切到
+ * 该卡的线程」)。
+ *
+ * 线程走 window 事件而不是 emit 上去:侧栏离右栏隔着 App 的整棵布局,中栏活动线
+ * 的「展开 →」派的也是同一个事件同一个形状,两个入口共用一条线路才只有一份契约。
+ * `workSessionId`(尾条工作台会话 = 当前那次执行)为空就只开房 —— 活刚领下来还
+ * 没开过工作台,派一个空事件只会在右栏开出一个读不到东西的 tab。
+ */
+function openActiveWorkCard(card: ActiveWorkCardModel): void {
+  if (!card.roomSessionId) return
+  openRoom(card.roomSessionId)
+  if (!card.workSessionId) return
+  window.dispatchEvent(new CustomEvent('onething:open-thread', {
+    detail: { workSessionId: card.workSessionId, title: card.title, taskId: card.taskId },
+  }))
 }
 
 /** 群聊行右键 = 复用会话上下文菜单(改名/删除;删除会级联清掉工作会话)。 */
@@ -1098,6 +1148,34 @@ onUnmounted(() => {
   outline: none;
   border-radius: 6px;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
+}
+
+/* ── 工作台外壳:左栏四区重排(im-workbench-layout.md §3 W1)──────────────
+   顺序即优先级:进行中 → 群聊 → 同事 → 直聊。
+
+   重排走 `order` 而不是两份模板:三区的实现一个字节没动(本期不重写它们),
+   只是换了坐次。整段挂在 `data-shell-mode='workbench'` 门里 —— classic 下这些
+   声明一条都不生效,DOM 顺序与从前逐像素一致(C0 纪律 3)。
+   注:`.sidebar-contacts` 同时带着 `.sidebar-rooms`,所以群聊那条必须排除它,
+   否则同事区会被判成群聊区。 */
+:global(html[data-shell-mode='workbench']) .sidebar-content > .sidebar-active-work {
+  order: 1;
+}
+
+:global(html[data-shell-mode='workbench']) .sidebar-content > .sidebar-rooms:not(.sidebar-contacts) {
+  order: 2;
+}
+
+:global(html[data-shell-mode='workbench']) .sidebar-content > .sidebar-contacts {
+  order: 3;
+}
+
+:global(html[data-shell-mode='workbench']) .sidebar-content > .session-list-wrapper {
+  order: 4;
+}
+
+:global(html[data-shell-mode='workbench']) .sidebar-content > .sidebar-dock {
+  order: 5;
 }
 
 @media (max-width: 768px) {

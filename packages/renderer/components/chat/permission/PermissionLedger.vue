@@ -1,0 +1,340 @@
+<template>
+  <!-- Permission ledger: the request read as a key/value form in the
+       composer's blueprint language — hairline rows, mono cells, zero
+       fill. Scope is a column of the form, not a row of pill buttons,
+       so a standing grant can never be a mis-click on "Allow". -->
+  <div class="session-permission-panel">
+    <div class="permission-row">
+      <span class="permission-key">tool</span>
+      <span class="permission-value">{{ permissionTool(toolCall) }}</span>
+    </div>
+    <div class="permission-row">
+      <span class="permission-key">target</span>
+      <span class="permission-value">{{ permissionTarget(toolCall) }}</span>
+    </div>
+    <div
+      v-if="permissionPreview(toolCall)"
+      class="permission-row"
+    >
+      <span class="permission-key">{{ permissionDetailKey(toolCall) }}</span>
+      <span class="permission-value is-dim">{{ permissionPreview(toolCall) }}</span>
+    </div>
+    <div class="permission-row is-scope">
+      <span class="permission-key">scope</span>
+      <span class="permission-value">
+        <Button
+          v-for="option in scopeOptions"
+          :key="option.value"
+          unstyled
+          class="permission-scope-btn"
+          native-type="button"
+          :aria-pressed="permissionScope === option.value"
+          :title="option.hint"
+          @click="permissionScope = option.value"
+        >
+          {{ option.label }}
+        </Button>
+      </span>
+    </div>
+    <div
+      v-if="showRejectInstruction"
+      class="permission-row is-instruction"
+    >
+      <span class="permission-key">reason</span>
+      <textarea
+        v-model="rejectInstruction"
+        class="permission-instruction-input"
+        placeholder="Tell the assistant what to do instead..."
+        rows="2"
+        @keydown.stop
+      />
+    </div>
+    <div class="permission-foot">
+      <span class="permission-hint">
+        {{ queuedCount > 0
+          ? `${queuedCount} queued behind this permission`
+          : 'awaiting your decision' }}
+      </span>
+      <Button
+        v-if="showRejectInstruction"
+        unstyled
+        class="permission-btn reject"
+        native-type="button"
+        @click="rejectWithInstruction"
+      >
+        SEND REJECTION
+      </Button>
+      <template v-else>
+        <Button
+          unstyled
+          class="permission-btn reject"
+          native-type="button"
+          title="Reject this call"
+          @click="emit('reject', toolCall)"
+        >
+          REJECT
+        </Button>
+        <Button
+          unstyled
+          class="permission-btn instruct"
+          native-type="button"
+          title="Reject and tell the assistant what to do instead"
+          @click="showRejectInstruction = true"
+        >
+          REJECT…
+        </Button>
+      </template>
+      <Button
+        unstyled
+        class="permission-btn allow"
+        native-type="button"
+        :title="`Allow (${permissionScopeLabel})`"
+        @click="emit('allow', toolCall, permissionScope)"
+      >
+        ALLOW
+      </Button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+/**
+ * 权限账页栏位 —— 中栏底部、composer 上方,按 toolCallId 应答。
+ *
+ * 去复用重构 R1(§8 铁律 1)把它从 `ChatPanel.vue` 抬成一个组件,**没有改动
+ * 任何字段、任何像素、任何快捷键**:抬出来是为了让房面(`RoomSurface`)与旧壳
+ * 共用同一个实现,而不是各自抄一份。位置与语义的"零变化"因此是结构保证,
+ * 不是比对结论。
+ *
+ * 这一层只画与收集意图;真正的应答(emitCommand + 本地状态收尾)由
+ * `usePermissionResponder` 统一执行 —— 两处也共用同一份。
+ */
+import { computed, ref, watch } from 'vue'
+import Button from '@/components/common/Button.vue'
+import type { ToolCall } from '@/types'
+import {
+  buildScopeOptions,
+  permissionDetailKey,
+  permissionPreview,
+  permissionTarget,
+  permissionTool,
+  type PermissionResponse,
+} from './permission-ledger'
+
+const props = withDefaults(defineProps<{
+  toolCall: ToolCall
+  /** 排在这次审批后面的调用数(脚注那句话)。 */
+  queuedCount?: number
+  /** collab 会话(room/work):scope 只给 once。 */
+  collabScopeOnly?: boolean
+}>(), {
+  queuedCount: 0,
+  collabScopeOnly: false,
+})
+
+const emit = defineEmits<{
+  allow: [toolCall: ToolCall, scope: PermissionResponse]
+  reject: [toolCall: ToolCall]
+  rejectWithInstruction: [toolCall: ToolCall, reason: string | undefined]
+}>()
+
+const showRejectInstruction = ref(false)
+const rejectInstruction = ref('')
+const permissionScope = ref<PermissionResponse>('once')
+
+watch(() => props.toolCall?.id, () => {
+  showRejectInstruction.value = false
+  rejectInstruction.value = ''
+  // Never carry a standing scope across requests — each grant is chosen fresh.
+  permissionScope.value = 'once'
+})
+
+const scopeOptions = computed(() =>
+  buildScopeOptions(props.toolCall, { collabScopeOnly: props.collabScopeOnly }),
+)
+
+const permissionScopeLabel = computed(() =>
+  scopeOptions.value.find(option => option.value === permissionScope.value)?.label || 'once',
+)
+
+// A scope can disappear between requests (workspace is withheld for sensitive
+// reads); fall back rather than approve with a scope the UI no longer offers.
+watch(scopeOptions, options => {
+  if (!options.some(option => option.value === permissionScope.value)) {
+    permissionScope.value = 'once'
+  }
+})
+
+function rejectWithInstruction() {
+  emit('rejectWithInstruction', props.toolCall, rejectInstruction.value.trim() || undefined)
+}
+</script>
+
+<style scoped>
+/* Permission ledger — the composer's blueprint frame, one row per field:
+   zero fill, one outline, hairline cell dividers, mono annotations. The
+   only colour is carried by the two decisions themselves. */
+.session-permission-panel {
+  --permission-frame: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  --permission-divider: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 30%, transparent);
+  --permission-allow-fg: var(--ui-status-success-fg, var(--text-success));
+  --permission-reject-fg: var(--ui-status-warning-fg, var(--text-warning));
+
+  width: var(--chat-composer-width);
+  margin: 0 var(--chat-content-column-right, auto) 8px var(--chat-content-column-left, auto);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--permission-frame);
+  border-radius: var(--radius-xs, 4px);
+  background: transparent;
+  overflow: hidden;
+}
+
+.permission-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 30px;
+  border-bottom: 1px solid var(--permission-divider);
+}
+
+.permission-key {
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  border-right: 1px solid var(--permission-divider);
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+}
+
+.permission-value {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 11px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  color: var(--ui-text-primary-fg, var(--text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permission-value.is-dim {
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.permission-row.is-scope .permission-value {
+  padding: 0;
+}
+
+.permission-scope-btn {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--permission-divider);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ui-text-muted-fg, var(--muted));
+  transition: color 0.16s ease, background 0.16s ease;
+}
+
+.permission-scope-btn:hover {
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.permission-scope-btn[aria-pressed='true'] {
+  color: var(--permission-allow-fg);
+  background: color-mix(in srgb, var(--permission-allow-fg) 10%, transparent);
+}
+
+.permission-row.is-instruction {
+  align-items: start;
+}
+
+.permission-row.is-instruction .permission-key {
+  align-items: flex-start;
+  padding-top: 9px;
+}
+
+.permission-instruction-input {
+  min-width: 0;
+  min-height: 48px;
+  resize: vertical;
+  padding: 8px 11px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-primary-fg, var(--text));
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.permission-instruction-input:focus {
+  outline: none;
+  background: var(--ui-state-hover-bg, var(--hover));
+}
+
+.permission-foot {
+  display: flex;
+  align-items: stretch;
+  min-height: 32px;
+}
+
+.permission-hint {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permission-btn {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-left: 1px solid var(--permission-divider);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--ui-text-muted-fg, var(--muted));
+  transition: background 0.16s ease;
+}
+
+.permission-btn.allow {
+  color: var(--permission-allow-fg);
+}
+
+.permission-btn.reject,
+.permission-btn.instruct {
+  color: var(--permission-reject-fg);
+}
+
+.permission-btn.allow:hover {
+  background: color-mix(in srgb, var(--permission-allow-fg) 12%, transparent);
+}
+
+.permission-btn.reject:hover,
+.permission-btn.instruct:hover {
+  background: color-mix(in srgb, var(--permission-reject-fg) 12%, transparent);
+}
+</style>
