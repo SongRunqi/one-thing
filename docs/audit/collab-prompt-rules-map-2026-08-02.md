@@ -264,10 +264,16 @@ agent 自我状态变量(variables/providers/agent-self.ts):my_cards(「#id「�
 
 ## 8. 下一步建议(未实施,供决策)
 
+> **落地状态勘验(2026-08-03 核实)。** 本节标题的「未实施」写于 2026-08-02;此后建议 2 已完整落地,与之配套的「场地陈述统一」由**清空 desc** 兑现(与建议 1 的方向相反,见下)。逐条状态标在各条末尾。
+
 **先诊断后开方**——写而未发已有现成计量:`turn.ts:1279-1294` 把完成回合里 ≥40 字未发正文记为 kind='unsent' 的 schedule note(inspector 可见)。把这些记录按 **drive 类型(是否零未读/任务事件/接力波)× 模型 × thinking 是否开启** 交叉,能直接裁决主通路在哪:
 
 1. **补零未读 drive 的机制说明**(最小改动、可单测):任务事件/接力波的 drive 目前一个字的机制文本都没有(§0.3);若 unsent 集中在这类回合,把 desc(或专用一句)补到 `emitWhenEmpty` 路径即可见效。
+   - ⚠️ **未按本条实施,代码走了相反方向(2026-08-03 核实)**:`desc` 不但没补到 `emitWhenEmpty` 路径,反而被**整体清空**——`collab/projection.ts:232-233` 现为 `export const COLLAB_NOTIFICATION_DESC = ''`(属性本身仍逐块输出,见 `:269` 的 ` desc="…"`,值是空串)。于是「零未读 drive 一个字机制文本都没有」这条现状扩大成了「**所有** drive 都没有机制尾注」,机制说明整体收敛到 system prompt 的 `<where_you_are>` 一处(即建议 2)。§0.2/§0.3、§3.1、§7 第 6/7 条里引用 desc 原文的段落**均已过时**,以此为准。
 2. **兑现工位隐喻**:`buildWhereYouAre` 真正用上 place/audience,把「你在一个聊天室中」换成工位事实(你在自己的会话/工位,带房名;写在这里的不会自动发出;`send_message` 是发送按钮;你的全部工具照常可用),并与 desc 措辞统一(现在两处对「我在哪」答案相反)。注意:措辞单独起效概率有限——四层劝导在场时真机已复发过——作为 1/3 的配套。
+   - ✅ **已实施(2026-08-03 核实)**:`collab/roster.ts:116-129`,`buildWhereYouAre(options: { place: string; audience: string })` 两个参数都真正进了输出——「You are at your own desk, working as yourself. What happens in ${place} is delivered to you here, like notifications.」/「This desk is not a chat input box. Text written here stays here: what you write is a note to yourself…」/「\`send_message\` is the send button that carries words to ${audience} — there is no other send button, and nothing sends on its own.」文件头注释(`:101-115`)记着「隐喻决定行为」的裁决,并注明这段是**全篇唯一**一次陈述该机制(通用规则块、驱动尾注、say 描述三份重复已删)。
+   - ✅ **场地陈述统一——已实施(2026-08-03 核实)**:§7 第 6 条记录的矛盾(system 说「你在一个聊天室中」vs `Notification desc` 说「你在你自己的会话中」)已消失,但收敛方向与本条设想的相反——**不是把 desc 措辞对齐 system,而是把 desc 清空**(`projection.ts:232-233`),同时 system 侧那句「你在一个聊天室中」被工位事实取代。现在只有一处在回答「我在哪」,矛盾在结构上消失。
+   - ⚠️ 本条注释里那句「你的全部工具照常可用」**没有**写进最终输出;`roster.ts:120-125` 的注释解释了取舍:措辞层劝导已被真机实证只降频不归零,服从率交给结构保证(收养式兜底,`app/collab/turn.ts`),这段「只负责把图画对」。
 3. **轻结构回补——事实回声,不是 nudge**:harvest 检出未发正文后,下一次 drive 带一行事实「你上一轮写了 N 字正文,没有人看到」。不指挥补发(避免旧 nudge 的重复发言根因),只让模型在上下文内亲眼看到机制,自行纠正。
 4. **确认真实回合的 thinking**:drive/work 只在 agent.model.thinking 显式配置时携带 thinking;推理模型不带 thinking 跑,机制服从明显更差,值得对照实验。
 5. **工作会话侧(平行修复)**:work 版 `buildCollabWorkRules` 删掉自相矛盾两条(「指派不是开工令」「重活先 board start」),改为「你已在这张卡的工作会话里——直接开工;完成 complete,受阻 block」;work 系统提示词补工作身份(hooks 或 state=true 变量,每回合可见不怕压缩);恢复 DM 被注释的「Everything you normally have works here」行;「no turn limit」措辞对齐现实;board start 回执补一句「工作会话已在后台开启」。

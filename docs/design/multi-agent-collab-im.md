@@ -1,5 +1,15 @@
 # 多 Agent 协作 v2:IM 化(自主响应 + typing + Teams 式交互)
 
+> ⚠️ **阅读须知(2026-08-03 追加):本文件是历史台账,不是当前形态的说明书。**
+> 它以追加式工单日志的方式记录 W1–W24 的设计与验收,行文时点各不相同;其中的
+> 「✅ 验收通过」只证明**当时**落地过,不证明现在还在——W22 强制首调 say、W14d
+> 补救 nudge、驱动尾注 `<turn>` 块这三样都已在 2026-07-30 / 08-02 先后拆除。
+> **当前形态的可信描述以这两份为准:**
+> `docs/audit/collab-prompt-rules-map-2026-08-02.md` §1–§5(会话类型、提示词拼装链路、
+> 逐会话模型输入、工具面、调度规则的逐字现状)与
+> `docs/design/collab-architecture-consolidation-2026-08.md` §1(架构现状与收敛方向)。
+> 本文只在追溯「某个机制当初为什么这么定 / 后来为什么被推翻」时引用。
+
 > 状态:设计定稿,交由 Opus 5 分单实现,主导/评审:Fable 5。日期:2026-07-28。
 > 父文档:`docs/design/multi-agent-collab.md`(P0/P1 机制全部保留,本方案**替换激活模型与房间呈现层**)。
 > 用户核心批评:"现在的聊天太像 trigger。我要 Teams 那样的协作系统——每个 agent 是一个人,发消息谁回谁不回都 OK,回不回由 agent 自己决定,不是 @ 触发;要看到谁在 typing;UI 交互都朝 IM 方向做。"
@@ -398,7 +408,9 @@ agent 页面的第一片:执行会话从"完全隐藏"改为"侧栏专组可见"
 
 **W18+W18b ✅ 验收通过(2026-07-28)——v5 形态落地,say 采纳五层战役收官**:W18(执行会话分离,+43):房间=纯消息流(围栏:激活后房间 assistant 只有 collab-say)、agent 回合搬进 agent-exec-<id> 隐藏会话(per-agent 锁防双流互噬,变异实证)、say(room) 三级路由、预算集合跟进、权限 120s/goal 续推/memory 侧线三处隐性回归提前豁免。真机:侧栏零泄漏、房间纯净、回合完整落执行会话。W18b(结构强制,+27+6):首迭代 tool_choice:'required' + stay_silent 工具(说/沉默必须过工具接口);真机 400「Thinking mode does not support this tool_choice」→ **普适配对规则**(凡强制 tool_choice 的请求即禁 thinking+撤 reasoning_effort,Anthropic extended thinking 同款互斥;Fable/Mythos 永远推理故能力位排除强制)——首迭代反射选择、次迭代恢复思考组织内容(W1「判定是反射」同一哲学)。**终验收:署名 say 气泡真机落地(src=collab-say)**。say 采纳完整链条:事实说明→驱动机械指令→W14d nudge→结构强制→强制×思考互斥配对,五层全部真机取证推进。**思考过程按用户定向从聊天面整体撤除**(数据保留在执行会话,待后续 agent 页面)。
 
-**W14d ✅ 验收通过(2026-07-28)**:一次性 say nudge(同驱动通道复用,计费/绑定/信封白拿;被拒不 nudge 收口成"有 say 调用无 say 消息"单判据;+24)。真机:精确触发、每激活一次;在 W18b 强制下降级为 provider 门控回落的兜底。
+**W14d ✅ 验收通过(2026-07-28)——⚠️ 已于 2026-07-30 连根拆除,当前代码中不存在**:一次性 say nudge(同驱动通道复用,计费/绑定/信封白拿;被拒不 nudge 收口成"有 say 调用无 say 消息"单判据;+24)。真机:精确触发、每激活一次;在 W18b 强制下降级为 provider 门控回落的兜底。
+
+> **勘误(2026-08-03 核实)**:上面的「✅ 验收通过」只对 2026-07-28 那个时点成立。补救 nudge 已于 **2026-07-30 拆除**,理由是真机重复发言:`packages/onething-runtime/src/app/collab/turn.ts:962-966` 的墓碑注释逐字记着——「W14d 的补救 nudge 已于 2026-07-30 拆除——真机上它把一个想 pass 却把 pass 写成旁白的回合重新推上发言台,模型在补救轮里误以为上一条已送达的消息没发出去,又发了一遍,群里出现重复消息」。同批墓碑另见 `collab/say.ts:340`、`app/collab/say-tool.ts:154`。**接替它的不是另一个再驱模型的机制**:2026-08-02 起靠框架一致性(工位隐喻 + 发送按钮)与 `unsent` 度量,外加不再驱模型、只搬运已写好正文的**收养式兜底**(`turn.ts:1075-1077` 明确写「与被拆除的 W14d nudge 的本质区别:**不再驱动模型**」)。
 
 **W14b 实施+评审修复中(2026-07-28)**:Opus 5 实现(+65 测试,含 headless 档补注册救了 CLI),四处偏离全部接受(store 落库口打标防闪跳防崩溃残留)。**Review 真机抓修 blocker**:引擎把驱动的 origin 信封(source:'collab')复制到回合回复上,打标 guard 把它误当纪元标记 → 全部回合以旧纪元发言渲染(src=None 满屏)——修复=guard 放行 COLLAB_MESSAGE_SOURCE(信道≠纪元),生产形状回归测试补上(单测裸消息形状测不出,又一例)。修后真机:宿主全部 collab-turn、思考痕迹行渲染、阿明"(等候小李发言,无需我插话)"正确留在思考内不污染群聊;worker 自主 say 交付全链路验证(执行记录含 say×1、代笔绝迹)。**发现 say 采纳悬崖**(预警成真):deepseek 惯性把要说的话写进思考不调 say → 被点名者群里沉默;W14d(一次性 nudge,丢调用 nudge 先例)修复中,W14b 终验收随其一并做。
 
@@ -454,7 +466,9 @@ agent 页面的第一片:执行会话从"完全隐藏"改为"侧栏专组可见"
 - **兼容**:旧房间转录(驱动行/collab-turn/旧纪元发言)渲染与投影逐字不动,renderer 的机制过滤保留为 legacy;新链路不再产生需要过滤的房间内容。`CollabWorkRef.taskId` 放宽为可选(执行会话只认房间,不认卡),现网唯一写入方是 worker。
 - **门禁**:vitest **4605 passed / 1 skipped**(+43)/ typecheck 0 / boundary:gate 无新红(自愈 2 条)/ 改动文件 eslint 与改动前逐条相同(仅 `app/stores/sessions.ts` 的历史遗留 1 error + 4 warning)。
 
-**W14d say 采纳 nudge — 已实施(2026-07-28,未提交;+24 测试,4538 → 4562,真机验收待跑)**
+**W14d say 采纳 nudge — 已实施(2026-07-28,未提交;+24 测试,4538 → 4562,真机验收待跑)⚠️ 已实施后于 2026-07-30 拆除,以下为历史记录**
+
+> **勘误(2026-08-03 核实)**:本节描述的 `shouldNudgeCollabSay` / `countCollabSayToolCalls` / `COLLAB_SAY_NUDGE_TEXT` / 激活记录上的 `nudged` 标记**在当前代码中均已不存在**。拆除时点 2026-07-30,墓碑注释在 `packages/onething-runtime/src/app/collab/turn.ts:962-966`(重复发言根因)与 `packages/onething-runtime/src/collab/say.ts:340`。沉默路径现在统一走静默收尾分支(不计链、不级联、推水位),不再有任何"补一轮"的结构补救;详见 `docs/design/collab-turn-protocol-and-identity.md` A 节与 `docs/audit/collab-prompt-rules-map-2026-08-02.md` §0.2。
 
 - **续推机制选型**:没有复用 core 的"丢调用 nudge"(那是 `packages/core/agent-loop/runner.ts` 的**回合内**补救,只认"声称 tool_calls 却零有效调用"这一种畸形回合,协调器既够不着也不该借它表达房间语义)。取工单许可的最小等价物:**同一条驱动通道再发一次**——`driveActivation` 把驱动 emit 抽成 `emitDrive(content)`,nudge 就是换了话的同一次驱动,于是计费(`usageSource: collab-room`)、模型绑定(agent 的 provider/model/thinking)、信封(`COLLAB_MESSAGE_SOURCE` ⇒ `isCollabDriveMessage` ⇒ 不进投影、不重置链、不开意愿轮)统统白拿,不新增机制。
 - **触发判定**:纯逻辑落在 `collab/say.ts` 的 `shouldNudgeCollabSay`(五个否决条件各说一件事)+ `countCollabSayToolCalls`。协调器在终局喂事实:本轮 say 消息数、宿主消息是否带思考标记、思考正文、宿主消息上 `say` 工具调用数、`record.nudged`。**"被政策拒绝不 nudge"由 say 调用数收口**:没有 say 消息落地却有 say 调用,只能是被拒(冻结/超预算/已移出/空 content),再推一次只是再撞一次墙——一个判据同时满足工单的两条(0 次调用 && 无被拒记录),不与工具结果的序列化形状耦合。

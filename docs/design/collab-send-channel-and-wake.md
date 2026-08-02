@@ -240,7 +240,7 @@ dm 档带 wake 时,成功回执追加一句:
 - **`'dm'` 的退役名注册此前没落**,已补在 `app/collab/say-tool.ts` 的 `registerCollabSendMessageLegacyAlias()` 里(与 say 别名同处、同注释纪律、同拆除条件);名字常量 `COLLAB_DM_LEGACY_TOOL_NAME` 与 `COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME` 并排;
 - **偏离一条**:legacy `dm` 的降级出口落在**校验层**而不是执行器的空正文提前判 —— 原因与落地形态见 §8 新增的那条勘误。§5/§9.2 已按此改写;
 - 测试落点:`app/collab/__tests__/say-tool.test.ts` 守整条降级(退役名派发 → 逐字 REFUSED_EMPTY → 无消息落库、`createSession` 未被调用即无私聊房);`app/collab/__tests__/dm-tool.test.ts` 守执行器那一半(`content: ""` 在建房之前被拒);`tools/builtin/__tests__/send-message.test.ts` 守契约层(唯一工具名 + 拒绝语不被别的校验错误冒充);
-- 验证:`typecheck` 全过、改动文件 eslint 0 error、`boundary:gate` 无新红(26 known,另有 2 条历史红转绿)、`architecture-boundaries` 与 `import-side-effect-free` 通过。`src/collab/__tests__` 另有 7 处失败(`collab.test.ts` / `dm.test.ts` / `say.test.ts` / `agent-pair-dm.test.ts` / `willingness.test.ts`),全部是 P0 提示词改写留下的**先存**文案断言(`「房名」` vs `<room name="…">`),与本次收缩无关,未处理。
+- 验证:`typecheck` 全过、改动文件 eslint 0 error、`boundary:gate` 无新红(26 known,另有 2 条历史红转绿)、`architecture-boundaries` 与 `import-side-effect-free` 通过。~~`src/collab/__tests__` 另有 7 处失败(`collab.test.ts` / `dm.test.ts` / `say.test.ts` / `agent-pair-dm.test.ts` / `willingness.test.ts`),全部是 P0 提示词改写留下的**先存**文案断言(`「房名」` vs `<room name="…">`),与本次收缩无关,未处理。~~ → **已解决 / 已过时(2026-08-03 核实)**:全仓测试基线 **6416 个全绿**,该 7 处不再存在。断言已跟着提示词改写更新到新形态——`collab.test.ts:141`「房名进 name 属性,没房名就不编一个出来」及 `:150` 的转义用例,连同 `plan.test.ts` / `willingness.test.ts` 都已按 `<room name="…">` 标签形态断言(三份文件均可 grep 到 `room name=`);`drive-room-context.test.ts:129` 另立了「不套 `<ChatRoom>` 壳——房名与花名册归 system prompt」的对侧断言。本条保留仅作历史记录,不再是待办。
 
 ### 9.4 验收补充(在 §6 走查之外)
 

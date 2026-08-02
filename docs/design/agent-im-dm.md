@@ -46,7 +46,7 @@ collab-team-v2 的世界模型:**人(agent)、地方(群/私聊)、活(卡)**。
 | D4 | agent 互聊对用户的可见性 | **透明制**:dm 房在侧栏可见,用户可旁观、可随时插话 | 对齐底线——不允许"背着用户密谋"的暗通道;ingress 本就支持用户消息进 room |
 | D5 | 谁能发起 agent 互聊 | agent 用新工具 `dm`(惰性建房+捎首条消息);用户也可手动建 | 发起是 agent 的一个动作,与 `board start` 同款哲学 |
 | D6 | dm 房的意愿判定 | **免判**:单成员房用户消息直接激活该 agent;双成员房 agent 的 say 直接激活对方 | 一对一里"要不要接话"没有悬念,省 willingness 调用;防乒乓交给链长闸(§3.4) |
-| D7 | dm 房常驻会话工具面 | **union(say+board, agent 白名单)**——不同于群房的 replace 收紧(todo2 P0-3) | 私聊托管的本义就是 agent 替你干活;群房收紧的动机(N 个 agent 的工具噪声、与 roster 文案矛盾)在一对一不存在。重活仍由断路器引导 `board start` 开工作台 |
+| D7 | dm 房常驻会话工具面 | **union(say+board, agent 白名单)**——不同于群房的 replace 收紧(todo2 P0-3)<br>⚠️ **裁决(2026-08-03 核实):群房那一侧的 replace 收紧已于 2026-07-30 同日撤销,终态两侧同为 union**,故本行的「不同于群房」已不成立;D7 结论(私聊恒 union)不变,变的只是它不再是特例 | 私聊托管的本义就是 agent 替你干活;群房收紧的动机(N 个 agent 的工具噪声、与 roster 文案矛盾)在一对一不存在。重活仍由断路器引导 `board start` 开工作台 |
 | D8 | 履历页数据从哪来 | **renderer 端从 sessions 全量索引现算**,不新增聚合 IPC | 侧栏 Agent 组已这么做(`Sidebar.vue:305` 注释);archived 隐藏会话已在 `agentSessions` computed 可达(`stores/sessions.ts:115`) |
 | D9 | 未读徽标 | **P4 再做**(lastReadAt 水位) | 系统目前无已读概念,独立一层;先立结构 |
 
@@ -97,6 +97,7 @@ collab-team-v2 的世界模型:**人(agent)、地方(群/私聊)、活(卡)**。
 
 1. **免判激活**(D6):双成员房里 **agent 的 say 直接激活对方**;用户插话仍走既有 mention/判定逻辑(旁注一句不该强制拉起两个回合)。
 2. **工具面**:双成员房维持群房的 replace 收紧(say+board+dm)——它是沟通场不是干活现场,正经活回大群立卡(规则引导,§5)。
+   - ⚠️ **裁决(2026-08-03 核实):群房终态是 union,pair 房跟随群房,因此这里的「replace 收紧」已不成立。** pair 房走 `collab-room` grant(`packages/onething-runtime/src/agents/profile.ts:47`,`mode: 'union'`),规则源 `packages/onething-runtime/src/collab/tool-surface.ts` 的 `resolveCollabToolAllowlist` 对 `kind === 'room' | 'agent'` 返回 `own ? unionWith(own, COLLAB_ROOM_TOOLS) : null`。"沟通场不是干活现场"这条**意图**现在只由规则文本与断路器引导,不再有工具面的机械收窄。
 3. **链长闸默认收紧**:双成员 dm 房 `budgets.maxChain` 默认 6。最大风险是客套乒乓("收到""辛苦了"无限循环,W14d 重复发言的变体);链长闸机械止损。
 
 ### 3.4 发起:`dm` 工具
@@ -187,6 +188,7 @@ agent 详情增加"历史"tab,四栏分组(画线风列表,行=会话,列=名称
 - **免判激活的手法**:两档人数统一为「在纯规则里合成一条隐式 mention」(`collab/activation.ts` 的 `dmSoleMember`/`dmPairPeer` → `resolveDmImplicitMentionId`),因此与 @ 走完全同一条 enqueue→driveActivation 路径,冻结/预算/链长/断路器/退休全部围栏自动继承,免的只有 judgeWillingness。
 - **§2.3 引用的"矛盾文案"落地时已不存在**:群房 roster 文案已随工具面 union 回滚一起改写,dm 版情况说明是新写(`buildCollabDmContext`/`buildCollabPairDmContext`),群版零改动。
 - **工具面隔离**:单成员私聊走独立 `collab-dm` grant(union);pair 房走 `collab-room` grant 与群房同解——群房那格将来若收紧,私聊不被连带、pair 被连带(符合 D 差异点 2 意图)。群房 union/replace 的在途冲突(先存红 profile.test.ts)原样保留未裁决。
+  - ✅ **裁决(2026-08-03 核实):终态为 union,冲突已消。** `packages/onething-runtime/src/agents/profile.ts:46-53` 三格 grant(`collab-room` / `collab-dm` / `collab-work`)全部 `mode: 'union'`;同文件 `:31-38` 的注释即裁决记录——「Both packs are UNION grants (collab-team-v2 §2.1) … `collab-room` was briefly a REPLACE grant (2026-07-30 收紧 …), reverted the same day by user decision」。规则源在 `packages/onething-runtime/src/collab/tool-surface.ts`,两文件"必须给同一个问题同一个答案"由该注释明写。口径与 `docs/design/collab-team-v2.md` §2.1 终态勘误一致。`profile.test.ts` 的先存红已随全仓测试转绿(2026-08-03 基线 6416 全绿)。
 - **§5 规则 3 在单成员 dm 版改写**:「正经活回大群立卡」对用户↔agent 私聊是假话,改为「该你干的活在这间私聊里立卡干」;群版与 pair 版保留原文。
 - **dm 工具加了 kind 门**:普通 chat 会话不但不注入,执行器还直接拒(注册表对无白名单 agent 全量可见,纸面注入面拦不住)。
 - **死房兜底落了 11 条路径**(退休/查无此人/冻结/预算/名册变更/会话打不开/合法沉默/回合失败等),含 dm-only 的「这一轮没有说话」;引擎未绑定是轮询重试不是死路。

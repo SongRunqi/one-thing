@@ -1,6 +1,18 @@
 # Team 化群聊 v2 —— 按群隔离 + 开工即动作 + 停止/中断/恢复统一语义(W24 设计定稿)
 
-**状态:设计定稿,未实施。** 2026-07-28。
+**状态:已实施。** 2026-07-28 定稿(原状态行为「设计定稿,未实施」),2026-08-03 逐条核实后改写。
+
+> **实施勘验(2026-08-03)。** 本文主体已落地,核实依据:
+>
+> - **§1 per-room 执行会话**:`packages/onething-runtime/src/agents/identity.ts:80-87` 的 `execSessionId(agentId, roomSessionId)` 产出 `agent-exec-<agentId>-<roomSessionId>`,省略房间参数时回落旧全局形态;§1.4 的迁移并集扫描落在同文件 `:98-102` `execSessionIdsForScan`。
+> - **§2.1 工具面**:终态是 **union**,不是正文里那条 07-30 的 replace 收紧(见 §2.1 末尾的终态勘误)。
+> - **§3 `board start`**:`packages/onething-runtime/src/collab/board.ts:338` 起的 `case 'start'`(doing 幂等早退、agent 只能开无主或自己的卡、用户 actor 不受限)。
+> - **§7 群 folder**:`packages/onething-runtime/src/app/collab/room-folder.ts`。
+> - **§6.1 行内标签**:`packages/onething-runtime/src/collab/__tests__/inline-tags.test.ts`。
+> - **§10 继承未修项**:五条**全部已修**,逐条销账见 §10 各行。
+>
+> 本文之后的形态演进(say → `send_message` 改名、`<turn>` 块删除、工位隐喻)不在本文范围,见 `docs/design/collab-turn-protocol-and-identity.md` 与 `docs/design/collab-send-channel-and-wake.md`。
+
 **前置阅读:** `docs/design/multi-agent-collab-im.md`(W1–W23 主线)。
 **取代:** `docs/design/collab-team-redesign-handoff.md` 的全部未决问题(Q1–Q5 均已拍板,见 §0);`docs/design/collab-xml-envelope-and-room-folder.md`(第一版调研)。
 **代码时点:** collab 子系统当前 untracked;07-28 审计的 P0-1/P0-2、P2-1/P2-5/P2-8/P2-17 及 R2 拆分(coordinator 431 行 + turn/worker/queue/room-runtime 等)**已在磁盘落地**。本文引用的行号均为当前磁盘代码;审计报告里 `coordinator.ts:1030–1340` 段行号已全部失效。
@@ -70,6 +82,7 @@ Agent 小李
 - `agents/profile.ts:150-153` 的 `collab-room` grant 从 `mode:'replace'` 改 `mode:'union'`:**say/board 是地板不是天花板**,agent 自己配置的工具(含"跟随全局 = null = 无限制")在群聊回合真实生效。
 - 类型层改动极小(handoff §3.2 已确认);生命周期语义上的四个 P0 盲点(证据圈定/断路器/墙钟/权限)因 **work 会话保留** 而全部不触发——这是 Q1 选"1+N"的最大红利。
 - ⚠️ **已于 2026-07-30 收紧回 replace**(todo2-fix-plan P0-3,用户拍板):房间/常驻回合工具面恒等于 `COLLAB_ROOM_TOOLS`(say + board),不再看 agent 白名单。union 的实际后果是工具噪声——没配白名单的 agent 在群里看得见全量注册工具(含 MCP),真机出现自动调 `render_preview`,且与 roster 情况说明「除 say 和 board 外你在群里没有其他工具」直接矛盾。`kind === 'work'` 工作台会话保持 union,重活的能力不受影响。
+- ✅ **终态勘误(2026-08-03 核实):上面那条 replace 收紧已于同日(2026-07-30)应用户要求撤销,当前代码恒为 union。** 锚点:`packages/onething-runtime/src/agents/profile.ts:47` `{ id: 'collab-room', tools: COLLAB_ROOM_TOOLS, mode: 'union' }`(同文件 `:31-38` 的注释逐字记着「briefly a REPLACE grant … reverted the same day by user decision」);规则源在 `packages/onething-runtime/src/collab/tool-surface.ts` 的 `resolveCollabToolAllowlist`——`kind === 'room' | 'agent'` 分支返回 `own ? unionWith(own, COLLAB_ROOM_TOOLS) : null`,没配白名单即 `null` = 不限制。与 replace 一起撤销的还有那句矛盾的 roster 文案(见 `docs/design/agent-im-dm.md` §8)。另注:`COLLAB_ROOM_TOOLS` 的成分此后又变过两次,现为 `['send_message', 'board', 'history']`(`tool-surface.ts` 同文件),`say`/`dm` 是不进工具列表的静默别名。
 
 ### 2.2 断路器与墙钟:刻意不动,反而成为围栏
 
@@ -246,7 +259,14 @@ start { taskId?, title?/detail? }
 
 ## 10. 继承的未修项(归入 P2,审计 07-28 中当前代码尚未确认修复的)
 
+> **销账(2026-08-03 逐条核实):本节五条全部已修**,原文保留、每条追加「✅ 已修」与代码锚点。本节标题里的「未修项」只对 2026-07-28 那个时点成立。
+
 - **P1-1** board `move` 无角色守卫:agent 可 `doing→done` 绕过评审环(`board.ts:308-337`)。修法:`guardAgentTransition`,agent 的 done 迁移强制走 complete,`move→done` 仅评审者可为。
+  - ✅ **已修**:`packages/onething-runtime/src/collab/board.ts:181-208` 新增 `guardAgentTransition`,在 reducer 分派前统一调用(同文件 `:334-335`)。非 review 卡被 agent 移向 done 时逐字提示改走 `complete`;已在 review 的卡,**执行人本人**也被挡住(`:198-200`「yours to deliver, not to close」),评审环由此闭合。顺带覆盖 `blocked` 迁移的来源态检查(`:203-205`)。
 - **P1-2** board `block` 非幂等:重复 block 每次 haltedCount+1,两次烧光自动处置预算且跨重启不可逆。修法:blocked 早退不 bump,带新 reason 只更新 blockReason。
+  - ✅ **已修**:`board.ts:456-474` 的 `case 'block'`,注释自陈「Idempotent by STATE, not by call」。已是 blocked 的卡:无新 reason 或 reason 相同 → 原样早退(不 commit、不 bump);带新 reason → 只更新 `blockReason`,**不计 halt、不发事件**。`haltPatch`(`:326-332`)只在真正从非 blocked 迁入时执行。
 - **P1-4** 看板冻结开关/预算提交 `.catch(()=>{})` 吞错,刹车失败零反馈。修法:消费返回值,失败贴画线风错误行(对齐 `RoomSettingsDialog.vue:266-270`)。
+  - ✅ **已修**:`packages/renderer/components/workbench/CollabBoardPanel.vue:336-342` 的注释即销账说明(「Both used to `.catch(() => {})` … Failures now leave a hint line」);`commitBudget`(`:343-359`)与 `toggleFrozen`(`:415-429`)现在都消费 `response.success`、失败写 `hint.value`(带兜底文案「预算没有保存成功」/「暂停没有生效」/「恢复没有生效」),**只有成功才 `loadSessions()` 重绘**。
 - **P2-2** watermark 无单调性检查可倒退;**P2-3** 静默回合水位可能写入非房间消息 id(`queue.ts` 直推处)。修法:`advanceWatermark` 加单调守卫;水位锚点强制房间消息 id。
+  - ✅ **P2-2 已修**:`packages/onething-runtime/src/app/collab/room-runtime.ts:342-361`,`advanceWatermark` 的文档标题就是「Move the watermark forward — and only forward (P2-2)」,守卫是 `if (current !== undefined && message.timestamp < current) return`——挡的是并发 `handleRoomUserMessage` 里先跑完的后来者被慢的前者覆写。注释同时记下「守卫而非串行化」的取舍理由(串行化会让 B 的判定干等 A 的 8 秒意愿轮)。
+  - ✅ **P2-3 已修**:全仓对 `lastProcessedMessageId` 的写入只剩 `advanceWatermark` 一处(其余全是读),调用点共 8 处(`queue.ts:719/732/794/877/900/996`、`turn.ts:1219/1319`)。锚点强制房间消息:`turn.ts:1300-1319` 显式先在 `after.messages`(房间会话)里按 `record.sourceMessageId` 查回真实消息才推进,查不到就**不推**——注释逐字记着为什么不能拿执行会话里的 `turnMessage` 当锚(「a watermark pointing at an id the room does not contain … silently retires every room message older than that turn」),并说明无房间锚时不推是安全的(W23 两级去重兜底)。

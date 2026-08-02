@@ -2,9 +2,41 @@
 
 日期:2026-08-02(v2,依用户裁决重写 A 节:否决强制 say/pass 终止协议,
 改为框架与命名重构;强制协议降级为数据门控的最后手段)
-状态:设计,未实施
+状态:**已实施**(原状态行为「设计,未实施」,2026-08-03 逐条核实后改写)
 前情:`docs/design/collab-room-clear-and-mention-all.md`(已实施)、四轮审查、
 `collab-agent-view-v3.md` §6 决定 2(未实施)。
+
+> **实施勘验(2026-08-03)。** A 节重构三件套 + C 节链闸解锁均已在代码中落地:
+>
+> 1. **① 工具改名 `say` → `send_message`**:`packages/onething-runtime/src/collab/say.ts:288`
+>    `export const COLLAB_SEND_MESSAGE_TOOL_NAME = 'send_message'`;旧名按 A.3 保留为
+>    **静默别名** `COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME = 'say'`(同文件 `:298`),别名注册在
+>    `packages/onething-runtime/src/app/collab/say-tool.ts:352-357`
+>    (`registerCollabSendMessageLegacyAlias()`,`dm` 退役名并排),**刻意不进**
+>    `COLLAB_ROOM_TOOLS`(`collab/tool-surface.ts`,注释逐字解释「进来就等于进请求的
+>    tools 参数,模型会看见两个同义工具」)。工具定义体在
+>    `packages/onething-runtime/src/tools/builtin/say.ts:151`;打字观察器与断路器已改按新名认信号
+>    (`collab/typing.ts:124`、`collab/circuit-breaker.ts:200`)。
+> 2. **② `<turn>` 块整个删除**:`packages/onething-runtime/src/app/collab/turn.ts:1021-1037`
+>    原地留了一段墓碑注释(「这里曾有一个 `<turn agent=… reason=…>` 尾注块 … 2026-08-02
+>    整块删除」),drive 现在只有 `roomContext + <elsewhere>`,零未读时出自闭合
+>    `count="0"` 块兜底 drive 非空。
+> 3. **③ 情况说明换工位隐喻**:`packages/onething-runtime/src/collab/roster.ts:116-129`
+>    的 `buildWhereYouAre({ place, audience })` —— "You are at your own desk…delivered to you
+>    here, like notifications" / "This desk is not a chat input box" / "`send_message` is the
+>    send button"。文件头注释(`:101-115`)记着「隐喻决定行为」的裁决与四层劝导裁撤。
+>
+> **两处与本文不符,以代码为准:**
+>
+> - **块名不是 `<NewMessages>` 而是 `<Notification>`**:`packages/onething-runtime/src/collab/projection.ts:219`
+>   `COLLAB_NOTIFICATION_TAG = 'Notification'`,渲染函数是 `formatCollabNotificationBlock`
+>   (`:246`)。A.2 ② 里的 `<NewMessages count=… seen_until=… scheduled=…>` 样例请按
+>   `<Notification …>` 读;属性名 `count` / `seen_until` / `scheduled` 与本文一致,另有
+>   `elided` 与 `desc`。
+> - **块上多了一个 `desc` 属性,但当前值是空串**:`projection.ts:232-233`
+>   `COLLAB_NOTIFICATION_DESC = ''`(属性本身仍逐块输出,见 `:269`)。它是 08-02 之后
+>   加回来的一句固定机制说明,后又被清空——即 A.2 ② 的「没有任何指令性尾注」在
+>   当前代码里是**通过清空取值**而不是删除属性来兑现的。
 
 ## 0. 要根治的三个真机症状
 
@@ -165,9 +197,20 @@ reply to nothing.")。「turn text」这个自造术语随之**退役**:新框�
 
 ## C. pair 私聊房链闸解锁(S3)
 
+**状态:已实施(2026-08-03 核实)。**
+
 (与 v1 不变)跨房 dm 注入 = 外部输入 → 重置该 pair 房链长;房内乒乓照旧
 被 6 条闸拦;冻结文案改实话(「连续对话到上限,有新话题进来会继续」)。
 多人临时 DM 群(狼群互认)是新形态,本方案不设计,记账。
+
+> **实施勘验(2026-08-03)。** 落在 `packages/onething-runtime/src/app/collab/dm-tool.ts:207-222`:
+> 消息经 `speakIntoCollabRoom` 真正落库成功之后(拒绝路径原样透传、不清零),取该 pair 房的
+> runtime 执行 `runtime.state.chainCount = 0` + `runtime.chainNoticePosted = false` +
+> `persistRoomState(...)`。注释逐字写明本文 C 的论证:「链闸解冻此前**只**认一条人类消息
+> (queue.ts 的 ingress 那一处),而 agent ⇄ agent 的房里没有人类」,以及边界——房内回合的
+> 乒乓走 `turn.ts` 的级联、不经这条路,6 条闸照拦。清零之后紧接 `enqueue(...)` 激活对方(D5)。
+> 注:这条路径现由合并后的 `send_message`(带 `to` 参数)驱动,不再是独立的 `dm` 工具面,
+> 见 `docs/design/collab-send-channel-and-wake.md`。
 
 ---
 
