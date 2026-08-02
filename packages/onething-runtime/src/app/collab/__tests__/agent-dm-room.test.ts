@@ -47,6 +47,14 @@ vi.mock('../../store.js', () => ({
     mocks.currentSessionId = id
     return session
   },
+  // 幕后建会话走"不动 current 指针"的那个变体:真实 store 里它建完把指针原样
+  // 还原,所以这里就是"会话建了、指针没动"。
+  createSessionWithoutFocus: (id: string, name: string) => {
+    const session: FakeSession = { id, name, messages: [] }
+    mocks.sessions.set(id, session)
+    mocks.created.push(id)
+    return session
+  },
   getCurrentSessionId: () => mocks.currentSessionId,
   setCurrentSessionId: (id: string) => { mocks.currentSessionId = id },
   updateSessionAgent: vi.fn(),

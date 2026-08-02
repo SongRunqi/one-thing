@@ -45,6 +45,7 @@ import { getSessionsDir } from '../stores/paths.js'
 import { findAgent, listAgents } from '../agents/index.js'
 import { resolveDmTarget } from './dm-target.js'
 import { resolveUserIdentity } from './user-identity.js'
+import { collabToolAllowedInSession } from './venue.js'
 
 /** 一次最多读几间房。超出的计入 `skippedRooms` 并说出来。 */
 const HISTORY_MAX_ROOMS = 10
@@ -79,9 +80,14 @@ const HISTORY_REFUSED_NOT_COLLAB
  * 「把你和主人的私聊翻出来」就能拿到全文。工具是 `permissionGuard: 'safe'` +
  * `autoExecute: true`,没有任何审批拦在中间。
  *
- * 所以场子门与 `dm` 逐字同构(`dm-tool.ts:52`,那里的注释写的是同一件事):
+ * 所以场子门与 `dm` 逐字同构(`dm-tool.ts`,那里的注释写的是同一件事):
  * **"哪些场子能用"不能只由白名单说了算。** 普通 chat 会话是直播式对话,那里的
  * agent 没有"我去翻翻别处的记录"这件事 —— 它就在用户眼前说话。
+ *
+ * 2026-08-03(C3-6)起「逐字同构」不再靠人肉维持:判据是 `venue.ts` 那一份,
+ * 一览表在 `collab/tool-surface.ts`。归一化把 kind 缺席算成 `chat`,所以上面那条
+ * 网关路径(kind 为空 + `agentId: 'default'`)照旧被拒 —— 这是本文件测试里钉死的
+ * 那一条。拒绝语留在这里:它得说清"这场对话里没有可检索的同事身份"。
  */
 function resolveSelfAgentId(
   sessionId: string,
@@ -89,7 +95,7 @@ function resolveSelfAgentId(
   const session = store.getSession(sessionId)
   const agentId = session?.agentId
   if (!agentId) return { ok: false, error: HISTORY_REFUSED_NO_SELF }
-  if (session?.kind !== 'room' && session?.kind !== 'agent' && session?.kind !== 'work') {
+  if (!collabToolAllowedInSession(session, 'history')) {
     return { ok: false, error: HISTORY_REFUSED_NOT_COLLAB }
   }
   return { ok: true, agentId }

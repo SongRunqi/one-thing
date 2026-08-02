@@ -10,6 +10,7 @@ import * as store from '../store.js'
 import { findAgent } from '../agents/index.js'
 import { collabRoomMembers } from './members.js'
 import { applyBoardAction } from './board-store.js'
+import { collabLinkedRoomSessionId, collabToolAllowedInSession, collabVenueOf } from './venue.js'
 
 function agentName(agentId: string): string {
   const agent = findAgent(agentId)
@@ -17,17 +18,24 @@ function agentName(agentId: string): string {
 }
 
 export const BoardTool = createBoardTool({
+  /**
+   * 场子门 + 房间解析。门走统一那一份(C3-6,`venue.ts`);解析留在这里,因为
+   * 「房场子的房是它自己」是这个工具的事实,不是场子表的事实。
+   *
+   * 等价性:`chat`(含 kind 缺席的网关会话)照旧 null → 工具回那句
+   * 「boards exist only in collab rooms and their work sessions」。
+   */
   resolveContext(sessionId) {
     const session = store.getSession(sessionId)
     if (!session) return null
-    if (session.kind === 'room') {
+    if (!collabToolAllowedInSession(session, 'board')) return null
+    if (collabVenueOf(session) === 'room') {
       return { roomSessionId: session.id, actorAgentId: session.agentId }
     }
     // W18: a room turn runs in the agent's own execution session, which carries
     // the room it is currently answering — same shape a work session uses.
-    if ((session.kind === 'work' || session.kind === 'agent') && session.collab?.roomSessionId) {
-      return { roomSessionId: session.collab.roomSessionId, actorAgentId: session.agentId }
-    }
+    const linked = collabLinkedRoomSessionId(session)
+    if (linked) return { roomSessionId: linked, actorAgentId: session.agentId }
     return null
   },
 

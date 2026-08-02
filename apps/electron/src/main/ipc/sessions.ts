@@ -29,6 +29,7 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest } from '@shared/ipc.js'
 import * as store from '@onething/app/store.js'
 import { DEFAULT_AGENT_ID, agentExists } from '@onething/app/agents/index.js'
+import { ensureCollabGroupRoom, type CollabGroupRoomInput } from '@onething/app/collab/index.js'
 import type { PermissionMode } from '@shared/ipc.js'
 import { workdirGateway } from '@onething/app/variables/gateways.js'
 import { readSessionSegments } from '@onething/app/toc/index.js'
@@ -146,7 +147,7 @@ export function registerSessionHandlers() {
             name?: string
             sessionId?: string
             kind?: string
-            room?: { memberAgentIds?: unknown; pmAgentId?: unknown; dm?: unknown }
+            room?: CollabGroupRoomInput
           }
           // Client-supplied ids keep session identity stable from the renderer's
           // draft phase onwards (the draft id *is* the future session id). The
@@ -162,63 +163,23 @@ export function registerSessionHandlers() {
           }
           // Multi-agent rooms (docs/design/multi-agent-collab.md): 'work'
           // sessions are coordinator-internal and never created over IPC.
-          let roomConfig: {
-            memberAgentIds: string[]
-            pmAgentId?: string
-            budgets?: { dailyCostUSD?: number; maxChain?: number }
-            /** 私聊标记(agent-im-dm.md D1/D3)。人数即形态,这里只透传标记。 */
-            dm?: true
-          } | undefined
           if (kind !== undefined && kind !== 'room') {
             return { success: false, error: 'Invalid session kind' }
           }
           if (kind === 'room') {
-            const memberAgentIds = Array.isArray(room?.memberAgentIds)
-              ? room.memberAgentIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
-              : []
-            if (memberAgentIds.length === 0) {
-              return { success: false, error: 'Room needs at least one member agent' }
-            }
-            for (const agentId of memberAgentIds) {
-              if (!agentExists(agentId)) {
-                return { success: false, error: `Unknown agent: ${agentId}` }
-              }
-            }
-            const pmAgentId = typeof room?.pmAgentId === 'string' && room.pmAgentId ? room.pmAgentId : undefined
-            if (pmAgentId && !memberAgentIds.includes(pmAgentId)) {
-              return { success: false, error: 'PM must be a room member' }
-            }
-            const budgetsRaw = (room as { budgets?: { dailyCostUSD?: unknown; maxChain?: unknown } })?.budgets
-            const budgets: { dailyCostUSD?: number; maxChain?: number } = {}
-            if (typeof budgetsRaw?.dailyCostUSD === 'number' && budgetsRaw.dailyCostUSD >= 0) {
-              budgets.dailyCostUSD = budgetsRaw.dailyCostUSD
-            }
-            if (typeof budgetsRaw?.maxChain === 'number' && budgetsRaw.maxChain >= 0) {
-              budgets.maxChain = Math.floor(budgetsRaw.maxChain)
-            }
-            roomConfig = {
-              memberAgentIds,
-              ...(pmAgentId ? { pmAgentId } : {}),
-              ...(Object.keys(budgets).length > 0 ? { budgets } : {}),
-              // 只认字面 true(白名单式透传:这个字段会改变房间的激活语义,
-              // 「随便什么真值都算」不是这里该有的宽容)。用户 ↔ agent 的托管
-              // 私聊走 COLLAB_DM_ROOM_ENSURE(id 是派生的、不是 UUID),这条路径
-              // 留给 UUID id 的 dm 房(D3 的 agent 互聊房与手工建房)。
-              ...(room?.dm === true ? { dm: true as const } : {}),
-            }
+            // 建房的规则书只有一本,在 app 层(collab/room-create.ts)—— 成员过滤、
+            // 查无此人、退休拒收、PM 在册、budgets 归一、dm 字面 true,连文案都与
+            // 「改房」那条路(setCollabRoomConfig)对齐。这里只递形状,不留规则。
+            return ensureCollabGroupRoom(name || 'New Chat', room, {
+              sessionId: sessionId ?? uuidv4(),
+            })
           }
-          const result = await createOnethingSessionForIpc({
+          return await createOnethingSessionForIpc({
             sessionId: sessionId ?? uuidv4(),
             name,
             createSession: (id, nextName) => store.createSession(id, nextName),
             logger: console,
           })
-          if (result.success && roomConfig && result.session) {
-            store.updateSessionCollab(result.session.id, { kind: 'room', room: roomConfig })
-            const updated = store.getSession(result.session.id)
-            if (updated) result.session = updated
-          }
-          return result
         },
       },
       {

@@ -57,7 +57,11 @@ export function buildCollabCommonRules(
 		'- Two inline tags exist and no others: `<card id="…"/>` points at a board card, `<file path="…"/>` points at a file. Any other angle bracket is treated as ordinary text.',
 		"- Both are verified when they render: a card that is not on the board, a file that is not on disk, becomes dead text nobody can click. Point only at things that exist.",
 		"- Read a card's status live with `board` list. The status quoted in an older message is what it was then, not what it is now.",
-		"- Light versus heavy: look something up, answer a question, make a small edit — just do it. Many files, or long-running work — `board` start first: that gives you a work session with no turn limit, where the context survives. No card for it yet, `start` makes one.",
+		// 「no turn limit」是一句假话(C3-5,审计 §7 第 8 项):工作会话照样跑在
+		// `maxTurns`(缺省 100)与 30 分钟墙钟之下(app/collab/worker.ts)。承诺无限
+		// 的代价不是模型失望,是它把交付全压在最后一轮 —— 而被墙钟掐掉的那一轮
+		// 什么都留不下。改成如实说出两道闸,再把「分段落地」写成它的推论。
+		"- Light versus heavy: look something up, answer a question, make a small edit — just do it. Many files, or long-running work — `board` start first: that gives you a work session where the context survives, and an interruption is resumed rather than restarted. It still ends — a turn budget and a 30-minute wall clock — so land your work in stages instead of saving it all for one final push. No card for it yet, `start` makes one.",
 		"- Being assigned a card is not an order to begin: ask first if anything is unclear, and `block` the card with a reason if you cannot do it.",
 		// 后半句是 2026-08-01 事故补上的对称面(collab-agent-view-p5.md §1):原来
 		// 只讲了"对方没有你的上下文",没讲**你也拿不回你在那儿说过的话** —— dm 房
@@ -85,23 +89,30 @@ export function buildCollabCommonRules(
 /**
  * 工作台会话(work session)看到的规则。
  *
- * 与群/私聊两版不同,这一份是**独立成篇**的:它拼进 worker.ts 的任务简报
- * (一条 user 消息),前面没有 `<where_you_are>` 可以依赖,所以那句场子事实
- * 必须自己带 —— 那不是重复,那是这个语境里的唯一一次陈述。
+ * **它比群/私聊两版短,而短掉的那几条是被删的,不是被忘的**(架构收敛 C3-5,
+ * 审计 docs/audit/collab-prompt-rules-map-2026-08-02.md §5):
+ *
+ *  - 「Being assigned a card is not an order to begin: ask first」与
+ *    「重活先 `board` start」两条,在**已经开工的工作会话**里字字自相矛盾 ——
+ *    读到它们的那个 agent 已经在这张卡的工作会话里跑着了,照做只会回群问一句
+ *    废话,或者去调一个必然被拒的 `start`(卡已经是 `doing`,reducer 直接早退)。
+ *    它们是**房间回合**的规则,所以留在 `buildCollabCommonRules` 里一字不动 ——
+ *    在那个语境里两条都真:那时卡还没开,而 start 正是开它的动作。
+ *  - `<where_you_are>` 整块移进了 system prompt(engine/prompt/system-prompt.ts
+ *    的 work 分支)。此前它必须自己带,因为这份文本拼进的是 worker.ts 那条
+ *    briefing user 消息,前面没有场子说明可以依赖;现在工作身份常驻 system,
+ *    再念一遍就是这个仓库一直在裁的那种念经。
+ *
+ * 剩下的三条都是**跨场子恒真**的书写约定,与群版逐字相同,各自的机械防线见
+ * 文件头那张表。
  */
 export function buildCollabWorkRules(): string {
 	return [
 		"<workspace>",
-		"<where_you_are>",
-		// W25: 后台执行的事实(工作会话也一样跑在后台,只有发出去的消息进群)。
-		"This work session runs in the background. Everything you produce here — prose, reasoning, tool calls and their results — stays here. The only thing that reaches the room is a message you send with the `send_message` tool.",
-		"</where_you_are>",
 		"<rules>",
 		'- Two inline tags exist and no others: `<card id="…"/>` points at a board card, `<file path="…"/>` points at a file. Any other angle bracket is treated as ordinary text.',
 		"- Both are verified when they render: a card that is not on the board, a file that is not on disk, becomes dead text nobody can click. Point only at things that exist.",
 		"- Read a card's status live with `board` list. The status quoted in an older message is what it was then, not what it is now.",
-		"- Light versus heavy: look something up, answer a question, make a small edit — just do it. Many files, or long-running work — `board` start first: that gives you a work session with no turn limit, where the context survives. No card for it yet, `start` makes one.",
-		"- Being assigned a card is not an order to begin: ask first if anything is unclear, and `block` the card with a reason if you cannot do it.",
 		"</rules>",
 		"</workspace>",
 	].join("\n");

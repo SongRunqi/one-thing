@@ -53,3 +53,74 @@ export const COLLAB_ROOM_TOOLS: readonly string[] = ['send_message', 'board', 'h
  * 话,所以 `send_message` 也是必需的。同样是**加**在白名单上,不是替换它。
  */
 export const COLLAB_WORK_REQUIRED_TOOLS: readonly string[] = ['board', 'send_message']
+
+// ---------------------------------------------------------------------------
+// 场子(venue)—— 「这条会话是什么场合」,以及每个协作工具在哪些场合里成立
+// ---------------------------------------------------------------------------
+
+/**
+ * 一条会话的**场子**。会话 `kind` 的同构改名,外加一件 kind 说不出的事:
+ * 缺省(`undefined`)不是"未知",是**普通对话**。
+ *
+ * 这个区分正是 A3 那个洞的形状:网关(微信/Telegram)按远端身份建出来的会话
+ * `kind` 为空、`agentId` 落成 `default`,而判据若写成「kind 不是 chat 就放行」,
+ * 那条会话就从"普通对话"变成了"说不准,先放过" —— 陌生联系人一句话就能把用户
+ * 和主助理的私聊全文拉走(history-tool.ts 的门注释写的是同一件事)。所以归一化
+ * 只有一个方向:**认不出的一律算 `chat`**。
+ */
+export type CollabVenue = 'room' | 'agent' | 'work' | 'chat'
+
+/** 认得出的三个协作场子。写成数组是为了让归一化只有一处判据。 */
+const COLLAB_VENUES: readonly CollabVenue[] = ['room', 'agent', 'work']
+
+/**
+ * 会话 kind → 场子。**判定只有这一处实现**(架构收敛 C3-6)。
+ *
+ * 此前 say/board/dm/history 四个工具各手写一遍这句 if,而四份手写的门只要有一份
+ * 漏了就是一个静默的授权洞 —— 它们不会报错,只会多放一个人进来。
+ */
+export function resolveCollabVenue(kind?: string | null): CollabVenue {
+  return COLLAB_VENUES.includes(kind as CollabVenue) ? (kind as CollabVenue) : 'chat'
+}
+
+/**
+ * 「这个场子挂着一间房吗」—— work / agent 两个场子的会话在 `collab.roomSessionId`
+ * 里指着它服务的那间房(work 是母房,agent 是这一轮在答的那间房,W18)。
+ *
+ * 抽出来是因为它也是**同一条 kind 判据的第五、第六份手写**(say-tool
+ * `resolveSayContext`、dm-tool `resolveWakeRoom`),而它与上面那张门共享同一个
+ * 前提:`room` 场子的房就是它自己,`chat` 场子根本没有房。
+ */
+export function collabVenueLinksRoom(venue: CollabVenue): boolean {
+  return venue === 'work' || venue === 'agent'
+}
+
+/** 有场子门的协作工具。用工具**注册名**,与模型看到的那个名字逐字一致。 */
+export type CollabVenueTool = 'send_message' | 'board' | 'history'
+
+/**
+ * **一览表**:每个协作工具在哪些场子里成立。
+ *
+ * 三个工具今天允许的场子完全相同,而表仍然一工具一行 —— 合并成一句「协作工具都
+ * 是这三格」会把「碰巧相同」写成「按定义相同」,下一次某个工具要单独收紧时,改的
+ * 人就得先把这句话拆回来,而拆错了没有任何东西会报错。
+ *
+ * `dm` 不在表里:它已经不是工具,是 `send_message` 的 `to` 参数
+ * (collab-send-channel-and-wake.md §2),门自然共用 `send_message` 那一行。
+ *
+ * **为什么不从 `agents/profile.ts` 的工具地板推**(C3-6 原方案设想的「一处声明
+ * 两面消费」):地板答的是「这个场子**至少**发几个工具」,门答的是「这个工具**至多**
+ * 在哪些场子里成立」,两者不是互逆。实证:`COLLAB_WORK_REQUIRED_TOOLS` 里没有
+ * `history`(工作台不需要框架硬塞给它),而工作台会话**是**可以查历史的 —— 按地板
+ * 推门会把工作台的 history 静静地关掉。硬融的代价是一次静默收紧,所以留成独立小表。
+ */
+export const COLLAB_TOOL_VENUES: Readonly<Record<CollabVenueTool, readonly CollabVenue[]>> = {
+  send_message: ['room', 'agent', 'work'],
+  board: ['room', 'agent', 'work'],
+  history: ['room', 'agent', 'work'],
+}
+
+/** 门本身。拒绝**文案**不在这里 —— 每个工具的那句话是它自己的资产(见各执行器)。 */
+export function isCollabToolAllowedInVenue(tool: CollabVenueTool, venue: CollabVenue): boolean {
+  return COLLAB_TOOL_VENUES[tool].includes(venue)
+}

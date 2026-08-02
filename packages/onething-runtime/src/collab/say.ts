@@ -31,6 +31,7 @@ import { sanitizeCollabInlineMarkup } from './inline-tags.js'
 import { parseCollabHandleMentions, type CollabAddressable } from './handles.js'
 import { buildCollabMentions, mergeCollabMentions, normalizeCollabMentions } from './mentions.js'
 import { truncateAtCodePoint } from './truncate.js'
+import { resolveCollabVenue } from './tool-surface.js'
 import type { CollabAgentLike, CollabMentionLike } from './types.js'
 
 /**
@@ -264,7 +265,9 @@ export function resolveCollabSayRoomSessionId(options: {
   if (requested) return requested
   const linked = options.linkedRoomSessionId?.trim()
   if (linked) return linked
-  if (options.kind === 'room' && options.sessionId) return options.sessionId
+  // kind → 场子走统一归一化(C3-6):这里曾是同一句 kind 判断的第五份手写。
+  // `resolveCollabVenue('room') === 'room'`,所以这是逐字等价的替换。
+  if (resolveCollabVenue(options.kind) === 'room' && options.sessionId) return options.sessionId
   return null
 }
 

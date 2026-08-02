@@ -57,14 +57,9 @@ export function ensureAgentDmRoom(agentIdA: string, agentIdB: string): string | 
 
   const existing = store.getSession(roomSessionId)
   if (!existing) {
-    // createSession 会把全局 current-session 指针挪到新会话上(scheduler /
-    // collab worker / 执行会话三处的既有先例)。这里尤其不能不还原:建房的
-    // 发起者是一个 agent 的回合,把用户正在看的标签页抢走完全说不通。
-    const previousSessionId = store.getCurrentSessionId()
-    store.createSession(roomSessionId, roomName)
-    if (previousSessionId && previousSessionId !== roomSessionId) {
-      store.setCurrentSessionId(previousSessionId)
-    }
+    // 建房的发起者是一个 agent 的回合,把用户正在看的标签页抢走完全说不通 ——
+    // 所以走不动指针的那个变体(指针纪律见 stores/sessions.ts)。
+    store.createSessionWithoutFocus(roomSessionId, roomName)
   }
 
   const session = store.getSession(roomSessionId)

@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createBoardTool, type BoardToolAdapters, type BoardToolContext } from '../board.js'
 import {
+  COLLAB_BOARD_START_RECEIPT_NOTE,
   applyCollabBoardAction,
   emptyCollabBoard,
   type CollabBoard,
+  type CollabTask,
 } from '../../../collab/index.js'
 
 const NAMES: Record<string, string> = { fe: '小李', research: '小研', pm: '阿明' }
@@ -70,5 +72,50 @@ describe('board tool perspective (W10)', () => {
     const tool = toolFor(null)
     const result = await tool.execute({ action: 'list' }, ctx())
     expect(result.output).toContain('no room board')
+  })
+})
+
+/**
+ * `start` 的回执必须说出「工作会话已在后台开启」(架构收敛 C3-5,审计 §7 第 4 项)。
+ *
+ * 此前它与 assign/move 共用同一行 `start ok: #… [doing] rev2` —— 一次派生了一整条
+ * 工作会话的动作,回执里对此只字不提。模型据此推断"我只是把卡挪了个列",于是接着
+ * 在这一轮里自己动手干那件重活,而后台那条工作会话正在同一张卡上跑。
+ */
+describe('board start 回执 (C3-5)', () => {
+  function toolWithResult(result: { board: CollabBoard; task?: CollabTask }) {
+    const adapters: BoardToolAdapters = {
+      resolveContext: () => ({ roomSessionId: 'room-1', actorAgentId: 'fe' }),
+      resolveMember: (_room, nameOrId) => nameOrId,
+      agentName: id => NAMES[id] ?? id,
+      applyAction: async () => result,
+    }
+    return createBoardTool(adapters)
+  }
+
+  const doingCard = {
+    id: 'task-abcdef01', title: '重构首页', status: 'doing', rev: 2,
+    assigneeAgentId: 'fe', createdAt: 1000, updatedAt: 1000, rejections: 0,
+    workSessionIds: [], history: [],
+  } as unknown as CollabTask
+
+  it('开成了就说 —— 卡进 doing 时回执带那一句', async () => {
+    const tool = toolWithResult({ board: seededBoard(), task: doingCard })
+    const result = await tool.execute({ action: 'start', taskId: doingCard.id }, ctx())
+    expect(result.output).toContain(COLLAB_BOARD_START_RECEIPT_NOTE)
+    // 原来的 headline 一字不动 —— 这是**追加**,不是改写。
+    expect(result.output).toContain('start ok: #task-abc')
+  })
+
+  it('别的动作不带这一句(它只对 start 为真)', async () => {
+    const tool = toolWithResult({ board: seededBoard(), task: doingCard })
+    const result = await tool.execute({ action: 'move', taskId: doingCard.id, status: 'doing' }, ctx())
+    expect(result.output).not.toContain(COLLAB_BOARD_START_RECEIPT_NOTE)
+  })
+
+  it('没真的进 doing(被拒/无卡)就不承诺开了会话', async () => {
+    const tool = toolWithResult({ board: seededBoard() })
+    const result = await tool.execute({ action: 'start', taskId: 'nope' }, ctx())
+    expect(result.output).not.toContain(COLLAB_BOARD_START_RECEIPT_NOTE)
   })
 })

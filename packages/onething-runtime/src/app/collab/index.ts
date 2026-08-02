@@ -20,6 +20,13 @@ export {
   type CollabRoomConfigResult,
 } from './coordinator.js'
 export { abortCollabRoomTurnForStop } from './turn.js'
+/** 建群房的唯一入口(架构收敛 C3):校验 + 落库,壳层不留业务规则。 */
+export {
+  ensureCollabGroupRoom,
+  type CollabGroupRoomInput,
+  type EnsureCollabGroupRoomOptions,
+  type EnsureCollabGroupRoomResult,
+} from './room-create.js'
 /** 群 folder 的只读列目录(agent-im-chat-ui.md §3.2「文件」块)。 */
 export {
   listCollabRoomFolder,

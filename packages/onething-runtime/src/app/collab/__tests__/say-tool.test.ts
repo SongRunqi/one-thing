@@ -67,6 +67,7 @@ vi.mock('../../store.js', () => ({
     (mocks.sessions.get(sessionId) as FakeSession | undefined)?.messages.push(message)
   },
   createSession: mocks.createSession,
+  createSessionWithoutFocus: mocks.createSession,
 }))
 
 vi.mock('../../events/index.js', () => ({
@@ -195,6 +196,34 @@ describe('两个入口,一个房间', () => {
     await speakIntoCollabRoom({ sessionId: ROOM, content: '三' })
     expect(says().map(message => message.content)).toEqual(['一', '二', '三'])
     expect(new Set(says().map(message => message.id)).size).toBe(3)
+  })
+
+  /**
+   * 场子门等价(架构收敛 C3-6)。
+   *
+   * 「哪些 kind 挂着一间房」的手写 if 被换成了统一判定(`venue.ts`),这条测试
+   * 把**改造前后必须逐一相同**的那张真值表钉下来:room 说进自己、work/agent 说进
+   * 各自指着的那间房、chat 与 kind 缺席(网关会话!)一律拒。
+   */
+  it('场子门等价:room/agent/work 通,chat 与 kind 缺席拒', async () => {
+    mocks.sessions.set('chat-1', {
+      id: 'chat-1', kind: 'chat', agentId: 'fe', messages: [],
+    } satisfies FakeSession)
+    // 网关(微信/Telegram)按远端身份建出来的会话:kind 为空,agentId 却是有的。
+    mocks.sessions.set('gateway-1', { id: 'gateway-1', agentId: 'fe', messages: [] } satisfies FakeSession)
+
+    const outcomes: Array<[string, boolean]> = []
+    for (const sessionId of [ROOM, AGENT_SESSION, WORK, 'chat-1', 'gateway-1']) {
+      const result = await speakIntoCollabRoom({ sessionId, content: `来自 ${sessionId}` })
+      outcomes.push([sessionId, result.ok])
+    }
+    expect(outcomes).toEqual([
+      [ROOM, true],
+      [AGENT_SESSION, true],
+      [WORK, true],
+      ['chat-1', false],
+      ['gateway-1', false],
+    ])
   })
 })
 

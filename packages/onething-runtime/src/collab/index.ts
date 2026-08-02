@@ -140,6 +140,7 @@ export {
   renderCollabAgentRef,
   renderCollabBoardDigest,
   COLLAB_BLOCK_REASON_MAX_CHARS,
+  COLLAB_BOARD_START_RECEIPT_NOTE,
   COLLAB_MAX_HALTS,
   COLLAB_MAX_REJECTIONS,
   COLLAB_REPORT_SUMMARY_MAX_CHARS,
@@ -277,9 +278,11 @@ export {
 export {
   buildCollabRoomContext,
   buildCollabRoomSystemPrompt,
+  buildCollabWorkContext,
   resolveCollabSpeakerLabel,
   type BuildCollabRoomContextOptions,
   type BuildCollabRoomSystemPromptOptions,
+  type BuildCollabWorkContextOptions,
 } from './roster.js'
 export {
   buildCollabChainHoldLine,
@@ -342,6 +345,12 @@ export {
 export {
   COLLAB_ROOM_TOOLS,
   COLLAB_WORK_REQUIRED_TOOLS,
+  COLLAB_TOOL_VENUES,
+  collabVenueLinksRoom,
+  isCollabToolAllowedInVenue,
+  resolveCollabVenue,
+  type CollabVenue,
+  type CollabVenueTool,
 } from './tool-surface.js'
 export {
   COLLAB_PLAN_MAX_WAVES,

@@ -123,6 +123,20 @@ export interface CollabBoardActor {
   agentId?: string
 }
 
+/**
+ * `start` 成功后追加给调用方的那一句(架构收敛 C3-5,审计 §7 第 4 项)。
+ *
+ * 此前 start 的回执与 assign/move 共用同一行 `start ok: #… [doing] rev2` —— 一次
+ * **派生了一整条工作会话**的动作,回执里对此只字不提。模型据此推断"我只是把卡挪
+ * 了个列",于是接着在房间回合里自己动手干那件重活,而后台那条工作会话正在同一
+ * 张卡上跑:同一件事做两遍,两边还互不知情。
+ *
+ * 措辞只陈述事实(不指挥):**已经开了、在后台、你在那边接着干**。
+ * 「同一张卡至多一个工作台」是 reducer 那条不变量(`doing` 早退),不是这句话。
+ */
+export const COLLAB_BOARD_START_RECEIPT_NOTE
+  = '工作会话已在后台开启 —— 这张卡的活在那条会话里做,不用在这一轮里动手。'
+
 interface CollabBoardEventBase {
   task: CollabTask
   /** The acting side was the human user, not an agent (W9b.2: the halt cap

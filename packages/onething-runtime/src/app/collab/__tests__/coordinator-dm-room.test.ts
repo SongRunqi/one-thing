@@ -56,6 +56,11 @@ vi.mock('../../store.js', () => ({
     mocks.sessions.set(id, session)
     return session
   },
+  createSessionWithoutFocus: (id: string, name: string) => {
+    const session = { id, name, messages: [] } as unknown as FakeSession
+    mocks.sessions.set(id, session)
+    return session
+  },
   getCurrentSessionId: () => undefined,
   setCurrentSessionId: vi.fn(),
   updateSessionArchived: vi.fn(),
@@ -277,5 +282,40 @@ describe('免的只是判定,围栏照旧', () => {
 
     expect(driveCommands()).toEqual([])
     expect(systemLines(GROUP_ROOM)).toEqual([])
+  })
+})
+
+/**
+ * 私聊房的名册不可编辑(架构收敛 C3 §4 / B3)。
+ *
+ * 界面上这两处本来就是只读的,但那只是**界面**:daemon 与任何程序化调用都直接
+ * 落在 `setCollabRoomConfig` 上。防线画在 UI 层等于没画 —— 一个 patch 就能把
+ * 一间私聊悄悄变成群,而所有读它的分支(免判激活、union 工具面、dm 版提示词)
+ * 仍按私聊在跑。
+ */
+describe('私聊房拒绝改名册', () => {
+  const REFUSAL = '私聊的成员不能改:这间房的成员就是私聊的双方。要和别人聊请另开一间私聊,要多人参与请建群。'
+
+  it('单成员 dm 房:patch 成员被拒,房还是原来那间房', () => {
+    seedDmRoom()
+    expect(coordinator.setCollabRoomConfig(DM_ROOM, { memberAgentIds: ['fe', 'pm'] }))
+      .toEqual({ success: false, error: REFUSAL })
+    expect((mocks.sessions.get(DM_ROOM) as FakeSession).room?.memberAgentIds).toEqual(['fe'])
+  })
+
+  it('双成员 pair dm 房同样拒绝', () => {
+    seedDmRoom({ memberAgentIds: ['fe', 'pm'] })
+    expect(coordinator.setCollabRoomConfig(DM_ROOM, { memberAgentIds: ['fe'] }).error).toBe(REFUSAL)
+  })
+
+  it('私聊房的**其它**设置照旧改得动 —— 拒的只是名册这一格', () => {
+    seedDmRoom()
+    expect(coordinator.setCollabRoomConfig(DM_ROOM, { name: '小李(前端)' })).toEqual({ success: true })
+  })
+
+  it('正控:同样的 patch 打在群房上是合法的', () => {
+    seedGroupRoom()
+    expect(coordinator.setCollabRoomConfig(GROUP_ROOM, { memberAgentIds: ['fe'] }))
+      .toEqual({ success: true })
   })
 })

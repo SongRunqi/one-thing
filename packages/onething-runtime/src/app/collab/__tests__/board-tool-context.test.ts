@@ -87,4 +87,39 @@ describe('board context from an execution session (W18)', () => {
       { roomSessionId: 'room-1', actor: { type: 'agent', agentId: 'fe' } },
     ])
   })
+
+  /**
+   * 场子门等价(架构收敛 C3-6)。
+   *
+   * `resolveContext` 里那两支手写的 kind 判断改走统一判定(`venue.ts`),真值表
+   * 必须逐一不变 —— 尤其 kind 缺席的网关会话:归一化把它算作 `chat`,拒。
+   */
+  it('场子门等价:room/agent/work 有板,chat 与 kind 缺席没有', async () => {
+    mocks.sessions.set('work-1', {
+      id: 'work-1',
+      kind: 'work',
+      agentId: 'fe',
+      collab: { roomSessionId: 'room-1', taskId: 't-1' },
+    } satisfies FakeSession)
+    mocks.sessions.set('chat-1', { id: 'chat-1', kind: 'chat', agentId: 'fe' } satisfies FakeSession)
+    // 网关会话:kind 为空、agentId 落成默认值 —— 它照旧不该有板。
+    mocks.sessions.set('gateway-1', {
+      id: 'gateway-1',
+      agentId: 'default',
+      collab: { roomSessionId: 'room-1' },
+    } satisfies FakeSession)
+
+    const seen: Array<[string, boolean]> = []
+    for (const sessionId of ['room-1', 'agent-exec-fe', 'work-1', 'chat-1', 'gateway-1']) {
+      const result = await BoardTool.execute({ action: 'list' }, ctx(sessionId))
+      seen.push([sessionId, !String(result.output).includes('no room board')])
+    }
+    expect(seen).toEqual([
+      ['room-1', true],
+      ['agent-exec-fe', true],
+      ['work-1', true],
+      ['chat-1', false],
+      ['gateway-1', false],
+    ])
+  })
 })

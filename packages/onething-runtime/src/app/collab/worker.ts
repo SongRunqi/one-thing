@@ -316,8 +316,14 @@ function buildBriefing(roomSessionId: string, task: CollabTask, resuming = false
       + `{ action: "complete", taskId: "${task.id}", summary: 交付摘要 } 作为你的最后一个动作,任务进入评审。`,
     `工作过程中随时可以用 send_message 在群里发一条(有发现、要确认、卡住了);不发也没关系。无法继续时用 board `
       + `{ action: "block", taskId: "${task.id}", reason: 原因 }。`,
-    // 工作台的 system prompt 是完整产品提示词(collabRoomOverrides 只认 room/
-    // agent 两种 kind),所以这份 briefing 是通用规则唯一够得着工作台的入口。
+    // C3-5 之前这里写着「briefing 是通用规则唯一够得着工作台的入口」——那正是
+    // A3 的病灶:任务框架与工作身份全部寄在这一条 user 消息里,而它会被压缩摘要
+    // 化。现在**身份与卡框架已经进了 system prompt**(engine/prompt/system-prompt.ts
+    // 的 work 分支,取 meta 里的 roomSessionId/taskId/taskTitle),这里只留会过期的
+    // 那一半:这一刻的看板、这一刻的群聊尾巴、这一次的交付协议。
+    //
+    // 规则块因此也瘦了一圈:`<where_you_are>` 归 system prompt(说一次就够),
+    // 这里只剩 `<rules>`。
     '',
     buildCollabWorkRules(),
   ].filter(line => line !== null).join('\n')
@@ -364,16 +370,17 @@ async function spawnWork(roomSessionId: string, task: CollabTask): Promise<void>
 
   try {
     if (!resuming) {
-      // createSession moves the global current-session pointer — restore it
-      // (scheduler agent-task-runner precedent).
-      const previousSessionId = store.getCurrentSessionId()
-      store.createSession(workSessionId, `[任务] ${task.title}`)
-      if (previousSessionId) store.setCurrentSessionId(previousSessionId)
+      // 工作台会话是幕后基础设施,建它不该动用户正在看的标签页(指针纪律收在
+      // stores/sessions.ts 的 createSessionWithoutFocus)。
+      store.createSessionWithoutFocus(workSessionId, `[任务] ${task.title}`)
     }
 
+    // C3-5:`taskTitle` 一并钉进 meta —— 工作身份进了 system prompt(engine/prompt/
+    // system-prompt.ts 的 work 分支),而它要的卡框架就从这里取。每次开工/续做都
+    // 重盖一遍,快照因此最旧也只旧到这一段执行开始的那一刻。
     store.updateSessionCollab(workSessionId, {
       kind: 'work',
-      collab: { roomSessionId, taskId: task.id },
+      collab: { roomSessionId, taskId: task.id, taskTitle: task.title },
     })
     store.updateSessionAgent(workSessionId, assignee)
     const roomSession = store.getSession(roomSessionId)

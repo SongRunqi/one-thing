@@ -50,14 +50,9 @@ export function ensureCollabAgentSession(
 
   const existing = store.getSession(sessionId)
   if (!existing) {
-    // createSession moves the global current-session pointer — restore it
-    // (scheduler agent-task-runner / collab worker precedent), otherwise
-    // creating a hidden session yanks the user's active tab.
-    const previousSessionId = store.getCurrentSessionId()
-    store.createSession(sessionId, collabAgentSessionName(agent.name))
-    if (previousSessionId && previousSessionId !== sessionId) {
-      store.setCurrentSessionId(previousSessionId)
-    }
+    // 幕后建的会话不该抢走用户正在看的标签页 —— 指针纪律收在 store 那一侧
+    // (`createSessionWithoutFocus`),这里只是"我不要焦点"这一句声明。
+    store.createSessionWithoutFocus(sessionId, collabAgentSessionName(agent.name))
     store.updateSessionArchived(sessionId, true, Date.now())
   }
 

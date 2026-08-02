@@ -1,15 +1,21 @@
 /**
- * COLLAB_ROOM_UPDATE handler wiring (W6). The handler owns exactly one job:
- * carry the patch across untouched, forwarding only the fields the caller
- * actually sent (an `undefined` that reached the app layer would read as
- * "clear the PM" for pmAgentId), and turn a thrown error into a wire failure.
+ * Collab handler wiring. 这一层的全部职责是**把 patch 原样送过河**:请求减去它的
+ * 地址(roomSessionId)就是 patch,一个字段名都不该在中转里出现,抛出来的错翻译
+ * 成一次线上失败。
+ *
+ * 逐字段手抄的那一版活生生丢过一个字段(budgets 的 `maxConcurrentTurns` 抄漏了
+ * 几个月,而且不报错),所以下面除了行为测试还钉了两条**穷尽性**:枚举 shared
+ * patch 类型的 keyof,逐键断言它真的到得了 app 层。新加字段漏抄就是红的 ——
+ * 类型层(Record<keyof …> 少一个键编译不过)和运行时层各挡一道。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '@shared/ipc.js'
+import type { CollabRoomBudgetsPatch, CollabRoomUpdatePatch } from '@shared/ipc.js'
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, request: unknown) => unknown>(),
-  setCollabRoomConfig: vi.fn(() => ({ success: true })),
+  setCollabRoomConfig: vi.fn((_roomSessionId: string, _patch: unknown) => ({ success: true })),
+  setCollabRoomBudgets: vi.fn((_roomSessionId: string, _patch: unknown) => true),
   ensureUserDmRoom: vi.fn((_agentId: string): string | null => 'agent-dm-fe'),
   reactToCollabMessage: vi.fn(() => ({ success: true, reactions: [] })),
   applyUserCollabBoardAction: vi.fn(async () => ({ success: true, board: { version: 1, tasks: [] } })),
@@ -27,9 +33,9 @@ vi.mock('electron', () => ({
 vi.mock('@onething/app/collab/board-store.js', () => ({ loadCollabBoard: () => ({ version: 1, tasks: [] }) }))
 
 vi.mock('@onething/app/collab/index.js', () => ({
-  setCollabRoomBudgets: () => true,
+  setCollabRoomBudgets: (...args: unknown[]) => mocks.setCollabRoomBudgets(...(args as [string, unknown])),
   setCollabRoomFrozen: () => true,
-  setCollabRoomConfig: (...args: unknown[]) => mocks.setCollabRoomConfig(...(args as [])),
+  setCollabRoomConfig: (...args: unknown[]) => mocks.setCollabRoomConfig(...(args as [string, unknown])),
   ensureUserDmRoom: (...args: unknown[]) => mocks.ensureUserDmRoom(...(args as [string])),
   reactToCollabMessage: (...args: unknown[]) => mocks.reactToCollabMessage(...(args as [])),
   applyUserCollabBoardAction: (...args: unknown[]) => mocks.applyUserCollabBoardAction(...(args as [])),
@@ -40,6 +46,10 @@ const { registerCollabHandlers } = await import('../ipc/collab.js')
 
 function invoke(request: unknown): unknown {
   return mocks.handlers.get(IPC_CHANNELS.COLLAB_ROOM_UPDATE)?.({}, request)
+}
+
+function invokeBudgets(request: unknown): unknown {
+  return mocks.handlers.get(IPC_CHANNELS.COLLAB_ROOM_SET_BUDGETS)?.({}, request)
 }
 
 function invokeReact(request: unknown): unknown {
@@ -64,6 +74,8 @@ beforeEach(() => {
   mocks.handlers.clear()
   mocks.setCollabRoomConfig.mockClear()
   mocks.setCollabRoomConfig.mockReturnValue({ success: true })
+  mocks.setCollabRoomBudgets.mockClear()
+  mocks.setCollabRoomBudgets.mockReturnValue(true)
   mocks.ensureUserDmRoom.mockClear()
   mocks.ensureUserDmRoom.mockReturnValue('agent-dm-fe')
   mocks.reactToCollabMessage.mockClear()
@@ -96,6 +108,66 @@ describe('COLLAB_ROOM_UPDATE', () => {
     mocks.setCollabRoomConfig.mockImplementation(() => { throw new Error('store exploded') })
     expect(invoke({ roomSessionId: 'room-1', name: 'x' }))
       .toEqual({ success: false, error: 'store exploded' })
+  })
+
+  /**
+   * 穷尽性:`CollabRoomUpdatePatch` 的每一个键都真的穿得过 handler。
+   *
+   * `Record<keyof CollabRoomUpdatePatch, …>` 是类型层的那道闸 —— shared 里加一个
+   * 字段而这里没补,编译就红;下面的 toHaveBeenCalledWith 是运行时那道 ——
+   * 中转要是又开始逐字段手抄且抄漏,断言就红。
+   */
+  it('shared patch 的每个键都到得了 app 层(keyof 穷尽)', () => {
+    const patch: Record<keyof CollabRoomUpdatePatch, unknown> = {
+      name: '官网改版组',
+      memberAgentIds: ['pm', 'fe'],
+      pmAgentId: 'pm',
+      permissionMode: 'normal',
+      responseMode: 'serial',
+      speakOrder: ['fe', 'pm'],
+      relayLoops: 3,
+    }
+    invoke({ roomSessionId: 'room-1', ...patch })
+    expect(mocks.setCollabRoomConfig).toHaveBeenCalledWith('room-1', patch)
+    // 地址不是 patch 的一部分 —— 它是**哪间房**,不是"改什么"。
+    expect(mocks.setCollabRoomConfig.mock.calls[0][1]).not.toHaveProperty('roomSessionId')
+  })
+})
+
+/**
+ * COLLAB_ROOM_SET_BUDGETS —— 在这次收敛之前全仓没有一条测试引用过这个通道,
+ * 而它恰好就是"逐字段手抄漏了一个"那起事故的现场。
+ */
+describe('COLLAB_ROOM_SET_BUDGETS', () => {
+  it('carries the patch across and reports success', () => {
+    expect(invokeBudgets({ roomSessionId: 'room-1', dailyCostUSD: 12 })).toEqual({ success: true })
+    expect(mocks.setCollabRoomBudgets).toHaveBeenCalledWith('room-1', { dailyCostUSD: 12 })
+  })
+
+  it('"不是房间"翻译成一句明确的失败,而不是一个裸 false', () => {
+    mocks.setCollabRoomBudgets.mockReturnValue(false)
+    expect(invokeBudgets({ roomSessionId: 'chat-1', maxChain: 4 }))
+      .toEqual({ success: false, error: 'Not a room session' })
+  })
+
+  it('turns a thrown error into a failed response', () => {
+    mocks.setCollabRoomBudgets.mockImplementation(() => { throw new Error('store exploded') })
+    expect(invokeBudgets({ roomSessionId: 'room-1', dailyCostUSD: 1 }))
+      .toEqual({ success: false, error: 'store exploded' })
+  })
+
+  /** 同一条穷尽性纪律。`maxConcurrentTurns` 正是被抄漏的那一个,它在这张表里。 */
+  it('shared patch 的每个键都到得了 app 层(keyof 穷尽)', () => {
+    const patch: Record<keyof CollabRoomBudgetsPatch, unknown> = {
+      dailyCostUSD: 12,
+      maxChain: 4,
+      maxTurnToolCalls: 20,
+      maxTurnSayCalls: 3,
+      maxConcurrentTurns: 2,
+    }
+    invokeBudgets({ roomSessionId: 'room-1', ...patch })
+    expect(mocks.setCollabRoomBudgets).toHaveBeenCalledWith('room-1', patch)
+    expect(mocks.setCollabRoomBudgets.mock.calls[0][1]).not.toHaveProperty('roomSessionId')
   })
 })
 

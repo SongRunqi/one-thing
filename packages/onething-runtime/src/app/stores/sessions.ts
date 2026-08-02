@@ -333,6 +333,28 @@ export function createSession(sessionId: string, name: string): ChatSession {
 }
 
 /**
+ * 建会话但**不动** current-session 指针。
+ *
+ * `createSession` 会顺手把全局 current-session 指针挪到新会话上 —— 用户在界面上
+ * 新建一条会话时这是对的,但幕后建的会话(agent 常驻执行会话、任务工作台、私聊房、
+ * 程序化建群)一律不该抢走用户正在看的东西。在这条纪律被收进来之前,四处调用点
+ * 各自手写了一遍「先记下指针 → createSession → 再写回去」的舞蹈,连注释都是互相
+ * 抄的;其中一处还漏了 `previous !== sessionId` 这个条件。
+ *
+ * 指针的读写都在这一层,所以"还原"是逐字还原:先前是空字符串就还原成空字符串,
+ * 而不是留着新会话的 id。
+ */
+export function createSessionWithoutFocus(
+	sessionId: string,
+	name: string,
+): ChatSession {
+	const previousSessionId = getCurrentSessionId();
+	const session = sessionRepository.createSession(sessionId, name);
+	if (previousSessionId !== sessionId) setCurrentSessionId(previousSessionId);
+	return session;
+}
+
+/**
  * Collab (multi-agent room) session fields — docs/design/multi-agent-collab.md.
  * `undefined` leaves a field untouched, `null` deletes it.
  */

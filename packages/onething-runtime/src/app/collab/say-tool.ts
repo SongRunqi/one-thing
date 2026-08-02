@@ -50,6 +50,7 @@ import { collabRoomMembers } from './members.js'
 import { isRoomOverBudget } from './coordinator.js'
 import { buildCollabIdentityDirectory } from './identity-directory.js'
 import { resolveUserIdentity } from './user-identity.js'
+import { collabLinkedRoomSessionId } from './venue.js'
 
 interface SayContext {
   roomSessionId: string
@@ -71,17 +72,21 @@ interface SayContext {
  * below against whichever room this returns, so an explicit `room` buys no
  * privilege — an agent that is not a member of it is refused exactly like one
  * that was just shown the door.
+ *
+ * 第 2 条那句「哪些 kind 挂着一间房」走统一的场子判定(C3-6,`venue.ts`),不再
+ * 在这里手写 —— 同一句 if 此前在四个工具里各有一份,而漏掉一份不会报错,只会
+ * 多放一个人进来。第 1、3 条不经过门,与改造前逐字一致:显式 `room` 仍然优先
+ * (下面那几道成员/冻结/预算门才是真正的授权面),`room` 场子的房仍然是它自己。
  */
 function resolveSayContext(sessionId: string, requestedRoom?: string): SayContext | null {
   const session = store.getSession(sessionId)
   if (!session || !session.agentId) return null
+  const linkedRoomSessionId = collabLinkedRoomSessionId(session)
   const roomSessionId = resolveCollabSayRoomSessionId({
     kind: session.kind,
     sessionId: session.id,
     ...(requestedRoom ? { requestedRoomSessionId: requestedRoom } : {}),
-    ...(session.kind === 'work' || session.kind === 'agent'
-      ? { linkedRoomSessionId: session.collab?.roomSessionId }
-      : {}),
+    ...(linkedRoomSessionId ? { linkedRoomSessionId } : {}),
   })
   if (!roomSessionId) return null
   return { roomSessionId, agentId: session.agentId }

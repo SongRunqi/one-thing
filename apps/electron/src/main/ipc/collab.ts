@@ -79,19 +79,20 @@ export function registerCollabHandlers(): void {
     return success ? { success } : { success, error: 'Not a room session' }
   })
 
+  // 整体透传(与 COLLAB_BOARD_ACT 同一条纪律):请求减去它的**地址**就是 patch,
+  // 所以这里只做一次解构,一个字段名都不出现。
+  //
+  // 逐字段手抄的那一版活生生丢过一个字段:`CollabRoomBudgetsRequest` 从并行化那天
+  // 起就带着 maxConcurrentTurns,`setCollabRoomBudgets` 也一直认它,唯独这个中转
+  // 抄漏了 —— 于是「同时发言上限」从桌面端根本写不进去,而且不报错。
   ipcMain.handle(IPC_CHANNELS.COLLAB_ROOM_SET_BUDGETS, (_event, request: CollabRoomBudgetsRequest) => {
-    const success = setCollabRoomBudgets(request.roomSessionId, {
-      dailyCostUSD: request.dailyCostUSD,
-      maxChain: request.maxChain,
-      maxTurnToolCalls: request.maxTurnToolCalls,
-      maxTurnSayCalls: request.maxTurnSayCalls,
-      // 2026-08-02:这一行本来是漏的。`CollabRoomBudgetsRequest` 从并行化那天起
-      // 就带着 maxConcurrentTurns,`setCollabRoomBudgets` 也一直认它,唯独这个
-      // 中转把字段一个个抄过去时抄漏了 —— 于是「同时发言上限」从桌面端根本写不进去,
-      // 而且不报错。这正是那个类型的注释警告过的那种漂移。
-      maxConcurrentTurns: request.maxConcurrentTurns,
-    })
-    return success ? { success } : { success, error: 'Not a room session' }
+    try {
+      const { roomSessionId, ...patch } = request ?? ({} as CollabRoomBudgetsRequest)
+      const success = setCollabRoomBudgets(roomSessionId, patch)
+      return success ? { success } : { success, error: 'Not a room session' }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
   })
 
   // Room spend (W13.5): read-only, one shot when the settings panel opens.
@@ -103,17 +104,14 @@ export function registerCollabHandlers(): void {
   // Team settings (W6): rename / roster / PM / permission mode. Validation and
   // the membership 群公告 live in the app layer — this handler only carries the
   // patch across, so the CLI/daemon path behaves identically.
+  //
+  // 同样是整体透传。逐字段的那一版还额外维护了一条"undefined 不要过河"的规矩,
+  // 而 app 层的每一处判据本来就是 `patch.x !== undefined` —— 那条规矩什么也没保护,
+  // 只是让每加一个字段就得记着回来补一行。
   ipcMain.handle(IPC_CHANNELS.COLLAB_ROOM_UPDATE, (_event, request: CollabRoomUpdateRequest) => {
     try {
-      return setCollabRoomConfig(request.roomSessionId, {
-        ...(request.name !== undefined ? { name: request.name } : {}),
-        ...(request.memberAgentIds !== undefined ? { memberAgentIds: request.memberAgentIds } : {}),
-        ...(request.pmAgentId !== undefined ? { pmAgentId: request.pmAgentId } : {}),
-        ...(request.permissionMode !== undefined ? { permissionMode: request.permissionMode } : {}),
-        ...(request.responseMode !== undefined ? { responseMode: request.responseMode } : {}),
-        ...(request.speakOrder !== undefined ? { speakOrder: request.speakOrder } : {}),
-        ...(request.relayLoops !== undefined ? { relayLoops: request.relayLoops } : {}),
-      })
+      const { roomSessionId, ...patch } = request ?? ({} as CollabRoomUpdateRequest)
+      return setCollabRoomConfig(roomSessionId, patch)
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }

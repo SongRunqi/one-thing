@@ -9,6 +9,7 @@ export {
   getSessions,
   getSession,
   createSession,
+  createSessionWithoutFocus,
   createBranchSession,
   deleteSession,
   onSessionsDeleted,

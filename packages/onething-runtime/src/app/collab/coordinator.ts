@@ -19,12 +19,20 @@ import {
   COLLAB_SYSTEM_SOURCE_MEMBERSHIP,
   buildCollabMembershipLines,
   collabAgentSessionId,
+  isAgentPairDmRoom,
   isCollabDriveMessage,
+  isUserDmRoom,
   type CollabBoard,
   type CollabBoardAction,
 } from '@onething/runtime/collab'
 import { randomUUID } from 'node:crypto'
-import { isActiveAgent, type ChatMessage, type PermissionMode } from '@shared/ipc.js'
+import {
+  isActiveAgent,
+  type ChatMessage,
+  type CollabRoomBudgetsPatch,
+  type CollabRoomUpdatePatch,
+  type PermissionMode,
+} from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
@@ -455,19 +463,14 @@ export async function applyUserCollabBoardAction(
 const PERMISSION_MODES: readonly PermissionMode[] = ['normal', 'auto-accept-edits', 'dangerously-allow-all']
 const RESPONSE_MODES: ReadonlyArray<'auto' | 'parallel' | 'serial'> = ['auto', 'parallel', 'serial']
 
-/** Room settings patch (W6). Absent field = unchanged; pmAgentId null = clear. */
-export interface CollabRoomConfigPatch {
-  name?: string
-  memberAgentIds?: string[]
-  pmAgentId?: string | null
-  permissionMode?: PermissionMode
-  /** 响应模式(collab-speaking-order.md)。 */
-  responseMode?: 'auto' | 'parallel' | 'serial'
-  /** 接力次序;`[]` = 清空(退回名册序)。 */
-  speakOrder?: string[]
-  /** 一趟接力最多几圈;0 = 不限。 */
-  relayLoops?: number
-}
+/**
+ * Room settings patch (W6). Absent field = unchanged; pmAgentId null = clear.
+ *
+ * **就是** shared 的 `CollabRoomUpdatePatch`(线上请求减去它的地址)。不再另写一份
+ * 结构相同的接口:IPC handler 现在整体透传 `{ roomSessionId, ...patch }`,两侧共用
+ * 同一个类型之后,「shared 加了个字段、app 层忘了收」这类漂移在编译期就死了。
+ */
+export type CollabRoomConfigPatch = CollabRoomUpdatePatch
 
 export interface CollabRoomConfigResult {
   success: boolean
@@ -496,6 +499,18 @@ export function setCollabRoomConfig(
   const previousMembers = session.room.memberAgentIds ?? []
   let nextMembers = previousMembers
   if (patch.memberAgentIds !== undefined) {
+    // 私聊房的名册**不可编辑**(agent-im-dm.md D1/D3:人数即形态)。改一个单成员
+    // dm 房的成员就是把它悄悄变成群,而所有读它的分支(免判激活、union 工具面、
+    // dm 版提示词)仍按私聊在跑 —— 形态与语义分家,最难查的那一类。
+    //
+    // 界面上这两处本来就是只读的,但那只是**界面**:daemon 与任何程序化调用都
+    // 直接落到这个函数上,防线画在 UI 层等于没画。
+    if (isUserDmRoom(session.room) || isAgentPairDmRoom(session.room)) {
+      return {
+        success: false,
+        error: '私聊的成员不能改:这间房的成员就是私聊的双方。要和别人聊请另开一间私聊,要多人参与请建群。',
+      }
+    }
     const requested = Array.isArray(patch.memberAgentIds) ? patch.memberAgentIds : []
     const unique = [...new Set(requested.filter(id => typeof id === 'string' && id.length > 0))]
     if (unique.length === 0) {
@@ -684,16 +699,17 @@ export function postCollabSystemLine(roomSessionId: string, content: string): vo
   postSystemLine(roomSessionId, content)
 }
 
-/** 预算可配置(用户要求):只改给定字段;0 = 关闭该闸。生效即时(缓存失效)。 */
+/**
+ * 预算可配置(用户要求):只改给定字段;0 = 关闭该闸。生效即时(缓存失效)。
+ *
+ * 参数类型直接吃 shared 的 `CollabRoomBudgetsPatch` —— 这里以前是一份手写的同形
+ * 接口,而中转层同时也在逐字段手抄,于是 `maxConcurrentTurns` 悄悄丢了几个月。
+ * 一份类型 + 整体透传,那种漏抄不再有藏身处。下面每个字段的取值校验照旧:形状
+ * 由类型保证,**取值**由这里保证。
+ */
 export function setCollabRoomBudgets(
   roomSessionId: string,
-  budgets: {
-    dailyCostUSD?: number
-    maxChain?: number
-    maxTurnToolCalls?: number
-    maxTurnSayCalls?: number
-    maxConcurrentTurns?: number
-  },
+  budgets: CollabRoomBudgetsPatch,
 ): boolean {
   const session = store.getSession(roomSessionId)
   if (!session || session.kind !== 'room' || !session.room) return false

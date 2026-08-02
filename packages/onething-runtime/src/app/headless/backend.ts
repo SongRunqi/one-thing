@@ -2,7 +2,14 @@ import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import os from 'node:os'
-import type { AppSettings, ChatMessage, ChatSession, PermissionMode } from '@shared/ipc.js'
+import type {
+  AppSettings,
+  ChatMessage,
+  ChatSession,
+  CollabRoomBudgetsPatch,
+  CollabRoomUpdatePatch,
+  PermissionMode,
+} from '@shared/ipc.js'
 import type {
   ActiveStreamInfo,
   AskOutputEvent,
@@ -35,13 +42,15 @@ import {
   saveSettings,
   setCurrentSessionId,
   updateSessionArchived,
-  updateSessionCollab,
   updateSessionModel,
   updateSessionPermissionMode,
   updateSessionPin,
   updateSessionWorkingDirectory,
 } from '../store.js'
-import { agentExists } from '../agents/index.js'
+// 建房走 app 层那一本规则书。直接指到 room-create 而不是 collab 桶:这条口是
+// 同步的,而桶会把协调器整棵树一起拉起来 —— 邻居们的 `await import` 就是为了
+// 避开那件事。room-create 只依赖 store 与 agents,两者本来就已经在了。
+import { ensureCollabGroupRoom } from '../collab/room-create.js'
 import { getSettings } from '../stores/settings.js'
 import { getAllToolsAsync } from '../tools/index.js'
 import { shutdownEventSystem, getEventBus, getStreamChannel } from '../events/index.js'
@@ -378,27 +387,17 @@ export class HeadlessBackend {
     permissionMode?: PermissionMode
     dailyCostUSD?: number
   }): ChatSession {
-    const members = (input.memberAgentIds ?? []).filter(Boolean)
-    if (members.length === 0) throw new Error('Room needs at least one member agent id')
-    for (const agentId of members) {
-      if (!agentExists(agentId)) throw new Error(`Unknown agent: ${agentId}`)
+    // 建房的规则书只有一本(app/collab/room-create.ts)。daemon 这一口从前抄了
+    // 一份删节版 —— 少了退休拒收,于是 CLI 能建出一间桌面端改都改不动的房。
+    const created = ensureCollabGroupRoom(input.name || 'Room', {
+      memberAgentIds: input.memberAgentIds ?? [],
+      pmAgentId: input.pmAgentId,
+      budgets: { dailyCostUSD: input.dailyCostUSD },
+    }, { sessionId: randomUUID() })
+    if (!created.success || !created.session) {
+      throw new Error(created.error || 'Failed to create room')
     }
-    if (input.pmAgentId && !members.includes(input.pmAgentId)) {
-      throw new Error('PM must be a room member')
-    }
-    const previous = getCurrentSessionId()
-    const session = createSession(randomUUID(), input.name || 'Room')
-    if (previous) setCurrentSessionId(previous)
-    updateSessionCollab(session.id, {
-      kind: 'room',
-      room: {
-        memberAgentIds: members,
-        ...(input.pmAgentId ? { pmAgentId: input.pmAgentId } : {}),
-        ...(typeof input.dailyCostUSD === 'number' && input.dailyCostUSD >= 0
-          ? { budgets: { dailyCostUSD: input.dailyCostUSD } }
-          : {}),
-      },
-    })
+    const session = created.session
     if (input.workingDirectory) updateSessionWorkingDirectory(session.id, input.workingDirectory)
     if (input.permissionMode) updateSessionPermissionMode(session.id, input.permissionMode)
     return getSession(session.id) ?? session
@@ -432,31 +431,27 @@ export class HeadlessBackend {
     return loadCollabBoard(roomSessionId)
   }
 
-  async collabSetBudgets(roomSessionId: string, budgets: {
-    dailyCostUSD?: number
-    maxChain?: number
-    maxTurnToolCalls?: number
-    maxTurnSayCalls?: number
-  }): Promise<{ ok: boolean }> {
+  /** 预算 patch 直接吃 shared 的那一份类型 —— 本地再抄一遍就是漂移的起点。 */
+  async collabSetBudgets(
+    roomSessionId: string,
+    budgets: CollabRoomBudgetsPatch,
+  ): Promise<{ ok: boolean }> {
     const { setCollabRoomBudgets } = await import('../collab/index.js')
     return { ok: setCollabRoomBudgets(roomSessionId, budgets) }
   }
 
-  /** Team settings over the daemon (W6): same app-layer path as the IPC. */
-  async collabRoomUpdate(input: {
-    roomSessionId: string
-    name?: string
-    memberAgentIds?: string[]
-    pmAgentId?: string | null
-    permissionMode?: PermissionMode
-  }): Promise<{ ok: boolean; error?: string }> {
+  /**
+   * Team settings over the daemon (W6): same app-layer path as the IPC.
+   *
+   * 整体透传,与 IPC 那一口同一条纪律。手抄版在这里少了三个字段(响应模式三件套),
+   * 于是「同一个 app 层函数」在两条路上其实收到的是两种 patch。
+   */
+  async collabRoomUpdate(
+    input: CollabRoomUpdatePatch & { roomSessionId: string },
+  ): Promise<{ ok: boolean; error?: string }> {
     const { setCollabRoomConfig } = await import('../collab/index.js')
-    const result = setCollabRoomConfig(input.roomSessionId, {
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.memberAgentIds !== undefined ? { memberAgentIds: input.memberAgentIds } : {}),
-      ...(input.pmAgentId !== undefined ? { pmAgentId: input.pmAgentId } : {}),
-      ...(input.permissionMode !== undefined ? { permissionMode: input.permissionMode } : {}),
-    })
+    const { roomSessionId, ...patch } = input
+    const result = setCollabRoomConfig(roomSessionId, patch)
     if (!result.success) throw new Error(result.error || 'Failed to update room')
     return { ok: true }
   }

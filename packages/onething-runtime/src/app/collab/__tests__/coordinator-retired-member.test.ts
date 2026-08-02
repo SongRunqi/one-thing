@@ -61,6 +61,11 @@ vi.mock('../../store.js', () => ({
     mocks.sessions.set(id, session)
     return session
   },
+  createSessionWithoutFocus: (id: string, name: string) => {
+    const session = { id, name, messages: [] } as unknown as FakeSession
+    mocks.sessions.set(id, session)
+    return session
+  },
   getCurrentSessionId: () => undefined,
   setCurrentSessionId: vi.fn(),
   updateSessionArchived: vi.fn(),
@@ -81,6 +86,10 @@ vi.mock('../../store.js', () => ({
   },
   updateSessionPermissionMode: vi.fn(),
   renameSession: vi.fn(),
+  deleteSession: (id: string) => {
+    mocks.sessions.delete(id)
+    return { deletedIds: [id] }
+  },
 }))
 
 vi.mock('../../events/index.js', () => ({
@@ -144,6 +153,7 @@ vi.mock('../worker.js', () => ({
 }))
 
 const coordinator = await import('../coordinator.js')
+const { ensureCollabGroupRoom } = await import('../room-create.js')
 
 const ROOM = 'room-1'
 
@@ -250,5 +260,38 @@ describe('setCollabRoomConfig — retired members', () => {
     seedRoom({ memberAgentIds: ['pm'] })
     expect(coordinator.setCollabRoomConfig(ROOM, { pmAgentId: 'gone' }).error)
       .toBe('PM must be a room member')
+  })
+})
+
+/**
+ * 建房与改房是同一本规则书(架构收敛 C3 §4 / A5)。
+ *
+ * 分家的那一版里,"能不能把已退休的老王放进一间房"在两条路上有两个答案:新建时
+ * 可以(创建路径根本不查退休),建完再加就不行。这个 describe 就是钉住"同一个
+ * 问题、同一个答案、同一句话" —— 它是这次下沉的验收判据本身,不是附带测试。
+ */
+describe('建房与改房对退休 agent 给同一个答案', () => {
+  it('创建路径也拒退休,且文案与更新路径逐字一致', () => {
+    seedRoom({ memberAgentIds: ['pm'] })
+    const created = ensureCollabGroupRoom('新群', { memberAgentIds: ['pm', 'gone'] }, {
+      sessionId: 'room-new',
+    })
+    const updated = coordinator.setCollabRoomConfig(ROOM, { memberAgentIds: ['pm', 'gone'] })
+
+    expect(created).toEqual({ success: false, error: 'Agent is retired: 老王' })
+    expect(created.error).toBe(updated.error)
+    // 拒了就不该留下任何痕迹 —— 半成品会话比报错贵得多。
+    expect(mocks.sessions.get('room-new')).toBeUndefined()
+  })
+
+  it('正控:在职成员建得出房,而且落库就是 kind=room', () => {
+    const created = ensureCollabGroupRoom('新群', { memberAgentIds: ['pm', 'fe'], pmAgentId: 'pm' }, {
+      sessionId: 'room-new',
+    })
+    expect(created.success).toBe(true)
+    const session = mocks.sessions.get('room-new') as FakeSession
+    expect(session.kind).toBe('room')
+    expect(session.room?.memberAgentIds).toEqual(['pm', 'fe'])
+    expect(session.room?.pmAgentId).toBe('pm')
   })
 })

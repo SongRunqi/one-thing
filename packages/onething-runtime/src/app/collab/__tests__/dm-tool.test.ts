@@ -58,6 +58,14 @@ vi.mock('../../store.js', () => ({
     mocks.currentSessionId = id
     return session
   },
+  // 幕后建会话走"不动 current 指针"的那个变体:真实 store 里它建完把指针原样
+  // 还原,所以这里就是"会话建了、指针没动"。
+  createSessionWithoutFocus: (id: string, name: string) => {
+    const session: FakeSession = { id, name, messages: [] }
+    mocks.sessions.set(id, session)
+    mocks.created.push(id)
+    return session
+  },
   getCurrentSessionId: () => mocks.currentSessionId,
   setCurrentSessionId: (id: string) => { mocks.currentSessionId = id },
   updateSessionAgent: vi.fn(),
@@ -376,6 +384,42 @@ describe('拒绝路径:说清是哪一种,而且什么都不留下', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toContain('没有可用的发言身份')
     expect(mocks.created).toEqual([])
+  })
+
+  /**
+   * 场子门等价(架构收敛 C3-6)。
+   *
+   * 那道 kind 三连否定改走统一判定(`venue.ts`),真值表逐一不变。压轴的是网关
+   * 那一行:`kind` 为空 + 有 agentId —— 归一化把它算作 `chat`,拒。它若被放行,
+   * 一位陌生联系人就能借这条会话给同事发私聊。
+   */
+  it('场子门等价:room/agent/work 通,chat 与 kind 缺席拒', async () => {
+    mocks.sessions.set('room-1', {
+      id: 'room-1', name: '群', kind: 'room', agentId: 'fe',
+      room: { memberAgentIds: ['fe', 'pm'] }, messages: [],
+    } satisfies FakeSession)
+    mocks.sessions.set('work-2', {
+      id: 'work-2', name: '工作台', kind: 'work', agentId: 'fe', messages: [],
+    } satisfies FakeSession)
+    mocks.sessions.set('chat-2', {
+      id: 'chat-2', name: '普通会话', kind: 'chat', agentId: 'fe', messages: [],
+    } satisfies FakeSession)
+    mocks.sessions.set('gateway-1', {
+      id: 'gateway-1', name: '微信联系人', agentId: 'fe', messages: [],
+    } satisfies FakeSession)
+
+    const outcomes: Array<[string, boolean]> = []
+    for (const sessionId of ['room-1', EXEC, 'work-2', 'chat-2', 'gateway-1']) {
+      const result = await sendCollabDm({ sessionId, to: 'pm', message: `来自 ${sessionId}` })
+      outcomes.push([sessionId, result.ok])
+    }
+    expect(outcomes).toEqual([
+      ['room-1', true],
+      [EXEC, true],
+      ['work-2', true],
+      ['chat-2', false],
+      ['gateway-1', false],
+    ])
   })
 
   it('工具层把拒绝原样交给模型,并标 ok:false', async () => {

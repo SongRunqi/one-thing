@@ -68,6 +68,11 @@ vi.mock('../../store.js', () => ({
     mocks.sessions.set(id, session)
     return session
   },
+  createSessionWithoutFocus: (id: string, name: string) => {
+    const session = { id, name, messages: [] } as unknown as FakeSession
+    mocks.sessions.set(id, session)
+    return session
+  },
   getCurrentSessionId: () => undefined,
   setCurrentSessionId: vi.fn(),
   updateSessionArchived: vi.fn(),

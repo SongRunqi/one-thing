@@ -261,7 +261,10 @@ function buildCollabDmContext(options: BuildCollabRoomContextOptions): string {
 					// D7 union:私聊常驻会话就是"替 TA 干活"的地方,工具面完整。
 					"Everything you normally have works here. Light work — look something up, read a file, make a small edit — just do it, then `send_message` the result.",
 					// §5 规则 1 的重活那一半:兜底是断路器/墙钟,以及工作台会话本身的可恢复性。
-					"Sizeable work (many files, long-running) starts with `board` start: that gives you a separate work session with no turn limit, where the context survives. No card for it yet, `start` makes one. `send_message` as you hit milestones.",
+					// 「no turn limit」已改为如实(C3-5):工作会话有 maxTurns 与 30 分钟
+					// 墙钟。这一段是情况说明,所以只陈述闸的存在,不给"分段落地"那类
+					// 动作建议 —— 那句归 `<rules>`(agent-rules.ts),两处各写一版会打架。
+					"Sizeable work (many files, long-running) starts with `board` start: that gives you a separate work session where the context survives, bounded by a turn budget and a 30-minute wall clock. No card for it yet, `start` makes one. `send_message` as you hit milestones.",
 					"</your_tools>",
 				]),
 	]
@@ -456,6 +459,52 @@ export function buildCollabRoomSystemPrompt(
 			: []),
 	].join("\n");
 	return [persona, `<workspace>\n${inner}\n</workspace>`].join("\n\n");
+}
+
+export interface BuildCollabWorkContextOptions {
+	/** 母房的名字 —— 结论发回哪里、这张卡是谁家的活。 */
+	roomName: string;
+	/** 卡 id。给全 id:`<card id="…"/>` 与 `board` 的 taskId 都照抄这一串。 */
+	taskId?: string;
+	/** 卡标题(会话 meta 里的快照,`CollabWorkRef.taskTitle`)。 */
+	taskTitle?: string;
+}
+
+/**
+ * 工作台会话的**工作身份**——常驻 system prompt 的那一段(架构收敛 C3-5)。
+ *
+ * A3 抓到的病灶是「工作会话零 system prompt 身份」:`collabRoomOverrides` 只认
+ * room/agent 两种 kind,work 落空,于是一条工作会话拿到的是**完整产品提示词**
+ * (一个通用助理的身份)+ 一条 briefing user 消息。那条 briefing 是任务框架唯一
+ * 的入口,而它跟其余历史一样会被压缩摘要化 —— 干到第三个小时的 agent 于是既不
+ * 记得自己在做哪张卡,也不记得产出该往哪儿报。
+ *
+ * 这一段解决的正是「压不掉」:它每一轮整份重发。所以它只装**不会过期**的事实:
+ * 场子、卡的身份、回报的两条路。会过期的(看板现状、群聊尾巴、评审意见)留在
+ * briefing 里,那本来就是它该待的地方。
+ *
+ * 体例与房版同源:**只陈述事实,不指挥**。「什么时候 complete」是交付协议,归
+ * briefing;「怎么写标签」是书写约定,归 `<rules>`(agent-rules.ts)。
+ */
+export function buildCollabWorkContext(
+	options: BuildCollabWorkContextOptions,
+): string {
+	const card = [
+		options.taskId ? `id: ${options.taskId}` : "",
+		options.taskTitle ? `标题: ${options.taskTitle}` : "",
+	].filter((line) => line.length > 0);
+	return [
+		"<where_you_are>",
+		// 隐喻与房版同源(工位),但这里的工位上摆着一张卡,而不是一条通知流:
+		// 工作会话没有推送进来,它是被一张卡开出来的。
+		`You are at your own desk, working on one card from the board of the room 「${options.roomName}」.`,
+		// W25 的那条事实,搬到了它唯一该在的地方(此前寄在 briefing 里,会被压缩)。
+		"This session runs in the background. Everything you produce here — prose, reasoning, tool calls and their results — stays here.",
+		// 两条回报路都写出来:少写哪一条,那一条就会在真机里变成"从来没人用过"。
+		`\`send_message\` is the send button that carries words to 「${options.roomName}」 — there is no other send button. The \`board\` tool is how the card itself moves (complete when it is delivered, block when it cannot be).`,
+		"</where_you_are>",
+		...(card.length > 0 ? ["<card>", ...card, "</card>"] : []),
+	].join("\n");
 }
 
 /**

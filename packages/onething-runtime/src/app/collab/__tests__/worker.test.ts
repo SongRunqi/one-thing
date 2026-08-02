@@ -73,6 +73,10 @@ vi.mock('../../store.js', () => ({
     mocks.createSession(id, name)
     mocks.sessions.set(id, { id, kind: 'work', name, messages: [] })
   },
+  createSessionWithoutFocus: (id: string, name: string) => {
+    mocks.createSession(id, name)
+    mocks.sessions.set(id, { id, kind: 'work', name, messages: [] })
+  },
   updateSessionCollab: vi.fn(),
   updateSessionAgent: vi.fn(),
   updateSessionPermissionMode: (...args: unknown[]) => mocks.updateSessionPermissionMode(...args),

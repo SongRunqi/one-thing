@@ -13,7 +13,7 @@ import {
   renderCollabInlineTagsAsText,
   sanitizeCollabInlineMarkup,
 } from '../inline-tags.js'
-import { buildCollabWorkRules } from '../agent-rules.js'
+import { buildCollabCommonRules, buildCollabWorkRules } from '../agent-rules.js'
 import { buildCollabRoomSystemPrompt } from '../roster.js'
 import { projectRoomHistory, wrapCollabMessageEnvelope } from '../projection.js'
 import { normalizeCollabSayContent } from '../say.js'
@@ -180,16 +180,46 @@ describe('通用规则注入(§8)', () => {
   })
 
   /**
-   * 工作台版本**独立成篇**:它拼进 worker.ts 的任务简报(一条 user 消息),
-   * 前面没有 `<where_you_are>` 可以依赖 —— 那句场子事实必须自己带,这不是
-   * 重复,是这个语境里的唯一一次陈述。
+   * 工作台版本只剩**跨场子恒真**的书写约定(架构收敛 C3-5)。
+   *
+   * 场子事实此前必须自己带(briefing 前面没有 `<where_you_are>` 可以依赖),
+   * 现在它常驻 system prompt(engine/prompt/system-prompt.ts 的 work 分支),
+   * 这里再念一遍就是念经 —— 所以这条断言反过来了。
    */
-  it('工作台版本自带场子事实,并只留下用得上的规则', () => {
+  it('工作台版本只留书写约定,场子事实交给 system prompt', () => {
     const rules = buildCollabWorkRules()
     expect(rules).toContain('`<file path="…"/>`')
-    expect(rules).toContain('This work session runs in the background')
-    expect(rules).toContain('the `send_message` tool')
+    expect(rules).not.toContain('<where_you_are>')
     expect(rules).not.toContain('`dm`')
+  })
+
+  /**
+   * 两条**在已开工的工作会话里自相矛盾**的规则必须不在(C3-5,审计 §5)。
+   *
+   * 读到它们的 agent 已经在这张卡的工作会话里跑着:「先问清楚再开工」只会换来
+   * 一句回群的废话,「重活先 board start」指向的那次调用必被 reducer 早退拒掉
+   * (卡已经是 `doing`)。它们属于房间回合 —— 下一条断言钉住那一半不许一起删。
+   */
+  it('工作台版删掉 ask-first / board-start-first,房间版原样保留', () => {
+    const work = buildCollabWorkRules()
+    expect(work).not.toContain('Being assigned a card is not an order to begin')
+    expect(work).not.toContain('`board` start first')
+
+    const room = buildCollabCommonRules()
+    expect(room).toContain('Being assigned a card is not an order to begin')
+    expect(room).toContain('`board` start first')
+  })
+
+  /**
+   * 「no turn limit」是假话:工作会话照样跑在 maxTurns(缺省 100)与 30 分钟墙钟
+   * 之下(app/collab/worker.ts `WORK_TOTAL_TIMEOUT_MS`)。承诺无限的代价是模型把
+   * 交付全压在最后一轮,而被墙钟掐掉的那一轮什么都留不下。
+   */
+  it('不再向任何场子承诺 no turn limit', () => {
+    expect(buildCollabWorkRules()).not.toContain('no turn limit')
+    expect(buildCollabCommonRules()).not.toContain('no turn limit')
+    expect(buildCollabCommonRules({ dm: true })).not.toContain('no turn limit')
+    expect(buildCollabCommonRules()).toContain('30-minute wall clock')
   })
 })
 

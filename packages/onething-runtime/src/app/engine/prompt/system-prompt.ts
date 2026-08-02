@@ -18,6 +18,7 @@ import { defaultAgent, findAgent } from '../../agents/index.js'
 import * as store from '../../store.js'
 import {
   buildCollabRoomSystemPrompt,
+  buildCollabWorkContext,
   isAgentPairDmRoom,
   isUserDmRoom,
 } from '@onething/runtime/collab'
@@ -162,6 +163,52 @@ function collabRoomOverrides(
   }
 }
 
+/**
+ * 工作台会话(kind='work')的那一支(架构收敛 C3-5,审计 A3 后半)。
+ *
+ * **与房版是两种改法,不能合并。** 房间回合把整个 system prompt 换成 persona +
+ * 情况说明(D3「模拟房间」:产品段会让模型变成"一个在模拟聊天的助理"),而工作
+ * 会话恰恰需要那整份产品提示词 —— 它在真的读文件、跑命令、写产出。所以这里
+ * 只**追加**一段工作身份,一个产品段都不禁。
+ *
+ * 追加的位置是 persona 段(`agentSystemPrompt`)。它是全篇唯一一处"这一轮的你是
+ * 谁",而工作身份正是这个语境里那句话的后半段:你是这位同事,你在为这张卡干活。
+ *
+ * 取材全部来自**会话 meta**(`collab.roomSessionId` / `taskId` / `taskTitle`),
+ * 不读看板:这一段每一轮都要重建,而看板是一次磁盘读;更要紧的是 meta 的三个
+ * 字段就是 `spawnWork` 钉进去的那份快照,压缩摘要化碰不到它 —— 这正是把身份从
+ * briefing 搬出来的全部理由。
+ */
+function collabWorkOverrides(
+  ctx: BuildPromptContextOptions,
+): Partial<BuildOnethingPromptContextOptions> | null {
+  const sessionId = (ctx as { sessionId?: string }).sessionId
+  if (!sessionId) return null
+  const session = store.getSession(sessionId)
+  if (session?.kind !== 'work') return null
+  const roomSessionId = session.collab?.roomSessionId
+  if (!roomSessionId) return null
+  // 房没了(被删)也照给身份:卡框架与「产出经 board 回报」都还成立,而一个
+  // 半身份比没有身份好 —— 房名退回一个中性词,不编一个不存在的房。
+  const roomName = store.getSession(roomSessionId)?.name?.trim() || '群聊'
+
+  // persona 与 builder 的取法逐字一致(prompts/builder.ts coreOptions):调用方
+  // 显式给的优先,否则查 agent。查不到就只剩工作身份 —— 那也比落回"通用助理"好。
+  const persona = (
+    ctx.agentSystemPrompt
+    ?? findAgent(ctx.agentId ?? session.agentId)?.systemPrompt
+    ?? ''
+  ).trim()
+
+  const work = buildCollabWorkContext({
+    roomName,
+    ...(session.collab?.taskId ? { taskId: session.collab.taskId } : {}),
+    ...(session.collab?.taskTitle ? { taskTitle: session.collab.taskTitle } : {}),
+  })
+
+  return { agentSystemPrompt: [persona, work].filter(Boolean).join('\n\n') }
+}
+
 function coreOptions(ctx: BuildPromptContextOptions): BuildOnethingPromptContextOptions {
   return {
     ...ctx,
@@ -171,7 +218,10 @@ function coreOptions(ctx: BuildPromptContextOptions): BuildOnethingPromptContext
       getMacOSAutomationDocsPath,
       getTodoPlanDirectory,
     },
+    // 两支互斥(一条会话只有一个 kind),顺序因此不构成优先级 —— 房版返回 null
+    // 的那些会话里,只有 kind='work' 会被下一支接住。
     ...(collabRoomOverrides(ctx) ?? {}),
+    ...(collabWorkOverrides(ctx) ?? {}),
   }
 }
 

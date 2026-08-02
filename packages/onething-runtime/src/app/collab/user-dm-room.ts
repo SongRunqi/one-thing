@@ -6,8 +6,8 @@
  * ——ingress 门、per-room 执行会话、看板、断路器、墙钟、冻结、boot 对账、停止/
  * 恢复,一件都不用重造。chat 会话形态做不到"工作内容不进对话"。
  *
- * 手法与 `agent-session.ts` 同构:derive id → get → create → 恢复 current-session
- * 指针。区别只有两条,都是刻意的:
+ * 手法与 `agent-session.ts` 同构:derive id → get → create(不动 current-session
+ * 指针)。区别只有两条,都是刻意的:
  *  - **不 archived**:执行会话是基础设施(藏),私聊是台面上的对话(不藏);
  *  - **房名 = agent 名字**,不加任何前缀——它就是"和小李的对话"。
  */
@@ -40,14 +40,9 @@ export function ensureUserDmRoom(agentId: string): string | null {
 
   const existing = store.getSession(roomSessionId)
   if (!existing) {
-    // createSession 会把全局 current-session 指针挪到新会话上(scheduler /
-    // collab worker / 执行会话三处的既有先例),不还原就会把用户当前的标签页
-    // 抢走——建房这件事本身不该切换用户在看的东西。
-    const previousSessionId = store.getCurrentSessionId()
-    store.createSession(roomSessionId, agent.name)
-    if (previousSessionId && previousSessionId !== roomSessionId) {
-      store.setCurrentSessionId(previousSessionId)
-    }
+    // 建房这件事本身不该切换用户在看的东西 —— 指针纪律收在 store 那一侧
+    // (stores/sessions.ts 的 createSessionWithoutFocus)。
+    store.createSessionWithoutFocus(roomSessionId, agent.name)
   }
 
   const session = store.getSession(roomSessionId)
@@ -61,9 +56,27 @@ export function ensureUserDmRoom(agentId: string): string | null {
     && memberAgentIds.length === 1
     && memberAgentIds[0] === agentId
   if (!shapeOk) {
+    // 这条修复分支会把名册**改写**成单成员,所以它和协调器的移人路径是同一件事,
+    // 必须留同一款痕:被挤掉的人记进 `formerMembers`(collab-history-search.md §3)。
+    // 不记的话 `collabRoomVisibleUntil` 对他返回 undefined —— 那不是"看不到内容",
+    // 是"这间房从不存在",他当时确实读过的那段历史会被判成越权。
+    const displaced = memberAgentIds.filter(id => id !== agentId)
+    const removedAt = Date.now()
     store.updateSessionCollab(roomSessionId, {
       kind: 'room',
-      room: { ...(session.room ?? {}), memberAgentIds: [agentId], dm: true },
+      room: {
+        ...(session.room ?? {}),
+        memberAgentIds: [agentId],
+        dm: true,
+        ...(displaced.length > 0
+          ? {
+              formerMembers: [
+                ...(session.room?.formerMembers ?? []),
+                ...displaced.map(id => ({ agentId: id, removedAt })),
+              ],
+            }
+          : {}),
+      },
     })
   }
   if (session.agentId !== agentId) store.updateSessionAgent(roomSessionId, agentId)

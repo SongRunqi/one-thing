@@ -44,6 +44,7 @@ import { ensureUserDmRoom } from './user-dm-room.js'
 import { resolveDmTarget } from './dm-target.js'
 import { resolveUserIdentity } from './user-identity.js'
 import { speakIntoCollabRoom } from './say-tool.js'
+import { collabLinkedRoomSessionId, collabToolAllowedInSession } from './venue.js'
 import { registerCollabWakeFollowup } from './wake-followup.js'
 import { enqueue } from './queue.js'
 import { persistRoomState, roomRuntime } from './room-runtime.js'
@@ -69,13 +70,14 @@ function resolveWakeRoom(input: {
   targetAgentId: string
   requestedRoom?: string
 }): { ok: true; roomSessionId: string; roomName: string } | { ok: false; error: string } {
+  // 「哪些 kind 挂着一间房」走统一场子判定(C3-6,`venue.ts`)—— 与 say 那一份
+  // 同源,而它们此前是各自手写的两份。
+  const linkedRoomSessionId = collabLinkedRoomSessionId(input.session)
   const roomSessionId = resolveCollabSayRoomSessionId({
     kind: input.session.kind,
     sessionId: input.session.id,
     ...(input.requestedRoom ? { requestedRoomSessionId: input.requestedRoom } : {}),
-    ...(input.session.kind === 'work' || input.session.kind === 'agent'
-      ? { linkedRoomSessionId: input.session.collab?.roomSessionId }
-      : {}),
+    ...(linkedRoomSessionId ? { linkedRoomSessionId } : {}),
   })
   if (!roomSessionId) return { ok: false, error: COLLAB_WAKE_REFUSED_NO_ROOM }
 
@@ -113,7 +115,10 @@ export async function sendCollabDm(input: {
   // 没配白名单的 agent 看得见注册表里的每一个工具(send_message/board 一直如此),所以
   // "哪些场子能用"不能只由白名单说了算 —— 普通 chat 会话是直播式对话,那里的
   // agent 没有"我去私下问问 TA"这件事,它就在用户眼前说话。
-  if (session?.kind !== 'room' && session?.kind !== 'agent' && session?.kind !== 'work') {
+  //
+  // 判据本身走统一那一份(C3-6,`venue.ts` + `collab/tool-surface.ts` 的一览表);
+  // 拒绝的那句话留在这里,它是这个工具自己的资产。
+  if (!collabToolAllowedInSession(session, 'send_message')) {
     return { ok: false, error: DM_REFUSED_NOT_COLLAB }
   }
 

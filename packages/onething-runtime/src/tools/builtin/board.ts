@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { JsonObject, JsonObjectProperty } from "@onething/core";
 import { Tool } from "../tool.js";
 import {
+	COLLAB_BOARD_START_RECEIPT_NOTE,
 	COLLAB_TASK_STATUSES,
 	renderCollabBoardDigest,
 	type CollabBoard,
@@ -58,7 +59,7 @@ export function createBoardTool(
 
 - list: read the current board (do this before mutating — you need each task's rev).
 - create: add a task. Give it a title and a description complete enough to execute without asking. Adding "assignee" puts it on that member's todo and tells them — they decide when to start.
-- start: START WORKING on a task, right now, in your own work session (full tools, no turn limit). Use it for anything that needs more than a couple of tool calls or touches several files. Without a taskId it creates the card first, so you never have to leave the work to file paperwork. You can only start a card that is unassigned (you claim it) or already yours. It is also how you RESUME a card that was interrupted — the same work session is reopened with your history intact.
+- start: START WORKING on a task, right now, in your own work session (full tools, its own turn budget and a 30-minute wall clock). Use it for anything that needs more than a couple of tool calls or touches several files. Without a taskId it creates the card first, so you never have to leave the work to file paperwork. You can only start a card that is unassigned (you claim it) or already yours. It is also how you RESUME a card that was interrupted — the same work session is reopened with your history intact.
 - assign: put a task on a member (by 名字#句柄, as the roster and this board write them). Assigning is a notification, not a launch: the assignee gets told, and can ask questions, start, or block it.
 - move: change a task's column. Moving an assigned card back to todo (from review, blocked or done) actually re-runs it in a fresh work session — it is a real retry, not a label change.
 - comment: append a note to the task's activity log.
@@ -164,9 +165,16 @@ State-changing actions (start/assign/move/update/complete/block) take expectedRe
 			const headline = result.task
 				? `${args.action} ok: #${result.task.id.slice(0, 8)}「${result.task.title}」[${result.task.status}] rev${result.task.rev}`
 				: "board";
+			// C3-5:`start` 派生了一整条工作会话,回执必须说出来 —— 不说,模型就会
+			// 在这一轮里自己再干一遍那件重活(见常量注释)。只在真的开成了(卡进
+			// `doing`)时说。
+			const note =
+				args.action === "start" && result.task?.status === "doing"
+					? `\n${COLLAB_BOARD_START_RECEIPT_NOTE}`
+					: "";
 			return {
 				title: `Board — ${args.action}`,
-				output: `${headline}\n\n${digest}`,
+				output: `${headline}${note}\n\n${digest}`,
 				metadata: { action: args.action, taskId: result.task?.id ?? args.taskId },
 			};
 		},

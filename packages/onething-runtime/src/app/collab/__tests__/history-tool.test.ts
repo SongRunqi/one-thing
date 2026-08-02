@@ -136,7 +136,8 @@ describe('授权（多给一条就是事故）', () => {
    * 场子门。`agentId` 单独一个不够用:每条新建会话都被盖上 `agentId: 'default'`,
    * 而默认 agent 没有工具白名单 ⇒ 注册表里每个工具它都看得见。网关(微信/Telegram)
    * 按远端身份建的会话正是这个形状 —— 少了这道门,对面那位陌生联系人一句话就能
-   * 把用户和主助理的私聊全文拿走。与 `dm` 同一道门(dm-tool.ts:52)。
+   * 把用户和主助理的私聊全文拿走。与 `dm` 同一道门(dm-tool.ts);2026-08-03(C3-6)
+   * 起「同一道门」不再靠人肉维持,两边共用 `venue.ts` 那一份判定。
    */
   it('普通 chat 会话即便带着 agentId 也拒绝 —— 网关那条路径就是这个形状', async () => {
     mocks.sessions.set('gateway', { id: 'gateway', agentId: 'default' })
@@ -154,6 +155,35 @@ describe('授权（多给一条就是事故）', () => {
     expect(r.ok).toBe(false)
     expect(r.error).toContain('群聊/私聊/工作台')
     expect(JSON.stringify(r)).not.toContain('私事')
+  })
+
+  /**
+   * 场子门等价(架构收敛 C3-6)。上面那条钉的是最贵的一格,这条钉的是整张表:
+   * 手写的 kind 三连否定换成统一判定之后,五种会话的判定结果逐一不变。
+   *
+   * 注意 `work`:工作台**是**能查历史的,而 `COLLAB_WORK_REQUIRED_TOOLS` 里并没有
+   * `history` —— 这正是场子门不能从工具地板反推的实证(见 collab/tool-surface.ts)。
+   */
+  it('场子门等价:room/agent/work 通,chat 与 kind 缺席拒', async () => {
+    mocks.sessions.set('room-turn', { id: 'cumo', kind: 'room', agentId: 'iris' })
+    mocks.sessions.set('work-iris', {
+      id: 'work-iris', kind: 'work', agentId: 'iris', collab: { roomSessionId: 'cumo' },
+    })
+    mocks.sessions.set('chat-iris', { id: 'chat-iris', kind: 'chat', agentId: 'iris' })
+    mocks.sessions.set('gateway-iris', { id: 'gateway-iris', agentId: 'iris' })
+
+    const outcomes: Array<[string, boolean]> = []
+    for (const sessionId of ['room-turn', 'exec-iris', 'work-iris', 'chat-iris', 'gateway-iris']) {
+      const r = await searchCollabHistory({ sessionId, limit: 10 } as any)
+      outcomes.push([sessionId, r.ok !== false])
+    }
+    expect(outcomes).toEqual([
+      ['room-turn', true],
+      ['exec-iris', true],
+      ['work-iris', true],
+      ['chat-iris', false],
+      ['gateway-iris', false],
+    ])
   })
 })
 
