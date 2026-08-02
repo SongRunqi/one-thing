@@ -1,6 +1,6 @@
 # 群聊/私聊/状态架构审查与收敛方案
 
-日期：2026-08-03。状态：**设计，未实施**。
+日期：2026-08-03。状态：**C0–C5 已实施**（`2bb5dfe2..6605e94c`；逐期提交号与偏离点见 §6）。
 审查方法：21 个子代理三阶段审查（6 路并行深读 → 汇总去重 14 条 → 逐条对抗验证），基线为 experiment/castlabs-electron 当前工作树（含大量未提交的调度修复）。所有结论均经过「怀疑者立场」二次核实，未经核实的原始发现不进本文。
 
 ---
@@ -212,3 +212,45 @@
 - 识别面（identity-directory 含退休）与授权面（房间成员表）分家是刻意设计。
 - 房间内容双写进执行会话是有意权衡（provider 前缀缓存）。
 - 判定/编排双轨是有意过渡（speaking-order 自述「缺省不翻」），收敛另行裁决。
+
+---
+
+## 6. 实施勘误（2026-08-03）
+
+> 本节是本文档的**状态真源**（§C0-3 约定的格式）。§3/§4 是实施前的方案文本，原样保留作为对照；凡与本节冲突处，以本节为准。
+
+### 6.1 逐期落地与提交号
+
+| 期 | 提交 | 一行摘要 |
+| --- | --- | --- |
+| C0 | `2bb5dfe2` | 文档销账：team-v2 / turn-protocol 状态头改已实施（带代码锚点）、team-v2 §10 五条逐条核实已修、multi-agent-collab-im 降级为历史台账、agent-im-dm union/replace 三处补裁决（终态 union）、send-channel §9.3 红测试标已过时 |
+| C1 | `f2d699dc` | 止血：链闸单点 + 占用视图（A1）、清零可重放（A2）、注入 sink 转义（B6）、退役名归一（B7）、收养事实回声（A6） |
+| C2 | `d2fce90b` | 单一 owner 收敛：投影方向反转（B1）、工具面单点（A3 前半）、句柄切分（B8）、成员映射 `members.ts`、墓碑双口径单点、turn/worker 基元（B5）、死代码清理 |
+| C3 | `6b2c59ab` | 规则下沉 app 层：建房单函数（A5）、`createSessionWithoutFocus` 变体、dm 守卫（B3）、IPC 整体透传（B2）、work 身份（A3 后半）、venue 门 |
+| C4 | `9c43b0f5` + `6605e94c` | 状态同步协议：活动快照单一账本 + typing 漏斗 + config 推送事件（a）；renderer 写路径收 store + pendingAsks 收敛 reconcile 单账本（b） |
+| C5 | 本次（文档部分） | 真机走查清单落文档：`docs/audit/collab-consolidation-walkthrough-2026-08-03.md`（18 条）；勘误销账（本节） |
+
+测试基线随期递增：C1 6432 → C2 6436 → C3 6480 → C4a 6498 → C4b 6521，全绿；typecheck 干净。
+
+### 6.2 实施与方案的偏离点
+
+方案是实施前写的，以下七处落地形态与 §4 原文不同，**以实施为准**：
+
+1. **C1 占用视图多一格 `floorHolds`**（§4 C1-1 只写了 `inFlight ∪ activeTurns`）。原设计以为「`inFlight` 出队即入」足以做预占依据，实测不够：同批发牌的回合在预算 `await` 之后同时过闸，彼此仍然互不可见。落地形态是**过闸即占**——`roomOccupancy = inFlight ∪ activeTurns ∪ floorHolds`，过闸那一刻先占 `floorHolds`。非空测试：旧公式在 cap=2 / concurrency=4 时恰好复现 4/2 超发。
+2. **C2 投影遗留分支冻结而非删除**（§4 C2-1 给了「或直接删除」的选项）。`message-helpers` 的 `kind='room'` 适配分支显式标记 legacy 并冻结，没删——grep 确认不了「未来也不会有 room 会话直通」，冻结的成本比删错低。
+3. **C2 孤儿入口两删一留**（§4 C2-1 写的是删三个）。`projectRoomHistory` **留作 spec 入口**：镜像对拍测试（`room-projection.test.ts`）需要一个纯层入口来做逐字节对拍，删掉它等于把 B1 的守护一起删了。
+4. **C2 工具面 fallback 走共用推导而非 fail-loud**（§4 C2-2 写的是「补齐 sessionDm/settings **或断言** agentProfile 快照必达」）。探针证实第三条 fallback **可达**（不是原判断的「当前不可达」），于是不能断言、更不能 fail-loud；落地为改共用 `resolveAgentProfileForSessionObject` 单一推导，对拍测试从 `kind:'agent'` 一格扩到 dm/work。
+5. **C3 建房原子性走两步写 + 失败回滚**（§4 C3-1 写的是「`createSession` 一步带 kind/room」）。一步写要动 session repo 的创建签名，超出本方案范围；落地为 create + updateSessionCollab 两步写，**校验返回值、失败回滚**（不留半张房）。真正的一步写留给 web/server parity 那条线（它本来就要改 repo 层）。
+6. **C4 手动 `loadSessions` 删四留三**（§4 C4-3 写的是「删 7 处」）。三处保留各有一条事件盖不住的动机，注释写在代码里：`createCollabRoom` 与 `use-agent-dm`（建房 = 「加一行」，而 `session:collab-updated` 是「改一行」，且调用方下一句就要 `openSession`，异步补拉盖不住同一拍的顺序要求）、`clearCollabRoomHistory`（清空动的是**转录**不是配置，那条事件只带 room 快照）。契约从「组件记得刷」改为「action 保证可见」——三处都收在 store action 里。
+7. **C3 venue 门是等价重构，未收 `send_message` 的显式 `room` 参数**（§4 C3-6 的措辞像是全面统一）。四工具手写门收编成 `COLLAB_TOOL_VENUES` 声明表 + app 层统一判定，归一化把认不出的 kind 一律算 `chat`（收紧侧安全），四个工具的判定结果**逐一不变**；`send_message` 带显式 `room` 指向别的群时仍走原来那条不过门的路。**待产品裁决**，不在本方案范围内当缺陷修。
+
+另有两项 §4 没写、实施时顺带做掉的：
+
+- **C4a `ensureSubscribed` 假订阅 bug**：宿主缺席时也置位，导致订阅永远重试不了；改为不置位、可重试。
+- **C3 daemon `collabRoomUpdate` 同款手抄缺陷**：与 Electron 侧 budgets/room-update 一样静默丢 `responseMode` 三兄弟，一并改整体透传，`keyof` 穷尽性测试双保险。
+
+### 6.3 C5 发现
+
+- **`boundary:gate` 脚本 ANSI 解析空转**：`scripts/boundary-gate.mjs` 读不到 checker 输出里的 `[boundary] failed:` 行（ANSI 转义序列没剥），于是**永远报「无新红」**。C1/C2/C4 提交信息里的「boundary:gate 无新红」因此不构成证据；C3 改为手工核对（27 红 / 基线 28，1 治愈 0 新增）。修复由另一代理进行中——在它落地前，boundary 状态一律以手工核对为准。
+- **三条零真机线仍然零真机**（§2「确认零真机走查的三条线」）：调度三件套、send_message 合并 + wake、steer 时序（`steering:consumed` 的回合边界 drain）。连同 C1–C4 的新增回归面，已合并成 18 条真机走查清单：`docs/audit/collab-consolidation-walkthrough-2026-08-03.md`。**走查本身尚未执行**——C5 的这一半是欠着的，不是做完的。
+- **`unsent` 读数未取**（§4 C5-2）：分桶交叉（drive 类型 × 模型 × thinking）需要真机跑出样本，随走查一并进行。

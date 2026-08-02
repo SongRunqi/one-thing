@@ -11,6 +11,8 @@
  *     抢走用户正在看的标签页)。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+// 真件,不 mock:留痕之所以要留,就是为了让这个纯函数答得出话。
+import { collabRoomVisibleUntil } from '@onething/runtime/collab'
 
 interface FakeSession {
   id: string
@@ -18,7 +20,13 @@ interface FakeSession {
   kind?: string
   agentId?: string
   isArchived?: boolean
-  room?: { memberAgentIds?: string[]; dm?: boolean; frozen?: boolean; budgets?: unknown }
+  room?: {
+    memberAgentIds?: string[]
+    dm?: boolean
+    frozen?: boolean
+    budgets?: unknown
+    formerMembers?: Array<{ agentId: string; removedAt: number }>
+  }
   messages: unknown[]
 }
 
@@ -162,5 +170,60 @@ describe('ensureAgentDmRoom', () => {
     expect(ensureAgentDmRoom('fe', '')).toBeNull()
     expect(ensureAgentDmRoom('', 'pm')).toBeNull()
     expect(mocks.created).toEqual([])
+  })
+})
+
+/**
+ * 修复分支挤掉别人时要留痕(架构收敛 C3 §4 / B3),与 `user-dm-room.test.ts` 里那
+ * 组同源 —— 两个人数档共用同一条纪律,只有一处留了痕等于没留。
+ */
+describe('修复分支:被挤掉的成员留 formerMembers', () => {
+  it('记下 {agentId, removedAt},于是被挤者仍有一个检索窗口', () => {
+    ensureAgentDmRoom('fe', 'pm')
+    // 有人(旧数据/手工编辑)把这间双人房塞成了三个人。
+    room().room = { memberAgentIds: ['fe', 'ops', 'pm'], dm: true }
+    const before = Date.now()
+
+    expect(ensureAgentDmRoom('fe', 'pm')).toBe(PAIR_ROOM)
+
+    expect(room().room?.memberAgentIds).toEqual(['fe', 'pm'])
+    const former = room().room?.formerMembers
+    expect(former).toHaveLength(1)
+    expect(former?.[0].agentId).toBe('ops')
+    expect(former?.[0].removedAt).toBeGreaterThanOrEqual(before)
+
+    // 授权判据读得到它:被挤者的可见窗口不再是 undefined。
+    expect(collabRoomVisibleUntil(room().room, 'ops')).toBe(former?.[0].removedAt)
+    // 留下的两位当然是全部可见。
+    expect(collabRoomVisibleUntil(room().room, 'fe')).toBe(Number.POSITIVE_INFINITY)
+    expect(collabRoomVisibleUntil(room().room, 'pm')).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  it('只追加不覆盖:上一次的痕还在', () => {
+    ensureAgentDmRoom('fe', 'pm')
+    room().room = {
+      memberAgentIds: ['fe', 'ops', 'pm'],
+      dm: true,
+      formerMembers: [{ agentId: 'gone', removedAt: 1 }],
+    }
+
+    ensureAgentDmRoom('fe', 'pm')
+
+    expect(room().room?.formerMembers?.map(entry => entry.agentId)).toEqual(['gone', 'ops'])
+  })
+
+  it('没人被挤掉时不凭空写一个空 formerMembers(补形态 ≠ 移人)', () => {
+    ensureAgentDmRoom('fe', 'pm')
+    room().kind = undefined
+    expect(ensureAgentDmRoom('fe', 'pm')).toBe(PAIR_ROOM)
+    expect(room().room).not.toHaveProperty('formerMembers')
+  })
+
+  it('少了一位再补回来也不算挤:那位本来就还在名册上', () => {
+    ensureAgentDmRoom('fe', 'pm')
+    room().room = { memberAgentIds: ['fe'], dm: true }
+    expect(ensureAgentDmRoom('fe', 'pm')).toBe(PAIR_ROOM)
+    expect(room().room?.memberAgentIds).toEqual(['fe', 'pm'])
+    expect(room().room).not.toHaveProperty('formerMembers')
   })
 })

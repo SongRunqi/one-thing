@@ -11,9 +11,29 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/boundary-baseline-2026-07-25.txt')
 
+// 检查脚本给失败行上了色,而且色码在被管道接走时照样写出来(它不判 isTTY)。
+// 于是每条红实际长这样:`ESC[0m ESC[31m [boundary] failed: … ESC[0m` —— 原先的
+// startsWith 一条都对不上,current 恒为空集,gate 于是永远报 "ok",并把整份基线
+// 当成「已治愈」。那不是绿,是根本没在看。
+//
+// 剥的是整条 CSI 序列(连 ESC 字节一起):只剥 `[31m` 会把 ESC 留在行首行尾,
+// 比对照样错位。正则用 fromCharCode 拼,免得源码里塞一个看不见的控制字符。
+const ANSI_CSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g')
+
+const FAILURE_PREFIX = '[boundary] failed:'
+
+// 基线文件是干净文本,剥一次对它无副作用 —— 两侧走同一个函数,才谈得上「同一条
+// 红是同一个字符串」。
 function failuresOf(text) {
   return new Set(
-    text.split('\n').filter(line => line.startsWith('[boundary] failed:')),
+    text
+      .split('\n')
+      .map(line => line.replace(ANSI_CSI, '').trimEnd())
+      // includes 而不是 startsWith:剥完仍可能有残留前缀(缩进之类),而这条前缀
+      // 本身已经足够独一无二。
+      .filter(line => line.includes(FAILURE_PREFIX))
+      // 归一到前缀处再截,两侧对齐。
+      .map(line => line.slice(line.indexOf(FAILURE_PREFIX))),
   )
 }
 
@@ -30,6 +50,14 @@ try {
 
 const baseline = failuresOf(readFileSync(baselinePath, 'utf8'))
 const current = failuresOf(output)
+
+// 空集是可疑而不是干净:检查脚本自己崩了、输出格式变了、正则再次失配,都长这样。
+// 上一次的假绿就是从这里溜过去的,所以把它当硬错处理。
+if (current.size === 0 && baseline.size > 0) {
+  console.error('[boundary-gate] 解析不出任何失败行 —— 检查脚本崩了或输出格式变了,不认这次结果:')
+  console.error(output.slice(-2000))
+  process.exit(1)
+}
 
 const fresh = [...current].filter(line => !baseline.has(line))
 const healed = [...baseline].filter(line => !current.has(line))

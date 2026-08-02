@@ -74,9 +74,27 @@ export function ensureAgentDmRoom(agentIdA: string, agentIdB: string): string | 
     && currentMembers[0] === memberAgentIds[0]
     && currentMembers[1] === memberAgentIds[1]
   if (!shapeOk) {
+    // 与 `user-dm-room.ts` 同款留痕:这条分支把名册**改写**成这两位,和协调器的
+    // 移人路径是同一件事,必须留同一款痕(collab-history-search.md §3)。不记的话
+    // `collabRoomVisibleUntil` 对被挤掉的人返回 undefined —— 那不是「看不到内容」,
+    // 是「这间房从不存在」,他当时确实读过的那段历史会被判成越权。
+    const displaced = currentMembers.filter(id => !memberAgentIds.includes(id))
+    const removedAt = Date.now()
     store.updateSessionCollab(roomSessionId, {
       kind: 'room',
-      room: { ...(session.room ?? {}), memberAgentIds, dm: true },
+      room: {
+        ...(session.room ?? {}),
+        memberAgentIds,
+        dm: true,
+        ...(displaced.length > 0
+          ? {
+              formerMembers: [
+                ...(session.room?.formerMembers ?? []),
+                ...displaced.map(id => ({ agentId: id, removedAt })),
+              ],
+            }
+          : {}),
+      },
     })
   }
   if (session.name !== roomName) store.renameSession(roomSessionId, roomName)
