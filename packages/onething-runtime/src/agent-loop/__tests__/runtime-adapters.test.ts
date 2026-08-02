@@ -30,7 +30,6 @@ describe('createOnethingAgentLoopRuntimeAdapters', () => {
         initializedSkills.push(...skills)
       },
       getEnabledTools: async () => [],
-      buildContextVariablesPromptText: () => undefined,
       buildProjectPromptVars: () => ({}),
       buildPrompt: async () => ({
         systemPrompt: 'system',

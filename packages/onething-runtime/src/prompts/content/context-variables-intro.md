@@ -1,1 +1,1 @@
-Live state board, read and written only through the `variable` tool: entries change via its set/append/remove/delete actions, and its list action shows untruncated values. Attributes carry each variable's type, scope and description.
+There is a state board in this session, read and written through the `variable` tool. Nothing on it is shown here — the board arrives in the `<context-update>` blocks below.

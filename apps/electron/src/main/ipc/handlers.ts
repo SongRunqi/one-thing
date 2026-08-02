@@ -44,6 +44,7 @@ import { registerUsageHandlers } from "./usage.js";
 import { registerPracticeHandlers } from "./practice.js";
 import { registerTerminalHandlers } from "./terminal.js";
 import { registerBrowserHandlers } from "./browser.js";
+import { registerNotifyHandlers } from "./notify.js";
 import { getEventBus } from "@onething/app/events/index.js";
 import { sanitizeRendererOrigin } from "@onething/app/channel/index.js";
 
@@ -94,6 +95,7 @@ export function initializeIPC() {
 	registerPracticeHandlers();
 	registerTerminalHandlers();
 	registerBrowserHandlers();
+	registerNotifyHandlers();
 	registerCommandHandler();
 }
 

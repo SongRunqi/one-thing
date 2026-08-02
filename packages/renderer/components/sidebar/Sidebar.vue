@@ -75,10 +75,15 @@
               stroke-linejoin="round"
               aria-hidden="true"
             >
-              <template v-if="category.id === 'active'">
+              <!-- 图标随「按意图分格」一起换过一轮:气泡 = 回到某段对话(消息),
+                   多人 = 去找谁(通讯录),文件夹 = 按项目翻旧账(会话)。 -->
+              <template v-if="category.id === 'recent'">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </template>
+              <template v-else-if="category.id === 'active'">
                 <path d="M4 17l6-6-6-6M12 19h8" />
               </template>
-              <template v-else-if="category.id === 'rooms'">
+              <template v-else-if="category.id === 'contacts'">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                 <circle
                   cx="9"
@@ -87,16 +92,8 @@
                 />
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
               </template>
-              <template v-else-if="category.id === 'contacts'">
-                <circle
-                  cx="12"
-                  cy="8"
-                  r="4"
-                />
-                <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
-              </template>
               <template v-else>
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
               </template>
             </svg>
             <!-- 样板 `.bdg`:该类有未读或在跑。一枚点不摆数字 —— 系统只知道
@@ -165,9 +162,10 @@
             <b class="sidebar-pane-title">{{ railCategoryLabel }}</b>
             <span class="sidebar-pane-count">{{ railCategoryCount }}</span>
             <!-- 新建群聊:样板没画这枚(它只画了「进行中」那一格),但撤掉就等于
-                 把建群这件事弄没,所以它跟着「群聊」这一类走。 -->
+                 把建群这件事弄没,所以它跟着「通讯录」这一类走 —— 建群是**发起**
+                 一段对话,和"找谁"在同一面上。 -->
             <button
-              v-if="railCategory === 'rooms' && roomsEnabled"
+              v-if="railCategory === 'contacts' && roomsEnabled"
               type="button"
               class="sidebar-rooms-add"
               title="新建群聊"
@@ -181,6 +179,64 @@
           <!-- 唯一的滚动体。classic 下这一层是 `display: contents`(不生成盒子,
                排版与从前逐像素一致);workbench 下它是面板的滚动区,一次只装一类。 -->
           <div class="sidebar-sections">
+            <!-- 「消息」— 一条时间序的对话流(2026-08-01)。
+             **只装两种**:群聊,和与某位同事的私聊。两者**混排**,谁刚说过话谁在
+             上面 —— IM 的主列表不按对象类型分列,按类型分列是「通讯录」的活。
+             直聊会话不进来(它是工作会话不是对话,家在「会话」那一类),
+             agent ⇄ agent 的「私下」房也不进来(那是旁听面,留在通讯录里折叠)。
+             合并与排序全在 `sidebar-recent.ts` 的纯函数里,这里只负责贴上名册
+             (名字 / 头像)与既有的未读判定 —— 一份账都不新起。
+             **workbench 专属**:classic 下四区照旧一起平铺,再插一条把同一批
+             会话又画一遍的流,就等于把每一行都摆两次(纪律 1:逐像素回滚闸)。 -->
+            <div
+              v-if="recentVisible"
+              class="sidebar-rooms sidebar-recent"
+            >
+              <button
+                v-for="entry in recentEntries"
+                :key="entry.id"
+                type="button"
+                class="sidebar-room-item sidebar-agent-item sidebar-recent-item"
+                :class="{
+                  'is-active': sessionsStore.currentSessionId === entry.id,
+                  'has-unread': sessionsStore.isUnreadSession(entry.id),
+                }"
+                :title="recentTitle(entry)"
+                @click="openRoom(entry.id)"
+                @contextmenu.prevent="openRecentContextMenu($event, entry)"
+              >
+                <!-- 一枚章,三种行都有 —— 列表左缘对齐是消息流可读的前提。
+                 私聊/直聊是圆章头像(和联系人行同一句法),群是方章 + 群名首字。 -->
+                <span
+                  v-if="entry.kind === 'group'"
+                  class="sidebar-agent-avatar sidebar-recent-room-mark"
+                  aria-hidden="true"
+                >{{ roomInitial(entry.name) }}</span>
+                <AgentAvatar
+                  v-else
+                  class="sidebar-agent-avatar"
+                  aria-hidden="true"
+                  :avatar="recentFace(entry).avatar"
+                  :avatar-image="recentFace(entry).avatarImage"
+                  :size="18"
+                />
+                <span class="sidebar-room-name">{{ recentName(entry) }}</span>
+                <span class="sidebar-recent-time">{{ formatRelativeTime(entry.updatedAt) }}</span>
+                <span
+                  v-if="sessionsStore.isUnreadSession(entry.id)"
+                  class="sidebar-unread-dot"
+                  aria-label="有新消息"
+                />
+              </button>
+
+              <div
+                v-if="!recentEntries.length"
+                class="sidebar-recent-empty"
+              >
+                还没有对话。去「通讯录」找个人说话,或建一个群。
+              </div>
+            </div>
+
             <!-- 「进行中」— docs/design/im-workbench-layout.md §3 W1(C1)。
              左栏的第一类是**活**不是对话:状态点 + 名字 + 一句副文,按
              执行中/待你/已交付分组(样板 `.grp`)。
@@ -216,6 +272,15 @@
                 class="sidebar-rooms-header"
               >
                 <span class="sidebar-rooms-label">联系人</span>
+              </div>
+              <!-- workbench 下「通讯录」一类里装着同事与群两段,面板头只说得出
+               类别名 —— 段与段之间要有一行组头,否则两批行糊成一条。
+               句法与「进行中」的组头、「私下」的折叠头同一族。 -->
+              <div
+                v-else
+                class="sidebar-pane-group"
+              >
+                同事
               </div>
               <button
                 v-for="contact in contacts"
@@ -261,10 +326,11 @@
              吃的是 groupRoomSessions:私聊房不在这里出现,联系人行是它唯一的
              侧栏入口(agent-im-dm.md §4.1),否则一间房会在侧栏出现两次。 -->
             <div
-              v-if="(roomSessions.length > 0 || roomsEnabled) && isCategoryVisible('rooms')"
+              v-if="(roomSessions.length > 0 || roomsEnabled) && isCategoryVisible('contacts')"
               class="sidebar-rooms"
             >
-              <!-- classic 照旧:标签 + 建群 ＋。workbench 下这两件都归面板头。 -->
+              <!-- classic 照旧:标签 + 建群 ＋。workbench 下建群归面板头,组头
+               只剩一行段标(与上面「同事」那一行成对)。 -->
               <div
                 v-if="!isWorkbenchShell"
                 class="sidebar-rooms-header"
@@ -280,6 +346,12 @@
                 >
                   ＋
                 </button>
+              </div>
+              <div
+                v-else
+                class="sidebar-pane-group"
+              >
+                群聊
               </div>
               <button
                 v-for="room in roomSessions"
@@ -537,11 +609,20 @@ import {
   takeRoomFaces,
   type SidebarRailCategoryId,
 } from './sidebar-sections'
+import {
+  buildRecentEntries,
+  roomInitial,
+  type SidebarRecentEntry,
+} from './sidebar-recent'
 import { platformApi } from '@/platform'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { resolveShellMode } from '@/composables/useShellMode'
-import { useSessionOrganizer, type SessionWithBranches } from './useSessionOrganizer'
+import {
+  formatRelativeTime,
+  useSessionOrganizer,
+  type SessionWithBranches,
+} from './useSessionOrganizer'
 
 interface Props {
   collapsed?: boolean
@@ -642,12 +723,9 @@ function readStoredRailCategory(): string | null {
   }
 }
 
-/** rail 上真正画出来的类别(web 降级 + 「进行中」空态都在这一处判)。 */
+/** rail 上真正画出来的类别(web 降级在这一处判)。 */
 const railCategories = computed(() => {
-  const ids = resolveRailCategories({
-    roomsEnabled: roomsEnabled.value,
-    activeWorkCount: activeWorkCards.value.length,
-  })
+  const ids = resolveRailCategories({ roomsEnabled: roomsEnabled.value })
   return SIDEBAR_RAIL_CATEGORIES.filter(category => ids.includes(category.id))
 })
 
@@ -663,23 +741,38 @@ const railCategoryLabel = computed(
 /** 面板头右上那个数 = 这一类此刻装着几行。 */
 const railCategoryCount = computed(() => {
   switch (railCategory.value) {
+    case 'recent': return recentEntries.value.length
     case 'active': return activeWorkCards.value.length
-    case 'rooms': return roomSessions.value.length
-    case 'contacts': return contacts.value.length
+    // 通讯录一类装着同事与群两段,计数是两段之和 —— 面板头那个数说的是
+    // "这一类此刻装着几行",不是"其中一段有几行"。
+    case 'contacts': return contacts.value.length + roomSessions.value.length
     default: return groupedSessions.value.reduce((total, group) => total + group.sessions.length, 0)
   }
 })
 
 /**
- * 徽标:该类有未读或在跑。四路信号全部来自既有的账 —— 未读只有
- * `isUnreadSession` 那一处,在跑只有活卡片的状态标那一处,这里不新起口径。
+ * 徽标:未读落在**能回话的那一类**,在跑落在「进行中」。
+ *
+ * 两路未读天然不重叠 —— 「消息」装房(群 + 私聊 + 折叠着的「私下」),「会话」装
+ * 直聊。所以各归各的不会让同一条未读被数两遍。**通讯录不亮**:它的每一行要么
+ * 已经在消息流里,要么根本没聊过,替消息流再报一次就是重复催人。
+ * 判定本身仍只有 `isUnreadSession` 那一处。
  */
+const unreadConversations = computed(() =>
+  roomSessions.value.some(room => sessionsStore.isUnreadSession(room.id))
+  || pairDmUnread.value
+  || contacts.value.some(contact => isContactUnread(contact)),
+)
+
+const unreadChatSessions = computed(() =>
+  filteredSessions.value.some(session => sessionsStore.isUnreadSession(session.id)),
+)
+
 const railBadges = computed(() => resolveRailBadges({
-  active: hasActiveWorkSignal(activeWorkCards.value),
-  rooms: roomSessions.value.some(room => sessionsStore.isUnreadSession(room.id))
-    || pairDmUnread.value,
-  contacts: contacts.value.some(contact => isContactUnread(contact)),
-  sessions: filteredSessions.value.some(session => sessionsStore.isUnreadSession(session.id)),
+  available: railCategories.value.map(category => category.id),
+  unreadConversations: unreadConversations.value,
+  unreadChatSessions: unreadChatSessions.value,
+  activeWork: hasActiveWorkSignal(activeWorkCards.value),
 }))
 
 function selectRailCategory(id: SidebarRailCategoryId): void {
@@ -699,6 +792,57 @@ function selectRailCategory(id: SidebarRailCategoryId): void {
  */
 function isCategoryVisible(id: SidebarRailCategoryId): boolean {
   return !isWorkbenchShell.value || railCategory.value === id
+}
+
+// ── 「消息」类:一条时间序的对话流 ──────────────────────────────────────────
+//
+// **workbench 专属**,这是唯一一处不套 `isCategoryVisible` 的区:classic 下四区
+// 一起平铺,再插一条把私聊/群/直聊又画一遍的流,等于每一行都摆两次。
+
+const recentVisible = computed(
+  () => isWorkbenchShell.value && railCategory.value === 'recent',
+)
+
+/**
+ * 合并与排序全在 `sidebar-recent.ts`。两路来源一律读 store 的 selector,这里不写
+ * 第二份形态过滤(哪些房算私聊 / 群只有 store 那一处答案)。
+ *
+ * **只装对话**:群聊 + 和某位同事的私聊。直聊会话(`kind='chat'`)不进来 ——
+ * 那是一条工作会话,不是"和谁的一段对话",它的家在「会话」那一类;混进来这一格
+ * 就退化成"全部东西的时间序",IM 的那一格也就没了意义。
+ */
+const recentEntries = computed(() => buildRecentEntries({
+  dmRooms: sessionsStore.userDmRoomSessions,
+  groupRooms: roomSessions.value,
+}))
+
+/**
+ * 私聊行的名字取**名册**而不是房名:同事改了名,和 TA 的那间房不会跟着改,
+ * 读房名就会在消息流里留一个旧称呼。群没有这个问题,用房名。
+ */
+function recentName(entry: SidebarRecentEntry): string {
+  if (entry.kind === 'dm' && entry.agentId) {
+    return agentsStore.displayAgent(entry.agentId).name || entry.name || '私聊'
+  }
+  return entry.name || '群聊'
+}
+
+/** 圆章画谁 —— 只有私聊行有人可画(`displayAgent` 查无此人给墓碑,不冒充 default)。 */
+function recentFace(entry: SidebarRecentEntry): { avatar?: string; avatarImage?: string } {
+  if (!entry.agentId) return {}
+  const identity = agentsStore.displayAgent(entry.agentId)
+  return { avatar: identity.avatar, avatarImage: identity.avatarImage }
+}
+
+function recentTitle(entry: SidebarRecentEntry): string {
+  return `${recentName(entry)} · ${entry.kind === 'dm' ? '私聊' : '群聊'}`
+}
+
+/** 消息流的行全是会话 —— 右键复用同一张会话菜单(改名/置顶/删除)。 */
+function openRecentContextMenu(event: MouseEvent, entry: SidebarRecentEntry): void {
+  const session = sessionsStore.getSessionItem?.(entry.id)
+  if (!session) return
+  openContextMenu(event, session as unknown as SessionWithBranches)
 }
 
 /**
@@ -1607,6 +1751,57 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
   opacity: 0.75;
+}
+
+/* ── 「消息」类的行 ────────────────────────────────────────────────────────
+   行本体沿用 `.sidebar-room-item` + `.sidebar-agent-item`(章 + 名字那套身份行
+   排版),这里只补三样:群的方章、行尾时间、以及空态/尾行两行文字。
+   这一区**只在 workbench 下渲染**(`recentVisible`),所以这些规则不必再挂
+   `data-shell-mode` 门 —— classic 下模板里根本没有这些类名。 */
+.sidebar-recent-item {
+  /* `.sidebar-agent-item` 的 flex:1 是给行内排版写的,在竖列里会让行去抢高度。 */
+  flex: 0 0 auto;
+}
+
+/* 群没有头像,给一枚同尺寸的方章 + 群名首字 —— 三种行的左缘因此永远对齐,
+   而"这是群不是人"一眼可辨(圆=人,方=群,画线风里形状就是分类)。 */
+.sidebar-recent-room-mark {
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 62%, transparent);
+}
+
+/* 时间是补语:12px 淡一档,靠在名字之后、未读点之前,永远不参与压缩
+   (`flex: 0 0 auto`)—— 名字先被省略号截,时间是最后一个字都不能少的那一栏。 */
+.sidebar-recent-time {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 42%, transparent);
+}
+
+/* 未读那一行整体提墨,时间跟着走一档 —— 否则一行里一半实一半虚。 */
+.sidebar-room-item.has-unread .sidebar-recent-time {
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 60%, transparent);
+}
+
+.sidebar-recent-empty {
+  padding: 14px 14px 10px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+}
+
+/* 面板里的段头(「通讯录」下的同事 / 群聊)。与「进行中」的组头、「私下」的
+   折叠头同一句法 —— 面板头只说得出类别名,段与段之间靠这一行分开。 */
+.sidebar-pane-group {
+  flex-shrink: 0;
+  padding: 12px 14px 3px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  user-select: none;
 }
 
 /* 建房被拒的一行墨(RoomMemberStrip 的 .member-error 同款语气)。 */

@@ -21,7 +21,9 @@ import type { MarkdownSegment } from '@/composables/parseStreamingMarkdown'
 // v3: numeric table cells get the md-cell-numeric class (no-wrap).
 // v4: tables render inside a .md-table-scroll wrapper.
 // v5: collab <card>/<file> inline tags render as .collab-tag spans.
-const CACHE_DB_VERSION = 5
+// v6: @mention markers render as neutral .md-mention spans (im-message §A).
+// v7: mention marker field separator | → U+E001 (裸竖线在表格里被当列分隔线切碎)。
+const CACHE_DB_VERSION = 7
 const DB_NAME = 'onething-markdown-cache'
 const STORE_NAME = 'md'
 

@@ -4,7 +4,7 @@ import type { CollabAgentLike, CollabMentionLike } from './types.js'
 /** Why an agent is about to speak. 'self-elected' = it passed its own
  *  response-willingness judgement (docs/design/multi-agent-collab-im.md §2);
  *  the old 'default-responder' path is gone — nobody answers by position. */
-export type CollabActivationReason = 'mention' | 'self-elected' | 'task-event' | 'schedule'
+export type CollabActivationReason = 'mention' | 'self-elected' | 'task-event' | 'schedule' | 'relay'
 
 export interface CollabActivationRequest {
   agentId: string
@@ -17,6 +17,9 @@ export const COLLAB_ACTIVATION_LABELS: Record<CollabActivationReason, string> = 
   'self-elected': '主动接话',
   'task-event': '任务事件',
   schedule: '定时触发',
+  // 顺序模式(接力)。它是一条**对话性**激活,所以链长闸、floor 世代号作废、冻结
+  // 门全部照常适用 —— 只有意愿判定被省掉了(轮到你了,不必再问你想不想说)。
+  relay: '轮到发言',
 }
 
 /**

@@ -157,7 +157,14 @@ describe('onething provider facade', () => {
       },
     )
 
-    expect(result).toEqual({ text: 'hello', reasoning: 'think' })
+    // usage 必须一路带到门口(2026-08-02):`generateOnethingTextChatResponse` 靠
+    // `if (result.usage) onUsage(...)` 计费,而 deepseek 这条 generate 路径此前
+    // 把它丢在了最后一步 —— 于是走它的旁路调用在账本上一条都不留。
+    expect(result).toEqual({
+      text: 'hello',
+      reasoning: 'think',
+      usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+    })
     expect(fetchCalls[0].url).toBe('https://deepseek.test/chat/completions')
     expect(JSON.parse(fetchCalls[0].body ?? '{}')).toMatchObject({
       model: 'deepseek-reasoner',

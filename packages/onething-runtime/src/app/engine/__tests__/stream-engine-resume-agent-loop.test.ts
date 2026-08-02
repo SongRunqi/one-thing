@@ -44,7 +44,6 @@ const mocks = vi.hoisted(() => ({
   getMCPToolsForAI: vi.fn(() => ({})),
   getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
   modelSupportsTools: vi.fn(async () => true),
-  buildContextVariablesPromptText: vi.fn(async () => ''),
   buildProjectDirsPromptVars: vi.fn(() => ({ active: undefined, known: [] })),
   buildPrompt: vi.fn(async () => ({ systemPrompt: 'system', messages: [] })),
   executeAgentLoopStreamGeneration: vi.fn(async () => ({ pausedForConfirmation: false })),
@@ -127,7 +126,6 @@ vi.mock('../../providers/model-registry.js', () => ({
 }))
 
 vi.mock('../../variables/index.js', () => ({
-  buildContextVariablesPromptText: mocks.buildContextVariablesPromptText,
 }))
 
 vi.mock('../../project-dirs/index.js', () => ({

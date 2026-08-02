@@ -74,7 +74,6 @@ const mocks = vi.hoisted(() => ({
   createAgentProviderFromRuntime: vi.fn(() => deepseekProviderWithCapabilities(deepseekTextCapabilities)),
   resolveAgentModelCapabilities: vi.fn(async (provider: AgentProvider) => provider.capabilities),
   agentSupportsTools: vi.fn((capabilities: AgentModelCapabilities) => capabilities.capabilities.includes('tool-calls')),
-  buildContextVariablesPromptText: vi.fn(async () => 'dynamic vars'),
   buildProjectDirsPromptVars: vi.fn(() => ({ active: undefined, known: [] })),
   buildPrompt: vi.fn(async () => ({
     systemPrompt: 'system prompt',
@@ -132,7 +131,6 @@ vi.mock('../../../tools/index.js', () => ({
 }))
 
 vi.mock('../../../variables/index.js', () => ({
-  buildContextVariablesPromptText: mocks.buildContextVariablesPromptText,
 }))
 
 vi.mock('../../../project-dirs/index.js', () => ({
@@ -165,7 +163,6 @@ describe('system prompt snapshot agent-loop route', () => {
     expect(snapshot.agentLoopStream.supportedProviderIds).toEqual(expect.arrayContaining(['deepseek', 'acp']))
     expect(mocks.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
       providerId: 'deepseek',
-      contextVariables: 'dynamic vars',
       hasTools: false,
       historyMessages: [],
     }))

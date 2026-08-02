@@ -91,6 +91,8 @@ vi.mock('../../usage/index.js', () => ({
 }))
 
 vi.mock('../../store.js', () => ({
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
   updateSessionWorkingDirectory: vi.fn(),
   // P2-10: the coordinator registers a room-disposal listener at startup.
   onSessionsDeleted: () => () => {},
@@ -435,19 +437,39 @@ describe('W23 — 对账两级去重', () => {
     expect([afterFirst, afterSecond]).toEqual([0, 0])
   })
 
-  it('both miss: the message replays exactly once', async () => {
+  /**
+   * 2026-08-01 行为变更(collab-agent-view.md P4):**已读游标是第三级证明**,
+   * 而且它比前两级都硬。
+   *
+   * 记录被挤掉、转录被清空之后,这条消息曾经会被重放一次 —— 那是 W23 的设计:
+   * 宁可多驱一次也不要漏掉一条没人应的消息。游标出现之后这个取舍换了方向:
+   * 那一轮**跑完了**(沉默也是跑完),游标因此前移,而"它读过了、选择不说"是
+   * 一个完整的处理结果。再驱一次得到的只会是同一段上下文下的同一个沉默,或者
+   * 更糟 —— 对着一段已经过去的对话重新开口(事故里的陈旧激活正是这个形状)。
+   *
+   * 真正需要重放的那种失败仍然重放:中止/超时/崩溃的回合不推进游标。
+   */
+  it('records + transcript both gone: the read cursor still stops the replay', async () => {
     await runParkedTurn()
     evictActivationRecords()
-    // Strip the transcript proof too — now nothing anywhere remembers the drive.
+    // Strip the transcript proof too — now only the cursor remembers.
     const execMessages = (mocks.sessions.get(FE_SESSION) as FakeSession).messages
     execMessages.length = 0
     script({})
     await restart()
 
-    expect(driveEvents()).toHaveLength(1)
+    expect(driveEvents()).toHaveLength(0)
   })
 
-  it('pre-W23 drives carry no stamp and replay once, self-healing', async () => {
+  /**
+   * 同上(P4):游标是第三级证明,而它不认 `collabSourceMessageId` 那个戳 ——
+   * 它记的是"读到哪一条为止",与 drive 是哪个版本写的无关。所以 pre-W23 的
+   * 无戳 drive 现在也不会重放:这一轮跑完过,那批消息就是读过的。
+   *
+   * 真正没跑完的回合(记录停在 driving/streaming、崩溃、超时)照旧重放 ——
+   * 那条路上游标压根没动。
+   */
+  it('pre-W23 drives carry no stamp — the cursor covers them anyway', async () => {
     await runParkedTurn()
     evictActivationRecords()
     // The compatibility case: the drive is on disk, but it predates the field.
@@ -457,12 +479,7 @@ describe('W23 — 对账两级去重', () => {
     script({})
     await restart()
 
-    expect(driveEvents()).toHaveLength(1)
-    // The replay drive DOES carry the stamp, so the next restart is clean.
-    expect(driveEvents()[0].collabSourceMessageId).toBeDefined()
-    const stamped = (mocks.sessions.get(FE_SESSION) as FakeSession).messages
-      .filter(item => item.source === 'collab' && item.collabSourceMessageId)
-    expect(stamped).toHaveLength(1)
+    expect(driveEvents()).toHaveLength(0)
   })
 
   it('a different unanswered message is NOT swallowed by the scan', async () => {

@@ -27,7 +27,6 @@ function baseOptions(overrides: Partial<BuildPromptContextOptions> = {}): BuildP
     hasTools: true,
     skills: [],
     workingDirectory: undefined,
-    contextVariables: undefined,
     activeProject: { hasActive: false },
     knownProjects: { hasAny: false, entries: [] },
     toolNames: ['read'],

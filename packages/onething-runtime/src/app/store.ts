@@ -23,6 +23,7 @@ export {
   addMessage,
   deleteMessage,
   deleteMessageAndTruncate,
+  clearSessionMessages,
   updateMessageAndTruncate,
   updateMessageContent,
   updateMessageReasoning,

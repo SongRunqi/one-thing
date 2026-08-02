@@ -28,6 +28,7 @@
  * history to say otherwise would be a lie about what the room showed.
  */
 import { sanitizeCollabInlineMarkup } from './inline-tags.js'
+import { parseCollabHandleMentions, type CollabAddressable } from './handles.js'
 import { buildCollabMentions, mergeCollabMentions, normalizeCollabMentions } from './mentions.js'
 import { truncateAtCodePoint } from './truncate.js'
 import type { CollabAgentLike, CollabMentionLike } from './types.js'
@@ -69,15 +70,15 @@ export function formatCollabThinkingTraceLabel(stepCount: number): string {
  * plainly — 未送达, not "error".
  */
 export const COLLAB_SAY_REFUSED_NO_ROOM =
-  'say 只能在群聊里(或群聊派生的工作会话里)使用——这个会话没有关联的群聊,没有人会收到消息。'
+  'send_message 只能在群聊里(或群聊派生的工作会话里)使用——这个会话没有关联的群聊,没有人会收到消息。'
 export const COLLAB_SAY_REFUSED_FROZEN =
-  '发言未送达:这个群聊已被暂停(总闸),现在没有人能收到消息。等群聊恢复后再说。'
+  '消息未送达:这个群聊已被暂停(总闸),现在没有人能收到消息。等群聊恢复后再说。'
 export const COLLAB_SAY_REFUSED_BUDGET =
-  '发言未送达:这个群聊今天的预算已经用完,消息发不出去。明天自动恢复,或者由用户调整房间预算。'
+  '消息未送达:这个群聊今天的预算已经用完,消息发不出去。明天自动恢复,或者由用户调整房间预算。'
 export const COLLAB_SAY_REFUSED_EMPTY =
   '没发出去:content 是空的,没有内容可发。'
 export const COLLAB_SAY_REFUSED_NOT_MEMBER =
-  '发言未送达:你已经不在这个群聊的成员名单里了。'
+  '消息未送达:你已经不在这个群聊的成员名单里了。'
 
 /**
  * W18: the `room` parameter named something that is not a room this agent can
@@ -85,7 +86,156 @@ export const COLLAB_SAY_REFUSED_NOT_MEMBER =
  * all — here the caller aimed and missed, and the fix is a different id.
  */
 export const COLLAB_SAY_REFUSED_UNKNOWN_ROOM =
-  '发言未送达:room 参数指向的不是一个群聊(或者你不在那个群里)。不带 room 就是发到你当前这一轮的群里。'
+  '消息未送达:room 参数指向的不是一个群聊(或者你不在那个群里)。不带 room 就是发到你当前这一轮的群里。'
+
+/* ── 统一发送面:channel 与 wake(collab-send-channel-and-wake.md §2) ── */
+
+/**
+ * 发送面的三档。`send_message` 与 `dm` 合并成一个带 channel 的工具之后,
+ * 「发给这间房」与「发给某个人」是同一个动作的两个方向(设计 §2.1)。
+ *
+ * `gateway`(远程投递:微信/Telegram)本期只占坑 —— channel 显式存在而不是纯
+ * 推断,正是为了它:届时收件人同样是一个 `to` 字符串,「有 to = dm」的推断会
+ * 失效,而那时改的是这张表,不是工具契约。
+ */
+export type CollabSendChannel = 'room' | 'dm' | 'gateway'
+
+/**
+ * 观察器与执行器共用的结构视图 —— 只读这一次调用「往哪儿发」需要的四个字段。
+ * 索引签名是刻意的:传进来的是**整份** tool args(`content`/`mentions`/…),
+ * 这个类型只是从中挑出路由要看的那几个,不是它的全集。
+ */
+export interface CollabSendArgsLike {
+  channel?: unknown
+  to?: unknown
+  room?: unknown
+  wake?: unknown
+  [key: string]: unknown
+}
+
+export const COLLAB_SEND_REFUSED_ROOM_WITH_TO =
+  'to 是私聊的参数 —— 发给某个人就不要指定 channel:"room";要发进群里就别写 to。'
+export const COLLAB_SEND_REFUSED_DM_NO_TARGET =
+  '要发给谁?to 填花名册里的写法「名字#句柄」,发给用户本人就写「用户」。'
+export const COLLAB_SEND_REFUSED_GATEWAY =
+  '远程投递(微信/Telegram)还没接入,channel:"gateway" 现在发不出去。'
+export const COLLAB_SEND_REFUSED_UNKNOWN_CHANNEL =
+  'channel 只有 "room"(发进群聊)和 "dm"(发给某个人)两种写法。'
+export const COLLAB_SEND_REFUSED_WAKE_WITHOUT_TARGET =
+  'wake 是私聊的参数 —— 它的意思是「TA 读完这条私聊后,我到群里 @ TA 一声」。这一发没有 to,没有人需要被唤醒。'
+
+function trimmedText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+/**
+ * 这次调用**打算**发去哪一档?——宽松推断,不做任何校验。
+ *
+ * 缺省按参数推断:有 `to` 就是私聊档,否则是房间档(设计 §2.1)。显式 channel
+ * 优先,认不出的写法返回 null(校验版把它变成一句可操作的拒绝;观察器把它
+ * 当作"看不出来",按房间档处理 —— 打字灯宁可多亮一次也不该少亮)。
+ */
+export function resolveCollabSendChannelFromArgs(
+  args: CollabSendArgsLike | null | undefined,
+): CollabSendChannel | null {
+  const declared = trimmedText(args?.channel)
+  if (declared) {
+    if (declared === 'room' || declared === 'dm' || declared === 'gateway') return declared
+    return null
+  }
+  return trimmedText(args?.to) ? 'dm' : 'room'
+}
+
+/**
+ * 校验版:发送执行器用的那一个。矛盾即拒绝(设计 §2.3),措辞可操作。
+ *
+ * 只判"这次调用走哪条链路",不碰房间/成员/冻结 —— 那些门在执行器里,而且
+ * 它们各自的拒绝文案是资产,合并时一个字都不动。
+ */
+export function resolveCollabSendChannel(
+  args: CollabSendArgsLike | null | undefined,
+): { ok: true; channel: CollabSendChannel } | { ok: false; error: string } {
+  const channel = resolveCollabSendChannelFromArgs(args)
+  if (!channel) return { ok: false, error: COLLAB_SEND_REFUSED_UNKNOWN_CHANNEL }
+  const to = trimmedText(args?.to)
+  if (channel === 'room' && to) return { ok: false, error: COLLAB_SEND_REFUSED_ROOM_WITH_TO }
+  if (channel === 'dm' && !to) return { ok: false, error: COLLAB_SEND_REFUSED_DM_NO_TARGET }
+  // wake 是私聊档的参数。房间档带 wake **必须**拒绝而不是静默忽略:它请求的是
+  // 一个不会发生的唤醒,而发起方会当它已经安排好了(设计 §2.3 的同一条纪律 ——
+  // 调用时说清楚,别让失败在几分钟后以"什么都没发生"的形式出现)。
+  if (channel !== 'dm' && args?.wake === true) {
+    return { ok: false, error: COLLAB_SEND_REFUSED_WAKE_WITHOUT_TARGET }
+  }
+  return { ok: true, channel }
+}
+
+/** 私聊档的调用吗?(断路器按这一条对齐现 `dm` 的计数口径 —— 见 circuit-breaker.ts。) */
+export function isCollabSendDmCall(args: CollabSendArgsLike | null | undefined): boolean {
+  return resolveCollabSendChannelFromArgs(args) === 'dm'
+}
+
+/**
+ * 这次调用是**发进当前这间房**的吗?(打字灯的判据,设计 §4。)
+ *
+ * 合并之后 dm 档也顶着 `send_message` 这个名字,而打字灯挂在"这一轮在答的那间
+ * 房"上:私聊档、以及显式指向别的房的调用,都不该让这间房亮灯。
+ */
+export function isCollabSendIntoRoom(
+  args: CollabSendArgsLike | null | undefined,
+  roomSessionId: string | undefined,
+): boolean {
+  if (resolveCollabSendChannelFromArgs(args) !== 'room') return false
+  const room = trimmedText(args?.room)
+  if (!room) return true
+  return !roomSessionId || room === roomSessionId
+}
+
+/* ── wake:私聊送达后到群里 @ 一声(设计 §3) ─────────────────────── */
+
+export const COLLAB_WAKE_REFUSED_USER_TARGET =
+  '用户没有可唤醒的执行会话 —— TA 收到通知就会看到,不用 wake。'
+export const COLLAB_WAKE_REFUSED_NO_ROOM =
+  '不知道该到哪个群唤醒 TA:这一轮没有关联的群。要么去掉 wake,要么用 wakeRoom 指定一个群。'
+
+/** 收件人不在那个群里 —— 唤醒是"到群里 @ TA",TA 不在场就没有可 @ 的人。 */
+export function formatCollabWakeRefusedTargetNotMember(peerName: string): string {
+  return `${peerName} 不在那个群里,唤醒不了 —— 唤醒是到群里 @ TA 一声,而 TA 得先在那个群。`
+}
+
+/** 发起人不在那个群里 —— poke 由发起人署名落群,说话的门就是这道门(设计 §2.3)。 */
+export const COLLAB_WAKE_REFUSED_SELF_NOT_MEMBER =
+  '你不在那个群里:唤醒的那一声是以你的名义说的,得先是那个群的成员。'
+
+/**
+ * poke 文案 —— **固定模板,不可自定义**(设计 §3.4)。
+ *
+ * 开放文案等于开了「用 wake 在群里代言」的口子,与「内容永不跨房」这条铁律
+ * 打架:要说的话应该写在私聊正文里,或者作为普通消息发到群里。
+ */
+export function formatCollabWakePoke(mention: string): string {
+  return `@${mention} 我在私聊里给你发了消息 —— 看完后请回到这里回应。`
+}
+
+/**
+ * 私聊档的成功回执(agent-dm-user.md §3.2 + 本设计 §3.5)。
+ *
+ * 发给人的那一版必须说清「TA 不一定在线」,否则 agent 会发完就停轮空等回复;
+ * 带 wake 时追加一句 —— 发起方据此知道"我不用再嘱咐 TA 回群里"。
+ */
+export function formatCollabDmReceipt(input: {
+  targetKind: 'user' | 'agent'
+  peerName: string
+  /** 带 wake 时,poke 会落在哪个群(房名,不是 id)。 */
+  wakeRoomName?: string
+}): string {
+  if (input.targetKind === 'user') {
+    return `已发给 ${input.peerName};TA 不一定在线,看到后会在你们的私聊里回复——不用等,先继续手头的事。`
+  }
+  const base = `已发给 ${input.peerName};TA 会在你们的私聊里回复,用户也看得见。`
+  return input.wakeRoomName
+    ? `${base}TA 读完后,我会在「${input.wakeRoomName}」替你 @ TA 一声。`
+    : base
+}
 
 /**
  * Which room does this `say` land in? (W18 §4.6「say(room)」)
@@ -118,14 +268,52 @@ export function resolveCollabSayRoomSessionId(options: {
   return null
 }
 
-/** Success line handed back to the caller — it names the id so a follow-up say
- *  can quote it with replyTo. */
+/** Success line handed back to the caller — it names the id so a follow-up send
+ *  can quote it with replyTo.
+ *
+ *  中性措辞:同一个执行器既发群也发私聊,而「已发进群里」在私聊房是句假话
+ *  (一致性审计 P2-8)。 */
 export function formatCollabSayReceipt(messageId: string): string {
-  return `已发进群里(消息 id: ${messageId})。可以继续调用 say 再说一条,或者就此打住。`
+  return `已发出(消息 id: ${messageId})。可以再发一条,或者就此打住。`
 }
 
-/** The tool a room turn speaks through — the name persisted tool calls carry. */
-export const COLLAB_SAY_TOOL_NAME = 'say'
+/**
+ * The tool a room turn sends through — the name persisted tool calls carry.
+ *
+ * 2026-08-02 由 `say` 改名为 `send_message`
+ * (docs/design/collab-turn-protocol-and-identity.md A)。这个常量是**工具名**,
+ * 与落盘的 `COLLAB_SAY_SOURCE`('collab-say')无关 —— 后者是持久化约定,不动。
+ * 打字信号观察器(`typing.ts`)与断路器按这个名字认调用,所以它必须跟着改名走。
+ */
+export const COLLAB_SEND_MESSAGE_TOOL_NAME = 'send_message'
+
+/**
+ * 旧工具名,**静默别名**用(A.3)。
+ *
+ * 执行会话的历史里全是 `say` 调用范例,模型会照着模仿;provider 是生成器,
+ * 声明与否都可能吐旧名。别名把旧名路由到同一个执行器,于是模仿旧历史的调用
+ * 照常送达,不产生「unknown tool」的教育成本。它**不进** COLLAB_ROOM_TOOLS、
+ * 不出现在请求的 tools 参数里、不出现在任何提示词里 —— 灰度期过后整条拆除。
+ */
+export const COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME = 'say'
+
+/**
+ * 另一个退役名:`dm`(collab-send-channel-and-wake.md §5 R1)。
+ *
+ * 2026-08-02 起 `dm` 不再是一个工具 —— 发送面只有 `send_message` 一个,连隐藏的
+ * 第二个都不留。旧转录里的 `dm` 调用范例照样会被模仿出来,所以它和 `say` 一样
+ * 进退役名表。
+ *
+ * 与 `say` 的差别是**参数不同形**(`{to, message}` vs `{to, content}`),所以这
+ * 不是无缝转发,是一次**刻意接受的降级**:`to` 是合并面的正式参数、活着进来,
+ * `message` 被 zod strip 掉 → `content` 缺席 → 校验层逐字回一句
+ * `COLLAB_SAY_REFUSED_EMPTY`(见 `tools/builtin/say.ts` 的 formatValidationError)。
+ * 代价是一轮重试,消息不丢,零额外机械件 —— 名字级转发本来会让 `message` 被静默
+ * 吞掉(edit replaceAll 事故同款陷阱),这句拒绝就是不让它静默。
+ *
+ * 拆除条件与 `say` 相同:改名前的会话历史被摘要压掉、或危险区清空拿到干净基线。
+ */
+export const COLLAB_DM_LEGACY_TOOL_NAME = 'dm'
 
 /**
  * 沉默 = 什么都不调 (2026-07-30) — why there is no `stay_silent`, and no forced
@@ -166,32 +354,47 @@ export interface CollabTurnToolCallLike {
 }
 
 /**
- * Resolve the say call's `mentions` (agent ids) into the W14a record shape.
+ * Resolve the say call's `mentions` into the W14a record shape.
  *
- * Two sources, one list:
+ * THREE sources now, in descending precision (collab-agent-handle.md §2.4):
+ *
  *  1. the explicit ids the tool call carried — whitelisted against the room
  *     roster (an agent does not get to address a member of another room, or a
  *     made-up id) and re-labelled from the roster, exactly like the ingress
  *     gate does for a human's picker (防冒名: the caller never names anyone).
- *  2. the `@名字` it wrote in prose — the same name-scan fallback W14a keeps
- *     for bare typing, so an agent that just writes 「@小李 你看一下」 without
- *     filling the parameter still addresses a real member.
+ *  2. `@名字#句柄` in the prose — the handle IS an id, so this is as exact as
+ *     (1) while being something the agent can actually write: the roster is
+ *     where it learns the handle, and it has no picker.
+ *  3. bare `@名字` — the name-scan fallback W14a keeps, so an agent that just
+ *     writes 「@小李 你看一下」 still addresses a real member (and, when two
+ *     members share the name, honestly addresses both).
  *
- * Per-label authority (mergeCollabMentions): an explicitly named id owns its
- * label, so picking one of two 重名 members never also drags in the other.
+ * Per-label authority (mergeCollabMentions) chains down the list: a label an
+ * explicit id claimed is not re-scanned, and a label a HANDLE claimed is not
+ * re-scanned by name either — which is exactly what stops `@小李#c0ffee11`
+ * from also waking the OTHER 小李 that the bare name-scan would match at the
+ * very same position.
  */
 export function resolveCollabSayMentions(options: {
   content: string
   mentionAgentIds?: unknown
+  /** 授权面:能被点名激活的人(房内在职成员)。显式 id 参数按它校验。 */
   members: readonly CollabAgentLike[]
+  /**
+   * 识别面:哪串字符算一个真身份(用户、退休成员、非本房 agent 都在内)。
+   * 缺省退回 `members` —— 老调用点与纯 agent 测试因此不用改一个字,而新的
+   * 接线点传完整目录(collab-handle-codec.md §2.1:识别与授权分家)。
+   */
+  directory?: readonly CollabAddressable[]
 }): CollabMentionLike[] {
   const ids = Array.isArray(options.mentionAgentIds) ? options.mentionAgentIds : []
   const explicit = normalizeCollabMentions(
     ids.map(id => ({ agentId: typeof id === 'string' ? id : '', label: '' })),
     { members: options.members },
   )
+  const handled = parseCollabHandleMentions(options.content, options.directory ?? options.members)
   const parsed = buildCollabMentions(options.content, options.members)
-  return mergeCollabMentions(explicit, parsed)
+  return mergeCollabMentions(mergeCollabMentions(explicit, handled), parsed)
 }
 
 /**

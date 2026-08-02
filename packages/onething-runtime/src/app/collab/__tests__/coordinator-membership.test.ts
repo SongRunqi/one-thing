@@ -51,6 +51,8 @@ vi.mock('../../usage/index.js', () => ({
 }))
 
 vi.mock('../../store.js', () => ({
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
   updateSessionWorkingDirectory: vi.fn(),
   // P2-10: the coordinator registers a room-disposal listener at startup.
   onSessionsDeleted: () => () => {},
@@ -244,6 +246,40 @@ describe('setCollabRoomConfig — 群公告', () => {
     ])
   })
 
+  /**
+   * 历史检索的授权判据靠 `formerMembers` 回答「这位同事能看到这间房到什么时候」
+   * （docs/design/collab-history-search.md §3）。系统行只有名字没有 id，反查不了，
+   * 所以移出这件事必须**结构化**记一笔。
+   */
+  it('把被移出的人记进 formerMembers，只追加不覆盖', () => {
+    seedRoom({ memberAgentIds: ['pm', 'fe'] })
+    const before = Date.now()
+    coordinator.setCollabRoomConfig(ROOM, { memberAgentIds: ['pm'] })
+
+    const written = mocks.updateSessionCollab.mock.calls.at(-1)?.[1] as
+      { room?: { formerMembers?: Array<{ agentId: string; removedAt: number }> } }
+    const former = written?.room?.formerMembers ?? []
+    expect(former).toHaveLength(1)
+    expect(former[0].agentId).toBe('fe')
+    expect(former[0].removedAt).toBeGreaterThanOrEqual(before)
+
+    // 再移出一个：旧记录不能被覆盖（同一个人移出→拉回→再移出要留多条）
+    const room = mocks.sessions.get(ROOM) as { room: Record<string, unknown> }
+    room.room = { ...room.room, memberAgentIds: ['pm', 'research'], formerMembers: former }
+    coordinator.setCollabRoomConfig(ROOM, { memberAgentIds: ['pm'] })
+    const second = (mocks.updateSessionCollab.mock.calls.at(-1)?.[1] as
+      { room?: { formerMembers?: Array<{ agentId: string }> } })?.room?.formerMembers ?? []
+    expect(second.map(entry => entry.agentId)).toEqual(['fe', 'research'])
+  })
+
+  it('只加人不移人时不写 formerMembers', () => {
+    seedRoom({ memberAgentIds: ['pm'] })
+    coordinator.setCollabRoomConfig(ROOM, { memberAgentIds: ['pm', 'fe'] })
+    const written = mocks.updateSessionCollab.mock.calls.at(-1)?.[1] as
+      { room?: { formerMembers?: unknown } }
+    expect(written?.room?.formerMembers).toBeUndefined()
+  })
+
   it('clears the PM when the PM is removed, without a dangling pmAgentId', () => {
     seedRoom({ memberAgentIds: ['pm', 'fe'], pmAgentId: 'pm' })
     expect(coordinator.setCollabRoomConfig(ROOM, { memberAgentIds: ['fe'] })).toEqual({ success: true })
@@ -301,6 +337,11 @@ describe('removed members stop taking the floor', () => {
     await flush()
 
     expect(driveCommands()).toHaveLength(1)
-    expect(String((driveCommands()[0].event as { content?: string }).content)).toContain('小研')
+    // 指令块删除之后 drive 只剩数据;房里一条未读都没有时,兜底是那个自闭合的
+    // `count="0"` 块 —— 空字符串不是数据,一条空 user 消息更不是。
+    expect(String((driveCommands()[0].event as { content?: string }).content))
+      .toContain('<Notification desc=')
+    expect(String((driveCommands()[0].event as { content?: string }).content))
+      .toContain('count="0"')
   })
 })

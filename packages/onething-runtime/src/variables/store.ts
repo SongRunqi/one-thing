@@ -11,7 +11,7 @@ function toStoredVariable(v: ContextVariable): VariablesFileGlobalVariable {
     value: v.value,
     type: v.type,
     description: v.description,
-    volatility: v.volatility,
+    state: v.state,
     updatedAt: v.updatedAt,
   }
 }

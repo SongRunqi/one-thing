@@ -41,6 +41,8 @@ vi.mock('../../usage/index.js', () => ({
 }))
 
 vi.mock('../../store.js', () => ({
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
   updateSessionWorkingDirectory: vi.fn(),
   onSessionsDeleted: () => () => {},
   getSession: (id: string) => mocks.sessions.get(id),
@@ -214,7 +216,8 @@ describe('D6 免判激活', () => {
     expect(driveCommands()).toHaveLength(1)
     // 回合跑在该 agent 的常驻执行会话里(per-room 拓扑自动成立)。
     expect(driveCommands()[0].sessionId).toBe(`agent-exec-fe-${DM_ROOM}`)
-    expect(String(driveCommands()[0].event.content)).toContain('小李')
+    // drive 是数据:用户那句话的信封。指令块(以及它里面的 agent 名字)已删。
+    expect(String(driveCommands()[0].event.content)).toContain('帮我看看首页那个报错')
     expect(mocks.judgeWillingness).not.toHaveBeenCalled()
   })
 

@@ -64,7 +64,7 @@
               <div class="variables-detail-meta">
                 <span>{{ group.label.toLowerCase() }}</span>
                 <span v-if="variable.type && variable.type !== 'string'">{{ variable.type }}</span>
-                <span v-if="variable.volatility && variable.volatility !== 'static'">{{ variable.volatility }}</span>
+                <span v-if="variable.state">state</span>
                 <span v-if="variable.readonly">readonly</span>
                 <span v-if="variable.updatedAt">{{ formatAge(variable.updatedAt) }}</span>
               </div>

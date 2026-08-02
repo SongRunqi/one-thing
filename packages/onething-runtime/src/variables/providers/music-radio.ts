@@ -53,7 +53,7 @@ export class MusicRadioProvider implements VariableProvider {
       name: NAME,
       value: parts.join(' · '),
       readonly: true,
-      volatility: 'turn',
+      state: true,
       description:
         'Music playback and radio status. Songs are driven via ncm-cli through bash (see the netease-music-cli skill); the radio programme lives in the radio-dj session.',
     }]

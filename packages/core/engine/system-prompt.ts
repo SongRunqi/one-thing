@@ -24,7 +24,6 @@ export interface CoreBuildPromptContextOptions {
 	skills: CoreTemplateSkill[];
 	workingDirectory?: string;
 	workingDirectoryRoots?: string[];
-	contextVariables?: string;
 	activeProject?: CorePromptActiveProject;
 	knownProjects?: CorePromptKnownProjects;
 	toolNames?: string[];

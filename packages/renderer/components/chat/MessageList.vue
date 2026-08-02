@@ -252,6 +252,16 @@ interface Props {
   sessionId?: string
   layoutTransitioning?: boolean
   outlineRailTarget?: HTMLElement | null
+  /**
+   * 是否接管权限审批的键盘快捷键(Enter 允许 / D·Esc 拒绝)。
+   *
+   * 缺省 `true` —— 直聊与旧壳字节等价。右栏的线程详情要传 `false`:
+   * `usePermissionShortcuts` 注册的是 **window 级 capture keydown**,挂在右栏
+   * 等于给那条执行会话开了一条**看不见的**审批通道 —— 右栏并不画审批 UI
+   * (W6:审批只在中栏的账页栏位),但按键照样能批。看不见却能触发,比看得见
+   * 能触发更危险。
+   */
+  permissionShortcuts?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -259,6 +269,7 @@ const props = withDefaults(defineProps<Props>(), {
   sessionId: undefined,
   layoutTransitioning: false,
   outlineRailTarget: null,
+  permissionShortcuts: true,
 })
 
 const emit = defineEmits<{
@@ -1637,7 +1648,7 @@ const currentPendingPermission = computed<{ message: ChatMessage; toolCall: Tool
 // Setup keyboard shortcuts for permission confirmation
 // Enter = allow current tool, D/Escape = reject
 usePermissionShortcuts(
-  () => !!currentPendingPermission.value && !showRejectDialog.value,
+  () => props.permissionShortcuts && !!currentPendingPermission.value && !showRejectDialog.value,
   {
     onAllow: () => {
       const pending = currentPendingPermission.value

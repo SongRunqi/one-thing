@@ -368,6 +368,29 @@ describe('mergeWithDefaults 白名单漏键审计', () => {
 
     expect(dropped.sort()).toEqual([...KNOWN_DROPPED_KEYS].sort())
   })
+
+  /**
+   * `general` 走的是 `{...defaults.general, ...settings.general}` 展开,所以它的
+   * 子键天然幸存 —— 但上面那条探针只数**顶层**键,`userProfile` 这种"零默认值、
+   * 只有用户写了才存在"的子键在它眼里是不可见的。身份是 dm/署名/@ 三条链的入口,
+   * 静默丢一次就是全链路回退到「用户」,所以单独钉住。
+   */
+  it('general.userProfile 与私聊通知开关活过 merge', () => {
+    const merged = mergeWithDefaults({
+      general: {
+        userProfile: { name: '一天', handle: 'yitian', avatar: '🙂', avatarImage: 'me.png' },
+        dmNotifications: false,
+      },
+    } as Partial<AppSettings>)
+
+    expect(merged.general.userProfile).toEqual({
+      name: '一天',
+      handle: 'yitian',
+      avatar: '🙂',
+      avatarImage: 'me.png',
+    })
+    expect(merged.general.dmNotifications).toBe(false)
+  })
 })
 
 describe('network settings defaults', () => {

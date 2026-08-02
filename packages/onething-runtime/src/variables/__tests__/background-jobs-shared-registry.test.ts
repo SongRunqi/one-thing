@@ -29,7 +29,7 @@ describe('background jobs shared registry', () => {
       expect(variable?.name).toBe('background_jobs')
       expect(variable?.value).toContain(job.id)
       expect(variable?.value).toContain('running')
-      expect(variable?.volatility).toBe('turn')
+      expect(variable?.state).toBe(true)
 
       // Session isolation must hold through the default path too.
       expect(provider.list({ sessionId: 'some-other-session' })).toEqual([])

@@ -1,3 +1,4 @@
+export * from './agent-self.js'
 export * from './background-jobs.js'
 export * from './core.js'
 export * from './datetime.js'

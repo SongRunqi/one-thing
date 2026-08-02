@@ -3,14 +3,22 @@ import { mount } from '@vue/test-utils'
 import { ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RoomSurface from '../room/RoomSurface.vue'
-import { OPEN_MEMBERS_EVENT } from '@/components/workbench/room-members'
 
 /**
- * R2 入口之三:**私聊态右栏默认落在空间页**(样板 三 · 私聊)。
- * 群聊照旧落在线程 —— 这一档 R1 已经定,R2 不许改。
+ * 进房落座 —— 房面对右栏说的唯一一句话。
  *
- * 两档共用 R1 那条纪律:**只在右栏已经开着时**才落座,窄窗上不许由房面强行把
- * 右栏顶开(那会把 W-Q2 的窗宽策略架空)。
+ * **2026-08-02 重写**:这个文件原来守的是两条已经被推翻的纪律,两条断言红、
+ * 第三条假绿(它断言"什么都不发",而新契约下那两个旧事件本来就再也不会发):
+ *
+ *  - 旧:私聊派 `OPEN_MEMBERS_EVENT`、群聊派 `onething:open-thread`,两个事件。
+ *    新:合并成一个 `onething:room-workbench`,detail 带
+ *    `{ roomSessionId, workSessionId?, dmAgentId? }` —— 右栏自己决定落在哪一页。
+ *  - 旧:右栏收着就不落座(不许由房面把右栏顶开)。
+ *    新:照发。理由写在 `seatDefaultThread` 的注释里,是真机走查换来的:
+ *    那道闸与"看板上没有在跑的卡就不派事件"叠起来,让线程**永远不出现**,
+ *    用户第一句话就是"我看不到线程"。开合仍归右栏自己的窗宽策略管。
+ *
+ * 所以这里守的是新契约的三件事:事件只有一个、靶子拿得到就带上、拿不到也照发。
  */
 const mocks = vi.hoisted(() => ({
   session: {} as Record<string, unknown>,
@@ -102,19 +110,16 @@ vi.mock('../ComposerReplyBar.vue', () => ({
   default: { name: 'ComposerReplyBar', template: '<div class="mock-reply" />' },
 }))
 
+const ROOM_WORKBENCH_EVENT = 'onething:room-workbench'
+
 function capture() {
-  const members: unknown[] = []
-  const threads: unknown[] = []
-  const onMembers = (event: Event) => members.push((event as CustomEvent).detail)
-  const onThread = (event: Event) => threads.push((event as CustomEvent).detail)
-  window.addEventListener(OPEN_MEMBERS_EVENT, onMembers)
-  window.addEventListener('onething:open-thread', onThread)
+  const seated: unknown[] = []
+  const onSeat = (event: Event) => seated.push((event as CustomEvent).detail)
+  window.addEventListener(ROOM_WORKBENCH_EVENT, onSeat)
   return {
-    members,
-    threads,
+    seated,
     stop() {
-      window.removeEventListener(OPEN_MEMBERS_EVENT, onMembers)
-      window.removeEventListener('onething:open-thread', onThread)
+      window.removeEventListener(ROOM_WORKBENCH_EVENT, onSeat)
     },
   }
 }
@@ -126,18 +131,19 @@ describe('RoomSurface — 右栏默认落座', () => {
     mocks.board = undefined
   })
 
-  it('私聊:落在空间页,页签叫「空间」(那间房没有"成员"这回事)', () => {
+  it('私聊:带上那位同事的 id,右栏据此落到空间页', () => {
     mocks.session = { id: 'room-1', name: '小林', kind: 'room', room: { memberAgentIds: ['a1'], dm: true } }
     const seen = capture()
     const wrapper = mount(RoomSurface, { props: { sessionId: 'room-1' } })
     seen.stop()
 
-    expect(seen.members).toEqual([{ sessionId: 'room-1', agentId: 'a1', title: '空间' }])
-    expect(seen.threads).toHaveLength(0)
+    expect(seen.seated).toEqual([
+      { roomSessionId: 'room-1', workSessionId: undefined, dmAgentId: 'a1' },
+    ])
     wrapper.unmount()
   })
 
-  it('群聊:照旧落在线程,不碰成员 tab', () => {
+  it('群聊:带上在跑那张卡的工作会话,不带 dmAgentId', () => {
     mocks.session = { id: 'room-1', name: '浏览器重构', kind: 'room', room: { memberAgentIds: ['a1', 'a2'] } }
     mocks.board = {
       tasks: [{ id: 'task-abcdefgh', title: '换核验证', status: 'doing', workSessionIds: ['w1'], updatedAt: 1 }],
@@ -146,20 +152,44 @@ describe('RoomSurface — 右栏默认落座', () => {
     const wrapper = mount(RoomSurface, { props: { sessionId: 'room-1' } })
     seen.stop()
 
-    expect(seen.members).toHaveLength(0)
-    expect(seen.threads).toEqual([{ workSessionId: 'w1', title: '换核验证', taskId: 'task-abcdefgh' }])
+    expect(seen.seated).toEqual([
+      { roomSessionId: 'room-1', workSessionId: 'w1', dmAgentId: undefined },
+    ])
     wrapper.unmount()
   })
 
-  it('右栏收着的时候两档都不落座 —— 房面不许把右栏顶开', () => {
+  /**
+   * 这一条是那次真机走查的结论,拿测试钉住:**靶子拿不到也要照发**。
+   * 从前"看板上没有在跑且开过工作台的卡就不派事件",于是一间还没跑过活的房,
+   * 右栏里一条线程都没有。空线程是个真答案 —— ThreadWorkbench 自己会说
+   * "还没有执行记录"，而一个什么都不显示的右栏只会让人以为功能坏了。
+   */
+  it('群聊 · 看板还是空的:照样落座,只是没有靶子', () => {
+    mocks.session = { id: 'room-1', name: '浏览器重构', kind: 'room', room: { memberAgentIds: ['a1', 'a2'] } }
+    mocks.board = { tasks: [] }
+    const seen = capture()
+    const wrapper = mount(RoomSurface, { props: { sessionId: 'room-1' } })
+    seen.stop()
+
+    expect(seen.seated).toEqual([
+      { roomSessionId: 'room-1', workSessionId: undefined, dmAgentId: undefined },
+    ])
+    wrapper.unmount()
+  })
+
+  /**
+   * 右栏开合归右栏自己的窗宽策略(`resolveInspectorDefaultOpen`)管,房面不看它。
+   * 旧纪律"右栏收着就不落座"已推翻——它与上一条那道闸叠起来,是线程永远不出现的
+   * 直接原因。
+   */
+  it('右栏收着也照发 —— 开不开不是房面的事', () => {
     mocks.inspectorOpen = false
     mocks.session = { id: 'room-1', name: '小林', kind: 'room', room: { memberAgentIds: ['a1'], dm: true } }
     const seen = capture()
     const wrapper = mount(RoomSurface, { props: { sessionId: 'room-1' } })
     seen.stop()
 
-    expect(seen.members).toHaveLength(0)
-    expect(seen.threads).toHaveLength(0)
+    expect(seen.seated).toHaveLength(1)
     wrapper.unmount()
   })
 })

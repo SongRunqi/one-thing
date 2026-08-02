@@ -27,8 +27,8 @@ vi.mock('@/components/terminal/TerminalView.vue', () => ({
   default: { name: 'TerminalView', props: ['terminalId'], template: '<div class="mock-terminal-view" />' },
 }))
 
-vi.mock('../ThreadWorkbench.vue', () => ({
-  default: { name: 'ThreadWorkbench', props: ['sessionId'], template: '<div class="mock-thread" />' },
+vi.mock('../ThreadChatDetail.vue', () => ({
+  default: { name: 'ThreadChatDetail', props: ['sessionId'], template: '<div class="mock-thread" />' },
 }))
 
 vi.mock('@/components/editor/EditorWorkbench.vue', () => ({

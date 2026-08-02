@@ -327,10 +327,23 @@ export interface CoreSessionUsageFields {
   contextSize?: number
 }
 
+/**
+ * 与变量子系统的两个枚举同形(core 不许依赖 runtime,所以在这里各声明一份)。
+ *
+ * type/scope/state 都必须**原样存活到落盘**:state 决定这个变量还进不进
+ * `<context-update>`,归一化时把它丢掉,本该一直在模型眼前的状态重载后就凭空
+ * 消失了 —— 而它消失得静悄悄,没有任何报错。
+ */
+export type CoreContextVariableType = 'string' | 'number' | 'bool' | 'list' | 'map' | 'set'
+export type CoreContextVariableScope = 'global' | 'session' | 'agent' | 'project'
+
 export interface CoreContextVariableInput {
   name: string
   value: string
   values?: string[]
+  type?: CoreContextVariableType
+  scope?: CoreContextVariableScope
+  state?: boolean
   description?: string
   updatedAt?: number
 }
@@ -339,6 +352,9 @@ export interface CoreNormalizedContextVariable {
   name: string
   value: string
   values?: string[]
+  type?: CoreContextVariableType
+  scope?: CoreContextVariableScope
+  state?: boolean
   description?: string
   updatedAt: number
 }
@@ -792,6 +808,11 @@ export function normalizeSessionVariables<TVariable extends CoreContextVariableI
     name: variable.name,
     value: variable.value,
     values: variable.values,
+    // type/scope/state 属于变量的身份而不是装饰:少写一个,重载回来的就是
+    // 另一个变量(类型退回 string、状态层的变量退回"看不见")。
+    type: variable.type,
+    scope: variable.scope,
+    state: variable.state,
     description: variable.description,
     updatedAt: variable.updatedAt ?? now,
   }))

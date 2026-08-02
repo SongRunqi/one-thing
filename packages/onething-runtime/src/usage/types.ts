@@ -41,6 +41,15 @@ export const ONETHING_USAGE_SOURCES = {
   evals: 'evals',
   /** Collab room response-willingness judgement (one small call per member). */
   collabWillingness: 'collab-willingness',
+  /** Collab room daily digest — one call per room per folded day (P2). */
+  collabDigest: 'collab-digest',
+  /**
+   * 房间编排(collab-coordinator-plan.md):**一条用户消息一次**,产出
+   * 「谁说、什么次序」的整份 waves。它取代的是 N 路意愿判定,所以这一格与
+   * `collab-willingness` 是此消彼长的关系 —— 两条线并排看得见,才说得清换算法
+   * 到底省了多少。
+   */
+  collabPlan: 'collab-plan',
 } as const
 
 export type OnethingUsageSource =

@@ -1,5 +1,102 @@
 <template>
   <div class="tab-content">
+    <!-- 我的资料(docs/design/agent-dm-user.md §2.4):agent 一直有名字和脸,
+         用户没有。这四行补的就是那一半 —— 模型面的称呼、dm 的目标、UI 的署名
+         全部从这里取。放最顶是因为它是"这个应用里的我是谁"。 -->
+    <SettingsSection title="我的资料">
+      <SettingsGroup>
+        <SettingRow
+          label="名字"
+          description="群聊署名、agent 对你的称呼。留空就是「用户」。"
+        >
+          <input
+            class="form-input"
+            :value="userProfile.name || ''"
+            maxlength="24"
+            placeholder="用户"
+            spellcheck="false"
+            @input="updateUserProfile({ name: ($event.target as HTMLInputElement).value })"
+          >
+        </SettingRow>
+
+        <SettingRow
+          label="句柄"
+          description="agent 用 @句柄 点你、用 dm 找你。小写字母/数字/-/_,留空就是 user。"
+        >
+          <input
+            class="form-input"
+            :value="userProfile.handle || ''"
+            maxlength="24"
+            placeholder="user"
+            spellcheck="false"
+            @input="updateUserProfile({ handle: ($event.target as HTMLInputElement).value })"
+            @blur="normalizeHandleOnBlur"
+          >
+        </SettingRow>
+
+        <SettingRow
+          label="头像"
+          description="一个 emoji;选了图片就以图片为准。"
+        >
+          <div class="user-avatar-row">
+            <AgentAvatar
+              class="user-avatar-preview"
+              :avatar="userProfile.avatar || USER_AVATAR_FALLBACK"
+              :avatar-image="userProfile.avatarImage"
+              :size="28"
+            />
+            <input
+              class="form-input user-avatar-input"
+              :value="userProfile.avatar || ''"
+              maxlength="16"
+              placeholder="🙂"
+              spellcheck="false"
+              @input="updateUserProfile({ avatar: ($event.target as HTMLInputElement).value })"
+            >
+            <Button
+              unstyled
+              class="secondary-btn"
+              native-type="button"
+              :disabled="avatarImageBusy"
+              @click="pickAvatarImage"
+            >
+              {{ avatarImageBusy ? '…' : (userProfile.avatarImage ? '换图片' : '选图片') }}
+            </Button>
+            <Button
+              v-if="userProfile.avatarImage"
+              unstyled
+              class="secondary-btn"
+              native-type="button"
+              :disabled="avatarImageBusy"
+              @click="updateUserProfile({ avatarImage: '' })"
+            >
+              清除
+            </Button>
+            <input
+              ref="avatarFileInputRef"
+              class="user-avatar-file-input"
+              type="file"
+              accept="image/*"
+              @change="onAvatarFileChosen"
+            >
+          </div>
+        </SettingRow>
+
+        <SettingRow
+          label="私聊消息系统通知"
+          description="不在这间房时,私聊来消息弹一条系统通知。"
+        >
+          <label class="native-toggle">
+            <input
+              type="checkbox"
+              :checked="dmNotificationsEnabled"
+              @change="updateDmNotifications(($event.target as HTMLInputElement).checked)"
+            >
+          </label>
+        </SettingRow>
+      </SettingsGroup>
+    </SettingsSection>
+
     <!-- Mode (Light/Dark/System) -->
     <SettingsSection title="Mode">
       <SettingsGroup>
@@ -334,10 +431,15 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RotateCcw } from 'lucide-vue-next'
 import type { AppSettings, TypographyDensity } from '@/types'
-import type { DailyNoteSettings } from '@shared/ipc/settings'
+import type { DailyNoteSettings, UserProfileSettings } from '@shared/ipc/settings'
+import AgentAvatar from '@/components/common/AgentAvatar.vue'
+import { AVATAR_IMAGE_MAX_PX, downscaleImageToPngDataUrl } from '@/components/common/agent-avatar'
+import { USER_AVATAR_FALLBACK } from '@/composables/useUserProfile'
+import { normalizeCollabUserHandle } from '@onething/runtime/collab'
+import { useMediaStore } from '@/stores/media'
 import type { TodoPlanSettings } from '@shared/ipc/todo-plan'
 import InputNumber from '@/components/common/InputNumber.vue'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
@@ -392,6 +494,69 @@ const todoPlan = computed<TodoPlanSettings>(() => ({
   docked: false,
   ...props.settings.general.todoPlan,
 }))
+
+/* ── 我的资料(agent-dm-user.md §2.4)──────────────────────────────────
+   四个字段全落 `general.userProfile`,与其它 general 设置同一条保存链;
+   句柄的清洗规则从 @onething/runtime/collab 取,与 dm 解析同一份实现。 */
+const userProfile = computed<UserProfileSettings>(() => props.settings.general?.userProfile ?? {})
+
+const dmNotificationsEnabled = computed(() => props.settings.general?.dmNotifications !== false)
+
+function updateUserProfile(patch: Partial<UserProfileSettings>) {
+  emit('update:settings', {
+    ...props.settings,
+    general: {
+      ...props.settings.general,
+      userProfile: { ...userProfile.value, ...patch },
+    },
+  })
+}
+
+function updateDmNotifications(enabled: boolean) {
+  emit('update:settings', {
+    ...props.settings,
+    general: { ...props.settings.general, dmNotifications: enabled },
+  })
+}
+
+/* 清洗放在 blur 而不是每次 input:边打字边被改写(「Yi」→「yi」)会把光标
+   顶走,而句柄本来就只在保存后才有人读。 */
+function normalizeHandleOnBlur(event: FocusEvent) {
+  const raw = (event.target as HTMLInputElement).value
+  if (!raw.trim()) return
+  const normalized = normalizeCollabUserHandle(raw)
+  if (normalized !== raw) updateUserProfile({ handle: normalized })
+}
+
+const avatarFileInputRef = ref<HTMLInputElement | null>(null)
+const avatarImageBusy = ref(false)
+
+function pickAvatarImage() {
+  avatarFileInputRef.value?.click()
+}
+
+/* 与 agent 头像逐字同一条链:降采样 → 存进媒体库 → 字段里只留文件名。 */
+async function onAvatarFileChosen(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  // 无论成败都清空:同一个文件再选一次必须重新触发 change。
+  input.value = ''
+  if (!file) return
+
+  avatarImageBusy.value = true
+  try {
+    const base64 = await downscaleImageToPngDataUrl(file, AVATAR_IMAGE_MAX_PX)
+    const fileName = await useMediaStore().savePersonaAvatar({
+      base64,
+      label: userProfile.value.name || undefined,
+    })
+    if (fileName) updateUserProfile({ avatarImage: fileName })
+  } catch {
+    // 存不下就保持原样:头像是可选项,一次失败不该拦住别的设置。
+  } finally {
+    avatarImageBusy.value = false
+  }
+}
 
 function updateTheme(theme: 'light' | 'dark' | 'system') {
   emit('update:settings', { ...props.settings, theme })
@@ -687,5 +852,29 @@ async function chooseTodoPlanDirectory() {
   border-style: dashed;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   cursor: not-allowed;
+}
+
+/* 我的资料 · 头像行:预览章 + emoji 输入 + 两枚文字动作,与目录行同一体例。 */
+.user-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.user-avatar-preview {
+  flex-shrink: 0;
+  font-size: 22px;
+}
+
+.user-avatar-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 文件选取器只是那两枚按钮的后端,自己从不出现。 */
+.user-avatar-file-input {
+  display: none;
 }
 </style>

@@ -34,7 +34,7 @@ const BoardParameters = z.object({
 	taskId: z.string().optional().describe("Target task id (from action:list). Required for everything except list/create/start — start without a taskId creates the card it starts."),
 	title: z.string().optional().describe("create/update/start: task title (start uses it only when there is no taskId)"),
 	description: z.string().optional().describe("create/update/start: task detail — everything the assignee needs to execute independently"),
-	assignee: z.string().optional().describe("create/assign: member NAME (as shown in the roster) or agent id"),
+	assignee: z.string().optional().describe("create/assign: the member, as the roster writes them — 名字#句柄 (or just #句柄). A bare name works when only one member goes by it."),
 	status: z.enum(COLLAB_TASK_STATUSES as [CollabTaskStatus, ...CollabTaskStatus[]]).optional()
 		.describe("move: target column"),
 	expectedRev: z.number().optional().describe("assign/move/update/complete/block: the task rev you last read — stale revs are rejected so you never overwrite someone else's change"),
@@ -59,7 +59,7 @@ export function createBoardTool(
 - list: read the current board (do this before mutating — you need each task's rev).
 - create: add a task. Give it a title and a description complete enough to execute without asking. Adding "assignee" puts it on that member's todo and tells them — they decide when to start.
 - start: START WORKING on a task, right now, in your own work session (full tools, no turn limit). Use it for anything that needs more than a couple of tool calls or touches several files. Without a taskId it creates the card first, so you never have to leave the work to file paperwork. You can only start a card that is unassigned (you claim it) or already yours. It is also how you RESUME a card that was interrupted — the same work session is reopened with your history intact.
-- assign: put a task on a member (by roster name). Assigning is a notification, not a launch: the assignee gets told, and can ask questions, start, or block it.
+- assign: put a task on a member (by 名字#句柄, as the roster and this board write them). Assigning is a notification, not a launch: the assignee gets told, and can ask questions, start, or block it.
 - move: change a task's column. Moving an assigned card back to todo (from review, blocked or done) actually re-runs it in a fresh work session — it is a real retry, not a label change.
 - comment: append a note to the task's activity log.
 - complete: (as the assignee, from your work session) declare the task done with a delivery summary — it moves to review, your summary is posted to the room, and the reviewer takes over. Call this exactly once, as your final action.

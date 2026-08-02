@@ -4,6 +4,7 @@ import {
   typedValueForSet,
 } from '../typed-values.js'
 import {
+  readStateFlag,
   VARIABLE_LIMITS,
   VariableError,
   type ContextVariable,
@@ -46,7 +47,9 @@ export class SessionStoreProvider implements VariableProvider {
         type: variable.type,
         scope: 'session',
         description: variable.description,
-        volatility: variable.volatility,
+        // 会话文件是唯一还可能存着旧 volatility 的落盘位置(全局/agent/project
+        // 走 variables.json,已在 schema 解析时转过)——读到即转,不回写。
+        state: readStateFlag(variable),
         updatedAt: variable.updatedAt,
       }))
   }
@@ -70,7 +73,7 @@ export class SessionStoreProvider implements VariableProvider {
     }
 
     const typed = typedValueForSet(input, existing)
-    // description/volatility are sticky like type: a value update without
+    // description/state are sticky like type: a value update without
     // them keeps what the variable already had; an explicit "" clears.
     const next: ContextVariable = {
       name: input.name,
@@ -78,7 +81,7 @@ export class SessionStoreProvider implements VariableProvider {
       type: typed.type,
       scope: 'session',
       description: (input.description ?? existing?.description) || undefined,
-      volatility: input.volatility ?? existing?.volatility,
+      state: input.state ?? existing?.state,
       updatedAt: Date.now(),
     }
     await this.gateway.write(ctx.sessionId, [...without, next])
@@ -106,7 +109,7 @@ export class SessionStoreProvider implements VariableProvider {
       type: typed.type,
       scope: 'session',
       description: (input.description ?? existing?.description) || undefined,
-      volatility: input.volatility ?? existing?.volatility,
+      state: input.state ?? existing?.state,
       updatedAt: Date.now(),
     }
     await this.gateway.write(ctx.sessionId, [...without, next])

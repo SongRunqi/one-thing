@@ -72,7 +72,7 @@ export class KeyedStoreProvider implements VariableProvider {
         type: variable.type,
         scope: this.scope,
         description: variable.description,
-        volatility: variable.volatility,
+        state: variable.state,
         updatedAt: variable.updatedAt,
       }))
   }
@@ -97,7 +97,7 @@ export class KeyedStoreProvider implements VariableProvider {
     }
 
     const typed = typedValueForSet(input, existing)
-    // description/volatility are sticky like type: a value update without
+    // description/state are sticky like type: a value update without
     // them keeps what the variable already had; an explicit "" clears.
     const next: ContextVariable = {
       name: input.name,
@@ -105,7 +105,7 @@ export class KeyedStoreProvider implements VariableProvider {
       type: typed.type,
       scope: this.scope,
       description: (input.description ?? existing?.description) || undefined,
-      volatility: input.volatility ?? existing?.volatility,
+      state: input.state ?? existing?.state,
       updatedAt: Date.now(),
     }
     await this.gateway.write(key, [...without, next])
@@ -134,7 +134,7 @@ export class KeyedStoreProvider implements VariableProvider {
       type: typed.type,
       scope: this.scope,
       description: (input.description ?? existing?.description) || undefined,
-      volatility: input.volatility ?? existing?.volatility,
+      state: input.state ?? existing?.state,
       updatedAt: Date.now(),
     }
     await this.gateway.write(key, [...without, next])

@@ -26,6 +26,7 @@ import { getCurrentSessionId, setCurrentSessionId } from "./app-state.js";
 import { getSettings } from "./settings.js";
 import { expandPath } from "../tools/core/sandbox.js";
 import {
+	STRUCTURAL_WRITE_PLAN,
 	createHybridSessionStorageDriver,
 	createOnethingSessionMessageRuntime,
 	createOnethingSessionRepository,
@@ -640,6 +641,48 @@ export function deleteMessageAndTruncate(
 	messageId: string,
 ): boolean {
 	return sessionMessageRuntime!.deleteMessageAndTruncate(sessionId, messageId);
+}
+
+/**
+ * 清空一条会话的全部消息(群聊「清空聊天记录」的存储原语)。
+ *
+ * 与 `deleteMessageAndTruncate` 语义不同,因此不复用它:那一个是"从某条起截断",
+ * 需要一个锚点,而这里没有锚点 —— 要的是整条日志归零 + meta 计数一致。
+ *
+ * `tokenUsage` **不动**:花掉的钱不因为记录被删而退回,用量面板与预算闸读的是
+ * 同一笔账。删之前先留档一份(见驱动的 `archiveMessages`),留档路径原样返回,
+ * 调用方要不要提它是它的事。
+ */
+export async function clearSessionMessages(sessionId: string): Promise<{
+	cleared: boolean;
+	clearedCount: number;
+	archivePath?: string;
+}> {
+	const session = sessionRepository.getSession(sessionId);
+	if (!session) return { cleared: false, clearedCount: 0 };
+	const clearedCount = session.messages.length;
+	// 先排空在途的节流写入,再复制:否则留档少的正是最后那几条 —— 留档唯一的
+	// 价值就是"删之前盘上是什么样",差几条就不是那个东西了。
+	await sessionRepository.flushSessionSave(sessionId);
+	const archivePath =
+		clearedCount > 0 ? sessionStorageDriver.archiveMessages(sessionId) : undefined;
+	session.messages = [];
+	session.updatedAt = Date.now();
+	// structural:整份日志重写(后缀写只会从某个 seq 往后追,清空不在它的语义里)
+	sessionRepository.saveSessionToFile(sessionId, session, {
+		plan: STRUCTURAL_WRITE_PLAN,
+	});
+	updateSessionsIndexMeta(sessionId, (meta) => {
+		meta.updatedAt = session.updatedAt;
+		meta.messageCount = 0;
+		delete meta.previewText;
+	});
+	await sessionRepository.flushSessionSave(sessionId);
+	return {
+		cleared: true,
+		clearedCount,
+		...(archivePath ? { archivePath } : {}),
+	};
 }
 
 // Update a message and remove all messages after it

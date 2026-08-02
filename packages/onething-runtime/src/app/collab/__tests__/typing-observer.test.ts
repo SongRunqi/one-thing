@@ -62,8 +62,8 @@ describe('W19 — observeCollabSayTyping', () => {
     expect(mocks.listeners.map(entry => entry.sessionId)).toEqual([EXEC])
 
     deliver(EXEC, { type: 'stream:start' })
-    deliver(EXEC, { type: 'tool:input-start', toolCallId: 'c1', toolName: 'say' })
-    deliver(EXEC, { type: 'tool:input-end', toolCallId: 'c1', toolCall: { toolId: 'say' } })
+    deliver(EXEC, { type: 'tool:input-start', toolCallId: 'c1', toolName: 'send_message' })
+    deliver(EXEC, { type: 'tool:input-end', toolCallId: 'c1', toolCall: { toolId: 'send_message' } })
     detach()
 
     expect(typingLog()).toEqual([
@@ -74,14 +74,14 @@ describe('W19 — observeCollabSayTyping', () => {
 
   it('ignores events from other sessions', () => {
     const detach = observeCollabSayTyping({ sessionId: EXEC, roomSessionId: ROOM, agentId: 'fe' })
-    deliver('some-other-session', { type: 'tool:input-start', toolCallId: 'c1', toolName: 'say' })
+    deliver('some-other-session', { type: 'tool:input-start', toolCallId: 'c1', toolName: 'send_message' })
     detach()
     expect(typingLog()).toEqual([])
   })
 
   it('detaching unsubscribes and forces the light out mid-arguments', () => {
     const detach = observeCollabSayTyping({ sessionId: EXEC, roomSessionId: ROOM, agentId: 'fe' })
-    deliver(EXEC, { type: 'tool:input-start', toolCallId: 'c1', toolName: 'say' })
+    deliver(EXEC, { type: 'tool:input-start', toolCallId: 'c1', toolName: 'send_message' })
     detach()
 
     expect(mocks.listeners).toHaveLength(0)

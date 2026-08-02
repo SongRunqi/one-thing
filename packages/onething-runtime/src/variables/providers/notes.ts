@@ -25,6 +25,11 @@ const DESC: Record<NoteVarName, string> = {
   work_note_dir: 'Directory where work or project notes are kept. The AI may read it; only modify with explicit user permission.',
 }
 
+/**
+ * 三个笔记目录。`state: true` —— 判据是"要不要一直在眼前",不是"变得快不快"
+ * (§R.3):这三个值几个月都不动一下,但模型每次写笔记都要用它们,不在眼前
+ * 就得先花一次工具调用去问自己该往哪写。
+ */
 export class NotesProvider implements VariableProvider {
   readonly id = 'notes'
   readonly priority = 30
@@ -38,6 +43,7 @@ export class NotesProvider implements VariableProvider {
       scope: 'global',
       description: DESC[name],
       readonly: false,
+      state: true,
     }))
   }
 
@@ -59,6 +65,7 @@ export class NotesProvider implements VariableProvider {
         scope: 'global',
         description: DESC[which],
         readonly: false,
+        state: true,
       }
     }
 
@@ -87,6 +94,7 @@ export class NotesProvider implements VariableProvider {
       scope: 'global',
       description: DESC[which],
       readonly: false,
+      state: true,
     }
   }
 

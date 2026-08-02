@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>右栏 · 房间背台(分段器)设计稿</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .row { max-width: 1180px; margin: 26px auto 0; display: flex; gap: 30px; flex-wrap: wrap; }
+  .cap { font-size: 11.5px; color: var(--ink-3); margin-top: 10px; }
+  .cap b { color: var(--ink); font-weight: 600; }
+
+  /* ══ 右栏本体 ══ */
+  .rp {
+    --p-bg: #fbfaf8;
+    --p-fill: rgba(28,27,24,.045);
+    --p-fill-on: rgba(28,27,24,.075);
+    --p-hair: rgba(28,27,24,.08);
+    --p-ink: #26251f;
+    --p-row: #4a4842;
+    --p-mute: #97948c;
+    --p-run: #4f8a3d;
+    --p-wait: #b3711f;
+    display: flex; flex-direction: column; height: 640px;
+    background: var(--p-bg); color: var(--p-row);
+    font-size: 13px; line-height: 1.45; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(20,18,12,.06), 0 10px 26px rgba(20,18,12,.07);
+  }
+  .rp.w330 { width: 330px } .rp.w250 { width: 250px }
+
+  /* ── 分段器:固定三格,等宽,无 × 无 + ── */
+  .seg { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--p-hair); }
+  .seg button { flex: 1 1 0; min-width: 0; height: 38px; border: 0; background: none;
+    font: inherit; color: var(--p-mute); cursor: pointer; position: relative;
+    display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .seg button:hover { color: var(--p-ink); background: var(--p-fill); }
+  .seg button.on { color: var(--p-ink); font-weight: 550; }
+  .seg button.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px;
+    height: 1.5px; background: var(--p-ink); }
+  .seg .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+  .seg .dot.run { background: var(--p-run) } .seg .dot.wait { background: var(--p-wait) }
+  .seg .dot.new { background: var(--p-ink) }
+
+  /* ── 面包屑(仅下钻层) ── */
+  .crumb { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+    color: var(--p-mute); font-size: 12px; cursor: pointer; flex-shrink: 0;
+    border-bottom: 1px solid var(--p-hair); }
+  .crumb:hover { color: var(--p-ink); background: var(--p-fill); }
+
+  /* ── 通用行 ── */
+  .body { flex: 1; overflow: hidden; padding: 4px 0; }
+  .r { display: flex; align-items: center; gap: 10px; padding: 7px 12px; cursor: pointer; }
+  .r:hover { background: var(--p-fill) }
+  .r .av { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; display: grid;
+    place-items: center; color: #fff; font-size: 11px; font-weight: 600; }
+  .r .txt { flex: 1 1 auto; min-width: 0 }
+  .r .txt b { display: block; font-size: 12.5px; font-weight: 550; color: var(--p-ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .r .txt i { display: block; font-style: normal; font-size: 11.5px; color: var(--p-mute);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+  .r .meta { flex: 0 0 auto; font-size: 11.5px; color: var(--p-mute); white-space: nowrap;
+    font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 5px; }
+  .r .st { width: 5px; height: 5px; border-radius: 50%; background: var(--p-run) }
+  .r.off { opacity: .5 }
+  .grp { font-size: 11px; font-weight: 500; color: var(--p-mute); padding: 12px 12px 3px; }
+
+  /* ── 线程详情 ── */
+  .th-head { padding: 10px 12px; border-bottom: 1px solid var(--p-hair); }
+  .th-head .k { font-size: 10.5px; letter-spacing: .1em; color: var(--p-mute) }
+  .th-head b { display: block; font-size: 13px; color: var(--p-ink); margin-top: 3px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .th-head .m { font-size: 11.5px; color: var(--p-mute); margin-top: 3px }
+  .th-head .m .run { color: var(--p-run) }
+  .step { display: flex; gap: 9px; padding: 5px 12px; font-size: 12px; }
+  .step .i { color: var(--p-mute); font-size: 11px; width: 16px; text-align: right;
+    flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .step .c { flex: 1; min-width: 0 }
+  .step .c b { font-weight: 550; font-size: 12px; color: var(--p-ink) }
+  .step .c code { display: block; margin-top: 1px; font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px; color: var(--p-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .step .t { flex: 0 0 auto; font-size: 11px; color: var(--p-mute); font-variant-numeric: tabular-nums }
+  .diff { margin-top: 5px; border-radius: 5px; overflow: hidden;
+    font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; line-height: 1.85 }
+  .diff div { padding: 0 8px }
+  .diff .del { background: rgba(175,48,41,.09); color: #8e2721 }
+  .diff .add { background: rgba(102,128,11,.11); color: #4d6108 }
+
+  /* ── 空间页 ── */
+  .hero { padding: 18px 14px 14px; text-align: center; border-bottom: 1px solid var(--p-hair) }
+  .hero .av { width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 9px; display: grid;
+    place-items: center; color: #fff; font-size: 20px; font-weight: 600 }
+  .hero b { font-size: 14px; color: var(--p-ink) }
+  .hero i { display: block; font-style: normal; font-size: 11.5px; color: var(--p-mute); margin-top: 2px }
+
+  /* ── 底部回复 ── */
+  .reply { flex-shrink: 0; border-top: 1px solid var(--p-hair); padding: 9px 12px }
+  .reply .box { border-radius: 6px; background: rgba(28,27,24,.04); padding: 8px 10px;
+    font-size: 12px; color: var(--p-mute) }
+
+  .note { max-width: 1180px; margin: 34px auto 0 }
+  .note h2 { font-size: 13px; font-weight: 600; letter-spacing: .04em; padding-bottom: 9px;
+    border-bottom: 1px solid var(--line) }
+  .note ul { margin-top: 12px; padding-left: 20px }
+  .note li { font-size: 12.5px; color: var(--ink-2); line-height: 1.9; margin-top: 5px }
+  .note li b { color: var(--ink); font-weight: 600 }
+  .note code { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <a class="back" href="index.html">← 四方案总览</a>
+  <div class="kicker">右栏 · 重新设计</div>
+  <h1>房间背台:分段器,不是页签</h1>
+  <p class="lead">
+    <b>诊断:</b>「线程 / 成员 / 看板」被实现成了 App 级工作台的**页签**(可开可关可加可滚),
+    但它们其实是<b>同一件东西的三个视图</b> —— 这间房的背台。于是接连出现:看不到线程(页签按需才开)、
+    换房攒页签(按靶子开)、中文被截(要给 × 让位)、下钻后标题变长把自己挤出可视区。
+    <b>换成固定三格分段器,这四个症状同时消失</b>,而且 250px 下每格 ~80px,中文两字 + 状态点绰绰有余。
+    Files / Terminal / Browser 仍然是页签 —— 它们确实是"你打开的工具",只是不属于房面。
+  </p>
+</div>
+
+<div class="section">
+  <h2>一 · 三个视图<em>330px · 分段器固定,状态点在格子上说话</em></h2>
+  <div class="row">
+
+    <!-- 线程列表 -->
+    <div>
+      <div class="rp w330">
+        <div class="seg">
+          <button class="on">线程<span class="dot run"></span></button>
+          <button>成员</button>
+          <button>看板<span class="dot wait"></span></button>
+        </div>
+        <div class="body">
+          <div class="grp">正在跑</div>
+          <div class="r">
+            <span class="av" style="background:#a02f6f">林</span>
+            <span class="txt"><b>小林</b><i>castlabs 换核验证</i></span>
+            <span class="meta"><span class="st"></span>12m</span>
+          </div>
+          <div class="grp">今天</div>
+          <div class="r">
+            <span class="av" style="background:#24837b">澈</span>
+            <span class="txt"><b>阿澈</b><i>服务房间对话</i></span>
+            <span class="meta">09:55</span>
+          </div>
+          <div class="r">
+            <span class="av" style="background:#5e409d">砚</span>
+            <span class="txt"><b>砚</b><i>建立完整 Design Token 系统 + 暗色模式</i></span>
+            <span class="meta">09:54</span>
+          </div>
+          <div class="grp">更早</div>
+          <div class="r">
+            <span class="av" style="background:#a02f6f">林</span>
+            <span class="txt"><b>小林</b><i>CSP img-src blob:</i></span>
+            <span class="meta">7/28</span>
+          </div>
+          <div class="r off">
+            <span class="av" style="background:#97948c">石</span>
+            <span class="txt"><b>老石</b><i>勘探现有博客代码库</i></span>
+            <span class="meta">7/28</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>线程</b> — 这间房里每个 agent 的执行会话。按「正在跑 / 今天 / 更早」分组,
+        在跑的置顶带绿点;已注销的人灰显但不消失。</div>
+    </div>
+
+    <!-- 成员 -->
+    <div>
+      <div class="rp w330">
+        <div class="seg">
+          <button>线程<span class="dot run"></span></button>
+          <button class="on">成员</button>
+          <button>看板<span class="dot wait"></span></button>
+        </div>
+        <div class="body">
+          <div class="grp">在忙 — 2</div>
+          <div class="r">
+            <span class="av" style="background:#a02f6f">林</span>
+            <span class="txt"><b>小林</b><i>正在编辑 session.ts</i></span>
+            <span class="meta"><span class="st"></span></span>
+          </div>
+          <div class="r">
+            <span class="av" style="background:#24837b">澈</span>
+            <span class="txt"><b>阿澈</b><i>跑测试 · 2m04s</i></span>
+            <span class="meta"><span class="st"></span></span>
+          </div>
+          <div class="grp">空闲 — 2</div>
+          <div class="r">
+            <span class="av" style="background:#5e409d">砚</span>
+            <span class="txt"><b>砚</b><i>资料</i></span>
+          </div>
+          <div class="r">
+            <span class="av" style="background:#26251f">我</span>
+            <span class="txt"><b>宋一天</b><i>房主</i></span>
+          </div>
+          <div class="grp">已注销 — 1</div>
+          <div class="r off">
+            <span class="av" style="background:#97948c">石</span>
+            <span class="txt"><b>老石</b><i>墓碑 · 历史可读</i></span>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>成员</b> — 点任意一行下钻到 TA 的空间页(右)。私聊房没有这一格。</div>
+    </div>
+
+    <!-- 看板 -->
+    <div>
+      <div class="rp w330">
+        <div class="seg">
+          <button>线程<span class="dot run"></span></button>
+          <button>成员</button>
+          <button class="on">看板<span class="dot wait"></span></button>
+        </div>
+        <div class="body">
+          <div class="grp">待你 — 1</div>
+          <div class="r">
+            <span class="av" style="background:#24837b">澈</span>
+            <span class="txt"><b>元素拾取 P2</b><i>等你放行 bash</i></span>
+            <span class="meta">3m</span>
+          </div>
+          <div class="grp">在做 — 1</div>
+          <div class="r">
+            <span class="av" style="background:#a02f6f">林</span>
+            <span class="txt"><b>castlabs 换核验证</b><i>37 步</i></span>
+            <span class="meta"><span class="st"></span>12m</span>
+          </div>
+          <div class="grp">已交付 — 2</div>
+          <div class="r">
+            <span class="av" style="background:#5e409d">砚</span>
+            <span class="txt"><b>profile 隔离对照</b><i>4.2 KB · 房间文件</i></span>
+            <span class="meta">09:21</span>
+          </div>
+          <div class="r">
+            <span class="av" style="background:#a02f6f">林</span>
+            <span class="txt"><b>CSP img-src blob:</b><i>+12 −3</i></span>
+            <span class="meta">昨天</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>看板</b> — 与既有看板同一份数据,只是换成窄栏的行式呈现;
+        「待你」永远置顶。</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section">
+  <h2>二 · 下钻<em>面包屑返回,分段器纹丝不动</em></h2>
+  <div class="row">
+
+    <div>
+      <div class="rp w330">
+        <div class="seg">
+          <button class="on">线程<span class="dot run"></span></button>
+          <button>成员</button>
+          <button>看板<span class="dot wait"></span></button>
+        </div>
+        <div class="crumb">← 返回线程(15)</div>
+        <div class="th-head">
+          <div class="k">小林 · 执行会话</div>
+          <b>castlabs 换核验证</b>
+          <div class="m">37 步 · 12m06s · <span class="run">运行中</span></div>
+        </div>
+        <div class="body">
+          <div class="step"><span class="i">33</span>
+            <span class="c"><b>读</b><code>apps/electron/src/browser/session.ts</code></span>
+            <span class="t">0.4s</span></div>
+          <div class="step"><span class="i">34</span>
+            <span class="c"><b>编辑</b><code>window/session-security.ts</code>
+              <span class="diff"><div class="del">− img-src 'self' data:;</div><div class="add">+ img-src 'self' data: blob:;</div></span>
+            </span><span class="t">1.1s</span></div>
+          <div class="step"><span class="i">35</span>
+            <span class="c"><b>bash</b><code>bun run typecheck</code></span>
+            <span class="t">6.2s</span></div>
+          <div class="step"><span class="i">36</span>
+            <span class="c"><b>bash</b><code>bun run test -- browser</code></span>
+            <span class="t" style="color:#4f8a3d">运行中</span></div>
+        </div>
+        <div class="reply"><div class="box">在这条线程里回复小林…</div></div>
+      </div>
+      <div class="cap"><b>线程详情</b> — 分段器**不换标题**(它是常驻三格),在看哪一次执行由头部说。
+        返回是一条面包屑,不占分段器。</div>
+    </div>
+
+    <div>
+      <div class="rp w330">
+        <div class="seg">
+          <button>线程<span class="dot run"></span></button>
+          <button class="on">成员</button>
+          <button>看板<span class="dot wait"></span></button>
+        </div>
+        <div class="crumb">← 返回成员</div>
+        <div class="hero">
+          <div class="av" style="background:#a02f6f">林</div>
+          <b>小林</b><i>架构 · 同事</i>
+        </div>
+        <div class="body">
+          <div class="r"><span class="txt"><b>与你的对话</b></span><span class="meta">128</span></div>
+          <div class="r"><span class="txt"><b>群聊</b></span><span class="meta">3</span></div>
+          <div class="r"><span class="txt"><b>干过的活</b></span><span class="meta">41</span></div>
+          <div class="r"><span class="txt"><b>私下(与阿澈)</b></span><span class="meta">7</span></div>
+        </div>
+      </div>
+      <div class="cap"><b>空间页</b> — 成员格的下钻层,同样用面包屑返回。</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section">
+  <h2>三 · 最窄可用宽度<em>250px —— 三格各 ~80px,中文两字 + 状态点不挤</em></h2>
+  <div class="row">
+    <div>
+      <div class="rp w250">
+        <div class="seg">
+          <button class="on">线程<span class="dot run"></span></button>
+          <button>成员</button>
+          <button>看板<span class="dot wait"></span></button>
+        </div>
+        <div class="body">
+          <div class="grp">正在跑</div>
+          <div class="r">
+            <span class="av" style="background:#a02f6f">林</span>
+            <span class="txt"><b>小林</b><i>castlabs 换核验证</i></span>
+            <span class="meta"><span class="st"></span>12m</span>
+          </div>
+          <div class="grp">今天</div>
+          <div class="r">
+            <span class="av" style="background:#24837b">澈</span>
+            <span class="txt"><b>阿澈</b><i>服务房间对话</i></span>
+            <span class="meta">09:55</span>
+          </div>
+          <div class="r">
+            <span class="av" style="background:#5e409d">砚</span>
+            <span class="txt"><b>砚</b><i>建立完整 Design Token 系统 + 暗色模式</i></span>
+            <span class="meta">09:54</span>
+          </div>
+        </div>
+      </div>
+      <div class="cap">分段器 <b>3 等分,永不滚动、永不截断</b>;行里只有副文会出省略号。</div>
+    </div>
+
+    <div>
+      <div class="rp w250">
+        <div class="seg">
+          <button class="on">线程<span class="dot run"></span></button>
+          <button>成员</button>
+          <button>看板</button>
+        </div>
+        <div class="body" style="display:flex;align-items:center;justify-content:center;text-align:center;padding:0 24px">
+          <div>
+            <p style="font-size:12.5px;color:var(--p-row)">这间房还没有执行会话。</p>
+            <p style="font-size:11.5px;color:var(--p-mute);margin-top:6px;line-height:1.7">
+              有人开工之后,这里会按人列出每一次执行。
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>空态</b> — 三格永远在;空的是内容,不是入口。</div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <h2>设计决策(实施照这个来)</h2>
+  <ul>
+    <li><b>右栏两形态,由当前会话决定</b>:房/私聊 → 这个分段器;直聊/工程面 → 既有工具页签
+      (Files/Terminal/Browser)。与"两棵壳"同一条分界线,右栏不再一套壳硬扛两种语义。</li>
+    <li><b>分段器固定三格</b>:等宽 <code>flex: 1 1 0</code>,无 ×、无 +、不可滚、不改标题。
+      这一条直接消灭了截断、压扁、累积、自己挤出可视区四个症状。</li>
+    <li><b>状态点长在格子上</b>:线程有在跑(绿)、看板有待你(橙)、成员有新消息(墨)。
+      不用数字 —— 系统只知道"有没有",编个计数出来比不显示更糟。</li>
+    <li><b>下钻用面包屑</b>,不动分段器:线程→某次执行、成员→某人空间页。
+      「在看哪一个」由内容头部说,那儿有整行宽度。</li>
+    <li><b>私聊房没有「成员」格</b>(一对一没有成员这回事):两格 = 线程 / 空间。</li>
+    <li><b>数据一个字段都不新增</b>:线程吃 <code>kind∈{agent,work} + collab.roomSessionId</code>;
+      成员吃 <code>buildRoomMemberEntries</code> + <code>findAgentDoingTask</code>;看板吃 <code>CollabTask</code>。</li>
+    <li><b>最窄 250px 是硬指标</b>:三格各 ~80px。行内只有副文允许省略号,头像与时间
+      <code>flex: 0 0 auto</code>,名字永不被挤没。</li>
+  </ul>
+</div>
+
+</body>
+</html>

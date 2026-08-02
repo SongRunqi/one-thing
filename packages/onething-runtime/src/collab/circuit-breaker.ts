@@ -32,7 +32,12 @@
  * before the result goes back to the model — so tripping on it cuts the lap
  * that would otherwise pay for the next full-context request.
  */
-import { COLLAB_SAY_TOOL_NAME, type CollabTurnToolCallLike } from './say.js'
+import {
+  COLLAB_SEND_MESSAGE_TOOL_NAME,
+  isCollabSendDmCall,
+  type CollabSendArgsLike,
+  type CollabTurnToolCallLike,
+} from './say.js'
 
 /**
  * Most tool calls one room turn may make. A turn that says its piece and reads
@@ -99,7 +104,9 @@ export interface CollabTurnBreakerSignal {
   toolCallId?: string
   /** `tool:execution-start` carries the resolved tool name here. */
   toolName?: string
-  toolCall?: (CollabTurnToolCallLike & { id?: string }) | undefined
+  /** `tool:execution-start` carries the settled arguments here. */
+  args?: CollabSendArgsLike
+  toolCall?: (CollabTurnToolCallLike & { id?: string; arguments?: CollabSendArgsLike }) | undefined
 }
 
 /** Which cap gave way, and what the turn had done by then. */
@@ -185,7 +192,16 @@ export function createCollabTurnCircuitBreaker(
       }
 
       toolCalls += 1
-      if (toolNameOf(signal) === COLLAB_SAY_TOOL_NAME) sayCalls += 1
+      // 私聊档不计进「发言」那一格(collab-send-channel-and-wake.md §4):合并
+      // 之前 `dm` 是另一个工具名,它从来只吃 total 那道闸;合并只换了名字,不该
+      // 顺手把"给八个人各发一张牌"判成刷屏。总数照计 —— 那道闸问的是"这一轮还
+      // 在做事吗",与话说给谁听无关。
+      if (
+        toolNameOf(signal) === COLLAB_SEND_MESSAGE_TOOL_NAME
+        && !isCollabSendDmCall(signal.args ?? signal.toolCall?.arguments)
+      ) {
+        sayCalls += 1
+      }
 
       if (sayCalls > maxSayCalls) {
         tripped = { reason: 'say', limit: maxSayCalls, toolCalls, sayCalls }

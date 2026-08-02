@@ -5,7 +5,7 @@
  * store so revs/broadcast/coordinator events all apply.
  */
 import { createBoardTool } from '@onething/runtime/tools'
-import type { CollabBoardAction } from '@onething/runtime/collab'
+import { resolveCollabAgentHandle, type CollabAgentLike, type CollabBoardAction } from '@onething/runtime/collab'
 import { isActiveAgent } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { findAgent } from '../agents/index.js'
@@ -38,17 +38,24 @@ export const BoardTool = createBoardTool({
    * 卡落在它头上就是一张永远不会被执行的卡 —— assign 会回一句 Unknown member,
    * 模型据此改派活人,而不是把活儿扔给墓碑。
    */
+  /**
+   * 指派给谁(collab-agent-handle.md §2.4)。
+   *
+   * 走统一解析器而不是自己遍历:名字、句柄、`名字#句柄`、全 id 四种写法一视同仁,
+   * 而**重名**从「遍历撞上的第一个」变成明确拒绝 —— 从前那个循环会把两位「小李」
+   * 里排在前面的那个静静地派上活,谁也不知道派错了。
+   */
   resolveMember(roomSessionId, nameOrId) {
     const room = store.getSession(roomSessionId)?.room
     if (!room) return null
-    const query = nameOrId.trim().replace(/^@/, '')
+    const members: CollabAgentLike[] = []
     for (const memberId of room.memberAgentIds) {
       const agent = findAgent(memberId)
-      if (agent && !isActiveAgent(agent)) continue
-      if (memberId === query) return memberId
-      if (agent && agent.name === query) return memberId
+      if (!agent || !isActiveAgent(agent)) continue
+      members.push({ id: agent.id, name: agent.name, title: agent.title })
     }
-    return null
+    const resolved = resolveCollabAgentHandle(nameOrId, members)
+    return resolved.ok ? resolved.agentId : null
   },
 
   agentName,

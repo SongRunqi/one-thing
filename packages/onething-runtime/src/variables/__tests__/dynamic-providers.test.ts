@@ -16,7 +16,7 @@ describe('DateTimeProvider', () => {
     expect(variable.value).toBe(formatHourGranularity(fixed))
     expect(variable.value).toContain('2026-07-10 09:00 ')
     expect(variable.readonly).toBe(true)
-    expect(variable.volatility).toBe('turn')
+    expect(variable.state).toBe(true)
   })
 
   it('keeps values byte-identical within the same hour', () => {
@@ -51,7 +51,7 @@ describe('GitBranchProvider', () => {
     await fs.mkdir(nested, { recursive: true })
 
     const [fromRoot] = await providerFor(repo).list({ sessionId: 's' })
-    expect(fromRoot).toMatchObject({ name: 'git_branch', value: 'feature/x', readonly: true, volatility: 'turn' })
+    expect(fromRoot).toMatchObject({ name: 'git_branch', value: 'feature/x', readonly: true, state: true })
 
     const [fromNested] = await providerFor(nested).list({ sessionId: 's' })
     expect(fromNested.value).toBe('feature/x')
@@ -105,12 +105,12 @@ describe('BackgroundJobsProvider', () => {
     return new BackgroundJobsProvider({ listJobs: () => jobs, now: () => NOW })
   }
 
-  it('renders running jobs as a single read-only turn variable, without live durations', () => {
+  it('renders running jobs as a single read-only state variable, without live durations', () => {
     const [variable] = providerWith([
       job({ ports: [5174] }),
       job({ id: 'bg-2', command: '  bun   run\nbuild ', startedAt: new Date(2026, 6, 10, 9, 20, 5).getTime() }),
     ]).list({ sessionId: 's1' })
-    expect(variable).toMatchObject({ name: 'background_jobs', readonly: true, volatility: 'turn' })
+    expect(variable).toMatchObject({ name: 'background_jobs', readonly: true, state: true })
     expect(variable.value).toBe(
       'bg-1: bun run dev — running, started 09:12, ports 5174; bg-2: bun run build — running, started 09:20',
     )

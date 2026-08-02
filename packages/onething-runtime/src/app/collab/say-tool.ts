@@ -23,7 +23,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import {
-  COLLAB_REPLY_USER_LABEL,
+  COLLAB_DM_LEGACY_TOOL_NAME,
   COLLAB_SAY_REFUSED_BUDGET,
   COLLAB_SAY_REFUSED_EMPTY,
   COLLAB_SAY_REFUSED_FROZEN,
@@ -31,18 +31,24 @@ import {
   COLLAB_SAY_REFUSED_NO_ROOM,
   COLLAB_SAY_REFUSED_UNKNOWN_ROOM,
   COLLAB_SAY_SOURCE,
+  COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME,
+  COLLAB_SEND_MESSAGE_TOOL_NAME,
   buildCollabReplyToSnapshot,
   normalizeCollabSayContent,
   resolveCollabSayMentions,
   resolveCollabSayRoomSessionId,
+  stripCollabAgentHandles,
   type CollabAgentLike,
 } from '@onething/runtime/collab'
 import { createSayTool, type SayToolResult } from '@onething/runtime/tools'
+import { registerRetiredAgentToolName } from '@onething/core'
 import { isActiveAgent, type ChatMessage } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
 import { isRoomOverBudget } from './coordinator.js'
+import { buildCollabIdentityDirectory } from './identity-directory.js'
+import { resolveUserIdentity } from './user-identity.js'
 
 interface SayContext {
   roomSessionId: string
@@ -111,7 +117,8 @@ function roomMembers(roomSessionId: string): CollabAgentLike[] {
 }
 
 function authorLabelOf(message: ChatMessage): string {
-  if (message.role === 'user') return COLLAB_REPLY_USER_LABEL
+  // 快照语义(agent-dm-user.md §2.3):落库的是**此刻**的称呼,改名不追改旧引用。
+  if (message.role === 'user') return resolveUserIdentity().label
   if (!message.agentId) return ''
   const agent = findAgent(message.agentId)
   return agent ? agent.name : message.agentId
@@ -228,20 +235,36 @@ export async function speakIntoCollabRoom(input: {
     return { ok: false, error: COLLAB_SAY_REFUSED_BUDGET }
   }
 
+  // 授权面(谁能被点名激活)与识别面(哪串字符是真身份)从这里开始**分家** ——
+  // 两者此前共用 `members` 一个数组,于是收紧前者顺手收窄了后者,用户/退休成员
+  // 的句柄因此"发了不认"(collab-handle-codec.md §2.1)。
+  const members = roomMembers(context.roomSessionId)
+  const directory = buildCollabIdentityDirectory()
   const mentions = resolveCollabSayMentions({
     content,
     mentionAgentIds: input.mentions,
-    members: roomMembers(context.roomSessionId),
+    members,
+    directory,
   })
+  /**
+   * 句柄出栈(collab-agent-handle.md §2.4):模型写的 `@小李#3f9c1e2a` 在这里
+   * 还原成 `@小李`。身份已经进了 mentions[],正文不必再背着它 —— 群里、UI 里、
+   * 别人的投影里看到的是一句干净的话,而句柄会在下一次投影时按 id 重新拼出来。
+   *
+   * **必须在指纹之前**:指纹拿 content 当组成部分,同一句话用两种写法
+   * (`@小李` 与 `@小李#3f9c1e2a`)必须算作同一条,否则幂等窗形同虚设。
+   */
+  const spoken = stripCollabAgentHandles(content, directory)
   const replyTo = buildReplyToSnapshot(context.roomSessionId, input.replyTo)
 
   // After the gates, before the write: the fingerprint is built from the SETTLED
-  // shape (resolved mentions, resolved quote), so two calls that differ only in
-  // a mention id that resolved to nothing are correctly one utterance.
+  // shape (stripped content, resolved mentions, resolved quote), so two calls
+  // that differ only in a mention id that resolved to nothing — or only in
+  // whether the handle was spelled out — are correctly one utterance.
   const fingerprint = sayFingerprint({
     roomSessionId: context.roomSessionId,
     agentId: context.agentId,
-    content,
+    content: spoken,
     mentionAgentIds: mentions.map(mention => mention.agentId),
     ...(replyTo?.messageId ? { replyToMessageId: replyTo.messageId } : {}),
   })
@@ -257,7 +280,7 @@ export async function speakIntoCollabRoom(input: {
     id: randomUUID(),
     role: 'assistant',
     agentId: context.agentId,
-    content,
+    content: spoken,
     timestamp: now,
     source: COLLAB_SAY_SOURCE,
     // An EMPTY mentions array is a real answer ("mentions nobody"), so the key
@@ -276,6 +299,61 @@ export async function speakIntoCollabRoom(input: {
   return { ok: true, messageId: message.id }
 }
 
+/**
+ * 合并后的发送面(collab-send-channel-and-wake.md §2.2)。
+ *
+ * 两个执行器保持为两个函数不变(各自的门与拒绝文案是资产),合并只发生在工具
+ * 层:统一入口按 channel 分发。
+ *
+ * `sendDm` 走**动态 import**:模块图上 `dm-tool → say-tool` 这条边早就存在
+ * (私聊落库就是 say 的执行器),反向再加一条静态边就是一个环。动态 import 只
+ * 在真的发私聊时解析一次(之后走模块缓存),而环带来的初始化顺序问题是那种
+ * 只在打包形态下才现身的 bug。
+ */
 export const SayTool = createSayTool({
   speak: speakIntoCollabRoom,
+  async sendDm(input) {
+    const { sendCollabDm } = await import('./dm-tool.js')
+    return sendCollabDm({
+      sessionId: input.sessionId,
+      to: input.to,
+      message: input.content,
+      ...(input.wake ? { wake: true } : {}),
+      ...(input.wakeRoom ? { wakeRoom: input.wakeRoom } : {}),
+    })
+  },
 })
+
+/**
+ * 旧名 `say` / `dm` 的**静默别名**(collab-turn-protocol-and-identity.md A.3 +
+ * collab-send-channel-and-wake.md §5 R1)。
+ *
+ * 灰度用途,不是长期特性:执行会话的历史里全是旧名的调用范例,模型会照着模仿,
+ * 而一次「Tool not available」丢的是一条本该送达的消息。别名只在派发时生效
+ * (core runner 的 toolMap miss → 退役名表),**不进** COLLAB_ROOM_TOOLS、不进
+ * 请求的 tools 参数、不进任何提示词 —— 模型看不见它。
+ *
+ * 两个旧名的**兑现质量不同**,这一点是刻意的:
+ *  - `say` 与现名参数同形 → 无缝转发,模型察觉不到;
+ *  - `dm` 参数不同形(`message` vs `content`)→ 一次**刻意接受的降级**:`to` 活
+ *    着进来、`message` 被 zod strip 掉,校验层逐字回一句 `COLLAB_SAY_REFUSED_EMPTY`
+ *    (`tools/builtin/say.ts` 的 formatValidationError)。代价是一轮重试,消息
+ *    不丢。这比"名字级转发让 `message` 被静默吞掉"好 —— 静默失效正是 edit
+ *    replaceAll 那次事故的形状。
+ *
+ * 拆除条件(两者相同):改名前的会话历史都被摘要压掉、或危险区清空拿到干净基线
+ * 之后。
+ *
+ * 注册放在 `registerBuiltinTools()` 里而不是模块顶层:导入 `@onething/app` 的
+ * 任何模块都不得产生配置副作用(import-side-effect-free.test.ts)。
+ */
+export function registerCollabSendMessageLegacyAlias(): void {
+  registerRetiredAgentToolName(
+    COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME,
+    COLLAB_SEND_MESSAGE_TOOL_NAME,
+  )
+  registerRetiredAgentToolName(
+    COLLAB_DM_LEGACY_TOOL_NAME,
+    COLLAB_SEND_MESSAGE_TOOL_NAME,
+  )
+}

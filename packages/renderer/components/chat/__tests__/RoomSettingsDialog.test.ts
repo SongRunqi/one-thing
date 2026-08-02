@@ -100,8 +100,8 @@ describe('RoomSettingsDialog', () => {
   it('shows every room member with a lit tick and the rest unlit', async () => {
     const wrapper = await open()
     const lines = wrapper.findAll('.member-line')
-    // 3 agents + the freeze switch row.
-    expect(lines).toHaveLength(4)
+    // 3 agents + the freeze switch row + the danger-zone clear button.
+    expect(lines).toHaveLength(5)
     expect(lines[0].classes()).toContain('is-on')
     expect(lines[1].classes()).toContain('is-on')
     expect(lines[2].classes()).not.toContain('is-on')

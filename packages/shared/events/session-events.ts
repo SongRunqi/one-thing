@@ -9,7 +9,7 @@
  */
 
 import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ContextVariable, SessionGoal, ThinkingEffort } from '../ipc.js'
-import type { CollabBoard } from '../ipc/collab.js'
+import type { CollabBoard, CollabCoordinatorState } from '../ipc/collab.js'
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
 
@@ -410,6 +410,18 @@ export interface CollabTurnActiveEvent {
   active: boolean
 }
 
+/**
+ * 协调器的运行时状态变了(docs/design/collab-coordinator-inspector.md)。
+ *
+ * 带**完整快照**,与 `collab:board-changed` 同一条理由:它很小,而全量广播省掉了
+ * 增量合并那一整类 bug。发送侧按秒节流 —— 「跑了多久」这种连续量由渲染层自己走秒,
+ * 后端不为计时广播。
+ */
+export interface CollabCoordinatorChangedEvent {
+  type: 'collab:coordinator-changed'
+  state: CollabCoordinatorState
+}
+
 // ── Union ───────────────────────────────────────
 
 export type SessionEvent =
@@ -454,4 +466,5 @@ export type SessionEvent =
   | CollabBoardChangedEvent
   | CollabTypingEvent
   | CollabTurnActiveEvent
+  | CollabCoordinatorChangedEvent
   | SessionCommand

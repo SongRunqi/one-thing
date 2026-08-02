@@ -1,4 +1,6 @@
 import type {
+	NotifyActivateEvent,
+	ShowNotificationRequest,
 	ChatMessage,
 	ChatMessageMention,
 	ChatMessageReaction,
@@ -816,16 +818,21 @@ export interface ElectronAPI {
 	getCollabRoomSpend: (
 		roomSessionId: string,
 	) => Promise<import("@shared/ipc.js").CollabRoomSpendResponse>;
+	/** 协调器状态条的冷启动读取;实时更新走 'collab:coordinator-changed' 会话事件。 */
+	getCollabCoordinator: (
+		roomSessionId: string,
+	) => Promise<import("@shared/ipc.js").CollabCoordinatorGetResponse>;
 	/** Team settings (W6): only provided fields change; pmAgentId null clears. */
 	updateCollabRoom: (
 		roomSessionId: string,
-		update: {
-			name?: string;
-			memberAgentIds?: string[];
-			pmAgentId?: string | null;
-			permissionMode?: import("@shared/ipc.js").PermissionMode;
-		},
+		update: import("@shared/ipc.js").CollabRoomUpdatePatch,
 	) => Promise<import("@shared/ipc.js").CollabRoomUpdateResponse>;
+	/** 清空这间房的对话记忆(含每位成员的执行会话与已读游标、看板卡片)。不可恢复。
+	 *  includeMemberDms 连带成员两两之间的私聊房(跨群共享,须显式勾选)。 */
+	clearCollabRoomHistory: (
+		roomSessionId: string,
+		includeMemberDms?: boolean,
+	) => Promise<import("@shared/ipc.js").CollabRoomClearHistoryResponse>;
 	/**
 	 * 群 folder 的只读列目录(agent-im-chat-ui.md §3.2「文件」块)。folder 的位置
 	 * 只有主进程算得出,所以按房间 id 问。desktop-only。
@@ -1836,6 +1843,24 @@ export interface ElectronAPI {
 	onTerminalExit: (
 		callback: (data: { terminalId: string; exitCode: number | null }) => void,
 	) => () => void;
+
+	/**
+	 * 系统通知 + dock 徽标(wire contracts in packages/shared/ipc/notify.ts)。
+	 *
+	 * 只执行,不判定:"该不该弹"由 renderer 决定(焦点/可见性/水位/冷却窗全在
+	 * store 里)。web 宿主是 no-op —— 那边降级为只剩未读墨点。
+	 */
+	notify: {
+		show: (
+			request: ShowNotificationRequest,
+		) => Promise<{ success: boolean; error?: string }>;
+		setBadge: (
+			hasUnread: boolean,
+		) => Promise<{ success: boolean; error?: string }>;
+		onActivate: (
+			callback: (data: NotifyActivateEvent) => void,
+		) => () => void;
+	};
 
 	// Browser (embedded WebContentsView; wire contracts in packages/shared/ipc/browser.ts)
 	hydrateBrowser: () => Promise<{

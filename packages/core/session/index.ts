@@ -108,6 +108,8 @@ export type {
   ApplySessionSideEffectMutationWithAdaptersOptions,
   ApplySessionIndexMetaMutationWithAdaptersOptions,
   CoreContextVariableInput,
+  CoreContextVariableScope,
+  CoreContextVariableType,
   CoreNormalizedContextVariable,
   CoreSessionDetails,
   CoreSessionDetailsWithMessages,

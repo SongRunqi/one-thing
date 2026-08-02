@@ -36,11 +36,23 @@ export const ROOM_DEFAULT_MAX_CHAIN = 100
 export const ROOM_MIN_MAX_CHAIN = 1
 export const ROOM_MAX_MAX_CHAIN = ROOM_DEFAULT_MAX_CHAIN * 4
 
+/** 镜像 `COLLAB_MAX_CONCURRENT_TURNS`(onething-runtime `app/collab/room-runtime.ts`),
+ *  与上面几个默认值同一条纪律:表单显示引擎真正会用的那个数。 */
+export const ROOM_DEFAULT_MAX_CONCURRENT_TURNS = 6
+
 export interface RoomSettingsDraft {
   name: string
   memberAgentIds: string[]
   /** '' = no PM. */
   pmAgentId: string
+  /** 响应模式(docs/design/collab-speaking-order.md)。 */
+  responseMode: 'auto' | 'parallel' | 'serial'
+  /** 顺序模式的接力次序。表单里始终是**完整**的一份(名册全员),便于上下移动。 */
+  speakOrder: string[]
+  /** 一趟接力最多几圈, 0 = 不限. */
+  relayLoops: number
+  /** 并行模式的同时发言上限, 0 = 不限. */
+  maxConcurrentTurns: number
   /** 0 = 不限额. */
   dailyCostUSD: number
   /** 回合断路器: 单轮工具调用上限, 0 = 不限. */
@@ -60,14 +72,41 @@ export interface RoomSettingsSource {
   room?: {
     memberAgentIds?: string[]
     pmAgentId?: string
+    responseMode?: 'auto' | 'parallel' | 'serial'
+    speakOrder?: string[]
+    relayLoops?: number
     budgets?: {
       dailyCostUSD?: number
       maxChain?: number
       maxTurnToolCalls?: number
       maxTurnSayCalls?: number
+      maxConcurrentTurns?: number
     }
     frozen?: boolean
   }
+}
+
+/**
+ * 接力环的次序:配置里列过的(还在册的)在前,没列过的成员按名册序接在后面。
+ *
+ * 与引擎的 `buildCollabRelayRing` 是同一条规则,**刻意重写而不是复用**:渲染层
+ * 不能 import runtime(架构边界,checker 会拦)。规则本身只有五行且是纯次序,
+ * 真源在引擎那边 —— 这里若与它分家,后果只是表单显示的次序与实际发言次序不一致,
+ * 所以两处都写了对方的位置。
+ */
+export function orderRoomSpeakers(
+  speakOrder: readonly string[] | undefined,
+  memberAgentIds: readonly string[],
+): string[] {
+  const inRoom = new Set(memberAgentIds)
+  const seen = new Set<string>()
+  const listed: string[] = []
+  for (const agentId of speakOrder ?? []) {
+    if (!inRoom.has(agentId) || seen.has(agentId)) continue
+    seen.add(agentId)
+    listed.push(agentId)
+  }
+  return [...listed, ...memberAgentIds.filter(agentId => !seen.has(agentId))]
 }
 
 export const ROOM_PERMISSION_MODES: ReadonlyArray<{ value: PermissionMode; label: string }> = [
@@ -92,9 +131,26 @@ export function readRoomSettings(source: RoomSettingsSource | undefined): RoomSe
     maxTurnToolCalls: readCap(room?.budgets?.maxTurnToolCalls, ROOM_DEFAULT_MAX_TURN_TOOL_CALLS),
     maxTurnSayCalls: readCap(room?.budgets?.maxTurnSayCalls, ROOM_DEFAULT_MAX_TURN_SAY_CALLS),
     maxChain: readCap(room?.budgets?.maxChain, ROOM_DEFAULT_MAX_CHAIN),
+    maxConcurrentTurns: readCap(
+      room?.budgets?.maxConcurrentTurns,
+      ROOM_DEFAULT_MAX_CONCURRENT_TURNS,
+    ),
+    // 缺省仍然是并行:编排(auto)这一版是显式 opt-in,机制与默认翻转不放同一个改动。
+    responseMode: room?.responseMode === 'serial'
+      ? 'serial'
+      : room?.responseMode === 'auto' ? 'auto' : 'parallel',
+    // 表单里始终握着一份**完整**的次序(名册全员),否则"上移/下移"要在一个残缺
+    // 列表上做,而用户看到的顺序也不是引擎真正会走的那个。
+    speakOrder: orderRoomSpeakers(room?.speakOrder, room?.memberAgentIds ?? []),
+    relayLoops: readCap(room?.relayLoops, 0),
     permissionMode: source?.permissionMode ?? 'normal',
     frozen: room?.frozen === true,
   }
+}
+
+/** 次序相等是**序列**相等 —— 换个顺序正是这张表存在的全部意义(名册那侧相反)。 */
+export function sameRoomSpeakOrder(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((agentId, index) => b[index] === agentId)
 }
 
 /** Human-readable reason the draft cannot be saved, or null when it can. */
@@ -112,6 +168,12 @@ export function validateRoomSettings(draft: RoomSettingsDraft): string | null {
   if (!Number.isFinite(draft.maxChain) || draft.maxChain < 0) {
     return '连续发言上限必须是不小于 0 的数字'
   }
+  if (!Number.isFinite(draft.maxConcurrentTurns) || draft.maxConcurrentTurns < 0) {
+    return '同时发言上限必须是不小于 0 的数字'
+  }
+  if (!Number.isFinite(draft.relayLoops) || draft.relayLoops < 0) {
+    return '轮次必须是不小于 0 的数字'
+  }
   return null
 }
 
@@ -122,6 +184,9 @@ export interface RoomSettingsSavePlan {
     memberAgentIds?: string[]
     pmAgentId?: string | null
     permissionMode?: PermissionMode
+    responseMode?: 'auto' | 'parallel' | 'serial'
+    speakOrder?: string[]
+    relayLoops?: number
   }
   /** Only the changed caps — the write is a patch, and an unsent key keeps
    *  whatever the room already had. */
@@ -130,6 +195,7 @@ export interface RoomSettingsSavePlan {
     maxChain?: number
     maxTurnToolCalls?: number
     maxTurnSayCalls?: number
+    maxConcurrentTurns?: number
   }
   frozen?: boolean
 }
@@ -158,6 +224,18 @@ export function diffRoomSettings(
     roomUpdate.pmAgentId = draft.pmAgentId || null
   }
   if (draft.permissionMode !== initial.permissionMode) roomUpdate.permissionMode = draft.permissionMode
+  if (draft.responseMode !== initial.responseMode) roomUpdate.responseMode = draft.responseMode
+  // 次序只在**顺序模式**下有意义,所以并行模式的房间不写它 —— 一次无关的保存不该
+  // 把一份用户从没编辑过的次序表钉进房间配置里。
+  if (draft.responseMode !== 'parallel') {
+    const nextOrder = orderRoomSpeakers(draft.speakOrder, draft.memberAgentIds)
+    if (!sameRoomSpeakOrder(nextOrder, orderRoomSpeakers(initial.speakOrder, initial.memberAgentIds))) {
+      roomUpdate.speakOrder = nextOrder
+    }
+    if (Number.isFinite(draft.relayLoops) && draft.relayLoops !== initial.relayLoops) {
+      roomUpdate.relayLoops = draft.relayLoops
+    }
+  }
   if (Object.keys(roomUpdate).length > 0) plan.roomUpdate = roomUpdate
 
   const budgets: NonNullable<RoomSettingsSavePlan['budgets']> = {}
@@ -172,6 +250,14 @@ export function diffRoomSettings(
   }
   if (Number.isFinite(draft.maxChain) && draft.maxChain !== initial.maxChain) {
     budgets.maxChain = draft.maxChain
+  }
+  // 同时发言上限在**每一种模式**下都生效了:编排之后串行由批边界保证,这一格
+  // 回到它本来的意思(同时最多几个人说话),不再被顺序模式钉死成 1。
+  if (
+    Number.isFinite(draft.maxConcurrentTurns)
+    && draft.maxConcurrentTurns !== initial.maxConcurrentTurns
+  ) {
+    budgets.maxConcurrentTurns = draft.maxConcurrentTurns
   }
   if (Object.keys(budgets).length > 0) plan.budgets = budgets
   if (draft.frozen !== initial.frozen) plan.frozen = draft.frozen

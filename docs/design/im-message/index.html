@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>say 消息富文本 · 设计稿</title>
+<style>
+  /* ══ 纸墨底子(与 im-redesign/_base.css 同源,此稿自包含) ══ */
+  :root {
+    --paper: #f0efea;
+    --ink: #1c1b18;
+    --ink-2: #6f6c64;
+    --ink-3: #a5a29a;
+    --ink-4: #c9c5bc;
+    --line: #dedbd2;
+    --line-soft: #e7e4dc;
+    --surface: #faf9f6;
+    --surface-2: #f4f2ed;
+    --surface-3: #ebe8e0;
+    --accent: #205ea6;
+
+    --a-red: #af3029;
+    --a-orange: #bc5215;
+    --a-green: #66800b;
+    --a-cyan: #24837b;
+    --a-blue: #205ea6;
+    --a-purple: #5e409d;
+    --a-magenta: #a02f6f;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    padding: 46px 40px 110px; -webkit-font-smoothing: antialiased; font-size: 13px;
+  }
+  .page-head { max-width: 1180px; margin: 0 auto; }
+  .page-head .kicker { font-size: 11px; letter-spacing: .16em; color: var(--ink-3); text-transform: uppercase; }
+  .page-head h1 { font-size: 24px; font-weight: 600; letter-spacing: .01em; margin-top: 10px; }
+  .page-head .lead { margin-top: 12px; font-size: 13.5px; color: var(--ink-2); line-height: 1.85; max-width: 62em; }
+  .page-head .lead b { color: var(--ink); font-weight: 600; }
+
+  .section { max-width: 1180px; margin: 52px auto 0; }
+  .section > h2 {
+    font-size: 13px; font-weight: 600; letter-spacing: .04em;
+    padding-bottom: 9px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .section > h2 em { font-style: normal; font-size: 11.5px; font-weight: 400; color: var(--ink-3); letter-spacing: 0; }
+  .stage { margin-top: 22px; }
+
+  .win {
+    border-radius: 12px; overflow: hidden; position: relative;
+    box-shadow: 0 1px 2px rgba(20,18,12,.07), 0 18px 44px rgba(20,18,12,.13);
+    background: var(--surface);
+  }
+
+  .notes { margin-top: 20px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 34px; counter-reset: n; }
+  .notes li { list-style: none; font-size: 12.5px; color: var(--ink-2); line-height: 1.8; padding-left: 20px; position: relative; }
+  .notes li::before {
+    content: counter(n); counter-increment: n;
+    position: absolute; left: 0; top: 3px;
+    font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+  }
+  .notes li b { color: var(--ink); font-weight: 600; }
+
+  .av {
+    border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
+    color: #fff; font-size: 11px; font-weight: 600; letter-spacing: .02em;
+    width: 30px; height: 30px; user-select: none;
+  }
+  .ic { stroke: currentColor; stroke-width: 1.7; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+  /* ══════════════════════════════════════════════════════════════
+     say 行骨架 —— 与 final.html 同形:头像 30px 在左、署名在上、无气泡。
+     本稿只往这具骨架里补「富文本词汇」,骨架本身一根线都不动。
+     ══════════════════════════════════════════════════════════════ */
+  .pane { padding: 14px 0 18px; }
+  .say { display: flex; gap: 12px; padding: 5px 20px; }
+  .say:hover { background: #f6f4ef; }
+  .say .gut { width: 30px; flex-shrink: 0; padding-top: 2px; }
+  .say .gut time { display: none; font-size: 10px; color: var(--ink-4); font-variant-numeric: tabular-nums; padding-top: 4px; }
+  .say:not(.head):hover .gut time { display: block; }
+  .say .body { min-width: 0; flex: 1; }
+  .say .sig { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+  .say .sig b { font-size: 12.5px; font-weight: 600; }
+  .say .sig .role { font-size: 10px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+  .say .sig time { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .say p { font-size: 13px; line-height: 1.75; color: #2c2a25; }
+  .say p + p, .say p + pre, .say p + .md-table-scroll, .say p + blockquote { margin-top: 6px; }
+  .say p strong { font-weight: 600; color: var(--ink); }
+  .say a { color: var(--a-blue); text-decoration: none; border-bottom: 1px solid rgba(32,94,166,.35); }
+  .say a:hover { border-bottom-color: var(--a-blue); }
+
+  /* @我被点名:行级衬底 + 左缘一根提醒色,与 Discord 黄条同语义 */
+  .say.addressed { background: rgba(188,82,21,.055); box-shadow: inset 2px 0 0 var(--a-orange); }
+  .say.addressed:hover { background: rgba(188,82,21,.085); }
+  /* 引用跳转落点:闪一下(演示为常亮) */
+  .say.flash { background: rgba(32,94,166,.07); box-shadow: inset 2px 0 0 var(--a-blue); }
+
+  /* ── 1 · @提及 pill ─────────────────────────────────────────── */
+  .mtn {
+    display: inline; padding: 1px 4px 2px; border-radius: 4px;
+    font-weight: 500; cursor: pointer; transition: background .12s;
+  }
+  .mtn.blue    { color: var(--a-blue);    background: rgba(32,94,166,.10); }
+  .mtn.green   { color: var(--a-green);   background: rgba(102,128,11,.12); }
+  .mtn.purple  { color: var(--a-purple);  background: rgba(94,64,157,.10); }
+  .mtn.magenta { color: var(--a-magenta); background: rgba(160,47,111,.10); }
+  .mtn:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .mtn.blue:hover { background: rgba(32,94,166,.18); }
+  /* @我:实底反白,一屏之内先看到它 */
+  .mtn.me { color: #fff; background: var(--a-orange); font-weight: 600; }
+  .mtn.me:hover { background: #a8480f; }
+  /* 全员播报 @所有人 */
+  .mtn.all { color: var(--a-orange); background: rgba(188,82,21,.12); font-weight: 600; }
+
+  /* ── 2 · 回复引用条 ─────────────────────────────────────────── */
+  .rq {
+    display: flex; align-items: center; gap: 7px;
+    margin: 1px 0 4px; padding: 3px 8px 3px 0; max-width: 46em;
+    border: 0; background: none; cursor: pointer; text-align: left;
+    border-radius: 5px; position: relative; font-size: 12px;
+  }
+  .rq::before { content: ""; width: 2px; align-self: stretch; border-radius: 1px; background: var(--rq-c, var(--ink-4)); margin-right: 5px; }
+  .rq:hover { background: var(--surface-2); }
+  .rq .av { width: 16px; height: 16px; font-size: 8px; }
+  .rq .rq-author { font-weight: 600; color: var(--rq-c, var(--ink-2)); flex-shrink: 0; }
+  .rq .rq-excerpt { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .rq .rq-gone { color: var(--ink-3); font-style: italic; }
+
+  /* ── 3 · 行内引用物 chip(<file> / <card>)──────────────────── */
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px; vertical-align: -2px;
+    padding: 1px 7px 1px 5px; border-radius: 5px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface-2);
+    font-size: 12px; color: var(--ink); line-height: 1.5; max-width: 22em;
+  }
+  .chip:hover { border-color: var(--ink-4); background: var(--surface-3); }
+  .chip .ic { width: 12px; height: 12px; color: var(--ink-3); }
+  .chip .nm { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .chip .ext { color: var(--ink-3); }
+  .chip.card .dot { width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; }
+  .chip.card .cid { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  /* 未验真:不是 chip,是一段哑文本。指不出不存在的东西。 */
+  .chip-dead { color: var(--ink-3); border-bottom: 1px dotted var(--ink-4); cursor: default; }
+
+  /* ── 4 · 代码块 ─────────────────────────────────────────────── */
+  .say pre {
+    border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+    background: var(--surface-2); font-size: 11.5px; line-height: 1.7; max-width: 56em;
+  }
+  .say pre .cb-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 10px; border-bottom: 1px solid var(--line-soft);
+    font-family: -apple-system, "PingFang SC", sans-serif;
+  }
+  .say pre .cb-lang { font-size: 10px; letter-spacing: .08em; color: var(--ink-3); text-transform: uppercase; }
+  .say pre .cb-copy {
+    display: inline-flex; align-items: center; gap: 4px; border: 0; background: none;
+    font-size: 10.5px; color: var(--ink-3); cursor: pointer; padding: 1px 4px; border-radius: 4px;
+  }
+  .say pre .cb-copy:hover { color: var(--ink); background: var(--surface-3); }
+  .say pre code { display: block; padding: 9px 12px; overflow-x: auto; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+  .say pre .k { color: var(--a-purple); } .say pre .s { color: var(--a-green); }
+  .say pre .f { color: var(--a-blue); } .say pre .c { color: var(--ink-3); font-style: italic; }
+  .say pre .n { color: var(--a-orange); }
+  /* 超高折叠:遮罩 + 展开条。群聊流里一段代码不许顶三屏。 */
+  .cb-clamp { position: relative; }
+  .cb-clamp code { max-height: 176px; overflow: hidden; }
+  .cb-clamp .cb-fade {
+    position: absolute; left: 1px; right: 1px; bottom: 25px; height: 44px;
+    background: linear-gradient(transparent, var(--surface-2)); pointer-events: none;
+  }
+  .cb-clamp .cb-more {
+    display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%;
+    border: 0; border-top: 1px solid var(--line-soft); background: var(--surface-2);
+    padding: 4px; font-size: 11px; color: var(--ink-2); cursor: pointer;
+    font-family: -apple-system, "PingFang SC", sans-serif;
+  }
+  .cb-clamp .cb-more:hover { color: var(--ink); background: var(--surface-3); }
+  .say code.inl {
+    font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: .92em;
+    background: var(--surface-3); border-radius: 4px; padding: 1px 5px 2px; color: #443f36;
+  }
+
+  /* ── 5 · 表格 / 引用块 ──────────────────────────────────────── */
+  .md-table-scroll { overflow-x: auto; max-width: 56em; }
+  .say table { border-collapse: collapse; font-size: 12px; }
+  .say th, .say td { border: 1px solid var(--line); padding: 4px 12px; text-align: left; white-space: nowrap; }
+  .say th { background: var(--surface-2); font-weight: 600; font-size: 11.5px; }
+  .say td.num, .say th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .say blockquote {
+    border-left: 2px solid var(--ink-4); padding: 1px 0 1px 12px; color: var(--ink-2); max-width: 52em;
+  }
+  .say blockquote p { color: var(--ink-2); }
+
+  /* ── 6 · 表情回应 ───────────────────────────────────────────── */
+  .rxn { display: flex; gap: 5px; margin-top: 5px; }
+  .rxn button {
+    display: inline-flex; align-items: center; gap: 4px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    padding: 1px 8px 2px; font-size: 11.5px; cursor: pointer; color: var(--ink-2);
+  }
+  .rxn button:hover { border-color: var(--ink-4); }
+  .rxn button.mine { border-color: rgba(32,94,166,.5); background: rgba(32,94,166,.07); color: var(--a-blue); }
+  .rxn .n { font-size: 10.5px; font-variant-numeric: tabular-nums; }
+
+  /* ── 7 · 悬浮操作条(hover 出现,骑在行上缘) ───────────────── */
+  .say { position: relative; }
+  .hoverbar {
+    position: absolute; top: -13px; right: 20px; z-index: 2;
+    display: none; align-items: center; gap: 1px; padding: 2px 3px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(20,18,12,.06), 0 4px 14px rgba(20,18,12,.10);
+  }
+  .say:hover .hoverbar, .hoverbar.pin { display: flex; }
+  .hoverbar button {
+    border: 0; background: none; cursor: pointer; border-radius: 5px;
+    min-width: 26px; height: 24px; display: grid; place-items: center;
+    font-size: 13px; color: var(--ink-2); padding: 0 4px;
+  }
+  .hoverbar button:hover { background: var(--surface-2); color: var(--ink); transform: scale(1.06); }
+  .hoverbar button .ic { width: 14px; height: 14px; }
+  .hoverbar .sep { width: 1px; height: 14px; background: var(--line); margin: 0 3px; flex-shrink: 0; }
+
+  /* ➕ 点开的表情面板(popover):最近用过一排 + 常用网格 */
+  .emopop {
+    width: 216px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: 0 2px 6px rgba(20,18,12,.08), 0 12px 32px rgba(20,18,12,.14);
+    padding: 10px 12px 12px;
+  }
+  .emopop .cap { font-size: 10px; letter-spacing: .08em; color: var(--ink-3); text-transform: uppercase; margin-bottom: 6px; }
+  .emopop .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; }
+  .emopop .grid button {
+    border: 0; background: none; cursor: pointer; border-radius: 6px;
+    height: 28px; font-size: 15px; display: grid; place-items: center;
+  }
+  .emopop .grid button:hover { background: var(--surface-2); transform: scale(1.12); }
+  .emopop .cap + .grid { margin-bottom: 8px; }
+
+  /* ══ 解剖区版式 ══ */
+  .anat { margin-top: 22px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 26px; }
+  .anat .cell { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px 20px; }
+  .anat .cell.wide { grid-column: 1 / -1; }
+  .anat h3 { font-size: 12px; font-weight: 600; display: flex; align-items: baseline; gap: 8px; }
+  .anat h3 em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--ink-3); }
+  .anat .demo { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .anat .row { display: flex; align-items: center; gap: 14px; }
+  .anat .lab { width: 130px; flex-shrink: 0; font-size: 11px; color: var(--ink-3); text-align: right; line-height: 1.5; }
+  .anat .row > p { font-size: 13px; line-height: 1.75; color: #2c2a25; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div class="kicker">0nething · say 消息富文本</div>
+  <h1>群聊 / 私聊消息的精致化 —— 一套行内词汇,不是一套新渲染链</h1>
+  <p class="lead">
+    骨架维持 final.html 的定案:头像在左、署名在上、<b>无气泡</b>。本稿只定义往正文里放的
+    <b>六个行内词汇</b>:@提及 pill、回复引用条、行内引用物 chip(&lt;file&gt;/&lt;card&gt;)、
+    代码块(带折叠)、表格/引用块、表情回应。全部长在既有 markdown 链的两个扩展点上
+    (markdown-it 行内规则 + say 作用域 CSS),<b>SayMessageRow 继续一条 markdown 规则都不写</b>。
+  </p>
+</div>
+
+<!-- ═══════════════ 一 · 全景样张 ═══════════════ -->
+<div class="section">
+  <h2>一 · 全景样张<em>一段真实的群聊流,六个词汇全部在场</em></h2>
+  <div class="stage">
+    <div class="win"><div class="pane">
+
+      <!-- 用户发言,@两人 + 行内文件 chip -->
+      <div class="say head">
+        <div class="gut"><span class="av" style="background:#3a3830; border-radius:9px;">我</span></div>
+        <div class="body">
+          <div class="sig"><b>我</b><time>14:02</time></div>
+          <p><span class="mtn green">@小林</span> <span class="mtn purple">@阿豪</span>
+            castlabs 换核那条线,把 <span class="chip"><svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="nm">login-probe<span class="ext">.md</span></span></span>
+            里的结论核一遍,然后按 <span class="chip card"><span class="dot" style="background:var(--a-cyan)"></span><span class="cid">#C-118</span><span class="nm">「登录指纹假设清单」</span></span> 逐条销。</p>
+        </div>
+      </div>
+
+      <!-- 小林回复:引用条 + @我(addressed 行)+ 表格;操作条真 hover 才出现 -->
+      <div class="say head addressed" style="margin-top:10px;">
+        <div class="hoverbar">
+          <button title="👍">👍</button>
+          <button title="🎯">🎯</button>
+          <button title="😂">😂</button>
+          <button title="更多表情"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14s1.2 1.8 3.5 1.8 3.5-1.8 3.5-1.8"/><path d="M9 9.5h.01M15 9.5h.01"/></svg></button>
+          <span class="sep"></span>
+          <button title="引用回复"><svg class="ic" viewBox="0 0 24 24"><path d="M9 17l-5-5 5-5"/><path d="M4 12h9a6 6 0 0 1 6 6v1"/></svg></button>
+          <button title="更多">⋯</button>
+        </div>
+        <div class="gut"><span class="av" style="background:var(--a-green)">林</span></div>
+        <div class="body">
+          <div class="sig"><b style="color:var(--a-green)">小林</b><span class="role">前端</span><time>14:05</time></div>
+          <button class="rq" style="--rq-c:#3a3830;">
+            <span class="av" style="background:#3a3830; border-radius:5px;">我</span>
+            <span class="rq-author">我</span>
+            <span class="rq-excerpt">castlabs 换核那条线,把 login-probe.md 里的结论核一遍,然后按 #C-118…</span>
+          </button>
+          <p><span class="mtn me">@我</span> 核完了。三个指纹假设两个被证伪,只有 UA token 那条是真的。汇总如下:</p>
+          <div class="md-table-scroll">
+            <table>
+              <tr><th>假设</th><th>验证方式</th><th class="num">耗时</th><th>结论</th></tr>
+              <tr><td>Widevine 探测</td><td>真机抓包</td><td class="num">40min</td><td>证伪</td></tr>
+              <tr><td>FedCM 指纹</td><td>开关对照</td><td class="num">25min</td><td>证伪</td></tr>
+              <tr><td>UA Electron token</td><td>逐段删除</td><td class="num">1.5h</td><td><strong>实锤</strong></td></tr>
+            </table>
+          </div>
+          <div class="rxn">
+            <button class="mine">👍 <span class="n">2</span></button>
+            <button>🎯 <span class="n">1</span></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 阿豪:blockquote + 行内 code + 链接;悬浮操作条钉住演示 hover 态 -->
+      <div class="say head" style="margin-top:10px;">
+        <div class="hoverbar pin">
+          <button title="👍">👍</button>
+          <button title="🎯">🎯</button>
+          <button title="😂">😂</button>
+          <button title="更多表情"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14s1.2 1.8 3.5 1.8 3.5-1.8 3.5-1.8"/><path d="M9 9.5h.01M15 9.5h.01"/></svg></button>
+          <span class="sep"></span>
+          <button title="引用回复"><svg class="ic" viewBox="0 0 24 24"><path d="M9 17l-5-5 5-5"/><path d="M4 12h9a6 6 0 0 1 6 6v1"/></svg></button>
+          <button title="更多">⋯</button>
+        </div>
+        <div class="gut"><span class="av" style="background:var(--a-purple)">豪</span></div>
+        <div class="body">
+          <div class="sig"><b style="color:var(--a-purple)">阿豪</b><span class="role">构建</span><time>14:09</time></div>
+          <blockquote><p>只有 UA token 那条是真的</p></blockquote>
+          <p>对得上。那我在 <code class="inl">session.setUserAgent</code> 里只删 <code class="inl">Electron/x.y.z</code> 段,
+            app token 和完整构建号都留着 —— 参考 <a href="#">castlabs 的 release note</a>。补丁在这:</p>
+          <pre><div class="cb-head"><span class="cb-lang">ts</span><button class="cb-copy"><svg class="ic" width="11" height="11" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制</button></div><code><span class="k">const</span> ua = session.<span class="f">getUserAgent</span>()
+  .<span class="f">replace</span>(<span class="s">/ Electron\/[\d.]+/</span>, <span class="s">''</span>) <span class="c">// 只摘这一段</span>
+session.<span class="f">setUserAgent</span>(ua, <span class="s">'zh-CN'</span>)</code></pre>
+        </div>
+      </div>
+
+      <!-- 小林续条(无署名,hover 出时间):被引原文已删的降级 -->
+      <div class="say" style="margin-top:2px;">
+        <div class="gut"><time>14:11</time></div>
+        <div class="body">
+          <p>顺带,<span class="chip card"><span class="dot" style="background:var(--a-cyan)"></span><span class="cid">#C-118</span><span class="nm">「登录指纹假设清单」</span></span> 我移到「验证中」了。还有一张卡模型口误报错了 id,长这样:<span class="chip-dead">#C-9f2</span> —— 验真不过,不给链接。</p>
+        </div>
+      </div>
+
+      <!-- 长代码折叠演示 -->
+      <div class="say head flash" style="margin-top:10px;">
+        <div class="gut"><span class="av" style="background:var(--a-green)">林</span></div>
+        <div class="body">
+          <div class="sig"><b style="color:var(--a-green)">小林</b><span class="role">前端</span><time>14:14</time></div>
+          <p>完整探测脚本贴一份存档(引用跳转的落点就是这种蓝闪行):</p>
+          <pre class="cb-clamp"><div class="cb-head"><span class="cb-lang">js</span><button class="cb-copy"><svg class="ic" width="11" height="11" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制</button></div><code><span class="c">// login-probe:逐项拨开指纹开关,记录 Google 的放行反应</span>
+<span class="k">const</span> PROBES = [
+  { name: <span class="s">'widevine'</span>,  toggle: () =&gt; <span class="f">setWidevine</span>(<span class="n">false</span>) },
+  { name: <span class="s">'fedcm'</span>,     toggle: () =&gt; <span class="f">setFedCm</span>(<span class="n">false</span>) },
+  { name: <span class="s">'ua-token'</span>,  toggle: () =&gt; <span class="f">stripUaToken</span>() },
+]
+<span class="k">for</span> (<span class="k">const</span> probe <span class="k">of</span> PROBES) {
+  <span class="k">await</span> <span class="f">resetProfile</span>()
+  probe.<span class="f">toggle</span>()
+  <span class="k">const</span> verdict = <span class="k">await</span> <span class="f">attemptLogin</span>()
+  log.<span class="f">info</span>(probe.name, verdict)
+}</code><div class="cb-fade"></div><button class="cb-more">展开 42 行 ▾</button></pre>
+        </div>
+      </div>
+
+    </div></div>
+  </div>
+</div>
+
+<!-- ═══════════════ 二 · 构件解剖 ═══════════════ -->
+<div class="section">
+  <h2>二 · 构件解剖<em>每个词汇的态,以及为什么长这样</em></h2>
+  <div class="anat">
+
+    <div class="cell">
+      <h3>A · @提及 pill<em>身份色染底,@我实底反白</em></h3>
+      <div class="demo">
+        <div class="row"><span class="lab">提别人:身份色 10% 底</span><p><span class="mtn green">@小林</span> <span class="mtn purple">@阿豪</span> <span class="mtn magenta">@审稿</span></p></div>
+        <div class="row"><span class="lab">提到我:实底,先于一切被看到</span><p><span class="mtn me">@我</span>(同时整行 addressed 衬底)</p></div>
+        <div class="row"><span class="lab">全员播报</span><p><span class="mtn all">@所有人</span></p></div>
+        <div class="row"><span class="lab">hover / 点击</span><p><span class="mtn blue" style="background:rgba(32,94,166,.18); text-decoration:underline; text-underline-offset:2px;">@小林</span> → 打开该成员空间(既有 openAgentSpace)</p></div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <h3>B · 回复引用条<em>竖线取被引者身份色,一行截断</em></h3>
+      <div class="demo">
+        <div class="row"><span class="lab">常态:线+头像+名+摘录</span>
+          <button class="rq" style="--rq-c:var(--a-green); max-width:100%;">
+            <span class="av" style="background:var(--a-green)">林</span>
+            <span class="rq-author">小林</span>
+            <span class="rq-excerpt">三个指纹假设两个被证伪,只有 UA token 那条是真的</span>
+          </button>
+        </div>
+        <div class="row"><span class="lab">hover:整条起底,可点跳回</span>
+          <button class="rq" style="--rq-c:var(--a-green); background:var(--surface-2); max-width:100%;">
+            <span class="av" style="background:var(--a-green)">林</span>
+            <span class="rq-author">小林</span>
+            <span class="rq-excerpt">三个指纹假设两个被证伪,只有 UA token 那条是真的</span>
+          </button>
+        </div>
+        <div class="row"><span class="lab">原文已删:摘录还在,不可点</span>
+          <button class="rq" style="cursor:default; max-width:100%;">
+            <span class="av" style="background:var(--ink-4)">?</span>
+            <span class="rq-author" style="color:var(--ink-3)">小林</span>
+            <span class="rq-excerpt rq-gone">原消息已删除 · 快照:三个指纹假设两个被证伪…</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <h3>C · 行内引用物 chip<em>验真通过才成 chip,不过停在哑文本</em></h3>
+      <div class="demo">
+        <div class="row"><span class="lab">&lt;file&gt; 验真态:图标+文件名</span><p><span class="chip"><svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="nm">stream-engine<span class="ext">.ts</span></span></span>(hover 出完整路径,点击走 openFile)</p></div>
+        <div class="row"><span class="lab">&lt;card&gt; 验真态:泳道色点+短id+现题</span><p><span class="chip card"><span class="dot" style="background:var(--a-cyan)"></span><span class="cid">#C-118</span><span class="nm">「登录指纹假设清单」</span></span>(点击滚看板并高亮)</p></div>
+        <div class="row"><span class="lab">未验真:哑文本,点不动</span><p><span class="chip-dead">#C-9f2</span> / <span class="chip-dead">ghost.md</span> —— 模型指不出不存在的东西,这是结构保证,视觉上也不给它 chip 的体面</p></div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <h3>D · 表情回应<em>已有 reactions.ts 投影,只定视觉</em></h3>
+      <div class="demo">
+        <div class="row"><span class="lab">别人的 / 我点过的</span>
+          <div class="rxn" style="margin:0;">
+            <button>👍 <span class="n">2</span></button>
+            <button class="mine">🎯 <span class="n">3</span></button>
+            <button>➕</button>
+          </div>
+        </div>
+        <div class="row"><span class="lab">规则</span><p style="color:var(--ink-2); font-size:12px;">我点过的描蓝;计数 tabular-nums;末位 ➕ hover 才出现</p></div>
+      </div>
+    </div>
+
+    <div class="cell wide">
+      <h3>E · 悬浮操作条<em>hover 出现,骑在行上缘右侧;表情与引用的唯一快捷入口</em></h3>
+      <div class="demo">
+        <div class="row"><span class="lab">常态:3 枚常用表情 + 更多表情 + 引用回复 + ⋯</span>
+          <div class="hoverbar pin" style="position:static; display:inline-flex;">
+            <button title="👍">👍</button>
+            <button title="🎯">🎯</button>
+            <button title="😂">😂</button>
+            <button title="更多表情"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14s1.2 1.8 3.5 1.8 3.5-1.8 3.5-1.8"/><path d="M9 9.5h.01M15 9.5h.01"/></svg></button>
+            <span class="sep"></span>
+            <button title="引用回复"><svg class="ic" viewBox="0 0 24 24"><path d="M9 17l-5-5 5-5"/><path d="M4 12h9a6 6 0 0 1 6 6v1"/></svg></button>
+            <button title="更多">⋯</button>
+          </div>
+        </div>
+        <div class="row"><span class="lab">「更多表情」点开的面板:最近一排 + 常用网格</span>
+          <div class="emopop">
+            <div class="cap">最近</div>
+            <div class="grid">
+              <button>👍</button><button>🎯</button><button>😂</button><button>🙏</button><button>🔥</button><button>👀</button>
+            </div>
+            <div class="cap">常用</div>
+            <div class="grid">
+              <button>✅</button><button>❌</button><button>❓</button><button>💡</button><button>🚀</button><button>🎉</button>
+              <button>😅</button><button>🤔</button><button>😮</button><button>💯</button><button>⏳</button><button>📌</button>
+            </div>
+          </div>
+        </div>
+        <div class="row"><span class="lab">规则</span>
+          <p style="color:var(--ink-2); font-size:12px;">操作条骑在行上缘、right 对齐,absolute 定位<b>不占行高、不引起重排</b>;快捷 3 枚取「最近使用」;点表情=对该消息 toggle 回应(落到既有 reactions 投影);点引用=把该消息装进输入框上方的既有 ComposerReplyBar;⋯ 收纳复制文本、跳转原文等低频项。触屏/无 hover 场景由 ⋯ 长按兜底,不做单独设计。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cell wide">
+      <h3>F · 块级词汇<em>代码块 / 表格 / 引用块,群聊流里的宽度纪律</em></h3>
+      <div class="demo">
+        <div class="row"><span class="lab">代码块:头条=语言+复制;超过 ~11 行折叠,展开条写明行数</span>
+          <p style="color:var(--ink-2); font-size:12px;">全景样张里两个 pre 即为定稿。折叠阈值只在群聊 say 作用域生效,主会话不折。</p>
+        </div>
+        <div class="row"><span class="lab">表格:横滚容器包住,数字列右对齐</span>
+          <p style="color:var(--ink-2); font-size:12px;">既有 md-table-scroll + numeric_cells 规则,不新增;say 里限 max-width: 56em,不许把聊天列撑开。</p>
+        </div>
+        <div class="row"><span class="lab">markdown blockquote ≠ 回复引用条</span>
+          <p style="color:var(--ink-2); font-size:12px;">blockquote 是灰竖线的<b>内容语义</b>(转述一段话);回复引用条是身份色竖线的<b>会话语义</b>(答的是哪一句)。两根竖线颜色体系刻意分开,永不混淆。</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════ 三 · 落地映射 ═══════════════ -->
+<div class="section">
+  <h2>三 · 落地映射<em>每个词汇长在哪个既有扩展点上</em></h2>
+  <ul class="notes">
+    <li><b>@提及 pill = markdown-it 行内规则 + 两拍升格</b>:同步渲染中性 span(可进 markdownRenderCache),挂载期按 roster 上身份色、挂点击 —— 与 collabInlineTags 的 &lt;file&gt;/&lt;card&gt; 验真同一套拍子,改名换色不脏缓存。识别只认 message.mentions 里的 id,渲染层不再做名字匹配。</li>
+    <li><b>回复引用条改造只动 SayMessageRow 的模板与 CSS</b>:竖线色/小头像来自既有 roster 投影,120 字截断规则(reply-quote.ts)一字不动;跳转落点闪烁复用 is-highlighted。</li>
+    <li><b>chip 视觉挂在 collab-tag 的升格态上</b>:验真机制零改动,只把 data-collab-resolved 的样式从"链接"升成 chip;未验真态保持哑文本是安全设计,不给样式体面。</li>
+    <li><b>代码块折叠是 say 作用域的增量</b>:cb-clamp 只在群聊 scope 生效;语言角标、复制按钮既有链已具备,不重做。</li>
+    <li><b>宽度纪律统一 56em</b>:代码块/表格/引用条在 say 里同一个 max-width,聊天列永远读得动;表格自己横滚,不许撑破。</li>
+    <li><b>改任何 markdown-it 规则须 bump CACHE_DB_VERSION</b>;新旧转录(纯文本 @名字、无 mentions 字段的老消息)自然落在降级路径 —— 渲染成普通文字,不报错不闪。</li>
+    <li><b>悬浮操作条长在 SayMessageRow 模板层,不进 markdown 链</b>:表情 toggle 落到既有 reactions.ts 投影;引用回复装进既有 ComposerReplyBar;absolute 骑行上缘不占行高。「最近使用」表情存本地偏好即可,不进会话数据。</li>
+  </ul>
+</div>
+
+</body>
+</html>

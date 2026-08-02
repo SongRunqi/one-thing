@@ -175,7 +175,7 @@
               as="aside"
               class="app-right-sidebar-region"
               :size="inspectorPanelSize"
-              :min="22"
+              :min="inspectorMinPanelSize"
               :max="48"
               :collapsed="!workbenchRevealed"
               @update:size="handleInspectorPanelSizeUpdate"
@@ -190,6 +190,7 @@
                   :workspace-root="currentWorkspaceRoot"
                   :workspace-roots="currentWorkspaceRoots"
                   :revealed="workbenchRevealed"
+                  :shell-mode="shellMode"
                   @close="inspectorOpen = false"
                 />
               </div>
@@ -245,10 +246,17 @@ import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { platformApi } from '@/platform'
 import { useCollabBoardStore } from '@/stores/collabBoard'
-import { AGENT_OPEN_WORKSPACE_EVENT, AGENT_OPEN_SPACE_EVENT, type AgentOpenSpaceDetail } from '@/stores/agents'
 import {
+  AGENT_OPEN_WORKSPACE_EVENT,
+  AGENT_OPEN_SPACE_EVENT,
+  useAgentsStore,
+  type AgentOpenSpaceDetail,
+} from '@/stores/agents'
+import {
+  COLLAB_TAG_OPEN_AGENT_EVENT,
   COLLAB_TAG_OPEN_CARD_EVENT,
   COLLAB_TAG_OPEN_FILE_EVENT,
+  registerCollabMentionResolver,
   registerCollabTagVerifier,
 } from '@/composables/collabInlineTags'
 import { resolveDeliverablePath } from '@/components/workbench/collab-board-card'
@@ -277,6 +285,7 @@ function syncCurrentHash() {
 const sessionsStore = useSessionsStore()
 const workspaceStore = useWorkspaceStore()
 const collabBoardStore = useCollabBoardStore()
+const agentsStore = useAgentsStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const themeStore = useThemeStore()
@@ -576,14 +585,51 @@ const MIN_INSPECTOR_PANEL_SIZE = 22
 const MAX_INSPECTOR_PANEL_SIZE = 48
 const DEFAULT_INSPECTOR_PANEL_SIZE = 32
 
+/**
+ * 右栏的**像素**下限(设计稿 `right-panel.html`:最窄 250px 是硬指标)。
+ *
+ * 原来的下限只有百分比 22% —— 窗口一小就破线:620px 的窗口里右栏只剩 136px,
+ * 分段器还撑得住,但行被压成「I..」「服...」,信息全没了(真机走查看到的正是这个)。
+ * 所以下限改成「22% 与 250px 取大」,再让 max 48% 兜底(极窄窗口下 250px 可能
+ * 超过 48%,那时以 48% 为准 —— 中栏也有自己的下限,不能为了右栏把它挤没)。
+ */
+/* 提前声明:`clampInspectorPanelSize` 在 setup 期就被调用(初始化存档值),
+   它经 `inspectorMinPanelSize` 读到这里 —— 声明晚了会 TDZ,整个 App 白屏。 */
+const contentSplitterWidth = ref(0)
+
+const MIN_INSPECTOR_PANEL_PX = 250
+
+/* 换算基数必须是**分栏容器**的宽度,不是窗口宽度 —— 这里的百分比是相对
+   `contentSplitterRef` 的(窗口还要扣掉左栏)。拿 window.innerWidth 换算会
+   算出一个偏小的百分比,地板照样破(真机实测:面板仍只有 203.8px)。
+   `contentSplitterWidth` 由 ResizeObserver 维护,天然跟着窗口与左栏变。 */
+const inspectorMinPanelSize = computed(() => {
+  const base = contentSplitterWidth.value
+  const pct = base > 0 ? (MIN_INSPECTOR_PANEL_PX / base) * 100 : MIN_INSPECTOR_PANEL_SIZE
+  return Math.min(MAX_INSPECTOR_PANEL_SIZE, Math.max(MIN_INSPECTOR_PANEL_SIZE, pct))
+})
+
 function clampInspectorPanelSize(size: number): number {
   if (!Number.isFinite(size)) return DEFAULT_INSPECTOR_PANEL_SIZE
-  return Math.min(MAX_INSPECTOR_PANEL_SIZE, Math.max(MIN_INSPECTOR_PANEL_SIZE, size))
+  return Math.min(MAX_INSPECTOR_PANEL_SIZE, Math.max(inspectorMinPanelSize.value, size))
 }
 
-const inspectorPanelSize = ref(clampInspectorPanelSize(
+const storedInspectorPanelSize = ref(clampInspectorPanelSize(
   Number.parseFloat(localStorage.getItem('inspectorPanelSize') || String(DEFAULT_INSPECTOR_PANEL_SIZE))
 ))
+
+/**
+ * 存的是百分比,而地板是像素 —— 所以**每次读都要重新收敛**,不能只在写入时 clamp。
+ * 否则窗口一变窄,存着的 25.5% 在 800px 窗口里就是 204px,250px 的地板形同虚设
+ * (真机走查抓到:面板 203.82px,行被压得没法看)。
+ */
+const inspectorPanelSize = computed({
+  get: () => Math.min(
+    MAX_INSPECTOR_PANEL_SIZE,
+    Math.max(inspectorMinPanelSize.value, storedInspectorPanelSize.value),
+  ),
+  set: (value: number) => { storedInspectorPanelSize.value = clampInspectorPanelSize(value) },
+})
 const inspectorResizing = ref(false)
 
 // Mount the workbench panel on first open, then keep it mounted so closing
@@ -613,7 +659,6 @@ function handleInspectorPanelSizeUpdate(size: number) {
 }
 
 const contentSplitterRef = ref<InstanceType<typeof Splitter> | null>(null)
-const contentSplitterWidth = ref(0)
 let contentSplitterObserver: ResizeObserver | null = null
 
 watch(contentSplitterRef, splitter => {
@@ -723,6 +768,26 @@ async function openAgentSpaceInRightWorkbench(detail: AgentOpenSpaceDetail) {
 }
 
 // 群聊房间头部的看板直达入口(window 事件解耦:TabBar 深处 → 这里)
+/**
+ * 房面进房 → 右栏备齐三 tab(线程 / 成员 / 看板)并落在线程上。
+ *
+ * 样板 final.html 的右栏是三 tab 常驻;实施时为了不出现两条右栏,复用了这根
+ * App 级的 workbench,代价是那三条一条都不常驻 —— 真机上"看不到线程"。
+ * 这里补齐:进房就把它们开好。右栏本身也一并打开(否则备齐了也看不见)。
+ */
+/* 具名 handler + onUnmounted 清理:匿名箭头既取不下来,HMR 一热更就重复注册,
+   一条事件会开出两个线程页签(真机走查抓到)。 */
+function handleRoomWorkbench(event: Event) {
+  void openRoomWorkbench((event as CustomEvent).detail)
+}
+
+async function openRoomWorkbench(detail: { roomSessionId: string; workSessionId?: string; dmAgentId?: string }) {
+  if (!detail?.roomSessionId) return
+  inspectorOpen.value = true
+  await nextTick()
+  rightWorkbenchRef.value?.openRoomTabs(detail.roomSessionId, detail.workSessionId, { dmAgentId: detail.dmAgentId })
+}
+
 async function openBoardInRightWorkbench() {
   inspectorOpen.value = true
   await nextTick()
@@ -745,10 +810,18 @@ function roomWorkingDirectoryForTags(): string | undefined {
 }
 
 function registerCollabTags() {
+  // @提及 pill 的第二拍(im-message §A):只回答"这位同事现在什么颜色"。
+  // 查无此人返回 null —— 那一枚就停在中性文字上,点不动。
+  registerCollabMentionResolver({
+    resolveAgent(agentId) {
+      const found = agentsStore.agents.find(agent => agent.id === agentId)
+      return found ? { color: found.color } : null
+    },
+  })
   registerCollabTagVerifier({
     verifyCard(id) {
       const found = collabBoardStore.findTask(id)
-      return found ? { id: found.task.id, title: found.task.title } : null
+      return found ? { id: found.task.id, title: found.task.title, status: found.task.status } : null
     },
     async verifyFile(path) {
       const absolute = resolveDeliverablePath(path, roomWorkingDirectoryForTags())
@@ -779,6 +852,7 @@ async function focusCardInRightWorkbench(taskId: string) {
 
 onMounted(() => {
   window.addEventListener('onething:collab-open-board', () => { void openBoardInRightWorkbench() })
+  window.addEventListener('onething:room-workbench', handleRoomWorkbench)
   window.addEventListener('onething:collab-open-folder', event => {
     const root = (event as CustomEvent<{ root?: string }>).detail?.root
     if (root) void openFolderInRightWorkbench(root)
@@ -800,6 +874,11 @@ onMounted(() => {
   window.addEventListener(COLLAB_TAG_OPEN_FILE_EVENT, event => {
     const filePath = (event as CustomEvent<{ filePath?: string }>).detail?.filePath
     if (filePath) void openFileInRightWorkbench(filePath)
+  })
+  // 点 @提及 pill → 那位同事的空间(与头像/署名同一个落点)。
+  window.addEventListener(COLLAB_TAG_OPEN_AGENT_EVENT, event => {
+    const agentId = (event as CustomEvent<{ agentId?: string }>).detail?.agentId
+    if (agentId) void openAgentSpaceInRightWorkbench({ agentId })
   })
   // 点头像 → 右栏(P1)。三处头像与侧栏右键「打开空间」都派这一条。
   window.addEventListener(AGENT_OPEN_SPACE_EVENT, event => {
@@ -992,6 +1071,20 @@ function handleVisibilityChange() {
   sessionsStore.setWindowFocused(document.visibilityState === 'visible')
 }
 
+/**
+ * 通知点击 → 打开那间房(agent-dm-user.md §4.3)。
+ *
+ * 落焦之后水位会自然转已读(`markVisibleSessionsRead` 挂在 focus 上),所以
+ * 这里只负责把页签打开,一个字的水位逻辑都不写。
+ */
+async function openSessionFromNotification(sessionId: string): Promise<void> {
+  if (!sessionId) return
+  activeWorkspacePanel.value = null
+  workspaceStore.openSession(sessionId)
+  await sessionsStore.switchSession(sessionId)
+}
+
+let unsubscribeNotifyActivate: (() => void) | null = null
 let unsubscribeSettingsChanged: (() => void) | null = null
 let unsubscribeMenuNewChat: (() => void) | null = null
 let unsubscribeMenuCloseChat: (() => void) | null = null
@@ -1055,6 +1148,17 @@ onMounted(async () => {
   // 只涨不消的 inbound 去盖掉主窗口刚推进的 readAt,红点会诈尸。
   if (!isAuxiliaryWindow.value) {
     sessionsStore.hydrateReadMarks(appState?.sessionReadMarks)
+    // dock 墨点与通知点击同样只由主窗口驱动 —— 与水位「只主窗口 hydrate/落盘」
+    // 同一条纪律:副窗口收得到全量事件却看不见任何会话,让它们也画徽标就是
+    // 两扇窗抢着写同一个 dock。
+    unsubscribeNotifyActivate = platformApi.notify?.onActivate(({ sessionId }) => {
+      void openSessionFromNotification(sessionId)
+    }) ?? null
+    watch(
+      () => sessionsStore.unreadSessionIds.size > 0,
+      hasUnread => { void platformApi.notify?.setBadge(hasUnread) },
+      { immediate: true },
+    )
   }
 
   appReady.value = true
@@ -1176,6 +1280,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('onething:room-workbench', handleRoomWorkbench)
   window.removeEventListener('hashchange', syncCurrentHash)
   window.removeEventListener('focus', handleWindowFocused)
   window.removeEventListener('blur', handleWindowBlurred)
@@ -1184,6 +1289,10 @@ onUnmounted(() => {
   window.removeEventListener(PRACTICE_OPEN_WORKSPACE_EVENT, handlePracticeOpenWorkspace)
   window.removeEventListener(AGENT_OPEN_WORKSPACE_EVENT, handleAgentOpenWorkspace)
 
+  if (unsubscribeNotifyActivate) {
+    unsubscribeNotifyActivate()
+    unsubscribeNotifyActivate = null
+  }
   if (unsubscribeSettingsChanged) {
     unsubscribeSettingsChanged()
   }

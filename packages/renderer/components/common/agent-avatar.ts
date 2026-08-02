@@ -53,3 +53,48 @@ export function resolveAgentAvatarSrc(
     ? `/api/media/file/${encodeURIComponent(trimmed)}`
     : `media://${encodeURIComponent(trimmed)}`
 }
+
+/**
+ * Longest edge to `maxPx`, aspect kept, re-encoded as a PNG dataURL.
+ *
+ * Downscaled BEFORE it is stored, not after: a 4000px photo picked as a 28px
+ * chip would otherwise cost megabytes on disk and a full-size decode on every
+ * message group. PNG (not webp) because the save channel stamps `image/png`.
+ *
+ * Lives here rather than in the agent form because the user's own picture
+ * avatar (agent-dm-user.md §2.4) goes through the identical pipeline — two
+ * copies would mean two size caps for one decision.
+ */
+export function downscaleImageToPngDataUrl(file: File, maxPx: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const image = new Image()
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const longest = Math.max(image.width, image.height)
+      if (!longest) {
+        reject(new Error('Not an image'))
+        return
+      }
+      const scale = Math.min(1, maxPx / longest)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(image.width * scale))
+      canvas.height = Math.max(1, Math.round(image.height * scale))
+      const context = canvas.getContext('2d')
+      if (!context) {
+        reject(new Error('Canvas unavailable'))
+        return
+      }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('Not an image'))
+    }
+    image.src = objectUrl
+  })
+}
+
+/** Longest edge a stored avatar picture keeps. */
+export const AVATAR_IMAGE_MAX_PX = 128

@@ -63,6 +63,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../store.js', () => ({
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
   updateSessionWorkingDirectory: vi.fn(),
   getSession: (id: string) => mocks.sessions.get(id),
   getCurrentSessionId: () => 'room-1',
@@ -766,8 +768,8 @@ describe('W19 — 工作会话的真实 typing', () => {
     // The briefing drive itself lit nothing: reading a task is not typing.
     expect(typingLog()).toEqual([])
 
-    deliver(workSessionId(), { type: 'tool:input-start', toolCallId: 'c1', toolName: 'say' })
-    deliver(workSessionId(), { type: 'tool:input-end', toolCallId: 'c1', toolCall: { toolId: 'say' } })
+    deliver(workSessionId(), { type: 'tool:input-start', toolCallId: 'c1', toolName: 'send_message' })
+    deliver(workSessionId(), { type: 'tool:input-end', toolCallId: 'c1', toolCall: { toolId: 'send_message' } })
     expect(typingLog()).toEqual([
       { sessionId: ROOM, agentId: 'fe', typing: true },
       { sessionId: ROOM, agentId: 'fe', typing: false },
@@ -799,7 +801,7 @@ describe('W19 — 工作会话的真实 typing', () => {
     seedAssignedTask()
     await settle()
 
-    deliver(workSessionId(), { type: 'tool:input-start', toolCallId: 'c1', toolName: 'say' })
+    deliver(workSessionId(), { type: 'tool:input-start', toolCallId: 'c1', toolName: 'send_message' })
     expect(typingLog().map(entry => entry.typing)).toEqual([true])
 
     turn.release('timeout')

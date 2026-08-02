@@ -10,7 +10,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, ref, type Ref } from 'vue'
-import { usePickerOrchestration } from '../usePickerOrchestration'
+import {
+  COMPOSER_MENTION_ALL_VALUE,
+  buildCollabMemberPickerItems,
+  usePickerOrchestration,
+} from '../usePickerOrchestration'
 import { createMemberToken } from '@shared/prompt-references'
 import type { EditorCursorLineInfo, EditorHandle, EditorSelection } from '@/editor'
 
@@ -19,7 +23,7 @@ interface TestAgent { id: string; name: string; title?: string }
 const storeMocks = vi.hoisted(() => ({
   sessions: [
     { id: 'room-1', kind: 'room', room: { memberAgentIds: ['pm', 'fe'] } },
-  ] as Array<{ id: string; kind: string; room?: { memberAgentIds: string[] } }>,
+  ] as Array<{ id: string; kind: string; room?: { memberAgentIds: string[]; dm?: true } }>,
 }))
 
 vi.mock('@/stores/settings', () => ({
@@ -92,6 +96,9 @@ function createHarness(initialValue: string) {
 }
 
 beforeEach(() => {
+  storeMocks.sessions = [
+    { id: 'room-1', kind: 'room', room: { memberAgentIds: ['pm', 'fe'] } },
+  ]
   setActivePinia(createPinia())
   vi.stubGlobal('window', {
     electronAPI: {
@@ -148,5 +155,77 @@ describe('member picker → identity token (W14a)', () => {
     const { text, mentions } = harness.api.materializeMemberReferences(harness.input.value)
     expect(text).toBe('在吗')
     expect(mentions).toEqual([])
+  })
+})
+
+/**
+ * 「所有人」伪成员行 —— collab-room-clear-and-mention-all.md A1。
+ *
+ * 后端早就认 `@所有人`(ingress 展开成全体点名),缺的只是发现性:面板里没有
+ * 这一行,用户必须凭记忆打出来。所以这里钉的是三件事:置顶、只在群房出现、
+ * 选中产出**纯文本**(展开是 ingress 的事,面板不造第二种 @所有人)。
+ */
+describe('候选组装(纯函数)', () => {
+  const MEMBERS = [
+    { id: 'pm', name: '阿明', title: '产品经理' },
+    { id: 'fe', name: '小李', title: '前端工程师' },
+  ]
+
+  it('置顶,并说清楚要提醒几个人', () => {
+    const items = buildCollabMemberPickerItems({ query: '', members: MEMBERS })
+    expect(items[0].value).toBe(COMPOSER_MENTION_ALL_VALUE)
+    expect(items[0].title).toContain('所有人')
+    expect(items[0].description).toBe('提醒全部 2 位成员')
+    expect(items.slice(1).map(item => item.value)).toEqual(['pm', 'fe'])
+  })
+
+  it('dm 房里不出现 —— 那里没有第三个人', () => {
+    const items = buildCollabMemberPickerItems({ query: '', members: MEMBERS, dm: true })
+    expect(items.map(item => item.value)).toEqual(['pm', 'fe'])
+  })
+
+  it('一个成员都查不到时也不出现', () => {
+    expect(buildCollabMemberPickerItems({ query: '', members: [] })).toEqual([])
+  })
+
+  it('认几种写法,不认别的', () => {
+    for (const query of ['所有', '全体', 'all', 'every']) {
+      expect(buildCollabMemberPickerItems({ query, members: MEMBERS })[0]?.value)
+        .toBe(COMPOSER_MENTION_ALL_VALUE)
+    }
+    expect(buildCollabMemberPickerItems({ query: '小', members: MEMBERS }).map(item => item.value))
+      .toEqual(['fe'])
+  })
+})
+
+describe('选中「所有人」', () => {
+  it('插入纯文本 @所有人,不产生 member token', async () => {
+    const harness = createHarness('@')
+    await harness.api.handleMemberPickerSelect(COMPOSER_MENTION_ALL_VALUE)
+    expect(harness.input.value).toBe('@所有人 ')
+    expect(harness.input.value).not.toContain('{{member:')
+  })
+
+  it('发送时不写 mentions[] —— 展开是 ingress 的事', () => {
+    const harness = createHarness('@所有人 报数')
+    expect(harness.api.materializeMemberReferences(harness.input.value))
+      .toEqual({ text: '@所有人 报数', mentions: [] })
+  })
+
+  it('群房的 bare-@ 首行就是它', async () => {
+    const harness = createHarness('@')
+    await nextTick()
+    const state = harness.api.activeExtension.value
+    expect(state.type).toBe('members')
+    expect(state.items[0]?.value).toBe(COMPOSER_MENTION_ALL_VALUE)
+  })
+
+  it('dm 房的 bare-@ 里没有它', async () => {
+    storeMocks.sessions = [
+      { id: 'room-1', kind: 'room', room: { memberAgentIds: ['fe'], dm: true } },
+    ]
+    const harness = createHarness('@')
+    await nextTick()
+    expect(harness.api.activeExtension.value.items.map(item => item.value)).toEqual(['fe'])
   })
 })

@@ -11,6 +11,7 @@ import type { EditorHandle, EditorSelection, EditorTransaction } from '@/editor'
 import { applyTriggerReplacement, parseEditorTrigger, type EditorTrigger } from '@/editor'
 import { usePromptsStore } from '@/stores/prompts'
 import { createFileToken, createMemberToken, createPageToken, createPromptToken, createSkillToken, extractMemberTokens, extractPageTokens, FILE_REF_PATTERN, PAGE_REF_PATTERN } from '@shared/prompt-references'
+import { COLLAB_MENTION_ALL_LABELS } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
 
 export type ComposerExtensionType = 'none' | 'palette' | 'files' | 'paths' | 'pages' | 'members'
@@ -109,6 +110,71 @@ function isPathInsideRoot(filePath: string, root: string): boolean {
   return filePath === normalizedRoot || filePath.startsWith(`${normalizedRoot}/`)
 }
 
+/**
+ * 「所有人」伪成员行的 pick 值(docs/design/collab-room-clear-and-mention-all.md A1)。
+ *
+ * 它不是任何 agent 的 id,所以刻意长成不像 id 的样子 —— 走错分支的话
+ * `{{member:…}}` 会带着它落进草稿,而那种 token 在发送时会被静默丢掉。
+ */
+export const COMPOSER_MENTION_ALL_VALUE = '__collab_all__'
+
+/** 选中「所有人」插入的字面量。后端只认这几种写法,取第一种当规范形。 */
+export const COMPOSER_MENTION_ALL_LABEL = COLLAB_MENTION_ALL_LABELS[0]
+
+/** 这一行能被什么查询词命中(与后端认读的写法对齐,外加两种 ASCII)。 */
+const MENTION_ALL_ALIASES = [...COLLAB_MENTION_ALL_LABELS, 'all', 'everyone']
+
+/**
+ * 伪成员没有头像。给一个固定图形而不是随便挑个 emoji:它要一眼看出"这一行
+ * 不是某个人",而不是看起来像一位取了奇怪头像的同事。
+ */
+const MENTION_ALL_GLYPH = '⊕'
+
+/**
+ * 房间成员候选行的组装(纯函数,便于单测)。
+ *
+ * 「所有人」置顶,且**只在群房出现**:dm 房里没有第三个人,那一行等于把唯一
+ * 那位同事换了个说法。
+ */
+export function buildCollabMemberPickerItems(options: {
+  query: string
+  members: ReadonlyArray<{ id: string; name: string; title?: string; description?: string; avatar?: string }>
+  /** 私聊房(单成员托管私聊 / 双成员同事私聊)。 */
+  dm?: boolean
+}): ComposerExtensionItem[] {
+  const q = options.query.trim().toLowerCase()
+  const items: ComposerExtensionItem[] = options.members
+    .filter(agent =>
+      !q ||
+      agent.name.toLowerCase().includes(q) ||
+      (agent.title || '').toLowerCase().includes(q))
+    .map(agent => ({
+      id: `member:${agent.id}`,
+      kind: 'agent-member' as const,
+      title: `${agent.avatar ? `${agent.avatar} ` : ''}${agent.name}`,
+      description: agent.title || agent.description,
+      meta: '成员',
+      // W14a: the pick carries the AGENT ID. It becomes a `{{member:<id>}}`
+      // token in the draft (painted as @名字) and materializes at send into
+      // plain `@名字` text plus an id in mentions[] — a mention picked here
+      // survives a rename and stays exact when two members share a name.
+      value: agent.id,
+    }))
+
+  const allMatches = !q || MENTION_ALL_ALIASES.some(alias => alias.toLowerCase().includes(q))
+  if (!options.dm && options.members.length > 0 && allMatches) {
+    items.unshift({
+      id: 'member:all',
+      kind: 'agent-member',
+      title: `${MENTION_ALL_GLYPH} ${COMPOSER_MENTION_ALL_LABEL}`,
+      description: `提醒全部 ${options.members.length} 位成员`,
+      meta: '全体',
+      value: COMPOSER_MENTION_ALL_VALUE,
+    })
+  }
+  return items
+}
+
 function makeNoteLabel(value: string, name: string): string {
   const dirName = basename(value)
   if (dirName && dirName !== '/') return `notes/${dirName}`
@@ -169,12 +235,20 @@ export function usePickerOrchestration(
   // name match, so blind typing is the feature's worst UX. Files stay
   // reachable via the explicit `@files` keyword. Store access is lazy and
   // guarded: composable unit tests mount without these stores.
-  const activeRoomMembers = computed(() => {
+  const activeRoomMeta = computed(() => {
     const id = effectiveSessionId.value
-    if (!id) return []
+    if (!id) return undefined
     try {
       const meta = useSessionsStore().sessions.find(s => s.id === id)
-      if (meta?.kind !== 'room') return []
+      return meta?.kind === 'room' ? meta : undefined
+    } catch {
+      return undefined
+    }
+  })
+  const activeRoomMembers = computed(() => {
+    const meta = activeRoomMeta.value
+    if (!meta) return []
+    try {
       const agents = useAgentsStore().agents
       const memberIds = meta.room?.memberAgentIds ?? []
       return memberIds
@@ -184,6 +258,8 @@ export function usePickerOrchestration(
       return []
     }
   })
+  /** 私聊房(标记即身份,与 RoomSettingsDialog 同一判据)。 */
+  const activeRoomIsDm = computed(() => activeRoomMeta.value?.room?.dm === true)
   const slashCommandsEnabled = computed(() => options.slashCommands?.value !== false)
   const atMentionsEnabled = computed(() => options.atMentions?.value !== false)
   const memberTriggerAvailable = computed(
@@ -663,24 +739,11 @@ export function usePickerOrchestration(
   }
 
   function buildMemberExtensionItems(query: string): ComposerExtensionItem[] {
-    const q = query.trim().toLowerCase()
-    return activeRoomMembers.value
-      .filter(agent =>
-        !q ||
-        agent.name.toLowerCase().includes(q) ||
-        (agent.title || '').toLowerCase().includes(q))
-      .map(agent => ({
-        id: `member:${agent.id}`,
-        kind: 'agent-member' as const,
-        title: `${agent.avatar ? `${agent.avatar} ` : ''}${agent.name}`,
-        description: agent.title || agent.description,
-        meta: '成员',
-        // W14a: the pick carries the AGENT ID. It becomes a `{{member:<id>}}`
-        // token in the draft (painted as @名字) and materializes at send into
-        // plain `@名字` text plus an id in mentions[] — a mention picked here
-        // survives a rename and stays exact when two members share a name.
-        value: agent.id,
-      }))
+    return buildCollabMemberPickerItems({
+      query,
+      members: activeRoomMembers.value,
+      dm: activeRoomIsDm.value,
+    })
   }
 
   function showMembers(trigger: EditorTrigger) {
@@ -693,10 +756,17 @@ export function usePickerOrchestration(
   }
 
   async function handleMemberPickerSelect(agentId: string) {
-    // The trailing space is part of the insertion (same as every other picker):
-    // it separates the mention from what the user types next, and it is the
-    // space the token carries with it when the member turns out to be gone.
-    replaceActiveTrigger(`${createMemberToken(agentId)} `, 'member')
+    // 「所有人」走**纯文本**:展开成全体点名是 ingress 的事(单一真源),
+    // 所以这里不造 token、不写 mentions[] —— 手打 `@所有人` 与从面板选出来的
+    // 因此逐字一致,不存在"两种 @所有人"。
+    const replacement = agentId === COMPOSER_MENTION_ALL_VALUE
+      ? `@${COMPOSER_MENTION_ALL_LABEL} `
+      // The trailing space is part of the insertion (same as every other
+      // picker): it separates the mention from what the user types next, and it
+      // is the space the token carries with it when the member turns out to be
+      // gone.
+      : `${createMemberToken(agentId)} `
+    replaceActiveTrigger(replacement, 'member')
     await nextTick()
     adjustHeight()
     editorRef.value?.focus()

@@ -41,6 +41,7 @@ import {
   resolveAgentModelCapabilities,
 } from './capabilities.js'
 import { toolCallSignature } from './tool-signature.js'
+import { resolveRetiredAgentToolName } from './tool-names.js'
 import { MAX_TURN_RETRIES, turnRetryDelayMs, isRetryableAgentError, sleepWithAbort } from './retry.js'
 import { ToolExecutionScheduler } from './tool-execution-scheduler.js'
 
@@ -305,7 +306,11 @@ async function executeAgentToolCall(input: {
 }): Promise<AgentToolResult> {
   const { options, toolMap, turn, toolCall } = input
   throwIfAgentAborted(options.abortSignal)
+  // miss 之后再查一次退役名表(tool-names.ts):改名后的灰度期里,模型会照着
+  // 历史里的旧调用范例吐旧名,而那本该是一次成功的调用。别名只在这里生效 ——
+  // 请求的 tools 参数里没有它,提示词里也没有。
   const tool = toolMap.get(toolCall.name)
+    ?? toolMap.get(resolveRetiredAgentToolName(toolCall.name))
 
   if (!tool) {
     return { content: '', error: `Tool not available: ${toolCall.name}` }

@@ -18,7 +18,6 @@
  * directly with isolated providers.
  */
 
-import { createHash } from "node:crypto";
 import * as fs from "fs/promises";
 import path from "node:path";
 import { getEventBus } from "../events/index.js";
@@ -39,11 +38,12 @@ import {
 	goalVariableGateway,
 	musicRadioGateway,
 	agentStoreGateway,
+	agentSelfGateway,
 	projectStoreGateway,
 } from "./gateways.js";
 import {
-	splitVariablesForPrompt,
-	type VariablePromptSections,
+	formatStateVariablesForPrompt,
+	type FormatOptions,
 } from "@onething/runtime/variables/format";
 import type { ContextVariable } from "@onething/runtime/variables";
 
@@ -65,6 +65,7 @@ export function bootstrapVariableSystem(): void {
 		sessionStore: sessionStoreGateway,
 		goal: goalVariableGateway,
 		musicRadio: musicRadioGateway,
+		agentSelf: agentSelfGateway,
 		agentStore: agentStoreGateway,
 		projectStore: projectStoreGateway,
 		core: {
@@ -325,47 +326,23 @@ export function getGuardedVariableRegistryForTools(): Pick<
 type VariableRegistryLike = ReturnType<typeof getVariableRegistry>;
 
 /**
- * Build both prompt channels for context variables:
- * systemText (static volatility → system-prompt section) and
- * turnText (turn volatility → per-turn <context-update> injection).
- * Workdir is skipped inside the formatter itself (the prompt builder
- * renders it in its own "# Work Directory" section).
+ * state 变量渲染成 `<context-update>` 尾部块的正文;非 state 变量不进请求。
+ * 这是变量进入模型的唯一数据通道(§R.4)—— system prompt 那一段只剩一句常量
+ * 指路,所以写变量永远不再打穿缓存前缀,也就没有"静态段变了"这种遥测对象了。
+ *
+ * Workdir is skipped inside the formatter itself (the prompt builder renders
+ * it in its own "# Work Directory" section).
+ *
+ * `options` 只为调用方需要调整渲染细节时留一个口子,生产路径一律用默认值。
  */
-export async function buildVariablePromptSections(
+export async function buildStateVariablesPromptText(
 	sessionId: string,
-): Promise<VariablePromptSections> {
-	const sections = splitVariablesForPrompt(
-		await listContextVariables(sessionId),
-	);
-	trackStaticSectionChange(sessionId, sections.systemText);
-	return sections;
-}
-
-// Telemetry: the static section sits in the system prompt, ahead of the whole
-// conversation history, so any change invalidates the provider prompt-cache
-// prefix for that session. This should stay rare — log every occurrence so
-// unexpected churn (a provider leaking volatile values as static) is visible.
-const lastStaticSectionHash = new Map<string, string>();
-
-function trackStaticSectionChange(sessionId: string, systemText: string): void {
-	const hash = createHash("sha1").update(systemText).digest("hex").slice(0, 8);
-	const previous = lastStaticSectionHash.get(sessionId);
-	if (previous !== undefined && previous !== hash) {
-		console.log(
-			`[variables] static context section changed (busts prompt-cache prefix) session=${sessionId.slice(0, 8)} ${previous}→${hash}`,
-		);
-	}
-	lastStaticSectionHash.set(sessionId, hash);
-}
-
-/**
- * Static channel only — the string injected as the system prompt's
- * <context-variables> block.
- */
-export async function buildContextVariablesPromptText(
-	sessionId: string,
+	options: FormatOptions = {},
 ): Promise<string> {
-	return (await buildVariablePromptSections(sessionId)).systemText;
+	return formatStateVariablesForPrompt(
+		await listContextVariables(sessionId),
+		options,
+	);
 }
 
 /**
@@ -381,9 +358,8 @@ export function registerVariableProvider(provider: VariableProvider): void {
 // Re-exports for ergonomic imports at call sites.
 export { getVariableRegistry } from "@onething/runtime/variables/registry";
 export {
-	formatVariablesForPrompt,
-	splitVariablesForPrompt,
-	type VariablePromptSections,
+	formatStateVariablesForPrompt,
+	type FormatOptions,
 } from "@onething/runtime/variables/format";
 export { VariableError } from "@onething/runtime/variables";
 export type {

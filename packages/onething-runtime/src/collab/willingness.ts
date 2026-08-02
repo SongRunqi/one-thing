@@ -15,6 +15,7 @@
  */
 import { isCollabProjectedRoomMessage } from './cooldown.js'
 import { truncateAtCodePoint } from './truncate.js'
+import { renderCollabModelMention } from './handles.js'
 import { renderCollabMentionText } from './mentions.js'
 import { formatCollabReplyQuote } from './projection.js'
 import {
@@ -29,7 +30,7 @@ import {
   type BuildCollabRoomContextOptions,
 } from './roster.js'
 import { formatCollabProjectedSystemLine, isCollabProjectedSystemLine } from './system-lines.js'
-import type { CollabAgentLike, CollabMessageLike } from './types.js'
+import type { CollabAgentLike, CollabMessageLike, CollabSelfTaskFact } from './types.js'
 
 /** How many recent messages the judgement window carries. */
 export const COLLAB_WILLINGNESS_RECENT_LIMIT = 8
@@ -45,11 +46,12 @@ export const COLLAB_WILLINGNESS_LINE_LIMIT = 200
  * companion; a member that is about to speak has no use for it.
  */
 export const COLLAB_WILLINGNESS_QUESTION =
-  '最新这条消息之后,你会开口说话吗?只输出 JSON: {"respond": true|false, "react": "👍"|null}' +
-  `(不说话时也可以只点个表情,可选:${COLLAB_REACTION_EMOJIS.join(' ')};不想点就填 null)`
+  'After that last message, will you speak up?\nReply with JSON only: {"respond": true|false, "react": "👍"|null}\n' +
+  `If you are not speaking, you may still leave a reaction — one of ${COLLAB_REACTION_EMOJIS.join(' ')}, or null for none.`
 
 /** The single factual line the room lead gets (replaces default-responder). */
-export const COLLAB_WILLINGNESS_PM_FACT = '(你是本群的负责人。)'
+export const COLLAB_WILLINGNESS_PM_FACT =
+  '<you_are_the_lead>You are this room\'s lead.</you_are_the_lead>'
 
 export interface BuildWillingnessPromptOptions extends BuildCollabRoomContextOptions {
   /** The agent's own persona prompt (its systemPrompt field), used VERBATIM. */
@@ -58,6 +60,11 @@ export interface BuildWillingnessPromptOptions extends BuildCollabRoomContextOpt
   recent: readonly CollabMessageLike[]
   /** Room lead, if any — only affects the agent that IS the lead. */
   pmAgentId?: string
+  /**
+   * 这个 agent 名下还在飞的卡。判定这一路够不着变量通道,所以由调用方喂进来
+   * (见 `formatWillingnessSelfCards` 的注释)。
+   */
+  selfCards?: readonly CollabSelfTaskFact[]
   /**
    * Names for speakers the room roster no longer holds (P2-16). The app layer
    * passes the global agent lookup; without it a departed member's line falls
@@ -113,7 +120,9 @@ export function buildWillingnessWindow(options: {
     // Same rename resolution the room projection applies (W14a): a member
     // deciding whether to speak must read the very names the room now uses —
     // "@新名字 你看一下" is only a signal if it says the reader's current name.
-    const body = condense(renderCollabMentionText(message.content, message.mentions, options.members))
+    const body = condense(renderCollabMentionText(message.content, message.mentions, options.members, {
+      renderHit: renderCollabModelMention,
+    }))
     if (!body) continue
     const label = message.role === 'user'
       ? userLabel
@@ -131,8 +140,33 @@ export function buildWillingnessWindow(options: {
 }
 
 /**
+ * 判定回合的在飞卡片(agent-self-state-variables.md §4.4 的补漏)。
+ *
+ * 房间回合是通过 `my_cards` 变量拿到这件事的,而判定这一路走的是裸
+ * `generateChatResponse` —— 它不碰引擎的提示词装配,**变量的两条通道一格都到
+ * 不了**。§4.4 删 `taskFacts` 时漏了这条链,代价是「任务受阻」这类最该让人开口
+ * 的事实,恰好在决定要不要开口的那一刻看不见 —— 而这个文件自己的口径写着:
+ * 判定必须看见它作答时会看见的同一批事实。
+ *
+ * 形状与 `my_cards` 变量逐字同源(短 id + 标题 + 状态):两处分家,同一张卡在
+ * 两拍里就成了两件事。
+ */
+export function formatWillingnessSelfCards(
+  cards: readonly CollabSelfTaskFact[],
+): string {
+  if (cards.length === 0) return ''
+  // 按 id 排序,与变量那侧同一条纪律:同一组卡永远渲染成同样的字节。
+  const ordered = [...cards].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  const items = ordered
+    .map(card => `#${card.id.slice(0, 8)}「${card.title}」${card.status}`)
+    .join('; ')
+  return `<your_cards>${items}</your_cards>`
+}
+
+/**
  * The whole judgement prompt. system = persona verbatim + the factual room
- * note (+ the lead fact for the PM); user = the window + the JSON question.
+ * note (+ the lead fact for the PM, + the in-flight cards); user = the window
+ * + the JSON question.
  */
 export function buildWillingnessPrompt(
   options: BuildWillingnessPromptOptions,
@@ -142,12 +176,24 @@ export function buildWillingnessPrompt(
     members: options.members,
     roomName: options.roomName,
     userLabel: options.userLabel,
+    userHandle: options.userHandle,
     personaPrompt: options.personaPrompt,
-    // Same situation note as the room turn, in-flight cards included (W9.3).
-    taskFacts: options.taskFacts,
+    // 房形态跟着调用方走(D.1):pair 房用群版世界观会把用户说成"群成员",
+    // 于是判定是站在一个错误的场子里回答"要不要开口"。
+    ...(options.dm ? { dm: true } : {}),
+    ...(options.dmPair ? { dmPair: true } : {}),
+    // 薄档:这一路是裸 generate,零工具、不读看板、不写变量 —— `<your_tools>`、
+    // 状态板、`<board>` 全是关于载荷的假话,裁掉。
+    judgement: true,
   })
   const isLead = Boolean(options.pmAgentId) && options.pmAgentId === options.self.id
-  const system = isLead ? `${roomSystem}\n\n${COLLAB_WILLINGNESS_PM_FACT}` : roomSystem
+  const system = [
+    roomSystem,
+    isLead ? COLLAB_WILLINGNESS_PM_FACT : '',
+    formatWillingnessSelfCards(options.selfCards ?? []),
+  ]
+    .filter(part => part.length > 0)
+    .join('\n\n')
 
   const windowLines = buildWillingnessWindow({
     recent: options.recent,
@@ -175,9 +221,40 @@ export interface CollabWillingnessVerdict {
   respond: boolean
   /** Palette emoji, or null when none was offered / it was off-palette. */
   react: CollabReactionEmoji | null
+  /**
+   * **为什么**是这个结果(collab-coordinator-inspector.md §8)。
+   *
+   * `respond: false` 此前是五种完全不同的事共用的一个答案:模型真说了不、回复读不懂、
+   * 8s 死线到了、provider 解析不出来、被喊停抢占。对**这一轮**来说它们等价(都不说话),
+   * 对**排查**来说天差地别——"它们不想说"不用管,"这条链断了"必须修。
+   *
+   * 判定这一步是整条链上最贵也最不可见的,而它此前唯一的输出是一个布尔。
+   * 这一格就是把那四种失败从"沉默"里分出来。
+   */
+  outcome: CollabWillingnessOutcomeKind
 }
 
-const SILENT_VERDICT: CollabWillingnessVerdict = { respond: false, react: null }
+export type CollabWillingnessOutcomeKind =
+  /** 模型说了要说话。 */
+  | 'yes'
+  /** 模型明确说了不说。**只有这一种是"它不想说"**,其余都是没答上。 */
+  | 'no'
+  /** 回复到了,但读不出 respond —— 模型没按格式答(常见于推理模型把预算烧在思考上)。 */
+  | 'unparsable'
+  /** 8s 死线到期,一个字都没等到。 */
+  | 'timeout'
+  /** 还没发出去就没了:provider/model 解析不出来,或鉴权拿不到。 */
+  | 'unresolved'
+  /** 用户喊停,这一轮作废。 */
+  | 'aborted'
+  /** 调用抛异常。 */
+  | 'error'
+
+const SILENT_VERDICT: CollabWillingnessVerdict = {
+  respond: false,
+  react: null,
+  outcome: 'unparsable',
+}
 
 /**
  * The emoji half of the reply. Off-palette values are DROPPED rather than
@@ -214,9 +291,17 @@ export function parseWillingnessReply(
   const react = parseWillingnessReact(body)
 
   const keyed = /['"]?respond['"]?\s*[::=]\s*['"]?(true|false)\b(?!\s*[|｜/])/i.exec(body)
-  if (keyed) return { respond: keyed[1].toLowerCase() === 'true', react }
+  if (keyed) {
+    const respond = keyed[1].toLowerCase() === 'true'
+    return { respond, react, outcome: respond ? 'yes' : 'no' }
+  }
 
   const bare = body.replace(/[\s"'`「」。.,,!!]/g, '').toLowerCase()
-  if (bare === 'true') return { respond: true, react }
-  return { respond: false, react }
+  if (bare === 'true') return { respond: true, react, outcome: 'yes' }
+  // 裸 false 也算答过了 —— 它没按 JSON 格式,但意思是明确的,不该和"读不懂"混为一谈。
+  if (bare === 'false') return { respond: false, react, outcome: 'no' }
+  // 到这儿说明回复有内容却读不出结论:模型没按格式答。行为照旧是沉默(安全方向),
+  // 但账要记成 `unparsable` —— 满屋子的 unparsable 指向的是 prompt 或模型,
+  // 而满屋子的 `no` 指向的是这群人真的没话说。
+  return { respond: false, react, outcome: 'unparsable' }
 }

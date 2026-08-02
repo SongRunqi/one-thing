@@ -35,7 +35,7 @@ export interface VariablesSetRequest {
   scope?: VariableScope
   type?: VariableType
   description?: string
-  volatility?: 'static' | 'turn' | 'on-demand'
+  state?: boolean
 }
 
 export interface VariablesSetResponse {

@@ -125,7 +125,6 @@ export interface CoreAgentLoopPromptBuildInput<
   skills: CoreBuildPromptOptions['skills']
   workingDirectory?: string
   workingDirectoryRoots?: string[]
-  contextVariables?: string
   activeProject?: CoreBuildPromptOptions['activeProject']
   knownProjects?: CoreBuildPromptOptions['knownProjects']
   toolNames?: string[]
@@ -639,7 +638,6 @@ export function planAgentLoopPromptBuildOptions<
     skills: input.skills,
     workingDirectory: input.workingDirectory,
     workingDirectoryRoots: input.workingDirectoryRoots,
-    contextVariables: input.contextVariables,
     activeProject: input.activeProject,
     knownProjects: input.knownProjects,
     toolNames: input.toolNames,

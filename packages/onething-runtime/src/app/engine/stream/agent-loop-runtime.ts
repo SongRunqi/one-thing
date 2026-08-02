@@ -35,7 +35,6 @@ import { toJsonObject } from '@shared/json.js'
 import { buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import type { StreamContext } from './stream-processor.js'
 import { buildPrompt } from '../prompt/index.js'
-import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import { executeToolDirectly } from './tool-execution.js'
 import { compactSessionContext } from '../context-compact.js'
@@ -163,7 +162,6 @@ function createAgentLoopRuntimeAdapters(
         session: { kind: (session as { kind?: string } | undefined)?.kind },
       }).tools
     },
-    buildContextVariablesPromptText,
     buildProjectPromptVars: buildProjectDirsPromptVars,
     buildPrompt: (promptOptions: Parameters<typeof buildPrompt>[0]) => buildPrompt({
       ...promptOptions,

@@ -81,6 +81,8 @@ vi.mock('../../usage/index.js', () => ({
 }))
 
 vi.mock('../../store.js', () => ({
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
   updateSessionWorkingDirectory: vi.fn(),
   // P2-10: the coordinator registers a room-disposal listener at startup.
   onSessionsDeleted: () => () => {},
@@ -273,7 +275,7 @@ function bindFakeEngine(): void {
       }
       for (const toolCall of turn?.toolCalls ?? []) streamToolCall(toolCall.toolName ?? 'board')
       for (const say of turn?.says ?? []) {
-        streamToolCall('say')
+        streamToolCall('send_message')
         pushInto(roomSessionId, {
           role: 'assistant',
           agentId,
@@ -333,10 +335,12 @@ describe('W18 — 驱动改道', () => {
     // The prompt builder and the say executor both read the pointer written
     // here — it must be in place BEFORE the drive is emitted.
     expect(mocks.drives[0].roomSessionId).toBe(ROOM)
-    expect(mocks.drives[0].content).toContain('小李')
-    // The mechanical say contract rides every drive (真机: bare personas write
-    // prose instead of calling tools).
-    expect(mocks.drives[0].content).toContain('say')
+    // drive 只有数据:房间内容(+ 别处发生的事)。`<turn>` 指令块已整块删除
+    // (collab-turn-protocol-and-identity.md A.2 ②),机制只在 system prompt 说
+    // 一次 —— 每回合重复它是念经,而且占着 recency 最强的位置。
+    expect(mocks.drives[0].content).toContain('登录页什么时候能好')
+    expect(mocks.drives[0].content).not.toContain('<turn ')
+    expect(mocks.drives[0].content).not.toContain('send_message')
 
     const agentSession = sessionOf(FE_SESSION)
     expect(agentSession).toMatchObject({ kind: 'agent', agentId: 'fe', isArchived: true })

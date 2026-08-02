@@ -272,17 +272,14 @@ function closeSpace(): void {
 /* 下钻层的样式在 components/agents/AgentSpace.vue —— 那一层现在是共享件。 */
 
 /* 头像的「可点」提示(agent-space-workbench.md P3):静止态与今天完全一致,
-   hover 才长出一圈细环。三处头像共用同一句法。 */
-.member-mark-wrap.agent-open-target::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
+   hover 只垫一层软阴影的立体感 —— 不描色、不缩放(§3.6)。
+   四处头像共用同一句法。 */
+.member-mark-wrap.agent-open-target {
   border-radius: 50%;
-  border: 1px solid transparent;
-  transition: border-color 0.12s ease;
+  transition: box-shadow 0.16s ease;
 }
 
-.member-row:hover .member-mark-wrap.agent-open-target::after {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+.member-row:hover .member-mark-wrap.agent-open-target {
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 22%, transparent);
 }
 </style>

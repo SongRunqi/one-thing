@@ -61,9 +61,9 @@ describe('回合断路器 — 上限矩阵', () => {
     // MUTATION LOCK on the off-by-one. `>=` instead of `>` turns the cap into a
     // threshold and cuts the last legal call — a behaviour change wearing a
     // safety net's clothes (真机验收: 正常多 say 不能被误伤).
-    expect(run(calls(COLLAB_TURN_MAX_SAY_CALLS, 'say'))).toEqual([])
+    expect(run(calls(COLLAB_TURN_MAX_SAY_CALLS, 'send_message'))).toEqual([])
     expect(run([
-      ...calls(COLLAB_TURN_MAX_SAY_CALLS, 'say', 'say'),
+      ...calls(COLLAB_TURN_MAX_SAY_CALLS, 'send_message', 'send_message'),
       ...calls(COLLAB_TURN_MAX_TOOL_CALLS - COLLAB_TURN_MAX_SAY_CALLS, 'board', 'board'),
     ])).toEqual([])
   })
@@ -80,7 +80,7 @@ describe('回合断路器 — 上限矩阵', () => {
   })
 
   it('trips on the say PAST the say cap, before the total cap is anywhere near', () => {
-    const trips = run(calls(COLLAB_TURN_MAX_SAY_CALLS + 1, 'say'))
+    const trips = run(calls(COLLAB_TURN_MAX_SAY_CALLS + 1, 'send_message'))
 
     expect(trips).toEqual([{
       reason: 'say',
@@ -96,7 +96,7 @@ describe('回合断路器 — 上限矩阵', () => {
     // independent budgets.
     const says = COLLAB_TURN_MAX_SAY_CALLS
     const trips = run([
-      ...calls(says, 'say', 'say'),
+      ...calls(says, 'send_message', 'send_message'),
       ...calls(COLLAB_TURN_MAX_TOOL_CALLS - says + 1, 'board', 'board'),
     ], { maxSayCalls: 0 })
 
@@ -121,7 +121,7 @@ describe('回合断路器 — 计数口径', () => {
     // `tool:input-start` fires per streamed call and would double-count on
     // providers that stream arguments; the terminals fire once per turn.
     const noise: CollabTurnBreakerSignal[] = [
-      { type: 'tool:input-start', toolCallId: 'x', toolName: 'say' },
+      { type: 'tool:input-start', toolCallId: 'x', toolName: 'send_message' },
       { type: 'tool:input-end', toolCallId: 'x' },
       { type: 'stream:start' },
       { type: 'text:delta' },
@@ -136,7 +136,7 @@ describe('回合断路器 — 计数口径', () => {
 
   it('dedupes by toolCallId — a repeated execution-start is one call', () => {
     const breaker = createCollabTurnCircuitBreaker()
-    for (let index = 0; index < 30; index++) breaker.observe(exec('same-call', 'say'))
+    for (let index = 0; index < 30; index++) breaker.observe(exec('same-call', 'send_message'))
 
     expect(breaker.toolCalls).toBe(1)
     expect(breaker.sayCalls).toBe(1)
@@ -145,9 +145,9 @@ describe('回合断路器 — 计数口径', () => {
 
   it('reads the tool name off every shape the event can carry', () => {
     const breaker = createCollabTurnCircuitBreaker()
-    breaker.observe({ type: 'tool:execution-start', toolCallId: 'a', toolName: 'say' })
-    breaker.observe({ type: 'tool:execution-start', toolCall: { id: 'b', toolId: 'say' } })
-    breaker.observe({ type: 'tool:execution-start', toolCall: { id: 'c', name: 'say' } })
+    breaker.observe({ type: 'tool:execution-start', toolCallId: 'a', toolName: 'send_message' })
+    breaker.observe({ type: 'tool:execution-start', toolCall: { id: 'b', toolId: 'send_message' } })
+    breaker.observe({ type: 'tool:execution-start', toolCall: { id: 'c', name: 'send_message' } })
     breaker.observe({ type: 'tool:execution-start', toolCallId: 'd', toolName: 'board' })
 
     expect(breaker.sayCalls).toBe(3)
@@ -160,8 +160,8 @@ describe('回合断路器 — 计数口径', () => {
     // meant an emitter that stopped stamping ids would silently switch the
     // breaker off, exactly when the loop it guards against is running.
     const breaker = createCollabTurnCircuitBreaker()
-    breaker.observe({ type: 'tool:execution-start', toolName: 'say' })
-    breaker.observe({ type: 'tool:execution-start', toolName: 'say' })
+    breaker.observe({ type: 'tool:execution-start', toolName: 'send_message' })
+    breaker.observe({ type: 'tool:execution-start', toolName: 'send_message' })
 
     expect(breaker.toolCalls).toBe(2)
     expect(breaker.sayCalls).toBe(2)
@@ -183,8 +183,8 @@ describe('回合断路器 — 计数口径', () => {
   })
 
   it('honours caller-supplied caps (the constants are defaults, not law)', () => {
-    expect(run(calls(3, 'say'), { maxSayCalls: 2 })).toHaveLength(1)
-    expect(run(calls(2, 'say'), { maxSayCalls: 2 })).toEqual([])
+    expect(run(calls(3, 'send_message'), { maxSayCalls: 2 })).toHaveLength(1)
+    expect(run(calls(2, 'send_message'), { maxSayCalls: 2 })).toEqual([])
   })
 })
 
@@ -202,7 +202,7 @@ describe('回合断路器 — 房间可配置 (0 = 关闭)', () => {
     // The whole point of the setting: a 0 that meant "cap of zero" would cut
     // every turn on its first tool call — the opposite of what the user asked
     // for, and the same convention 日预算/maxChain already use.
-    expect(run(calls(50, 'say'), { maxSayCalls: 0, maxToolCalls: 0 })).toEqual([])
+    expect(run(calls(50, 'send_message'), { maxSayCalls: 0, maxToolCalls: 0 })).toEqual([])
     expect(resolveCollabTurnBreakerLimits({ maxToolCalls: 0, maxSayCalls: 0 })).toEqual({
       maxToolCalls: Infinity,
       maxSayCalls: Infinity,
@@ -223,8 +223,8 @@ describe('回合断路器 — 房间可配置 (0 = 关闭)', () => {
   })
 
   it('honours a raised cap — the point of making it a setting', () => {
-    expect(run(calls(30, 'say'), { maxSayCalls: 50, maxToolCalls: 100 })).toEqual([])
-    expect(run(calls(51, 'say'), { maxSayCalls: 50, maxToolCalls: 100 })).toHaveLength(1)
+    expect(run(calls(30, 'send_message'), { maxSayCalls: 50, maxToolCalls: 100 })).toEqual([])
+    expect(run(calls(51, 'send_message'), { maxSayCalls: 50, maxToolCalls: 100 })).toHaveLength(1)
   })
 
   it('treats garbage and negatives as off rather than as a zero cap', () => {
@@ -236,7 +236,7 @@ describe('回合断路器 — 房间可配置 (0 = 关闭)', () => {
 
   it('floors a fractional cap instead of comparing against a fraction', () => {
     expect(resolveCollabTurnBreakerLimits({ maxSayCalls: 2.9 })).toMatchObject({ maxSayCalls: 2 })
-    expect(run(calls(3, 'say'), { maxSayCalls: 2.9 })).toHaveLength(1)
+    expect(run(calls(3, 'send_message'), { maxSayCalls: 2.9 })).toHaveLength(1)
   })
 })
 
@@ -255,5 +255,55 @@ describe('断路器留痕', () => {
     })
     expect(totalNote).toContain('13')
     expect(totalNote).toContain('工具调用')
+  })
+})
+
+/**
+ * 合并之后的计数口径(collab-send-channel-and-wake.md §4)。
+ *
+ * `dm` 并进 `send_message` 之前,私聊是另一个工具名:它吃 total 那道闸,从不进
+ * 「发言」那一格。合并只该换名字,不该顺手把"给八个人各发一张牌"判成刷屏 ——
+ * 那正是这个方案的主用例(狼人杀发牌)。
+ */
+describe('私聊档不计进「发言」那一格', () => {
+  function dmExec(toolCallId: string): CollabTurnBreakerSignal {
+    return {
+      type: 'tool:execution-start',
+      toolCallId,
+      toolName: 'send_message',
+      args: { content: '你的身份是…', to: `玩家${toolCallId}` },
+    }
+  }
+
+  it('八次发牌不撞 say 闸,但总数照计', () => {
+    const breaker = createCollabTurnCircuitBreaker({ maxSayCalls: 3, maxToolCalls: 40 })
+    for (let index = 0; index < 8; index += 1) {
+      expect(breaker.observe(dmExec(`p-${index}`))).toBeNull()
+    }
+    expect(breaker.sayCalls).toBe(0)
+    expect(breaker.toolCalls).toBe(8)
+  })
+
+  it('群发送照计 —— 闸本身没有被削弱', () => {
+    expect(run(calls(4, 'send_message'), { maxSayCalls: 3 })).toHaveLength(1)
+  })
+
+  it('显式 channel:"dm" 与"有 to"同解', () => {
+    const breaker = createCollabTurnCircuitBreaker({ maxSayCalls: 1 })
+    breaker.observe({
+      type: 'tool:execution-start',
+      toolCallId: 'c-1',
+      toolName: 'send_message',
+      args: { content: '一', to: '阿明', channel: 'dm' },
+    })
+    // 参数只在 toolCall.arguments 上的那种形状也认。
+    breaker.observe({
+      type: 'tool:execution-start',
+      toolCallId: 'c-2',
+      toolName: 'send_message',
+      toolCall: { id: 'c-2', toolId: 'send_message', arguments: { content: '二', to: '阿明' } },
+    })
+    expect(breaker.sayCalls).toBe(0)
+    expect(breaker.toolCalls).toBe(2)
   })
 })

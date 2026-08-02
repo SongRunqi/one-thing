@@ -22,7 +22,7 @@ import {
 import { resolveProviderApiKey } from "../providers/env.js";
 import * as modelRegistry from "../providers/model-registry.js";
 import { resolvePromptReferences } from "../prompts/resolver.js";
-import { buildVariablePromptSections } from "../variables/index.js";
+import { buildStateVariablesPromptText } from "../variables/index.js";
 import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";
 import { executeMessageStream } from "./stream/stream-executor.js";
@@ -145,7 +145,6 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 					typeof shouldSkipAutoCompactForProviderUsageMismatch
 				>[0],
 			),
-		buildTurnContextText: async (sessionId) =>
-			(await buildVariablePromptSections(sessionId)).turnText,
+		buildTurnContextText: (sessionId) => buildStateVariablesPromptText(sessionId),
 	}) as unknown as MainStreamEngineRuntime;
 }

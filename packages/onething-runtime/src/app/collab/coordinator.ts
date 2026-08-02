@@ -18,6 +18,7 @@
 import {
   COLLAB_SYSTEM_SOURCE_MEMBERSHIP,
   buildCollabMembershipLines,
+  collabAgentSessionId,
   isCollabDriveMessage,
   type CollabBoard,
   type CollabBoardAction,
@@ -29,24 +30,38 @@ import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
 import {
   applyBoardAction,
+  clearCollabBoard,
   forgetCollabBoardRoom,
   shutdownCollabBoardBroadcasts,
 } from './board-store.js'
 import { emitCollabTyping } from './typing-observer.js'
 import { isRoomOverBudget } from './budget.js'
-import { configureCollabDriveGuard } from './drive-guard.js'
 import {
+  broadcastCollabCoordinator,
+  buildCollabCoordinatorState,
+  forgetCollabInspector,
+  shutdownCollabInspector,
+} from './inspector.js'
+import { configureCollabDriveGuard } from './drive-guard.js'
+import { resetCollabSeenCursor } from './agent-session.js'
+import { forgetCollabDigests } from './digest-store.js'
+import { clearCollabWakeFollowups } from './wake-followup.js'
+import {
+  bumpFloorEpoch,
   clearRoomRuntimes,
   clearRoomTimers,
+  currentFloorEpoch,
   deleteRoomRuntime,
   isRoom,
   removeCollabRoomDirectory,
+  isAgentSpeaking,
   peekRoomRuntime,
   persistRoomState,
   postSystemLine,
   postTaskSystemLine,
   roomChannel,
   roomRuntime,
+  type RoomRuntime,
 } from './room-runtime.js'
 import {
   abortRoomTurn,
@@ -82,6 +97,15 @@ export {
 } from './budget.js'
 export { abortRoomTurn } from './turn.js'
 
+/**
+ * 协调器状态条的冷启动读取(docs/design/collab-coordinator-inspector.md §5)。
+ *
+ * 实时更新走 `collab:coordinator-changed` 会话事件;这一扇门只服务"面板刚打开"。
+ */
+export function getCollabCoordinatorState(roomSessionId: string) {
+  return buildCollabCoordinatorState(roomSessionId)
+}
+
 let initialized = false
 let disposers: Array<() => void> = []
 
@@ -98,7 +122,11 @@ export function initializeCollabCoordinator(): void {
     postTaskSystemLine,
     enqueueRoomActivation(roomSessionId, agentId, reason, driveLabel) {
       const runtime = roomRuntime(roomSessionId)
-      enqueue(roomSessionId, runtime, [{ agentId, reason, driveLabel }], undefined)
+      // conversational: false —— 工作流的汇报不盖 floor 世代号。用户喊停停的是
+      // 对话,不是在飞的卡:一张交付了的卡仍然要有人验收。
+      enqueue(roomSessionId, runtime, [{ agentId, reason, driveLabel }], undefined, {
+        conversational: false,
+      })
     },
     waitForEngineBound,
     waitForTurn: waitForRoomTurn,
@@ -116,15 +144,14 @@ export function initializeCollabCoordinator(): void {
       if (!isRoom(sessionId)) return
       void handleRoomUserMessage(sessionId, message)
     }, 'collab-coordinator'),
-    bus.onAnySession('steering:consumed', envelope => {
-      const sessionId = envelope.sessionId
-      if (!isRoom(sessionId)) return
-      const runtime = roomRuntime(sessionId)
-      runtime.state.chainCount = 0
-      runtime.chainNoticePosted = false
-      persistRoomState(sessionId, runtime)
-      if (runtime.queue.length > 0) void processQueue(sessionId)
-    }, 'collab-coordinator'),
+    // 这里曾经还有第二个订阅:`steering:consumed` → 链闸清零。它从 W18 起就是
+    // 死的 —— 回合搬进执行会话之后,那个事件发在 kind='agent' 的会话上,而订阅
+    // 第一行就是 `if (!isRoom(sessionId)) return`。房间从来没有收到过它。
+    //
+    // 没有把它接对,而是删掉:接对之后它做的每一件事,`handleRoomUserMessage`
+    // 在收到那条用户消息的第一时间就已经做完了(链闸清零 + 踢队列),包括 steer
+    // 注入的那一条 —— 注入的正是它正在处理的这条消息。留着就是两处做同一件事,
+    // 而这类重复的下场在这个仓库里已经有过案底(R3 的六份 source 判定)。
   )
 
   // A deleted room takes its runtime, its board machinery and its directory
@@ -156,11 +183,15 @@ export function shutdownCollabCoordinator(): void {
   configureCollabDriveGuard(null)
   shutdownCollabWorkers()
   shutdownCollabBoardBroadcasts()
+  shutdownCollabInspector()
   for (const dispose of disposers) {
     try { dispose() } catch { /* noop */ }
   }
   disposers = []
   clearRoomTimers()
+  // 还在等对方读完的跨房唤醒(collab-send-channel-and-wake.md §3.2):订阅与
+  // 120s 定时器都得跟着收摊,否则它会在协调器已经不存在之后往房间里发一条 poke。
+  clearCollabWakeFollowups()
   clearRoomRuntimes()
   clearAgentSessionLocks()
   initialized = false
@@ -180,8 +211,179 @@ function disposeCollabRoom(roomSessionId: string): void {
   abortRoomTurn(roomSessionId)
   forgetCollabRoomWork(roomSessionId)
   forgetCollabBoardRoom(roomSessionId)
+  forgetCollabInspector(roomSessionId)
   deleteRoomRuntime(roomSessionId)
   removeCollabRoomDirectory(roomSessionId)
+}
+
+export interface CollabRoomClearHistoryResult {
+  success: boolean
+  error?: string
+  /** 清掉的房间消息条数(= 留档文件里的那一份)。 */
+  clearedMessageCount?: number
+  /** 一并清空的成员执行会话数。 */
+  clearedSessionCount?: number
+  /** 连带清空的成员间私聊房数(仅当 includeMemberDms)。 */
+  clearedDmRoomCount?: number
+  /** 一并清掉的看板卡片数。 */
+  clearedTaskCount?: number
+}
+
+/**
+ * 清场:与「喊停」同款,只是这一趟要清得更干净(队列整个丢掉,而不是让它自然
+ * 过期)。**幂等**——清空的等待循环每一圈都跑一遍它,好把等待期间新冒出来的
+ * 回合和激活一并按住。
+ */
+function stopRoomFloor(roomSessionId: string, runtime: RoomRuntime): void {
+  for (const round of runtime.judgements) round.controller.abort()
+  runtime.judgements.clear()
+  runtime.planAbort?.abort()
+  abortRoomTurn(roomSessionId)
+  for (const record of runtime.queue) record.stage = 'superseded'
+  runtime.queue.length = 0
+  // 看板执行也是"在跑的东西"(2026-08-02):卡片这一趟要被清掉,留一条还在跑的
+  // 工作台会话等于让一个没有卡的执行接着往下做,收尾时还会往刚清空的房里贴行。
+  forgetCollabRoomWork(roomSessionId)
+  // **不清 inFlight**(四审 A-2):它是静默等待的眼睛 —— 这里清掉它,下面那个
+  // "inFlight 空了没"的判据就被自己清成永真,所有已出队、还卡在预算读取/引擎
+  // 绑定/agent 锁上的激活对清空隐形。这些记录由各自泵任务的 finally 摘除;
+  // 世代号已换,它们走到 emitDrive 前的最后一道门会自行退场(turn.ts)。
+  delete runtime.state.plan
+}
+
+/**
+ * 清空这间房的对话记忆(docs/design/collab-room-clear-and-mention-all.md B)。
+ *
+ * 「对话记忆」散在七处,漏一处就留一个幽灵:房间转录、每位成员执行会话的转录
+ * 与已读游标、`state.json`、`digests.json`、`board.json` + `activity.jsonl`、
+ * 进程内运行时、渲染层。**次序是强制的**:先停(否则在飞回合的收尾会往刚清空
+ * 的会话里写 harvest)、后删、再播。
+ *
+ * 看板一并清(2026-08-02 真机:清完消息,卡片还挂在那儿)。留着它不是"保守",
+ * 是自相矛盾 —— `getCollabSelfTaskFacts` 会把 doing/blocked 卡片当既成事实注入
+ * 提示词,于是清空后的第一个回合里,同事张口就在谈一段谁都读不到的工作。
+ *
+ * 刻意不动:房间配置、成员本体、`budgetSpentUSD` / `budgetNoticeDay`
+ * (钱花了就是花了,预算闸照常),以及成员之间的私聊房。
+ */
+export async function clearCollabRoomHistory(
+  roomSessionId: string,
+  options: { includeMemberDms?: boolean } = {},
+): Promise<CollabRoomClearHistoryResult> {
+  const session = store.getSession(roomSessionId)
+  if (!session || session.kind !== 'room' || !session.room) {
+    return { success: false, error: 'Not a room session' }
+  }
+
+  // ① 先停。世代号只 +1 一次(它是"用户喊停了这一段"的记号,不是计数器);
+  //    清场本身要反复跑,因为等待期间可能还有回合从 agent 锁上醒过来。
+  const runtime = roomRuntime(roomSessionId)
+  bumpFloorEpoch(runtime)
+  for (let attempt = 0; attempt < QUIESCE_ATTEMPTS; attempt++) {
+    stopRoomFloor(roomSessionId, runtime)
+    if (runtime.activeTurns.size === 0 && runtime.inFlight.size === 0) break
+    await new Promise(resolve => setTimeout(resolve, QUIESCE_INTERVAL_MS))
+  }
+  // 等待耗尽不再无声放行(四审 A-3):一个长工具回合能活过 3s,放行的下场是
+  // "清空成功"之后房间又冒出消息。此刻**什么都还没删**,失败是干净的 —— 用户
+  // 稍后重试即可,比一半旧一半新的房间体面得多。
+  if (runtime.activeTurns.size > 0 || runtime.inFlight.size > 0) {
+    return { success: false, error: '仍有回合在收尾,请稍后重试' }
+  }
+
+  // ② 再删。成员取「在册 ∪ 曾在册」:一位被移出的同事,它的执行会话里同样躺着
+  //    这间房的历史,而它随时可能被拉回来 —— 那时旧记忆会原地复活。
+  const memberAgentIds = [...new Set([
+    ...(session.room.memberAgentIds ?? []),
+    ...(session.room.formerMembers ?? []).map(entry => entry.agentId),
+  ])]
+  // 看板与它的审计轨**排在转录前面**:上面 abort 掉的执行会走一趟收尾,而收尾
+  // 的第一句是「这张卡还在不在」——卡先没了,它就一行都贴不出来;反过来先清转录,
+  // 那行说明会落进一间已经清空的房。
+  const { clearedTaskCount } = await clearCollabBoard(roomSessionId)
+  const room = await store.clearSessionMessages(roomSessionId)
+  let clearedSessionCount = 0
+  for (const agentId of memberAgentIds) {
+    // **只清按房 scoped 的执行会话**(四审 A-4)。全局 legacy 会话
+    // (`agent-exec-<agentId>`,team-v2 之前的形状)是该 agent **所有房间**共用的:
+    // 清房 A 会抹掉它在房 B/C 的转录与 W23 幂等台账,旧房 boot 时已应答的消息
+    // 会被整批重放。legacy 里的旧内容进不了新回合的上下文(投影与游标只读
+    // scoped 会话),清它对记忆卫生零收益,只有跨房代价。
+    const execSessionId = collabAgentSessionId(agentId, roomSessionId)
+    if (!execSessionId || !store.getSession(execSessionId)) continue
+    const cleared = await store.clearSessionMessages(execSessionId)
+    if (!cleared.cleared) continue
+    clearedSessionCount += 1
+    resetCollabSeenCursor(execSessionId)
+    broadcastClearedTranscript(execSessionId)
+  }
+
+  // state 回到默认形状,**唯独 floorEpoch 留着刚 bump 出来的那一代**:归零的话,
+  // 一条在飞回合收尾时级联出来的激活会盖上 0 号世代、被判成"当前的",于是它开口
+  // 说的第一句话落进一间刚被清空的房 —— 这正是上面 bump 要阻止的事。
+  runtime.state = {
+    version: 1,
+    chainCount: 0,
+    activations: [],
+    floorEpoch: currentFloorEpoch(runtime),
+  }
+  runtime.chainNoticePosted = false
+  persistRoomState(roomSessionId, runtime)
+  forgetCollabDigests(roomSessionId)
+  // 「刚才」清零。表项被删之后活房间会按需重建 —— 重建出来的正是一份空的。
+  forgetCollabInspector(roomSessionId)
+
+  // ③ 再播。
+  broadcastClearedTranscript(roomSessionId)
+  broadcastCollabCoordinator(roomSessionId)
+
+  // ④ 连带成员间私聊房(可选,2026-08-02 真机诉求:狼人杀发牌记录全在私聊里,
+  //    只清群房等于没清干净)。pair 房是**跨群共享**的(Iris⇄Bram 只有一间),
+  //    所以这是显式选项而不是默认行为;递归调用自身走完全同一套停-删-播,
+  //    `includeMemberDms: false` 封住递归(pair 房的成员对就是它自己)。
+  let clearedDmRoomCount = 0
+  let clearedDmTaskCount = 0
+  if (options.includeMemberDms) {
+    const memberSet = new Set(memberAgentIds)
+    for (const meta of store.getSessionsList() as Array<{ id: string; kind?: string }>) {
+      if (meta.kind !== 'room' || meta.id === roomSessionId) continue
+      const candidate = store.getSession(meta.id)
+      if (candidate?.kind !== 'room' || candidate.room?.dm !== true) continue
+      const pair = candidate.room?.memberAgentIds ?? []
+      if (pair.length !== 2 || !pair.every(agentId => memberSet.has(agentId))) continue
+      const dmResult = await clearCollabRoomHistory(meta.id, { includeMemberDms: false })
+      if (!dmResult.success) continue
+      clearedDmRoomCount += 1
+      clearedSessionCount += dmResult.clearedSessionCount ?? 0
+      clearedDmTaskCount += dmResult.clearedTaskCount ?? 0
+    }
+  }
+
+  return {
+    success: true,
+    clearedMessageCount: room.clearedCount,
+    clearedSessionCount,
+    clearedTaskCount: clearedTaskCount + clearedDmTaskCount,
+    ...(options.includeMemberDms ? { clearedDmRoomCount } : {}),
+  }
+}
+
+/** 清场后最多等多久(次数 × 间隔)让在飞回合落地。 */
+const QUIESCE_ATTEMPTS = 60
+const QUIESCE_INTERVAL_MS = 50
+
+/**
+ * 让渲染层把这条会话的消息列表整体换成空的。
+ *
+ * 复用 `messages:replaced`(编辑重发的截断走的就是它),而不是新造一个
+ * 「已清空」事件:渲染层那侧已经有一条处理完备的路径(重建 contentParts、
+ * 重置滚动锚点),新事件类型意味着把同一件事再实现一遍。
+ */
+function broadcastClearedTranscript(sessionId: string): void {
+  void getEventBus().emit(sessionId, {
+    type: 'messages:replaced',
+    messages: [],
+  } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
 }
 
 /** Room-wide pause switch (总闸): freezes activations AND all work streams. */
@@ -213,6 +415,9 @@ export function setCollabRoomFrozen(roomSessionId: string, frozen: boolean): boo
     roomRuntime(roomSessionId).frozenNoticePosted = false
     resumeRoomWork(roomSessionId)
   }
+  // 暂停/恢复是状态条上最显眼的一格(常驻条直接换成「已暂停 · 恢复」),不推的话
+  // 面板要等下一次调度才追上一个用户刚刚亲手拨过的开关。
+  broadcastCollabCoordinator(roomSessionId)
   return updated
 }
 
@@ -248,6 +453,7 @@ export async function applyUserCollabBoardAction(
 }
 
 const PERMISSION_MODES: readonly PermissionMode[] = ['normal', 'auto-accept-edits', 'dangerously-allow-all']
+const RESPONSE_MODES: ReadonlyArray<'auto' | 'parallel' | 'serial'> = ['auto', 'parallel', 'serial']
 
 /** Room settings patch (W6). Absent field = unchanged; pmAgentId null = clear. */
 export interface CollabRoomConfigPatch {
@@ -255,6 +461,12 @@ export interface CollabRoomConfigPatch {
   memberAgentIds?: string[]
   pmAgentId?: string | null
   permissionMode?: PermissionMode
+  /** 响应模式(collab-speaking-order.md)。 */
+  responseMode?: 'auto' | 'parallel' | 'serial'
+  /** 接力次序;`[]` = 清空(退回名册序)。 */
+  speakOrder?: string[]
+  /** 一趟接力最多几圈;0 = 不限。 */
+  relayLoops?: number
 }
 
 export interface CollabRoomConfigResult {
@@ -326,6 +538,43 @@ export function setCollabRoomConfig(
     if (!nextName) return { success: false, error: 'Room name cannot be empty' }
   }
 
+  // 响应模式三件套(collab-speaking-order.md §2)。校验只管形状,**不校验 speakOrder
+  // 里的 id 是否在册** —— 列表里留着一个已离房的人是合法数据(§3④:读时忽略,
+  // 他被拉回来时次序还在),在这里拒掉等于逼用户每次改名册都回来清一遍列表。
+  if (patch.responseMode !== undefined && !RESPONSE_MODES.includes(patch.responseMode)) {
+    return { success: false, error: `Invalid response mode: ${patch.responseMode}` }
+  }
+  let nextSpeakOrder: string[] | undefined
+  if (patch.speakOrder !== undefined) {
+    if (!Array.isArray(patch.speakOrder)) {
+      return { success: false, error: 'speakOrder must be an array' }
+    }
+    nextSpeakOrder = [...new Set(patch.speakOrder.filter(id => typeof id === 'string' && id.length > 0))]
+  }
+  if (
+    patch.relayLoops !== undefined
+    && (!Number.isFinite(patch.relayLoops) || patch.relayLoops < 0)
+  ) {
+    return { success: false, error: 'relayLoops must be a number >= 0' }
+  }
+
+  const previousResponseMode = session.room.responseMode
+  const nextResponseMode = patch.responseMode ?? previousResponseMode
+  const previousRelayLoops = session.room.relayLoops
+  const nextRelayLoops = patch.relayLoops !== undefined
+    ? Math.floor(patch.relayLoops)
+    : previousRelayLoops
+  const previousSpeakOrder = session.room.speakOrder ?? []
+  const effectiveSpeakOrder = nextSpeakOrder ?? previousSpeakOrder
+  // 名册相等是**集合**相等(换个顺序不算改),次序表相等是**序列**相等 —— 换个
+  // 顺序正是这张表存在的全部意义。两处不能共用一个判据。
+  const speakOrderChanged = nextSpeakOrder !== undefined
+    && (nextSpeakOrder.length !== previousSpeakOrder.length
+      || nextSpeakOrder.some((agentId, index) => previousSpeakOrder[index] !== agentId))
+  const relayChanged = nextResponseMode !== previousResponseMode
+    || nextRelayLoops !== previousRelayLoops
+    || speakOrderChanged
+
   // Roster equality is SET equality: re-sending the same members in another
   // order is not a membership change and must not post a 群公告 (or rewrite
   // the room). Only joins and departures count.
@@ -334,13 +583,57 @@ export function setCollabRoomConfig(
       || nextMembers.some(id => !previousMembers.includes(id)))
   const pmChanged = nextPm !== previousPm
 
-  if (membersChanged || pmChanged) {
+  if (membersChanged || pmChanged || relayChanged) {
     const room = { ...session.room, memberAgentIds: [...nextMembers] }
+    /**
+     * 被移出的人留一条 `{agentId, removedAt}`(collab-history-search.md §3)。
+     *
+     * 历史检索的授权判据靠它回答「这位同事能看到这间房到什么时候」——当前成员
+     * 全部可见,被移出的只到这一刻为止。**只追加不删除**:同一个人移出→拉回→
+     * 再移出会留下多条,读时取最后一次(`collabRoomVisibleUntil`)。
+     *
+     * 写在这里而不是下面那个发系统行的分支里:`room` 这个对象只在这一处被组装
+     * 与持久化,判据也只有 `membersChanged` 这一个。同一件事分两处判定 = 迟早
+     * 分家 —— 这个仓库刚为同类问题付过两天代价。
+     */
+    if (membersChanged) {
+      const removed = previousMembers.filter(id => !nextMembers.includes(id))
+      if (removed.length > 0) {
+        const removedAt = Date.now()
+        room.formerMembers = [
+          ...(session.room.formerMembers ?? []),
+          ...removed.map(agentId => ({ agentId, removedAt })),
+        ]
+      }
+    }
     if (nextPm) room.pmAgentId = nextPm
     else delete room.pmAgentId
+    if (nextResponseMode) room.responseMode = nextResponseMode
+    else delete room.responseMode
+    if (effectiveSpeakOrder.length > 0) room.speakOrder = [...effectiveSpeakOrder]
+    else delete room.speakOrder
+    if (typeof nextRelayLoops === 'number') room.relayLoops = nextRelayLoops
+    else delete room.relayLoops
     if (!store.updateSessionCollab(roomSessionId, { room })) {
       return { success: false, error: 'Failed to update room' }
     }
+  }
+
+  // 换了模式就是换了一趟:旧编排对新模式毫无意义(审查 #20)。不清的话,模式
+  // 一旦切成 'parallel',`discardCollabPlan` 的唯一调用点(编排分支)就再也
+  // 进不去,残留的 `state.plan` 会让 `turn.ts` 的级联门永久判成"有编排在飞",
+  // 于是这间房的 @ 级联与意愿判定被静默关死。
+  if (nextResponseMode !== previousResponseMode) {
+    const runtime = roomRuntime(roomSessionId)
+    delete runtime.state.plan
+    // 队里那批还没起跑的旧编排激活一并清掉(2026-08-02 三审):plan 没了之后
+    // 它们会以普通回合的语义跑掉 —— 一批"轮到发言"的人在用户刚切走顺序模式的
+    // 那一刻开口,读起来就像设置没生效。已起跑的照常跑完,与喊停同一口径。
+    for (const record of runtime.queue) {
+      if (record.reason === 'relay') record.stage = 'superseded'
+    }
+    runtime.queue = runtime.queue.filter(entry => entry.reason !== 'relay')
+    persistRoomState(roomSessionId, runtime)
   }
   if (patch.permissionMode !== undefined && patch.permissionMode !== session.permissionMode) {
     store.updateSessionPermissionMode(roomSessionId, patch.permissionMode)
@@ -365,6 +658,8 @@ export function setCollabRoomConfig(
     }
     if (membersChanged) clearTypingForNonMembers(roomSessionId, nextMembers)
   }
+  // 模式、次序表、名册都改状态条的样子(接力那一段整段出现或消失)。
+  broadcastCollabCoordinator(roomSessionId)
   return { success: true }
 }
 
@@ -376,10 +671,11 @@ export function setCollabRoomConfig(
 function clearTypingForNonMembers(roomSessionId: string, members: readonly string[]): void {
   const runtime = peekRoomRuntime(roomSessionId)
   if (!runtime) return
-  runtime.queue.forEach((record, index) => {
-    if (index === 0 && runtime.running) return
+  // 并行之后"正在说话的"是一组,判据因此从"队首"换成 activeTurns。
+  for (const record of runtime.queue) {
+    if (isAgentSpeaking(runtime, record.agentId)) continue
     if (!members.includes(record.agentId)) emitCollabTyping(roomSessionId, record.agentId, false)
-  })
+  }
 }
 
 /** Soft reminder line for long-pending worker permission asks (D8 30min). */
@@ -396,6 +692,7 @@ export function setCollabRoomBudgets(
     maxChain?: number
     maxTurnToolCalls?: number
     maxTurnSayCalls?: number
+    maxConcurrentTurns?: number
   },
 ): boolean {
   const session = store.getSession(roomSessionId)
@@ -423,6 +720,14 @@ export function setCollabRoomBudgets(
   ) {
     next.maxTurnSayCalls = Math.floor(budgets.maxTurnSayCalls)
   }
+  // 同时发言上限(并行化)。0 = 不限,与本族其它闸同一套约定;下一次发牌现取。
+  if (
+    budgets.maxConcurrentTurns !== undefined
+    && Number.isFinite(budgets.maxConcurrentTurns)
+    && budgets.maxConcurrentTurns >= 0
+  ) {
+    next.maxConcurrentTurns = Math.floor(budgets.maxConcurrentTurns)
+  }
   const updated = store.updateSessionCollab(roomSessionId, {
     room: { ...session.room, budgets: next },
   })
@@ -433,6 +738,7 @@ export function setCollabRoomBudgets(
     runtime.chainNoticePosted = false
     // 新额度可能解除封锁 — 立刻重试排队中的激活与任务。
     if (runtime.queue.length > 0) void processQueue(roomSessionId)
+    broadcastCollabCoordinator(roomSessionId)
   }
   return updated
 }

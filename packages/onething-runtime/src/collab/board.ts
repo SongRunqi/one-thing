@@ -8,6 +8,8 @@
  * report + review, review→todo → 打回 re-execution).
  */
 
+import { formatCollabAgentHandle } from './handles.js'
+
 export type CollabTaskStatus = 'backlog' | 'todo' | 'doing' | 'review' | 'done' | 'blocked'
 
 export const COLLAB_TASK_STATUSES: readonly CollabTaskStatus[] =
@@ -499,7 +501,13 @@ export function renderCollabAgentRef(
   self?: CollabBoardSelf,
 ): string {
   const name = agentName(agentId)
-  if (!self || self.agentId !== agentId) return name
+  // 句柄(collab-agent-handle.md §2.3):看板摘要只进模型(工具回执、worker 简报),
+  // 房间里一个字都不显示 —— 所以这里是安全的拼接点。它同时是 assign 要填的那个
+  // 值:摘要里读到 `@小李#3f9c1e2a`,回头 assignee 就照抄这一串。
+  if (!self || self.agentId !== agentId) return formatCollabAgentHandle(agentId, name)
+  // 自己那一格**不**带句柄:句柄的用途是指认别人(assign/mentions/dm),没有人
+  // 需要 @ 自己。而「你(小研)」这个第一人称形状本身是 W10 事故的修复产物,
+  // 往里塞一串十六进制只会把它读回第三人称。
   const selfName = (self.name ?? name ?? '').trim()
   return selfName ? `你(${selfName})` : '你'
 }

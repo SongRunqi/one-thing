@@ -471,6 +471,13 @@ export const IPC_CHANNELS = {
 	// Push main→renderer: single coalesced tab-state batch
 	BROWSER_TABS_CHANGED: "browser:tabs-changed",
 
+	// 系统通知与 dock 徽标(agent-dm-user.md §4.2)。判定在 renderer(焦点/可见性/
+	// 水位都在那边),这三条只负责执行与回传点击。
+	NOTIFY_SHOW: "notify:show",
+	NOTIFY_BADGE: "notify:set-badge",
+	// Push main→renderer:用户点了通知,带上要打开的会话。
+	NOTIFY_ACTIVATE: "notify:activate",
+
 	// Collab (multi-agent rooms) — board snapshot + room pause switch;
 	// board mutations flow through the board tool / coordinator, updates
 	// arrive as 'collab:board-changed' session events on the room session.
@@ -482,7 +489,13 @@ export const IPC_CHANNELS = {
 	COLLAB_ROOM_SET_FROZEN: "collab:room-set-frozen",
 	COLLAB_ROOM_SET_BUDGETS: "collab:room-set-budgets",
 	COLLAB_ROOM_UPDATE: "collab:room-update",
+	// 清空一间房的对话记忆(房间转录 + 每位成员的执行会话与已读游标 + 协调器
+	// 状态/摘要/运行时)。看板、房间设置、已花预算一概不动。
+	COLLAB_ROOM_CLEAR_HISTORY: "collab:room-clear-history",
 	COLLAB_ROOM_SPEND_GET: "collab:room-spend-get",
+	// 协调器状态条的冷启动读取;实时更新走 'collab:coordinator-changed' 会话事件
+	// (与看板同一条链路)。
+	COLLAB_COORDINATOR_GET: "collab:coordinator-get",
 	COLLAB_MESSAGE_REACT: "collab:message-react",
 	// 用户 ↔ agent 托管私聊房的 get-or-create(docs/design/agent-im-dm.md D1)。
 	// 幂等:id 从 agentId 派生,同一个 agent 永远同一间房。

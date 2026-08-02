@@ -146,7 +146,6 @@ const mocks = vi.hoisted(() => ({
 	setInitContext: vi.fn(),
 	executeToolDirectly: vi.fn(),
 	acpStreamPrompt: vi.fn(),
-	buildContextVariablesPromptText: vi.fn(async () => ""),
 	buildProjectDirsPromptVars: vi.fn(() => ({ active: undefined, known: [] })),
 	getContextCompactReason: vi.fn(() => null),
 	shouldSkipAutoCompactForProviderUsageMismatch: vi.fn(() => false),
@@ -256,7 +255,6 @@ vi.mock("../../../tools/index.js", () => ({
 }));
 
 vi.mock("../../../variables/index.js", () => ({
-	buildContextVariablesPromptText: mocks.buildContextVariablesPromptText,
 }));
 
 vi.mock("../../../project-dirs/index.js", () => ({
@@ -699,15 +697,9 @@ describe("agent-loop stream entry integration", () => {
 			enabled: true,
 		};
 		mocks.getSkillsForSession.mockReturnValueOnce([skill]);
-		mocks.buildContextVariablesPromptText.mockResolvedValueOnce(
-			"<context>branch=agent-loop</context>",
-		);
 		mocks.buildPrompt.mockImplementationOnce(
 			async (input: BuildPromptOptions) => {
 				expect(input.skills).toEqual([skill]);
-				expect(input.contextVariables).toBe(
-					"<context>branch=agent-loop</context>",
-				);
 				return {
 					systemPrompt: "system prompt with repo-skill and branch=agent-loop",
 					messages: [

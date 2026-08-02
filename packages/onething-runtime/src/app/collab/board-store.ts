@@ -213,6 +213,37 @@ export async function applyBoardAction(
 }
 
 /**
+ * 清空这间房的看板(随「清空聊天记录」一同发生)。
+ *
+ * 走**同一条写队列**:一次在飞的 applyBoardAction 若排在后面,它读到的是清空后
+ * 的空看板,而不是把刚被清掉的旧快照重新落盘。activity.jsonl 一并删 —— 它是这
+ * 些卡片的审计轨,卡片没了它就是一串指向不存在卡片的孤儿记录。
+ *
+ * seq 照常 +1(不是归零):渲染层用它丢弃过期到达,一份 seq 更小的空看板会被当
+ * 成旧快照原地忽略,清空在界面上就不存在。
+ */
+export async function clearCollabBoard(roomSessionId: string): Promise<{ clearedTaskCount: number }> {
+  const previous = writeQueues.get(roomSessionId) ?? Promise.resolve()
+  const run = previous.then(() => {
+    // 从没有过看板的房(私聊房多半如此)不该因为一次清空凭空多出一个 board.json。
+    if (!fs.existsSync(boardPath(roomSessionId))) return { clearedTaskCount: 0 }
+    const board = loadCollabBoard(roomSessionId)
+    const clearedTaskCount = board.tasks.length
+    const next = stamped(board, emptyCollabBoard())
+    writeJsonFile(boardPath(roomSessionId), next)
+    try {
+      fs.rmSync(path.join(boardDir(roomSessionId), 'activity.jsonl'), { force: true })
+    } catch (error) {
+      console.error('[collab] activity trail cleanup failed:', error)
+    }
+    broadcastBoardChanged(roomSessionId, next)
+    return { clearedTaskCount }
+  })
+  writeQueues.set(roomSessionId, run.catch(() => {}))
+  return run
+}
+
+/**
  * Coordinator-internal mutation that must NOT re-trigger semantic events
  * (e.g. attaching a workSessionId after spawning, recording report message
  * ids, or force-moving a task without the 打回 accounting).

@@ -346,7 +346,7 @@ const navItems = [
     label: 'General',
     hint: 'Appearance, themes, and typography',
     icon: Settings,
-    sections: ['Mode', 'Theme', 'Typography', 'Context Compact', 'Agent Turns', 'Fonts', 'Daily Notes', 'Todo / Plan'],
+    sections: ['我的资料', 'Mode', 'Theme', 'Typography', 'Context Compact', 'Agent Turns', 'Fonts', 'Daily Notes', 'Todo / Plan'],
   },
   {
     id: 'editor',

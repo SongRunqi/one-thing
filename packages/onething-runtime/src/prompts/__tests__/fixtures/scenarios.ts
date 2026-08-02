@@ -71,7 +71,7 @@ export function scenarios(): ScenarioDef[] {
 			name: "desktop-full",
 			ctx: {
 				hasTools: true,
-				toolNames: ["read", "write", "edit", "bash", "glob", "grep"],
+				toolNames: ["read", "write", "edit", "bash", "glob", "grep", "variable"],
 				skills: sampleSkills,
 				host: host(),
 				now: FIXED_NOW,
@@ -92,8 +92,6 @@ export function scenarios(): ScenarioDef[] {
 						},
 					],
 				},
-				contextVariables:
-					'<var name="migration_state">phase 2/3, converting sessions (started 09:10)</var>\n<var name="deploy_target">staging</var>',
 			},
 		},
 		{

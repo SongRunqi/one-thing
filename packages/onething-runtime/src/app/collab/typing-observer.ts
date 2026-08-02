@@ -15,8 +15,12 @@
  * **Where it points**: the room the session is bound to — the drive's target
  * room for an execution session, the parent room for a work session. Resolving
  * it here (rather than from the call's `room` argument) is what makes the light
- * come on while the arguments are still streaming; a `say` that explicitly names
- * a different room lights this one for the length of that call (W19 §2, accepted).
+ * come on while the arguments are still streaming; a `send_message` that
+ * explicitly names a different room lights this one for the length of that call
+ * (W19 §2, accepted). The room id is handed to the tracker so that a call which
+ * turns out NOT to be for this room (a private message, an explicit other room)
+ * stops lighting it the moment its arguments are readable
+ * (collab-send-channel-and-wake.md §4).
  */
 import { createCollabTypingTracker, type CollabTypingSignal } from '@onething/runtime/collab'
 import { getEventBus } from '../events/index.js'
@@ -69,7 +73,9 @@ export function observeCollabSayTyping(options: {
   agentId: string
 }): () => void {
   const { sessionId, roomSessionId, agentId } = options
-  const tracker = createCollabTypingTracker()
+  // 灯挂在哪间房要告诉 tracker:合并之后私聊档也顶着 `send_message` 这个名字,
+  // 而"发给某个人"与"发进别的房"都不该点亮这一间(collab-send-channel-and-wake.md §4)。
+  const tracker = createCollabTypingTracker({ roomSessionId })
   const unsubscribe = getEventBus().onAny(sessionId, envelope => {
     const signal = (envelope as { event?: CollabTypingSignal } | undefined)?.event
     const next = tracker.observe(signal)

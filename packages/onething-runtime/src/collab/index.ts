@@ -1,4 +1,5 @@
 export {
+  COLLAB_DEFAULT_DAILY_COST_USD,
   COLLAB_DEFAULT_MAX_CHAIN,
   COLLAB_DM_PAIR_MAX_CHAIN,
   COLLAB_HARVEST_SOURCE,
@@ -13,14 +14,23 @@ export {
   type CollabReplyToLike,
   type CollabRoomBudgets,
   type CollabRoomConfig,
+  type CollabSelfTaskFact,
+  type CollabSelfTaskStatus,
   type CollabSessionKind,
 } from './types.js'
 /** R3: what a room message IS, decided in one place. The predicates above (and
  *  in say.js / system-lines.js) all delegate here. */
 export {
   classifyCollabRoomMessage,
+  isCollabRoomFact,
   type CollabRoomMessageKind,
 } from './classify.js'
+/** 历史检索的授权判据(docs/design/collab-history-search.md §3)。 */
+export {
+  collabRoomVisibleUntil,
+  isCollabMessageVisible,
+  type CollabRoomVisibilityLike,
+} from './visibility.js'
 export { COLLAB_PASS_SENTINEL, isCollabPassMessage } from './pass.js'
 export { COLLAB_CONSUMED_SCAN_TAIL, collectConsumedSourceIds } from './reconcile.js'
 export {
@@ -33,6 +43,7 @@ export {
   stripCollabAgentSessionName,
 } from './agent-session.js'
 export {
+  COLLAB_DM_LEGACY_TOOL_NAME,
   COLLAB_SAY_MAX_CHARS,
   COLLAB_SAY_REFUSED_BUDGET,
   COLLAB_SAY_REFUSED_EMPTY,
@@ -41,15 +52,33 @@ export {
   COLLAB_SAY_REFUSED_NO_ROOM,
   COLLAB_SAY_REFUSED_UNKNOWN_ROOM,
   COLLAB_SAY_SOURCE,
-  COLLAB_SAY_TOOL_NAME,
+  COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME,
+  COLLAB_SEND_MESSAGE_TOOL_NAME,
+  COLLAB_SEND_REFUSED_DM_NO_TARGET,
+  COLLAB_SEND_REFUSED_GATEWAY,
+  COLLAB_SEND_REFUSED_ROOM_WITH_TO,
+  COLLAB_SEND_REFUSED_UNKNOWN_CHANNEL,
+  COLLAB_SEND_REFUSED_WAKE_WITHOUT_TARGET,
   COLLAB_TURN_SOURCE,
+  COLLAB_WAKE_REFUSED_NO_ROOM,
+  COLLAB_WAKE_REFUSED_SELF_NOT_MEMBER,
+  COLLAB_WAKE_REFUSED_USER_TARGET,
+  formatCollabDmReceipt,
   formatCollabSayReceipt,
   formatCollabThinkingTraceLabel,
+  formatCollabWakePoke,
+  formatCollabWakeRefusedTargetNotMember,
   isCollabSayMessage,
+  isCollabSendDmCall,
+  isCollabSendIntoRoom,
   isCollabThinkingMessage,
   normalizeCollabSayContent,
   resolveCollabSayMentions,
   resolveCollabSayRoomSessionId,
+  resolveCollabSendChannel,
+  resolveCollabSendChannelFromArgs,
+  type CollabSendArgsLike,
+  type CollabSendChannel,
   type CollabTurnToolCallLike,
 } from './say.js'
 export {
@@ -85,6 +114,7 @@ export {
   createCollabTypingTracker,
   type CollabTypingSignal,
   type CollabTypingTracker,
+  type CollabTypingTrackerOptions,
 } from './typing.js'
 export {
   COLLAB_REACTION_EMOJIS,
@@ -126,12 +156,40 @@ export {
 } from './board.js'
 export {
   buildCollabMentions,
+  COLLAB_MENTION_ALL_LABELS,
+  expandCollabAllMentions,
   mergeCollabMentions,
   normalizeCollabMentions,
   parseCollabMentions,
   renderCollabMentionText,
   resolveCollabMentionIds,
+  type CollabMentionHit,
+  type CollabMentionRenderOptions,
 } from './mentions.js'
+/** 身份的模型面投影 —— `@名字#句柄`(docs/design/collab-agent-handle.md)。
+ *  出站拼、入站剥,UI 与转录里永远看不到句柄。 */
+export {
+  COLLAB_AGENT_HANDLE_CHARS,
+  collabAgentHandle,
+  collabAgentIdKey,
+  formatCollabAgentHandle,
+  parseCollabHandleMentions,
+  renderCollabModelMention,
+  resolveCollabAgentHandle,
+  stripCollabAgentHandles,
+  type CollabAddressable,
+  type CollabHandleResolution,
+} from './handles.js'
+/** 身份目录:句柄编解码的共用真源(collab-handle-codec.md §2.1)。
+ *  识别归它,授权仍归成员名单 —— 两者不再共用一个数组。 */
+export {
+  COLLAB_USER_CONSTANT_WORDS,
+  collabIdentitiesFromAgents,
+  collabIdentityAnswersTo,
+  collabIdentityFromAgent,
+  collabUserIdentity,
+  type CollabIdentity,
+} from './identity.js'
 export {
   COLLAB_REPLY_EXCERPT_MAX_CHARS,
   COLLAB_REPLY_UNKNOWN_AUTHOR_LABEL,
@@ -145,17 +203,59 @@ export {
   type CollabReplyGapOptions,
 } from './reply-quote.js'
 export {
+  COLLAB_CHATROOM_TAG,
   COLLAB_ENVELOPE_TAG,
+  COLLAB_NOTIFICATION_DESC,
+  COLLAB_NOTIFICATION_TAG,
+  buildCollabChatRoomPayload,
+  buildCollabDriveRoomContext,
+  collectCollabProjectedLines,
   formatCollabFlattenedToolCall,
+  formatCollabFoldedLine,
+  formatCollabNotificationBlock,
   formatCollabReplyQuote,
+  formatCollabUserLabel,
   wrapCollabMessageEnvelope,
   mergeCollabProjectedRows,
   projectRoomHistory,
+  type BuildCollabChatRoomPayloadOptions,
+  type CollabProjectedLines,
   type CollabProjectedRowLike,
   type MergeCollabProjectedRowsOptions,
   type ProjectedRoomMessage,
   type ProjectRoomHistoryOptions,
 } from './projection.js'
+export {
+  COLLAB_DIGEST_MAX_CHARS,
+  buildCollabDigestPrompt,
+  formatCollabDigestLines,
+  parseCollabDigestReply,
+  type CollabDayDigest,
+} from './digest.js'
+export {
+  COLLAB_DEFAULT_HISTORY_DAYS,
+  COLLAB_DEFAULT_HISTORY_TAIL,
+  COLLAB_DEFAULT_UNREAD_MAX,
+  collabFoldCutTimestamp,
+  collectCollabFoldedFacts,
+  createCollabFoldedAccumulator,
+  planCollabHistoryWindow,
+  resolveCollabUnreadRelation,
+  type CollabFoldedSummary,
+  type CollabHistoryWindow,
+  type CollabHistoryWindowOptions,
+  type CollabUnreadRelation,
+} from './history-window.js'
+export {
+  COLLAB_ELSEWHERE_MAX_CALLS,
+  COLLAB_ELSEWHERE_MAX_EVENTS,
+  COLLAB_ELSEWHERE_TAG,
+  buildCollabElsewhere,
+  type BuildCollabElsewhereOptions,
+  type CollabElsewhereSource,
+  type CollabTurnLogMessageLike,
+  type CollabTurnLogToolCall,
+} from './turn-log.js'
 export {
   decideCollabActivations,
   formatCollabActivationLabel,
@@ -170,16 +270,20 @@ export {
   type DecideCollabActivationsResult,
 } from './activation.js'
 export {
+  COLLAB_USER_DEFAULT_HANDLE,
+  COLLAB_USER_DEFAULT_LABEL,
+  COLLAB_USER_HANDLE_MAX_CHARS,
+  normalizeCollabUserHandle,
+} from './user-handle.js'
+export {
   buildCollabRoomContext,
   buildCollabRoomSystemPrompt,
   resolveCollabSpeakerLabel,
-  formatCollabSelfTaskFacts,
   type BuildCollabRoomContextOptions,
   type BuildCollabRoomSystemPromptOptions,
-  type CollabSelfTaskFact,
-  type CollabSelfTaskStatus,
 } from './roster.js'
 export {
+  buildCollabChainHoldLine,
   buildCollabMemberJoinedLine,
   buildCollabMemberRemovedLine,
   buildCollabMembershipLines,
@@ -216,6 +320,14 @@ export {
   COLLAB_SELF_ELECT_COOLDOWN,
 } from './cooldown.js'
 export {
+  isCollabStopMessage,
+  routeCollabRoomWake,
+  COLLAB_STOP_WORDS,
+  type CollabLiveTurnLike,
+  type CollabWakeRoute,
+  type RouteCollabRoomWakeOptions,
+} from './wake.js'
+export {
   buildWillingnessPrompt,
   buildWillingnessWindow,
   parseWillingnessReply,
@@ -225,6 +337,7 @@ export {
   COLLAB_WILLINGNESS_RECENT_LIMIT,
   type BuildWillingnessPromptOptions,
   type CollabWillingnessPrompt,
+  type CollabWillingnessOutcomeKind,
   type CollabWillingnessVerdict,
 } from './willingness.js'
 export {
@@ -232,6 +345,35 @@ export {
   COLLAB_WORK_REQUIRED_TOOLS,
   resolveCollabToolAllowlist,
 } from './tool-surface.js'
+export {
+  COLLAB_PLAN_MAX_WAVES,
+  COLLAB_PLAN_MAX_WAVE_SIZE,
+  COLLAB_PLAN_BACKDROP,
+  COLLAB_PLAN_HISTORY_BUDGET,
+  COLLAB_PLAN_SILENT,
+  COLLAB_PLAN_SYSTEM,
+  advanceCollabPlan,
+  buildCollabPlanPrompt,
+  buildCollabPlanStateLines,
+  buildCollabPlanWindow,
+  normalizeCollabPlan,
+  parseCollabPlanReply,
+  type BuildCollabPlanPromptOptions,
+  type CollabPlan,
+  type CollabPlanAdvance,
+  type CollabPlanMemberState,
+  type CollabPlanPrompt,
+  type NormalizeCollabPlanOptions,
+} from './plan.js'
+export {
+  buildCollabRelayRing,
+  collabRelayLoopsFor,
+  isCollabForcedSerialRoom,
+  isCollabPlanRoom,
+  pickCollabRelayStarter,
+  synthesizeCollabSerialPlan,
+  type CollabRelayRoomLike,
+} from './speaking-order.js'
 export {
   isAgentPairDmRoom,
   isUserDmRoom,

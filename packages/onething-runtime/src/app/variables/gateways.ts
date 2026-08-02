@@ -28,6 +28,16 @@ import type { NoteVarName, NotesGateway } from '@onething/runtime/variables/prov
 import { getGoal, goalLimits } from '../goals/index.js'
 import { getMusicNowPlaying } from '../music/service.js'
 import { getRadioStore } from '../music/radio.js'
+import { computeAgentPresence } from '@onething/runtime/agents'
+import { isAgentPairDmRoom } from '@onething/runtime/collab'
+import type {
+  AgentSelfCardFact,
+  AgentSelfChatFact,
+  AgentSelfStateGateway,
+} from '@onething/runtime/variables/providers/agent-self'
+import { findAgent } from '../agents/index.js'
+import { getCollabSelfTaskFacts } from '../collab/board-store.js'
+import { resolveUserIdentity } from '../collab/user-identity.js'
 
 // ── Workdir gateway ─────────────────────────────────
 
@@ -214,6 +224,59 @@ export const goalVariableGateway: GoalVariableGateway = {
 // ── Music/radio gateway ─────────────────────────────
 // Cache-backed only: the watcher's snapshot and the radio store's files. A
 // provider runs on every turn and must never cost a subprocess.
+
+// ── Agent 自我状态(my_cards / my_rooms / my_dms)─────
+// 全部现算,零新增存储:在场面从会话索引推(agents/presence.ts 的纯函数),
+// 卡从各房看板读。与「在场面永不落库」那条铁律同源 —— 落一份库就有两份真相。
+
+export const agentSelfGateway: AgentSelfStateGateway = {
+  read(sessionId) {
+    const session = store.getSession(sessionId)
+    const agentId = session?.agentId
+    // 没绑 agent = 没有"我"可谈,三个变量一个都不产出。
+    if (!agentId) return null
+
+    // 会话索引只取一次:presence 与房名/时间/形态判定共用同一份快照,免得
+    // 一个变量组遍历三遍索引。
+    const sessions = store.getSessionsList()
+    const presence = computeAgentPresence(agentId, sessions)
+    const byId = new Map(sessions.map(meta => [meta.id, meta]))
+
+    const cards: AgentSelfCardFact[] = []
+    const rooms: AgentSelfChatFact[] = []
+    const dms: AgentSelfChatFact[] = []
+
+    if (presence.dmRoomId) {
+      const meta = byId.get(presence.dmRoomId)
+      dms.push({ name: resolveUserIdentity().label, lastActiveAt: meta?.updatedAt })
+    }
+
+    // 一个房一次 board.json 读取(小文件,同步)。此前 `<your_cards>` 是一次;
+    // 现在是"这个 agent 在的房"的条数 —— 在场面本来就是它的活动半径,而卡只
+    // 可能挂在这些房的板上。
+    for (const roomId of [...(presence.dmRoomId ? [presence.dmRoomId] : []), ...presence.roomSessionIds]) {
+      for (const fact of getCollabSelfTaskFacts(roomId, agentId)) {
+        cards.push({ id: fact.id, title: fact.title, status: fact.status })
+      }
+    }
+
+    for (const roomId of presence.roomSessionIds) {
+      const meta = byId.get(roomId)
+      if (!meta) continue
+      // 双成员 dm 房在 presence 里算"房"(它确实是 kind='room'),但对 agent
+      // 而言那是私聊 —— 归到 my_dms,并且写对面那个人而不是房名。
+      if (isAgentPairDmRoom(meta.room)) {
+        const peerId = meta.room?.memberAgentIds?.find(id => id !== agentId)
+        const peerName = peerId ? findAgent(peerId)?.name : undefined
+        dms.push({ name: peerName || '另一位同事', lastActiveAt: meta.updatedAt })
+        continue
+      }
+      rooms.push({ name: meta.name, lastActiveAt: meta.updatedAt })
+    }
+
+    return { cards, rooms, dms }
+  },
+}
 
 export const musicRadioGateway: MusicRadioGateway = {
   getNowPlaying: () => {

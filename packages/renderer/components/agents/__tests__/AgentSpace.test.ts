@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   openAgentSpace: vi.fn(),
   ensureCollabDmRoom: vi.fn(async () => ({ success: true, roomSessionId: 'agent-dm-lin' })),
   loadSessions: vi.fn(async () => {}),
+  /** 主区此刻看得见的会话 —— 私聊已经摊在主区时,就地那一层不再画第二遍。 */
+  visibleSessionIds: new Set<string>(),
   agent: {
     id: 'lin',
     name: '小林',
@@ -57,6 +59,22 @@ vi.mock('@/stores/sessions', () => ({
   }),
 }))
 
+vi.mock('@/stores/workspace', () => ({
+  useWorkspaceStore: () => ({
+    get visibleSessionIds() { return mocks.visibleSessionIds },
+  }),
+}))
+
+// 就地那一层是整棵既有聊天面(ThreadChatDetail → ChatPanel)—— 这里只验它挂上了、
+// 挂的是哪一间房,聊天面本身有它自己的测试。
+vi.mock('@/components/workbench/ThreadChatDetail.vue', () => ({
+  default: {
+    name: 'ThreadChatDetail',
+    props: ['sessionId', 'tag', 'title'],
+    template: '<div class="mock-dm" :data-session="sessionId" :data-tag="tag">{{ title }}</div>',
+  },
+}))
+
 vi.mock('@/stores/collabBoard', () => ({
   useCollabBoardStore: () => ({ load: vi.fn(), findTask: () => null }),
 }))
@@ -85,6 +103,7 @@ async function openFace(wrapper: ReturnType<typeof mountSpace>, label: string) {
 describe('AgentSpace — 右栏的空间页', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.visibleSessionIds.clear()
   })
 
   it('资料块是这个人:名字 / 职位 / 说明', () => {
@@ -122,14 +141,54 @@ describe('AgentSpace — 右栏的空间页', () => {
     expect(wrapper.find('.agent-config-form').exists()).toBe(false)
   })
 
-  it('「发消息」幂等建房之后把会话交给宿主,自己不导航', async () => {
+  /**
+   * 2026-08-01 用户拍板:「我点击发消息,直接就在成员这个 tab 这里打开和他的
+   * 私聊对话,别再跑到其他地方」。旧行为(emit 给宿主去主区开页签)只在私聊
+   * 已经摊在主区时才保留 —— 见下一条。
+   */
+  it('「发消息」= 就地展开私聊,不把人甩去主区', async () => {
     const wrapper = mountSpace()
     const send = wrapper.findAll('.space-actions .text-action')[0]
     await send.trigger('click')
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(mocks.ensureCollabDmRoom).toHaveBeenCalledWith('lin')
+    expect(wrapper.emitted('open-session')).toBeUndefined()
+    expect(wrapper.find('.mock-dm').attributes('data-session')).toBe('agent-dm-lin')
+    expect(wrapper.find('.mock-dm').attributes('data-tag')).toBe('私聊')
+    // 资料面让位,返回键换成"回这个人的空间"。
+    expect(wrapper.find('.space-hero').exists()).toBe(false)
+    expect(wrapper.find('.space-back').text()).toContain('小林')
+  })
+
+  it('返回键回到资料面(对话不再占着这一格)', async () => {
+    const wrapper = mountSpace()
+    await wrapper.findAll('.space-actions .text-action')[0].trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await wrapper.find('.space-back').trigger('click')
+    expect(wrapper.find('.mock-dm').exists()).toBe(false)
+    expect(wrapper.find('.space-hero').exists()).toBe(true)
+  })
+
+  /** 同一段对话在一屏里画两遍既费地方又分不清该在哪一边说话。 */
+  it('这间私聊已经摊在主区时只聚焦主区,不在右栏再画一遍', async () => {
+    mocks.visibleSessionIds.add('agent-dm-lin')
+    const wrapper = mountSpace()
+    await wrapper.findAll('.space-actions .text-action')[0].trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 0))
     expect(wrapper.emitted('open-session')?.[0]).toEqual(['agent-dm-lin'])
+    expect(wrapper.find('.mock-dm').exists()).toBe(false)
+  })
+
+  /** 上一位的私聊留在屏幕上、头顶却写着下一位的名字,是最坏的一种串台。 */
+  it('换人 = 换对话:agentId 一变就退回资料面', async () => {
+    const wrapper = mountSpace()
+    await wrapper.findAll('.space-actions .text-action')[0].trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(wrapper.find('.mock-dm').exists()).toBe(true)
+
+    await wrapper.setProps({ agentId: 'ghost' })
+    expect(wrapper.find('.mock-dm').exists()).toBe(false)
   })
 
   it('在忙时多一颗「看线程」,点了把工作会话交给宿主', async () => {

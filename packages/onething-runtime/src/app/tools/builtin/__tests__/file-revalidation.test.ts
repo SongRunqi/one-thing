@@ -69,7 +69,23 @@ describe("file tool policy revalidation", () => {
 				},
 				{ ...ctx, approvedAnalysis: analysis },
 			),
-		).rejects.toThrow("File changed after permission approval");
+			// Same shape as the sibling case below: first line names the failure and
+			// the file, the engine detail follows. `edit` got this treatment while
+			// `write` kept the older generic wording — hence the two different
+			// expectations in this file, and hence this one going stale.
+		).rejects.toThrow("Edit failed: file changed after approval in target.md.");
+
+		// 措辞可以再变,能不能照着办不能变:模型拿到这条之后唯一正确的下一步是
+		// 重读文件、用当前内容重试,所以那句指引必须在。
+		await expect(
+			EditTool.execute(
+				{
+					path: filePath,
+					edits: [{ oldText: "A: old", newText: "A: new" }],
+				},
+				{ ...ctx, approvedAnalysis: analysis },
+			),
+		).rejects.toThrow(/Re-read the file and retry/);
 
 		await expect(fs.readFile(filePath, "utf-8")).resolves.toBe(
 			"A: old\nB: external\n",

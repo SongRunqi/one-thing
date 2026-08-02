@@ -16,18 +16,31 @@
  *   …another say…                  → true / false again (IM 短句连发 = 多脉冲)
  *   thinking / board               → nothing at all (真人思考时你也看不到 typing)
  *
+ * **谁的房**(collab-send-channel-and-wake.md §4):`send_message` 合并了 `dm`
+ * 之后,私聊档的调用也顶着这个工具名 —— 而打字灯挂在"这一轮在答的那间房"上。
+ * 一条发给某个人的私聊在群里点亮「正在输入」,是一句关于这间房的假话。所以
+ * tracker 现在**看参数**:有 `to`(私聊档)、或 `room` 显式指向别的房的调用,
+ * 不在这间房亮灯。
+ *
+ * 参数什么时候看得见,是这件事的物理边界:`tool:input-start` 发生在参数开始流
+ * 的那一刻,那时 args 还是空的。所以判据在**每一个能看见参数的时刻**生效
+ * (input-start 自带参数的非流式形状、input-end、execution-start),而流式
+ * provider 的私聊档仍会在参数流的那几秒里亮一下、随即熄灭 —— 与 W19 §2 已经
+ * 接受的「显式 room 指向别的房」同一种残留,不是新的一类。
+ *
  * Deliberately NOT here:
- *  - **which room** — the arguments are still streaming when the light goes on,
- *    so a `room` argument cannot be read yet. The caller lights the session's
- *    bound room (see the observer). A `say` that explicitly aims at another room
- *    briefly lights the wrong one; accepted (W19 §2).
  *  - **timers / TTL** — the renderer already expires stale trues after 60s.
  *
  * Providers that do not stream tool arguments at all emit no input-start, so
  * their turns simply stay quiet: a missing signal degrades to the old silence,
  * never to a stuck light.
  */
-import { COLLAB_SAY_TOOL_NAME, type CollabTurnToolCallLike } from './say.js'
+import {
+  COLLAB_SEND_MESSAGE_TOOL_NAME,
+  isCollabSendIntoRoom,
+  type CollabSendArgsLike,
+  type CollabTurnToolCallLike,
+} from './say.js'
 
 /** Structural view of the session events the tracker reads — the fields of
  *  `tool:input-start` / `tool:input-end` / stream terminals it actually needs. */
@@ -36,7 +49,17 @@ export interface CollabTypingSignal {
   toolCallId?: string
   /** `tool:input-start` carries the resolved display name here. */
   toolName?: string
-  toolCall?: (CollabTurnToolCallLike & { id?: string }) | undefined
+  /** `tool:execution-start` carries the settled arguments here. */
+  args?: CollabSendArgsLike
+  toolCall?: (CollabTurnToolCallLike & { id?: string; arguments?: CollabSendArgsLike }) | undefined
+}
+
+export interface CollabTypingTrackerOptions {
+  /**
+   * 这盏灯挂在哪间房。用来判断一次调用是不是发进**这间**房 —— 缺省(不传)时
+   * 只挡得住私聊档,显式跨房的调用照亮,与合并前的行为一致。
+   */
+  roomSessionId?: string
 }
 
 export interface CollabTypingTracker {
@@ -66,12 +89,22 @@ function toolCallIdOf(signal: CollabTypingSignal): string | undefined {
   return signal.toolCallId || signal.toolCall?.id || undefined
 }
 
+/** 这一刻看得见的参数,或 undefined(参数还在流)。 */
+function argsOf(signal: CollabTypingSignal): CollabSendArgsLike | undefined {
+  const args = signal.args ?? signal.toolCall?.arguments
+  if (!args || typeof args !== 'object') return undefined
+  // 空对象 = 参数还没到(input-start 的 toolCall 就是这个形状),不是"没有 to"。
+  return Object.keys(args).length > 0 ? args : undefined
+}
+
 /** Stream terminals extinguish unconditionally: no stream, nobody typing. A
  *  turn that dies mid-arguments never sends input-end, and without this the
  *  light would ride to the end of the activation window. */
 const TERMINAL_TYPES = new Set(['stream:complete', 'stream:error', 'stream:aborted'])
 
-export function createCollabTypingTracker(): CollabTypingTracker {
+export function createCollabTypingTracker(
+  options: CollabTypingTrackerOptions = {},
+): CollabTypingTracker {
   /** Say calls whose arguments are still streaming, by toolCallId. A Set (not a
    *  boolean) because providers may stream two tool calls at once — the light
    *  belongs to the union of them, and flickering between the two would read as
@@ -88,9 +121,13 @@ export function createCollabTypingTracker(): CollabTypingTracker {
       if (!signal?.type) return null
 
       if (signal.type === 'tool:input-start') {
-        if (toolNameOf(signal) !== COLLAB_SAY_TOOL_NAME) return null
+        if (toolNameOf(signal) !== COLLAB_SEND_MESSAGE_TOOL_NAME) return null
         const toolCallId = toolCallIdOf(signal)
         if (!toolCallId) return null
+        // 参数已经看得见(非流式 provider 的形状)且这一发不是发进这间房 ——
+        // 连亮都不该亮,而不是亮完再灭。
+        const args = argsOf(signal)
+        if (args && !isCollabSendIntoRoom(args, options.roomSessionId)) return null
         streaming.add(toolCallId)
         if (lit) return null
         lit = true

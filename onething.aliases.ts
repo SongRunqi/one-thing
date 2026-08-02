@@ -210,6 +210,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/themes/theme-runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/themes/theme-runtime.ts') },
   { find: '@onething/runtime/themes', replacement: resolve(projectRoot, 'packages/onething-runtime/src/themes/index.ts') },
   { find: '@onething/runtime/todo-plan', replacement: resolve(projectRoot, 'packages/onething-runtime/src/todo-plan/index.ts') },
+  { find: '@onething/runtime/variables/providers/agent-self', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/agent-self.ts') },
   { find: '@onething/runtime/variables/providers/background-jobs', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/background-jobs.ts') },
   { find: '@onething/runtime/variables/providers/music-radio', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/music-radio.ts') },
   { find: '@onething/runtime/variables/bootstrap', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/bootstrap.ts') },

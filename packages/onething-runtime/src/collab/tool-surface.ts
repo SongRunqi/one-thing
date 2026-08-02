@@ -23,16 +23,30 @@
  * was removed (2026-07-30, see turn.ts): silence is now simply "call nothing",
  * which leaves a turn no landing spot to spin on at all.
  *
- * `dm` joined on 2026-07-30 (agent-im-dm.md §3.4 / D5) and is a different kind
- * of tool from `stay_silent`: it has a real effect outside the turn (a room gets
- * created, a message lands in it, somebody is activated), so a model that loops
- * on it is loudly visible rather than silently expensive — and it is bounded by
- * the same say 幂等窗 plus the dm room's own (tighter) chain cap.
+ * `dm` joined on 2026-07-30 (agent-im-dm.md §3.4 / D5) and left again on
+ * 2026-08-02: it is now the `to` parameter of `send_message`
+ * (collab-send-channel-and-wake.md §2 —— 一个带 channel 的发送面)。旧名保留为
+ * **隐藏真工具**(`tools/builtin/dm.ts`),刻意不在这张表里 —— 进来就等于进
+ * 请求的 tools 参数,模型会看见两个同义工具,而合并的全部意义就是只有一个。
  */
-export const COLLAB_ROOM_TOOLS: readonly string[] = ['say', 'board', 'dm']
+/**
+ * `history` 于 2026-08-02 加入(collab-history-search.md),取代同年 08-01 那个
+ * 只查当前房折叠段的 `room_history`。它先是**按天折叠的配套**——投影不再逐字带
+ * 四天历史了,那就必须留一条翻回去的路,否则折叠就是静默截断;取消默认隔离之后
+ * 它同时是**跨房的那条路**:同一位同事在群里、在私聊里说过的话,查得回来。
+ *
+ * 进 floor 是安全的,因为它只读、且授权由数据推(`collabRoomVisibleUntil`):
+ * 它能查的恒等于「我在场过的房」,别人之间的对话对它不存在。
+ */
+/**
+ * `say` 于 2026-08-02 改名 `send_message`(collab-turn-protocol-and-identity.md A)。
+ * 旧名保留为**静默别名**(`COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME`),但它刻意
+ * **不进这张表** —— 进来就等于进请求的 tools 参数,模型会看见两个同义工具。
+ */
+export const COLLAB_ROOM_TOOLS: readonly string[] = ['send_message', 'board', 'history']
 
 /** Tools a work session must have on top of whatever its agent was given. */
-export const COLLAB_WORK_REQUIRED_TOOLS: readonly string[] = ['board', 'say']
+export const COLLAB_WORK_REQUIRED_TOOLS: readonly string[] = ['board', 'send_message']
 
 /**
  * Returns the allowlist for a session, or `null` for "no restriction" (an

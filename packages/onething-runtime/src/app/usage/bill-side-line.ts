@@ -68,6 +68,41 @@ export function billCollabWillingnessUsage(
 	);
 }
 
+/**
+ * 房间编排 —— 一条用户消息一次(collab-coordinator-plan.md)。
+ *
+ * 与 `collab-willingness` 此消彼长:一个是 O(1)/条,一个是 O(N)/条。两条线在
+ * 用量面板里并排,换算法省了多少才有得看。
+ */
+export function billCollabPlanUsage(
+	providerId: string,
+	modelId: string,
+	sessionId?: string,
+): (usage: SideLineUsage) => void {
+	return bill(
+		"collab plan",
+		ONETHING_USAGE_SOURCES.collabPlan,
+		providerId,
+		modelId,
+		sessionId,
+	);
+}
+
+/** Room daily digest — one call per room per folded day (collab-agent-view P2). */
+export function billCollabDigestUsage(
+	providerId: string,
+	modelId: string,
+	sessionId?: string,
+): (usage: SideLineUsage) => void {
+	return bill(
+		"collab digest",
+		ONETHING_USAGE_SOURCES.collabDigest,
+		providerId,
+		modelId,
+		sessionId,
+	);
+}
+
 /** The skill-review trigger's agent loop. */
 export function billSkillUsage(
 	providerId: string,

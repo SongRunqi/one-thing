@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { resolveCollabToolAllowlist } from '@onething/runtime/collab'
 import type { AgentDefinition, ChatSession } from '@shared/ipc.js'
 
 /* Mock paths are resolved from THIS file, not from the module under test. */
@@ -67,13 +68,27 @@ describe('resolveAgentProfileForSession', () => {
     })
   })
 
-  it('pins a room turn to the room surface — say + board, not the agent tools', () => {
+  /**
+   * 房回合的工具面 = **own ∪ 房面**(collab-team-v2 §2.1)。
+   *
+   * 这条断言此前写的是 `['send_message', 'board']` —— 那是 2026-07-30 收紧成 replace 的形态,
+   * 而那次收紧**同日就撤销了**;真正的规则在 `collab/tool-surface.ts` 的
+   * `resolveCollabToolAllowlist`,纯层那份测试(`src/agents/__tests__/profile.test.ts`)
+   * 一直跟着它走,这一份没跟上,于是 P3 给房面加 `room_history` 时它才红。
+   *
+   * 所以这里**不硬编清单**,改成对着规则本身断言:两处再分叉时,红的会是规则那一份,
+   * 而不是这一份的字面期望。
+   */
+  it('房回合的工具面 = agent 自己的 ∪ 房面(与 collab 规则同解)', () => {
     state.agent = agent({ tools: ['bash'] })
     state.session = session({ kind: 'agent' })
 
-    // 2026-07-30 收紧:群聊回合的工具面与 agent 白名单无关,与情况说明
-    // 「除 say 和 board 外你在群里没有其他工具」对齐。重活走工作台会话。
-    expect(resolveAgentProfileForSession('session-1').tools).toEqual(['say', 'board'])
+    expect(resolveAgentProfileForSession('session-1').tools).toEqual(
+      resolveCollabToolAllowlist({ kind: 'agent', ownTools: ['bash'] }),
+    )
+    // 自己的工具没被顶掉,房面也确实加上了(否则上面那条断言会跟着规则一起错)
+    expect(resolveAgentProfileForSession('session-1').tools).toContain('bash')
+    expect(resolveAgentProfileForSession('session-1').tools).toContain('send_message')
   })
 
   /**

@@ -78,6 +78,8 @@ vi.mock('../../usage/index.js', () => ({
 }))
 
 vi.mock('../../store.js', () => ({
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
   updateSessionWorkingDirectory: vi.fn(),
   // P2-10: the coordinator registers a room-disposal listener at startup.
   onSessionsDeleted: () => () => {},
@@ -242,7 +244,7 @@ function bindFakeEngine(): void {
         }
         const toolCallId = `${sessionId}-call-${++seq}`
         notify({ type: 'tool:execution-start', toolCallId, toolName })
-        if (toolName === 'say' && !mocks.aborted.includes(sessionId)) {
+        if (toolName === 'send_message' && !mocks.aborted.includes(sessionId)) {
           pushInto(roomSessionId, {
             role: 'assistant',
             agentId,
@@ -311,7 +313,7 @@ describe('判定为真的回合能把话说进群里', () => {
     // 买来的这个结果;强制已于 2026-07-30 移除(下一条 it),同样的回合仍然成立
     // ——因为判定为真的 agent 本来就想说话,提示词也只说 say 一条路。
     mocks.willing = ['fe']
-    script({ thinking: '我知道这个', toolCalls: ['say'] })
+    script({ thinking: '我知道这个', toolCalls: ['send_message'] })
     await sendUserMessage('登录页什么时候能好?')
 
     expect(says()).toHaveLength(1)
@@ -321,7 +323,7 @@ describe('判定为真的回合能把话说进群里', () => {
 
   it('does NOT force the opening call — silence stays reachable (todo2 P0-4)', async () => {
     mocks.willing = ['fe']
-    script({ thinking: '我知道这个', toolCalls: ['say'] })
+    script({ thinking: '我知道这个', toolCalls: ['send_message'] })
     await sendUserMessage('登录页什么时候能好?')
 
     const drive = mocks.emitted.find(entry => entry.event.type === 'command:send-message')
@@ -348,7 +350,7 @@ describe('W22 回合断路器 — 接线', () => {
   })
 
   it('cuts a say flood at the say cap, keeping what already landed', async () => {
-    script({ thinking: '', toolCalls: Array.from({ length: 40 }, () => 'say') })
+    script({ thinking: '', toolCalls: Array.from({ length: 40 }, () => 'send_message') })
     await sendUserMessage('@小李 登录页什么时候能好?')
 
     expect(mocks.aborted).toEqual([FE_SESSION])
@@ -367,7 +369,7 @@ describe('W22 回合断路器 — 接线', () => {
     // regression lock for that incident, not an arbitrary number.
     script({
       thinking: '分几句说',
-      toolCalls: ['board', ...Array.from({ length: 7 }, () => 'say')],
+      toolCalls: ['board', ...Array.from({ length: 7 }, () => 'send_message')],
     })
     await sendUserMessage('@小李 登录页什么时候能好?')
 
@@ -380,8 +382,8 @@ describe('W22 回合断路器 — 接线', () => {
     // The observer is opened and torn down inside the agent lock, so two turns
     // that are individually fine must never add up into a trip.
     script(
-      { thinking: '一', toolCalls: ['say', 'say', 'say', 'say'] },
-      { thinking: '二', toolCalls: ['say', 'say', 'say', 'say'] },
+      { thinking: '一', toolCalls: ['send_message', 'send_message', 'send_message', 'send_message'] },
+      { thinking: '二', toolCalls: ['send_message', 'send_message', 'send_message', 'send_message'] },
     )
     await sendUserMessage('@小李 登录页什么时候能好?')
     await sendUserMessage('@小李 再确认一次')
@@ -401,7 +403,7 @@ describe('W22 回合断路器 — 房间可配置', () => {
 
   it('honours a LOWERED say cap from the room settings', async () => {
     setRoomCaps({ maxTurnSayCalls: 3 })
-    script({ thinking: '', toolCalls: Array.from({ length: 10 }, () => 'say') })
+    script({ thinking: '', toolCalls: Array.from({ length: 10 }, () => 'send_message') })
     await sendUserMessage('@小李 登录页什么时候能好?')
 
     expect(mocks.aborted).toEqual([FE_SESSION])
@@ -411,7 +413,7 @@ describe('W22 回合断路器 — 房间可配置', () => {
 
   it('honours a RAISED say cap — a turn the default would have cut goes through', async () => {
     setRoomCaps({ maxTurnSayCalls: 30 })
-    script({ thinking: '', toolCalls: Array.from({ length: 25 }, () => 'say') })
+    script({ thinking: '', toolCalls: Array.from({ length: 25 }, () => 'send_message') })
     await sendUserMessage('@小李 登录页什么时候能好?')
 
     expect(mocks.aborted).toEqual([])
@@ -423,7 +425,7 @@ describe('W22 回合断路器 — 房间可配置', () => {
     // 用户可以完全关掉这道闸(与日预算/maxChain 同一约定)。The wall clock is
     // then the only bound left — a deliberate choice the setting makes explicit.
     setRoomCaps({ maxTurnToolCalls: 0, maxTurnSayCalls: 0 })
-    script({ thinking: '', toolCalls: Array.from({ length: 60 }, () => 'say') })
+    script({ thinking: '', toolCalls: Array.from({ length: 60 }, () => 'send_message') })
     await sendUserMessage('@小李 登录页什么时候能好?')
 
     expect(mocks.aborted).toEqual([])
@@ -433,7 +435,7 @@ describe('W22 回合断路器 — 房间可配置', () => {
 
   it('keeps the total cap live when only the say cap is switched off', async () => {
     setRoomCaps({ maxTurnSayCalls: 0 })
-    script({ thinking: '', toolCalls: Array.from({ length: 60 }, () => 'say') })
+    script({ thinking: '', toolCalls: Array.from({ length: 60 }, () => 'send_message') })
     await sendUserMessage('@小李 登录页什么时候能好?')
 
     expect(mocks.aborted).toEqual([FE_SESSION])

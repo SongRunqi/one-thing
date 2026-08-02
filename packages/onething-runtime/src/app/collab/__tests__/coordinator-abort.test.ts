@@ -37,7 +37,12 @@ interface FakeSession {
   isArchived?: boolean
   permissionMode?: string
   collab?: { roomSessionId?: string }
-  room?: { memberAgentIds: string[]; pmAgentId?: string; frozen?: boolean }
+  room?: {
+    memberAgentIds: string[]
+    pmAgentId?: string
+    frozen?: boolean
+    budgets?: { maxConcurrentTurns?: number }
+  }
   messages: FakeMessage[]
 }
 
@@ -82,6 +87,8 @@ vi.mock('../../usage/index.js', () => ({
 }))
 
 vi.mock('../../store.js', () => ({
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
   updateSessionWorkingDirectory: vi.fn(),
   // P2-10: the coordinator registers a room-disposal listener at startup.
   onSessionsDeleted: () => () => {},
@@ -329,7 +336,10 @@ describe('R0 — 回合超时不留僵尸流', () => {
 
 describe('R0 — 冻结丢弃的激活不复活 (P2-1)', () => {
   it('retires discarded activations in the durable record', async () => {
-    // Two members named: one drives (and hangs), the second waits in the queue.
+    // 并行化之后"排队"只在同时发言上限之下才发生,所以这条把房间的上限调到 1:
+    // 两个人被点名,一个开跑(并挂住),另一个留在队里 —— 这正是本例要的形状。
+    const session = room()
+    session.room = { ...session.room!, budgets: { maxConcurrentTurns: 1 } }
     await sendUserMessage('@小李 @阿明 一起看下这个')
     expect(persistedRecords().length).toBeGreaterThanOrEqual(2)
     expect(persistedRecords().some(record => record.stage === 'queued')).toBe(true)

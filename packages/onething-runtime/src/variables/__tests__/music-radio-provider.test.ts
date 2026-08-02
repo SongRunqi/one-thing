@@ -23,7 +23,7 @@ describe('music radio variable', () => {
     const [variable] = provider.list()
     expect(variable.name).toBe('music')
     expect(variable.value).toBe('播放中「岁月神偷 - 金玟岐」')
-    expect(variable.volatility).toBe('turn')
+    expect(variable.state).toBe(true)
   })
 
   it('carries the radio intent and programme watermark', () => {

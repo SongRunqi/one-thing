@@ -34,13 +34,13 @@ describe('resolveAgentToolSurface', () => {
     { name: 'chat, allowlist', kind: undefined, ownTools: ['bash'], expected: ['bash'] },
     // Union(collab-team-v2 §2.1;2026-07-30 曾收紧为 replace,同日撤销):
     // 配了白名单 → own ∪ {say, board};没配 → 不限制。
-    { name: 'room unions', kind: 'room', ownTools: ['bash'], expected: ['bash', 'say', 'board', 'dm'] },
+    { name: 'room unions', kind: 'room', ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history'] },
     { name: 'room without allowlist stays unrestricted', kind: 'room', ownTools: null, expected: null },
-    { name: 'agent kind unions', kind: 'agent', ownTools: ['bash'], expected: ['bash', 'say', 'board', 'dm'] },
+    { name: 'agent kind unions', kind: 'agent', ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history'] },
     { name: 'agent kind without allowlist stays unrestricted', kind: 'agent', ownTools: null, expected: null },
-    { name: 'work unions', kind: 'work', ownTools: ['bash'], expected: ['bash', 'board', 'say'] },
+    { name: 'work unions', kind: 'work', ownTools: ['bash'], expected: ['bash', 'board', 'send_message'] },
     { name: 'work without allowlist stays unrestricted', kind: 'work', ownTools: null, expected: null },
-    { name: 'work does not duplicate', kind: 'work', ownTools: ['board'], expected: ['board', 'say'] },
+    { name: 'work does not duplicate', kind: 'work', ownTools: ['board'], expected: ['board', 'send_message'] },
     { name: 'unknown kind passes through', kind: 'archive', ownTools: ['bash'], expected: ['bash'] },
   ]
 
@@ -60,9 +60,9 @@ describe('resolveAgentToolSurface', () => {
   it('applies an explicit grant outside collab sessions', () => {
     // union grants: layered onto the agent's own tools.
     expect(resolveAgentToolSurface({ ownTools: ['bash'], grants: ['collab-work'] }))
-      .toEqual(['bash', 'board', 'say'])
+      .toEqual(['bash', 'board', 'send_message'])
     expect(resolveAgentToolSurface({ ownTools: ['bash'], grants: ['collab-room'] }))
-      .toEqual(['bash', 'say', 'board', 'dm'])
+      .toEqual(['bash', 'send_message', 'board', 'history'])
   })
 
   it('ignores unknown grants', () => {
@@ -214,11 +214,11 @@ describe('resolveAgentProfile', () => {
     expect(resolveAgentProfile({ agent: agent(), session: {} }).model).toBeUndefined()
   })
 
-  it('unions say + board + dm onto the agent tools by session kind', () => {
+  it('unions send_message + board + history onto the agent tools by session kind', () => {
     expect(resolveAgentProfile({
       agent: agent({ tools: ['bash'] }),
       session: { kind: 'room' },
-    }).tools).toEqual(['bash', 'say', 'board', 'dm'])
+    }).tools).toEqual(['bash', 'send_message', 'board', 'history'])
     expect(resolveAgentProfile({
       agent: agent(),
       session: { kind: 'room' },

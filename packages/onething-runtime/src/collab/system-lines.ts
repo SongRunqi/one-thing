@@ -118,6 +118,27 @@ export function buildCollabMembershipLines(options: CollabMembershipChangeOption
   return lines
 }
 
+/**
+ * 链闸冻结行(collab-turn-protocol-and-identity.md C)。
+ *
+ * 群房与用户私聊里解冻的真源是**一条人类消息**,所以文案可以召唤用户。
+ * agent ⇄ agent 的 pair 房里没有人类可召唤 —— 用户看得见那间房、能插话,但
+ * 「你说一句话」在那里读起来像是对着空气喊。那一版说的是这间房真实的解冻条件:
+ * 跨房 dm 注入(外部输入)会把链长清零,房内的乒乓继续被 6 条闸拦住。
+ *
+ * 一个函数而不是三份副本:贴这行文案的地方有三处(queue/plan-runner/turn 的
+ * chainNoticePosted 闩锁),三份副本迟早会有一份先改。
+ */
+export function buildCollabChainHoldLine(options: {
+  maxChain: number
+  /** agent ⇄ agent 的双成员私聊房吗? */
+  pairDm?: boolean
+}): string {
+  return options.pairDm
+    ? `他们连着聊了 ${options.maxChain} 条,先按住了——有新话题进来会继续`
+    : `他们连着聊了 ${options.maxChain} 条,我先按住了——你说一句话,讨论就继续`
+}
+
 /** Disposition instruction for a halted task — decide, do not review. */
 export const COLLAB_TASK_HALTED_DISPOSITION =
   '请负责人决定下一步:重新指派、换人、改方案,或向用户说明——受阻的卡不能按已交付处理。'

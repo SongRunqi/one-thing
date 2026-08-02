@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../store.js', () => ({
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
   getSession: (id: string) => mocks.sessions.get(id),
   createSession: (id: string, name: string) => {
     const session: FakeSession = { id, name, messages: [] }

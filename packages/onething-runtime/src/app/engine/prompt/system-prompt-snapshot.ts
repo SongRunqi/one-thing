@@ -28,7 +28,6 @@ import {
   initializeAsyncTools,
   setInitContext,
 } from '../../tools/index.js'
-import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { getCodexNativeToolsForConfig } from '../stream/codex-native-tools.js'
 import { resolveAgentLoopStreamRoute } from '../stream/agent-loop-selection.js'
 import { buildPrompt } from './system-prompt.js'
@@ -139,7 +138,6 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     buildProjectDirsPromptVars,
     // persona 功能兜底(域模型 §3.3),与 system-prompt.ts 的 host 同一条规则。
     getAgent: (agentId?: string) => findAgent(agentId) ?? defaultAgent(),
-    buildContextVariablesPromptText,
     buildPrompt,
   })
 

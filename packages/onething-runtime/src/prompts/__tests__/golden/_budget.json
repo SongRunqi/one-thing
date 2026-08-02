@@ -1,15 +1,15 @@
 {
   "minimal": {
-    "totalChars": 974,
-    "totalTokens": 279,
+    "totalChars": 1233,
+    "totalTokens": 353,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 480,
-        "estimatedTokens": 138
+        "chars": 739,
+        "estimatedTokens": 212
       },
       "os": {
         "chars": 184,
@@ -18,16 +18,16 @@
     }
   },
   "desktop-full": {
-    "totalChars": 2805,
-    "totalTokens": 802,
+    "totalChars": 2876,
+    "totalTokens": 822,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 295,
-        "estimatedTokens": 85
+        "chars": 554,
+        "estimatedTokens": 159
       },
       "workdir": {
         "chars": 289,
@@ -42,18 +42,22 @@
         "estimatedTokens": 62
       },
       "skills": {
-        "chars": 1429,
-        "estimatedTokens": 409
+        "chars": 1241,
+        "estimatedTokens": 355
       },
       "os": {
-        "chars": 588,
-        "estimatedTokens": 168
+        "chars": 400,
+        "estimatedTokens": 115
+      },
+      "context-variables": {
+        "chars": 214,
+        "estimatedTokens": 62
       }
     }
   },
   "codex-split": {
-    "totalChars": 2367,
-    "totalTokens": 677,
+    "totalChars": 2626,
+    "totalTokens": 751,
     "segments": {
       "core": {
         "chars": 492,
@@ -64,8 +68,8 @@
         "estimatedTokens": 15
       },
       "runtime-context": {
-        "chars": 306,
-        "estimatedTokens": 88
+        "chars": 565,
+        "estimatedTokens": 162
       },
       "workdir": {
         "chars": 487,
@@ -82,8 +86,8 @@
     }
   },
   "voice": {
-    "totalChars": 1613,
-    "totalTokens": 461,
+    "totalChars": 1872,
+    "totalTokens": 535,
     "segments": {
       "core": {
         "chars": 492,
@@ -94,8 +98,8 @@
         "estimatedTokens": 15
       },
       "voice": {
-        "chars": 793,
-        "estimatedTokens": 227
+        "chars": 1052,
+        "estimatedTokens": 301
       },
       "workdir": {
         "chars": 272,
@@ -108,16 +112,16 @@
     }
   },
   "agents-md": {
-    "totalChars": 1462,
-    "totalTokens": 418,
+    "totalChars": 1721,
+    "totalTokens": 492,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 295,
-        "estimatedTokens": 85
+        "chars": 554,
+        "estimatedTokens": 159
       },
       "workdir": {
         "chars": 672,
@@ -130,16 +134,16 @@
     }
   },
   "windows": {
-    "totalChars": 943,
-    "totalTokens": 270,
+    "totalChars": 1202,
+    "totalTokens": 344,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 279,
-        "estimatedTokens": 80
+        "chars": 538,
+        "estimatedTokens": 154
       },
       "workdir": {
         "chars": 169,
@@ -152,16 +156,16 @@
     }
   },
   "linux": {
-    "totalChars": 890,
-    "totalTokens": 255,
+    "totalChars": 1149,
+    "totalTokens": 329,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 275,
-        "estimatedTokens": 79
+        "chars": 534,
+        "estimatedTokens": 153
       },
       "workdir": {
         "chars": 120,

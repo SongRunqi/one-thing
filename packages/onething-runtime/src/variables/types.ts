@@ -1,17 +1,4 @@
 /**
- * How often a variable's value is expected to change, which decides where it
- * is rendered:
- * - 'static' (default): stable across turns → the system-prompt
- *   <context-variables> block. A change busts the prompt-cache prefix,
- *   so only low-churn values belong here.
- * - 'turn': may change every turn (datetime, git branch) → injected after the
- *   latest user message as a <context-update> block, never into the prefix.
- * - 'on-demand': surfaced only in `variable` tool output and the Context
- *   inspector; never rendered into the prompt.
- */
-export type VariableVolatility = 'static' | 'turn' | 'on-demand'
-
-/**
  * Where a variable lives and who sees it:
  * - 'session' (default): this session only.
  * - 'agent': shared by every session bound to the same agent.
@@ -37,8 +24,30 @@ export interface ContextVariable {
   scope?: VariableScope
   description?: string
   readonly?: boolean
-  volatility?: VariableVolatility
+  /**
+   * 模型是否需要**一直**知道这个值(agent-self-state-variables.md §R)。
+   *
+   * true 的变量每回合全量进 `<context-update>` 尾部块;其余的一个字节都不进
+   * 请求,只能用 `variable` 工具的 keys/get 读。判据是"要不要一直在眼前",
+   * 不是"变得快不快":笔记目录几个月不变,但每次写笔记都要用,所以是 state。
+   */
+  state?: boolean
   updatedAt?: number
+}
+
+/**
+ * 旧盘上的三档 `volatility` 读到即转成 `state`(§R.6),旧文件不回写。
+ *
+ * 'turn' 是三档里唯一"要一直在眼前"的那一档;'static' 与从未有 provider 产出过的
+ * 'on-demand' 都归 false —— 用户自建的 static 变量因此从"每回合都在眼前"变成
+ * "要自己去读",想要旧行为显式写 `state: true`。
+ */
+export function readStateFlag(
+  raw: { state?: unknown; volatility?: unknown } | null | undefined,
+): boolean | undefined {
+  if (typeof raw?.state === 'boolean') return raw.state
+  if (typeof raw?.volatility === 'string') return raw.volatility === 'turn'
+  return undefined
 }
 
 export interface VariableContext {
@@ -58,11 +67,10 @@ export interface SetInput {
   type?: VariableType
   description?: string
   /**
-   * Custom variables may opt into 'turn' so frequent updates ride the
-   * per-turn <context-update> channel instead of rewriting the system
-   * prompt (which would invalidate the prompt-cache prefix every time).
+   * 显式声明这个变量要不要一直在模型眼前(见 ContextVariable.state)。
+   * 自建变量默认 false —— 不写就是"要用时自己去读"。
    */
-  volatility?: VariableVolatility
+  state?: boolean
 }
 
 export interface VariableProvider {
@@ -139,6 +147,10 @@ export const RESERVED_NAMES = Object.freeze([
   'git_branch',
   'background_jobs',
   'goal',
+  // agent 自我状态的事实层(agent-self provider):只读、每回合现算。
+  'my_cards',
+  'my_rooms',
+  'my_dms',
 ] as const)
 
 export type ReservedName = (typeof RESERVED_NAMES)[number]

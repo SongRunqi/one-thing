@@ -23,6 +23,7 @@ import { findAgent } from '../agents/index.js'
 import {
   COLLAB_MESSAGE_SOURCE,
   buildCollabMentions,
+  expandCollabAllMentions,
   mergeCollabMentions,
   normalizeCollabMentions,
   type CollabAgentLike,
@@ -81,7 +82,11 @@ function resolveInboundMentions(
 ): ChatMessageMention[] {
   const picked = normalizeCollabMentions(command.mentions, { members })
   const parsed = buildCollabMentions(command.content, members)
-  return mergeCollabMentions(picked, parsed)
+  // `@所有人`(2026-08-02):展开成全体在职成员的 mention,走的就是既有点名链路
+  // (并行短路激活、编排强制进第一批)—— 全房必答从此是代码保证,不依赖仲裁
+  // 模型读懂"所有人"三个字。只在用户入口展开;agent 的 say 不认这个 token。
+  const all = expandCollabAllMentions(command.content, members)
+  return mergeCollabMentions(mergeCollabMentions(picked, all), parsed)
 }
 
 export function isCollabRoomSession(sessionId: string): boolean {

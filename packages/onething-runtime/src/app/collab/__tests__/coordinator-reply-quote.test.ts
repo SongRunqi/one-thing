@@ -39,6 +39,8 @@ const AGENTS: Record<string, { id: string; name: string }> = {
 }
 
 const mocks = vi.hoisted(() => ({
+  /** 「我的资料」为空 = 全链路回退到「用户」,与今天的行为逐字一致。 */
+  settings: { general: {} } as { general: { userProfile?: Record<string, string> } },
   sessions: new Map<string, unknown>(),
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
   anyListeners: [] as Array<{ sessionId: string; handler: (envelope: unknown) => void }>,
@@ -72,6 +74,8 @@ vi.mock('../../usage/index.js', () => ({
 
 vi.mock('../../store.js', () => ({
   updateSessionWorkingDirectory: vi.fn(),
+  // 用户身份现取(agent-dm-user.md §2.2):引用快照的作者行读它。
+  getSettings: () => mocks.settings,
   // P2-10: the coordinator registers a room-disposal listener at startup.
   onSessionsDeleted: () => () => {},
   getSession: (id: string) => mocks.sessions.get(id),

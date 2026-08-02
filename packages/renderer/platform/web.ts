@@ -443,7 +443,9 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	"setCollabRoomFrozen",
 	"setCollabRoomBudgets",
 	"getCollabRoomSpend",
+	"getCollabCoordinator",
 	"updateCollabRoom",
+	"clearCollabRoomHistory",
 	"reactToCollabMessage",
 	// 托管私聊房也是 room(agent-im-dm.md §7 开放问题:rooms 上服务器是独立议题)
 	"ensureCollabDmRoom",
@@ -1395,6 +1397,19 @@ const webApi = {
 	onMenuCloseChat: () => () => {},
 	onMenuNewBrowserTab: () => () => {},
 	onSearchAction: subscribeSearchAction,
+
+	/**
+	 * 系统通知(agent-dm-user.md §4.2)在 web 端降级为**只剩未读墨点**。
+	 *
+	 * 不是"还没做"而是刻意留白:浏览器的 Notification 要先问权限,而一个页面
+	 * 在用户没要求的情况下弹权限框是骚扰。真要做,入口该是设置里的一次显式授权,
+	 * 不是这里悄悄申请。
+	 */
+	notify: {
+		show: async () => ({ success: true }),
+		setBadge: async () => ({ success: true }),
+		onActivate: () => () => {},
+	},
 };
 
 export function createWebPlatformApi(): PlatformApi {

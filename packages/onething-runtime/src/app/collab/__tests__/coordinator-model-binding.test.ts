@@ -69,6 +69,8 @@ vi.mock('../../usage/index.js', () => ({
 }))
 
 vi.mock('../../store.js', () => ({
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
   updateSessionWorkingDirectory: vi.fn(),
   onSessionsDeleted: () => () => {},
   getSession: (id: string) => mocks.sessions.get(id),
@@ -213,8 +215,8 @@ function bindFakeEngine(): void {
       let callSeq = 0
       for (const say of turn?.says ?? []) {
         const toolCallId = `${sessionId}-call-${++callSeq}`
-        notify({ type: 'tool:input-start', toolCallId, toolName: 'say' })
-        notify({ type: 'tool:input-end', toolCallId, toolCall: { id: toolCallId, toolId: 'say' } })
+        notify({ type: 'tool:input-start', toolCallId, toolName: 'send_message' })
+        notify({ type: 'tool:input-end', toolCallId, toolCall: { id: toolCallId, toolId: 'send_message' } })
         pushInto(ROOM, { role: 'assistant', agentId: 'fe', content: say, source: 'collab-say' })
       }
       notify({ type: 'stream:complete' })

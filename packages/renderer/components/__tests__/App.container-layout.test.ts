@@ -71,7 +71,10 @@ describe('App container layout', () => {
     expect(app).not.toContain('class="inspector-resize-handle"')
     expect(app).not.toContain('edge="left"')
     expect(app).not.toContain('@resize="handleInspectorPixelResize"')
-    expect(app).toContain('const inspectorPanelSize = ref(clampInspectorPanelSize(')
+    /* 右栏尺寸存的是百分比、地板是像素,所以**每次读都要重新收敛** ——
+       只在写入时 clamp 的话,窗口一变窄存着的百分比就跌破 250px 地板。 */
+    expect(app).toContain('const storedInspectorPanelSize = ref(clampInspectorPanelSize(')
+    expect(app).toContain('const inspectorPanelSize = computed({')
     expect(app).toContain('localStorage.getItem(\'inspectorPanelSize\')')
     expect(app).not.toContain('function handleInspectorPixelResize(width: number)')
     expect(app).toContain('function handleInspectorResizeEnd()')
@@ -218,8 +221,14 @@ describe('App container layout', () => {
     expect(app).toContain('const DEFAULT_INSPECTOR_PANEL_SIZE = 32')
     expect(app).toContain('const currentWorkspaceRoots = computed')
     expect(app).toContain('const currentWorkspaceRoot = computed')
-    expect(app).toContain('return Math.min(MAX_INSPECTOR_PANEL_SIZE, Math.max(MIN_INSPECTOR_PANEL_SIZE, size))')
-    expect(app).toContain(':min="22"')
+    /**
+     * 右栏下限改成「22% 与 250px 取大」(设计稿 right-panel.html:最窄 250px 是
+     * 硬指标)。原来只有百分比下限,620px 的窗口里右栏只剩 136px,行被压成
+     * 「I..」「服...」—— 真机走查看到的正是这个。
+     */
+    expect(app).toContain('return Math.min(MAX_INSPECTOR_PANEL_SIZE, Math.max(inspectorMinPanelSize.value, size))')
+    expect(app).toContain('const MIN_INSPECTOR_PANEL_PX = 250')
+    expect(app).toContain(':min="inspectorMinPanelSize"')
     expect(app).toContain(':max="48"')
     expect(app).not.toContain(':min-width="inspectorMinWidth"')
     expect(app).not.toContain(':max-width="inspectorMaxWidth"')

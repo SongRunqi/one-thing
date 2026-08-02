@@ -105,3 +105,59 @@ export function getCollabAgentSessionRoom(sessionId: string): string | undefined
   if (session?.kind !== 'agent') return undefined
   return session.collab?.roomSessionId
 }
+
+/**
+ * 推进这条常驻会话的已读游标(collab/history-window.ts)。
+ *
+ * 游标住在执行会话上,而不是另开一张 (agent × 房) 的表 —— collab-team-v2 §1.1
+ * 已经保证"每群每 agent 一条常驻会话",所以这条会话本身就是那个键。它跟着
+ * transcript 一起活过重启,这一点是必需的:2026-08-01 那次事故里,一批陈旧激活
+ * 正是靠重启复活的,而能拦住它们的判据必须同样跨得过重启。
+ *
+ * **只前进,不后退**:并行回合(两间房各驱一次同一个 agent 是两条会话,但同一
+ * 间房里的重驱、replay 都可能带着更旧的锚点回来)。用房间列表的下标比大小 ——
+ * 时间戳会撞、会因为时钟回拨而乱序,而下标是这份转录自己的顺序。
+ */
+export function advanceSeenCursor(agentSessionId: string, seenMessageId: string): boolean {
+  const session = store.getSession(agentSessionId)
+  if (session?.kind !== 'agent') return false
+  const collab = session.collab
+  const roomSessionId = collab?.roomSessionId
+  if (!roomSessionId) return false
+
+  const current = collab?.seenMessageId
+  if (current === seenMessageId) return false
+  if (current) {
+    const messages = store.getSession(roomSessionId)?.messages ?? []
+    const currentIndex = messages.findIndex(message => message.id === current)
+    const nextIndex = messages.findIndex(message => message.id === seenMessageId)
+    // 新锚点查无此条(消息被删)→ 不动:一个定位不到的游标会让整段历史变成
+    // "未读",而那是最贵的一种错法。旧锚点查无此条则照旧前进(它已经不在了)。
+    if (nextIndex < 0) return false
+    if (currentIndex >= 0 && nextIndex <= currentIndex) return false
+  }
+
+  return store.updateSessionCollab(agentSessionId, {
+    collab: { ...collab, roomSessionId, seenMessageId, seenAt: Date.now() },
+  })
+}
+
+/**
+ * 把已读游标退回"从未读过"(清空聊天记录)。
+ *
+ * 游标指向的那条消息已经不存在了,而 `advanceSeenCursor` 的"查无此条就不动"
+ * 保护会让一个悬空游标永远留在那里 —— 于是这位同事眼里,一间空房仍然"读到过
+ * 某处"。清成 undefined = 下一次回合走 bootstrap,把房间当新的读。
+ *
+ * `collab` 的其余字段(roomSessionId / taskId)原样保留:清的是记忆,不是归属。
+ */
+export function resetCollabSeenCursor(agentSessionId: string): boolean {
+  const session = store.getSession(agentSessionId)
+  const collab = session?.collab
+  if (!collab) return false
+  if (collab.seenMessageId === undefined && collab.seenAt === undefined) return false
+  const next = { ...collab }
+  delete next.seenMessageId
+  delete next.seenAt
+  return store.updateSessionCollab(agentSessionId, { collab: next })
+}

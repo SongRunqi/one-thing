@@ -19,6 +19,8 @@ interface FakeMessage {
 }
 
 const mocks = vi.hoisted(() => ({
+  /** 「我的资料」为空 = 全链路回退到「用户」,与今天的行为逐字一致。 */
+  settings: { general: {} } as { general: { userProfile?: Record<string, string> } },
   sessions: new Map<string, { id: string; kind?: string; messages: FakeMessage[] }>(),
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
   updateMessageReplyTo: vi.fn(),
@@ -26,6 +28,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../store.js', () => ({
   updateSessionWorkingDirectory: vi.fn(),
+  // 用户身份现取(agent-dm-user.md §2.2):引用快照的作者行读它。
+  getSettings: () => mocks.settings,
   getSession: (id: string) => mocks.sessions.get(id),
   updateMessageReplyTo: (sessionId: string, messageId: string, replyTo: FakeMessage['replyTo']) => {
     mocks.updateMessageReplyTo(sessionId, messageId, replyTo)

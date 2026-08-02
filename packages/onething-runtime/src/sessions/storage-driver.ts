@@ -49,6 +49,13 @@ export interface SessionStorageDriver<TSession> {
   load(sessionId: string): TSession | undefined
   write(sessionId: string, session: TSession, plan: SessionWritePlan): Promise<void>
   delete(sessionId: string): void
+  /**
+   * 把当前的消息日志原样复制一份留档,返回留档文件路径(无消息可留时 undefined)。
+   *
+   * 只复制、不改动:调用方随后自己清空/重写会话。留档**不进任何读取路径**
+   * (jsonl 目录里只有 `messages.jsonl` 被扫),与 legacy-backup 同精神。
+   */
+  archiveMessages(sessionId: string): string | undefined
   /** 不加载整会话的分页;返回 undefined 表示无法服务(调用方降级) */
   getMessagesPage(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse | undefined
   getUserMessageMarkers(sessionId: string): UserMessageMarker[] | undefined
@@ -507,6 +514,32 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
       }
       if (legacyExists(sessionId)) {
         options.deleteJsonFile(options.getLegacySessionPath(sessionId))
+      }
+    },
+
+    archiveMessages(sessionId) {
+      const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')
+      try {
+        if (jsonlExists(sessionId)) {
+          const source = logPath(sessionId)
+          if (!fs.existsSync(source)) return undefined
+          const target = path.join(sessionDir(sessionId), `messages.cleared-${stamp}.jsonl`)
+          fs.copyFileSync(source, target)
+          return target
+        }
+        const legacyPath = options.getLegacySessionPath(sessionId)
+        if (!fs.existsSync(legacyPath)) return undefined
+        // legacy 会话没有独立的消息文件,整份会话就是那条日志 —— 留档因此落在
+        // 会话目录之外的 legacy-backup 里,免得一个 `<id>.cleared-*.json` 躺在
+        // sessions 根目录里读起来像另一条会话。
+        const backupDir = path.join(options.getSessionsDir(), LEGACY_BACKUP_DIR_NAME)
+        fs.mkdirSync(backupDir, { recursive: true })
+        const target = path.join(backupDir, `${sessionId}.cleared-${stamp}.json`)
+        fs.copyFileSync(legacyPath, target)
+        return target
+      } catch (error) {
+        logger?.error?.(`[Sessions] messages archive failed for ${sessionId}:`, error)
+        return undefined
       }
     },
 

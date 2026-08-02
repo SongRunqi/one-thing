@@ -11,6 +11,7 @@ import {
   SIDEBAR_RAIL_CATEGORIES,
   SIDEBAR_RAIL_STORAGE_KEY,
   SIDEBAR_ROOM_FACE_LIMIT,
+  migrateRailCategory,
   resolveRailBadges,
   resolveRailCategories,
   resolveRailCategory,
@@ -18,68 +19,60 @@ import {
   takeRoomFaces,
 } from '../sidebar-sections'
 
+const ALL = ['recent', 'active', 'contacts', 'sessions'] as const
+
 describe('rail 上有哪几类', () => {
-  it('四类定序:进行中 / 群聊 / 联系人 / 会话', () => {
-    expect(SIDEBAR_RAIL_CATEGORIES.map(category => category.id))
-      .toEqual(['active', 'rooms', 'contacts', 'sessions'])
-    expect(SIDEBAR_RAIL_CATEGORIES.map(category => category.label))
-      .toEqual(['进行中', '群聊', '联系人', '会话'])
-  })
-
-  it('有活在跑时四类齐全', () => {
-    expect(resolveRailCategories({ roomsEnabled: true, activeWorkCount: 2 }))
-      .toEqual(['active', 'rooms', 'contacts', 'sessions'])
-  })
-
   /**
-   * 真机比对后改口径(2026-07-31):**四类恒在 rail 上**。
-   *
-   * 「没有活就整区不显示」是给*列表里的分区*定的 —— 空分区白占左栏最贵的纵向
-   * 空间。到了 rail 上它不成立:图标不占列表空间,藏掉却有两个坏处 —— 活一起一停
-   * rail 就上下跳(肌肉记忆没了);没活时还点不进去看「已交付」。
-   * 空态改由面板内部说话(`.active-work-empty` 一行),不由 rail 决定去留。
+   * 2026-08-01 改口径:四格从**按类型分列**改成**按意图分列**。
+   * 「消息」在最前且是默认停靠的一类 —— 打开 app 先看见的是最近说过话的人,
+   * 而不是一本按类型排的花名册。
    */
-  it('没有在跑的活:「进行中」仍在 rail 上,空态由面板自己说', () => {
-    expect(resolveRailCategories({ roomsEnabled: true, activeWorkCount: 0 }))
-      .toEqual(['active', 'rooms', 'contacts', 'sessions'])
+  it('四类定序:消息 / 进行中 / 通讯录 / 会话', () => {
+    expect(SIDEBAR_RAIL_CATEGORIES.map(category => category.id)).toEqual([...ALL])
+    expect(SIDEBAR_RAIL_CATEGORIES.map(category => category.label))
+      .toEqual(['消息', '进行中', '通讯录', '会话'])
   })
 
-  it('有活时同样是四类,顺序不随数据变', () => {
-    expect(resolveRailCategories({ roomsEnabled: true, activeWorkCount: 5 }))
-      .toEqual(['active', 'rooms', 'contacts', 'sessions'])
+  it('桌面端四类恒在(rail 不随数据增删图标)', () => {
+    expect(resolveRailCategories({ roomsEnabled: true })).toEqual([...ALL])
   })
 
   /**
-   * web 端 `platformApi.capabilities.collabRooms` 为 false:进行中/群聊/联系人
-   * 三类无源可吃,留在 rail 上就是三枚点不出东西的死图标。
+   * web 端 `platformApi.capabilities.collabRooms` 为 false:消息/进行中/通讯录
+   * 三类无源可吃(私聊与群都是房),留在 rail 上就是三枚点不出东西的死图标。
    */
   it('web 降级:没有 rooms 能力时只留「会话」,不留死图标', () => {
-    expect(resolveRailCategories({ roomsEnabled: false, activeWorkCount: 3 }))
-      .toEqual(['sessions'])
+    expect(resolveRailCategories({ roomsEnabled: false })).toEqual(['sessions'])
   })
 })
 
 describe('当前类别', () => {
-  const all = ['active', 'rooms', 'contacts', 'sessions'] as const
-
   it('存过什么就是什么', () => {
-    expect(resolveRailCategory('contacts', all)).toBe('contacts')
+    expect(resolveRailCategory('contacts', ALL)).toBe('contacts')
   })
 
   it('没存过 / 存了读不懂的东西 → 第一个可用类别', () => {
-    expect(resolveRailCategory(null, all)).toBe('active')
-    expect(resolveRailCategory('', all)).toBe('active')
+    expect(resolveRailCategory(null, ALL)).toBe('recent')
+    expect(resolveRailCategory('', ALL)).toBe('recent')
     // 旧版本那个键里装的是折叠态数组,形状完全不同 —— 读不懂就当没存过。
-    expect(resolveRailCategory('["rooms","sessions"]', all)).toBe('active')
+    expect(resolveRailCategory('["rooms","sessions"]', ALL)).toBe('recent')
   })
 
-  it('存的那类已经不在 rail 上(活干完了 / web 降级)→ 退到第一个可用的', () => {
-    expect(resolveRailCategory('active', ['rooms', 'contacts', 'sessions'])).toBe('rooms')
-    expect(resolveRailCategory('rooms', ['sessions'])).toBe('sessions')
+  /** 「群聊」并进了通讯录:停在那一类的人下次开 app 该落在通讯录,不是被退回。 */
+  it('旧存档 rooms → 通讯录', () => {
+    expect(migrateRailCategory('rooms')).toBe('contacts')
+    expect(migrateRailCategory('contacts')).toBe('contacts')
+    expect(migrateRailCategory(null)).toBe(null)
+    expect(resolveRailCategory('rooms', ALL)).toBe('contacts')
+  })
+
+  it('存的那类已经不在 rail 上(web 降级)→ 退到第一个可用的', () => {
+    expect(resolveRailCategory('recent', ['sessions'])).toBe('sessions')
+    expect(resolveRailCategory('contacts', ['sessions'])).toBe('sessions')
   })
 
   it('一个可用类别都没有也不能崩(兜底到会话)', () => {
-    expect(resolveRailCategory('rooms', [])).toBe('sessions')
+    expect(resolveRailCategory('recent', [])).toBe('sessions')
   })
 
   it('落点是 localStorage 的一个键(本机视图偏好,不进 settings)', () => {
@@ -87,15 +80,39 @@ describe('当前类别', () => {
   })
 })
 
-describe('徽标(该类有未读或在跑)', () => {
-  it('四路信号各归各的,一枚点不摆数字', () => {
-    expect(resolveRailBadges({ active: true, rooms: false, contacts: true, sessions: false }))
-      .toEqual({ active: true, rooms: false, contacts: true, sessions: false })
+describe('徽标', () => {
+  /**
+   * **一条未读只催一次**。「消息」装房(群 + 私聊)、「会话」装直聊,两堆不重叠,
+   * 各自亮各自的不会重复报数;而「通讯录」的每一行要么已经在消息流里、要么根本
+   * 没聊过 —— 它替谁报都是第二遍,所以恒不亮。
+   */
+  it('房的未读落「消息」,直聊的未读落「会话」,通讯录恒不亮', () => {
+    expect(resolveRailBadges({
+      available: ALL, unreadConversations: true, unreadChatSessions: false, activeWork: false,
+    })).toEqual({ recent: true, active: false, contacts: false, sessions: false })
+
+    expect(resolveRailBadges({
+      available: ALL, unreadConversations: false, unreadChatSessions: true, activeWork: false,
+    })).toEqual({ recent: false, active: false, contacts: false, sessions: true })
+  })
+
+  it('在跑落在「进行中」,与未读互不干涉', () => {
+    expect(resolveRailBadges({
+      available: ALL, unreadConversations: false, unreadChatSessions: false, activeWork: true,
+    })).toEqual({ recent: false, active: true, contacts: false, sessions: false })
+  })
+
+  /** web 端没有房这一路,rail 上也没有「消息」—— 两路未读一起落到唯一那条列表。 */
+  it('web 降级:未读全落「会话」,不会无处可报', () => {
+    expect(resolveRailBadges({
+      available: ['sessions'], unreadConversations: true, unreadChatSessions: false, activeWork: false,
+    })).toEqual({ recent: false, active: false, contacts: false, sessions: true })
   })
 
   it('全静时一枚都不亮', () => {
-    expect(resolveRailBadges({ active: false, rooms: false, contacts: false, sessions: false }))
-      .toEqual({ active: false, rooms: false, contacts: false, sessions: false })
+    expect(resolveRailBadges({
+      available: ALL, unreadConversations: false, unreadChatSessions: false, activeWork: false,
+    })).toEqual({ recent: false, active: false, contacts: false, sessions: false })
   })
 })
 

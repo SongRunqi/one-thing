@@ -1391,6 +1391,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 		findUserDmRoom,
 		readMarks,
 		windowFocused,
+		// 「用户此刻看不看得见这间房」的唯一判定(agent-dm-user.md §4.3 的通知门
+		// 也读它)——别处再写一遍 `visibleSessionIds.has(...) && windowFocused`
+		// 就是让两处对"在场"各有一套口径。
+		isSessionOnScreen,
 		unreadSessionIds,
 		isUnreadSession,
 		hydrateReadMarks,

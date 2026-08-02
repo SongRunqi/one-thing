@@ -153,6 +153,12 @@ export interface GeneralSettings {
 	editor?: EditorSettings;
 	// User profile for lightweight context injection
 	userProfile?: UserProfileSettings;
+	/**
+	 * 私聊来消息时弹系统通知(agent-dm-user.md §4.4)。缺省开。
+	 *
+	 * 静音面只做这一个开关:按 agent 静音已经有冻结房了,粒度更细的开关是重复造。
+	 */
+	dmNotifications?: boolean;
 	maxTabs?: number; // Maximum open tabs per panel, 3-30, default 15
 	maxFilePreviewKB?: number; // Maximum file preview size in KB, 64-1024, default 256
 	/**
@@ -169,8 +175,23 @@ export interface GeneralSettings {
 }
 
 // Lightweight user profile for system prompt injection (low token, high value)
+/**
+ * 「我」这一侧的身份(docs/design/agent-dm-user.md §2.1)。
+ *
+ * agent 一直有完整身份(name/avatar/avatarImage),用户没有 —— 于是模型面只能
+ * 叫「用户」,dm 无从定位,UI 署名写死「我」。这三个新字段补的就是那一半。
+ *
+ * 存 settings 而不是 `<store>/user-profile/profile.json`:资料就是几个标量,
+ * settings 已有缓存/同步/落盘全套,单开一个 json 要新的读写链路与水合时机。
+ *
+ * `handle` 是**称呼层的定位符**,不是 userId:消息结构仍然只有 `role:'user'`,
+ * 旧会话零迁移。
+ */
 export interface UserProfileSettings {
 	name?: string; // User's name
+	handle?: string; // 句柄(@ 与 dm 的目标写法);清洗为 [a-z0-9_-]{1,24},缺省 'user'
+	avatar?: string; // Emoji avatar
+	avatarImage?: string; // Media library file name — wins over the emoji (与 AgentDefinition 同约定)
 	timezone?: string; // Timezone (e.g., 'Asia/Shanghai')
 	language?: string; // Preferred language (e.g., 'zh-CN', 'en')
 	customInfo?: string; // Brief custom info (max 100 chars)

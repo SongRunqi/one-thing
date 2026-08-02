@@ -22,7 +22,7 @@ import {
   isUserDmRoom,
   type CollabAgentLike,
 } from '@onething/runtime/collab'
-import { getCollabSelfTaskFacts } from '../../collab/board-store.js'
+import { collabUserPromptFields } from '../../collab/user-identity.js'
 import type { PromptProviderConfig } from './plugin-context.js'
 import type { PromptActiveProject, PromptKnownProjects } from './types.js'
 
@@ -120,14 +120,21 @@ function collabRoomOverrides(
       },
       members,
       roomName: room.name,
+      // agent-dm-user.md §2.3:用户不再是匿名的「用户」——花名册里 TA 和同事
+      // 同一书写法(`一天#yitian(用户)`),情况说明里的称呼也是 TA 的名字。
+      ...collabUserPromptFields(),
       personaPrompt: selfAgent.systemPrompt || `你是${selfAgent.name}。`,
-      // W9.3: whatever the board says this agent is currently on the hook for.
-      // Every activation reason gets it — an agent must not have to be told
-      // about its own in-flight work by another agent's (possibly wrong) claim.
-      taskFacts: getCollabSelfTaskFacts(roomSessionId, selfAgent.id),
       // collab-team-v2 §8: the shared rules ride along on a real turn only —
       // the willingness judgement calls the same builder and needs none of it.
       includeCommonRules: true,
+      // 花名册回到 system prompt(collab-turn-protocol-and-identity.md B)。
+      // 它曾被搬进 `<ChatRoom><Members>`,而 v3 V2 删掉了那块载荷 —— 名单从此
+      // 指向一段不存在的文本,模型于是把用户与花名册上的名字数成两个人。
+      // members 与用户行(`一天#yitian(用户)`)都在手边,零新数据搬运。
+      rosterInSystemPrompt: true,
+      // 真回合的消息以 `<message from>` 信封到达,未读裹在 `<Notification>` 里 ——
+      // 视野说明因此常开。它与花名册在哪是两个正交的事实,别再合成一个开关。
+      driveEnvelope: true,
       // agent-im-dm.md §2.3:单成员 dm 房换成私聊那一版情况说明(群房零改动)。
       // 判定读的是**房**的配置,与工具面那条推导同源(app/agents/profile.ts)。
       dm: isUserDmRoom(room.room),
@@ -136,11 +143,17 @@ function collabRoomOverrides(
       dmPair: isAgentPairDmRoom(room.room),
     }),
     toolGuidelines: [],
+    // 禁用整批产品段的理由是「soul-memory rules must not leak into personas」——
+    // 防的是**产品说明文案**污染 persona。而 `<context-variables>` 不是产品说明,
+    // 它是通往运行时状态板的那句指路,正是群聊里最该有的东西
+    // (agent-self-state-variables.md §5):此前群房里模型看不到任何变量的值,
+    // 却握着 `variable` 工具,而那个工具当时唯一的读法是全量 list —— 既没有被动
+    // 可见性,主动读的代价又最高。`context-update-convention` 一并解禁:否则状态
+    // 块进来了,却没有任何文案告诉模型那是什么。
     disabledSections: [
       'agent', // persona already IS the system prompt — no duplicate section
       'voice',
       'runtime-context',
-      'context-update-convention',
       'workdir',
       'active-project',
       'known-projects',
@@ -148,7 +161,6 @@ function collabRoomOverrides(
       'os',
       'todo',
       'agents-md',
-      'context-variables',
       'plugins',
     ],
   }

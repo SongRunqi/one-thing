@@ -694,13 +694,75 @@ describe('core session store helpers', () => {
       { name: 'topic', value: 'core' },
       { name: 'kept', value: 'yes', values: ['a'], description: 'desc', updatedAt: 10 },
     ], 200)).toEqual([
-      { name: 'topic', value: 'core', values: undefined, description: undefined, updatedAt: 200 },
-      { name: 'kept', value: 'yes', values: ['a'], description: 'desc', updatedAt: 10 },
+      {
+        name: 'topic',
+        value: 'core',
+        values: undefined,
+        type: undefined,
+        scope: undefined,
+        state: undefined,
+        description: undefined,
+        updatedAt: 200,
+      },
+      {
+        name: 'kept',
+        value: 'yes',
+        values: ['a'],
+        type: undefined,
+        scope: undefined,
+        state: undefined,
+        description: 'desc',
+        updatedAt: 10,
+      },
+    ])
+
+    // type/scope/state 必须原样存活:归一化丢掉 state 的话,本该一直在模型眼前
+    // 的状态重载后就凭空消失了,而且悄无声息
+    // (agent-self-state-variables.md §R)。
+    expect(normalizeSessionVariables([
+      {
+        name: 'live_status',
+        value: 'running',
+        type: 'string',
+        scope: 'session',
+        state: true,
+      },
+      { name: 'archive', value: '[]', type: 'list', state: false },
+    ], 300)).toEqual([
+      {
+        name: 'live_status',
+        value: 'running',
+        values: undefined,
+        type: 'string',
+        scope: 'session',
+        state: true,
+        description: undefined,
+        updatedAt: 300,
+      },
+      {
+        name: 'archive',
+        value: '[]',
+        values: undefined,
+        type: 'list',
+        scope: undefined,
+        state: false,
+        description: undefined,
+        updatedAt: 300,
+      },
     ])
 
     applySessionVariables(session, [{ name: 'mode', value: 'headless' }], 250)
     expect(session.variables).toEqual([
-      { name: 'mode', value: 'headless', values: undefined, description: undefined, updatedAt: 250 },
+      {
+        name: 'mode',
+        value: 'headless',
+        values: undefined,
+        type: undefined,
+        scope: undefined,
+        state: undefined,
+        description: undefined,
+        updatedAt: 250,
+      },
     ])
 
     applySessionPromptContext(session, { references: ['p1'] })

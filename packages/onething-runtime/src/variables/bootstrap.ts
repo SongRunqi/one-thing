@@ -1,3 +1,4 @@
+import { AgentSelfProvider, type AgentSelfStateGateway } from './providers/agent-self.js'
 import { BackgroundJobsProvider, type BackgroundJobsProviderDeps } from './providers/background-jobs.js'
 import { CoreProvider, type CoreProviderAdapters, type WorkdirGateway } from './providers/core.js'
 import { DateTimeProvider } from './providers/datetime.js'
@@ -23,6 +24,8 @@ export interface StandardVariableProviderGateways {
   goal?: GoalVariableGateway
   /** Music/radio status reader; hosts without a music subsystem simply omit it. */
   musicRadio?: MusicRadioGateway
+  /** Agent 自我状态(卡/房/私聊);宿主没有协作子系统就不给,三个变量随之消失。 */
+  agentSelf?: AgentSelfStateGateway
   /** Agent-scoped custom variables (keyed by the session's agent id). */
   agentStore?: KeyedStoreGateway
   /** Project-scoped custom variables (keyed by the active workdir's project id). */
@@ -48,6 +51,9 @@ export function registerStandardVariableProviders(
   }
   if (gateways.musicRadio) {
     registry.register(new MusicRadioProvider(gateways.musicRadio))
+  }
+  if (gateways.agentSelf) {
+    registry.register(new AgentSelfProvider(gateways.agentSelf))
   }
   registry.register(new NotesProvider(gateways.notes))
   registry.register(new GlobalStoreProvider(gateways.globalStore))

@@ -45,7 +45,7 @@ async function readBranch(workdir: string): Promise<string | null> {
 }
 
 /**
- * Read-only turn-volatile provider exposing the current git branch of the
+ * Read-only state provider exposing the current git branch of the
  * active work directory. Reads .git/HEAD directly (no process spawn); emits
  * nothing when the workdir is unset or not inside a git repository.
  */
@@ -64,7 +64,7 @@ export class GitBranchProvider implements VariableProvider {
       name: NAME,
       value: branch,
       readonly: true,
-      volatility: 'turn',
+      state: true,
       description: 'Current git branch of the work directory',
     }]
   }

@@ -454,6 +454,13 @@ export async function generateWithOnethingDeepSeekAgent(
   return {
     text: agentContentToText(turn.message.content),
     reasoning: turn.message.reasoningContent || undefined,
+    // 2026-08-02:这一行本来是漏的。`generateOnethingTextChatResponse` 靠
+    // `if (result.usage) onUsage(...)` 计费,而 deepseek 这条 generate 路径
+    // 一直不带 usage —— 于是每一个走它的**旁路调用**(意愿判定、标题、摘要…)
+    // 都从账本上消失了。真机实证:`collab-willingness` 从这个标签存在至今一条
+    // 记录都没有,而判定其实一直在跑。兄弟函数 `runOnethingUtilityAgentTurn`
+    // 一直是带的,两条路就这么分了家。
+    usage: turn.usage,
   }
 }
 

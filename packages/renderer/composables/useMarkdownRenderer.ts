@@ -1,6 +1,10 @@
 import { copyTextToClipboard } from '@/utils/clipboard'
 import { perfMark, perfMeasure } from '@/utils/perf'
-import { collabInlineTagPlugin, ensureCollabTagHandler } from '@/composables/collabInlineTags'
+import {
+  collabInlineTagPlugin,
+  ensureCollabTagHandler,
+  replaceCollabMentionMarkers,
+} from '@/composables/collabInlineTags'
 import { normalizeStatusEmoji, replaceEmojiShortcodes } from '@/editor/markdown-emoji'
 import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
 import type { MarkdownRenderOptions } from '@/editor/markdown-document'
@@ -158,16 +162,71 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, '&gt;')
 }
 
+/**
+ * 群聊 say 里的代码块折叠(im-message 设计稿 §F)。
+ *
+ * 只在 `.md-say-scope` 里生效:主会话是"读代码的地方",群聊流是"读对话的
+ * 地方",一段 40 行的脚本在群里顶三屏就把对话冲没了。阈值以行数判,行数写在
+ * 展开条上 —— 折叠必须告诉人被折了多少,否则它是隐藏而不是收纳。
+ */
+export const SAY_CODE_CLAMP_LINES = 11
+
+export function applySayCodeClamp(root: ParentNode): void {
+  const containers = new Set<HTMLElement>()
+  const collect = (element: Element | null) => {
+    if (element instanceof HTMLElement) containers.add(element)
+  }
+  if (root instanceof Element && root.closest('.md-say-scope')) {
+    if (root.classList.contains('code-block-container')) collect(root)
+    root.querySelectorAll<HTMLElement>('.code-block-container').forEach(collect)
+  }
+  root.querySelectorAll<HTMLElement>('.md-say-scope .code-block-container').forEach(collect)
+
+  containers.forEach((container) => {
+    if (container.dataset.sayClamp) return
+    const code = container.querySelector('pre > code')
+    if (!code) return
+    const lines = (code.textContent ?? '').replace(/\n$/, '').split('\n').length
+    if (lines <= SAY_CODE_CLAMP_LINES) {
+      container.dataset.sayClamp = 'short'
+      return
+    }
+    container.dataset.sayClamp = 'clamped'
+    container.classList.add('is-say-clamped')
+    const fade = document.createElement('div')
+    fade.className = 'say-code-fade'
+    fade.setAttribute('aria-hidden', 'true')
+    const more = document.createElement('button')
+    more.type = 'button'
+    more.className = 'say-code-more'
+    more.dataset.sayCodeLines = String(lines)
+    more.textContent = `展开 ${lines} 行 ▾`
+    container.append(fade, more)
+  })
+}
+
+function toggleSayCodeClamp(button: HTMLElement): void {
+  const container = button.closest('.code-block-container') as HTMLElement | null
+  if (!container) return
+  const expanded = container.classList.toggle('is-say-clamped')
+  const lines = button.dataset.sayCodeLines ?? ''
+  button.textContent = expanded ? `展开 ${lines} 行 ▾` : '收起 ▴'
+}
+
 function ensureCodeCopyHandler(): void {
   if (codeCopyHandlerInstalled || typeof document === 'undefined') return
   codeCopyHandlerInstalled = true
   mountCodeCopyButtons(document)
+  applySayCodeClamp(document)
 
   if (typeof MutationObserver !== 'undefined') {
     codeCopyObserver = new MutationObserver((records) => {
       for (const record of records) {
         record.addedNodes.forEach((node) => {
-          if (node instanceof Element) mountCodeCopyButtons(node)
+          if (node instanceof Element) {
+            mountCodeCopyButtons(node)
+            applySayCodeClamp(node)
+          }
         })
         record.removedNodes.forEach((node) => {
           if (node instanceof Element) unmountDomButtons(node)
@@ -176,6 +235,14 @@ function ensureCodeCopyHandler(): void {
     })
     codeCopyObserver.observe(document.body, { childList: true, subtree: true })
   }
+
+  document.addEventListener('click', (event) => {
+    const target = event.target as Element | null
+    const more = target?.closest?.('.say-code-more') as HTMLElement | null
+    if (!more) return
+    event.preventDefault()
+    toggleSayCodeClamp(more)
+  })
 
   document.addEventListener('click', async (event) => {
     const target = event.target as Element | null
@@ -219,12 +286,38 @@ function codeCopyIconMarkup(): string {
 }
 
 /**
+ * Install the once-only DOM handlers rendered markdown depends on: the code
+ * copy buttons, the say-scope code clamp, and the collab tag / mention
+ * promotion observers.
+ *
+ * Exported because a **cache hit renders no markdown**: StaticMarkdown returns
+ * stored HTML without calling `renderMarkdown`, and a session where every
+ * message is cached would otherwise mount DOM that nothing ever observes —
+ * dead copy buttons, unpromoted mentions, unclamped code.
+ */
+export function ensureMarkdownDomHandlers(): void {
+  ensureCodeCopyHandler()
+  ensureCollabTagHandler()
+}
+
+/**
  * Escape HTML special characters
  */
 export function escapeHtml(text: string): string {
   const div = document.createElement('div')
   div.textContent = text
   return div.innerHTML
+}
+
+/**
+ * The user's own messages never go through markdown-it — they are escaped and
+ * injected verbatim. @mention pills still have to appear there (the user is
+ * the one doing most of the @-ing), so the mention markers are substituted
+ * AFTER escaping, by the same builder the markdown-it rule uses. One pill
+ * shape, two surfaces.
+ */
+export function renderPlainTextWithMentions(content: string): string {
+  return replaceCollabMentionMarkers(escapeHtml(content)).replace(/\n/g, '<br>')
 }
 
 /**
@@ -238,11 +331,10 @@ export function renderMarkdown(
   options: MarkdownRenderOptions = {},
 ): string {
   if (isUserMessage || options.surface === 'user-message') {
-    return escapeHtml(content).replace(/\n/g, '<br>')
+    return renderPlainTextWithMentions(content)
   }
   perfMark('md-render-start')
-  ensureCodeCopyHandler()
-  ensureCollabTagHandler()
+  ensureMarkdownDomHandlers()
   const streaming = options.streaming || options.surface === 'streaming'
   const html = getMarkdownRenderer({
     enableMath: options.math ?? !streaming,

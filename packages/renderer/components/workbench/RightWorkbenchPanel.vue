@@ -10,225 +10,254 @@
     main-overflow="hidden"
     @keydown.esc="pickerOpen = false"
   >
+    <!-- 形态一:**房间背台**(房/私聊)。分段器固定三格,不是页签。 -->
+    <RoomBackstagePanel
+      v-if="panelForm.form === 'backstage'"
+      class="workbench-backstage"
+      :room-session-id="panelForm.roomSessionId"
+      :is-dm="panelForm.isDm"
+      :dm-agent-id="panelForm.dmAgentId"
+      :landing="backstageLanding"
+      @open-session="openSessionTab"
+      @open-file="openFile"
+    />
+
+    <!-- 形态二:**既有工具页签**(直聊/工程面)。
+         `display: contents` + `v-show`:切到房面时它整棵树留在原地(终端 PTY、
+         浏览器视图、编辑器缓冲全都活着),切回来一个字节不丢 —— 不是销毁重建。
+         包一层壳而不是给每个孩子各挂一个 v-show,是为了不改这一路的布局:
+         `display: contents` 让这个 div 在排版上不存在。 -->
     <div
-      v-if="pickerOpen && openTabs.length"
-      class="workbench-tab-picker"
-      @mousedown.stop
+      v-show="panelForm.form === 'tools'"
+      class="workbench-tools-form"
     >
-      <Button
-        v-for="option in availableTabOptions"
-        :key="option.type"
-        unstyled
-        class="picker-option"
-        :style="workbenchToolStyle(option.categorySlot)"
-        @click="addWorkbenchTab(option.type)"
+      <div
+        v-if="pickerOpen && openTabs.length"
+        class="workbench-tab-picker"
+        @mousedown.stop
       >
-        <component
-          :is="option.icon"
-          :size="15"
-          :stroke-width="2"
-          aria-hidden="true"
-        />
-        <span>{{ option.title }}</span>
-      </Button>
-    </div>
-
-    <Button
-      v-if="!openTabs.length"
-      unstyled
-      class="workbench-close is-floating"
-      title="Close workbench"
-      aria-label="Close workbench"
-      @click="$emit('close')"
-    >
-      <X
-        :size="14"
-        :stroke-width="2"
-        aria-hidden="true"
-      />
-    </Button>
-
-    <Tabs
-      v-if="openTabs.length"
-      v-model="activeTabId"
-      class="right-workbench-tabs"
-      addable
-      closable
-      @tab-add="togglePicker"
-      @tab-remove="closeWorkbenchTab"
-    >
-      <template #actions>
         <Button
+          v-for="option in availableTabOptions"
+          :key="option.type"
           unstyled
-          class="workbench-close"
-          title="Close workbench"
-          aria-label="Close workbench"
-          @click="$emit('close')"
+          class="picker-option"
+          :style="workbenchToolStyle(option.categorySlot)"
+          @click="addWorkbenchTab(option.type)"
         >
-          <X
-            :size="14"
+          <component
+            :is="option.icon"
+            :size="15"
             :stroke-width="2"
             aria-hidden="true"
           />
+          <span>{{ option.title }}</span>
         </Button>
-      </template>
+      </div>
 
-      <TabPane
-        v-for="tab in openTabs"
-        :key="tab.id"
-        :name="tab.id"
-        :label="tab.title"
-        lazy
+      <Button
+        v-if="!openTabs.length"
+        unstyled
+        class="workbench-close is-floating"
+        title="Close workbench"
+        aria-label="Close workbench"
+        @click="$emit('close')"
       >
-        <template #label>
-          <span
-            class="workbench-tab-label"
-            :style="workbenchToolStyle(tabCategorySlot(tab.type))"
+        <X
+          :size="14"
+          :stroke-width="2"
+          aria-hidden="true"
+        />
+      </Button>
+
+      <Tabs
+        v-if="openTabs.length"
+        v-model="activeTabId"
+        class="right-workbench-tabs"
+        addable
+        closable
+        @tab-add="togglePicker"
+        @tab-remove="closeWorkbenchTab"
+      >
+        <template #actions>
+          <Button
+            unstyled
+            class="workbench-close"
+            title="Close workbench"
+            aria-label="Close workbench"
+            @click="$emit('close')"
           >
-            <component
-              :is="tabIcon(tab.type)"
+            <X
               :size="14"
               :stroke-width="2"
               aria-hidden="true"
             />
-            <span>{{ tabDisplayTitle(tab) }}</span>
-          </span>
+          </Button>
         </template>
 
-        <EditorWorkbench
-          v-if="tab.type === 'files' || tab.type === 'file'"
-          :workspace-root="tab.workspaceRoot || workspaceRoot"
-          :initial-file-path="tab.filePath"
-          :active="activeTabId === tab.id"
-          @open-file="openFile"
-        />
-
-        <GoalReviewWorkbench
-          v-else-if="tab.type === 'review'"
-          :key="`${tab.id}-${tab.reviewNonce ?? 0}`"
-          :session-id="tab.sessionId || sessionId"
-          @open-file="openFile"
-          @objective-resolved="(objective) => renameReviewTab(tab.id, objective)"
-        />
-
-        <TerminalView
-          v-else-if="tab.type === 'terminal' && tab.terminalId"
-          class="workbench-terminal"
-          :terminal-id="tab.terminalId"
-          @restarted="(newId) => handleTerminalRestarted(tab.id, newId)"
-        />
-
-        <BrowserPanel
-          v-else-if="tab.type === 'browser' && canUseEmbeddedBrowser"
-          :active="activeTabId === tab.id"
-          :revealed="props.revealed"
-        />
-
-        <CollabBoardPanel v-else-if="tab.type === 'board'" />
-
-        <ThreadWorkbench
-          v-else-if="tab.type === 'thread'"
-          :session-id="tab.sessionId || ''"
-          @open-file="openFile"
-          @title-resolved="(title) => renameThreadTab(tab.id, title)"
-        />
-
-        <MembersWorkbench
-          v-else-if="tab.type === 'members'"
-          :session-id="tab.sessionId || ''"
-          :focus-agent-id="tab.memberAgentId || ''"
-          :focus-tab="tab.detailTab || null"
-          @focus="(agentId) => setMembersFocus(tab.id, agentId)"
-          @open-session="openSessionTab"
-          @open-file="openFile"
-          @open-thread="openThread"
-        />
-
-        <!-- 「这个人」的页签:房外的人(直聊助理 / 已退休同事)落在这里。 -->
-        <AgentSpace
-          v-else-if="tab.type === 'agent'"
-          :agent-id="tab.agentId || ''"
-          :initial-tab="tab.detailTab || null"
-          @open-session="openSessionTab"
-          @open-file="openFile"
-          @open-thread="openThread"
-        />
-
-        <!-- iframe fallback: apps/web host has no WebContentsView -->
-        <section
-          v-else-if="tab.type === 'browser'"
-          class="workbench-browser"
+        <TabPane
+          v-for="tab in openTabs"
+          :key="tab.id"
+          :name="tab.id"
+          :label="tab.title"
+          lazy
         >
-          <form
-            class="browser-toolbar"
-            @submit.prevent="navigateBrowser"
-          >
-            <Globe2
-              :size="14"
-              :stroke-width="2"
-              aria-hidden="true"
-            />
-            <input
-              v-model="browserInput"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="localhost:3000"
+          <template #label>
+            <span
+              class="workbench-tab-label"
+              :class="{ 'has-fixed-label': FIXED_LABEL_TABS.has(tab.type) }"
+              :style="workbenchToolStyle(tabCategorySlot(tab.type))"
             >
-            <Button
-              unstyled
-              class="browser-go"
-              native-type="submit"
-              :disabled="!browserInput.trim()"
-            >
-              <ArrowRight
+              <component
+                :is="tabIcon(tab.type)"
                 :size="14"
                 :stroke-width="2"
                 aria-hidden="true"
               />
-            </Button>
-          </form>
-          <iframe
-            v-if="browserUrl"
-            class="browser-frame"
-            :src="browserUrl"
-            title="Workbench browser"
-          />
-          <div
-            v-else
-            class="workbench-empty-state compact"
-          >
-            Open a local page
-          </div>
-        </section>
-      </TabPane>
-    </Tabs>
+              <span>{{ tabDisplayTitle(tab) }}</span>
+            </span>
+          </template>
 
-    <div
-      v-else
-      class="workbench-empty-state empty-root"
-    >
-      <div class="workbench-empty-copy">
-        <span class="workbench-empty-title">Workbench</span>
-        <span class="workbench-empty-hint">Open a tool alongside the chat.</span>
-      </div>
-      <Button
-        v-for="option in availableTabOptions"
-        :key="option.type"
-        unstyled
-        class="empty-action"
-        :style="workbenchToolStyle(option.categorySlot)"
-        :title="option.title"
-        @click="addWorkbenchTab(option.type)"
+          <EditorWorkbench
+            v-if="tab.type === 'files' || tab.type === 'file'"
+            :workspace-root="tab.workspaceRoot || workspaceRoot"
+            :initial-file-path="tab.filePath"
+            :active="activeTabId === tab.id"
+            @open-file="openFile"
+          />
+
+          <GoalReviewWorkbench
+            v-else-if="tab.type === 'review'"
+            :key="`${tab.id}-${tab.reviewNonce ?? 0}`"
+            :session-id="tab.sessionId || sessionId"
+            @open-file="openFile"
+            @objective-resolved="(objective) => renameReviewTab(tab.id, objective)"
+          />
+
+          <TerminalView
+            v-else-if="tab.type === 'terminal' && tab.terminalId"
+            class="workbench-terminal"
+            :terminal-id="tab.terminalId"
+            @restarted="(newId) => handleTerminalRestarted(tab.id, newId)"
+          />
+
+          <!-- `revealed` 还要 AND 上"此刻是工具形态":WebContentsView 是**原生层**,
+             DOM 被 display:none 藏起来它照样画在最上面 —— 房面下必须显式收起。 -->
+          <BrowserPanel
+            v-else-if="tab.type === 'browser' && canUseEmbeddedBrowser"
+            :active="activeTabId === tab.id"
+            :revealed="props.revealed && panelForm.form === 'tools'"
+          />
+
+          <CollabBoardPanel v-else-if="tab.type === 'board'" />
+
+          <!-- 线程是**两层**:这间房的执行会话列表 → 选中 → 该会话详情
+             (详情是 `ThreadChatDetail` = 既有聊天 UI,由这层壳就地渲染,不新开页签)。 -->
+          <RoomThreadsWorkbench
+            v-else-if="tab.type === 'thread'"
+            :room-session-id="tab.sessionId || ''"
+            :focus-session-id="tab.threadSessionId || ''"
+            @focus="(payload) => setThreadFocus(tab.id, payload)"
+            @open-file="openFile"
+            @title-resolved="(title) => renameThreadTab(tab.id, title)"
+          />
+
+          <MembersWorkbench
+            v-else-if="tab.type === 'members'"
+            :session-id="tab.sessionId || ''"
+            :focus-agent-id="tab.memberAgentId || ''"
+            :focus-tab="tab.detailTab || null"
+            @focus="(agentId) => setMembersFocus(tab.id, agentId)"
+            @open-session="openSessionTab"
+            @open-file="openFile"
+            @open-thread="openThread"
+          />
+
+          <!-- 「这个人」的页签:房外的人(直聊助理 / 已退休同事)落在这里。 -->
+          <AgentSpace
+            v-else-if="tab.type === 'agent'"
+            :agent-id="tab.agentId || ''"
+            :initial-tab="tab.detailTab || null"
+            @open-session="openSessionTab"
+            @open-file="openFile"
+            @open-thread="openThread"
+          />
+
+          <!-- iframe fallback: apps/web host has no WebContentsView -->
+          <section
+            v-else-if="tab.type === 'browser'"
+            class="workbench-browser"
+          >
+            <form
+              class="browser-toolbar"
+              @submit.prevent="navigateBrowser"
+            >
+              <Globe2
+                :size="14"
+                :stroke-width="2"
+                aria-hidden="true"
+              />
+              <input
+                v-model="browserInput"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="localhost:3000"
+              >
+              <Button
+                unstyled
+                class="browser-go"
+                native-type="submit"
+                :disabled="!browserInput.trim()"
+              >
+                <ArrowRight
+                  :size="14"
+                  :stroke-width="2"
+                  aria-hidden="true"
+                />
+              </Button>
+            </form>
+            <iframe
+              v-if="browserUrl"
+              class="browser-frame"
+              :src="browserUrl"
+              title="Workbench browser"
+            />
+            <div
+              v-else
+              class="workbench-empty-state compact"
+            >
+              Open a local page
+            </div>
+          </section>
+        </TabPane>
+      </Tabs>
+
+      <div
+        v-else
+        class="workbench-empty-state empty-root"
       >
-        <component
-          :is="option.icon"
-          :size="15"
-          :stroke-width="2"
-          aria-hidden="true"
-        />
-        <span>{{ option.title }}</span>
-      </Button>
+        <div class="workbench-empty-copy">
+          <span class="workbench-empty-title">Workbench</span>
+          <span class="workbench-empty-hint">Open a tool alongside the chat.</span>
+        </div>
+        <Button
+          v-for="option in availableTabOptions"
+          :key="option.type"
+          unstyled
+          class="empty-action"
+          :style="workbenchToolStyle(option.categorySlot)"
+          :title="option.title"
+          @click="addWorkbenchTab(option.type)"
+        >
+          <component
+            :is="option.icon"
+            :size="15"
+            :stroke-width="2"
+            aria-hidden="true"
+          />
+          <span>{{ option.title }}</span>
+        </Button>
+      </div>
     </div>
   </Container>
 </template>
@@ -247,13 +276,21 @@ import CollabBoardPanel from './CollabBoardPanel.vue'
 import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
 import MembersWorkbench from './MembersWorkbench.vue'
 import AgentSpace from '@/components/agents/AgentSpace.vue'
-import ThreadWorkbench from './ThreadWorkbench.vue'
+import RoomThreadsWorkbench from './RoomThreadsWorkbench.vue'
+import RoomBackstagePanel from './RoomBackstagePanel.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import { useTerminalsStore } from '@/stores/terminals'
 import { useAgentsStore, type AgentDetailTab } from '@/stores/agents'
+import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { isUserDmRoom } from '@onething/runtime/collab'
+import {
+  resolveRightPanelForm,
+  type RoomBackstageLanding,
+  type RoomBackstageSegmentKey,
+} from './room-backstage'
 import type { TabPaneName } from '@/components/common/tabs'
-import type { ContextVariable } from '@/types'
+import type { ContextVariable, ShellMode } from '@/types'
 import { platformApi } from '@/platform'
 
 type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent'
@@ -264,8 +301,14 @@ interface WorkbenchTab {
   title: string
   filePath?: string
   workspaceRoot?: string
-  /** review / thread / members tabs only: the session this tab is bound to. */
+  /**
+   * review / thread / members tabs only: the session this tab is bound to.
+   * thread tabs 上这一格是**房间会话**(列表层的地基),不是那次执行 ——
+   * 执行会话在 `threadSessionId`。
+   */
   sessionId?: string
+  /** thread tabs only: 下钻到的那条执行会话('' = 停在列表层)。 */
+  threadSessionId?: string
   /** members tabs only: the member whose space page is drilled into ('' = 列表)。 */
   memberAgentId?: string
   /** agent tabs only: 这一页是谁的空间。 */
@@ -284,13 +327,55 @@ const props = withDefaults(defineProps<{
   workspaceRoots?: string[]
   /** Whether the workbench panel is expanded — drives embedded-browser view visibility. */
   revealed?: boolean
+  /**
+   * 外壳形态。classic 是逐像素回滚闸 —— 那一档下右栏恒是既有的工具页签,
+   * 房间背台只在 workbench 外壳里出现。
+   */
+  shellMode?: ShellMode
 }>(), {
   revealed: true,
+  shellMode: 'workbench',
 })
 
 defineEmits<{
   close: []
 }>()
+
+// ── 右栏的两形态 ──────────────────────────────────────────────────────────
+//
+// 房/私聊 → 房间背台(分段器);直聊/工程面 → 既有工具页签。判定是一个纯函数
+// (`resolveRightPanelForm`),这里只把当前会话喂给它。
+const sessionsStore = useSessionsStore()
+const currentSession = computed(() =>
+  sessionsStore.sessions.find(session => session.id === props.sessionId))
+
+const panelForm = computed(() => resolveRightPanelForm({
+  shellMode: props.shellMode,
+  session: currentSession.value,
+  // 形态判定单一收口:`isUserDmRoom` 是产品层纯规则(人数即形态),不自写第二份。
+  isUserDm: session => isUserDmRoom(session.room),
+}))
+
+/**
+ * 背台的落座指令。四个外部入口(线程 / 成员 / 看板 / 进房)都翻译成它,
+ * 页签那一路的 `openThread` / `openMembers` / `openBoard` 因此对外形状不变 ——
+ * 派事件的地方不需要知道右栏此刻是哪一种形态。
+ */
+const backstageLanding = ref<RoomBackstageLanding>({ nonce: 0 })
+
+function landBackstage(patch: Omit<RoomBackstageLanding, 'nonce'>): void {
+  backstageLanding.value = { ...patch, nonce: backstageLanding.value.nonce + 1 }
+}
+
+function landBackstageSegment(
+  segment: RoomBackstageSegmentKey,
+  patch: Omit<RoomBackstageLanding, 'nonce' | 'segment'> = {},
+): void {
+  landBackstage({ segment, ...patch })
+}
+
+/** 固定短标签(不参与截断):样板右栏的常驻三条。 */
+const FIXED_LABEL_TABS = new Set<WorkbenchTabType>(['thread', 'members', 'board'])
 
 const tabOptions: Array<{
   type: WorkbenchTabType
@@ -301,7 +386,7 @@ const tabOptions: Array<{
   { type: 'files', title: 'Files', icon: Files, categorySlot: 5 },
   { type: 'terminal', title: 'Terminal', icon: Terminal, categorySlot: 6 },
   { type: 'browser', title: 'Browser', icon: Globe2, categorySlot: 7 },
-  { type: 'board', title: 'Board', icon: ClipboardList, categorySlot: 8 },
+  { type: 'board', title: '看板', icon: ClipboardList, categorySlot: 8 },
 ]
 
 const pickerOpen = ref(false)
@@ -592,25 +677,68 @@ function openGoalReview(reviewSessionId: string) {
  * 不进 `tabOptions`:线程必须绑一个会话,picker 里点一下开不出有意义的空线程
  * —— 与 `file` / `review` 同一档,只能从外部入口带着靶子进来。
  */
-function openThread(threadSessionId: string, title?: string): void {
-  if (!threadSessionId) return
-  const existing = openTabs.value.find(
-    tab => tab.type === 'thread' && tab.sessionId === threadSessionId,
-  )
+/**
+ * 线程页签(**两层**:这间房的执行会话列表 → 选中 → 该会话详情)。
+ *
+ * `threadSessionId` 允许为空 —— 一间**还没跑过活**的房同样要有线程页签
+ * (样板 final.html 的右栏是三 tab 常驻)。给了靶子就**直接落在详情层**
+ * (「展开执行 →」与左栏活卡片本来就知道要看哪一条);只给房就落在**列表层**。
+ * 页签 id 因此按"靶子 or 房"取:同一间房不会开出第二条空线程。
+ *
+ * `sessionId` 存的是**房**(列表层的地基),`threadSessionId` 存的是那次执行。
+ * 没带房进来时这一格留空 —— 由 `RoomThreadsWorkbench` 顺着执行会话的
+ * `collab.roomSessionId` 现查(禁反解 id),查到再由 `focus` 回填。
+ * **不能**沿用上一次的房:那会把另一间房的执行会话挂在错的花名册下面。
+ */
+function openThread(threadSessionId: string, title?: string, roomSessionId?: string): void {
+  // 房面下没有页签:落在**线程格**,带靶子就直接下钻到那一条。
+  if (panelForm.value.form === 'backstage') {
+    landBackstageSegment('threads', { threadSessionId: threadSessionId || '' })
+    return
+  }
+
+  const key = threadSessionId || (roomSessionId ? `room-${roomSessionId}` : '')
+  if (!key) return
+
+  // **单例**:线程只有一条常驻页签(样板 final.html 的右栏是三 tab 常驻),换房
+  // 或换一次执行都是**换靶子**,不是再开一页。
+  // 从前按 `thread-<靶子>` 各开一个 —— 逛三间房就攒三条「线程」,而样板里
+  // 只有一条(成员页签早就是这个语义,这里对齐它)。
+  const existing = openTabs.value.find(tab => tab.type === 'thread')
   if (existing) {
-    if (title) existing.title = threadTabTitle(title)
+    existing.id = `thread-${key}`
+    existing.sessionId = roomSessionId || ''
+    existing.threadSessionId = threadSessionId
+    existing.title = THREAD_TAB_LABEL
     activeTabId.value = existing.id
     return
   }
 
   const tab: WorkbenchTab = {
-    id: `thread-${threadSessionId}`,
+    id: `thread-${key}`,
     type: 'thread',
-    title: threadTabTitle(title) || 'Thread',
-    sessionId: threadSessionId,
+    title: THREAD_TAB_LABEL,
+    sessionId: roomSessionId || '',
+    threadSessionId,
   }
   openTabs.value = [...openTabs.value, tab]
   activeTabId.value = tab.id
+}
+
+/**
+ * 面板里下钻/返回之后把落点写回 tab —— 关掉再开回来时停在同一层
+ * (与 `setMembersFocus` 同一手法)。
+ *
+ * `roomSessionId` 一并回填:靶子是顺着执行会话查出房间的,查出来就记在 tab 上,
+ * 返回列表层才有表可回。回到列表层时页签名换回「线程」——**单例页签换靶子,
+ * 不新开**,所以标题也得跟着换回去。
+ */
+function setThreadFocus(tabId: string, payload: { sessionId: string; roomSessionId: string }): void {
+  const tab = openTabs.value.find(item => item.id === tabId)
+  if (!tab) return
+  tab.threadSessionId = payload.sessionId || ''
+  if (payload.roomSessionId) tab.sessionId = payload.roomSessionId
+  if (!payload.sessionId) tab.title = THREAD_TAB_LABEL
 }
 
 /**
@@ -630,6 +758,14 @@ function openThread(threadSessionId: string, title?: string): void {
  */
 function openMembers(roomSessionId: string, agentId?: string, title?: string): void {
   if (!roomSessionId) return
+
+  // 房面下没有页签:落在**成员格**(私聊房是「空间」格,由 pick 那一处翻译)。
+  // 带 agentId 就直接下钻到 TA 的空间页。
+  if (panelForm.value.form === 'backstage') {
+    landBackstageSegment('members', { agentId: agentId || '' })
+    return
+  }
+
   const existing = openTabs.value.find(tab => tab.type === 'members')
   if (existing) {
     existing.sessionId = roomSessionId
@@ -661,6 +797,14 @@ function openMembers(roomSessionId: string, agentId?: string, title?: string): v
  */
 function openAgentTab(agentId: string, tab?: AgentDetailTab | null): void {
   if (!agentId) return
+
+  // 房面下没有页签。房外的人也照旧走「成员/空间」格的下钻层 ——
+  // `MembersWorkbench` 的下钻层就是共享的 `AgentSpace`,它不要求这个人在花名册上。
+  if (panelForm.value.form === 'backstage') {
+    landBackstageSegment('members', { agentId })
+    return
+  }
+
   const title = useAgentsStore().displayAgent(agentId).name || '空间'
   const existing = openTabs.value.find(item => item.type === 'agent' && item.agentId === agentId)
   if (existing) {
@@ -697,17 +841,25 @@ function openSessionTab(sessionId: string): void {
   useWorkspaceStore().openSession(sessionId)
 }
 
+/** 列表层的页签名(样板右栏常驻三条之一)。进详情后换成那条会话的名字。 */
+const THREAD_TAB_LABEL = '线程'
+
 function threadTabTitle(title?: string): string {
   const trimmed = (title || '').trim().split('\n')[0] || ''
   if (!trimmed) return ''
   return trimmed.length > 24 ? `${trimmed.slice(0, 24)}…` : trimmed
 }
 
-/** 会话名解析出来之后跟上去 —— 与 review tab 的重命名同一手法。 */
-function renameThreadTab(tabId: string, title: string) {
-  const tab = openTabs.value.find(item => item.id === tabId)
-  if (!tab) return
-  tab.title = threadTabTitle(title) || tab.title
+/**
+ * 线程页签**不跟着会话名改名**。
+ *
+ * 它是样板右栏常驻三条之一(线程 / 成员 / 看板),标题一长就把自己挤出可视区
+ * —— 真机 253px 下激活的正是线程页签,而页签条里只看得见「成员/看板」。
+ * 在看哪一次执行由面板头去说(`THREAD <卡名> · N 步 · N 次执行`),那儿有整行
+ * 宽度。这个回调保留是为了不改详情层 `ThreadChatDetail` 的对外形状。
+ */
+function renameThreadTab(_tabId: string, _title: string) {
+  /* no-op:标题恒为「线程」 */
 }
 
 /** The objective makes a far better tab title than a generic "Review". */
@@ -773,7 +925,51 @@ function navigateBrowser() {
 }
 
 /** 群聊头部「看板」直达入口 — 打开(或聚焦)board 页签。 */
+/**
+ * 进房时把右栏备齐成样板那三条:**线程 / 成员 / 看板**(final.html 右栏)。
+ *
+ * 为什么不另起一根房面自己的右栏:那会和 App 级这根并排出现两条(R1 的取舍)。
+ * 但"按需才开"的代价是三 tab 一条都不常驻 —— 用户真机上就看不到线程。
+ * 这里折中:复用同一根右栏,进房时把这三条备好并落在线程上,
+ * Files/Terminal/Browser 仍可从 ＋ 加。
+ *
+ * 线程**落在列表层**:自动备齐时系统并不知道你想看哪一次执行,替你挑一条塞满
+ * 整面等于替你做了选择。真正"知道要看哪一条"的是中栏「展开执行 →」与左栏活
+ * 卡片,它们走 `openThread(workSessionId)` 直接进详情层。
+ * 第二个参数(房面顺手算出来的默认工作会话)因此**刻意不用** —— 事件契约不动,
+ * 只是右栏不再替用户选。
+ */
+function openRoomTabs(
+  roomSessionId: string,
+  _defaultThreadSessionId?: string,
+  opts?: { dmAgentId?: string },
+): void {
+  if (!roomSessionId) return
+
+  // 房面下三格本来就常驻(那正是分段器替掉页签的理由):进房只需要落座 ——
+  // 线程格的**列表层**。不带靶子:自动备齐时系统并不知道你想看哪一次执行。
+  if (panelForm.value.form === 'backstage') {
+    landBackstageSegment('threads', { threadSessionId: '' })
+    return
+  }
+
+  // 私聊没有"成员"这回事:那一面直接是空间页(样板 三 · 私聊)。
+  if (opts?.dmAgentId) {
+    openMembers(roomSessionId, opts.dmAgentId, '空间')
+  } else {
+    openMembers(roomSessionId)
+  }
+  addWorkbenchTab('board')
+  openThread('', undefined, roomSessionId)
+}
+
 function openBoard(): void {
+  // 房面下没有页签:落在**看板格**。私聊房没有这一格 —— 那时原地不动
+  // (`pickRoomBackstageSegment` 返回 null),不把人甩到 TA 没要的视图上。
+  if (panelForm.value.form === 'backstage') {
+    landBackstageSegment('board')
+    return
+  }
   addWorkbenchTab('board')
 }
 
@@ -797,6 +993,7 @@ defineExpose({
   openBoard,
   openFolder,
   openThread,
+  openRoomTabs,
   openMembers,
   openAgentTab,
 })
@@ -844,6 +1041,19 @@ defineExpose({
 
 :deep(.right-workbench-body),
 :deep(.right-workbench-main) {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 工具页签那一路的壳。`display: contents` = 排版上不存在,所以直聊/工程面下
+   这一路的布局与从前**逐像素相同**;`v-show` 关掉时浏览器改写成 display:none,
+   整棵树留在 DOM 里(终端/浏览器/编辑器状态不丢)。 */
+.workbench-tools-form {
+  display: contents;
+}
+
+.workbench-backstage {
+  height: 100%;
   min-width: 0;
   min-height: 0;
 }
@@ -916,8 +1126,30 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  /* `min-width: 0` 是给**文件名**那种长标签留的:它必须能被截断。 */
   min-width: 0;
   font: inherit;
+}
+
+/* 线程 / 成员 / 看板这三条是固定短标签(样板 final.html 的常驻三 tab),
+   给它们一块地板:右栏一窄,`min-width: 0` 会让页签无下限收缩,中文两个字
+   立刻被吃掉一个,真机上显示成「成..」「看..」「线..」。这三条不参与截断,
+   宽度不够时由页签条自己横向滚动(它本来就是 overflow: auto)。 */
+/* 右栏一窄,页签是**被压扁**的:242px 的右栏里三个页签各 61px,而关闭按钮与
+   内边距就吃掉 52px —— 只剩 9px 留给「图标 + 文字」,于是先看到「成..」,再窄
+   就只剩图标,最后整条空白。
+   给文字加地板治不了这个(9px 且 overflow:hidden 的盒子里,再宽的文字也看不见)。
+   真正的修法是**让页签不收缩**:装得下就并排,装不下由页签条横向滚
+   (`.app-tabs-nav-scroll` 本来就是 overflow-x: auto)。 */
+.right-workbench-tabs :deep(.app-tabs-tab) {
+  flex-shrink: 0;
+}
+
+/* 固定短标签(线程/成员/看板)不参与截断 —— 文件名那类仍然可以截。 */
+.workbench-tab-label.has-fixed-label span {
+  min-width: max-content;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .workbench-tab-label svg,

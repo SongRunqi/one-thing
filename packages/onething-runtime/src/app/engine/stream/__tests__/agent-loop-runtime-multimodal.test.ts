@@ -176,7 +176,6 @@ const mocks = vi.hoisted(() => ({
   getEnabledToolsAsync: vi.fn<() => Promise<ToolDefinition[]>>(async () => []),
   initializeAsyncTools: vi.fn(async () => undefined),
   setInitContext: vi.fn(),
-  buildContextVariablesPromptText: vi.fn(async () => ''),
   buildProjectDirsPromptVars: vi.fn(() => ({ active: undefined, known: [] })),
   getContextCompactReason: vi.fn(() => null),
 }))
@@ -216,7 +215,6 @@ vi.mock('../../prompt/index.js', () => ({
 }))
 
 vi.mock('../../../variables/index.js', () => ({
-  buildContextVariablesPromptText: mocks.buildContextVariablesPromptText,
 }))
 
 vi.mock('../../../project-dirs/index.js', () => ({

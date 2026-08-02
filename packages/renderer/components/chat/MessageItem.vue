@@ -452,7 +452,8 @@ import MessageActions from './message/MessageActions.vue'
 import { humanizeStreamError } from './message/error-humanizer'
 import { rawTextFromPromptParts } from '@shared/prompt-references'
 import { isActiveAgent } from '@shared/ipc'
-import { renderCollabMentionText } from '@onething/runtime/collab'
+import { renderCollabMentionMarkup } from '@/composables/collabInlineTags'
+import { useUserProfile } from '@/composables/useUserProfile'
 import { isRoomThinkingTrace, type RoomMessageLike } from './message/room-grouping'
 import { platformApi } from '@/platform'
 import { useChatStore } from '@/stores/chat'
@@ -551,6 +552,7 @@ const contextUpdateExpanded = ref(false)
 // waiting in the queue (retractable until the next loop turn drains them).
 const chatStore = useChatStore()
 const agentsStore = useAgentsStore()
+const { mentionLabels: userMentionLabels } = useUserProfile()
 // Room signature chips need agent display metadata; the store self-guards
 // against duplicate loads, so this is a one-time fetch app-wide. Failures are
 // cosmetic (chips fall back to the agent id) — never let them bubble.
@@ -670,7 +672,13 @@ const isCollabPassHold = computed(() => {
  * untouched (same reference — no re-render churn on ordinary sessions).
  */
 const displayContent = computed(() =>
-  renderCollabMentionText(props.message.content, props.message.mentions, agentsStore.agents))
+  renderCollabMentionMarkup(
+    props.message.content,
+    props.message.mentions,
+    agentsStore.agents,
+    // agent-dm-user.md §2.4:`@一天` / `@yitian` 也该点亮用户高亮。
+    userMentionLabels.value,
+  ))
 
 /**
  * 署名(域模型 M4 的 `displayAgent`):在职 → 正常;已退休 → 名字照旧 +
@@ -1612,25 +1620,19 @@ function handleUpdateThinkingTime(time: number) {
   cursor: pointer;
 }
 
+/* 「可点」提示:静止态与今天完全一致,hover 只垫一层软阴影的立体感 ——
+   不描色、不缩放(§3.6)。按下阴影收紧一档。四处头像同一句法。 */
+.room-avatar-btn .room-avatar {
+  transition: box-shadow 0.16s ease;
+}
+
 .room-avatar-btn:hover .room-avatar,
 .room-avatar-btn:focus-visible .room-avatar {
-  border-color: var(--ui-text-primary-fg, var(--text));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 22%, transparent);
 }
 
-/* 「可点」提示(agent-space-workbench.md P3):静止态与今天完全一致,hover 才
-   长出一圈 3px 外扩细环。三处头像(私聊房头 / 消息署名 / 群头成员堆)同一句法。 */
-.room-avatar-btn::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  border: 1px solid transparent;
-  transition: border-color 0.12s ease;
-}
-
-.room-avatar-btn:hover::after,
-.room-avatar-btn:focus-visible::after {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+.room-avatar-btn:active .room-avatar {
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 18%, transparent);
 }
 
 /* The signature sits outside the frame, flush with the frame's left edge. */

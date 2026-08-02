@@ -133,13 +133,13 @@ describe('typed variables through a store provider', () => {
     expect(afterRemove.value).toBe('["y"]')
   })
 
-  it('description and volatility are sticky across value updates; "" clears', async () => {
+  it('description and state are sticky across value updates; "" clears', async () => {
     await registry.set(ctx, {
-      name: 'deploy', value: 'staging', description: 'current deploy target', volatility: 'turn',
+      name: 'deploy', value: 'staging', description: 'current deploy target', state: true,
     })
     const updated = await registry.set(ctx, { name: 'deploy', value: 'prod' })
     expect(updated).toMatchObject({
-      value: 'prod', description: 'current deploy target', volatility: 'turn',
+      value: 'prod', description: 'current deploy target', state: true,
     })
 
     const cleared = await registry.set(ctx, { name: 'deploy', value: 'prod', description: '' })

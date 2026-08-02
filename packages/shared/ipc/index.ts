@@ -34,8 +34,18 @@ export type {
 	CollabRoomFolderListResponse,
 	CollabRoomFrozenRequest,
 	CollabRoomFrozenResponse,
+	CollabCoordinatorGate,
+	CollabCoordinatorGetRequest,
+	CollabCoordinatorGetResponse,
+	CollabCoordinatorLogEntry,
+	CollabCoordinatorQueued,
+	CollabCoordinatorState,
+	CollabCoordinatorTurn,
+	CollabRoomClearHistoryRequest,
+	CollabRoomClearHistoryResponse,
 	CollabRoomSpendRequest,
 	CollabRoomSpendResponse,
+	CollabRoomUpdatePatch,
 	CollabRoomUpdateRequest,
 	CollabRoomUpdateResponse,
 	CollabTask,
@@ -809,6 +819,13 @@ export type {
 	PracticeSummaryRequest,
 	PracticeSummaryResult,
 } from "./practice.js";
+
+export type {
+	NotifyActivateEvent,
+	NotifySimpleResponse,
+	SetBadgeRequest,
+	ShowNotificationRequest,
+} from "./notify.js";
 
 export type {
 	TerminalAckPayload,

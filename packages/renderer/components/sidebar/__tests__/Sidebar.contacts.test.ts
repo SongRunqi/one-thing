@@ -108,6 +108,8 @@ vi.mock('../useSessionOrganizer', () => ({
     getProjectGroupedSessions: () => [],
     toggleCollapse: vi.fn(),
   }),
+  // 「消息」类的行尾时间用的是同一份格式化(不另起一套时间口径)。
+  formatRelativeTime: (ts: number) => (ts ? `t${ts}` : ''),
 }))
 
 function mountSidebar() {

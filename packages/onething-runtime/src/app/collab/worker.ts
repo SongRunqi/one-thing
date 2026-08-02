@@ -305,10 +305,10 @@ function buildBriefing(roomSessionId: string, task: CollabTask, resuming = false
     tail ? `\n群聊最近的讨论:\n${tail}` : null,
     '',
     // W14b 交付自主化(用户实锤"交付像程序编排的 trigger,不是 agent 自主行为"):
-    // 交付的话由执行者自己说 —— say 是他的嘴,board complete 是流转。
-    `完成后先用 say 把关键结论发进群里${pm ? `(顺手 @ 负责人 ${pm})` : ''},再调用 board 工具 `
+    // 交付的话由执行者自己说 —— send_message 是他的嘴,board complete 是流转。
+    `完成后先用 send_message 把关键结论发进群里${pm ? `(顺手 @ 负责人 ${pm})` : ''},再调用 board 工具 `
       + `{ action: "complete", taskId: "${task.id}", summary: 交付摘要 } 作为你的最后一个动作,任务进入评审。`,
-    `工作过程中随时可以用 say 在群里说一句(有发现、要确认、卡住了);不说也没关系。无法继续时用 board `
+    `工作过程中随时可以用 send_message 在群里发一条(有发现、要确认、卡住了);不发也没关系。无法继续时用 board `
       + `{ action: "block", taskId: "${task.id}", reason: 原因 }。`,
     // 工作台的 system prompt 是完整产品提示词(collabRoomOverrides 只认 room/
     // agent 两种 kind),所以这份 briefing 是通用规则唯一够得着工作台的入口。

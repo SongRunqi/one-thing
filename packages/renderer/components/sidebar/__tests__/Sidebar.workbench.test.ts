@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   openSession: vi.fn(),
   sessions: [] as Array<Record<string, unknown>>,
   roomSessions: [] as Array<Record<string, unknown>>,
+  dmRooms: [] as Array<Record<string, unknown>>,
   sidebarSessions: [] as Array<Record<string, unknown>>,
   agents: [] as Array<Record<string, unknown>>,
 }))
@@ -51,16 +52,20 @@ vi.mock('@/stores/sessions', () => ({
     // 群房既是侧栏「群聊」区的行,也是场账(useSceneLedger)的「场」——
     // 未读/在忙都从那份清单里数,所以两处必须是同一批房。
     get groupRoomSessions() { return mocks.roomSessions },
-    userDmRoomSessions: [],
+    get userDmRoomSessions() { return mocks.dmRooms },
     agentPairDmRoomSessions: [],
     agentSessions: [],
     filteredSessions: [],
     get sidebarSessions() { return mocks.sidebarSessions },
     radioSessions: [],
-    findUserDmRoom: () => undefined,
+    // 联系人行的未读 = TA 那间私聊房的未读 —— 查得到房才谈得上未读。
+    findUserDmRoom: (agentId: string) => mocks.dmRooms
+      .find(room => (room.room as { memberAgentIds?: string[] } | undefined)?.memberAgentIds?.[0] === agentId),
     isUnreadSession: (sessionId: string) => mocks.unread.has(sessionId),
     loadSessions: vi.fn(async () => {}),
     isNewChatDraftId: () => false,
+    getSessionItem: (id: string) => [...mocks.sessions, ...mocks.sidebarSessions]
+      .find(session => session.id === id),
     updateSessionPin: vi.fn(),
     deleteSession: vi.fn(),
     renameSession: vi.fn(),
@@ -100,6 +105,8 @@ vi.mock('../useSessionOrganizer', () => ({
     getProjectGroupedSessions: () => [],
     toggleCollapse: vi.fn(),
   }),
+  // 「消息」类的行尾时间用的是同一份格式化(不另起一套时间口径)。
+  formatRelativeTime: (ts: number) => (ts ? `t${ts}` : ''),
 }))
 
 function mountSidebar(props: Record<string, unknown> = {}) {
@@ -151,6 +158,7 @@ beforeEach(() => {
   mocks.unread.clear()
   mocks.sessions = []
   mocks.roomSessions = [{ id: 'room-1', name: '一组' }, { id: 'room-2', name: '二组' }]
+  mocks.dmRooms = []
   mocks.sidebarSessions = []
   mocks.agents = []
   mocks.load.mockClear()
@@ -309,7 +317,11 @@ describe('classic 回滚闸', () => {
 })
 
 describe('rail 上有哪几类', () => {
-  it('有活在跑时四类齐全,顺序即样板自上而下', () => {
+  /**
+   * 2026-08-01:四格从**按类型分列**改成**按意图分列**(用户原话:
+   * 「sidebar 的 tab 要显示最近的聊天;不要把入口放在联系人、群聊上」)。
+   */
+  it('四类齐全,顺序即 rail 自上而下:消息 / 进行中 / 通讯录 / 会话', () => {
     mocks.boards = {
       'room-1': { version: 1, tasks: [task({ id: 'a', status: 'doing', title: '换核' })] },
     }
@@ -317,7 +329,7 @@ describe('rail 上有哪几类', () => {
     const tabs = wrapper.findAll('.sidebar-rail-tab')
     // 四类 + 三颗底部(⋯ / ＋ / 设置)
     expect(tabs.map(tab => tab.attributes('title')))
-      .toEqual(['进行中', '群聊', '联系人', '会话', '工作区面板', '新会话', 'Settings'])
+      .toEqual(['消息', '进行中', '通讯录', '会话', '工作区面板', '新会话', 'Settings'])
   })
 
   /**
@@ -327,15 +339,15 @@ describe('rail 上有哪几类', () => {
   it('没有在跑的活:rail 仍是四类,面板里出现「没有在跑的活」', async () => {
     const wrapper = mountSidebar()
     expect(wrapper.findAll('.sidebar-rail-tab').map(tab => tab.attributes('title')))
-      .toEqual(['进行中', '群聊', '联系人', '会话', '工作区面板', '新会话', 'Settings'])
+      .toEqual(['消息', '进行中', '通讯录', '会话', '工作区面板', '新会话', 'Settings'])
 
-    await wrapper.findAll('.sidebar-rail-tab')[0].trigger('click')
+    await selectCategory(wrapper, '进行中')
     expect(wrapper.find('.active-work-empty').text()).toBe('没有在跑的活')
   })
 
   /**
-   * web 端 `platformApi.capabilities.collabRooms` 为 false:进行中/群聊/联系人
-   * 三类无源可吃 —— 优雅降级成"只留会话 + 底部三颗",不留死图标。
+   * web 端 `platformApi.capabilities.collabRooms` 为 false:消息/进行中/通讯录
+   * 三类无源可吃(私聊与群都是房)—— 优雅降级成"只留会话 + 底部三颗"。
    */
   it('web 降级:只留会话 + 底部三颗,一枚死图标都不留', () => {
     mocks.capabilities.collabRooms = false
@@ -356,47 +368,66 @@ describe('一次只显示一类', () => {
     }
   })
 
-  it('默认停在第一类:面板头是类别名 + 计数,别的类一行都不画', () => {
+  it('默认停在「消息」:一进来看见的是最近说过话的人,不是花名册', () => {
+    // 直聊会话**不该**进消息流 —— 它是工作会话不是对话,家在「会话」那一类。
+    mocks.sidebarSessions = [{ id: 's-1', name: '重构', updatedAt: 9 }]
     const wrapper = mountSidebar()
-    expect(wrapper.find('.sidebar-pane-title').text()).toBe('进行中')
-    expect(wrapper.find('.sidebar-pane-count').text()).toBe('1')
-    expect(wrapper.findAll('.work-card')).toHaveLength(1)
+    expect(wrapper.find('.sidebar-pane-title').text()).toBe('消息')
+    // 两间群,直聊那条一行都不画。
+    expect(wrapper.find('.sidebar-pane-count').text()).toBe('2')
+    expect(wrapper.findAll('.sidebar-recent-item')).toHaveLength(2)
+    expect(wrapper.findAll('.work-card')).toHaveLength(0)
     expect(wrapper.find('.sidebar-contacts').exists()).toBe(false)
-    expect(wrapper.findAll('.sidebar-room-item')).toHaveLength(0)
     expect(wrapper.findComponent({ name: 'SessionList' }).exists()).toBe(false)
   })
 
-  it('切到群聊:只剩群聊行,活一行不画', async () => {
+  it('切到进行中:只剩活卡片,消息一行不画', async () => {
     const wrapper = mountSidebar()
-    await selectCategory(wrapper, '群聊')
-    expect(wrapper.find('.sidebar-pane-title').text()).toBe('群聊')
-    expect(wrapper.find('.sidebar-pane-count').text()).toBe('2')
-    expect(wrapper.findAll('.work-card')).toHaveLength(0)
-    expect(wrapper.findAll('.sidebar-rooms:not(.sidebar-contacts) .sidebar-room-item')).toHaveLength(2)
-    // 建群 ＋ 跟着这一类走(classic 下它在分区头里,那边一个字节没动)。
-    expect(wrapper.find('.sidebar-pane-head .sidebar-rooms-add').exists()).toBe(true)
+    await selectCategory(wrapper, '进行中')
+    expect(wrapper.find('.sidebar-pane-title').text()).toBe('进行中')
+    expect(wrapper.find('.sidebar-pane-count').text()).toBe('1')
+    expect(wrapper.findAll('.work-card')).toHaveLength(1)
+    expect(wrapper.findAll('.sidebar-recent-item')).toHaveLength(0)
   })
 
-  it('切到联系人 / 会话各只显示自己那一类', async () => {
+  /** 通讯录 = 同事 + 群两段同框(旧的「群聊」一类并了进来),建群 ＋ 跟着它走。 */
+  it('切到通讯录:同事与群两段同时在场,各带一行段头', async () => {
     const wrapper = mountSidebar()
-    await selectCategory(wrapper, '联系人')
+    await selectCategory(wrapper, '通讯录')
+    expect(wrapper.find('.sidebar-pane-title').text()).toBe('通讯录')
+    // 一位同事 + 两间群
+    expect(wrapper.find('.sidebar-pane-count').text()).toBe('3')
     expect(wrapper.find('.sidebar-contacts').exists()).toBe(true)
-    expect(wrapper.findAll('.sidebar-rooms:not(.sidebar-contacts)')).toHaveLength(0)
-    expect(wrapper.find('.sidebar-pane-head .sidebar-rooms-add').exists()).toBe(false)
+    expect(wrapper.findAll('.sidebar-rooms:not(.sidebar-contacts) .sidebar-room-item')).toHaveLength(2)
+    expect(wrapper.findAll('.sidebar-pane-group').map(group => group.text()))
+      .toEqual(['同事', '群聊'])
+    // 建群 ＋ 跟着这一类走(classic 下它在分区头里,那边一个字节没动)。
+    expect(wrapper.find('.sidebar-pane-head .sidebar-rooms-add').exists()).toBe(true)
+    expect(wrapper.findAll('.sidebar-recent-item')).toHaveLength(0)
+  })
 
+  it('切到会话:只剩项目分组那张表', async () => {
+    const wrapper = mountSidebar()
     await selectCategory(wrapper, '会话')
     expect(wrapper.find('.sidebar-pane-title').text()).toBe('会话')
     expect(wrapper.findComponent({ name: 'SessionList' }).exists()).toBe(true)
     expect(wrapper.find('.sidebar-contacts').exists()).toBe(false)
+    expect(wrapper.find('.sidebar-pane-head .sidebar-rooms-add').exists()).toBe(false)
   })
 
   it('当前类别落在 localStorage,重挂之后还停在那一类', async () => {
     const wrapper = mountSidebar()
-    await selectCategory(wrapper, '联系人')
+    await selectCategory(wrapper, '通讯录')
     expect(localStorage.getItem(RAIL_KEY)).toBe('contacts')
 
     const again = mountSidebar()
-    expect(again.find('.sidebar-pane-title').text()).toBe('联系人')
+    expect(again.find('.sidebar-pane-title').text()).toBe('通讯录')
+  })
+
+  /** 旧存档指着已并入通讯录的「群聊」—— 搬过去,而不是退回第一类。 */
+  it('旧存档 rooms 落到通讯录', () => {
+    localStorage.setItem(RAIL_KEY, 'rooms')
+    expect(mountSidebar().find('.sidebar-pane-title').text()).toBe('通讯录')
   })
 
   /**
@@ -415,6 +446,81 @@ describe('一次只显示一类', () => {
     mocks.boards = {}
     const wrapper = mountSidebar()
     expect(wrapper.find('.sidebar-pane-title').text()).toBe('进行中')
+  })
+})
+
+/**
+ * 「消息」面板(2026-08-01)。用户原话:「sidebar 的 tab 要显示最近的聊天;
+ * 不要把入口放在联系人、群聊上,这样和正常的 IM 不太一致」。
+ */
+describe('「消息」面板 —— 一条时间序的对话流', () => {
+  beforeEach(() => {
+    mocks.agents = [{ id: 'fe', name: '小李', avatar: '🔧' }]
+    mocks.dmRooms = [
+      { id: 'dm-fe', name: '和小李的旧房名', updatedAt: 30, room: { memberAgentIds: ['fe'] } },
+    ]
+    mocks.roomSessions = [
+      { id: 'room-1', name: '一组', updatedAt: 50 },
+      { id: 'room-2', name: '二组', updatedAt: 5 },
+    ]
+    mocks.sidebarSessions = [{ id: 's-1', name: '重构', updatedAt: 40 }]
+  })
+
+  it('群聊与私聊混排,按时间倒序 —— 不按对象类型分列', () => {
+    const rows = mountSidebar().findAll('.sidebar-recent-item')
+    expect(rows.map(row => row.find('.sidebar-room-name').text()))
+      // 名册那份 mock 把名字造成 `名-<id>` —— 私聊行显示的正是它,不是房名。
+      .toEqual(['一组', '名-fe', '二组'])
+  })
+
+  /**
+   * 2026-08-01 用户第二次划线:「要么是群聊,要么是和某个 Agent 的聊天,
+   * 它不是所有的」。直聊会话(updatedAt=40,本该排在第二)一行都不许出现。
+   */
+  it('直聊会话不进消息流 —— 它的家是「会话」那一类', () => {
+    const wrapper = mountSidebar()
+    expect(wrapper.findAll('.sidebar-recent-item')).toHaveLength(3)
+    expect(wrapper.text()).not.toContain('重构')
+  })
+
+  /** 同事改了名,和 TA 的那间房不会跟着改 —— 显示名必须取名册。 */
+  it('私聊行的名字取名册,不是房名', () => {
+    const row = mountSidebar().findAll('.sidebar-recent-item')[1]
+    expect(row.find('.sidebar-room-name').text()).toBe('名-fe')
+    expect(row.attributes('title')).toBe('名-fe · 私聊')
+  })
+
+  it('群行给方章 + 群名首字,人行给圆章头像 —— 左缘永远对齐', () => {
+    const rows = mountSidebar().findAll('.sidebar-recent-item')
+    expect(rows[0].find('.sidebar-recent-room-mark').text()).toBe('一')
+    expect(rows[1].find('.sidebar-recent-room-mark').exists()).toBe(false)
+    expect(rows[1].findComponent({ name: 'AgentAvatar' }).exists()).toBe(true)
+  })
+
+  it('行尾是时间;有未读再加一枚墨点(判定仍只有 isUnreadSession 那一处)', () => {
+    mocks.unread.add('dm-fe')
+    const rows = mountSidebar().findAll('.sidebar-recent-item')
+    expect(rows[0].find('.sidebar-recent-time').text()).toBe('t50')
+    expect(rows[0].find('.sidebar-unread-dot').exists()).toBe(false)
+    expect(rows[1].find('.sidebar-unread-dot').exists()).toBe(true)
+  })
+
+  it('点任一行 = 打开那段对话(两种行同一条 openSession 链路)', async () => {
+    const wrapper = mountSidebar()
+    await wrapper.findAll('.sidebar-recent-item')[1].trigger('click')
+    expect(mocks.openSession).toHaveBeenCalledWith('dm-fe')
+  })
+
+  it('一间房都没有时给一句话,不是一块空白(直聊再多也不算数)', () => {
+    mocks.dmRooms = []
+    mocks.roomSessions = []
+    expect(mountSidebar().find('.sidebar-recent-empty').exists()).toBe(true)
+  })
+
+  /** classic 是逐像素回滚闸:四区照旧平铺,不许再插一条把同一批会话画第二遍。 */
+  it('classic 下这一区整个不画', () => {
+    mocks.shellMode = 'classic'
+    expect(mountSidebar().find('.sidebar-recent-item').exists()).toBe(false)
   })
 })
 
@@ -441,19 +547,38 @@ describe('rail 徽标(该类有未读或在跑)', () => {
     expect(badgeTitles(mountSidebar())).toEqual([])
   })
 
-  it('群聊未读 → 群聊亮;判定仍然只有 isUnreadSession 那一处', () => {
+  /**
+   * **一条未读只催一次**:同一间房既在「消息」里也在「通讯录」里,两枚各亮各的
+   * 等于同一条未读被数两遍。未读一律落在回话的那一类。
+   */
+  it('群聊未读 → 只有「消息」亮;判定仍然只有 isUnreadSession 那一处', () => {
     mocks.unread.add('room-2')
-    expect(badgeTitles(mountSidebar())).toEqual(['群聊'])
+    expect(badgeTitles(mountSidebar())).toEqual(['消息'])
   })
 
-  it('会话未读 → 会话亮', () => {
+  /** 消息装房、会话装直聊,两堆不重叠 —— 各归各的不会重复报数。 */
+  it('直聊未读 → 「会话」亮(它不在消息流里,也就不该由消息流报)', () => {
     mocks.sidebarSessions = [{ id: 's-1', name: '直聊' }]
     mocks.unread.add('s-1')
     expect(badgeTitles(mountSidebar())).toEqual(['会话'])
   })
+
+  /** 通讯录恒不亮:它的行要么已在消息流里,要么根本没聊过。 */
+  it('私聊未读 → 只有「消息」亮,通讯录不跟着报第二遍', () => {
+    mocks.agents = [{ id: 'fe', name: '小李', avatar: '🔧' }]
+    mocks.dmRooms = [{ id: 'dm-fe', room: { memberAgentIds: ['fe'] } }]
+    mocks.unread.add('dm-fe')
+    expect(badgeTitles(mountSidebar())).toEqual(['消息'])
+  })
 })
 
 describe('「进行中」面板', () => {
+  // 默认类别 2026-08-01 起是「消息」—— 这一段验的是活面板,进来先停在那一类
+  // (走的是与真机同一条持久化路径,不是给组件塞内部状态)。
+  beforeEach(() => {
+    localStorage.setItem(RAIL_KEY, 'active')
+  })
+
   it('按 执行中 / 待你 / 已交付 分组(样板 .grp),空组不画组头', () => {
     mocks.boards = {
       'room-1': {
@@ -599,6 +724,7 @@ describe('面板是唯一的滚动体', () => {
     mocks.boards = {
       'room-1': { version: 1, tasks: [task({ id: 'a', status: 'doing', title: '换核' })] },
     }
+    localStorage.setItem(RAIL_KEY, 'active')
     const wrapper = mountSidebar()
     const sections = wrapper.find('.sidebar-sections')
     expect(sections.exists()).toBe(true)
@@ -737,7 +863,7 @@ describe('群聊行成员头像堆', () => {
       { id: 'room-2', name: '二组', room: { memberAgentIds: ['a1'] } },
     ]
     const wrapper = mountSidebar()
-    await selectCategory(wrapper, '群聊')
+    await selectCategory(wrapper, '通讯录')
     const rows = wrapper.findAll('.sidebar-rooms:not(.sidebar-contacts) .sidebar-room-item')
     expect(rows[0].findAll('.sidebar-room-face')).toHaveLength(3)
     expect(rows[0].find('.sidebar-room-face-more').text()).toBe('+1')

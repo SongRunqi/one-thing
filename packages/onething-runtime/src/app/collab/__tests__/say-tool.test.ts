@@ -9,7 +9,14 @@
  * turned into a snapshot of a message that really exists).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { COLLAB_SAY_SOURCE } from '@onething/runtime/collab'
+import {
+  COLLAB_DM_LEGACY_TOOL_NAME,
+  COLLAB_SAY_REFUSED_EMPTY,
+  COLLAB_SAY_SOURCE,
+  COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME,
+  COLLAB_SEND_MESSAGE_TOOL_NAME,
+} from '@onething/runtime/collab'
+import { clearRetiredAgentToolNames, resolveRetiredAgentToolName } from '@onething/core'
 
 interface FakeMessage {
   id: string
@@ -38,17 +45,28 @@ const AGENTS: Record<string, { id: string; name: string; title?: string }> = {
 }
 
 const mocks = vi.hoisted(() => ({
+  /** 「我的资料」为空 = 全链路回退到「用户」,与今天的行为逐字一致。 */
+  settings: { general: {} } as { general: { userProfile?: Record<string, string> } },
   sessions: new Map<string, unknown>(),
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
   overBudget: false,
+  /**
+   * 建房那一步的哨兵。整个文件里都不该被调用 —— 群发送不建房,而 legacy `dm` 的
+   * 降级必须在**建房之前**结束(设计 §5 R1:一次发不出去的私聊不该在侧栏留下一间
+   * 空房)。
+   */
+  createSession: vi.fn(),
 }))
 
 vi.mock('../../store.js', () => ({
   updateSessionWorkingDirectory: vi.fn(),
+  // 用户身份现取(agent-dm-user.md §2.2):引用快照的作者行读它。
+  getSettings: () => mocks.settings,
   getSession: (id: string) => mocks.sessions.get(id),
   addMessage: (sessionId: string, message: FakeMessage) => {
     (mocks.sessions.get(sessionId) as FakeSession | undefined)?.messages.push(message)
   },
+  createSession: mocks.createSession,
 }))
 
 vi.mock('../../events/index.js', () => ({
@@ -59,13 +77,22 @@ vi.mock('../../events/index.js', () => ({
   }),
 }))
 
-vi.mock('../../agents/index.js', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
+vi.mock('../../agents/index.js', () => ({
+  findAgent: (id: string) => AGENTS[id] ?? null,
+  // 身份目录的识别面走全体 agent(collab-handle-codec.md §2.1),不是房内成员。
+  listAgents: () => Object.values(AGENTS),
+}))
 
 vi.mock('../coordinator.js', () => ({
   isRoomOverBudget: async () => mocks.overBudget,
 }))
 
-const { clearCollabSayIdempotence, speakIntoCollabRoom } = await import('../say-tool.js')
+const {
+  SayTool,
+  clearCollabSayIdempotence,
+  registerCollabSendMessageLegacyAlias,
+  speakIntoCollabRoom,
+} = await import('../say-tool.js')
 
 const ROOM = 'room-1'
 const ROOM_B = 'room-2'
@@ -85,6 +112,7 @@ beforeEach(() => {
   mocks.sessions.clear()
   mocks.emitted.length = 0
   mocks.overBudget = false
+  mocks.createSession.mockClear()
   // The duplicate window is module state with a 5s life — two tests saying the
   // same words would otherwise share one delivery.
   clearCollabSayIdempotence()
@@ -336,6 +364,34 @@ describe('身份在写入时定稿', () => {
     expect(says()[0].mentions).toEqual([{ agentId: 'pm', label: '阿明' }])
   })
 
+  /**
+   * 句柄出栈(collab-agent-handle.md §2.4):模型写 `@名字#句柄`,群里落的是
+   * `@名字`。身份进 mentions[],正文不背着它 —— 出站投影会按 id 重新拼出来。
+   */
+  it('剥掉句柄再落库 —— 群里、UI 里看到的是干净的一句话', async () => {
+    await speakIntoCollabRoom({ sessionId: ROOM, content: '@阿明#pm 你看一下' })
+    expect(says()[0].content).toBe('@阿明 你看一下')
+    expect(says()[0].mentions).toEqual([{ agentId: 'pm', label: '阿明' }])
+  })
+
+  it('认不出的句柄原样留着(模型下一轮能看见自己写错了)', async () => {
+    await speakIntoCollabRoom({ sessionId: ROOM, content: '@阿明#deadbeef 你看一下' })
+    expect(says()[0].content).toBe('@阿明#deadbeef 你看一下')
+    // 名字兜底仍然点到人 —— 写错句柄不等于谁都没点到。
+    expect(says()[0].mentions).toEqual([{ agentId: 'pm', label: '阿明' }])
+  })
+
+  /**
+   * 幂等窗与剥离的先后(设计文档 §4 H2 的验证项):指纹拿 content 当组成部分,
+   * 所以剥离必须在算指纹**之前** —— 否则同一句话的两种写法会各落一条。
+   */
+  it('同一句话的两种写法算作一条(剥离在指纹之前)', async () => {
+    const first = await speakIntoCollabRoom({ sessionId: ROOM, content: '@阿明#pm 你看一下' })
+    const second = await speakIntoCollabRoom({ sessionId: ROOM, content: '@阿明 你看一下' })
+    expect(says()).toHaveLength(1)
+    expect(second).toEqual({ ok: true, messageId: first.messageId })
+  })
+
   it('omits the field entirely when nobody is addressed', async () => {
     await speakIntoCollabRoom({ sessionId: ROOM, content: '没点名' })
     expect(says()[0].mentions).toBeUndefined()
@@ -372,5 +428,52 @@ describe('身份在写入时定稿', () => {
     const result = await speakIntoCollabRoom({ sessionId: ROOM, content: '明天', replyTo: 'nope' })
     expect(result.ok).toBe(true)
     expect(says()[0].replyTo).toBeUndefined()
+  })
+})
+
+/**
+ * legacy `dm` 的降级路径(docs/design/collab-send-channel-and-wake.md §5 R1 / §9.2)。
+ *
+ * 2026-08-02 起 `send_message` 是**唯一**的发送消息工具:`dm` 连隐藏的真工具都
+ * 不是,它只剩退役名表里的一个名字。表只认名字不认参数,而两者参数不同形
+ * (`message` vs `content`),所以这次转发注定不无缝 —— 这一组守的正是那次降级
+ * 的三条承诺:
+ *
+ *  1. 名字确实被派发到现名(否则模仿旧转录的调用换来一句「Tool not available」);
+ *  2. 拒绝语逐字是那句可操作的「content 是空的」(而不是一坨 zod issue ——
+ *     模型手上还攥着原文,读懂了才会在下一轮换参数名重发);
+ *  3. 这一路**什么都没留下**:没有消息落库,更没有一间空的私聊房被建出来。
+ */
+describe('legacy `dm`:退役名 + 降级', () => {
+  beforeEach(() => {
+    // 退役名表是 core 的进程内全局状态 —— 先清再注册,断言才说的是这一次注册。
+    clearRetiredAgentToolNames()
+    registerCollabSendMessageLegacyAlias()
+  })
+
+  it('`dm` 与 `say` 都派发到 send_message', () => {
+    expect(resolveRetiredAgentToolName(COLLAB_DM_LEGACY_TOOL_NAME))
+      .toBe(COLLAB_SEND_MESSAGE_TOOL_NAME)
+    expect(resolveRetiredAgentToolName(COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME))
+      .toBe(COLLAB_SEND_MESSAGE_TOOL_NAME)
+    // 别名只在派发时生效:现名不该被映射到别处。
+    expect(resolveRetiredAgentToolName(COLLAB_SEND_MESSAGE_TOOL_NAME))
+      .toBe(COLLAB_SEND_MESSAGE_TOOL_NAME)
+  })
+
+  it('旧转录的 dm({to, message}):一句可操作的拒绝,不落消息、不建私聊房', () => {
+    // 退役名表原样带着参数转发过去(它只换名字),于是落到 send_message 手里的
+    // 就是旧那一套参数名。
+    const legacyArgs = { to: '阿明#pm', message: '接口这块想跟你对一下' }
+    const parsed = SayTool.parameters.safeParse(legacyArgs)
+
+    // `to` 是合并面的正式参数,活着;`message` 不是,被 zod strip 掉之后 content
+    // 缺席 —— 校验就在这一层失败,执行器一步都没跑。
+    expect(parsed.success).toBe(false)
+    if (parsed.success) return
+    expect(SayTool.formatValidationError?.(parsed.error)).toBe(COLLAB_SAY_REFUSED_EMPTY)
+
+    expect(says()).toEqual([])
+    expect(mocks.createSession).not.toHaveBeenCalled()
   })
 })

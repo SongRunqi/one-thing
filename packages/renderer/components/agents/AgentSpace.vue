@@ -1,117 +1,144 @@
 <template>
   <section class="agent-space agent-ledger is-narrow">
-    <button
-      v-if="showBack"
-      type="button"
-      class="space-back"
-      @click="emit('back')"
-    >
-      <ChevronLeft
-        :size="13"
-        :stroke-width="2"
-        aria-hidden="true"
-      />
-      {{ backLabel }}
-    </button>
-
-    <div class="space-hero">
-      <AgentAvatar
-        class="space-avatar"
-        :avatar="identity.avatar"
-        :avatar-image="identity.avatarImage"
-        :size="80"
-      />
-      <b class="space-name">{{ identity.name }}</b>
-      <i class="space-subtitle">{{ subtitle }}</i>
-      <p
-        v-if="description"
-        class="space-desc"
+    <!-- 对话面(2026-08-01)。「发消息」不再把人甩去主区开页签 —— 私聊就在
+         你点它的那一面里展开,返回一步回到资料面。这一层是**整个既有的聊天面**
+         (`ThreadChatDetail` → `ChatPanel`),窄栏适配与权限栏位一并继承。 -->
+    <template v-if="dmSessionId">
+      <button
+        type="button"
+        class="space-back"
+        @click="closeDm"
       >
-        {{ description }}
-      </p>
-      <div class="space-actions">
-        <button
-          class="text-action"
-          type="button"
-          :title="retired ? '已退休:不再接活,也开不了新私聊' : `和${identity.name}发消息`"
-          :disabled="retired || openingDm"
-          @click="startDm"
+        <ChevronLeft
+          :size="13"
+          :stroke-width="2"
+          aria-hidden="true"
+        />
+        返回{{ identity.name }}的空间
+      </button>
+      <ThreadChatDetail
+        class="space-dm"
+        :session-id="dmSessionId"
+        tag="私聊"
+        :title="identity.name"
+        @open-file="(filePath: string) => emit('open-file', filePath)"
+      />
+    </template>
+
+    <template v-else>
+      <button
+        v-if="showBack"
+        type="button"
+        class="space-back"
+        @click="emit('back')"
+      >
+        <ChevronLeft
+          :size="13"
+          :stroke-width="2"
+          aria-hidden="true"
+        />
+        {{ backLabel }}
+      </button>
+
+      <div class="space-hero">
+        <AgentAvatar
+          class="space-avatar"
+          :avatar="identity.avatar"
+          :avatar-image="identity.avatarImage"
+          :size="80"
+        />
+        <b class="space-name">{{ identity.name }}</b>
+        <i class="space-subtitle">{{ subtitle }}</i>
+        <p
+          v-if="description"
+          class="space-desc"
         >
-          {{ openingDm ? '打开中…' : '发消息' }}
-        </button>
-        <button
-          v-if="work?.sessionId"
-          class="text-action"
-          type="button"
-          :title="`正在干活 · ${work.title} —— 打开线程`"
-          @click="emit('open-thread', work!.sessionId, work!.title)"
+          {{ description }}
+        </p>
+        <div class="space-actions">
+          <button
+            class="text-action"
+            type="button"
+            :title="retired ? '已退休:不再接活,也开不了新私聊' : `和${identity.name}发消息`"
+            :disabled="retired || openingDm"
+            @click="startDm"
+          >
+            {{ openingDm ? '打开中…' : '发消息' }}
+          </button>
+          <button
+            v-if="work?.sessionId"
+            class="text-action"
+            type="button"
+            :title="`正在干活 · ${work.title} —— 打开线程`"
+            @click="emit('open-thread', work!.sessionId, work!.title)"
+          >
+            看线程
+          </button>
+        </div>
+        <p
+          v-if="dmError"
+          class="field-hint space-error"
         >
-          看线程
+          {{ dmError }}
+        </p>
+      </div>
+
+      <!-- 四面(agent-im-chat-ui.md §3.2):配置 / 会话 / 文件 / 搜索。
+           深面不再跳去 Agents 管理页 —— 就地渲染,配置就地存
+           (agent-space-workbench.md P2)。 -->
+      <div
+        class="space-tabs"
+        role="tablist"
+        aria-label="Agent 空间"
+      >
+        <button
+          v-for="face in SPACE_FACES"
+          :key="face.key"
+          type="button"
+          class="space-tab"
+          :class="{ 'is-on': face.key === activeTab }"
+          role="tab"
+          :aria-selected="face.key === activeTab"
+          @click="activeTab = face.key"
+        >
+          {{ face.label }}
         </button>
       </div>
-      <p
-        v-if="dmError"
-        class="field-hint space-error"
-      >
-        {{ dmError }}
-      </p>
-    </div>
 
-    <!-- 四面(agent-im-chat-ui.md §3.2):配置 / 会话 / 文件 / 搜索。
-         深面不再跳去 Agents 管理页 —— 就地渲染,配置就地存
-         (agent-space-workbench.md P2)。 -->
-    <div
-      class="space-tabs"
-      role="tablist"
-      aria-label="Agent 空间"
-    >
-      <button
-        v-for="face in SPACE_FACES"
-        :key="face.key"
-        type="button"
-        class="space-tab"
-        :class="{ 'is-on': face.key === activeTab }"
-        role="tab"
-        :aria-selected="face.key === activeTab"
-        @click="activeTab = face.key"
-      >
-        {{ face.label }}
-      </button>
-    </div>
-
-    <div class="space-face">
-      <!-- 查无此人(墓碑 / 名册还没加载)就没有可编辑的东西 —— 摆一张空表单
-           会让 save 变成一颗按了什么也不发生的按钮。 -->
-      <p
-        v-if="activeTab === 'config' && !agent"
-        class="space-empty"
-      >
-        这个人已经不在名册里了,配置无从改起 —— 历史与署名仍然读得到。
-      </p>
-      <AgentConfigForm
-        v-else-if="activeTab === 'config'"
-        :agent="agent"
-        :show-conversations="false"
-        @open-session="onOpenSession"
-      />
-      <AgentSessionsPane
-        v-else-if="activeTab === 'sessions'"
-        :agent-id="agentId"
-        :agent-name="identity.name"
-        @open-session="onOpenSession"
-      />
-      <AgentFilesPane
-        v-else-if="activeTab === 'files'"
-        :agent-id="agentId"
-        @open-file="(path: string) => emit('open-file', path)"
-      />
-      <AgentSearchPane
-        v-else
-        :agent-id="agentId"
-        :agent-name="identity.name"
-        @open-session="onOpenSession"
-      />
-    </div>
+      <div class="space-face">
+        <!-- 查无此人(墓碑 / 名册还没加载)就没有可编辑的东西 —— 摆一张空表单
+             会让 save 变成一颗按了什么也不发生的按钮。 -->
+        <p
+          v-if="activeTab === 'config' && !agent"
+          class="space-empty"
+        >
+          这个人已经不在名册里了,配置无从改起 —— 历史与署名仍然读得到。
+        </p>
+        <AgentConfigForm
+          v-else-if="activeTab === 'config'"
+          :agent="agent"
+          :show-conversations="false"
+          @open-session="onOpenSession"
+        />
+        <AgentSessionsPane
+          v-else-if="activeTab === 'sessions'"
+          :agent-id="agentId"
+          :agent-name="identity.name"
+          @open-session="onOpenSession"
+        />
+        <AgentFilesPane
+          v-else-if="activeTab === 'files'"
+          :agent-id="agentId"
+          @open-file="(path: string) => emit('open-file', path)"
+        />
+        <AgentSearchPane
+          v-else
+          :agent-id="agentId"
+          :agent-name="identity.name"
+          @open-session="onOpenSession"
+        />
+      </div>
+    </template>
   </section>
 </template>
 
@@ -130,6 +157,8 @@ import { computed, ref, watch } from 'vue'
 import { ChevronLeft } from 'lucide-vue-next'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import { useAgentsStore, type AgentDetailTab } from '@/stores/agents'
+import { useWorkspaceStore } from '@/stores/workspace'
+import ThreadChatDetail from '@/components/workbench/ThreadChatDetail.vue'
 import { isActiveAgent } from '@shared/ipc'
 import type { AgentDoingTask } from '@/components/chat/agent-activity'
 import { buildAgentSpaceSubtitle } from '@/components/workbench/agent-space'
@@ -199,12 +228,43 @@ const subtitle = computed(() => {
   return busy ? `${base} · 在忙 ${busy}` : base
 })
 
+// ── 「发消息」:就地展开,不再把人甩去主区 ──────────────────────────────────
+//
+// 2026-08-01 用户原话:「我点击发消息,直接就在成员这个 tab 这里打开和他的私聊
+// 对话,别再跑到其他地方」。旧行为是 `emit('open-session')` → 宿主在主区开页签:
+// 你本来在看这间房的成员,一按就被搬走了,回来还得自己找回原来那一格。
+//
+// 例外只有一条:这间私聊房**已经是主区当前会话**(在私聊房自己的背台里按的),
+// 那就只聚焦主区 —— 同一段对话在一屏里画两遍既费地方又分不清该在哪一边说话。
+
+const workspaceStore = useWorkspaceStore()
 const { openingDm, dmError, openDmRoom } = useAgentDmOpener()
+
+/** 就地展开的那间私聊房('' = 停在资料面)。 */
+const dmSessionId = ref('')
 
 async function startDm(): Promise<void> {
   const sessionId = await openDmRoom(props.agentId)
-  if (sessionId) emit('open-session', sessionId)
+  if (!sessionId) return
+  if (workspaceStore.visibleSessionIds.has(sessionId)) {
+    emit('open-session', sessionId)
+    return
+  }
+  dmSessionId.value = sessionId
 }
+
+function closeDm(): void {
+  dmSessionId.value = ''
+}
+
+/* 换人 = 换对话。上一位的私聊留在屏幕上、头顶却写着下一位的名字,是最坏的一种
+   串台(这一面的两个宿主都会原地换 agentId,不重挂组件)。 */
+watch(() => props.agentId, () => {
+  dmSessionId.value = ''
+})
+
+/* 「摊开 = 看见了,销未读」收在 `ThreadChatDetail` 里 —— 右栏正摊着哪段对话
+   只有它知道,三处宿主(线程 / 就地私聊 / 房里的「私下」)因此都不必各补一遍。 */
 
 function onOpenSession(sessionId: string): void {
   emit('open-session', sessionId)
@@ -238,6 +298,13 @@ function onOpenSession(sessionId: string): void {
 
 .space-back:hover {
   color: var(--ui-text-primary-fg, var(--text));
+}
+
+/* 对话面吃掉返回行之外的全部高度 —— 里面那棵 `ChatPanel` 是自己滚的,
+   这一层只负责把高度给足(给不足的话 composer 会被顶出可视区)。 */
+.space-dm {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .space-hero {

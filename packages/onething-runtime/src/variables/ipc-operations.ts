@@ -61,7 +61,7 @@ export async function setOnethingVariableForIpc<TVariable = ContextVariable>(
         scope: options.request.scope,
         type: options.request.type,
         description: options.request.description,
-        volatility: options.request.volatility,
+        state: options.request.state,
       },
     )
     return { success: true, variable }

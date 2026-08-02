@@ -17,6 +17,11 @@ export interface CollabRoomBudgets {
    *  default; **0 = 关闭该闸**, the same convention as dailyCostUSD/maxChain. */
   maxTurnToolCalls?: number
   maxTurnSayCalls?: number
+  /**
+   * 同时最多几个人说话(房间回合并行化 2026-08-01)。缺省 = 内置默认
+   * `COLLAB_MAX_CONCURRENT_TURNS`;**0 = 不限**,与本族其它闸同一套约定。
+   */
+  maxConcurrentTurns?: number
 }
 
 export interface CollabRoomConfig {
@@ -24,6 +29,21 @@ export interface CollabRoomConfig {
   pmAgentId?: string
   budgets?: CollabRoomBudgets
   frozen?: boolean
+}
+
+/**
+ * In-flight card statuses an agent can be told about (W9.3).
+ *
+ * 提示词那一段 `<your_cards>` 已经退役(agent-self-state-variables.md §4.4):
+ * 内容改由 `my_cards` 变量承载,而看板 → 变量那条链仍然要一个形状,就是这两个类型。
+ */
+export type CollabSelfTaskStatus = 'doing' | 'blocked'
+
+/** One in-flight card assigned to a given agent. */
+export interface CollabSelfTaskFact {
+  id: string
+  title: string
+  status: CollabSelfTaskStatus
 }
 
 /** Structural view of an agent, as rosters/projection/mentions need it. */
@@ -60,13 +80,32 @@ export interface CollabReplyToLike {
 export interface CollabMentionLike {
   agentId: string
   label: string
+  /**
+   * 缺省 `'agent'`(每一条老转录都是)。`'user'` = 这一处点的是用户本人 ——
+   * TA 没有 agent id,所以那一条的 `agentId` 是**空串**,而所有消费方本来就有
+   * 空值门,于是它天然不进激活、不进成员校验(collab-handle-codec.md §2.3)。
+   */
+  kind?: 'agent' | 'user'
+  /**
+   * 用户的句柄(仅 `kind:'user'`)。**不塞进 `agentId`**:那个字段的语义是
+   * agent 花名册 id,混进一个不是 agent 的值,迟早有人拿它去 `findAgent`。
+   *
+   * 为什么不能省:曾经的理由是「用户只有一个,kind 就够指认」—— 那是拿**当下
+   * 只有一个人**当永久前提。网关(微信/飞书等渠道)进来的是**多个真人**,那一刻
+   * 「是用户」不再是一个身份,而句柄是。真实存在的标识符不该在落库时被丢掉。
+   */
+  userHandle?: string
 }
 
 /** Structural view of a persisted chat message, as the projection needs it. */
 export interface CollabMessageLike {
+  /** 房间消息 id。视野窗口(history-window.ts)按它定位每位同事的已读游标。 */
+  id?: string
   role: string
   content: string
   agentId?: string
+  /** 落库时刻(ms)。进 `<message time>` —— 聊天记录里「什么时候说的」是信息。 */
+  timestamp?: number
   source?: string
   origin?: { source?: string }
   toolCalls?: Array<{ name?: string; arguments?: unknown; result?: unknown }>
@@ -89,6 +128,17 @@ export interface CollabMessageLike {
  *  房间可用 `budgets.maxChain` 覆盖,**0 = 关闭该闸**(与 dailyCostUSD 和两个
  *  回合断路器上限同一套约定);解析见 `maxChainFor()`。 */
 export const COLLAB_DEFAULT_MAX_CHAIN = 32
+
+/**
+ * 房间日预算的默认值(美元)。房间可用 `budgets.dailyCostUSD` 覆盖,0 = 不限额。
+ *
+ * 放在纯层而不是 `app/collab/budget.ts`,是因为它有**第二个**读者了(协调器
+ * 状态条要画那道闸的分母),而 budget.ts 的静态图上挂着用量账本 → 设置仓库 →
+ * 存储路径 —— 为一个数字把整条链拖进来,代价是 15 个测试文件在收集阶段就炸。
+ * 闸的**逻辑**照旧留在 budget.ts;这里只有那个数,与 `COLLAB_DEFAULT_MAX_CHAIN`
+ * 同一格。
+ */
+export const COLLAB_DEFAULT_DAILY_COST_USD = 5
 
 /**
  * 双成员 dm 房(agent ↔ agent 私聊)没配 `budgets.maxChain` 时的默认链长闸

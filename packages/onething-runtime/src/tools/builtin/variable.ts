@@ -1,15 +1,24 @@
 import { z } from "zod";
 import type { JsonObject, JsonObjectProperty } from "@onething/core";
-import type {
-	VariableScope,
-	VariableType,
-	VariableVolatility,
-} from "../../variables/types.js";
+import type { VariableScope, VariableType } from "../../variables/types.js";
 import { isCapabilityVariable } from "../../variables/types.js";
 import { Tool } from "../tool.js";
 
-export type VariableAction = "list" | "set" | "append" | "remove" | "delete";
-export type { VariableScope, VariableType, VariableVolatility };
+export type VariableAction =
+	| "list"
+	| "get"
+	| "keys"
+	| "set"
+	| "append"
+	| "remove"
+	| "delete";
+
+/**
+ * 读操作 —— 不写任何东西,因此也不该触发能力变量的审批效果。
+ * (`analyze` 里少了这道门,一次 `get ai_note_dir` 就会弹出"重指目录"的审批框。)
+ */
+const READ_ACTIONS = new Set<VariableAction>(["list", "get", "keys"]);
+export type { VariableScope, VariableType };
 
 export interface RuntimeContextVariable {
 	name: string;
@@ -18,7 +27,7 @@ export interface RuntimeContextVariable {
 	type?: VariableType;
 	scope?: VariableScope;
 	readonly?: boolean;
-	volatility?: VariableVolatility;
+	state?: boolean;
 	description?: string;
 	updatedAt?: number;
 }
@@ -35,7 +44,7 @@ export interface RuntimeVariableSetInput {
 	scope?: VariableScope;
 	type?: VariableType;
 	description?: string;
-	volatility?: VariableVolatility;
+	state?: boolean;
 }
 
 export interface RuntimeVariableRegistry {
@@ -73,7 +82,7 @@ interface VariableMetadataVariable extends JsonObject {
 	type?: VariableType;
 	scope?: VariableScope;
 	readonly?: boolean;
-	volatility?: VariableVolatility;
+	state?: boolean;
 	description?: string;
 	updatedAt?: number;
 }
@@ -87,14 +96,14 @@ interface VariableMetadata extends JsonObject {
 
 export const VariableParameters = z.object({
 	action: z
-		.enum(["list", "set", "append", "remove", "delete"])
+		.enum(["list", "get", "keys", "set", "append", "remove", "delete"])
 		.describe(
-			"list: show all variables. set: create or replace a value. append/remove: add or drop an element of a collection variable (or a workdir sandbox root). delete: drop the whole variable.",
+			"list: show every variable with its value. get: one variable, value in full. keys: names only (what exists, without paying to read it). set: create or replace a value. append/remove: add or drop an element of a collection variable (or a workdir sandbox root). delete: drop the whole variable.",
 		),
 	name: z
 		.string()
 		.optional()
-		.describe("Variable name (required for set/append/remove/delete)."),
+		.describe("Variable name (required for get/set/append/remove/delete)."),
 	value: z
 		.string()
 		.optional()
@@ -111,7 +120,7 @@ export const VariableParameters = z.object({
 		.enum(["session", "global", "agent", "project"])
 		.optional()
 		.describe(
-			"Where the variable lives: session (default), agent (every session of the current agent), project (the active workdir's project; requires a workdir), global (all sessions). A name lives in one scope; a write without scope follows the variable to its current scope.",
+			"Where the variable lives: session (default), agent (every session of the current agent), project (the active workdir's project; requires a workdir), global (all sessions). A name lives in one scope; a write without scope follows the variable to its current scope. On keys it filters the listing instead.",
 		),
 	description: z
 		.string()
@@ -119,11 +128,11 @@ export const VariableParameters = z.object({
 		.describe(
 			'Short description shown next to the value in the prompt and the Context inspector. Sticky: omitted on later writes it is kept; "" clears it.',
 		),
-	volatility: z
-		.enum(["static", "turn"])
+	state: z
+		.boolean()
 		.optional()
 		.describe(
-			'"static" (default): rendered in the system prompt. "turn": delivered in per-turn <context-update> blocks, for values that change often. Sticky across writes.',
+			'true: you need to know this at all times — it is delivered in full in every <context-update> block from now on. false (default): it stays on the board but out of your context; read it back with get when you need it. Sticky across writes.',
 		),
 });
 
@@ -137,7 +146,7 @@ function summarizeForMetadata(
 		type: v.type,
 		scope: v.scope,
 		readonly: v.readonly,
-		volatility: v.volatility,
+		state: v.state,
 		description: v.description,
 		updatedAt: v.updatedAt,
 	}));
@@ -152,6 +161,40 @@ function formatAge(updatedAt: number, now: number): string {
 	return `${Math.floor(hours / 24)}d ago`;
 }
 
+function byName(
+	a: RuntimeContextVariable,
+	b: RuntimeContextVariable,
+): number {
+	return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
+
+/**
+ * `keys` 的投影:只有 name/type/scope/desc,**不带值**。
+ *
+ * 非 state 变量一个字节都不进请求,能不能被找回来全靠这一步:它让模型知道
+ * 「有什么可读」而不必付出读全量的代价。按名字排序:一份供人照抄的清单,
+ * 字典序比 provider 优先级好找。
+ */
+function renderKeysForOutput(
+	snapshot: RuntimeContextVariable[],
+	scope?: VariableScope,
+): string {
+	const rows = snapshot
+		.filter((v) => !scope || (v.scope ?? "session") === scope)
+		.sort(byName);
+	if (rows.length === 0) {
+		return scope
+			? `No variables in ${scope} scope.`
+			: "No context variables are set.";
+	}
+	return rows
+		.map((v) => {
+			const flags = `${v.type && v.type !== "string" ? ` [${v.type}]` : ""}${v.scope ? ` [${v.scope}]` : ""}${v.readonly ? " [readonly]" : ""}${v.state ? " [state]" : ""}`;
+			return `${v.name}${flags}${v.description ? ` - ${v.description}` : ""}`;
+		})
+		.join("\n");
+}
+
 function renderForOutput(
 	snapshot: RuntimeContextVariable[],
 	now: number = Date.now(),
@@ -163,7 +206,7 @@ function renderForOutput(
 			// up. Tool output is never part of the cached prompt prefix, so a
 			// live relative time is safe here (unlike in the prompt sections).
 			const age = v.updatedAt ? ` [updated ${formatAge(v.updatedAt, now)}]` : "";
-			const flags = `${v.type && v.type !== "string" ? ` [${v.type}]` : ""}${v.scope ? ` [${v.scope}]` : ""}${v.readonly ? " [readonly]" : ""}${v.volatility && v.volatility !== "static" ? ` [${v.volatility}]` : ""}${age}`;
+			const flags = `${v.type && v.type !== "string" ? ` [${v.type}]` : ""}${v.scope ? ` [${v.scope}]` : ""}${v.readonly ? " [readonly]" : ""}${v.state ? " [state]" : ""}${age}`;
 			const desc = v.description ? ` - ${v.description}` : "";
 			if (v.values && v.values.length > 0) {
 				return `${v.name} = ${v.value || "(empty)"}\nvalues:\n${v.values.map((value, index) => `  [${index}] ${value}${index === 0 && v.value ? " (current)" : ""}`).join("\n")}${flags}${desc}`;
@@ -172,6 +215,41 @@ function renderForOutput(
 			return `${v.name} = ${value}${flags}${desc}`;
 		})
 		.join("\n");
+}
+
+/**
+ * 一次 registry.list 之后按 action 投影输出。
+ *
+ * `get` 走全量渲染但只喂一条:**值不截断**——工具输出不进缓存前缀,所以这里
+ * 可以给完整的,而 `<context-update>` 里的 state 变量给的是首行 + 512 字符。
+ * 长值因此永远捞得回来。
+ */
+function renderOutputForAction(
+	action: VariableAction,
+	snapshot: RuntimeContextVariable[],
+	args: { name?: string; scope?: VariableScope },
+): string {
+	if (action === "keys") return renderKeysForOutput(snapshot, args.scope);
+	if (action === "get") {
+		const name = args.name?.trim();
+		if (!name) throw new Error("name is required for get");
+		const found = snapshot.find((v) => v.name === name);
+		// 读不到不算错:回一句能自救的话,比抛一个模型只能重试的异常有用。
+		if (!found) {
+			return `No variable named "${name}". Use action="keys" to see what exists.`;
+		}
+		return renderForOutput([found]);
+	}
+	return renderForOutput(snapshot);
+}
+
+function metadataTitleForAction(
+	action: VariableAction,
+	name: string | undefined,
+): string {
+	if (action === "list") return "Listed variables";
+	if (action === "keys") return "Listed variable names";
+	return `${action[0].toUpperCase()}${action.slice(1)} ${name ?? ""}`.trim();
 }
 
 function rethrowVariableError(
@@ -193,9 +271,11 @@ export function createVariableTool(
 ): Tool.Info<typeof VariableParameters, VariableMetadata> {
 	return Tool.define<typeof VariableParameters, VariableMetadata>("variable", {
 		name: "Variable",
-		description: `Manage context variables - named state visible to you in every turn.
+		description: `Manage context variables - a named board of state that outlives this turn.
 
-Use this freely and proactively: anything you record is in front of you every turn afterwards, with no re-discovery. Whenever you learn or decide something later turns will need - what you're working on, a target, a status, a list you're accumulating - set it the moment you have it, and keep it current as things change.
+Use this freely and proactively: whenever you learn or decide something later turns will need - what you're working on, a target, a status, a list you're accumulating - set it the moment you have it, and keep it current as things change. Nothing you record has to be rediscovered.
+
+state=true is the difference between "on the board" and "in front of you": those variables arrive in full in every <context-update> block from then on. Everything else stays on the board and out of your context until you read it - keys lists every name that exists, get reads one back in full.
 
 A variable has a typed value (string, number, bool, list, map, set), an optional description, and lives in one of four scopes: session (this session), agent (every session of this agent), project (the active workdir's project), global (all sessions). Collections support element-wise append/remove. Custom names are non-reserved snake_case matching /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/; system variables (workdir, note dirs, background_jobs, ...) explain their own semantics via their description in list output.
 `,
@@ -214,7 +294,7 @@ A variable has a typed value (string, number, bool, list, map, set), an optional
 		// proposal the user approves, not something that happens silently.
 		analyze(args) {
 			const name = args.name?.trim();
-			if (!name || args.action === "list") return { effects: [] };
+			if (!name || READ_ACTIONS.has(args.action)) return { effects: [] };
 			if (!isCapabilityVariable(name)) return { effects: [] };
 
 			const value = args.value?.trim();
@@ -256,7 +336,7 @@ A variable has a typed value (string, number, bool, list, map, set), an optional
 						scope: args.scope,
 						type: args.type,
 						description: args.description,
-						volatility: args.volatility,
+						state: args.state,
 					};
 					if (action === "set") {
 						await registry.set(variableCtx, input);
@@ -272,7 +352,7 @@ A variable has a typed value (string, number, bool, list, map, set), an optional
 
 				const snapshot = await registry.list(variableCtx);
 				const metadataSummary = summarizeForMetadata(snapshot);
-				const output = renderForOutput(snapshot);
+				const output = renderOutputForAction(action, snapshot, args);
 
 				ctx.updateResult?.({
 					content: [{ type: "text", text: output }],
@@ -285,10 +365,7 @@ A variable has a typed value (string, number, bool, list, map, set), an optional
 				});
 
 				ctx.metadata({
-					title:
-						action === "list"
-							? "Listed variables"
-							: `${action[0].toUpperCase()}${action.slice(1)} ${args.name}`,
+					title: metadataTitleForAction(action, args.name),
 					metadata: {
 						action,
 						name: args.name,
@@ -297,7 +374,9 @@ A variable has a typed value (string, number, bool, list, map, set), an optional
 				});
 
 				return {
-					title: action === "list" ? "Variables" : `Variable ${action}`,
+					title: READ_ACTIONS.has(action)
+						? "Variables"
+						: `Variable ${action}`,
 					output,
 					metadata: {
 						action,

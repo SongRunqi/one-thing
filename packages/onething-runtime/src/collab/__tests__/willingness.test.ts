@@ -35,8 +35,8 @@ describe('buildWillingnessWindow', () => {
     const lines = buildWillingnessWindow({ recent: TRANSCRIPT, members: AGENTS })
     expect(lines).toEqual([
       '用户: 官网改版,本周上线',
-      '阿明: 收到,我来拆解',
-      '小李: 从实现角度讲,一周可行',
+      '阿明#pm: 收到,我来拆解',
+      '小李#fe: 从实现角度讲,一周可行',
       '用户: 这个项目该用什么技术栈?',
     ])
   })
@@ -54,7 +54,7 @@ describe('buildWillingnessWindow', () => {
     expect(lines).toEqual([
       '系统: 「加 notes.txt」→ 小李 开始执行',
       '系统: 小研 加入了群聊',
-      '小李: 已交付',
+      '小李#fe: 已交付',
     ])
   })
 
@@ -85,7 +85,7 @@ describe('buildWillingnessWindow', () => {
     })
     // P2-16: a speaker the roster no longer holds is 「前成员」, not `ghost` —
     // the judgement window is prompt text, and an id in it is a riddle.
-    expect(lines).toEqual(['小李: 第一行 第二行', '前成员: 你好'])
+    expect(lines).toEqual(['小李#fe: 第一行 第二行', '前成员#ghost: 你好'])
   })
 
   it('names a departed member when the global lookup still knows it (P2-16)', () => {
@@ -94,7 +94,7 @@ describe('buildWillingnessWindow', () => {
       members: AGENTS,
       resolveAgentName: id => (id === 'ghost' ? '老王' : undefined),
     })
-    expect(lines).toEqual(['老王: 你好'])
+    expect(lines).toEqual(['老王#ghost: 你好'])
   })
 
   it('carries a quote reply into the judgement window as one entry (W7 §3.5 A)', () => {
@@ -133,7 +133,7 @@ describe('buildWillingnessWindow', () => {
       }],
       members: AGENTS,
     })
-    expect(lines).toEqual(['> 用户: 登录页什么时候能好?\n小李: 明天下班前'])
+    expect(lines).toEqual(['> 用户: 登录页什么时候能好?\n小李#fe: 明天下班前'])
   })
 
   it('carries the reaction tally, same source as the projection (W8 §3.5 B)', () => {
@@ -172,13 +172,42 @@ describe('buildWillingnessPrompt', () => {
   it('is the persona VERBATIM plus the factual room note — no behavioral rules', () => {
     const { system } = buildWillingnessPrompt(base)
     expect(system.startsWith(PERSONA)).toBe(true)
-    expect(system).toContain('(情况说明:')
+    expect(system).toContain('<where_you_are>')
     expect(system).toContain('「官网改版项目组」')
-    expect(system).not.toContain('规则')
+    expect(system).not.toContain('<rules>')
     expect(system).not.toContain('扮演')
     expect(system).not.toContain('铁律')
     // The JSON instruction is the task, and belongs to the user turn only.
     expect(system).not.toContain('respond')
+  })
+
+  /**
+   * 判定薄档(collab-turn-protocol-and-identity.md D.1)。判定是一次**零工具**的
+   * 裸 generate:`<your_tools>`、状态板、`<board>` 三段对它而言字字是假话 ——
+   * 它此刻手上一个工具都没有,却被告知"重活立卡、状态板随时可写"。
+   */
+  it('薄档:判定的 system 里没有工具面、状态板与看板段', () => {
+    const { system } = buildWillingnessPrompt(base)
+    expect(system).not.toContain('<your_tools>')
+    expect(system).not.toContain('<board>')
+    expect(system).not.toContain('state board')
+    expect(system).not.toContain('`board` tool')
+    // 场子、花名册、发送机制仍在:判定要知道自己在哪、有谁、开口意味着什么。
+    expect(system).toContain('<where_you_are>')
+    expect(system).toContain('<room name="官网改版项目组">')
+    expect(system).toContain('<messaging>')
+  })
+
+  /**
+   * 房形态跟着调用方走(D.1 后半)。pair 房用群版世界观会把用户说成"群成员",
+   * 判定于是站在一个错误的场子里回答"要不要开口"。
+   */
+  it('按房形态换情况说明:pair 房的判定读的是私聊那一版', () => {
+    const pair = buildWillingnessPrompt({ ...base, dmPair: true }).system
+    expect(pair).toContain('A private chat between the two of you')
+    expect(pair).not.toContain('<room name=')
+    const dm = buildWillingnessPrompt({ ...base, dm: true }).system
+    expect(dm).toContain('A one-on-one conversation')
   })
 
   it('adds the lead fact for the PM only', () => {
@@ -190,29 +219,53 @@ describe('buildWillingnessPrompt', () => {
       .toContain(COLLAB_WILLINGNESS_PM_FACT)
   })
 
+  /**
+   * 判定走裸 `generateChatResponse`,够不着变量通道 —— 房间回合那侧的
+   * `my_cards` 一格都到不了这里。所以卡必须由调用方喂进来,否则「任务受阻」
+   * 这类最该让人开口的事实,恰好在决定要不要开口的那一刻看不见。
+   *
+   * 这条是 agent-self-state-variables.md §4.4 删 taskFacts 时漏掉的一条链,
+   * 钉在这里免得下次又被顺手删掉。
+   */
+  it('把在飞的卡带进判定 —— 判定看见的事实与它作答时会看见的同一批', () => {
+    const cards = [
+      { id: 'ffffeeee-2222', title: '重构配置读取', status: 'blocked' as const },
+      { id: 'a1b2c3d4-1111', title: '登录页改版', status: 'doing' as const },
+    ]
+    const { system } = buildWillingnessPrompt({ ...base, selfCards: cards })
+    // 形状与 `my_cards` 变量逐字同源;按 id 排序,同一组卡永远同样的字节。
+    expect(system).toContain(
+      '<your_cards>#a1b2c3d4「登录页改版」doing; #ffffeeee「重构配置读取」blocked</your_cards>',
+    )
+    // 没有卡就一个字都不说 —— 一块空板子不值一行 prompt。
+    expect(buildWillingnessPrompt(base).system).not.toContain('<your_cards>')
+  })
+
   it('asks the JSON question after the window, newest message last', () => {
     const { user } = buildWillingnessPrompt(base)
     const lines = user.split('\n').filter(Boolean)
     expect(lines[0]).toBe('用户: 官网改版,本周上线')
-    expect(lines[lines.length - 2]).toBe('用户: 这个项目该用什么技术栈?')
-    expect(user).toContain('你会开口说话吗')
+    // 窗口在前、问句在后 —— 最后一条房间消息紧挨着问句的第一行。
+    const questionStart = lines.indexOf('After that last message, will you speak up?')
+    expect(questionStart).toBeGreaterThan(0)
+    expect(lines[questionStart - 1]).toBe('用户: 这个项目该用什么技术栈?')
     expect(user).toContain('{"respond": true|false, "react": "👍"|null}')
     expect(user).not.toContain('[pass]')
     expect(user).not.toContain('被 @ 激活')
   })
 
-  it('carries the judge its own in-flight cards (W9.3)', () => {
-    const { system } = buildWillingnessPrompt({
-      ...base,
-      taskFacts: [{ id: 'a1b2c3d4-ffff', title: '给项目加 notes.txt', status: 'blocked' }],
-    })
-    expect(system).toContain('(你名下的任务:#a1b2c3d4「给项目加 notes.txt」——你的执行受阻')
-    expect(buildWillingnessPrompt(base).system).not.toContain('你名下的任务')
+  /**
+   * W9.3 的 `<your_cards>` 已退役(agent-self-state-variables.md §4.4)。判定这
+   * 一路**不走引擎的提示词装配**(它是一次裸的 generateChatResponse),所以变量
+   * 通道到不了这里 —— 判定从此看不到自己的在飞卡片,这是本次迁移的已知代价。
+   */
+  it('no longer carries a hand-written cards block', () => {
+    expect(buildWillingnessPrompt(base).system).not.toContain('<your_cards>')
   })
 
   it('still asks the question when the window is empty', () => {
     const { user } = buildWillingnessPrompt({ ...base, recent: [] })
-    expect(user.startsWith('最新这条消息之后')).toBe(true)
+    expect(user.startsWith('After that last message, will you speak up?')).toBe(true)
   })
 })
 
@@ -252,16 +305,18 @@ describe('parseWillingnessReply', () => {
   // ── W8: the react half (§3.5 B) ──
 
   it('carries no reaction for the pre-W8 shape (backward compatible)', () => {
-    expect(parseWillingnessReply('{"respond": false}')).toEqual({ respond: false, react: null })
-    expect(parseWillingnessReply('{"respond": true}')).toEqual({ respond: true, react: null })
-    expect(parseWillingnessReply('true')).toEqual({ respond: true, react: null })
+    expect(parseWillingnessReply('{"respond": false}'))
+      .toEqual({ respond: false, react: null, outcome: 'no' })
+    expect(parseWillingnessReply('{"respond": true}'))
+      .toEqual({ respond: true, react: null, outcome: 'yes' })
+    expect(parseWillingnessReply('true')).toEqual({ respond: true, react: null, outcome: 'yes' })
   })
 
   it('reads a palette emoji alongside the verdict', () => {
     expect(parseWillingnessReply('{"respond": false, "react": "👍"}'))
-      .toEqual({ respond: false, react: '👍' })
+      .toEqual({ respond: false, react: '👍', outcome: 'no' })
     expect(parseWillingnessReply('```json\n{"respond": false, "react": "🎉"}\n```'))
-      .toEqual({ respond: false, react: '🎉' })
+      .toEqual({ respond: false, react: '🎉', outcome: 'no' })
     // Unquoted and single-quoted forms are the same answer.
     expect(parseWillingnessReply("{'respond': false, 'react': '👀'}").react).toBe('👀')
     expect(parseWillingnessReply('{"respond": false, "react": 🤔}').react).toBe('🤔')
@@ -281,6 +336,40 @@ describe('parseWillingnessReply', () => {
 
   it('does not read an echoed react instruction as a real reaction', () => {
     expect(parseWillingnessReply('只输出 JSON: {"respond": true|false, "react": "👍"|null}'))
-      .toEqual({ respond: false, react: null })
+      .toEqual({ respond: false, react: null, outcome: 'unparsable' })
+  })
+})
+
+/**
+ * §8:`respond:false` 此前是五种完全不同的事共用的一个答案。解析器这一层能分开
+ * 的是其中两种 —— 「模型明确说了不」和「回复读不懂」；另外三种(超时/没发出去/
+ * 被打断)在 runner 那一层判。
+ */
+describe('parseWillingnessReply — 成因', () => {
+  it('明确的 true/false 是 yes/no', () => {
+    expect(parseWillingnessReply('{"respond": true}').outcome).toBe('yes')
+    expect(parseWillingnessReply('{"respond": false}').outcome).toBe('no')
+  })
+
+  it('裸 true / 裸 false 也算答过了 —— 没按 JSON 但意思明确', () => {
+    expect(parseWillingnessReply('true').outcome).toBe('yes')
+    expect(parseWillingnessReply('false').outcome).toBe('no')
+    expect(parseWillingnessReply('「false」。').outcome).toBe('no')
+  })
+
+  it('**回复有内容却读不出结论 = unparsable,不是 no**', () => {
+    // 推理模型把 64 token 预算烧在思考上就是这个形状 —— 满屋子 unparsable 指向
+    // prompt 或模型,而满屋子 no 指向"这群人真的没话说",两者的处置完全不同。
+    expect(parseWillingnessReply('我觉得这个话题我不太合适').outcome).toBe('unparsable')
+    expect(parseWillingnessReply('{"speak": "maybe"}').outcome).toBe('unparsable')
+  })
+
+  it('回声(把指令原样抄回来)不算答过', () => {
+    expect(parseWillingnessReply('{"respond": true|false}').outcome).toBe('unparsable')
+  })
+
+  it('空回复 = unparsable(runner 会按超时/中止覆写成更准的那个)', () => {
+    expect(parseWillingnessReply('').outcome).toBe('unparsable')
+    expect(parseWillingnessReply(null).outcome).toBe('unparsable')
   })
 })

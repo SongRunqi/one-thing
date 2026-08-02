@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { AgentLoopPauseForConfirmationError } from './errors.js'
 import { runAgentLoop } from './runner.js'
+import { clearRetiredAgentToolNames, registerRetiredAgentToolName } from './tool-names.js'
 import type {
   AgentLoopOptions,
   AgentProvider,
@@ -999,5 +1000,74 @@ describe('runAgentLoop forced tool choice ⇄ thinking pairing', () => {
       { toolChoice: 'required', thinking: 'disabled' },
       { toolChoice: 'auto', thinking: 'disabled' },
     ])
+  })
+})
+
+/**
+ * 退役工具名(tool-names.ts)。改名一个模型每天都在调的工具时,历史里的旧调用
+ * 范例不会跟着改 —— provider 是生成器,模仿旧范例吐一个旧名是必然会发生的事,
+ * 而「Tool not available」丢的是一条本该送达的消息。
+ */
+describe('runAgentLoop retired tool names', () => {
+  it('routes a retired name to the current tool, without listing it in the request', async () => {
+    registerRetiredAgentToolName('say', 'send_message')
+    const seenRequestTools: string[][] = []
+    const provider = baseProvider(async function* (request) {
+      seenRequestTools.push((request.tools ?? []).map(tool => tool.name))
+      if (request.turn === 1) {
+        yield {
+          type: 'tool-call-done',
+          turn: request.turn,
+          toolCall: { id: 'call_1', name: 'say', arguments: '{"content":"hi"}' },
+        }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'text-delta', turn: request.turn, delta: 'done' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    const executed: string[] = []
+    const tool: AgentTool = {
+      name: 'send_message',
+      parameters: { type: 'object' },
+      async execute(args) {
+        executed.push(String(args.content))
+        return { content: 'sent' }
+      },
+    }
+
+    const result = await runAgentLoop(baseOptions(provider, tool, []))
+
+    expect(executed).toEqual(['hi'])
+    expect(result.toolResults[0]?.result.error).toBeUndefined()
+    // 别名只在派发时生效:请求的 tools 参数里只有现名。
+    for (const names of seenRequestTools) expect(names).toEqual(['send_message'])
+    clearRetiredAgentToolNames()
+  })
+
+  it('still reports an unknown tool when nothing is registered under that name', async () => {
+    clearRetiredAgentToolNames()
+    const provider = baseProvider(async function* (request) {
+      if (request.turn === 1) {
+        yield {
+          type: 'tool-call-done',
+          turn: request.turn,
+          toolCall: { id: 'call_1', name: 'say', arguments: '{}' },
+        }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    const tool: AgentTool = {
+      name: 'send_message',
+      parameters: { type: 'object' },
+      async execute() {
+        return { content: 'sent' }
+      },
+    }
+
+    const result = await runAgentLoop(baseOptions(provider, tool, []))
+    expect(result.toolResults[0]?.result.error).toContain('Tool not available: say')
   })
 })

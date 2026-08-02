@@ -30,6 +30,7 @@
  * existed keeps behaving exactly as it did when it was written. The rule is a
  * MARKER, never a migration.
  */
+import { isCollabPassMessage } from './pass.js'
 import type { CollabMessageLike } from './types.js'
 
 /** The system-internal message source stamped on coordinator drives. */
@@ -154,4 +155,54 @@ export function isCollabThinkingMessage(message: SourceMarked): boolean {
 export function isCollabProjectedSystemLine(message: SourceMarked): boolean {
   const kind = classifyCollabRoomMessage(message)
   return kind === 'task-line' || kind === 'membership-line'
+}
+
+/**
+ * **这条消息算不算「房间的事实」** —— 进模型视野的唯一判据(P5-2)。
+ *
+ * 上面那张 kind 表的「投影」列,现在是一个可调用的函数。存在的理由是这条判定
+ * 此前被写了三遍,而三份答案不一样(collab-agent-view-p5.md §2):
+ *
+ * ```
+ * projection.ts        收 MARKED 系统行(W9.1 要求)
+ * digest-runner.ts:80  role !== user/assistant → 丢     ← 系统行进不了摘要
+ * room-history-tool:102 role !== user/assistant → 丢    ← 系统行永远查不回
+ * ```
+ *
+ * (`room-history-tool.ts` 已于 2026-08-02 退役,由 `app/collab/history-tool.ts`
+ * 取代 —— 后者从第一天起就走这个函数。)
+ *
+ * 净效果是一条卡片流转记录**在投影里是事实、在摘要里不存在、在工具里查不到**,
+ * 折叠一发生就彻底蒸发 —— 而 W9.1 那个事故的结论恰恰是"没有这些行,评审方只
+ * 知道执行者**声称**了什么"。判定收在一处之后,这种漂移不再有发生的地方。
+ *
+ * `pass` 是这里唯一的**内容层**判定:一条只有 `[pass]` 的 assistant 消息不是
+ * 发言。它在 kind 表里没有一行,因为它不靠 marker 认 —— 但它和 thinking 一样
+ * 是"这条不该进任何人的视野",所以归属在这里而不是散落在各消费方。
+ *
+ * **空正文不在这里判**。投影里一条没有正文但带 toolCalls 的 assistant 消息仍然
+ * 撑得起一行(拍平进正文),而工具与摘要都需要正文才有东西可给 —— 三方对"空"的
+ * 需求本来就不同,硬统一会让投影漏掉 tool call 行。各自 `if (!content)`。
+ */
+export function isCollabRoomFact(
+  message: SourceMarked & Pick<CollabMessageLike, 'content'>,
+): boolean {
+  // 三种角色之外的(error 行、遗留 tool 行)一律显示态。classify 的兜底是
+  // `plain`,那对**它**是对的(marker 是规则,不是迁移),但"没有角色的东西
+  // 也不该进视野"是这一层的判断,所以写在这里而不是改那个兜底。
+  if (message.role !== 'user' && message.role !== 'assistant' && message.role !== 'system') {
+    return false
+  }
+  switch (classifyCollabRoomMessage(message)) {
+    case 'drive':
+    case 'thinking':
+    case 'operational-line':
+      return false
+    case 'say':
+    case 'plain':
+      return message.role !== 'assistant' || !isCollabPassMessage(message.content)
+    default:
+      // harvest / task-line / membership-line —— 房间里发生过的事实。
+      return true
+  }
 }

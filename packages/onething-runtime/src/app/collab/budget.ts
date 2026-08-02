@@ -7,15 +7,21 @@
  * the set already covers turns that predate the labels and turns nobody
  * labelled (retries, compaction, titles).
  */
-import { collabAgentSessionIdsForScan } from '@onething/runtime/collab'
+import {
+  COLLAB_DEFAULT_DAILY_COST_USD,
+  collabAgentSessionIdsForScan,
+} from '@onething/runtime/collab'
 import * as store from '../store.js'
 import { getUsageLedger } from '../usage/index.js'
 import { loadCollabBoard } from './board-store.js'
 import { postSystemLine, roomRuntime } from './room-runtime.js'
 
 /** 费用闸(§6.2 第三道闸): 房间日预算,按会话集合(房间+其 work 会话)从
- *  usage 账本累计 costUSD。60s 缓存,超限时激活与新 worker 都被拒。 */
-export const COLLAB_DEFAULT_DAILY_COST_USD = 5
+ *  usage 账本累计 costUSD。60s 缓存,超限时激活与新 worker 都被拒。
+ *
+ *  默认值本身搬去了纯层(`collab/types.ts`,理由见那儿),这里原样再导出一次 ——
+ *  已有的导入点不必跟着搬家,而"闸的默认额度"读起来仍然在闸这个文件里。 */
+export { COLLAB_DEFAULT_DAILY_COST_USD } from '@onething/runtime/collab'
 const BUDGET_CACHE_MS = 60_000
 
 /**
@@ -131,9 +137,28 @@ export async function isRoomOverBudget(roomSessionId: string): Promise<boolean> 
   if (limit <= 0) return false
   const runtime = roomRuntime(roomSessionId)
   if (Date.now() - runtime.budgetCheckedAt > BUDGET_CACHE_MS) {
-    runtime.budgetCheckedAt = Date.now()
+    // 缓存的是**这次读取本身**,不是一个先落下的时间戳(并行化 2026-08-01)。
+    //
+    // 原先第一行就把 `budgetCheckedAt` 写成 now,然后才 await 账本 —— 串行时代
+    // 没人看得见这中间的窗口,并行之后第二条回合恰好落在里面:它看到一个"刚查过"
+    // 的时间戳,于是跳过读取、拿 `budgetSpentUSD` 的**初始值 0** 去比,预算闸对
+    // 它整个不存在。同时起跑的 N 条只有第一条被拦住。
+    //
+    // 现在同一时刻只有一次真实读取,后到的等同一个 promise;时间戳在读**成功之后**
+    // 才落,所以一次失败的读取不会顺手把接下来 30 秒也变成"查过了"。
+    if (!runtime.budgetRead) {
+      runtime.budgetRead = readCollabRoomSpentTodayUSD(roomSessionId)
+        .then(value => {
+          runtime.budgetSpentUSD = value
+          runtime.budgetCheckedAt = Date.now()
+          return value
+        })
+        .finally(() => {
+          runtime.budgetRead = undefined
+        })
+    }
     try {
-      runtime.budgetSpentUSD = await readCollabRoomSpentTodayUSD(roomSessionId)
+      await runtime.budgetRead
     } catch (error) {
       console.error('[collab] budget read failed:', error)
       return false // 账本读不了不误杀

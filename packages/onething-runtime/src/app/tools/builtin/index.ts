@@ -18,8 +18,8 @@ import { FindTool } from './find.js'
 import { VariableTool } from './variable.js'
 import { GoalTool } from './goal.js'
 import { BoardTool } from '../../collab/board-tool.js'
-import { SayTool } from '../../collab/say-tool.js'
-import { DmTool } from '../../collab/dm-tool.js'
+import { HistoryTool } from '../../collab/history-tool.js'
+import { SayTool, registerCollabSendMessageLegacyAlias } from '../../collab/say-tool.js'
 import { RadioTool } from './radio.js'
 import { PracticeTool } from './practice.js'
 import { BashOutputTool, FartTool, KillBashTool, TimeTool } from '@onething/runtime/tools'
@@ -41,8 +41,8 @@ const builtinTools = [
   VariableTool,
   GoalTool,
   BoardTool,
+  HistoryTool,
   SayTool,
-  DmTool,
   RadioTool,
   PracticeTool,
   TimeTool,
@@ -59,6 +59,7 @@ export function registerBuiltinTools(): void {
   for (const tool of builtinTools) {
     registerTool(tool)
   }
+  registerCollabSendMessageLegacyAlias()
 
   console.log(`[BuiltinTools] Registered ${builtinTools.length} built-in tools`)
 }

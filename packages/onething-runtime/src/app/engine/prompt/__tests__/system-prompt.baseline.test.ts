@@ -59,7 +59,6 @@ describe('system prompt baseline', () => {
         workingDirectoryRoots: ['/repo', '/other'],
         toolNames: ['read', 'edit', 'bash'],
         mcpToolNames: ['mcp_search'],
-        contextVariables: 'foo=bar',
         activeProject: { hasActive: true, path: '/repo', displayPath: '/repo', description: 'main repo' },
         knownProjects: { hasAny: true, entries: [{ path: '/p1', displayPath: '/p1', description: 'proj one' }] },
         skills: [{ name: 'demo', description: 'demo skill', source: 'builtin', directoryPath: '/skills/demo', files: [], instructions: 'do x' } as never],

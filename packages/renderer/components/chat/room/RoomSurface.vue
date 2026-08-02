@@ -29,6 +29,7 @@
           :dm-mode="isUserDmSession"
           :pair-dm-mode="isPairDmSession"
           :highlighted-message-id="highlightedMessageId"
+          :history-complete="!pageState?.hasMoreBefore"
           @reply-to="handleReplyTo"
           @react="handleReact"
           @jump-to-message="handleJumpToMessage"
@@ -173,7 +174,6 @@ import { useCollabReactions } from '@/composables/useCollabReactions'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { buildComposerPlaceholder, findRoomDefaultThread } from './room-head'
 import { repairTailLedgerAfterPrepend, shouldShowRoomScrollToBottom } from './room-scroll'
-import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
 
 const props = defineProps<{
@@ -477,32 +477,37 @@ watch([effectiveScrollVersion, () => listMessages.value.length], () => {
 //
 // 右栏不另起一根:App 级 `RightWorkbenchPanel` 已经有 `thread` tab + 既有
 // `ThreadWorkbench`,开合初值也已经走 `resolveInspectorDefaultOpen`(≥1400 默认
-// 展开)。房面只回答"这间房该看哪条线程",并且**只在右栏已经开着时**才去落座
-// —— 窄窗上不许由房面强行把右栏顶开,那会把 W-Q2 的窗宽策略架空。
+// 展开)。房面只回答"这间房该看哪条线程",**开不开是右栏自己的事** —— 窗宽策略
+// (W-Q2)仍然只归 `resolveInspectorDefaultOpen`,房面不读 `inspectorOpen`。
+//
+// 这里曾经写着"只在右栏已经开着时才去落座"。那道闸下面那段注释已经拆了,
+// 这句描述却留了下来 —— 两段互相矛盾的注释里,过期的那句比没有注释更坏。
 const collabBoardStore = useCollabBoardStore()
 collabBoardStore.ensureSubscribed()
 
 function seatDefaultThread() {
   const sessionId = effectiveSessionId.value
   if (!sessionId) return
-  if (!chatStore.inspectorOpen) return
 
-  // 私聊(样板 三 · 私聊):右栏默认落在**空间页**,不是线程 —— 一对一的房里
-  // 「这条线程」远不如「TA 是谁」重要,而且私聊根本没有"成员"这回事,所以
-  // 页签直接叫「空间」。同 tab 的下钻层,不多开一个页签。
+  // 进房 = 把右栏备齐成样板那三条(线程 / 成员 / 看板)并落在线程上。
+  //
+  // 从前这里有两道闸,叠起来让线程**永远不出现**:①右栏没开就直接返回;
+  // ②看板上没有"在跑且开过工作台"的卡就不派事件。于是一间还没跑过活的房,
+  // 右栏里一条线程也没有 —— 真机走查时用户第一句话就是"我看不到线程"。
+  // 现在:靶子拿得到就带上,拿不到也照开(空线程是个真答案,ThreadWorkbench
+  // 自己会说"还没有执行记录")。
   const dmAgentId = isUserDmSession.value
     ? (panelSession.value?.room?.memberAgentIds?.[0] || '')
     : ''
-  if (dmAgentId) {
-    window.dispatchEvent(new CustomEvent<OpenMembersDetail>(OPEN_MEMBERS_EVENT, {
-      detail: { sessionId, agentId: dmAgentId, title: '空间' },
-    }))
-    return
-  }
-
   const thread = findRoomDefaultThread(collabBoardStore.boardFor(sessionId))
-  if (!thread) return
-  window.dispatchEvent(new CustomEvent('onething:open-thread', { detail: thread }))
+
+  window.dispatchEvent(new CustomEvent('onething:room-workbench', {
+    detail: {
+      roomSessionId: sessionId,
+      workSessionId: thread?.workSessionId,
+      dmAgentId: dmAgentId || undefined,
+    },
+  }))
 }
 
 // ── 权限审批 ────────────────────────────────────────────────────────────

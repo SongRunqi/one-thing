@@ -3,9 +3,13 @@
  *
  * Before W18 the answer was trivially "the session being driven" — the turn ran
  * inside the room. Now it runs in the agent's execution session, and the room
- * facts (persona, roster, room name, taskFacts) have to be fetched from the
- * room that session was pointed at. Getting this wrong is silent: the model
- * would still get a persona, just not the room's, and nothing would throw.
+ * facts (persona, roster, room name) have to be fetched from the room that
+ * session was pointed at. Getting this wrong is silent: the model would still
+ * get a persona, just not the room's, and nothing would throw.
+ *
+ * 在飞的卡此前也从这里取(`taskFacts` → `<your_cards>`),现在改由 `my_cards`
+ * 变量承载(agent-self-state-variables.md §4.4),取材守卫见
+ * app/variables/__tests__/agent-self-gateway.test.ts。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -15,8 +19,9 @@ const AGENTS: Record<string, { id: string; name: string; systemPrompt?: string; 
 }
 
 const mocks = vi.hoisted(() => ({
+  /** 「我的资料」为空 = 全链路回退到「用户」,与今天的行为逐字一致。 */
+  settings: { general: {} } as { general: { userProfile?: Record<string, string> } },
   sessions: new Map<string, unknown>(),
-  taskFactCalls: [] as Array<{ roomSessionId: string; agentId: string }>,
 }))
 
 vi.mock('../../../agents/index.js', () => ({
@@ -27,15 +32,8 @@ vi.mock('../../../agents/index.js', () => ({
 
 vi.mock('../../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
-}))
-
-vi.mock('../../../collab/board-store.js', () => ({
-  getCollabSelfTaskFacts: (roomSessionId: string, agentId: string) => {
-    mocks.taskFactCalls.push({ roomSessionId, agentId })
-    return roomSessionId === 'room-1'
-      ? [{ id: 'task-1', title: '登录页', status: 'doing' }]
-      : []
-  },
+  // 花名册/情况说明里的用户称呼从这里来(agent-dm-user.md §2.3)。
+  getSettings: () => mocks.settings,
 }))
 
 const { buildSystemPrompt } = await import('../system-prompt.js')
@@ -57,7 +55,6 @@ function context(sessionId: string) {
 
 beforeEach(() => {
   mocks.sessions.clear()
-  mocks.taskFactCalls.length = 0
   mocks.sessions.set(ROOM, {
     id: ROOM,
     name: '官网改版组',
@@ -79,14 +76,21 @@ describe('collab room overrides — 取材链 (W18)', () => {
   it('builds an execution session’s prompt from the room it was pointed at', async () => {
     const { system } = await buildSystemPrompt(context(AGENT_SESSION))
 
-    // The persona is the prompt (D3「模拟房间」), the roster and the room name
-    // come from the TARGET room, not from the session being driven.
+    // The persona is the prompt (D3「模拟房间」), and the room facts come from
+    // the TARGET room, not from the session being driven.
     expect(system).toContain('你是小李,说话直接。')
     expect(system).toContain('官网改版组')
-    expect(system).toContain('阿明')
-    // …and so do the task facts (W9.3) — a board lookup keyed by the room.
-    expect(mocks.taskFactCalls).toEqual([{ roomSessionId: ROOM, agentId: 'fe' }])
-    expect(system).toContain('登录页')
+    // 花名册**在这里**(collab-turn-protocol-and-identity.md B):它曾被搬进投影
+    // 的 `<ChatRoom><Members>`,而 v3 V2 删掉了那块载荷 —— 名单从此指向一段不
+    // 存在的文本,模型于是把用户与花名册上的名字数成两个人(幽灵成员)。
+    // 用户行与同事行同一书写法,与转录署名同源。
+    expect(system).toContain('- 阿明#pm(产品)')
+    expect(system).toContain('(用户)')
+    // 真回合的消息形状是 drive 信封,不是判定那一路的压缩窗口。
+    expect(system).toContain('`<message from="名字#句柄">` lines')
+    expect(system).not.toContain('`name: text`')
+    // v3 V2 之后 drive 里没有 `<ChatRoom>` 载荷了 —— 指向它就是指向一段不存在的文本。
+    expect(system).not.toContain('`<ChatRoom>` block')
     // The product prompt's own identity/tool sections stay disabled.
     expect(system).not.toContain('[执行] 小李')
   })
@@ -105,7 +109,6 @@ describe('collab room overrides — 取材链 (W18)', () => {
     const { system } = await buildSystemPrompt(context(AGENT_SESSION))
     expect(system).toContain('内部工具组')
     expect(system).not.toContain('官网改版组')
-    expect(mocks.taskFactCalls).toEqual([{ roomSessionId: 'room-2', agentId: 'fe' }])
   })
 
   it('leaves an unpointed execution session on the ordinary product prompt', async () => {
@@ -119,6 +122,5 @@ describe('collab room overrides — 取材链 (W18)', () => {
     const { system } = await buildSystemPrompt(context(ROOM))
     expect(system).toContain('你是小李,说话直接。')
     expect(system).toContain('官网改版组')
-    expect(mocks.taskFactCalls).toEqual([{ roomSessionId: ROOM, agentId: 'fe' }])
   })
 })

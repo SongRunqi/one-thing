@@ -411,6 +411,7 @@ import { platformApi } from '@/platform'
 import { providerFamilyDisplayName } from '@shared/provider-families'
 import type { PermissionMode } from '@shared/ipc'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
+import { AVATAR_IMAGE_MAX_PX, downscaleImageToPngDataUrl } from '@/components/common/agent-avatar'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import {
   AGENT_PERMISSION_MODE_CHOICES,
@@ -524,15 +525,9 @@ watch(() => props.isCreating, creating => {
  *
  * The bytes go to the media library and the FIELD stores only the file name
  * (see AgentDefinition.avatarImage) — a dataURL in agents.json would bloat a
- * file that every roster lookup reads.
- *
- * Downscaled to 128px before it is stored, not after: a 4000px photo picked as
- * a 28px chip would otherwise cost megabytes on disk and a full-size decode on
- * every message group. PNG (not webp) because the save channel stamps
- * `image/png` on the asset.
+ * file that every roster lookup reads. The downscale + size cap live in
+ * common/agent-avatar.ts: the user's own avatar picker runs the same pipeline.
  */
-const AVATAR_IMAGE_MAX_PX = 128
-
 const avatarFileInputRef = ref<HTMLInputElement | null>(null)
 const avatarImageBusy = ref(false)
 
@@ -576,38 +571,6 @@ async function onAvatarFileChosen(event: Event): Promise<void> {
   } finally {
     avatarImageBusy.value = false
   }
-}
-
-/** Longest edge to `maxPx`, aspect kept, re-encoded as a PNG dataURL. */
-function downscaleImageToPngDataUrl(file: File, maxPx: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file)
-    const image = new Image()
-    image.onload = () => {
-      URL.revokeObjectURL(objectUrl)
-      const longest = Math.max(image.width, image.height)
-      if (!longest) {
-        reject(new Error('Not an image'))
-        return
-      }
-      const scale = Math.min(1, maxPx / longest)
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.max(1, Math.round(image.width * scale))
-      canvas.height = Math.max(1, Math.round(image.height * scale))
-      const context = canvas.getContext('2d')
-      if (!context) {
-        reject(new Error('Canvas unavailable'))
-        return
-      }
-      context.drawImage(image, 0, 0, canvas.width, canvas.height)
-      resolve(canvas.toDataURL('image/png'))
-    }
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl)
-      reject(new Error('Not an image'))
-    }
-    image.src = objectUrl
-  })
 }
 
 /* ---- boundaries ---- */

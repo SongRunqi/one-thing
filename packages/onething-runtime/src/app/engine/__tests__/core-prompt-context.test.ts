@@ -285,12 +285,10 @@ describe('core prompt context helpers', () => {
         id: 'agent-1',
         name: 'Agent One',
       }),
-      buildContextVariablesPromptText: () => 'vars',
       buildPrompt: input => {
         expect(input.hasTools).toBe(true)
         expect(input.toolNames).toEqual(['read', 'image_generation'])
         expect(input.mcpToolNames).toEqual(['mcp_search'])
-        expect(input.contextVariables).toBe('vars')
         return {
           systemPrompt: '# Skills\nUse review-workflow.',
         }

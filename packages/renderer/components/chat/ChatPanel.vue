@@ -10,6 +10,7 @@
       :session-id="effectiveSessionId"
       :layout-transitioning="props.layoutTransitioning"
       :outline-rail-target="props.outlineRailTarget"
+      :permission-shortcuts="props.permissionShortcuts"
       @set-quoted-text="handleSetQuotedText"
       @set-input-text="handleSetInputText"
       @reply-to="handleReplyTo"
@@ -109,11 +110,22 @@ const props = withDefaults(defineProps<{
   footerTarget?: HTMLElement | null
   layoutTransitioning?: boolean
   outlineRailTarget?: HTMLElement | null
+  /**
+   * 是否接管权限审批的键盘快捷键(Enter 允许 / D·Esc 拒绝)—— 原样透给
+   * `MessageList`,这里不解释语义(解释在 `MessageList` 的同名 prop 上)。
+   *
+   * 缺省 `true`:中栏/旧壳一个字节不变。**右栏的线程详情传 `false`** ——
+   * `usePermissionShortcuts` 注册的是 window 级 capture keydown,中栏与右栏
+   * 同时挂着 `MessageList` 时,若两条会话各自都有待批请求,一次 Enter 会同时
+   * 命中两个处理器,批错对象。键盘归中栏,右栏只留可点的按钮。
+   */
+  permissionShortcuts?: boolean
 }>(), {
   active: true,
   footerTarget: null,
   layoutTransitioning: false,
   outlineRailTarget: null,
+  permissionShortcuts: true,
 })
 
 const emit = defineEmits<{

@@ -37,7 +37,7 @@ export class GlobalStoreProvider implements VariableProvider {
         type: variable.type,
         scope: 'global',
         description: variable.description,
-        volatility: variable.volatility,
+        state: variable.state,
         updatedAt: variable.updatedAt,
       }))
   }
@@ -61,7 +61,7 @@ export class GlobalStoreProvider implements VariableProvider {
     }
 
     const typed = typedValueForSet(input, existing)
-    // description/volatility are sticky like type: a value update without
+    // description/state are sticky like type: a value update without
     // them keeps what the variable already had; an explicit "" clears.
     const next: ContextVariable = {
       name: input.name,
@@ -69,7 +69,7 @@ export class GlobalStoreProvider implements VariableProvider {
       type: typed.type,
       scope: 'global',
       description: (input.description ?? existing?.description) || undefined,
-      volatility: input.volatility ?? existing?.volatility,
+      state: input.state ?? existing?.state,
       updatedAt: Date.now(),
     }
     await this.gateway.write([...without, next])
@@ -97,7 +97,7 @@ export class GlobalStoreProvider implements VariableProvider {
       type: typed.type,
       scope: 'global',
       description: (input.description ?? existing?.description) || undefined,
-      volatility: input.volatility ?? existing?.volatility,
+      state: input.state ?? existing?.state,
       updatedAt: Date.now(),
     }
     await this.gateway.write([...without, next])

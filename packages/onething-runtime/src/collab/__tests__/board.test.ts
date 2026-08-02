@@ -416,8 +416,9 @@ describe('digest perspective (W10)', () => {
   it('falls back to the resolver name, and to a bare 你 when there is none', () => {
     expect(renderCollabAgentRef('research', names, { agentId: 'research' })).toBe('你(小研)')
     expect(renderCollabAgentRef('research', () => '', { agentId: 'research' })).toBe('你')
-    expect(renderCollabAgentRef('fe', names, { agentId: 'research', name: '小研' })).toBe('小李')
-    expect(renderCollabAgentRef('fe', names)).toBe('小李')
+    // 别人带句柄(assign 要照抄的就是这一串),自己不带。
+    expect(renderCollabAgentRef('fe', names, { agentId: 'research', name: '小研' })).toBe('小李#fe')
+    expect(renderCollabAgentRef('fe', names)).toBe('小李#fe')
   })
 })
 

@@ -1,0 +1,225 @@
+/**
+ * 协调器状态条的**后端半边** —— docs/design/collab-coordinator-inspector.md。
+ *
+ * 房间里最贵、最不可见的一步是调度:谁被问了、谁答了不说、谁排在队里、卡在哪道
+ * 闸上,全发生在用户看不见的地方。这个文件把它变成一个可读的快照 + 一条「刚才」
+ * 的事件流。
+ *
+ * 三条纪律,与那份设计的 §3 逐条对应:
+ *
+ *  1. **不新增一份账**。在跑读 `runtime.activeTurns`,排队读 `runtime.queue`,
+ *     判定在飞读 `runtime.judgements`,闸读 `state.chainCount` / 预算缓存,
+ *     编排读 `state.plan`。协调器已经握着全部真相,这里只是把它读出来 ——
+ *     任何"为了显示而记的第二本账"都会先于真相腐烂。唯一的例外是下面那条
+ *     环形缓冲,而它记的是**历史**,不是状态(历史没有别处可读)。
+ *  2. **不落盘**。「刚才」说的就是刚才,重启之后没有刚才。落盘账本是
+ *     `qm-collab-learnings` 的 P2-8,目的不同(换判定算法时对照效果),不绑一起。
+ *  3. **不为计时广播**。「跑了多久」这种连续量由渲染层自己走秒;这里按秒节流,
+ *     只在**状态真的变了**的时候推。
+ */
+import {
+  COLLAB_DEFAULT_DAILY_COST_USD,
+  collabRelayLoopsFor,
+  isCollabPlanRoom,
+} from '@onething/runtime/collab'
+import type {
+  CollabCoordinatorLogEntry,
+  CollabCoordinatorState,
+  ChatSession,
+} from '@shared/ipc.js'
+import * as store from '../store.js'
+import { getEventBus } from '../events/index.js'
+import {
+  maxChainFor,
+  maxConcurrentTurnsFor,
+  peekRoomRuntime,
+  type RoomRuntime,
+} from './room-runtime.js'
+
+/** 「刚才」最多留几条。定长环形缓冲 —— 一间房不会因为聊得久而涨内存。 */
+export const COLLAB_LOG_LIMIT = 32
+
+/** 广播节流。快照本身很小,但一次判定轮能在几毫秒里连着改好几处状态。 */
+const BROADCAST_THROTTLE_MS = 1_000
+
+interface InspectorRoomState {
+  log: CollabCoordinatorLogEntry[]
+  /** 上一次真正发出去的时刻(节流用)。 */
+  lastSentAt: number
+  /** 节流窗口里攒下的那一次待发。 */
+  pending?: ReturnType<typeof setTimeout>
+}
+
+const rooms = new Map<string, InspectorRoomState>()
+
+function inspectorState(roomSessionId: string): InspectorRoomState | null {
+  let state = rooms.get(roomSessionId)
+  if (!state) {
+    // 死房不复活(2026-08-02 三审):删房时 `forgetCollabInspector` 已经清过表项,
+    // 但被中止回合的**异步收尾**(silent note、泵的 finally 广播)还会路过这里 ——
+    // 无条件重建的话,表项(log + 可能armed的节流 timer)从此常驻,反复建删房的
+    // 长进程里单调增长。会话已经不是房间就不再立新表项;已有表项照常用,
+    // 它们由 forget 负责收。
+    if (store.getSession(roomSessionId)?.kind !== 'room') return null
+    state = { log: [], lastSentAt: 0 }
+    rooms.set(roomSessionId, state)
+  }
+  return state
+}
+
+/** 房间没了,它的「刚才」也就没了(与 `deleteRoomRuntime` 同一时机)。 */
+export function forgetCollabInspector(roomSessionId: string): void {
+  const state = rooms.get(roomSessionId)
+  if (state?.pending) clearTimeout(state.pending)
+  rooms.delete(roomSessionId)
+}
+
+/** 进程收摊:清掉所有待发的定时器,别让一次广播活过协调器本身。 */
+export function shutdownCollabInspector(): void {
+  for (const state of rooms.values()) {
+    if (state.pending) clearTimeout(state.pending)
+  }
+  rooms.clear()
+}
+
+/**
+ * 无上限的闸读作 0 —— 契约里 `max: 0` 就是"这道闸关着"。
+ *
+ * `maxChainFor` / `maxConcurrentTurnsFor` 对"不限"返回的是 `Infinity`,而
+ * `Infinity` 过不了 JSON(序列化成 `null`),到了渲染层就成了一个静默的谎。
+ */
+function finiteMax(value: number): number {
+  return Number.isFinite(value) ? value : 0
+}
+
+/**
+ * 这间房此刻的样子。**纯读**:一个字段都不写,任何时候调都安全。
+ *
+ * 运行时不存在(这间房从没被驱动过)时仍然给一个完整快照 —— 空闲也是状态,
+ * 而"读不到"和"空闲"在界面上必须是同一个样子,否则冷启动会闪一下空白。
+ */
+export function buildCollabCoordinatorState(roomSessionId: string): CollabCoordinatorState | null {
+  const session = store.getSession(roomSessionId)
+  if (session?.kind !== 'room') return null
+  const runtime = peekRoomRuntime(roomSessionId)
+  const inspector = rooms.get(roomSessionId)
+  const planRoom = isCollabPlanRoom(session.room)
+
+  return {
+    roomSessionId,
+    mode: session.room?.responseMode === 'serial'
+      ? 'serial'
+      : planRoom ? 'auto' : 'parallel',
+    frozen: session.room?.frozen === true,
+    turns: [...(runtime?.activeTurns.values() ?? [])].map(turn => ({
+      agentId: turn.agentId,
+      reason: turn.reason ?? '',
+      startedAt: turn.startedAt,
+      agentSessionId: turn.agentSessionId,
+    })),
+    queue: (runtime?.queue ?? []).map(record => ({
+      id: record.id,
+      agentId: record.agentId,
+      reason: record.reason,
+    })),
+    judging: runtime?.judgements.size ?? 0,
+    // 在飞的各轮问的是谁,并起来去重(同一个人不会同时进两轮,但形状上不禁止)。
+    judgingAgentIds: [
+      ...new Set([...(runtime?.judgements ?? [])].flatMap(round => round.agentIds)),
+    ],
+    gates: {
+      chain: {
+        value: runtime?.state.chainCount ?? 0,
+        max: finiteMax(maxChainFor(session)),
+      },
+      concurrency: {
+        value: runtime?.activeTurns.size ?? 0,
+        max: finiteMax(maxConcurrentTurnsFor(session)),
+      },
+      budget: {
+        // 协调器自己的 60s 缓存 —— 与预算闸比对的是同一个数。这里刻意不去读
+        // 账本:快照是同步的,而账本读取是一次磁盘往返。
+        value: runtime?.budgetSpentUSD ?? 0,
+        max: session.room?.budgets?.dailyCostUSD ?? COLLAB_DEFAULT_DAILY_COST_USD,
+      },
+    },
+    plan: buildPlanView(session, runtime),
+    log: [...(inspector?.log ?? [])],
+  }
+}
+
+/**
+ * 编排视图 —— 状态条画的就是这一份(collab-coordinator-plan.md §7)。
+ *
+ * 读的是**正在执行的那份编排**,不是从名册现算一个环:环是 waves 的特例,
+ * 而现算的环画不出「阿般 · 小李 一起说,然后 Iris 总结」这种批次。
+ *
+ * 没有编排在飞(并行模式、或者这一趟已经跑完)时给 null —— 与"读不到"和"空闲"
+ * 在界面上必须是同一个样子这条同源:没有编排不是异常。
+ */
+function buildPlanView(
+  session: ChatSession,
+  runtime: RoomRuntime | undefined,
+): CollabCoordinatorState['plan'] {
+  const plan = runtime?.state.plan
+  if (!plan || plan.waves.length === 0) return null
+  return {
+    waves: plan.waves.map(wave => [...wave]),
+    waveIndex: plan.waveIndex,
+    waveCount: plan.waveCount,
+    cycle: plan.cycle,
+    why: plan.why,
+    loops: collabRelayLoopsFor(session.room),
+  }
+}
+
+/**
+ * 记一条调度事件,并推一次状态。
+ *
+ * 协调器各处的状态变化点调它 —— 一行,不用管节流也不用管房间存不存在。
+ */
+export function noteCollabSchedule(
+  roomSessionId: string,
+  entry: Omit<CollabCoordinatorLogEntry, 'at'>,
+): void {
+  const state = inspectorState(roomSessionId)
+  if (!state) return
+  state.log.push({ at: Date.now(), ...entry })
+  // 定长:超了从头砍。`splice` 而不是 `slice` —— 快照读的是同一个数组引用的拷贝,
+  // 换引用会让"刚才"在极窄的窗口里丢一条。
+  if (state.log.length > COLLAB_LOG_LIMIT) {
+    state.log.splice(0, state.log.length - COLLAB_LOG_LIMIT)
+  }
+  broadcastCollabCoordinator(roomSessionId)
+}
+
+/**
+ * 推一次状态(按秒节流)。
+ *
+ * 节流窗口里再来的推送**攒成一次尾发**,而不是丢掉:最后那一次通常正是"停下来了"
+ * 这种最该被看见的状态,丢了界面就永远停在倒数第二帧。
+ */
+export function broadcastCollabCoordinator(roomSessionId: string): void {
+  const state = inspectorState(roomSessionId)
+  if (!state || state.pending) return
+  const elapsed = Date.now() - state.lastSentAt
+  if (elapsed >= BROADCAST_THROTTLE_MS) {
+    emitCoordinatorState(roomSessionId, state)
+    return
+  }
+  state.pending = setTimeout(() => {
+    state.pending = undefined
+    emitCoordinatorState(roomSessionId, state)
+  }, BROADCAST_THROTTLE_MS - elapsed)
+  state.pending.unref?.()
+}
+
+function emitCoordinatorState(roomSessionId: string, state: InspectorRoomState): void {
+  const snapshot = buildCollabCoordinatorState(roomSessionId)
+  if (!snapshot) return
+  state.lastSentAt = Date.now()
+  void getEventBus().emit(roomSessionId, {
+    type: 'collab:coordinator-changed',
+    state: snapshot,
+  } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+}

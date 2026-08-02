@@ -16,16 +16,18 @@
 import {
   buildCollabReplyToSnapshot,
   shouldAttachCollabReplyTo,
-  COLLAB_REPLY_USER_LABEL,
   type CollabMessageLike,
 } from '@onething/runtime/collab'
 import type { ChatMessage, ChatMessageReplyTo } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
+import { resolveUserIdentity } from './user-identity.js'
 
 function authorLabelOf(message: ChatMessage): string {
-  if (message.role === 'user') return COLLAB_REPLY_USER_LABEL
+  // 快照语义(agent-dm-user.md §2.3):这里取的是**引用发生那一刻**的称呼,
+  // 之后改名不追改旧引用 —— 引用本来就是一段话的副本,不是一个身份指针。
+  if (message.role === 'user') return resolveUserIdentity().label
   if (!message.agentId) return ''
   const agent = findAgent(message.agentId)
   return agent ? agent.name : message.agentId

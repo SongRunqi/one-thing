@@ -38,7 +38,7 @@ export interface BackgroundJobsProviderDeps {
 }
 
 /**
- * Read-only turn-volatile provider exposing the managed background jobs
+ * Read-only state provider exposing the managed background jobs
  * (bash run_in_background) as a single state-board line. Scoped to the
  * session that started each job — other sessions (and gateway users) never
  * see it. Running jobs are always shown; ended jobs linger for a short
@@ -64,7 +64,7 @@ export class BackgroundJobsProvider implements VariableProvider {
       name: NAME,
       value: jobs.map(describeJob).join('; '),
       readonly: true,
-      volatility: 'turn',
+      state: true,
       description: 'Managed background jobs. Read output with bash_output(id); stop with kill_bash(id).',
     }]
   }

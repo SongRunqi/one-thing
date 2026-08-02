@@ -37,9 +37,10 @@ export interface ContextVariable {
   scope?: VariableScope
   description?: string
   readonly?: boolean
-  // 'static' (default): rendered in the system prompt; 'turn': delivered in
-  // per-turn <context-update> blocks; 'on-demand': tool output only.
-  volatility?: 'static' | 'turn' | 'on-demand'
+  // true: the model needs to know this at all times — delivered in full in
+  // every <context-update> block. Otherwise it never enters the request and is
+  // read through the `variable` tool.
+  state?: boolean
   updatedAt?: number
 }
 
@@ -138,6 +139,18 @@ export type SessionKind = 'chat' | 'room' | 'work' | 'agent'
 /** Room configuration, present only on kind='room' sessions. */
 export interface RoomConfig {
   memberAgentIds: string[]
+  /**
+   * 曾经在场、后来被移出的成员(docs/design/collab-history-search.md §3)。
+   *
+   * 历史检索的授权判据用它回答「我能看到这间房到什么时候」:当前成员看得到全部,
+   * 被移出的只看得到 `removedAt` 之前的。**只追加不删除**;同一个 agentId 可能有
+   * 多条(移出→拉回→再移出),读时取最后一次。
+   *
+   * 为什么不去解析转录里那条 `collab-membership` 系统行:那行只有名字没有 id
+   * (`buildCollabMemberRemovedLine`),而按名字反查是被禁止的 —— W14a 把 @ 全部
+   * id 化正是因为名字会改,改完旧行里那个名字就对不上了。
+   */
+  formerMembers?: Array<{ agentId: string; removedAt: number }>
   /** 负责人: review/disposition activation target, and a "你是本群的负责人"
    *  fact in the willingness judgement. Optional — NOT a default responder
    *  (that mechanism was removed in the IM rework, W1). */
@@ -149,7 +162,54 @@ export interface RoomConfig {
     /** 回合断路器上限 (W22); 0 = 关闭该闸。 */
     maxTurnToolCalls?: number
     maxTurnSayCalls?: number
+    /** 同时最多几个人说话(房间回合并行化)。缺省 = 内置默认;0 = 不限。 */
+    maxConcurrentTurns?: number
   }
+  /**
+   * 每位同事看这间房时的**视野**配置(collab/history-window.ts)。
+   *
+   * 与 budgets 分开:那一格是花钱的闸(超了就拒),这一格是"给模型看多少",
+   * 两者撞不到一起,而混在一个对象里迟早有人把「省钱」和「省上下文」当成同一件事。
+   * 全部缺省 = 内置默认;各项 0 的含义见 history-window.ts 的常量注释。
+   */
+  context?: {
+    /** 历史保留几天(含今天)。0 = 不折叠,全量。 */
+    historyDays?: number
+    /** 折叠线之前额外保留的条数(日界悬崖补丁)。 */
+    historyTailCount?: number
+    /** 尾部未读逐字上限;超出的退回历史并记 elided。 */
+    unreadMax?: number
+    /**
+     * 折叠段的每日摘要(collab-agent-view.md P2)。缺省开启。
+     *
+     * 这是一条**后台模型调用** —— 一间房一天一次,在回合收尾之后发出。所有后台
+     * 触发都要能关掉,这就是那个开关;关掉之后 `<Folded>` 行仍在,只是不再说
+     * 被折掉的那些天里发生了什么。
+     */
+    dailyDigest?: boolean
+  }
+  /**
+   * 响应模式(docs/design/collab-speaking-order.md)。缺省 = 'parallel'(现状零回归)。
+   *
+   * 'serial' = **接力**:不买意愿判定,棒子沿 `speakOrder` 的环依次传,轮到谁谁说。
+   * 私聊房不适用(那里本来就是依次)。
+   */
+  responseMode?: 'auto' | 'parallel' | 'serial'
+  /**
+   * 接力次序(agent id)。只在 `responseMode === 'serial'` 时读。
+   *
+   * 不是准入名单:没列进来的成员按名册序接在末尾,列表里已离房/退休的 id 读时
+   * 忽略。空/未配 = 直接用名册序,所以顺序模式开箱可用。
+   */
+  speakOrder?: string[]
+  /**
+   * 一趟接力最多跑几圈(1 圈 = 环长次发言机会)。缺省 **0 = 不限**,靠"走满一圈
+   * 没人开口"与链长闸收尾。
+   *
+   * 内部按**棒数**计(上限 = relayLoops × 环长):@ 抢棒会让环绕回,按"圈"数
+   * 边界会失准。
+   */
+  relayLoops?: number
   /** Room-wide pause switch: freezes all activations. */
   frozen?: boolean
   /**
@@ -176,6 +236,20 @@ export interface RoomConfig {
 export interface CollabWorkRef {
   roomSessionId: string
   taskId?: string
+  /**
+   * 已读游标(kind='agent'):这位同事在这间房**读到哪一条**房间消息为止。
+   *
+   * 语义严格是「它的某个回合把这条投影给了模型」,不是「它在这条之后说过话」——
+   * 后者会漏:一条回合启动**之后**才到达的 @,作者根本没看见,却会因为它随后
+   * 开口而被判成已答复。
+   *
+   * 写入时机同样是这条语义的一部分:回合**跑完(harvest)**才落盘,值取投影
+   * 构建那一刻的房间末条。中途 abort/超时的回合不推进 —— 它可能一个字都没读到,
+   * 而虚假前进的游标会把那批消息永久变成"已读",这是本机制唯一的不可逆伤害。
+   */
+  seenMessageId?: string
+  /** 游标落盘时刻,诊断与 UI 用;判定一律以 `seenMessageId` 为准。 */
+  seenAt?: number
 }
 
 /**
@@ -205,6 +279,27 @@ export interface ChatMessageReplyTo {
 export interface ChatMessageMention {
   agentId: string
   label: string
+  /**
+   * 缺省 `'agent'` —— 每一条老转录都是,所以这个键不写。
+   *
+   * `'user'` = 这一处点的是**用户本人**(docs/design/collab-handle-codec.md §2.3)。
+   * TA 没有 agent id,那一条的 `agentId` 因此是**空串**:这是诚实的(合成一个
+   * 假 id 迟早会被谁当真拿去 `findAgent`),也是安全的 —— 消费方本来就有空值门
+   * (`if (!agentId) continue`),于是它天然不进激活、不进成员校验。
+   *
+   * 它存在的理由:渲染层此前认「@我」只能按名字比对两个常量,而名字匹配正是
+   * W14a 为 agent 废弃掉的东西(改名即失效)。用户不该退回那条老路。
+   */
+  kind?: 'agent' | 'user'
+  /**
+   * 用户的句柄(仅 `kind:'user'`)。**不塞进 `agentId`** —— 那个字段的语义是
+   * agent 花名册 id,混进一个不是 agent 的值,迟早有人拿它去 `findAgent`。
+   *
+   * 为什么不能省:「用户只有一个,kind 就够指认」是拿**当下只有一个人**当永久
+   * 前提。网关(微信/飞书等渠道)进来的是**多个真人**,那一刻「是用户」不再是
+   * 一个身份,而句柄是。
+   */
+  userHandle?: string
 }
 
 /**

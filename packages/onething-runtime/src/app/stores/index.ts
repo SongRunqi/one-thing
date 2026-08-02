@@ -17,6 +17,7 @@ export {
   insertMessageAfter,
   deleteMessage,
   deleteMessageAndTruncate,
+  clearSessionMessages,
   updateMessageAndTruncate,
   updateMessageContent,
   updateMessageReasoning,

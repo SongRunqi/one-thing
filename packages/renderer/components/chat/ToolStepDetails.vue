@@ -242,6 +242,17 @@ interface ArgEntry {
 const ARG_VALUE_MAX = 600
 
 /**
+ * Message-body args shown IN FULL, like the bash command: the message IS the
+ * tool's entire payload, and these details are the only place to read it —
+ * the value cell scroll-contains anything longer than its max-height.
+ */
+const FULL_VALUE_ARGS: Record<string, string> = {
+  send_message: 'content',
+  say: 'content',
+  dm: 'message',
+}
+
+/**
  * Structured arguments for tools whose parameters carry information beyond
  * the row title (console/search/mcp/unknown). File tools skip this — their
  * path is the title and their content is the diff. The bash command is
@@ -258,9 +269,10 @@ const argEntries = computed<ArgEntry[]>(() => {
     .filter(([key]) => !(props.view.toolName === 'bash' && key === 'command'))
     .map(([key, value]) => {
       const text = formatParamValue(value)
+      const showFull = FULL_VALUE_ARGS[props.view.toolName] === key
       return {
         key,
-        value: text.length > ARG_VALUE_MAX
+        value: !showFull && text.length > ARG_VALUE_MAX
           ? `${text.slice(0, ARG_VALUE_MAX - 1)}…`
           : text,
       }

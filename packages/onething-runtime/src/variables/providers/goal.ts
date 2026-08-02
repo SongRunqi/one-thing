@@ -11,9 +11,9 @@ export interface GoalVariableGateway {
 }
 
 /**
- * Read-only turn-volatile provider exposing the active session goal. Rides
- * the <context-update> tail channel, so the objective never enters the
- * prompt-cache prefix. Emits nothing when no goal is set or the goal is
+ * Read-only state provider exposing the active session goal. It rides the
+ * <context-update> tail block, so the objective never enters the prompt-cache
+ * prefix. Emits nothing when no goal is set or the goal is
  * finished — a paused/blocked goal still renders so the model knows why it
  * should not press on. Mutations go through the goal tool / GoalManager,
  * never through the variable tool.
@@ -31,7 +31,7 @@ export class GoalProvider implements VariableProvider {
       name: NAME,
       value: renderGoalTurnVariableValue(goal, this.gateway.limits?.()),
       readonly: true,
-      volatility: 'turn',
+      state: true,
       description: 'Persistent session goal the agent keeps working toward (manage via the goal tool)',
     }]
   }

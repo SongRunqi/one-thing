@@ -222,9 +222,6 @@ export interface OnethingAgentLoopRuntimeAdapters<
 		agentId: string | undefined,
 		session?: unknown,
 	): Promise<string[] | null | undefined> | string[] | null | undefined;
-	buildContextVariablesPromptText(
-		sessionId: string,
-	): Promise<string | undefined> | string | undefined;
 	buildProjectPromptVars(
 		workingDirectory?: string,
 	): OnethingAgentLoopProjectPromptVars;
@@ -339,9 +336,6 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 		agentId: string | undefined,
 		session?: unknown,
 	): Promise<string[] | null | undefined> | string[] | null | undefined;
-	buildContextVariablesPromptText(
-		sessionId: string,
-	): Promise<string | undefined> | string | undefined;
 	buildProjectPromptVars(
 		workingDirectory?: string,
 	): OnethingAgentLoopProjectPromptVars;
@@ -463,7 +457,6 @@ export function createOnethingAgentLoopRuntimeAdapters<
 		getEnabledTools: host.getEnabledTools,
 		getMCPRouterToolDefinition: host.getMCPRouterToolDefinition,
 		getAgentToolAllowlist: host.getAgentToolAllowlist,
-		buildContextVariablesPromptText: host.buildContextVariablesPromptText,
 		buildProjectPromptVars: host.buildProjectPromptVars,
 		buildPrompt: host.buildPrompt,
 		buildHistoryMessages: host.buildHistoryMessages,
@@ -736,9 +729,6 @@ export async function buildOnethingAgentLoopStreamRuntime<
 				skills: enabledSkills,
 				workingDirectory: sessionWorkingDir,
 				workingDirectoryRoots: sessionWorkingDirRoots,
-				contextVariables: await adapters.buildContextVariablesPromptText(
-					ctx.sessionId,
-				),
 				activeProject: projectVars.active,
 				knownProjects: projectVars.known,
 				toolNames: toolPlan.toolNames,

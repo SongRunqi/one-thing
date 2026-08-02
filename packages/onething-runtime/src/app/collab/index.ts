@@ -5,6 +5,8 @@ export {
 } from './ingress.js'
 export {
   applyUserCollabBoardAction,
+  clearCollabRoomHistory,
+  getCollabCoordinatorState,
   getCollabRoomSpend,
   initializeCollabCoordinator,
   readCollabRoomSpentTodayUSD,
@@ -13,6 +15,7 @@ export {
   setCollabRoomFrozen,
   shutdownCollabCoordinator,
   type CollabBoardActResult,
+  type CollabRoomClearHistoryResult,
   type CollabRoomConfigPatch,
   type CollabRoomConfigResult,
 } from './coordinator.js'

@@ -78,6 +78,54 @@ describe('say-rows:署名口径', () => {
   })
 })
 
+describe('say-rows:引用条口径(im-message §B 修订)', () => {
+  it('连发里连着引同一句:只有第一条画引用,后续条不因引用成头', () => {
+    const messages: SayMessageLike[] = [
+      { id: 'm1', role: 'assistant', agentId: 'a1', content: '一', timestamp: T0, replyTo: { messageId: 'q1', authorLabel: '我' } },
+      { id: 'm2', role: 'assistant', agentId: 'a1', content: '二', timestamp: T0 + MINUTE, replyTo: { messageId: 'q1', authorLabel: '我' } },
+    ]
+    const rows = speechRows(buildSayLayout(messages, T0))
+    expect(rows.map(row => row.showQuote)).toEqual([true, false])
+    expect(rows.map(row => row.head)).toEqual([true, false])
+  })
+
+  it('连发里引不同的句子:每条都画、每条都升格为头(拐线得有头像可钩)', () => {
+    const messages: SayMessageLike[] = [
+      { id: 'm1', role: 'assistant', agentId: 'a1', content: '一', timestamp: T0, replyTo: { messageId: 'q1', authorLabel: '我' } },
+      { id: 'm2', role: 'assistant', agentId: 'a1', content: '二', timestamp: T0 + MINUTE, replyTo: { messageId: 'q2', authorLabel: '我' } },
+    ]
+    const rows = speechRows(buildSayLayout(messages, T0))
+    expect(rows.map(row => row.showQuote)).toEqual([true, true])
+    expect(rows.map(row => row.head)).toEqual([true, true])
+  })
+
+  it('换了说话人再引同一句:照画(合并只在同一人的连发里)', () => {
+    const messages: SayMessageLike[] = [
+      { id: 'm1', role: 'assistant', agentId: 'a1', content: '一', timestamp: T0, replyTo: { messageId: 'q1', authorLabel: '我' } },
+      { id: 'm2', role: 'assistant', agentId: 'a2', content: '二', timestamp: T0 + MINUTE, replyTo: { messageId: 'q1', authorLabel: '我' } },
+    ]
+    expect(speechRows(buildSayLayout(messages, T0)).map(row => row.showQuote)).toEqual([true, true])
+  })
+
+  it('老快照没有 messageId:比不出"同一句",按不同处理照画', () => {
+    const messages: SayMessageLike[] = [
+      { id: 'm1', role: 'assistant', agentId: 'a1', content: '一', timestamp: T0, replyTo: { authorLabel: '我' } },
+      { id: 'm2', role: 'assistant', agentId: 'a1', content: '二', timestamp: T0 + MINUTE, replyTo: { authorLabel: '我' } },
+    ]
+    expect(speechRows(buildSayLayout(messages, T0)).map(row => row.showQuote)).toEqual([true, true])
+  })
+
+  it('没有引用的消息 showQuote 恒 false,署名口径不受影响', () => {
+    const messages: SayMessageLike[] = [
+      { id: 'm1', role: 'assistant', agentId: 'a1', content: '一', timestamp: T0 },
+      { id: 'm2', role: 'assistant', agentId: 'a1', content: '二', timestamp: T0 + MINUTE },
+    ]
+    const rows = speechRows(buildSayLayout(messages, T0))
+    expect(rows.map(row => row.showQuote)).toEqual([false, false])
+    expect(rows.map(row => row.head)).toEqual([true, false])
+  })
+})
+
 describe('say-rows:行种类', () => {
   it('system 行是通告,error 行单独成档 —— 一次炸掉的回合不吞', () => {
     const messages: SayMessageLike[] = [

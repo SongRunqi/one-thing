@@ -15,17 +15,27 @@
  * 怎么转发、有哪些工具),这里陈述**怎么用手上的东西**。前者是事实,后者是
  * 规约 —— 混在一起写,情况说明"只陈述不指挥"的铁律就没了边界。
  *
+ * **形态(2026-08-01 整理)**:全英文 + XML 分段,块边界靠标签闭合。此前是
+ * 全角括号包一段中英混排的散文,而那段文本里最吃重的两条事实(后台执行 /
+ * send_message 才送达)恰好是仅有的英文行 —— 夹在中文里的英文不会因为显眼而被更认真
+ * 对待,只会读成从别处粘来的免责声明。同期去掉的还有**逐字重复**:
+ * 「Nothing you produce this turn…」当时在 roster 情况说明与这里各有一份,
+ * 驱动信封里还有第三份。同一句话说三遍不会变成三倍重要,只会变成模板套话
+ * —— 现在它只在 `<where_you_are>` 里出现一次,这里不再复述场子。
  */
 
 /**
- * 群聊常驻会话(room turn)看到的规则。
+ * 群聊常驻会话(room turn)看到的规则,一个 `<rules>` 元素。
  *
- * 三个人数档共用同一块文本,只有开头那句"你在什么场子里"的事实与「结论往哪回」
- * 的地名不同 —— 底下每一条规则与它的机械防线逐字不变:
+ * 三个人数档共用同一块文本,只有「结论往哪回」「干活现场在哪」两处地名不同 ——
+ * 底下每一条规则与它的机械防线逐字不变:
  *
  *  - 缺省 = 群聊房;
  *  - `dm: true` = 单成员 dm 房(用户 ↔ agent 托管私聊,agent-im-dm.md §2.3);
  *  - `pair: true` = 双成员 dm 房(agent ↔ agent 私聊,§3.1)。
+ *
+ * "你在什么场子里"那句事实**不在这里** —— 它归 `<where_you_are>`(roster.ts),
+ * 而这个块永远跟在它后面(`buildCollabRoomSystemPrompt` 是唯一调用者)。
  *
  * §5 规则 2/3/4 三条(2026-07-30,IM P3)也在这里,同样对三档一视同仁 —— dm 是
  * 一个所有人都能用的工具,规矩不该只讲给群里的人听。它们各自的机械防线:
@@ -33,45 +43,66 @@
  *  |---|---|
  *  | 想单独对齐用 dm、结论回来说一句 | 透明制 UI(dm 房侧栏可见、用户可插话) |
  *  | dm 不是干活现场,正经活回大群立卡 | 断路器 + 墙钟 + 工作台才有的可恢复性 |
- *  | 不客套空转 | 双成员房链长闸默认 6 + say 幂等窗 |
+ *  | 不客套空转 | 双成员房链长闸默认 6 + 发送幂等窗 |
  */
-export function buildCollabCommonRules(options: { dm?: boolean; pair?: boolean } = {}): string {
-  // 「结论回哪儿」的地名:群里就是这个群,私聊里就是当前这场对话 —— 双成员 dm
-  // 房里说"回大群"是句假话(那间房没有大群),而假话正是规则失效的开始。
-  const backHere = options.dm || options.pair ? '回来这里' : '回大群'
-  return [
-    '(通用规则:',
-    options.pair
-      ? '你在和另一位同事的私聊里，用户可以旁观也可以插话;TA 和用户只能够看到你通过say工具说出的文本。'
-      : options.dm
-        ? '你在和用户的一对一私聊中，用户只能够看到你通过say工具说出的文本。'
-        : '你在一个群聊(room)中，其他用户和agent只能够看到你通过say工具说出的文本。',
-    '· 引用看板上的卡写 <card id="卡的 id"/>,指向文件写 <file path="路径"/>。只有这两种标签,别的尖括号会被当普通文字处理。',
-    '· 这两种标签会被系统验真:卡不在看板上、文件不在磁盘上,就只显示成一段点不动的文字。所以只指真实存在的东西。',
-    '· 卡的状态永远用 board 的 list 现查,不要相信历史消息里的状态快照——那是当时的,不是现在的。',
-    '· 轻重活分界:查资料、回答问题、小改随手就做。要动多个文件、或者要跑很久的,先用 board 的 start 开工——那会给你一个独立的工作会话(没有回合上限,现场留得住);没有卡就 start 一个,顺手立卡。',
-    '· 被指派 ≠ 必须立刻开工:可以先在群里问清楚,确认了再 start;做不了就 block 并说明原因。',
-    `· 想和某位同事单独对齐细节,用 dm 工具找 TA——那会开一间只有你们两个的私聊(用户看得见、能插话),对方不知道你这边的上下文,背景要在消息里自己写清楚;聊出的结论${backHere} say 一句。`,
-    // 「干活现场在哪」随场子改,而且必须改:用户私聊里 agent 就该在这间房里干活
-    // (D7 union 工具面),对着它说"正经活回大群"会与上一条轻重活分界直接打架。
-    options.dm
-      ? '· 用 dm 找人是为了对齐,不是把活转出去:该你干的活在这间私聊里立卡干。'
-      : '· dm 是沟通的地方,不是干活现场:要动手的正经活回大群立卡再干。',
-    '· 不要客套空转:没有新信息就停下,「收到」「辛苦了」这类话不用专门发一条。',
-    ')',
-  ].join('\n')
+export function buildCollabCommonRules(
+	options: { dm?: boolean; pair?: boolean } = {},
+): string {
+	// 「结论回哪儿」的地名:群里就是这个群,私聊里就是当前这场对话 —— 双成员 dm
+	// 房里说"回大群"是句假话(那间房没有大群),而假话正是规则失效的开始。
+	const backHere =
+		options.dm || options.pair ? "back into this chat" : "back to the room";
+	return [
+		"<rules>",
+		'- Two inline tags exist and no others: `<card id="…"/>` points at a board card, `<file path="…"/>` points at a file. Any other angle bracket is treated as ordinary text.',
+		"- Both are verified when they render: a card that is not on the board, a file that is not on disk, becomes dead text nobody can click. Point only at things that exist.",
+		"- Read a card's status live with `board` list. The status quoted in an older message is what it was then, not what it is now.",
+		"- Light versus heavy: look something up, answer a question, make a small edit — just do it. Many files, or long-running work — `board` start first: that gives you a work session with no turn limit, where the context survives. No card for it yet, `start` makes one.",
+		"- Being assigned a card is not an order to begin: ask first if anything is unclear, and `block` the card with a reason if you cannot do it.",
+		// 后半句是 2026-08-01 事故补上的对称面(collab-agent-view-p5.md §1):原来
+		// 只讲了"对方没有你的上下文",没讲**你也拿不回你在那儿说过的话** —— dm 房
+		// 是另一间房,这一轮的输入里一个字都没有,而 `dm` 的回执也不回显正文。
+		// 狼人杀上帝就是栽在这后半句上:牌发出去了,下一个回合它自己不知道发了什么。
+		`- To settle a detail with one colleague, use \`send_message\` with \`to\`: it opens a chat with just the two of you (the user can see it and step in). They have none of your context, so write the background into the message. That chat is a different room: what is said there is never part of this turn's input, yours included. Bring the conclusion ${backHere} with a plain \`send_message\`.`,
+		// agent-dm-user.md §3.4:dm 的目标现在也包括用户本人。措辞与工具描述那一段
+		// 必须一致(该文件既有纪律)。
+		// 只讲给群房与 pair 房听:用户私聊房里 agent 就在和 TA 说话,那里说这句是废话。
+		...(options.dm
+			? []
+			: [
+					"- When something needs the user personally — a call only they can make, a heads-up, a deliverable — `send_message` with `to: 用户` reaches them directly. They may be away: send it and carry on, do not stop and wait for a reply.",
+				]),
+		// 「干活现场在哪」随场子改,而且必须改:用户私聊里 agent 就该在这间房里干活
+		// (D7 union 工具面),对着它说"正经活回大群"会与上一条轻重活分界直接打架。
+		options.dm
+			? "- A private chat is for settling things with someone, not for handing work off: work that is yours gets a card and gets done right here."
+			: "- A private chat is a place to talk, not a place to work: anything hands-on goes back to the room as a card.",
+		"- Do not fill air. With nothing new to add, stop — 「收到」 and 「辛苦了」 do not need a message of their own.",
+		"</rules>",
+	].join("\n");
 }
 
-/** 工作台会话(work session)看到的规则。 */
+/**
+ * 工作台会话(work session)看到的规则。
+ *
+ * 与群/私聊两版不同,这一份是**独立成篇**的:它拼进 worker.ts 的任务简报
+ * (一条 user 消息),前面没有 `<where_you_are>` 可以依赖,所以那句场子事实
+ * 必须自己带 —— 那不是重复,那是这个语境里的唯一一次陈述。
+ */
 export function buildCollabWorkRules(): string {
-  return [
-    '(通用规则:',
-    '你在一个群聊(room)中，其他用户和agent只能够看到你通过say工具说出的文本。',
-    '· 引用看板上的卡写 <card id="卡的 id"/>,指向文件写 <file path="路径"/>。只有这两种标签,别的尖括号会被当普通文字处理。',
-    '· 这两种标签会被系统验真:卡不在看板上、文件不在磁盘上,就只显示成一段点不动的文字。所以只指真实存在的东西。',
-    '· 卡的状态永远用 board 的 list 现查,不要相信历史消息里的状态快照——那是当时的,不是现在的。',
-    '· 轻重活分界:查资料、回答问题、小改随手就做。要动多个文件、或者要跑很久的,先用 board 的 start 开工——那会给你一个独立的工作会话(没有回合上限,现场留得住);没有卡就 start 一个,顺手立卡。',
-    '· 被指派 ≠ 必须立刻开工:可以先在群里问清楚,确认了再 start;做不了就 block 并说明原因。',
-    ')',
-  ].join('\n')
+	return [
+		"<workspace>",
+		"<where_you_are>",
+		// W25: 后台执行的事实(工作会话也一样跑在后台,只有发出去的消息进群)。
+		"This work session runs in the background. Everything you produce here — prose, reasoning, tool calls and their results — stays here. The only thing that reaches the room is a message you send with the `send_message` tool.",
+		"</where_you_are>",
+		"<rules>",
+		'- Two inline tags exist and no others: `<card id="…"/>` points at a board card, `<file path="…"/>` points at a file. Any other angle bracket is treated as ordinary text.',
+		"- Both are verified when they render: a card that is not on the board, a file that is not on disk, becomes dead text nobody can click. Point only at things that exist.",
+		"- Read a card's status live with `board` list. The status quoted in an older message is what it was then, not what it is now.",
+		"- Light versus heavy: look something up, answer a question, make a small edit — just do it. Many files, or long-running work — `board` start first: that gives you a work session with no turn limit, where the context survives. No card for it yet, `start` makes one.",
+		"- Being assigned a card is not an order to begin: ask first if anything is unclear, and `block` the card with a reason if you cannot do it.",
+		"</rules>",
+		"</workspace>",
+	].join("\n");
 }

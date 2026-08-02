@@ -52,6 +52,9 @@
         :pair-dm-mode="pairDmMode"
         :thread-entry="threadEntryFor(row)"
         :room-session-id="sessionId"
+        :quote-suppressed="!row.showQuote"
+        :unread-since="unreadSince"
+        :quote-missing="isQuoteTargetMissing(messages[row.index])"
         @reply="replyTo => emit('replyTo', replyTo)"
         @react="(messageId, emoji) => emit('react', messageId, emoji)"
         @jump-to-message="messageId => emit('jumpToMessage', messageId)"
@@ -87,6 +90,7 @@ import { buildSayLayout, type SayRow, type SayMessageLike } from './say-rows'
 import { SAY_METRICS } from './say-typography'
 import { findAgentDoingTask } from '../agent-activity'
 import { useCollabBoardStore } from '@/stores/collabBoard'
+import { useSessionsStore } from '@/stores/sessions'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -96,6 +100,13 @@ const props = defineProps<{
   /** agent ↔ agent 私聊房。 */
   pairDmMode?: boolean
   highlightedMessageId?: string | null
+  /**
+   * 这一屏是不是**完整的转录**(上游历史已经读到头)。
+   *
+   * 只有为真时,「引用的原文不在列表里」才等于「它被删了」;否则它多半只是
+   * 还没翻到的那一页。默认 false —— 拿不准就不下断言。
+   */
+  historyComplete?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -105,9 +116,37 @@ const emit = defineEmits<{
 }>()
 
 const collabBoardStore = useCollabBoardStore()
+const sessionsStore = useSessionsStore()
+
+/**
+ * 这一屏的已读水位,读**一次**交给所有行(im-message §A 修订)。
+ *
+ * 放在这里而不是行里:一屏几百行各自去问仓储,是几百次同答案的查询;而"读到
+ * 哪儿了"整张列表只有一个答案。行只负责比自己的时间戳。
+ */
+const unreadSince = computed(() => {
+  const sessionId = props.sessionId
+  if (!sessionId) return 0
+  return sessionsStore.readMarks?.get(sessionId)?.readAt ?? 0
+})
 collabBoardStore.ensureSubscribed()
 
 const layout = computed(() => buildSayLayout(props.messages as unknown as SayMessageLike[]))
+
+/** 当前这一屏认识的消息 id —— 引用落点在不在,只问它。 */
+const loadedMessageIds = computed(() => new Set(props.messages.map(message => message.id)))
+
+/**
+ * 被引原文是不是真的没了(im-message §B 的降级态)。
+ *
+ * 两个条件缺一不可:历史已经读全 **且** 那个 id 不在列表里。少了前一个,
+ * 一条还没翻到的旧消息会被冤枉成"已删除" —— 宁可少说,不可错说。
+ */
+function isQuoteTargetMissing(message: ChatMessage | undefined): boolean {
+  const targetId = message?.replyTo?.messageId
+  if (!targetId || !props.historyComplete) return false
+  return !loadedMessageIds.value.has(targetId)
+}
 
 /** 栏位尺寸的唯一真源是 SAY_METRICS;CSS 只消费这几枚变量。 */
 const layoutVars = computed(() => ({

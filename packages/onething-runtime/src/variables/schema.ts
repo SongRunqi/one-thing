@@ -1,9 +1,11 @@
+import { readStateFlag } from "./types.js";
+
 export interface VariablesFileGlobalVariable {
 	name: string;
 	value: string;
 	type?: "string" | "number" | "bool" | "list" | "map" | "set";
 	description?: string;
-	volatility?: "static" | "turn" | "on-demand";
+	state?: boolean;
 	updatedAt?: number;
 }
 
@@ -33,7 +35,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-const VALID_VOLATILITY = new Set(["static", "turn", "on-demand"]);
 const VALID_TYPE = new Set(["string", "number", "bool", "list", "map", "set"]);
 
 function parseGlobalVariable(
@@ -51,11 +52,9 @@ function parseGlobalVariable(
 				: undefined,
 		description:
 			typeof value.description === "string" ? value.description : undefined,
-		volatility:
-			typeof value.volatility === "string" &&
-			VALID_VOLATILITY.has(value.volatility)
-				? (value.volatility as VariablesFileGlobalVariable["volatility"])
-				: undefined,
+		// 旧盘写的是三档 volatility —— 读到即转成 state(§R.6)。文件本身不重写:
+		// 下一次写这个变量时自然按新字段落盘。
+		state: readStateFlag(value),
 		updatedAt:
 			typeof value.updatedAt === "number" ? value.updatedAt : undefined,
 	};

@@ -7,10 +7,161 @@
       'is-self': isUser,
       'is-addressed': addressed,
       'is-highlighted': highlighted,
+      'is-hover-anchor': hovered || barPinned,
+      'is-me-unread': mentionUnread,
     }"
     :data-index="index"
     :data-message-id="message.id"
+    @mouseenter="hovered = true"
+    @mouseleave="hovered = false"
   >
+    <!-- 悬浮操作条(im-message §E):hover 才挂,absolute 骑在行上缘右侧 ——
+         **不占行高、不引起重排**。只在 hover / 面板开着时存在于 DOM 里:
+         一屏几百行,常驻六枚按钮是白交的税。 -->
+    <div
+      v-if="canReply && (hovered || barPinned)"
+      class="say-hoverbar"
+    >
+      <button
+        v-for="emoji in quickEmojis"
+        :key="emoji"
+        type="button"
+        class="say-hoverbar-btn"
+        :title="emoji"
+        @click.stop="applyReaction(emoji)"
+      >
+        {{ emoji }}
+      </button>
+      <button
+        ref="emojiButtonRef"
+        type="button"
+        class="say-hoverbar-btn"
+        title="更多表情"
+        @click.stop="toggleEmojiPanel"
+      >
+        <Smile
+          :size="14"
+          :stroke-width="1.7"
+        />
+      </button>
+      <span
+        class="say-hoverbar-sep"
+        aria-hidden="true"
+      />
+      <button
+        type="button"
+        class="say-hoverbar-btn"
+        title="引用回复"
+        @click.stop="handleReply"
+      >
+        <Reply
+          :size="14"
+          :stroke-width="1.7"
+        />
+      </button>
+      <button
+        ref="moreButtonRef"
+        type="button"
+        class="say-hoverbar-btn"
+        title="更多"
+        @click.stop="openMoreMenu"
+      >
+        ⋯
+      </button>
+    </div>
+
+    <!-- 表情面板挂 body:中栏是个 Scrollbar 容器,面板留在行里会被裁掉。 -->
+    <Teleport to="body">
+      <div
+        v-if="emojiPanelOpen"
+        class="say-emoji-backdrop"
+        @pointerdown="closeEmojiPanel"
+        @wheel="closeEmojiPanel"
+      />
+      <div
+        v-if="emojiPanelOpen"
+        class="say-emoji-panel"
+        :style="emojiPanelStyle"
+        @pointerdown.stop
+      >
+        <div class="say-emoji-cap">
+          最近
+        </div>
+        <div class="say-emoji-grid">
+          <button
+            v-for="emoji in panelRecentEmojis"
+            :key="`recent-${emoji}`"
+            type="button"
+            :title="emoji"
+            @click.stop="applyReaction(emoji)"
+          >
+            {{ emoji }}
+          </button>
+        </div>
+        <div class="say-emoji-cap">
+          常用
+        </div>
+        <div class="say-emoji-grid">
+          <button
+            v-for="emoji in SAY_COMMON_EMOJIS"
+            :key="`common-${emoji}`"
+            type="button"
+            :title="emoji"
+            @click.stop="applyReaction(emoji)"
+          >
+            {{ emoji }}
+          </button>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 「⋯」低频项走既有 ContextMenu(teleport + 视口回弹都是现成的)。 -->
+    <ContextMenu
+      :show="moreMenuOpen"
+      :x="moreMenuPosition.x"
+      :y="moreMenuPosition.y"
+      :items="moreMenuItems"
+      :min-width="150"
+      @select="onMoreMenuSelect"
+      @close="moreMenuOpen = false"
+    />
+
+    <!-- 引用(§3.5 A / im-message §B,Discord 式):整行骑在署名之上,一根圆角
+         拐线从头像列拐上来钩住它 —— 「TA 答的是哪一句」在名字之前先被看到。
+         竖线身份色改为只染作者名;原文已删则灰化不可点(快照仍在)。 -->
+    <button
+      v-if="replyQuote && !quoteSuppressed"
+      type="button"
+      class="say-quote"
+      :class="{ 'is-gone': quoteMissing }"
+      :style="quoteColorStyle"
+      :disabled="quoteMissing"
+      :title="quoteTitle"
+      @click.stop="quoteMissing ? undefined : emit('jumpToMessage', replyQuote.messageId)"
+    >
+      <AgentAvatar
+        v-if="quoteAuthor?.agent"
+        class="say-quote-avatar"
+        :avatar="quoteAuthor.agent.avatar"
+        :avatar-image="quoteAuthor.agent.avatarImage"
+        :size="QUOTE_AVATAR_SIZE"
+      />
+      <AgentAvatar
+        v-else-if="quoteAuthor?.isUser"
+        class="say-quote-avatar"
+        :avatar="userProfile.avatar || USER_AVATAR_FALLBACK"
+        :avatar-image="userProfile.avatarImage"
+        :size="QUOTE_AVATAR_SIZE"
+      />
+      <span
+        v-else
+        class="say-quote-avatar say-quote-avatar--plain"
+        aria-hidden="true"
+      >?</span>
+      <span class="say-quote-author">{{ replyQuote.authorLabel }}</span>
+      <span class="say-quote-excerpt">{{ quoteExcerptText }}</span>
+    </button>
+
     <!-- 头像列:一段发言只在头一条上有人,后续条留白,正文吊在同一条轴上。 -->
     <div class="say-gutter">
       <button
@@ -35,11 +186,15 @@
         :avatar-image="sender.avatarImage"
         :size="AVATAR_SIZE"
       />
-      <span
+      <!-- 用户头像走同一个 AgentAvatar(该组件本无 agent 语义):emoji/图片两层
+           与同事逐像素同源,缺省 emoji 由调用点给,组件的 🤖 一个字不改。 -->
+      <AgentAvatar
         v-else-if="head && isUser"
-        class="say-avatar say-avatar--self"
-        aria-hidden="true"
-      >我</span>
+        class="say-avatar"
+        :avatar="userProfile.avatar || USER_AVATAR_FALLBACK"
+        :avatar-image="userProfile.avatarImage"
+        :size="AVATAR_SIZE"
+      />
     </div>
 
     <div class="say-body">
@@ -79,19 +234,6 @@
         >{{ clock }}</time>
       </div>
 
-      <!-- 引用(§3.5 A):它答的是哪一句。点击走回原文;原文没了就不动
-           (快照本身已经带着那句话)。 -->
-      <button
-        v-if="replyQuote"
-        type="button"
-        class="say-quote"
-        :title="`${replyQuote.authorLabel}: ${replyQuote.excerpt}`"
-        @click.stop="emit('jumpToMessage', replyQuote.messageId)"
-      >
-        <span class="say-quote-author">{{ replyQuote.authorLabel }}</span>
-        <span class="say-quote-excerpt">{{ replyQuote.excerpt }}</span>
-      </button>
-
       <!-- 旁观插话(agent-im-dm.md §4.3):双成员 dm 房里用户说的话。 -->
       <span
         v-if="showBystanderTag"
@@ -103,7 +245,7 @@
            代码 / 列表因此与别处**逐像素同源**,本组件一个 markdown 规则都不写。 -->
       <div
         v-if="displayContent"
-        class="say-text md-code-block-scope md-inline-code-scope"
+        class="say-text md-say-scope md-code-block-scope md-inline-code-scope"
       >
         <MessageMarkdown
           :content="displayContent"
@@ -190,21 +332,6 @@
           <span class="say-reaction-count">{{ chip.count }}</span>
         </button>
       </div>
-
-      <!-- hover 才出现的动作行:聊天面只需要「引用」。 -->
-      <div
-        v-if="canReply"
-        class="say-actions"
-      >
-        <button
-          type="button"
-          class="say-action"
-          title="引用这条"
-          @click.stop="handleReply"
-        >
-          引用
-        </button>
-      </div>
     </div>
   </div>
 </template>
@@ -229,24 +356,36 @@
  *  - 署名身份:`agentsStore.displayAgent`(域模型 M4:retired 返回墓碑,永不炸)
  *  - @提及渲染:`renderCollabMentionText`
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Reply, Smile } from 'lucide-vue-next'
 import type { ChatMessage, MessageAttachment } from '@/types'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import AttachmentThumb from '@/components/common/AttachmentThumb.vue'
+import ContextMenu from '@/components/common/ContextMenu.vue'
+import type { ContextMenuItem } from '@/components/common/context-menu'
 import FileChip from '@/components/common/FileChip.vue'
+import { SAY_COMMON_EMOJIS, useSayRecentEmojis } from './say-emoji'
+import { copyTextToClipboard } from '@/utils/clipboard'
 import MessageMarkdown from '../message/MessageMarkdown.vue'
 import { buildReactionChips } from '../message/reactions'
 import { REPLY_USER_LABEL, buildReplyToSnapshot } from '../message/reply-quote'
 import { SAY_METRICS } from './say-typography'
 import { formatFileSize } from '@/utils/format'
 import { isActiveAgent } from '@shared/ipc'
-import { renderCollabMentionText } from '@onething/runtime/collab'
+import { renderCollabMentionMarkup } from '@/composables/collabInlineTags'
+import {
+  USER_AVATAR_FALLBACK,
+  isCollabUserAuthorLabel,
+  useUserProfile,
+} from '@/composables/useUserProfile'
 import { platformApi } from '@/platform'
 import { useAgentsStore } from '@/stores/agents'
 import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 import type { ChatMessageReplyTo } from '@/types'
 
 const AVATAR_SIZE = SAY_METRICS.avatarSizePx
+/** 引用条上的小头像(im-message §B)。比署名头像小一号,不抢正文。 */
+const QUOTE_AVATAR_SIZE = 16
 
 const props = defineProps<{
   message: ChatMessage
@@ -263,6 +402,24 @@ const props = defineProps<{
   threadEntry?: { workSessionId: string; title: string; taskId?: string } | null
   /** 这条消息所在的房 —— 署名头像下钻右栏空间页时的靶子(R2)。 */
   roomSessionId?: string
+  /**
+   * 被引用的那条原文**确实没了**(im-message §B 的降级态)。
+   *
+   * 只有上游能负责任地回答这个问题:一条消息不在当前列表里,可能是被删了,
+   * 也可能只是还没翻到那一页。判定留在 SayChatFlow(它拿得到"历史是否已
+   * 读全"),这里只画。
+   */
+  quoteMissing?: boolean
+  /**
+   * 连发里引同一句的后续条不画引用(say-rows 的口径)。反向命名是刻意的:
+   * Vue 会把缺省的 boolean prop 强转成 false,「缺省 = 画」只有反着说才成立。
+   */
+  quoteSuppressed?: boolean
+  /**
+   * 这个会话的已读水位(epoch ms)。晚于它的「@我」才是未读的那一枚橘 pill。
+   * 由上层读一次交下来 —— 一屏几百行不该各自去问仓储。缺省 0 = 全部已读。
+   */
+  unreadSince?: number
 }>()
 
 const emit = defineEmits<{
@@ -272,6 +429,22 @@ const emit = defineEmits<{
 }>()
 
 const agentsStore = useAgentsStore()
+/** 「我」也是这个群里的一个人:有名字、有头像(agent-dm-user.md §5 Q2)。 */
+const { profile: userProfile, mentionLabels: userMentionLabels } = useUserProfile()
+
+/**
+ * @我 的未读态(im-message §A 修订):这条消息还没被看过(晚于已读水位)时,
+ * 行挂 is-me-unread,pill 实底橘;看过(readAt 追上来)即褪回常态 pill。
+ *
+ * 水位由**上层**读一次交下来(prop),不是每行自己去问仓储:一屏几百行就是几百
+ * 次 store 查询,而"这一屏读到哪儿了"整张列表只有一个答案。行只管比自己的时间。
+ * `unreadSince` 缺省 0 = 没有水位 = 全部已读(与 isMarkUnread 的口径同源)。
+ */
+const mentionUnread = computed(() => {
+  if (!props.addressed || !props.unreadSince) return false
+  const timestamp = props.message.timestamp
+  return typeof timestamp === 'number' && timestamp > props.unreadSince
+})
 
 const isUser = computed(() => props.message.role === 'user')
 
@@ -292,7 +465,11 @@ const sender = computed(() => {
   }
 })
 
-const senderName = computed(() => (isUser.value ? '我' : sender.value?.name || '成员'))
+/**
+ * 配了名字就显示名字,没配保持「我」(§5 Q2:IM 里每个说话者含自己都有名有脸;
+ * 但没配置过资料的人不该突然在自己的消息上看见「用户」)。
+ */
+const senderName = computed(() => (isUser.value ? userProfile.value.name : sender.value?.name || '成员'))
 
 /** 身份色只染名字,正文不带任何底色(方案 A 的注 3)。 */
 const senderColorStyle = computed(() =>
@@ -332,13 +509,52 @@ const clock = computed(() => {
 })
 
 const displayContent = computed(() =>
-  renderCollabMentionText(props.message.content, props.message.mentions, agentsStore.agents))
+  renderCollabMentionMarkup(
+    props.message.content,
+    props.message.mentions,
+    agentsStore.agents,
+    userMentionLabels.value,
+  ))
 
 const replyQuote = computed(() => {
   const replyTo = props.message.replyTo
   if (!replyTo?.excerpt) return null
   return replyTo
 })
+
+/**
+ * 被引者的身份(im-message §B:竖线/名字取 TA 的身份色,配一枚 16px 头像)。
+ *
+ * 快照里只有 authorLabel —— 引用是**一段话的快照**,不是一个 id 引用。所以
+ * 这里按名字在花名册上找,而且**只认唯一命中**:重名的时候给不出确定的那
+ * 个人,就退回中性色 + 问号头像,绝不挑一个显示。
+ */
+const quoteAuthor = computed(() => {
+  const label = replyQuote.value?.authorLabel?.trim()
+  if (!label) return null
+  // 快照里的用户署名可能是「用户」(旧数据)也可能是 TA 的名字(配了资料之后),
+  // 两者都是同一个人 —— 只认一个的代价是老引用突然掉进"重名判不出"的中性态。
+  if (isCollabUserAuthorLabel(label, userProfile.value)) {
+    return { isUser: true, agent: null, color: undefined }
+  }
+  const matches = agentsStore.agents.filter(agent => agent.name?.trim() === label)
+  if (matches.length !== 1) return null
+  const identity = agentsStore.displayAgent(matches[0].id)
+  return { isUser: false, agent: identity, color: identity.color }
+})
+
+/** 竖线与作者名同一枚变量;拿不到身份色就落回中性描边色。 */
+const quoteColorStyle = computed(() =>
+  quoteAuthor.value?.color ? { '--say-quote-color': quoteAuthor.value.color } : undefined)
+
+/** 原文没了:摘录前面写清它是快照 —— 这段字还在,但它指的消息不在了。 */
+const quoteExcerptText = computed(() => {
+  const excerpt = replyQuote.value?.excerpt ?? ''
+  return props.quoteMissing ? `原消息已删除 · 快照:${excerpt}` : excerpt
+})
+
+const quoteTitle = computed(() =>
+  replyQuote.value ? `${replyQuote.value.authorLabel}: ${quoteExcerptText.value}` : '')
 
 /** 旁观插话:只有 agent↔agent 房里用户说的话才是"旁观"。 */
 const showBystanderTag = computed(() => Boolean(props.pairDmMode) && isUser.value)
@@ -352,12 +568,120 @@ const canReply = computed(() =>
 function handleReply(): void {
   const snapshot = buildReplyToSnapshot({
     messageId: props.message.id,
-    authorLabel: isUser.value ? REPLY_USER_LABEL : senderName.value,
+    // 与 app 层 `resolveUserIdentity().label` 逐字同源:同一条消息被两侧引用时
+    // 必须署同一个名,否则「这条引用的是谁说的」在同一间房里会有两个答案。
+    authorLabel: isUser.value
+      ? (userProfile.value.configuredName || REPLY_USER_LABEL)
+      : senderName.value,
     content: props.message.content,
   })
   if (!snapshot) return
+  closeOverlays()
   emit('reply', snapshot)
 }
+
+/* ── 悬浮操作条(im-message §E)──────────────────────────────────────
+   表情落既有 reactions 投影(emit('react') → useCollabReactions →
+   reactToCollabMessage,后端 toggle),引用落既有 ComposerReplyBar 那条链
+   (emit('reply') → RoomSurface 的 pendingReplyTo)。这里一条新链路都不起。 */
+const hovered = ref(false)
+const emojiPanelOpen = ref(false)
+const moreMenuOpen = ref(false)
+const emojiButtonRef = ref<HTMLElement | null>(null)
+const moreButtonRef = ref<HTMLElement | null>(null)
+const emojiPanelPosition = ref({ top: 0, left: 0 })
+const moreMenuPosition = ref({ x: 0, y: 0 })
+
+const { quick: quickEmojis, panelRecent: panelRecentEmojis, remember: rememberEmoji } = useSayRecentEmojis()
+
+/** 面板/菜单开着的时候操作条不许消失 —— 鼠标已经离开行去点面板了。 */
+const barPinned = computed(() => emojiPanelOpen.value || moreMenuOpen.value)
+
+const emojiPanelStyle = computed(() => ({
+  top: `${emojiPanelPosition.value.top}px`,
+  left: `${emojiPanelPosition.value.left}px`,
+}))
+
+const EMOJI_PANEL_WIDTH = 216
+const EMOJI_PANEL_HEIGHT = 190
+const VIEWPORT_MARGIN = 8
+
+function closeOverlays(): void {
+  emojiPanelOpen.value = false
+  moreMenuOpen.value = false
+}
+
+function closeEmojiPanel(): void {
+  emojiPanelOpen.value = false
+}
+
+function toggleEmojiPanel(): void {
+  if (emojiPanelOpen.value) {
+    emojiPanelOpen.value = false
+    return
+  }
+  const rect = emojiButtonRef.value?.getBoundingClientRect()
+  if (rect) {
+    // 下方放不下就翻到上方 —— 面板宁可盖住消息,也不能掉出视口。
+    const below = rect.bottom + 6
+    const fitsBelow = below + EMOJI_PANEL_HEIGHT + VIEWPORT_MARGIN <= window.innerHeight
+    emojiPanelPosition.value = {
+      top: fitsBelow ? below : Math.max(VIEWPORT_MARGIN, rect.top - EMOJI_PANEL_HEIGHT - 6),
+      left: Math.min(
+        Math.max(VIEWPORT_MARGIN, rect.right - EMOJI_PANEL_WIDTH),
+        window.innerWidth - EMOJI_PANEL_WIDTH - VIEWPORT_MARGIN,
+      ),
+    }
+  }
+  moreMenuOpen.value = false
+  emojiPanelOpen.value = true
+}
+
+/** 点表情 = 对这条消息 toggle 回应,并把它记进「最近使用」。 */
+function applyReaction(emoji: string): void {
+  if (!emoji) return
+  rememberEmoji(emoji)
+  closeOverlays()
+  emit('react', props.message.id, emoji)
+}
+
+const moreMenuItems = computed<ContextMenuItem[]>(() => {
+  const items: ContextMenuItem[] = [{ id: 'copy', label: '复制文本' }]
+  // 「跳转原文」只有在真有落点时才给:引用条自己也是这个规矩。
+  if (replyQuote.value && !props.quoteMissing) {
+    items.push({ id: 'jump', label: '跳转原文' })
+  }
+  return items
+})
+
+function openMoreMenu(): void {
+  const rect = moreButtonRef.value?.getBoundingClientRect()
+  emojiPanelOpen.value = false
+  moreMenuPosition.value = rect
+    ? { x: rect.left, y: rect.bottom + 4 }
+    : { x: 0, y: 0 }
+  moreMenuOpen.value = true
+}
+
+async function onMoreMenuSelect(id: string): Promise<void> {
+  moreMenuOpen.value = false
+  if (id === 'copy') {
+    await copyTextToClipboard(props.message.content ?? '')
+    return
+  }
+  if (id === 'jump' && replyQuote.value) {
+    emit('jumpToMessage', replyQuote.value.messageId)
+  }
+}
+
+function onGlobalKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape') return
+  if (!emojiPanelOpen.value && !moreMenuOpen.value) return
+  closeOverlays()
+}
+
+onMounted(() => window.addEventListener('keydown', onGlobalKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
 
 /**
  * 已定契约(W4 / C3-B 已在 App.vue 监听):
@@ -407,19 +731,23 @@ function openAttachmentImage(attachment: MessageAttachment): void {
    所以本文件不需要任何 `:root[data-shell-mode]` 门。 */
 .say-row {
   display: flex;
-  gap: var(--say-gutter-gap, 11px);
+  flex-wrap: wrap; /* 引用条独占第一行(flex-basis:100%),头像+正文换行到其下 */
+  gap: 0 var(--say-gutter-gap, 11px);
   padding: var(--say-row-padding-block, 5px) var(--say-row-padding-inline, 20px);
   position: relative;
   overflow-anchor: none;
 }
 
+/* hover 锚(im-message §E):整行衬底告诉你操作条/表情面板属于哪条消息。
+   类驱动而不是 :hover —— 鼠标进了 teleport 到 body 的面板后行会丢 :hover,
+   但归属感不能跟着丢;barPinned(面板/菜单开着)期间衬底钉住。 */
+.say-row.is-hover-anchor {
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
+}
+
 /* 提及/回我的那条 = 一条左墨条,不是整行黄底。 */
 .say-row.is-addressed {
   box-shadow: inset 2px 0 0 var(--ui-accent-default-bg, var(--accent-main, currentColor));
-}
-
-.say-row.is-self {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.5%, transparent);
 }
 
 .say-row.is-highlighted {
@@ -440,32 +768,40 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   display: block;
 }
 
-/* 「可点」提示(agent-space-workbench.md P3):静止态与今天完全一致,hover 才
-   长出一圈 3px 外扩细环。三处头像(私聊房头 / 消息署名 / 群头成员堆)同一句法。 */
-.say-avatar-btn::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  border: 1px solid transparent;
-  transition: border-color 0.12s ease;
+/* 「可点」提示:静止态与今天完全一致,hover 只垫一层软阴影的立体感 ——
+   不描色、不缩放(§3.6),章还是那枚章。按下阴影收紧一档。
+   四处头像同一句法。 */
+.say-avatar-btn .say-avatar {
+  transition: box-shadow 0.16s ease;
 }
 
-.say-avatar-btn:hover::after,
-.say-avatar-btn:focus-visible::after {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+.say-avatar-btn:hover .say-avatar,
+.say-avatar-btn:focus-visible .say-avatar {
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 22%, transparent);
 }
 
-.say-avatar--self {
+.say-avatar-btn:active .say-avatar {
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 18%, transparent);
+}
+
+/* 头像的框由本行画(AgentAvatar 只出内容不出框):用户与 agent 同一个
+   30px 盒、同一条轴 —— 两种头像不许差一像素。 */
+.say-avatar {
   display: grid;
   place-items: center;
   width: var(--say-avatar-size, 30px);
   height: var(--say-avatar-size, 30px);
   border-radius: 50%;
+  overflow: hidden;
+  font-size: 20px;
+  line-height: 1;
+  user-select: none;
+}
+
+.say-avatar--self {
   font-size: 11px;
   color: var(--ui-text-muted-fg, var(--muted));
   background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
-  user-select: none;
 }
 
 .say-body {
@@ -513,32 +849,90 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   color: var(--ui-text-muted-fg, var(--muted));
 }
 
+/* 引用条(im-message §B):2px 身份色竖线 + 16px 头像 + 身份色名字 + 单行摘录。
+   hover 整条起底,点击跳回原文;跳转落点的闪烁复用 .say-row.is-highlighted。 */
+/* Discord 式引用行:独占整行、骑在署名之上,左端一根圆角拐线从头像列拐上来。
+   身份色不再画竖线,只染作者名(--say-quote-color)。 */
 .say-quote {
   display: flex;
   gap: 6px;
-  align-items: baseline;
-  max-width: 100%;
-  margin: 0 0 3px;
-  padding: 0 0 0 8px;
+  align-items: center;
+  /* 独占一行靠 flex-basis:100% —— 宽度上限**不能**设在按钮上:按钮被压窄后
+     行上有剩余空间,正文会排到引用条右边、按钮还被同行 stretch 拉高。
+     上限设在摘录(say-quote-excerpt)上。 */
+  flex-basis: 100%;
+  min-width: 0;
+  position: relative;
+  margin: 0 0 2px;
+  margin-inline-start: calc(var(--say-avatar-size, 30px) + var(--say-gutter-gap, 11px));
+  padding: 1px 8px 1px 4px;
   border: none;
-  border-inline-start: 2px solid var(--ui-border-default-border, var(--border));
+  border-radius: 5px;
   background: none;
   cursor: pointer;
   text-align: start;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ui-text-muted-fg, var(--muted));
+}
+
+/* 拐线:垂直段立在头像中轴上,向上圆角拐进引用行。几何 = 头像半径 + 列距。 */
+.say-quote::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: calc(-1 * (var(--say-gutter-gap, 11px) + var(--say-avatar-size, 30px) / 2) + 1px);
+  top: 50%;
+  width: calc(var(--say-gutter-gap, 11px) + var(--say-avatar-size, 30px) / 2 - 8px);
+  height: calc(50% + 6px);
+  border-inline-start: 2px solid var(--ui-border-default-border, var(--border));
+  border-top: 2px solid var(--ui-border-default-border, var(--border));
+  border-start-start-radius: 6px;
+  pointer-events: none;
+}
+
+.say-quote:hover:not(:disabled) {
+  background: var(--ui-state-hover-bg, var(--hover));
+}
+
+.say-quote:disabled {
+  cursor: default;
+}
+
+.say-quote-avatar {
+  flex-shrink: 0;
+}
+
+.say-quote-avatar--plain {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 9px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
+  user-select: none;
 }
 
 .say-quote-author {
   flex-shrink: 0;
   font-weight: 600;
+  color: var(--say-quote-color, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .say-quote-excerpt {
   min-width: 0;
+  max-width: 40em; /* 行宽纪律在这,不在按钮上(见 .say-quote 注释) */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 原文已删:整条灰化、摘录斜体 —— 快照读得到,但没有落点可跳。 */
+.say-quote.is-gone .say-quote-author,
+.say-quote.is-gone .say-quote-excerpt {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-style: italic;
+  opacity: 0.8;
 }
 
 .say-bystander {
@@ -625,32 +1019,118 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   border-color: var(--ui-text-muted-fg, var(--muted));
 }
 
-/* 动作行只在 hover 时出现,并且画在行自己的留白里 —— 不撑高任何一行。 */
-.say-actions {
+/* ── 悬浮操作条(im-message §E)───────────────────────────────────────
+   absolute 骑在行上缘右侧:它不占行高,所以 hover 进出时消息流一像素都不动。
+   这是"浮"的全部意义 —— 一个会把下面所有消息顶一下的操作条不如没有。 */
+.say-hoverbar {
   position: absolute;
-  inset-block-start: 2px;
+  inset-block-start: -13px;
   inset-inline-end: var(--say-row-padding-inline, 20px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease;
 }
 
-.say-row:hover .say-actions,
-.say-row:focus-within .say-actions {
-  opacity: 1;
-  pointer-events: auto;
+/* 连发的后续条没有署名行,行顶就是正文第一行 —— 骑在 -13px 会遮住正在读的
+   字。整体抬出行外(自身 30px 高),压在行距与上一条的收尾上,自己一字不遮;
+   头条照旧骑行上缘,顶上是署名行,不碍读。 */
+.say-row:not(.is-head) .say-hoverbar {
+  /* 条高 30px:底边恰好贴住行顶。不能再高 —— 留出缝隙的话,鼠标从行里挪向
+     条的半路会触发 mouseleave,条在够到之前就消失了。 */
+  inset-block-start: -30px;
 }
 
-.say-action {
-  padding: 0 6px;
+.say-hoverbar {
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 3px;
+  border: 1px solid var(--ui-border-default-border, #dedbd2);
+  border-radius: 8px;
+  background: var(--ui-surface-raised-bg, #faf9f6);
+  box-shadow: var(--ui-shadow-popover, 0 1px 2px rgba(20, 18, 12, 0.06), 0 4px 14px rgba(20, 18, 12, 0.1));
+}
+
+.say-hoverbar-btn {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 4px;
   border: none;
+  border-radius: 5px;
   background: none;
-  font-size: 10.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ui-text-muted-fg, #6f6c64);
   cursor: pointer;
+  transition: transform 0.1s ease, background 0.12s ease;
 }
 
-.say-action:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+.say-hoverbar-btn:hover {
+  background: var(--ui-state-hover-bg, #f4f2ed);
+  color: var(--ui-text-primary-fg, #1c1b18);
+  transform: scale(1.06);
+}
+
+.say-hoverbar-sep {
+  flex-shrink: 0;
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--ui-border-default-border, #dedbd2);
+}
+
+/* 表情面板:teleport 到 body,所以定位是 fixed(视口坐标现算)。 */
+.say-emoji-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 998;
+}
+
+.say-emoji-panel {
+  position: fixed;
+  z-index: 999;
+  width: 216px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--ui-border-default-border, #dedbd2);
+  border-radius: 10px;
+  background: var(--ui-surface-raised-bg, #faf9f6);
+  box-shadow: var(--ui-shadow-popover, 0 2px 6px rgba(20, 18, 12, 0.08), 0 12px 32px rgba(20, 18, 12, 0.14));
+  font-size: 13px;
+  line-height: normal;
+}
+
+.say-emoji-cap {
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-text-muted-fg, #a5a29a);
+}
+
+.say-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+}
+
+.say-emoji-cap + .say-emoji-grid {
+  margin-bottom: 8px;
+}
+
+.say-emoji-grid button {
+  display: grid;
+  place-items: center;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 15px;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.12s ease;
+}
+
+.say-emoji-grid button:hover {
+  background: var(--ui-state-hover-bg, #f4f2ed);
+  transform: scale(1.12);
 }
 </style>

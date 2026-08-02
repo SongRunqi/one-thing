@@ -12,6 +12,12 @@ import { platformApi } from '@/platform'
  */
 
 import { useChatStore } from '@/stores/chat'
+import {
+  isCollabDriveMessage,
+  isCollabPassMessage,
+  isCollabThinkingMessage,
+} from '@onething/runtime/collab'
+import { shouldNotifyInbound, summarizeNotificationBody } from './notify-inbound'
 import type { SessionEventEnvelope } from '@shared/events/index.js'
 
 let initialized = false
@@ -179,16 +185,19 @@ export function initializeIPCHub() {
       case 'message:user-created':
         refreshSessionListIfUnknown(sessionId)
         noteReadWatermark(sessionId, (event as any).message)
+        notifyInbound(sessionId, (event as any).message)
         store.handleMessageCreated({ sessionId, message: (event as any).message })
         break
 
       case 'message:created':
         noteReadWatermark(sessionId, (event as any).message)
+        notifyInbound(sessionId, (event as any).message)
         store.handleMessageCreated({ sessionId, message: (event as any).message })
         break
 
       case 'message:assistant-created':
         noteReadWatermark(sessionId, (event as any).message)
+        notifyInbound(sessionId, (event as any).message)
         store.handleAssistantCreated({ sessionId, message: (event as any).message })
         break
 
@@ -326,6 +335,68 @@ function noteReadWatermark(sessionId: string, message: unknown): void {
     else sessionsStore.noteInboundActivity(sessionId, at)
   }).catch(error => {
     console.error('[IPC Hub] Failed to update read watermark:', error)
+  })
+}
+
+/**
+ * 私聊来消息的系统通知(agent-dm-user.md §4.3)—— 与水位同一个分流点。
+ *
+ * 挂在 `noteReadWatermark` 旁边不是巧合:两者吃的是同一批事件、同一条"这是不是
+ * 有人跟你说话"的判定。分开挂就会分开漂移。
+ *
+ * 「是不是用户私聊房」读 store 的 `isUserDmRoomSession` selector,**禁止**在这里
+ * 自己写 `room.dm` 判定 —— 房形态的口径只有一处。
+ */
+const lastNotifiedAt = new Map<string, number>()
+
+function notifyInbound(sessionId: string, message: unknown): void {
+  const record = message as {
+    role?: string
+    content?: string
+    agentId?: string
+  } | undefined
+  if (!record || record.role !== 'assistant') return
+
+  // 只有 store 走动态 import(hub 一贯的解环手法);判定用的三个谓词是产品层
+  // 纯函数,静态引进来 —— 它们不参与任何环,而每多一次动态 import 就多一拍延迟。
+  Promise.all([
+    import('@/stores/sessions'),
+    import('@/stores/settings'),
+    import('@/stores/agents'),
+  ]).then(([
+    { useSessionsStore },
+    { useSettingsStore },
+    { useAgentsStore },
+  ]) => {
+    const sessionsStore = useSessionsStore()
+    const now = Date.now()
+    const decided = shouldNotifyInbound({
+      role: record.role,
+      structural: isCollabDriveMessage(record as never)
+        || isCollabPassMessage(record.content ?? '')
+        || isCollabThinkingMessage(record as never),
+      onScreen: sessionsStore.isSessionOnScreen(sessionId),
+      userDmRoom: sessionsStore.isUserDmRoomSession(sessionId),
+      enabled: useSettingsStore().settings?.general?.dmNotifications !== false,
+      lastNotifiedAt: lastNotifiedAt.get(sessionId),
+      now,
+    })
+    if (!decided) return
+
+    const body = summarizeNotificationBody(record.content)
+    if (!body) return
+
+    lastNotifiedAt.set(sessionId, now)
+    // 标题是发言人,不是房名:私聊房的名字就是 agent 的名字,而通知栏里
+    // 「小李」比「小李 · 私聊」更像一条来自人的消息。
+    const identity = useAgentsStore().displayAgent(record.agentId)
+    void platformApi.notify?.show({
+      title: identity?.name || '新消息',
+      body,
+      sessionId,
+    })
+  }).catch(error => {
+    console.error('[IPC Hub] Failed to raise inbound notification:', error)
   })
 }
 

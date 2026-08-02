@@ -12,8 +12,6 @@ import { formatCollabReplyQuote, mergeCollabProjectedRows, projectRoomHistory } 
 import {
   buildCollabRoomContext,
   buildCollabRoomSystemPrompt,
-  formatCollabSelfTaskFacts,
-  type CollabSelfTaskFact,
 } from '../roster.js'
 import {
   COLLAB_HALT_REASON_EXCERPT_CHARS,
@@ -96,16 +94,74 @@ describe('projectRoomHistory', () => {
     { role: 'user', content: '@小李 工时压几天?' },
   ]
 
-  it('keeps own messages as assistant and relays everyone else IM-style', () => {
-    const projected = projectRoomHistory({ messages: transcript, selfAgentId: 'fe', agents: AGENTS })
-    expect(projected).toEqual([
-      {
-        role: 'user',
-        content: '<msg from="用户">@阿明 官网改版,本周上线</msg>\n\n<msg from="阿明">收到,拆解如下\n〔调用 board({"action":"create"}) → ok〕</msg>',
-      },
-      { role: 'assistant', content: '从实现角度讲,一周可行' },
-      { role: 'user', content: '<msg from="用户">@小李 工时压几天?</msg>' },
-    ])
+  /**
+   * collab-chatroom-payload.md:整间房是**一条 user 消息**,房间侧一个 assistant
+   * 轮都没有 —— 旧形状(别人是 user 轮、自己是 assistant 轮)在教模型「你正在
+   * 对话,你的输出就是你的回复」,而它在后台会话里,只有 say 出得去。
+   */
+  it('把整间房塌成一条 user 消息:结构里没有「该你接话」的槽位', () => {
+    const projected = projectRoomHistory({
+      messages: transcript,
+      selfAgentId: 'fe',
+      agents: AGENTS,
+      roomName: '官网改版项目组',
+    })
+    expect(projected).toEqual([{
+      role: 'user',
+      content: [
+        '<ChatRoom name="官网改版项目组">',
+        '<Members>',
+        // Members 含自己并标 self —— 它是模型认出 History 里哪几条是自己说的
+        // 唯一线索。名字/句柄/职位各占一个属性,模型不必从一行文本里剥。
+        '<Member name="用户" role="用户"/>',
+        '<Member name="阿明" handle="pm" role="产品经理" description="拆解目标、分派任务"/>',
+        '<Member name="小李" handle="fe" role="前端工程师" self="true"/>',
+        '<Member name="小研" handle="research" role="研究员"/>',
+        '</Members>',
+        '<History>',
+        '<message from="用户">@阿明 官网改版,本周上线</message>',
+        '<message from="阿明#pm">收到,拆解如下\n〔调用 board({"action":"create"}) → ok〕</message>',
+        // 自己的发言也在 History 里,署名自己的「名字#句柄」,正文逐字原样。
+        '<message from="小李#fe">从实现角度讲,一周可行</message>',
+        '<message from="用户">@小李 工时压几天?</message>',
+        '</History>',
+        '</ChatRoom>',
+      ].join('\n'),
+    }])
+  })
+
+  it('房间侧永远没有 assistant 轮,换谁看都一样', () => {
+    for (const selfAgentId of ['fe', 'pm', 'research']) {
+      const projected = projectRoomHistory({ messages: transcript, selfAgentId, agents: AGENTS })
+      expect(projected).toHaveLength(1)
+      expect(projected[0].role).toBe('user')
+    }
+  })
+
+  it('房名进 name 属性,没房名就不编一个出来', () => {
+    const unnamed = projectRoomHistory({ messages: transcript, selfAgentId: 'fe', agents: AGENTS })
+    expect(unnamed[0].content.startsWith('<ChatRoom>\n')).toBe(true)
+    const named = projectRoomHistory({
+      messages: transcript,
+      selfAgentId: 'fe',
+      agents: AGENTS,
+      roomName: '小"李"的房',
+    })
+    // 房名同样来自代码而非模型,但引号照样转义 —— 撑破标签的代价是整块读错。
+    expect(named[0].content.startsWith('<ChatRoom name="小&quot;李&quot;的房">')).toBe(true)
+  })
+
+  it('用户行与同事行同形:传了身份就是「名字#句柄」', () => {
+    const projected = projectRoomHistory({
+      messages: [{ role: 'user', content: '在吗' }],
+      selfAgentId: 'fe',
+      agents: AGENTS,
+      userLabel: '一天',
+      userHandle: 'yitian',
+    })
+    // 名单里 role="用户" 占「职位」那一格,信封里是可照抄进 `dm to:` 的裸 token。
+    expect(projected[0].content).toContain('<Member name="一天" handle="yitian" role="用户"/>')
+    expect(projected[0].content).toContain('<message from="一天#yitian">在吗</message>')
   })
 
   it('excludes drives and pass turns from every projection', () => {
@@ -115,12 +171,12 @@ describe('projectRoomHistory', () => {
     expect(all).not.toContain('[pass]')
   })
 
-  it('merges consecutive user-side blocks for alternation-strict providers', () => {
+  it('每个人的发言都在同一块 History 里,一条消息一个信封', () => {
     const projected = projectRoomHistory({ messages: transcript, selfAgentId: 'research', agents: AGENTS })
     expect(projected).toHaveLength(1)
     expect(projected[0].role).toBe('user')
-    expect(projected[0].content).toContain('<msg from="阿明">')
-    expect(projected[0].content).toContain('<msg from="小李">')
+    expect(projected[0].content).toContain('<message from="阿明#pm">')
+    expect(projected[0].content).toContain('<message from="小李#fe">')
   })
 
   it('never signs a line with a raw id, and labels known agents by bare name', () => {
@@ -133,7 +189,7 @@ describe('projectRoomHistory', () => {
       selfAgentId: 'fe',
       agents: [{ id: 'other', name: '无衔' }],
     })
-    expect(projected[0].content).toBe('<msg from="前成员">你好</msg>')
+    expect(projected[0].content).toContain('<message from="前成员#ghost">你好</message>')
 
     const departed = projectRoomHistory({
       messages: [{ role: 'assistant', content: '你好', agentId: 'ghost' }],
@@ -141,14 +197,16 @@ describe('projectRoomHistory', () => {
       agents: [{ id: 'other', name: '无衔' }],
       resolveAgentName: id => (id === 'ghost' ? '老王' : undefined),
     })
-    expect(departed[0].content).toBe('<msg from="老王">你好</msg>')
+    expect(departed[0].content).toContain('<message from="老王#ghost">你好</message>')
 
     const titleless = projectRoomHistory({
       messages: [{ role: 'assistant', content: '你好', agentId: 'other' }],
       selfAgentId: 'fe',
       agents: [{ id: 'other', name: '无衔' }],
     })
-    expect(titleless[0].content).toBe('<msg from="无衔">你好</msg>')
+    expect(titleless[0].content).toContain('<message from="无衔#other">你好</message>')
+    // 没职位就不写 role —— 空属性是噪声,不补一个 role=""。
+    expect(titleless[0].content).toContain('<Member name="无衔" handle="other"/>')
   })
 })
 
@@ -163,10 +221,7 @@ describe('projectRoomHistory — quote replies (W7 §3.5 A)', () => {
       selfAgentId: 'fe',
       agents: AGENTS,
     })
-    expect(projected).toEqual([{
-      role: 'user',
-      content: '<msg from="用户">> 阿明: 我建议先做接口再做页面\n那就按你说的做</msg>',
-    }])
+    expect(projected[0].content).toContain('<message from="用户">> 阿明: 我建议先做接口再做页面\n那就按你说的做</message>')
   })
 
   it('quotes an agent reply with the same shape', () => {
@@ -180,7 +235,7 @@ describe('projectRoomHistory — quote replies (W7 §3.5 A)', () => {
       selfAgentId: 'pm',
       agents: AGENTS,
     })
-    expect(projected[0].content).toBe('<msg from="小李">> 用户: 谁来做登录页?\n我来接</msg>')
+    expect(projected[0].content).toContain('<message from="小李#fe">> 用户: 谁来做登录页?\n我来接</message>')
   })
 
   it('keeps the quoted context even when the original is no longer in the window', () => {
@@ -206,7 +261,7 @@ describe('projectRoomHistory — quote replies (W7 §3.5 A)', () => {
       selfAgentId: 'fe',
       agents: AGENTS,
     })
-    expect(projected[0].content).toBe('<msg from="用户">继续</msg>')
+    expect(projected[0].content).toContain('<message from="用户">继续</message>')
   })
 
   it('falls back to 成员 when the snapshot carries no author', () => {
@@ -226,7 +281,7 @@ describe('projectRoomHistory — reactions (W8 §3.5 B)', () => {
       selfAgentId: 'fe',
       agents: AGENTS,
     })
-    expect(projected[0].content).toBe('<msg from="用户">上线了 (🎉×2)</msg>')
+    expect(projected[0].content).toContain('<message from="用户">上线了 (🎉×2)</message>')
   })
 
   it('annotates another agent’s speech too, and stacks with the quote line', () => {
@@ -242,12 +297,12 @@ describe('projectRoomHistory — reactions (W8 §3.5 B)', () => {
       agents: AGENTS,
     })
     // Quote stays on top; the tally rides the tail of the speech line itself.
-    expect(projected[0].content).toBe('<msg from="小李">> 用户: 谁来做登录页?\n我来接 (👍)</msg>')
+    expect(projected[0].content).toContain('<message from="小李#fe">> 用户: 谁来做登录页?\n我来接 (👍)</message>')
   })
 
   it('never annotates the activated agent’s OWN past speech', () => {
     // Appending words an agent did not write to its own transcript would make
-    // it read「(👍)」as something it said.
+    // it read「(👍)」as something it said. 换了容器,这条铁律没有松动。
     const projected = projectRoomHistory({
       messages: [{
         role: 'assistant',
@@ -258,7 +313,8 @@ describe('projectRoomHistory — reactions (W8 §3.5 B)', () => {
       selfAgentId: 'fe',
       agents: AGENTS,
     })
-    expect(projected).toEqual([{ role: 'assistant', content: '我来接' }])
+    expect(projected[0].content).toContain('<message from="小李#fe">我来接</message>')
+    expect(projected[0].content).not.toContain('👍')
   })
 
   it('leaves a message with no reactions byte-identical', () => {
@@ -270,7 +326,7 @@ describe('projectRoomHistory — reactions (W8 §3.5 B)', () => {
       selfAgentId: 'fe',
       agents: AGENTS,
     })
-    expect(projected[0].content).toBe('<msg from="用户">继续</msg>\n\n<msg from="用户">再来</msg>')
+    expect(projected[0].content).toContain('<message from="用户">继续</message>\n<message from="用户">再来</message>')
   })
 })
 
@@ -302,16 +358,12 @@ describe('projectRoomHistory — collab system lines (W9.1)', () => {
 
   it('relays marked task lines as 系统 blocks and drops the operational ones', () => {
     const projected = projectRoomHistory({ messages: transcript, selfAgentId: 'pm', agents: AGENTS })
-    expect(projected).toEqual([
-      {
-        role: 'user',
-        content: [
-          '<msg from="系统">「加 notes.txt」→ 小李 开始执行(看板可查看现场)</msg>',
-          '<msg from="系统">「加 notes.txt」受阻:小李 无法继续,任务未交付</msg>',
-          '<msg from="小李">已交付,notes.txt 写好了</msg>',
-        ].join('\n\n'),
-      },
-    ])
+    expect(projected).toHaveLength(1)
+    expect(projected[0].content).toContain([
+      '<message from="系统">「加 notes.txt」→ 小李 开始执行(看板可查看现场)</message>',
+      '<message from="系统">「加 notes.txt」受阻:小李 无法继续,任务未交付</message>',
+      '<message from="小李#fe">已交付,notes.txt 写好了</message>',
+    ].join('\n'))
     // The reviewer must never be told about the budget gate.
     expect(projected[0].content).not.toContain('日预算')
   })
@@ -322,13 +374,14 @@ describe('projectRoomHistory — collab system lines (W9.1)', () => {
       selfAgentId: 'fe',
       agents: AGENTS,
     })
-    expect(projected).toEqual([{ role: 'user', content: '<msg from="系统">小研 加入了群聊</msg>' }])
+    expect(projected[0].content).toContain('<History>\n<message from="系统">小研 加入了群聊</message>\n</History>')
   })
 
   it('projects task facts to the agent they are about, too', () => {
     const projected = projectRoomHistory({ messages: transcript, selfAgentId: 'fe', agents: AGENTS })
-    expect(projected[0].content).toContain('<msg from="系统">「加 notes.txt」受阻')
-    expect(projected[1]).toEqual({ role: 'assistant', content: '已交付,notes.txt 写好了' })
+    expect(projected[0].content).toContain('<message from="系统">「加 notes.txt」受阻')
+    // 事关自己的那条交付,读起来仍然是自己写的那句话。
+    expect(projected[0].content).toContain('<message from="小李#fe">已交付,notes.txt 写好了</message>')
   })
 })
 
@@ -612,72 +665,242 @@ describe('buildCollabRoomContext', () => {
       roomName: '官网改版项目组',
     })
     expect(context).toContain('「官网改版项目组」')
-    expect(context).toContain('用户、阿明(产品经理)、小研(研究员)')
+    expect(context).toContain('<room name="官网改版项目组">')
+    // 花名册一人一行(2026-08-01 整理):这份名单的用处是被照抄。
+    expect(context).toContain('- 用户')
+    expect(context).toContain('- 阿明#pm(产品经理)')
+    expect(context).toContain('- 小研#research(研究员)')
     expect(context).not.toContain('小李') // self is not listed to itself
-    expect(context).toContain('「名字: 内容」')
+    expect(context).toContain('`name: text`')
     // Capability facts prevent collective confabulation ("我扫了项目结构"
     // with zero tools) and dead discussions (members not @-ing each other).
     expect(context).toContain('board')
-    expect(context).toContain('工作会话')
-    expect(context).toContain('@名字')
+    expect(context).toContain('work session')
+    expect(context).toContain('@name')
     // No stage directions, no rule lists, no pass instruction.
     expect(context).not.toContain('铁律')
     expect(context).not.toContain('[pass]')
-    expect(context).not.toContain('规则')
+    expect(context).not.toContain('<rules>')
     expect(context).not.toContain('扮演')
   })
-})
 
-describe('self task facts (W9.3)', () => {
-  const facts: CollabSelfTaskFact[] = [
-    { id: 'a1b2c3d4-1111-2222-3333-444444444444', title: '给项目加 notes.txt', status: 'doing' },
-    { id: 'ffffeeee-5555-6666-7777-888888888888', title: '重构配置读取', status: 'blocked' },
-  ]
-
-  it('states the cards as facts — short id, title, status — and nothing else', () => {
-    const line = formatCollabSelfTaskFacts(facts)
-    // W10: 状态用第一人称句子陈述,让"后台 worker 就是你自己"成为字面事实。
-    expect(line).toBe('(你名下的任务:#a1b2c3d4「给项目加 notes.txt」——你正在工作会话里执行;#ffffeeee「重构配置读取」——你的执行受阻。以看板上的状态为准。)')
-    // Facts only: no instruction, no role-play framing (persona 原文铁律).
-    expect(line).not.toContain('你应该')
-    expect(line).not.toContain('请')
-    expect(line).not.toContain('必须')
-  })
-
-  it('never states an own card in the third person (W10)', () => {
-    const doing = formatCollabSelfTaskFacts([facts[0]])
-    expect(doing).toContain('你正在工作会话里执行')
-    expect(doing).not.toContain('(进行中)')
-    const blocked = formatCollabSelfTaskFacts([facts[1]])
-    expect(blocked).toContain('你的执行受阻')
-    expect(blocked).not.toContain('(受阻)')
-  })
-
-  it('says nothing when the agent has no in-flight card', () => {
-    expect(formatCollabSelfTaskFacts([])).toBe('')
-    expect(buildCollabRoomContext({ self: AGENTS[1], members: AGENTS, roomName: 'r' }))
-      .not.toContain('你名下的任务')
-  })
-
-  it('rides along in the room note, after the situation note', () => {
+  /**
+   * 2026-08-01 整理:块边界靠标签闭合,不靠一个孤零零的右括号 —— 旧文本的
+   * 闭括号粘在最后一行句号后面(`…建卡指派给合适的成员。)`),模型要靠它判断
+   * 「情况说明结束了」。
+   */
+  it('每一段都是闭合的 XML,没有半开的块', () => {
     const context = buildCollabRoomContext({
       self: AGENTS[1],
       members: AGENTS,
       roomName: '官网改版项目组',
-      taskFacts: facts,
     })
-    expect(context).toContain('(你名下的任务:')
-    expect(context.indexOf('(情况说明:')).toBeLessThan(context.indexOf('(你名下的任务:'))
+    for (const tag of ['where_you_are', 'room', 'messaging', 'board', 'your_tools']) {
+      expect(context).toContain(`</${tag}>`)
+    }
+    // 旧形态的全角括号包裹不该有残留。
+    expect(context).not.toContain('(情况说明:')
+  })
 
+  /**
+   * 「你写的字停在这里 + 只有发送出得去」是全篇最吃重的一条,2026-08-01 之前它在
+   * 情况说明、通用规则、驱动信封里各有一份**逐字副本** —— 同一句话说三遍不会
+   * 变成三倍重要,只会读成模板套话。现在它只在 `<where_you_are>` 出现一次。
+   */
+  it('工位那句话在整份系统提示词里只说一次', () => {
+    const prompt = buildCollabRoomSystemPrompt({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+      personaPrompt: '你是小李。',
+      includeCommonRules: true,
+    })
+    const occurrences = prompt.split('stays here: what you write is a note to yourself').length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  /**
+   * 身份句柄(docs/design/collab-agent-handle.md)。花名册是 agent **唯一**能
+   * 学到句柄的地方 —— 它没有 picker,而 say/dm/board 三个工具都要指认「谁」。
+   */
+  it('每位成员都带句柄,而且是「名字#句柄(职位)」这个可照抄的形状', () => {
+    const context = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+    })
+    // 句柄拼在名字后面,不是整个标签后面:与正文里要写的 token 逐字一致。
+    expect(context).toContain('阿明#pm(产品经理)')
+    expect(context).not.toContain('阿明(产品经理)#')
+    // 而且教了怎么用它。
+    expect(context).toContain('@name#handle')
+    // 不传 userHandle 时用户行只有称呼(私聊两版的散文不塞句柄)。
+    expect(context).toContain('- 用户\n')
+  })
+
+  /**
+   * agent-dm-user.md §2.3:用户行与同事行同一书写法,「(用户)」占「(职位)」
+   * 那一格 —— agent 学得到同事的句柄却学不到用户的,`dm to:"一天#yitian"` 就
+   * 只能靠猜。
+   */
+  it('传了身份:用户行写成「名字#句柄(用户)」', () => {
+    const context = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+      userLabel: '一天',
+      userHandle: 'yitian',
+    })
+    expect(context).toContain('- 一天#yitian(用户)')
+    expect(context).toContain('- 阿明#pm(产品经理)')
+    expect(context).not.toContain('- 用户')
+  })
+
+  it('只传称呼不传句柄:退回单独一个称呼,不编一个句柄出来', () => {
+    const context = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+      userLabel: '一天',
+    })
+    expect(context).toContain('- 一天\n')
+    expect(context).toContain('- 阿明#pm(产品经理)')
+  })
+
+  /**
+   * 花名册**默认写在 `<room>` 里**(collab-turn-protocol-and-identity.md B)。
+   * 它曾被搬进 `<ChatRoom><Members>`,而 v3 V2 删掉了那块载荷 —— 名单从此指向
+   * 一段不存在的文本,模型于是把用户与花名册上的名字数成两个人(幽灵成员)。
+   */
+  it('真回合:花名册在 <room> 里,用户行与同事行同一书写法', () => {
+    const context = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+      userLabel: '一天',
+      userHandle: 'yitian',
+      rosterInSystemPrompt: true,
+      driveEnvelope: true,
+    })
+    expect(context).toContain('<room name="官网改版项目组">')
+    expect(context).toContain('- 一天#yitian(用户)')
+    expect(context).toContain('- 阿明#pm(产品经理)')
+    expect(context).toContain('in the roster above')
+    // 真回合的消息形状是 drive 信封,不是判定那一路的压缩窗口。
+    expect(context).toContain('`<message from="名字#句柄">` lines')
+    expect(context).not.toContain('`name: text`')
+    expect(context).not.toContain('`<ChatRoom>` block')
+  })
+
+  /**
+   * 视野说明是 **drive 的属性**,与花名册在哪无关(B.2:两个正交开关)。
+   */
+  it('视野说明跟着 driveEnvelope 走,不跟着花名册走', () => {
+    const withEnvelope = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+      driveEnvelope: true,
+    })
+    expect(withEnvelope).toContain('<Notification>')
+    expect(withEnvelope).toContain('<Folded count=')
+    // drive 形态下没有 `<History>` 标签 —— 读过的消息就散在历史里。
+    expect(withEnvelope).not.toContain('`<History>`')
+
+    const judgement = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+    })
+    expect(judgement).not.toContain('<Notification>')
+  })
+
+  /**
+   * 判定那一路不传任何开关:花名册照旧在,压缩窗口的 relay 说明照旧在。
+   */
+  it('不传就照旧:判定那一路的花名册一个字没少', () => {
+    const context = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+      userLabel: '一天',
+      userHandle: 'yitian',
+    })
+    expect(context).toContain('- 一天#yitian(用户)')
+    expect(context).toContain('- 阿明#pm(产品经理)')
+    expect(context).toContain('`name: text`')
+    expect(context).toContain('in the roster above')
+    expect(context).not.toContain('<ChatRoom>')
+  })
+
+  /**
+   * 判定薄档(D.1):判定是零工具的裸调用,`<your_tools>`/状态板/`<board>`
+   * 对它而言字字是假话。
+   */
+  it('判定薄档裁掉工具面、状态板与看板段', () => {
+    const context = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+      judgement: true,
+    })
+    expect(context).not.toContain('<your_tools>')
+    expect(context).not.toContain('<board>')
+    expect(context).not.toContain('state board')
+    // 场子与花名册仍然要在:判定要知道自己在哪、有谁。
+    expect(context).toContain('<where_you_are>')
+    expect(context).toContain('<room name="官网改版项目组">')
+  })
+
+  it('句柄只给模型 —— 群里看到的仍然是「@名字」,这一点写在情况说明里', () => {
+    const context = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+    })
+    expect(context).toContain('What the chat displays is still `@name`')
+  })
+})
+
+/**
+ * `<your_cards>` 已退役(agent-self-state-variables.md §4.4):在飞的卡改由
+ * `my_cards` 变量承载,格式与"不指挥"的纪律钉在
+ * variables/__tests__/agent-self.test.ts。这里守的是它留下的两个洞:
+ * 手写那一段真的没了,以及状态板这件事在群房里被说了出来。
+ */
+describe('state board fact (P3 群聊解禁变量通道)', () => {
+  it('no longer hand-writes the in-flight cards into the room note', () => {
+    const context = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+    })
+    expect(context).not.toContain('<your_cards>')
+    expect(context).not.toContain('you are executing it in a work session')
+  })
+
+  it('states that the state board exists here, without telling the agent to use it', () => {
+    const context = buildCollabRoomContext({
+      self: AGENTS[1],
+      members: AGENTS,
+      roomName: '官网改版项目组',
+    })
+    expect(context).toContain('You have a state board here too')
+    expect(context).toContain('`variable` tool')
+    // 只陈述事实,不指挥(roster 铁律 + W22 的教训:督促换来废话行为)。
+    expect(context).not.toContain('remember to')
+    expect(context).not.toContain('you should')
+    expect(context).not.toContain('make sure to')
+  })
+
+  it('keeps the persona verbatim in front of the workspace', () => {
     const prompt = buildCollabRoomSystemPrompt({
       self: AGENTS[1],
       members: AGENTS,
       roomName: '官网改版项目组',
       personaPrompt: '你是小李,前端工程师。',
-      taskFacts: facts,
     })
     expect(prompt.startsWith('你是小李,前端工程师。')).toBe(true)
-    expect(prompt).toContain('#ffffeeee「重构配置读取」——你的执行受阻')
   })
 })
 
@@ -690,8 +913,12 @@ describe('buildCollabRoomSystemPrompt', () => {
       roomName: '官网改版项目组',
       personaPrompt: persona,
     })
+    // persona 在 XML **外面**:它是这个 agent 的身份原文,包进 harness 造的
+    // 标签里就变成了"系统提供的一段资料"。
     expect(prompt.startsWith(persona)).toBe(true)
-    expect(prompt).toContain('(情况说明:')
+    expect(prompt).toContain('<workspace>')
+    expect(prompt.indexOf(persona)).toBeLessThan(prompt.indexOf('<workspace>'))
+    expect(prompt.endsWith('</workspace>')).toBe(true)
     // Nothing prepended, no wrapper sentences, no product identity.
     expect(prompt).not.toContain('你就是「')
     expect(prompt).not.toContain('扮演')
@@ -722,11 +949,11 @@ describe('buildCollabRoomSystemPrompt', () => {
 describe('mergeCollabProjectedRows (R4)', () => {
   it('merges consecutive user blocks', () => {
     expect(mergeCollabProjectedRows([
-      { role: 'user', content: '<msg from="用户">一</msg>' },
-      { role: 'user', content: '<msg from="小李">二</msg>' },
+      { role: 'user', content: '<message from="用户">一</message>' },
+      { role: 'user', content: '<message from="小李">二</message>' },
       { role: 'assistant', content: '三' },
     ])).toEqual([
-      { role: 'user', content: '<msg from="用户">一</msg>\n\n<msg from="小李">二</msg>' },
+      { role: 'user', content: '<message from="用户">一</message>\n\n<message from="小李">二</message>' },
       { role: 'assistant', content: '三' },
     ])
   })
@@ -789,30 +1016,41 @@ describe('mergeCollabProjectedRows (R4)', () => {
   })
 })
 
-describe('projectRoomHistory — 相邻发言合并 (R4)', () => {
+/**
+ * 一条消息一个信封,一间房一块 History(collab-chatroom-payload.md)。
+ *
+ * 相邻合并那件事已经不在房间侧发生了 —— 整块就是一行,没有相邻的行可合。留下
+ * 这组用例是为了钉住另一半:塌成一块之后,**每条发言仍然是独立的一条**,say
+ * 调三次就是三个信封,不能被拼成一段。
+ */
+describe('projectRoomHistory — 一块 History,一条消息一个信封', () => {
   const MEMBERS = [{ id: 'fe', name: '小李' }, { id: 'pm', name: '阿明' }]
   const say = (agentId: string, content: string) =>
     ({ role: 'assistant' as const, agentId, content, source: 'collab-say' })
 
-  it('merges one agent’s three say calls into one assistant block', () => {
+  it('自己的三次 say 是三个信封,不是一段独白', () => {
     const projected = projectRoomHistory({
       messages: [say('fe', '一'), say('fe', '二'), say('fe', '三')],
       selfAgentId: 'fe',
       agents: MEMBERS,
     })
-    expect(projected).toEqual([{ role: 'assistant', content: '一\n\n二\n\n三' }])
+    expect(projected).toHaveLength(1)
+    expect(projected[0].role).toBe('user')
+    expect(projected[0].content).toContain(
+      '<message from="小李#fe">一</message>\n<message from="小李#fe">二</message>\n<message from="小李#fe">三</message>',
+    )
   })
 
-  it('keeps other members on the user side, merged into one block', () => {
+  it('别人的连续发言同样一条一个信封', () => {
     const projected = projectRoomHistory({
       messages: [say('fe', '一'), say('fe', '二')],
       selfAgentId: 'pm',
       agents: MEMBERS,
     })
-    expect(projected).toEqual([{ role: 'user', content: '<msg from="小李">一</msg>\n\n<msg from="小李">二</msg>' }])
+    expect(projected[0].content).toContain('<message from="小李#fe">一</message>\n<message from="小李#fe">二</message>')
   })
 
-  it('merges across a system line that sits between two utterances', () => {
+  it('系统行按发生顺序夹在中间', () => {
     const projected = projectRoomHistory({
       messages: [
         say('fe', '一'),
@@ -822,10 +1060,9 @@ describe('projectRoomHistory — 相邻发言合并 (R4)', () => {
       selfAgentId: 'pm',
       agents: MEMBERS,
     })
-    // The task line projects as user-side text, so all three are one block.
     expect(projected).toHaveLength(1)
     expect(projected[0].role).toBe('user')
-    expect(projected[0].content).toBe('<msg from="小李">一</msg>\n\n<msg from="系统">「加 notes.txt」→ 小李 开始执行</msg>\n\n<msg from="小李">二</msg>')
+    expect(projected[0].content).toContain('<message from="小李#fe">一</message>\n<message from="系统">「加 notes.txt」→ 小李 开始执行</message>\n<message from="小李#fe">二</message>')
   })
 })
 

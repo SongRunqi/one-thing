@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>右栏 · 线程 · 协调器状态条设计稿</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .row { max-width: 1180px; margin: 26px auto 0; display: flex; gap: 30px; flex-wrap: wrap; }
+  .cap { font-size: 11.5px; color: var(--ink-3); margin-top: 10px; max-width: 330px; }
+  .cap b { color: var(--ink); font-weight: 600; }
+
+  /* ══ 右栏本体(与 right-panel.html 同一套变量,一个都没改)══ */
+  .rp {
+    --p-bg: #fbfaf8;
+    --p-fill: rgba(28,27,24,.045);
+    --p-fill-on: rgba(28,27,24,.075);
+    --p-hair: rgba(28,27,24,.08);
+    --p-ink: #26251f;
+    --p-row: #4a4842;
+    --p-mute: #97948c;
+    --p-run: #4f8a3d;
+    --p-wait: #b3711f;
+    display: flex; flex-direction: column;
+    background: var(--p-bg); color: var(--p-row);
+    font-size: 13px; line-height: 1.45; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(20,18,12,.06), 0 10px 26px rgba(20,18,12,.07);
+  }
+  .rp.w330 { width: 330px } .rp.w250 { width: 250px }
+
+  .seg { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--p-hair); }
+  .seg button { flex: 1 1 0; min-width: 0; height: 38px; border: 0; background: none;
+    font: inherit; color: var(--p-mute); cursor: pointer; position: relative;
+    display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .seg button.on { color: var(--p-ink); font-weight: 550; }
+  .seg button.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px;
+    height: 1.5px; background: var(--p-ink); }
+  .seg .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+  .seg .dot.run { background: var(--p-run) }
+
+  /* ══ ① 常驻条 ══════════════════════════════════════════════════════════
+     一行,高 32px,与线程列表之间只有一条 hairline。它**永远在**——空闲时也在,
+     因为"现在没人在动"本身就是用户要看的状态。 */
+  .cd { flex-shrink: 0; border-bottom: 1px solid var(--p-hair); }
+  .cd-bar { display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px;
+    cursor: pointer; user-select: none; }
+  .cd-bar:hover { background: var(--p-fill) }
+  .cd-bar .lamp { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    background: var(--p-mute); }
+  .cd-bar .lamp.run { background: var(--p-run); box-shadow: 0 0 0 3px rgba(79,138,61,.14) }
+  .cd-bar .lamp.wait { background: var(--p-wait) }
+  .cd-bar .lamp.off { background: transparent; box-shadow: inset 0 0 0 1px var(--p-mute) }
+  .cd-bar .who { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--p-ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cd-bar .who em { font-style: normal; color: var(--p-mute) }
+  .cd-bar .tail { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 10.5px; color: var(--p-mute); font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .cd-bar .chev { width: 9px; height: 9px; border-right: 1.4px solid var(--p-mute);
+    border-bottom: 1.4px solid var(--p-mute); transform: rotate(45deg) translate(-2px,-2px);
+    flex-shrink: 0; }
+  .cd.open .cd-bar .chev { transform: rotate(-135deg) translate(-1px,-1px) }
+
+  /* ══ ② 展开体 ══════════════════════════════════════════════════════════ */
+  .cd-body { padding: 2px 0 8px; }
+  .cd-sec { padding: 9px 12px 2px; font-size: 10.5px; color: var(--p-mute);
+    letter-spacing: .02em; }
+
+  /* ── 现在:一行一个参与者。左端是**状态字形**而不是头像——头像在下面的线程
+       列表里已经是主角,这一段要的是"谁处在什么阶段",字形比脸更快读。 ── */
+  .cd-now { display: flex; align-items: center; gap: 8px; padding: 5px 12px; cursor: pointer; }
+  .cd-now:hover { background: var(--p-fill) }
+  .cd-now .gl { flex: 0 0 auto; width: 12px; text-align: center; font-size: 10px;
+    color: var(--p-mute); line-height: 1; }
+  .cd-now.is-run .gl { color: var(--p-run) }
+  .cd-now .nm { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--p-ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cd-now .rs { flex: 0 0 auto; font-size: 11px; color: var(--p-mute) }
+  .cd-now .el { flex: 0 0 auto; width: 34px; text-align: right; font-size: 10.5px;
+    color: var(--p-mute); font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .cd-now .stop { display: none; flex: 0 0 auto; border: 0; background: none; padding: 0 0 0 2px;
+    font: inherit; font-size: 10.5px; color: var(--p-wait); cursor: pointer; }
+  .cd-now:hover .el { display: none }
+  .cd-now:hover .stop { display: block }
+
+  /* ── 闸:标签 + 一条 3px 的量线 + 数值。不是进度条控件,是一条线。 ── */
+  .cd-gate { display: flex; align-items: center; gap: 8px; padding: 4px 12px; }
+  .cd-gate .gn { flex: 0 0 52px; font-size: 11px; color: var(--p-mute) }
+  .cd-gate .gb { flex: 1 1 auto; height: 3px; background: rgba(28,27,24,.07); position: relative; }
+  .cd-gate .gb i { position: absolute; inset: 0 auto 0 0; background: var(--p-row); }
+  .cd-gate.warn .gb i { background: var(--p-wait) }
+  .cd-gate .gv { flex: 0 0 auto; font-size: 10.5px; color: var(--p-mute);
+    font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .cd-gate.warn .gv { color: var(--p-wait) }
+
+  /* ── 接力环:一条 `名 › 名 › 名`,持棒者上墨加粗。 ── */
+  .cd-ring { display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+    padding: 3px 12px 5px; font-size: 11.5px; color: var(--p-mute); }
+  .cd-ring b { font-weight: 600; color: var(--p-ink); position: relative; }
+  .cd-ring b::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px;
+    height: 1.5px; background: var(--p-ink); }
+  .cd-ring s { text-decoration: none; opacity: .45 }
+  .cd-ring .sep { opacity: .45 }
+  .cd-relay-meta { display: flex; justify-content: space-between; padding: 5px 12px 2px;
+    font-size: 10.5px; color: var(--p-mute); font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  /* ── 刚才:时间戳左对齐一列,事件一列。Linear 的 activity 就是这个骨架。 ── */
+  .cd-log { display: flex; gap: 9px; padding: 3px 12px; font-size: 11.5px; }
+  .cd-log .t { flex: 0 0 30px; text-align: right; color: var(--p-mute); font-size: 10.5px;
+    font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding-top: 1px; }
+  .cd-log .e { flex: 1 1 auto; min-width: 0; color: var(--p-row) }
+  .cd-log .e em { font-style: normal; color: var(--p-ink); font-weight: 550 }
+  .cd-log.mute .e { color: var(--p-mute) }
+
+  /* ── 冻结:整条压灰 + 一颗恢复键 ── */
+  .cd.frozen .cd-bar .who { color: var(--p-mute) }
+  .cd-resume { border: 0; background: none; font: inherit; font-size: 10.5px;
+    color: var(--p-wait); cursor: pointer; padding: 0 }
+
+  /* 线程列表(下半截,证明它和状态条同处一面) */
+  .tl { flex: 1 1 auto; padding: 4px 0; overflow: hidden }
+  .gh { padding: 10px 12px 3px; font-size: 11px; color: var(--p-mute) }
+  .tr { display: flex; align-items: center; gap: 10px; padding: 6px 12px; }
+  .tr:hover { background: var(--p-fill) }
+  .tr .av { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; display: grid;
+    place-items: center; color: #fff; font-size: 11px; font-weight: 600 }
+  .tr .txt { flex: 1 1 auto; min-width: 0 }
+  .tr .txt b { display: block; font-size: 12.5px; font-weight: 550; color: var(--p-ink) }
+  .tr .txt i { display: block; font-style: normal; font-size: 11.5px; color: var(--p-mute) }
+  .tr .mt { flex: 0 0 auto; font-size: 10px; color: var(--p-mute);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace }
+</style>
+</head>
+<body>
+
+<h1>右栏 · 线程 · 协调器状态条</h1>
+<p class="sub">
+  「协调器现在在干什么」放进**线程**格的顶部:线程本来就是"这间房正在发生什么"的那一面,
+  而协调器是那件事的发动机。放别处就要在两个视图之间来回对照。
+</p>
+
+<div class="row">
+
+  <!-- ①② 顺序模式 · 展开 -->
+  <div>
+    <div class="rp w330">
+      <div class="seg">
+        <button class="on">线程 <i class="dot run"></i></button>
+        <button>成员</button>
+        <button>看板</button>
+      </div>
+
+      <div class="cd open">
+        <div class="cd-bar">
+          <i class="lamp run"></i>
+          <span class="who">阿般 正在说</span>
+          <span class="tail">顺序 · 6棒</span>
+          <i class="chev"></i>
+        </div>
+
+        <div class="cd-body">
+          <div class="cd-sec">现在</div>
+          <div class="cd-now is-run">
+            <i class="gl">▶</i>
+            <span class="nm">阿般</span>
+            <span class="rs">轮到发言</span>
+            <span class="el">0:12</span>
+            <button class="stop">停</button>
+          </div>
+          <div class="cd-now">
+            <i class="gl">○</i>
+            <span class="nm">小李</span>
+            <span class="rs">被 @ 激活</span>
+            <span class="el">0:04</span>
+            <button class="stop">撤</button>
+          </div>
+
+          <div class="cd-sec">接力</div>
+          <div class="cd-ring">
+            <b>阿般</b><span class="sep">›</span>
+            <span>小李</span><span class="sep">›</span>
+            <span>Iris</span><span class="sep">›</span>
+            <span>老丁</span>
+          </div>
+          <div class="cd-relay-meta">
+            <span>第 6 棒 · 第 2 圈</span>
+            <span>不限圈</span>
+          </div>
+
+          <div class="cd-sec">闸</div>
+          <div class="cd-gate">
+            <span class="gn">连续发言</span>
+            <span class="gb"><i style="width:22%"></i></span>
+            <span class="gv">7/32</span>
+          </div>
+          <div class="cd-gate warn">
+            <span class="gn">今日花费</span>
+            <span class="gb"><i style="width:84%"></i></span>
+            <span class="gv">$4.21/5</span>
+          </div>
+
+          <div class="cd-sec">刚才</div>
+          <div class="cd-log"><span class="t">0:12</span><span class="e">传棒 → <em>阿般</em></span></div>
+          <div class="cd-log"><span class="t">0:31</span><span class="e"><em>老丁</em> 说了 1 句</span></div>
+          <div class="cd-log mute"><span class="t">0:48</span><span class="e">Iris 没说话</span></div>
+          <div class="cd-log"><span class="t">1:02</span><span class="e">起棒 → <em>Iris</em></span></div>
+          <div class="cd-log"><span class="t">1:02</span><span class="e">收到你的消息</span></div>
+        </div>
+      </div>
+
+      <div class="tl">
+        <div class="gh">正在跑</div>
+        <div class="tr">
+          <span class="av" style="background:#6c7a5b">般</span>
+          <span class="txt"><b>阿般</b><i>服务房间对话</i></span>
+          <span class="mt">12s</span>
+        </div>
+        <div class="gh">今天</div>
+        <div class="tr">
+          <span class="av" style="background:#8a6a55">丁</span>
+          <span class="txt"><b>老丁</b><i>登录页改版</i></span>
+          <span class="mt">6m</span>
+        </div>
+      </div>
+    </div>
+    <p class="cap">
+      <b>顺序(接力)· 展开。</b>「现在」的行**可点** —— 点正在说的那位直接下钻到它的执行会话,
+      与下面的线程列表是同一个靶子。这是把状态放进线程格的理由:看到异常,一步就能进去看。
+      悬停行时右端的计时换成动作(停 / 撤)。
+    </p>
+  </div>
+
+  <!-- ③ 并行模式 · 判定在飞 -->
+  <div>
+    <div class="rp w330">
+      <div class="seg">
+        <button class="on">线程 <i class="dot run"></i></button>
+        <button>成员</button>
+        <button>看板</button>
+      </div>
+
+      <div class="cd open">
+        <div class="cd-bar">
+          <i class="lamp wait"></i>
+          <span class="who">4 人在判断要不要接话</span>
+          <span class="tail">并行</span>
+          <i class="chev"></i>
+        </div>
+
+        <div class="cd-body">
+          <div class="cd-sec">现在</div>
+          <div class="cd-now">
+            <i class="gl">◌</i>
+            <span class="nm">意愿判定</span>
+            <span class="rs">阿般 小李 Iris 老丁</span>
+            <span class="el">2.1s</span>
+          </div>
+
+          <div class="cd-sec">闸</div>
+          <div class="cd-gate">
+            <span class="gn">连续发言</span>
+            <span class="gb"><i style="width:6%"></i></span>
+            <span class="gv">2/32</span>
+          </div>
+          <div class="cd-gate">
+            <span class="gn">同时发言</span>
+            <span class="gb"><i style="width:0%"></i></span>
+            <span class="gv">0/6</span>
+          </div>
+          <div class="cd-gate">
+            <span class="gn">今日花费</span>
+            <span class="gb"><i style="width:8%"></i></span>
+            <span class="gv">$0.42/5</span>
+          </div>
+
+          <div class="cd-sec">刚才</div>
+          <div class="cd-log"><span class="t">2s</span><span class="e">判定 <em>4</em> 人…</span></div>
+          <div class="cd-log"><span class="t">2s</span><span class="e">收到你的消息</span></div>
+          <div class="cd-log mute"><span class="t">3m</span><span class="e">判定 4 人 → 都没接话</span></div>
+          <div class="cd-log"><span class="t">6m</span><span class="e"><em>老丁</em> 说了 2 句</span></div>
+        </div>
+      </div>
+
+      <div class="tl">
+        <div class="gh">今天</div>
+        <div class="tr">
+          <span class="av" style="background:#8a6a55">丁</span>
+          <span class="txt"><b>老丁</b><i>登录页改版</i></span>
+          <span class="mt">6m</span>
+        </div>
+      </div>
+    </div>
+    <p class="cap">
+      <b>并行 · 判定在飞。</b>「3m 判定 4 人 → 都没接话」这一行,就是"刚才为什么没人理我"的答案。
+      判定是最贵也最不可见的一步,它必须在这里留下痕迹。
+    </p>
+  </div>
+
+  <!-- ④ 收起 / 空闲 / 冻结 / 窄栏 -->
+  <div>
+    <div class="rp w250">
+      <div class="seg">
+        <button class="on">线程</button>
+        <button>成员</button>
+        <button>看板</button>
+      </div>
+      <div class="cd">
+        <div class="cd-bar">
+          <i class="lamp off"></i>
+          <span class="who"><em>空闲</em></span>
+          <span class="tail">顺序</span>
+          <i class="chev"></i>
+        </div>
+      </div>
+      <div class="cd frozen">
+        <div class="cd-bar">
+          <i class="lamp"></i>
+          <span class="who">已暂停 · 队列已清空</span>
+          <span class="tail"><button class="cd-resume">恢复</button></span>
+          <i class="chev"></i>
+        </div>
+      </div>
+      <div class="cd">
+        <div class="cd-bar">
+          <i class="lamp wait"></i>
+          <span class="who">已按住 · 连聊 32 条</span>
+          <span class="tail">顺序</span>
+          <i class="chev"></i>
+        </div>
+      </div>
+      <div class="tl">
+        <div class="gh">今天</div>
+        <div class="tr">
+          <span class="av" style="background:#8a6a55">丁</span>
+          <span class="txt"><b>老丁</b><i>登录页改版</i></span>
+          <span class="mt">6m</span>
+        </div>
+      </div>
+    </div>
+    <p class="cap">
+      <b>收起态的四种(250px 窄栏)。</b>常驻条**永远在**:空闲也是状态。
+      一行说清"此刻卡在哪儿" —— 空闲 / 暂停 / 撞闸 / 在跑,右端永远是模式。
+      撞闸和暂停这两种把「恢复」直接放在条上,不必展开。
+    </p>
+  </div>
+
+</div>
+
+<h2 style="max-width:1180px;margin:34px auto 0">三条设计纪律</h2>
+<div class="row">
+  <p class="cap" style="max-width:340px">
+    <b>一、不新增一份账。</b>在跑读 <code>runtime.activeTurns</code>,排队读 <code>runtime.queue</code>,
+    判定读 <code>runtime.judgements</code>,闸读 <code>chainCount</code> / 预算账本 / <code>relayBatons</code>。
+    协调器已经握着全部真相,这一面只是把它画出来 —— 任何"为了显示而记的第二本账"都会先于真相腐烂。
+  </p>
+  <p class="cap" style="max-width:340px">
+    <b>二、计数只在有意义时出现。</b>右栏其余各处的纪律是"只说有没有,不说几个"(状态点)。
+    这一面是例外且只此一处:<b>7/32</b>、<b>第 6 棒</b>、<b>$4.21/5</b> 恰恰是用户来这儿要看的东西。
+    但它们一律 tabular mono 右对齐 —— 是仪表,不是文案。
+  </p>
+  <p class="cap" style="max-width:340px">
+    <b>三、每一行都能点进去。</b>正在说的 → 它的执行会话;排队的 → 撤;撞闸的 → 那一格设置。
+    一个只能看不能动的状态面板,第二天就没人看了。
+  </p>
+</div>
+
+</body>
+</html>

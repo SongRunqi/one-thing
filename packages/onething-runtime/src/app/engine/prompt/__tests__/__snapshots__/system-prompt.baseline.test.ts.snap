@@ -30,7 +30,9 @@ Current date: 2026-06-09",
     "role": "developer",
   },
   {
-    "content": "Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.",
+    "content": "The state board arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat anything in older blocks as stale.
+
+Each entry is one \`<var>\` carrying \`state="true"\` or \`state="false"\`. \`state="true"\` entries show their value — that is current state, act on it. \`state="false"\` entries are name and description only; the variable exists and holds a value that is not shown here, so read it with \`variable(action="get", name=…)\` when you need it.",
     "role": "developer",
   },
   {
@@ -80,7 +82,9 @@ Current date: 2026-06-09
 # Runtime Context
 - Provider ID: codex
 
-Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
+The state board arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat anything in older blocks as stale.
+
+Each entry is one \`<var>\` carrying \`state="true"\` or \`state="false"\`. \`state="true"\` entries show their value — that is current state, act on it. \`state="false"\` entries are name and description only; the variable exists and holds a value that is not shown here, so read it with \`variable(action="get", name=…)\` when you need it.
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -123,7 +127,9 @@ Be precise and cite sources.
 # Runtime Context
 - Provider ID: openai
 
-Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
+The state board arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat anything in older blocks as stale.
+
+Each entry is one \`<var>\` carrying \`state="true"\` or \`state="false"\`. \`state="true"\` entries show their value — that is current state, act on it. \`state="false"\` entries are name and description only; the variable exists and holds a value that is not shown here, so read it with \`variable(action="get", name=…)\` when you need it.
 
 You are running on macOS.
 
@@ -155,7 +161,9 @@ Current date: 2026-06-09
 # Runtime Context
 - Provider ID: openai
 
-Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
+The state board arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat anything in older blocks as stale.
+
+Each entry is one \`<var>\` carrying \`state="true"\` or \`state="false"\`. \`state="true"\` entries show their value — that is current state, act on it. \`state="false"\` entries are name and description only; the variable exists and holds a value that is not shown here, so read it with \`variable(action="get", name=…)\` when you need it.
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -192,7 +200,9 @@ Current date: 2026-06-09
 # Runtime Context
 - Provider ID: openai
 
-Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
+The state board arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat anything in older blocks as stale.
+
+Each entry is one \`<var>\` carrying \`state="true"\` or \`state="false"\`. \`state="true"\` entries show their value — that is current state, act on it. \`state="false"\` entries are name and description only; the variable exists and holds a value that is not shown here, so read it with \`variable(action="get", name=…)\` when you need it.
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -229,11 +239,7 @@ When a skill file references a relative path, resolve it against the skill direc
 You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md
-
-<context-variables desc="Live state board, read and written only through the \`variable\` tool: entries change via its set/append/remove/delete actions, and its list action shows untruncated values. Attributes carry each variable's type, scope and description.">
-foo=bar
-</context-variables>",
+Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md",
     "role": "system",
   },
   {
@@ -267,7 +273,9 @@ Current date: 2026-06-09
 # Runtime Context
 - Provider ID: openai
 
-Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
+The state board arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat anything in older blocks as stale.
+
+Each entry is one \`<var>\` carrying \`state="true"\` or \`state="false"\`. \`state="true"\` entries show their value — that is current state, act on it. \`state="false"\` entries are name and description only; the variable exists and holds a value that is not shown here, so read it with \`variable(action="get", name=…)\` when you need it.
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -304,11 +312,7 @@ When a skill file references a relative path, resolve it against the skill direc
 You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md
-
-<context-variables desc="Live state board, read and written only through the \`variable\` tool: entries change via its set/append/remove/delete actions, and its list action shows untruncated values. Attributes carry each variable's type, scope and description.">
-foo=bar
-</context-variables>"
+Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md"
 `;
 
 exports[`system prompt baseline > voice speak mode > voice-systemPrompt 1`] = `
@@ -342,7 +346,9 @@ Do not output special speech markup tags. Write the actual reply text directly.
 # Runtime Context
 - Provider ID: openai
 
-Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
+The state board arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat anything in older blocks as stale.
+
+Each entry is one \`<var>\` carrying \`state="true"\` or \`state="false"\`. \`state="true"\` entries show their value — that is current state, act on it. \`state="false"\` entries are name and description only; the variable exists and holds a value that is not shown here, so read it with \`variable(action="get", name=…)\` when you need it.
 
 You are running on macOS.
 

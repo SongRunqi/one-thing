@@ -184,7 +184,6 @@ export interface CoreSystemPromptSnapshotBuildPromptInput<TSettings, TSkill> {
   skills: TSkill[]
   workingDirectory?: string
   workingDirectoryRoots?: string[]
-  contextVariables: string
   activeProject?: CorePromptActiveProject
   knownProjects?: CorePromptKnownProjects
   toolNames: string[]
@@ -231,7 +230,6 @@ export interface BuildSystemPromptSnapshotWithAdaptersOptions<
     known?: CorePromptKnownProjects
   }
   getAgent(agentId?: string): CoreSystemPromptSnapshotAgent
-  buildContextVariablesPromptText(sessionId: string): Promise<string> | string
   buildPrompt(input: CoreSystemPromptSnapshotBuildPromptInput<TSettings, TSkill>): Promise<CoreSystemPromptSnapshotPromptResult> | CoreSystemPromptSnapshotPromptResult
   now?: () => number
 }
@@ -469,7 +467,6 @@ export async function buildSystemPromptSnapshotWithAdapters<
     skills: enabledSkills,
     workingDirectory: session.workingDirectory,
     workingDirectoryRoots: session.workingDirectoryRoots,
-    contextVariables: await options.buildContextVariablesPromptText(options.sessionId),
     activeProject: projectVars.active,
     knownProjects: projectVars.known,
     toolNames: [...Object.keys(builtinToolDefinitions), ...nativeProviderTools],

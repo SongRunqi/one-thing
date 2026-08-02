@@ -153,7 +153,6 @@ describe('onething agent-loop stream runtime', () => {
           description: 'Search MCP',
           parameterSchema: { type: 'object', properties: {} },
         }),
-        buildContextVariablesPromptText: () => 'vars',
         buildProjectPromptVars: () => ({
           active: { hasActive: true, path: '/repo', displayPath: '/repo' },
           known: { hasAny: false, entries: [] },
@@ -223,7 +222,6 @@ describe('onething agent-loop stream runtime', () => {
     expect(promptInputs[0]).toMatchObject({
       sessionId: 's1',
       agentId: 'agent-1',
-      contextVariables: 'vars',
       workingDirectory: '/repo',
       toolNames: ['bash'],
       mcpToolNames: ['mcp_search'],

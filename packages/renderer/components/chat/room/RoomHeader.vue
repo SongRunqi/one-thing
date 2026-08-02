@@ -386,18 +386,19 @@ function handleMoreSelect(id: string): void {
   flex-shrink: 0;
 }
 
-.room-solo-avatar-wrap::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
+/* hover 只垫一层软阴影的立体感 —— 不描色、不缩放。四处头像同一句法。 */
+.room-solo-avatar-wrap {
   border-radius: 50%;
-  border: 1px solid transparent;
-  transition: border-color 0.12s ease;
+  transition: box-shadow 0.16s ease;
 }
 
-.room-solo-open:hover .room-solo-avatar-wrap::after,
-.room-solo-open:focus-visible .room-solo-avatar-wrap::after {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+.room-solo-open:hover .room-solo-avatar-wrap,
+.room-solo-open:focus-visible .room-solo-avatar-wrap {
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 22%, transparent);
+}
+
+.room-solo-open:active .room-solo-avatar-wrap {
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 18%, transparent);
 }
 
 .room-solo-text {

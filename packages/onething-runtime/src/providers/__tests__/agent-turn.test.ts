@@ -232,7 +232,15 @@ describe('onething provider agent turn runners', () => {
       },
     })
 
-    expect(result).toEqual({ text: 'hello', reasoning: 'think' })
+    // usage 随行(2026-08-02):旁路调用(意愿判定、标题、摘要)全靠
+    // `if (result.usage) onUsage(...)` 计费,而这条 generate 路径此前把它丢在
+    // 最后一步 —— 于是走它的整类开销在账本上一条都不留(真机实证:
+    // `collab-willingness` 从标签存在至今零记录,而判定一直在跑)。
+    expect(result).toEqual({
+      text: 'hello',
+      reasoning: 'think',
+      usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+    })
     expect(dumps[0]).toMatchObject({
       providerId: 'deepseek',
       model: 'deepseek-reasoner',

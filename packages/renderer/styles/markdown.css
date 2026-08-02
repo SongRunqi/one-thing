@@ -58,13 +58,16 @@
 }
 
 /* Links */
-.md-body a {
+.md-body a,
+.md-say-scope a {
 	color: var(--accent);
 	text-decoration: none;
 }
 
-.md-body a:hover {
+.md-body a:hover,
+.md-say-scope a:hover {
 	text-decoration: underline;
+	text-underline-offset: 2px;
 }
 
 /* 群聊行内标签(collab-team-v2 §6.1)。
@@ -75,20 +78,127 @@
 	white-space: nowrap;
 }
 
+/* 未验真态是一段哑文本(设计稿 §C 的 .chip-dead):虚点下划线说明"这里本来
+   想指个东西",但它点不动。不给它 chip 的体面是安全设计的视觉兑现。 */
+.collab-tag[data-collab-verify="plain"] {
+	color: var(--ui-text-muted-fg, var(--muted));
+	border-bottom: 1px dotted color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 55%, transparent);
+	cursor: default;
+}
+
+/* 验真通过 = chip(设计稿 §C):图标/色点 + 名字,一枚可点的引用物。 */
 .collab-tag.is-live {
-	color: var(--accent);
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	vertical-align: -2px;
+	max-width: 22em;
+	padding: 1px 7px 1px 5px;
+	border: 1px solid var(--ui-border-default-border, var(--border));
+	border-radius: 5px;
+	background: var(--ui-state-hover-bg, var(--hover));
+	color: var(--ui-text-primary-fg, var(--text));
+	line-height: 1.5;
 	cursor: pointer;
-	border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .collab-tag.is-live:hover {
-	border-bottom-color: var(--accent);
+	border-color: var(--ui-text-muted-fg, var(--muted));
+	background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
 }
 
 .collab-tag.is-live:focus-visible {
 	outline: 1px solid var(--accent);
 	outline-offset: 2px;
+}
+
+.collab-tag .collab-tag-icon {
+	width: 12px;
+	height: 12px;
+	flex-shrink: 0;
+	color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.collab-tag .collab-tag-name {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.collab-tag .collab-tag-ext {
+	color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.collab-tag .collab-tag-id {
+	flex-shrink: 0;
+	font-size: 0.88em;
+	font-variant-numeric: tabular-nums;
+	color: var(--ui-text-muted-fg, var(--muted));
+}
+
+/* 泳道色点:看板状态直接染色,不在 JS 里发明颜色。 */
+.collab-tag .collab-tag-dot {
+	width: 6px;
+	height: 6px;
+	flex-shrink: 0;
 	border-radius: 2px;
+	background: var(--ui-text-muted-fg, var(--muted));
+}
+
+.collab-tag[data-collab-status="doing"] .collab-tag-dot {
+	background: var(--ui-status-info-fg, var(--accent));
+}
+
+.collab-tag[data-collab-status="review"] .collab-tag-dot {
+	background: var(--ui-status-warning-fg, var(--accent));
+}
+
+.collab-tag[data-collab-status="done"] .collab-tag-dot {
+	background: var(--ui-status-success-fg, var(--accent));
+}
+
+.collab-tag[data-collab-status="blocked"] .collab-tag-dot {
+	background: var(--ui-status-danger-fg, var(--accent));
+}
+
+/* ── @提及 pill(im-message 设计稿 §A)────────────────────────────────
+   第一拍(可缓存)只有这一层:一个不带颜色、点不动的名字。身份色与可点是
+   第二拍在 DOM 上刷的,所以改名换色不脏 markdownRenderCache。 */
+.md-mention {
+	display: inline;
+	padding: 1px 4px 2px;
+	border-radius: 4px;
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.md-mention.is-live {
+	color: var(--md-mention-color, var(--accent));
+	background: color-mix(in srgb, var(--md-mention-color, var(--accent)) 10%, transparent);
+	cursor: pointer;
+}
+
+.md-mention.is-live:hover {
+	background: color-mix(in srgb, var(--md-mention-color, var(--accent)) 18%, transparent);
+}
+
+.md-mention.is-live:focus-visible {
+	outline: 1px solid var(--md-mention-color, var(--accent));
+	outline-offset: 1px;
+}
+
+/* @我:常态与其他人的 pill 同一形制(染底 + 色字,色取应用蓝)。 */
+.md-mention--me {
+	color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* 只有**没看过**的那条,@我 才实底反白(橘) —— 行级 is-me-unread 由已读水位
+   驱动(SayMessageRow),看过即褪回常态。不进渲染缓存:类挂在行上,不在 HTML 里。 */
+.is-me-unread .md-mention--me {
+	color: var(--ui-accent-default-on-fg, var(--ui-status-warning-on-fg, #fff));
+	background: var(--ui-status-warning-fg, var(--accent));
+	font-weight: 600;
 }
 
 /* Horizontal rule */
@@ -388,4 +498,104 @@ html[data-theme="light"] .md-body img:hover {
 
 html[data-theme="light"] .md-body mjx-container svg {
 	color: #1a1a1a;
+}
+
+/* ══ 群聊 say 作用域的块级纪律(im-message 设计稿 §F)═══════════════════
+   say 是「读对话的地方」,不是「读代码的地方」。三条纪律:
+     1. 代码块 / 表格 / 引用块统一 56em —— 聊天列永远读得动,表格自己横滚;
+     2. 超过 SAY_CODE_CLAMP_LINES 行的代码块折叠,展开条写明被折了多少行;
+     3. markdown blockquote 是**灰**竖线(内容语义),与回复引用条的身份色
+        竖线(会话语义)分属两个体系,永不混淆。
+   只在 .md-say-scope 下生效:主会话一行都不折。 */
+.md-say-scope .code-block-container,
+.md-say-scope .md-table-scroll,
+.md-say-scope blockquote {
+	max-width: 56em;
+}
+
+.md-say-scope p + p,
+.md-say-scope p + .code-block-container,
+.md-say-scope p + .md-table-scroll,
+.md-say-scope p + blockquote,
+.md-say-scope p + ul,
+.md-say-scope p + ol {
+	margin-top: 6px;
+}
+
+.md-say-scope ul,
+.md-say-scope ol {
+	padding-left: 1.5em;
+}
+
+.md-say-scope blockquote {
+	padding: 1px 0 1px 12px;
+	border-left: 2px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 42%, transparent);
+	color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
+}
+
+.md-say-scope table {
+	border-collapse: collapse;
+	border: 1px solid var(--ui-table-border, var(--ui-border-default-border, var(--border)));
+	font-size: 0.95em;
+}
+
+.md-say-scope th,
+.md-say-scope td {
+	border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+	padding: 4px 12px;
+	text-align: left;
+}
+
+.md-say-scope th {
+	background: var(--ui-table-header-bg, var(--ui-state-hover-bg, var(--hover)));
+	font-weight: var(--type-body-strong-weight, 600);
+}
+
+.md-say-scope .md-cell-numeric {
+	text-align: right;
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+/* 折叠:遮罩压在代码尾巴上,展开条钉在容器底。行数写在按钮上 —— 折叠必须
+   告诉人被折了多少,否则它是隐藏而不是收纳。 */
+.md-say-scope .code-block-container {
+	position: relative;
+}
+
+.md-say-scope .code-block-container.is-say-clamped pre {
+	max-height: 176px;
+	overflow: hidden;
+}
+
+.md-say-scope .say-code-fade {
+	display: none;
+}
+
+.md-say-scope .code-block-container.is-say-clamped .say-code-fade {
+	display: block;
+	position: absolute;
+	inset-inline: 1px;
+	bottom: 25px;
+	height: 44px;
+	pointer-events: none;
+	background: linear-gradient(transparent, var(--md-code-block-bg, var(--ui-surface-code-block-bg, var(--bg-code-block))));
+}
+
+.md-say-scope .say-code-more {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	padding: 4px;
+	border: none;
+	border-top: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+	background: var(--md-code-block-bg, var(--ui-surface-code-block-bg, var(--bg-code-block)));
+	color: var(--ui-text-muted-fg, var(--muted));
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.md-say-scope .say-code-more:hover {
+	color: var(--ui-text-primary-fg, var(--text));
 }

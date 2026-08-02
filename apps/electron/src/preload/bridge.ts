@@ -4,6 +4,7 @@ import type {
 	AgentUpdateRequest,
 	CollabBoardAction,
 	CollabRoomBudgetsPatch,
+	CollabRoomUpdatePatch,
 	GetSessionMessagesPageRequest,
 	GetSessionUsageRequest,
 	GetSessionUsageResponse,
@@ -184,6 +185,22 @@ const electronAPI = {
 		return () => ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_EXIT, listener);
 	},
 
+	// ── 系统通知 + dock 徽标(agent-dm-user.md §4.2)──────
+	// 一个命名空间而不是三个平铺方法:这三件事只有一个调用方(主窗的通知链路),
+	// 而 `notify.show` 在调用点读起来就是它在做的事。
+	notify: {
+		show: (request: { title: string; body: string; sessionId: string }) =>
+			ipcRenderer.invoke(IPC_CHANNELS.NOTIFY_SHOW, request),
+		setBadge: (hasUnread: boolean) =>
+			ipcRenderer.invoke(IPC_CHANNELS.NOTIFY_BADGE, { hasUnread }),
+		onActivate: (callback: (data: { sessionId: string }) => void) => {
+			const listener = (_event: any, data: any) => callback(data);
+			ipcRenderer.on(IPC_CHANNELS.NOTIFY_ACTIVATE, listener);
+			return () =>
+				ipcRenderer.removeListener(IPC_CHANNELS.NOTIFY_ACTIVATE, listener);
+		},
+	},
+
 	// ── Browser (embedded WebContentsView) ──────
 	hydrateBrowser: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_HYDRATE),
 	createBrowserTab: (request?: { url?: string; background?: boolean }) =>
@@ -231,15 +248,17 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SET_BUDGETS, { roomSessionId, ...budgets }),
 	getCollabRoomSpend: (roomSessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SPEND_GET, { roomSessionId }),
-	updateCollabRoom: (
-		roomSessionId: string,
-		update: {
-			name?: string;
-			memberAgentIds?: string[];
-			pmAgentId?: string | null;
-			permissionMode?: PermissionMode;
-		},
-	) => ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_UPDATE, { roomSessionId, ...update }),
+	getCollabCoordinator: (roomSessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_COORDINATOR_GET, { roomSessionId }),
+	updateCollabRoom: (roomSessionId: string, update: CollabRoomUpdatePatch) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_UPDATE, { roomSessionId, ...update }),
+	// 清空聊天记录(危险区):房间转录 + 每位成员的执行会话与已读游标 + 看板一起归零;
+	// includeMemberDms 连带成员两两之间的私聊房(跨群共享,须显式勾选)。
+	clearCollabRoomHistory: (roomSessionId: string, includeMemberDms?: boolean) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_CLEAR_HISTORY, {
+			roomSessionId,
+			...(includeMemberDms ? { includeMemberDms: true } : {}),
+		}),
 	// 群 folder 的只读列目录(agent-im-chat-ui.md §3.2「文件」块)。
 	listCollabRoomFolder: (roomSessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_FOLDER_LIST, { roomSessionId }),

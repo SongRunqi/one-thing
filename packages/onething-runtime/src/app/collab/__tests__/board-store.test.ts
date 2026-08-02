@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: { type?: string; board?: CollabBoard } }>,
   files: new Map<string, unknown>(),
   appended: [] as string[],
+  removed: [] as string[],
 }))
 
 vi.mock('@onething/core/storage', () => ({
@@ -24,7 +25,9 @@ vi.mock('@onething/core/storage', () => ({
 vi.mock('node:fs', () => ({
   default: {
     mkdirSync: () => {},
+    existsSync: (filePath: string) => mocks.files.has(filePath),
     appendFileSync: (_path: string, line: string) => { mocks.appended.push(line) },
+    rmSync: (filePath: string) => { mocks.removed.push(filePath) },
   },
 }))
 
@@ -54,6 +57,7 @@ beforeEach(() => {
   boardStore.shutdownCollabBoardBroadcasts()
   mocks.emitted.length = 0
   mocks.appended.length = 0
+  mocks.removed.length = 0
   mocks.files.clear()
 })
 
@@ -114,6 +118,44 @@ describe('collab:board-changed coalescing', () => {
     boardStore.shutdownCollabBoardBroadcasts()
     await vi.advanceTimersByTimeAsync(60)
     expect(broadcasts()).toHaveLength(0)
+  })
+
+  it('clearCollabBoard 清掉卡片与审计轨,seq 继续往前走', async () => {
+    await boardStore.applyBoardAction(ROOM, { action: 'create', title: 'A' }, USER)
+    await boardStore.applyBoardAction(ROOM, { action: 'create', title: 'B' }, USER)
+    await vi.advanceTimersByTimeAsync(30)
+    const before = broadcasts().at(-1)!
+    mocks.emitted.length = 0
+
+    const result = await boardStore.clearCollabBoard(ROOM)
+    await vi.advanceTimersByTimeAsync(30)
+
+    expect(result.clearedTaskCount).toBe(2)
+    expect(boardStore.loadCollabBoard(ROOM).tasks).toEqual([])
+    expect(mocks.removed.some(filePath => filePath.endsWith('activity.jsonl'))).toBe(true)
+    const sent = broadcasts()
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.tasks).toEqual([])
+    // 空看板的 seq 必须更大,否则渲染层会把它当过期到达丢掉 —— 界面上就"没清"。
+    expect((sent[0]?.seq ?? 0) > (before.seq ?? 0)).toBe(true)
+  })
+
+  it('从没有过看板的房:清空是彻底的空操作,不凭空写出一个 board.json', async () => {
+    const result = await boardStore.clearCollabBoard('room-never-had-a-board')
+    await vi.advanceTimersByTimeAsync(30)
+
+    expect(result.clearedTaskCount).toBe(0)
+    expect(mocks.files.size).toBe(0)
+    expect(broadcasts()).toHaveLength(0)
+  })
+
+  it('清空排在在飞写入之后:后到的创建落在空看板上,而不是把旧快照写回去', async () => {
+    const pending = boardStore.applyBoardAction(ROOM, { action: 'create', title: '旧' }, USER)
+    const cleared = boardStore.clearCollabBoard(ROOM)
+    const late = boardStore.applyBoardAction(ROOM, { action: 'create', title: '新' }, USER)
+    await Promise.all([pending, cleared, late])
+
+    expect(boardStore.loadCollabBoard(ROOM).tasks.map(task => task.title)).toEqual(['新'])
   })
 
   it('coalesces the coordinator-internal patch path too', async () => {

@@ -29,7 +29,6 @@ export interface OnethingPluginPromptContext {
   skills: OnethingPromptSkillDefinition[]
   workingDirectory?: string
   workingDirectoryRoots?: string[]
-  contextVariables?: string
   activeProject?: CorePromptActiveProject
   knownProjects?: CorePromptKnownProjects
   toolNames?: string[]

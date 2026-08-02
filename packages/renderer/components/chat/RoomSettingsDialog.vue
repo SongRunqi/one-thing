@@ -114,6 +114,97 @@
             <span class="field-hint">负责评审与任务分派;群聊中更倾向主动接话(不再是唯一应答人)。</span>
           </label>
 
+          <!-- 响应模式(docs/design/collab-speaking-order.md)。参数跟着模式显隐 ——
+               并行时"次序"没有意义,顺序时"同时发言上限"恒为 1,两边同时摆出来
+               只会让人去调一个不生效的格子。 -->
+          <label class="field">
+            <span class="field-label">响应模式</span>
+            <select
+              v-model="draft.responseMode"
+              class="field-input"
+            >
+              <option value="parallel">
+                并行(各自判断要不要接话)
+              </option>
+              <option value="auto">
+                智能(协调器每轮现场编排)
+              </option>
+              <option value="serial">
+                顺序(按次序依次发言)
+              </option>
+            </select>
+            <span class="field-hint">
+              并行:每条消息问一遍每位同事想不想说,愿意的一起说。
+              智能:每条消息只问一次协调器「这轮谁说、什么次序」,它可以安排一起说、
+              依次说,或者谁都不说。顺序:不问,按下面的次序一个接一个说。
+            </span>
+          </label>
+
+          <label class="field">
+            <span class="field-label">同时发言上限</span>
+            <input
+              v-model.number="draft.maxConcurrentTurns"
+              class="field-input"
+              type="number"
+              min="0"
+              step="1"
+            >
+            <span class="field-hint">最多几个人同时说话。填 0 表示不限。智能/顺序模式下,
+              一批之内的并行也受这一格约束。</span>
+          </label>
+
+          <template v-if="draft.responseMode !== 'parallel'">
+            <div class="field">
+              <span class="field-label">发言次序</span>
+              <div
+                v-for="(agent, index) in orderedSpeakers"
+                :key="agent.id"
+                class="member-line is-static"
+              >
+                <span class="order-index">{{ index + 1 }}</span>
+                <AgentAvatar
+                  class="member-avatar"
+                  :avatar="agent.avatar"
+                  :avatar-image="agent.avatarImage"
+                  :size="18"
+                />
+                <span class="member-name">{{ agent.name }}</span>
+                <span class="order-actions">
+                  <button
+                    type="button"
+                    class="order-button"
+                    :disabled="index === 0"
+                    aria-label="上移"
+                    @click="moveSpeaker(index, -1)"
+                  >↑</button>
+                  <button
+                    type="button"
+                    class="order-button"
+                    :disabled="index === orderedSpeakers.length - 1"
+                    aria-label="下移"
+                    @click="moveSpeaker(index, 1)"
+                  >↓</button>
+                </span>
+              </div>
+              <span class="field-hint">
+                顺序模式按这个次序依次发言;智能模式下它是**给协调器的建议**,
+                协调器可以不听。转完一整轮没人开口就停。
+              </span>
+            </div>
+
+            <label class="field">
+              <span class="field-label">轮次</span>
+              <input
+                v-model.number="draft.relayLoops"
+                class="field-input"
+                type="number"
+                min="0"
+                step="1"
+              >
+              <span class="field-hint">一趟最多转几圈,到了就按住讨论。填 0 表示不限。</span>
+            </label>
+          </template>
+
           <label class="field">
             <span class="field-label">日预算(美元)</span>
             <input
@@ -209,6 +300,60 @@
             </button>
           </div>
 
+          <!-- 危险区:清空聊天记录。与上面每一格的区别是它**立刻生效**、不进
+               「保存」那一趟 —— 一个不可恢复的动作不该躲在批量保存里,更不该
+               在用户按取消时留下已经删掉的东西。 -->
+          <div class="field danger-zone">
+            <span class="field-label">危险区</span>
+            <button
+              v-if="!confirmingClear"
+              type="button"
+              class="member-line is-danger"
+              @click="confirmingClear = true"
+            >
+              <span class="member-name">清空聊天记录</span>
+              <span class="member-title">不可恢复</span>
+            </button>
+            <template v-else>
+              <p class="field-hint danger-note">
+                这间房的对话会全部删除,每位成员在这间房的会话记忆(以及他们读到哪儿了)
+                与看板卡片一并清空;房间设置与成员保留。<strong>不可恢复。</strong>
+                <template v-if="hasLiveTurn">
+                  将中止正在进行的发言。
+                </template>
+              </p>
+              <!-- pair 私聊房跨群共享(Iris⇄Bram 只有一间),连带清空必须是显式
+                   勾选 —— 2026-08-02 真机:狼人杀发牌全在私聊里,只清群房等于
+                   没清干净,但默默连带又会误伤别的群的语境。 -->
+              <label class="field-hint danger-note danger-opt">
+                <input
+                  v-model="clearMemberDms"
+                  type="checkbox"
+                  :disabled="clearing"
+                >
+                连带清空成员之间的私聊房(私聊房跨群共享,其他群也引用同一间)
+              </label>
+              <div class="danger-actions">
+                <button
+                  type="button"
+                  class="text-action"
+                  :disabled="clearing"
+                  @click="confirmingClear = false"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  class="text-action is-danger"
+                  :disabled="clearing"
+                  @click="clearHistory"
+                >
+                  {{ clearing ? '清空中…' : '确认清空' }}
+                </button>
+              </div>
+            </template>
+          </div>
+
           <p
             v-if="error"
             class="dialog-error"
@@ -245,11 +390,13 @@ import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import { platformApi } from '@/platform'
 import { isActiveAgent, isColleague } from '@shared/ipc'
 import { useAgentsStore } from '@/stores/agents'
+import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useSessionsStore } from '@/stores/sessions'
 import {
   ROOM_PERMISSION_MODES,
   diffRoomSettings,
   hasRoomSettingsChanges,
+  orderRoomSpeakers,
   readRoomSettings,
   validateRoomSettings,
   type RoomSettingsDraft,
@@ -259,6 +406,7 @@ const props = defineProps<{ visible: boolean; sessionId: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const agentsStore = useAgentsStore()
+const collabBoardStore = useCollabBoardStore()
 const sessionsStore = useSessionsStore()
 
 const draft = reactive<RoomSettingsDraft>(readRoomSettings(undefined))
@@ -268,6 +416,10 @@ const error = ref('')
 /** 「今日已用 $X.XX」 — blank until the one-shot read lands (or if it fails:
  *  a spend line that cannot be trusted is worse than no line). */
 const spentTodayText = ref('')
+/** 危险区的二次确认:清空是不可恢复的,一次点击不算数。 */
+const confirmingClear = ref(false)
+const clearing = ref(false)
+const clearMemberDms = ref(false)
 
 const session = computed(() => sessionsStore.sessions.find(item => item.id === props.sessionId))
 
@@ -295,10 +447,23 @@ const isDmRoom = computed(() => session.value?.room?.dm === true)
 const memberAgents = computed(() =>
   (session.value?.room?.memberAgentIds ?? []).map(id => agentsStore.displayAgent(id)))
 
+/**
+ * 有回合在跑吗 —— 确认文案里那句「将中止正在进行的发言」的依据。
+ *
+ * 拿不到快照(面板还没收到过协调器广播)时按**有**处理:多说一句总比让用户在
+ * 不知情的情况下打断一位正在说话的同事好。
+ */
+const hasLiveTurn = computed(() => {
+  const snapshot = collabBoardStore.coordinatorFor(props.sessionId)
+  if (!snapshot) return true
+  return snapshot.turns.length > 0 || snapshot.queue.length > 0 || snapshot.judging > 0
+})
+
 watch(() => props.visible, async visible => {
   if (!visible) return
   error.value = ''
   spentTodayText.value = ''
+  confirmingClear.value = false
   await agentsStore.loadAgents()
   reset()
   void loadSpentToday()
@@ -333,10 +498,50 @@ function toggleMember(agentId: string): void {
   if (index >= 0) draft.memberAgentIds.splice(index, 1)
   else draft.memberAgentIds.push(agentId)
   if (draft.pmAgentId && !draft.memberAgentIds.includes(draft.pmAgentId)) draft.pmAgentId = ''
+  // 次序表跟着名册走:新来的排到末尾,离开的摘掉。不同步的话,加完人再切到顺序
+  // 模式会看到一份缺人的次序 —— 而它恰恰是那个人接下来会不会被叫到的依据。
+  draft.speakOrder = orderRoomSpeakers(draft.speakOrder, draft.memberAgentIds)
+}
+
+/** 发言次序那一列 —— 次序是真源,头像和名字现查。 */
+const orderedSpeakers = computed(() =>
+  orderRoomSpeakers(draft.speakOrder, draft.memberAgentIds).map(id => agentsStore.displayAgent(id)))
+
+function moveSpeaker(index: number, delta: number): void {
+  const order = orderRoomSpeakers(draft.speakOrder, draft.memberAgentIds)
+  const target = index + delta
+  if (target < 0 || target >= order.length) return
+  const [moved] = order.splice(index, 1)
+  order.splice(target, 0, moved)
+  draft.speakOrder = order
 }
 
 function close(): void {
   emit('close')
+}
+
+/**
+ * 立刻执行,不进「保存」那一趟。清空成功后直接关掉对话框:留在原地会给人
+ * "还有一步要按"的错觉,而这件事已经做完了。
+ */
+async function clearHistory(): Promise<void> {
+  if (clearing.value) return
+  clearing.value = true
+  error.value = ''
+  try {
+    const response = await platformApi.clearCollabRoomHistory(props.sessionId, clearMemberDms.value)
+    if (!response?.success) {
+      error.value = response?.error || '清空失败'
+      return
+    }
+    await sessionsStore.loadSessions()
+    close()
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : String(cause)
+  } finally {
+    clearing.value = false
+    confirmingClear.value = false
+  }
 }
 
 async function save(): Promise<void> {
@@ -529,6 +734,48 @@ async function save(): Promise<void> {
   font-size: 15px;
 }
 
+/* 发言次序行:借同一条挂线画法,只多两样东西 —— 前面的序号和末尾的升降。
+   序号用等宽数字,免得 9→10 时整列跟着抖。 */
+.order-index {
+  min-width: 1.4em;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+}
+
+.order-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.order-button {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.order-button:hover:not(:disabled) {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.order-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.order-button:focus-visible {
+  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline-offset: 1px;
+}
+
 .member-name {
   min-width: 0;
   overflow: hidden;
@@ -540,6 +787,50 @@ async function save(): Promise<void> {
   flex-shrink: 0;
   font-size: 12px;
   color: var(--ui-text-muted-fg, var(--text-muted));
+}
+
+/* 危险区:同一套画线语言,只把墨色换成告警色 —— 不加框、不填色,与整张表
+   的register 保持一致(它靠位置和措辞变重,不靠视觉噪声)。 */
+.danger-zone {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+}
+
+.member-line.is-danger {
+  color: var(--ui-status-danger-fg, var(--text-error));
+}
+
+.member-line.is-danger:hover::before {
+  background: var(--ui-status-danger-fg, var(--text-error));
+}
+
+.danger-note {
+  margin: 0;
+}
+
+.danger-note strong {
+  font-weight: 600;
+  color: var(--ui-status-danger-fg, var(--text-error));
+}
+
+.danger-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.danger-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.text-action.is-danger {
+  color: var(--ui-status-danger-fg, var(--text-error));
+  font-weight: 600;
 }
 
 .dialog-error {

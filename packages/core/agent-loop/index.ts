@@ -91,9 +91,12 @@ export {
   agentToolsFromToolDefinitions,
 } from './tools.js'
 export {
+  clearRetiredAgentToolNames,
   createAIToolName,
   getAIToolName,
+  registerRetiredAgentToolName,
   resolveAIToolName,
+  resolveRetiredAgentToolName,
 } from './tool-names.js'
 
 export type {

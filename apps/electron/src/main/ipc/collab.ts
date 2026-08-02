@@ -3,9 +3,11 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import type {
   CollabBoardActRequest,
   CollabBoardGetRequest,
+  CollabCoordinatorGetRequest,
   CollabDmRoomEnsureRequest,
   CollabMessageReactRequest,
   CollabRoomBudgetsRequest,
+  CollabRoomClearHistoryRequest,
   CollabRoomFolderListRequest,
   CollabRoomFrozenRequest,
   CollabRoomSpendRequest,
@@ -15,7 +17,9 @@ import type {
 import { loadCollabBoard } from '@onething/app/collab/board-store.js'
 import {
   applyUserCollabBoardAction,
+  clearCollabRoomHistory,
   ensureUserDmRoom,
+  getCollabCoordinatorState,
   getCollabRoomSpend,
   listCollabRoomFolder,
   reactToCollabMessage,
@@ -60,6 +64,16 @@ export function registerCollabHandlers(): void {
     }
   })
 
+  // 协调器状态条的冷启动读取。纯读、同步 —— 快照是从运行时现算的,不碰磁盘。
+  ipcMain.handle(IPC_CHANNELS.COLLAB_COORDINATOR_GET, (_event, request: CollabCoordinatorGetRequest) => {
+    try {
+      const state = getCollabCoordinatorState(request.roomSessionId)
+      return state ? { success: true, state } : { success: false, error: 'Not a room session' }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.COLLAB_ROOM_SET_FROZEN, (_event, request: CollabRoomFrozenRequest) => {
     const success = setCollabRoomFrozen(request.roomSessionId, request.frozen)
     return success ? { success } : { success, error: 'Not a room session' }
@@ -71,6 +85,11 @@ export function registerCollabHandlers(): void {
       maxChain: request.maxChain,
       maxTurnToolCalls: request.maxTurnToolCalls,
       maxTurnSayCalls: request.maxTurnSayCalls,
+      // 2026-08-02:这一行本来是漏的。`CollabRoomBudgetsRequest` 从并行化那天起
+      // 就带着 maxConcurrentTurns,`setCollabRoomBudgets` 也一直认它,唯独这个
+      // 中转把字段一个个抄过去时抄漏了 —— 于是「同时发言上限」从桌面端根本写不进去,
+      // 而且不报错。这正是那个类型的注释警告过的那种漂移。
+      maxConcurrentTurns: request.maxConcurrentTurns,
     })
     return success ? { success } : { success, error: 'Not a room session' }
   })
@@ -91,11 +110,29 @@ export function registerCollabHandlers(): void {
         ...(request.memberAgentIds !== undefined ? { memberAgentIds: request.memberAgentIds } : {}),
         ...(request.pmAgentId !== undefined ? { pmAgentId: request.pmAgentId } : {}),
         ...(request.permissionMode !== undefined ? { permissionMode: request.permissionMode } : {}),
+        ...(request.responseMode !== undefined ? { responseMode: request.responseMode } : {}),
+        ...(request.speakOrder !== undefined ? { speakOrder: request.speakOrder } : {}),
+        ...(request.relayLoops !== undefined ? { relayLoops: request.relayLoops } : {}),
       })
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
   })
+
+  // 清空聊天记录。次序(先停后删再播)与"到底清哪几处"全在 app 层 —— 这里只把
+  // 房间 id 带过去,好让 CLI/daemon 将来接同一个函数时行为逐字一致。
+  ipcMain.handle(
+    IPC_CHANNELS.COLLAB_ROOM_CLEAR_HISTORY,
+    async (_event, request: CollabRoomClearHistoryRequest) => {
+      try {
+        return await clearCollabRoomHistory(request?.roomSessionId, {
+          includeMemberDms: request?.includeMemberDms === true,
+        })
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+  )
 
   // 托管私聊房的 get-or-create(agent-im-dm.md D1)。校验(同事、在职、查得到)
   // 全在 app 层,所以 CLI/daemon 将来接同一个函数时行为一致;这里只把"开不了房"

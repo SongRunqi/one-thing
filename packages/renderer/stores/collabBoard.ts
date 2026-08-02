@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { CollabBoard, CollabTask } from '@shared/ipc.js'
+import type { CollabBoard, CollabCoordinatorState, CollabTask } from '@shared/ipc.js'
 import { platformApi } from '@/platform'
 import { invalidateCollabTagCards } from '@/composables/collabInlineTags'
 
@@ -38,6 +38,15 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
    * 的那几秒。这个信号一轮只翻两次,窗口与主进程 `abortRoomTurn` 的靶完全同宽。
    */
   const roomTurnAgents = ref<Record<string, string>>({})
+  /**
+   * 协调器运行时状态(docs/design/collab-coordinator-inspector.md):
+   * roomSessionId → 最近一次快照。
+   *
+   * 挂在这个 store 而不是新开一个:它与看板走的是**同一条**会话事件通道,而
+   * `ensureSubscribed` 是那条通道唯一的订阅处 —— 为一个分支再开一个 store,
+   * 就有了两处订阅、两份生命周期,以及迟早对不上的两个"是否已订阅"标志。
+   */
+  const coordinators = ref<Record<string, CollabCoordinatorState>>({})
   const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>()
   let subscribed = false
 
@@ -117,7 +126,14 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     subscribed = true
     platformApi.onSessionEvent(envelope => {
       const event = envelope.event as
-        | { type?: string; board?: CollabBoard; agentId?: string; typing?: boolean; active?: boolean }
+        | {
+          type?: string
+          board?: CollabBoard
+          agentId?: string
+          typing?: boolean
+          active?: boolean
+          state?: CollabCoordinatorState
+        }
         | undefined
       if (!event?.type) return
       if (event.type === 'collab:board-changed' && event.board) {
@@ -126,6 +142,8 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
         setTyping(envelope.sessionId, event.agentId, event.typing === true)
       } else if (event.type === 'collab:turn-active' && typeof event.agentId === 'string') {
         setRoomTurnActive(envelope.sessionId, event.agentId, event.active === true)
+      } else if (event.type === 'collab:coordinator-changed' && event.state) {
+        coordinators.value = { ...coordinators.value, [envelope.sessionId]: event.state }
       } else if (event.type === 'permission:request' || event.type === 'permission:settled') {
         // The event says "something moved here"; the count comes from the ask.
         scheduleReconcile(envelope.sessionId)
@@ -219,6 +237,29 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     return Boolean(sessionId && (pendingAsks.value[sessionId] ?? 0) > 0)
   }
 
+  /**
+   * 协调器状态的冷启动:面板打开时补一次,之后跟着会话事件走。
+   *
+   * 与 `load` 同一形态(先 `ensureSubscribed` 再取快照)—— 反过来的话,取到快照
+   * 与装上订阅之间的那几毫秒里发生的调度就永远丢了。
+   */
+  async function loadCoordinator(roomSessionId: string): Promise<void> {
+    if (!roomSessionId) return
+    ensureSubscribed()
+    try {
+      const response = await platformApi.getCollabCoordinator(roomSessionId)
+      if (response.success && response.state) {
+        coordinators.value = { ...coordinators.value, [roomSessionId]: response.state }
+      }
+    } catch (error) {
+      console.error('[collabBoard] coordinator load failed:', error)
+    }
+  }
+
+  function coordinatorFor(roomSessionId: string | undefined | null): CollabCoordinatorState | null {
+    return (roomSessionId && coordinators.value[roomSessionId]) || null
+  }
+
   /** Members currently typing in a room, oldest first. Expiry is applied here
    *  rather than on a standing timer — nothing ticks while a room is quiet;
    *  the caller re-reads (CollabTypingLine's 1s pulse) only while it shows. */
@@ -246,5 +287,8 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     focusTask,
     roomTurnAgents,
     isRoomTurnActive,
+    coordinators,
+    loadCoordinator,
+    coordinatorFor,
   }
 })

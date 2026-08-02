@@ -7,7 +7,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { renderMarkdown, escapeHtml } from '@/composables/useMarkdownRenderer'
+import { ensureMarkdownDomHandlers, renderMarkdown, renderPlainTextWithMentions } from '@/composables/useMarkdownRenderer'
 import { cacheMarkdownHtml, getCachedMarkdownHtml } from './markdownRenderCache'
 
 /**
@@ -42,11 +42,16 @@ function contentCacheKey(content: string): string {
 const html = computed(() => {
   const content = props.content ?? ''
   if (props.isUser) {
-    return escapeHtml(content).replace(/\n/g, '<br>')
+    return renderPlainTextWithMentions(content)
   }
   const key = `static:${contentCacheKey(content)}`
   const cached = getCachedMarkdownHtml(key)
-  if (cached) return cached
+  // 缓存命中不走 renderMarkdown,所以那些一次性的 DOM 观察器要在这里补装 ——
+  // 否则一屏全命中的会话里,复制按钮/提及升格/代码折叠全都不会发生。
+  if (cached) {
+    ensureMarkdownDomHandlers()
+    return cached
+  }
   const rendered = renderMarkdown(content, false, { streaming: false })
   cacheMarkdownHtml(key, rendered)
   return rendered

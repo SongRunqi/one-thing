@@ -79,20 +79,36 @@ beforeEach(() => {
   ]
 })
 
+/**
+ * im-message §A 之后,正文交给渲染链的是**带标记的**文本:每一处已解析身份的
+ * `@名字` 变成一枚 pill 标记(见 collabInlineTags 的两拍机制)。这些用例问的
+ * 一直是"最后显示成谁",所以把标记读回可见文本再比对 —— 断言的语义没变。
+ * 标记体三段以 U+E001 分隔(裸 | 会把表格切碎,见 collabInlineTags)。
+ */
+function readable(text: string): string {
+  return text.replace(/@[^]*[^]*([^]*)/g, (_whole, name: string) =>
+    `@${decodeURIComponent(name)}`)
+}
+
+function bubbleText(wrapper: { find: (selector: string) => { text: () => string } }): string {
+  return readable(wrapper.find('.bubble').text())
+}
+
 describe('MessageItem — mention display (W14a)', () => {
   it('renders the mentioned member by its CURRENT name after a rename', () => {
     const wrapper = mountItem({ mentions: [{ agentId: 'fe', label: '小李' }] })
-    expect(wrapper.find('.bubble').text()).toBe('@李工 登录页什么时候能好')
+    expect(bubbleText(wrapper)).toBe('@李工 登录页什么时候能好')
   })
 
   it('falls back to the label snapshot when the member is gone', () => {
     mocks.agentsStore.agents = []
     const wrapper = mountItem({ mentions: [{ agentId: 'fe', label: '小李' }] })
-    expect(wrapper.find('.bubble').text()).toBe('@小李 登录页什么时候能好')
+    expect(bubbleText(wrapper)).toBe('@小李 登录页什么时候能好')
   })
 
   it('leaves a pre-W14a message (no mentions field) exactly as written', () => {
     const wrapper = mountItem({})
+    // 老转录没有 mentions 字段 —— 一枚 pill 都长不出来,原文一字不动。
     expect(wrapper.find('.bubble').text()).toBe('@小李 登录页什么时候能好')
   })
 
@@ -103,6 +119,6 @@ describe('MessageItem — mention display (W14a)', () => {
       content: '@小李 你接一下',
       mentions: [{ agentId: 'fe', label: '小李' }],
     })
-    expect(wrapper.find('.bubble').text()).toBe('@李工 你接一下')
+    expect(bubbleText(wrapper)).toBe('@李工 你接一下')
   })
 })

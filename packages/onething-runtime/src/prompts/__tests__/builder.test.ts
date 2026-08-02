@@ -126,4 +126,55 @@ describe('onething prompt builder', () => {
       expect(noTools.developer.find(s => s.startsWith('# Todo'))).toBeUndefined()
     })
   })
+  /**
+   * §R.4:这一段退化成一句常量指路,不再装任何变量值 —— 因此 system 前缀永远
+   * 不再因为写变量而失效。
+   */
+  describe('the <context-variables> section', () => {
+    const withTools = (toolNames: string[]) => buildOnethingSystemPrompt({
+      hasTools: true,
+      skills: [],
+      toolNames,
+      host,
+    })
+
+    it('carries no variable values at all — only the two read actions and the block below', async () => {
+      const prompt = await withTools(['read', 'variable'])
+      const section = prompt.developer.join('\n\n')
+        .match(/<context-variables>[\s\S]*?<\/context-variables>/)?.[0]
+
+      expect(section).toBeDefined()
+      // 值一个都不在前缀里 —— 这是「写变量永远不打穿 system+tools 缓存」的凭据。
+      expect(section).not.toMatch(/<var\s/)
+      expect(section).toContain('<context-update>')
+
+      // 分工:这一段只说"板在哪",两种条目形状与怎么把隐藏的值读回来,
+      // 由 context-update-convention 那一段讲(就在块自己旁边)。
+      const convention = prompt.developer.join('\n\n')
+      expect(convention).toContain('variable(action="get", name=…)')
+      // 两种条目靠 `state` 属性显式区分,不靠形状让模型自己推。
+      expect(convention).toContain('state="true"')
+      expect(convention).toContain('state="false"')
+    })
+
+    it('renders the same bytes no matter what the session holds (it takes no input)', async () => {
+      const first = await withTools(['read', 'variable'])
+      const second = await withTools(['variable', 'read', 'bash'])
+      const sectionOf = (p: { developer: string[] }) => p.developer
+        .find(s => s.startsWith('<context-variables>'))
+      expect(sectionOf(second)).toBe(sectionOf(first))
+    })
+
+    it('is omitted when the variable tool is not on the surface — the sentence would be a lie', async () => {
+      const noVariableTool = await withTools(['read', 'bash'])
+      const noTools = await buildOnethingSystemPrompt({
+        hasTools: false,
+        skills: [],
+        toolNames: ['variable'],
+        host,
+      })
+      expect(noVariableTool.developer.find(s => s.startsWith('<context-variables>'))).toBeUndefined()
+      expect(noTools.developer.find(s => s.startsWith('<context-variables>'))).toBeUndefined()
+    })
+  })
 })

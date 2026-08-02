@@ -20,8 +20,9 @@ export function formatHourGranularity(date: Date): string {
 }
 
 /**
- * Read-only turn-volatile provider exposing the current local time.
- * Never rendered into the system prompt (see VariableVolatility).
+ * Read-only state provider exposing the current local time. Variables only
+ * ever reach the model through the <context-update> tail block, never the
+ * system-prompt prefix.
  */
 export class DateTimeProvider implements VariableProvider {
   readonly id = 'datetime'
@@ -34,7 +35,7 @@ export class DateTimeProvider implements VariableProvider {
       name: NAME,
       value: formatHourGranularity(this.now()),
       readonly: true,
-      volatility: 'turn',
+      state: true,
       description: 'Current local time (hour granularity)',
     }]
   }

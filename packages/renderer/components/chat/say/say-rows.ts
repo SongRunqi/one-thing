@@ -31,6 +31,7 @@ import {
 } from '../message/room-grouping'
 import {
   buildSpeakerRunHeads,
+  speakerRunKey,
   type SpeakerRunMessageLike,
 } from '../message/speaker-runs'
 import { REPLY_USER_LABEL } from '../message/reply-quote'
@@ -38,7 +39,7 @@ import { REPLY_USER_LABEL } from '../message/reply-quote'
 /** 这个模块读到的消息切片 —— 多读一个字段就是多一分耦合。 */
 export interface SayMessageLike extends RoomMessageLike, SpeakerRunMessageLike {
   role: string
-  replyTo?: { authorLabel?: string } | null
+  replyTo?: { authorLabel?: string; messageId?: string } | null
 }
 
 export interface SaySpeechRow {
@@ -50,6 +51,11 @@ export interface SaySpeechRow {
   tail: boolean
   /** 这条消息在回我的话 —— 左墨条。见 `isAddressedToUser`。 */
   addressed: boolean
+  /**
+   * 这一行画不画引用条(im-message §B 修订):连发里引不同的话,每条都画
+   * (且升格为 head,拐线得有头像可钩);连着引**同一句**,只有第一条画。
+   */
+  showQuote: boolean
 }
 
 export interface SayNoticeRow {
@@ -143,6 +149,36 @@ export function buildSayLayout(
   const { capsules } = buildRoomMessageLayout(messages, now)
   const heads = buildSayBylineHeads(messages, capsules)
 
+  /**
+   * 引用条口径(im-message §B 修订,Discord 同款):
+   *  - 画引用的那一行必须是 head —— 拐线从头像列拐上来,没头像就是钩着空气;
+   *  - 同一说话人**连着引同一句**,只有第一条画(后续条既不画也不因此成头);
+   *  - 引不同的句子,每条都画、每条都成头。
+   * 快照没有 messageId 的老引用没法比对"同一句",按不同处理(宁多画不漏画)。
+   */
+  const showQuoteAt = new Set<number>()
+  let prevSpeech: { key: string; quoteId: string | null } | null = null
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index]
+    if (message.role === 'error' || message.role === 'system') {
+      prevSpeech = null
+      continue
+    }
+    const key = speakerRunKey(message)
+    const quoteId = message.replyTo?.messageId ?? null
+    if (message.replyTo) {
+      const repeated = prevSpeech !== null
+        && prevSpeech.key === key
+        && quoteId !== null
+        && prevSpeech.quoteId === quoteId
+      if (!repeated) {
+        showQuoteAt.add(index)
+        heads.add(index)
+      }
+    }
+    prevSpeech = { key, quoteId }
+  }
+
   const rows: SayRow[] = []
   for (let index = 0; index < messages.length; index++) {
     const message = messages[index]
@@ -162,6 +198,7 @@ export function buildSayLayout(
       head: heads.has(index),
       tail: false,
       addressed: isAddressedToUser(message),
+      showQuote: showQuoteAt.has(index),
     })
   }
 

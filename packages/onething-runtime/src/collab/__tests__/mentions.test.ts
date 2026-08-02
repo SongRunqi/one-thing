@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { decideCollabActivations } from '../activation.js'
 import {
   buildCollabMentions,
+  expandCollabAllMentions,
   mergeCollabMentions,
   normalizeCollabMentions,
   parseCollabMentions,
@@ -55,6 +56,37 @@ describe('buildCollabMentions (name scan → identity)', () => {
 
   it('returns nothing for a mention-less message', () => {
     expect(buildCollabMentions('大家早', AGENTS)).toEqual([])
+  })
+})
+
+describe('expandCollabAllMentions (@所有人 → 全房点名)', () => {
+  it('认四种写法,展开成全体成员的 mention', () => {
+    for (const token of ['@所有人', '@全体成员', '@all', '@everyone']) {
+      expect(expandCollabAllMentions(`${token} 报数`, AGENTS)).toEqual([
+        { agentId: 'pm', label: '阿明' },
+        { agentId: 'fe', label: '小李' },
+        { agentId: 'research', label: '小研' },
+      ])
+    }
+  })
+
+  it('没有 token 就不展开 —— "所有人"作普通文本不算(必须带 @)', () => {
+    expect(expandCollabAllMentions('所有人报数', AGENTS)).toEqual([])
+    expect(expandCollabAllMentions('大家好', AGENTS)).toEqual([])
+    expect(expandCollabAllMentions(undefined, AGENTS)).toEqual([])
+  })
+
+  it('ASCII 写法要词边界:@allen 不是 @all', () => {
+    expect(expandCollabAllMentions('@allen 你看下', AGENTS)).toEqual([])
+    expect(expandCollabAllMentions('@ALL hands meeting', AGENTS)).toHaveLength(3)
+  })
+
+  it('与既有 mention 合并后按 agentId 去重(@所有人 @小李 不会让小李排两次)', () => {
+    const merged = mergeCollabMentions(
+      expandCollabAllMentions('@所有人 @小李 先来', AGENTS),
+      buildCollabMentions('@所有人 @小李 先来', AGENTS),
+    )
+    expect(merged.map(mention => mention.agentId)).toEqual(['pm', 'fe', 'research'])
   })
 })
 
@@ -252,15 +284,16 @@ describe('rename resolution is the SAME on every surface', () => {
 
   it('projects the current name into the model view', () => {
     const projected = projectRoomHistory({ messages, selfAgentId: 'fe', agents: RENAMED })
-    expect(projected).toEqual([
-      { role: 'user', content: '<msg from="用户">@李工 登录页什么时候能好</msg>\n\n<msg from="阿明">@李工 说的明天</msg>' },
-    ])
+    expect(projected).toHaveLength(1)
+    expect(projected[0].content).toContain(
+      '<message from="用户">@李工#fe 登录页什么时候能好</message>\n<message from="阿明#pm">@李工#fe 说的明天</message>',
+    )
   })
 
   it('projects the current name into the willingness window', () => {
     expect(buildWillingnessWindow({ recent: messages, members: RENAMED })).toEqual([
-      '用户: @李工 登录页什么时候能好',
-      '阿明: @李工 说的明天',
+      '用户: @李工#fe 登录页什么时候能好',
+      '阿明#pm: @李工#fe 说的明天',
     ])
   })
 })
@@ -300,5 +333,52 @@ describe('renderCollabMentionText — longest name wins (P2-11)', () => {
       [{ agentId: 'a', label: '小李' }],
       MEMBERS,
     )).toBe('@小李工 和 @小李新 都看下')
+  })
+})
+
+/**
+ * im-message §A:同一个 walker 既写纯文本,也写 pill。加 `renderHit` 不是加
+ * 第二个匹配器 —— 识别、改名重绘、重名判定全都还在这一处。
+ */
+describe('renderCollabMentionText — renderHit (pill 出口)', () => {
+  const MEMBERS = [{ id: 'a', name: '李工' }, { id: 'b', name: '王工' }]
+  const hit = (options?: { userLabels?: string[] }) => ({
+    ...options,
+    renderHit: (h: { kind: string; agentId: string | null; name: string }) =>
+      `[${h.kind}:${h.agentId ?? '-'}:${h.name}]`,
+  })
+
+  it('命中的那一处交给 renderHit,并带上现名与 id', () => {
+    expect(renderCollabMentionText('@小李 看下', [{ agentId: 'a', label: '小李' }], MEMBERS, hit()))
+      .toBe('[agent:a:李工] 看下')
+  })
+
+  it('没有 mentions 的老转录一处都不命中', () => {
+    expect(renderCollabMentionText('@小李 看下', undefined, MEMBERS, hit()))
+      .toBe('@小李 看下')
+  })
+
+  it('重名(一个 label 两个 id)不交给 renderHit —— 给不出确定的那个人', () => {
+    expect(renderCollabMentionText(
+      '@小李 看下',
+      [{ agentId: 'a', label: '小李' }, { agentId: 'b', label: '小李' }],
+      [{ id: 'a', name: '小李' }, { id: 'b', name: '小李' }],
+      hit(),
+    )).toBe('@小李 看下')
+  })
+
+  it('没被提及的花名册名字仍然是原文(它只是个挡位符)', () => {
+    expect(renderCollabMentionText('@王工 看下', [{ agentId: 'a', label: '小李' }], MEMBERS, hit()))
+      .toBe('@王工 看下')
+  })
+
+  it('userLabels 命中 = kind user,没有 agent id', () => {
+    expect(renderCollabMentionText('@用户 核完了', [], MEMBERS, hit({ userLabels: ['用户'] })))
+      .toBe('[user:-:用户] 核完了')
+  })
+
+  it('不传 userLabels 时行为与从前完全一致', () => {
+    expect(renderCollabMentionText('@用户 核完了', [{ agentId: 'a', label: '小李' }], MEMBERS))
+      .toBe('@用户 核完了')
   })
 })

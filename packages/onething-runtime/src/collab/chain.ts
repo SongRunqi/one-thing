@@ -8,10 +8,11 @@ import { isCollabDriveMessage, isCollabHarvestMessage, type CollabMessageLike } 
  *             pre-W14b transcript the non-pass turn message that WAS speech
  *  - ignores: drive messages, thinking records, pass turns, harvest posts,
  *             display-only roles
- *  - resets:  a real human message (non-drive user message). Steering resets
- *             too, but steering arrives as an event (steering:consumed), which
- *             the coordinator handles — persisted steered messages also satisfy
- *             this predicate, so a transcript replay reaches the same count.
+ *  - resets:  a real human message (non-drive user message) — 活的那侧由
+ *             `handleRoomUserMessage` 在收到消息的第一时间清零,是唯一真源。
+ *             Steered messages satisfy this predicate too, so a transcript
+ *             replay reaches the same count. (曾经还有一个 `steering:consumed`
+ *             订阅做同一件事;它从 W18 起就没生效过,已删 —— 见 coordinator.ts。)
  *
  * W14b epoch discipline: a turn that says three things counts three, because
  * the LIVE coordinator counts one per say and the boot recompute walks the

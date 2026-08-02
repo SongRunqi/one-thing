@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   ensureUserDmRoom: vi.fn((_agentId: string): string | null => 'agent-dm-fe'),
   reactToCollabMessage: vi.fn(() => ({ success: true, reactions: [] })),
   applyUserCollabBoardAction: vi.fn(async () => ({ success: true, board: { version: 1, tasks: [] } })),
+  clearCollabRoomHistory: vi.fn(async () => ({ success: true, clearedMessageCount: 3 })),
 }))
 
 vi.mock('electron', () => ({
@@ -32,6 +33,7 @@ vi.mock('@onething/app/collab/index.js', () => ({
   ensureUserDmRoom: (...args: unknown[]) => mocks.ensureUserDmRoom(...(args as [string])),
   reactToCollabMessage: (...args: unknown[]) => mocks.reactToCollabMessage(...(args as [])),
   applyUserCollabBoardAction: (...args: unknown[]) => mocks.applyUserCollabBoardAction(...(args as [])),
+  clearCollabRoomHistory: (...args: unknown[]) => mocks.clearCollabRoomHistory(...(args as [])),
 }))
 
 const { registerCollabHandlers } = await import('../ipc/collab.js')
@@ -52,6 +54,10 @@ function invokeEnsureDm(request: unknown): unknown {
   return mocks.handlers.get(IPC_CHANNELS.COLLAB_DM_ROOM_ENSURE)?.({}, request)
 }
 
+function invokeClearHistory(request: unknown): unknown {
+  return mocks.handlers.get(IPC_CHANNELS.COLLAB_ROOM_CLEAR_HISTORY)?.({}, request)
+}
+
 const EMPTY_BOARD = { version: 1, tasks: [] }
 
 beforeEach(() => {
@@ -64,6 +70,8 @@ beforeEach(() => {
   mocks.reactToCollabMessage.mockReturnValue({ success: true, reactions: [] })
   mocks.applyUserCollabBoardAction.mockClear()
   mocks.applyUserCollabBoardAction.mockResolvedValue({ success: true, board: EMPTY_BOARD })
+  mocks.clearCollabRoomHistory.mockClear()
+  mocks.clearCollabRoomHistory.mockResolvedValue({ success: true, clearedMessageCount: 3 })
   registerCollabHandlers()
 })
 
@@ -209,5 +217,29 @@ describe('COLLAB_DM_ROOM_ENSURE', () => {
   it('turns a thrown error into a failed response', () => {
     mocks.ensureUserDmRoom.mockImplementation(() => { throw new Error('store exploded') })
     expect(invokeEnsureDm({ agentId: 'fe' })).toEqual({ success: false, error: 'store exploded' })
+  })
+})
+
+/**
+ * 清空聊天记录。次序(先停后删再播)与"到底清哪几处"全在 app 层 —— handler
+ * 只负责把房间 id 带过去,以及把抛出来的错翻译成一次线上失败。
+ */
+describe('COLLAB_ROOM_CLEAR_HISTORY', () => {
+  it('carries the room id across and returns the app layer answer verbatim', async () => {
+    expect(await invokeClearHistory({ roomSessionId: 'room-1' }))
+      .toEqual({ success: true, clearedMessageCount: 3 })
+    // includeMemberDms 缺席时显式落 false —— handler 归一化,不让 undefined 过河。
+    expect(mocks.clearCollabRoomHistory).toHaveBeenCalledWith('room-1', { includeMemberDms: false })
+  })
+
+  it('includeMemberDms 只在显式为 true 时透传为 true', async () => {
+    await invokeClearHistory({ roomSessionId: 'room-1', includeMemberDms: true })
+    expect(mocks.clearCollabRoomHistory).toHaveBeenCalledWith('room-1', { includeMemberDms: true })
+  })
+
+  it('turns a thrown error into a failed response', async () => {
+    mocks.clearCollabRoomHistory.mockImplementation(() => { throw new Error('store exploded') })
+    expect(await invokeClearHistory({ roomSessionId: 'room-1' }))
+      .toEqual({ success: false, error: 'store exploded' })
   })
 })

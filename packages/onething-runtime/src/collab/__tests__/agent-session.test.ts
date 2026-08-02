@@ -110,7 +110,7 @@ describe('工具面跟着回合走', () => {
 
   it('leaves work sessions and ordinary sessions untouched', () => {
     expect(resolveCollabToolAllowlist({ kind: 'work', ownTools: ['read'] }))
-      .toEqual(['read', 'board', 'say'])
+      .toEqual(['read', 'board', 'send_message'])
     expect(resolveCollabToolAllowlist({ kind: 'chat', ownTools: null })).toBeNull()
   })
 })

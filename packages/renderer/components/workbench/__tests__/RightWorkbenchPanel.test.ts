@@ -34,9 +34,9 @@ vi.mock('@/components/terminal/TerminalView.vue', () => ({
 
 // The real thread panel pulls the chat/sessions stores and the whole StepsPanel
 // tree; the panel contract here is just "render a thread view for sessionId".
-vi.mock('../ThreadWorkbench.vue', () => ({
+vi.mock('../ThreadChatDetail.vue', () => ({
   default: {
-    name: 'ThreadWorkbench',
+    name: 'ThreadChatDetail',
     props: ['sessionId'],
     emits: ['openFile', 'titleResolved'],
     template: `
@@ -238,10 +238,12 @@ describe('RightWorkbenchPanel', () => {
       expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(1)
       expect(wrapper.find('.mock-thread-workbench').text()).toContain('work-1')
 
-      // 另一个会话才开第二个 tab。
+      // 换一次执行 = **换靶子**,不是再开一页(样板右栏是三 tab 常驻;
+      // 从前按靶子各开一个,逛三间房就攒三条「线程」)。成员页签早就是这个语义。
       vm.openThread('work-2', '元素拾取')
       await settle()
-      expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(2)
+      expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(1)
+      expect(wrapper.find('.mock-thread-workbench').text()).toContain('work-2')
     })
 
     it('空 workSessionId 不开 tab(左栏对空串已经拦了一道,这里是第二道)', async () => {
@@ -251,29 +253,55 @@ describe('RightWorkbenchPanel', () => {
       expect(wrapper.find('.mock-thread-workbench').exists()).toBe(false)
     })
 
-    it('会话名解析出来之后 tab 标题跟上去', async () => {
+    /**
+     * 真机 253px 下改的口径:线程页签**不跟着会话名改名**。
+     * 它是常驻三条之一,标题一长就把自己挤出可视区 —— 当时激活的正是线程页签,
+     * 而页签条里只看得见「成员/看板」。在看哪一次执行由面板头去说。
+     */
+    it('会话名解析出来也不改 tab 标题 —— 常驻三条,标题恒为「线程」', async () => {
       const wrapper = mountPanel()
       ;(wrapper.vm as unknown as ThreadApi).openThread('work-1')
       await settle()
-      expect(wrapper.find('.workbench-tab-label').text()).toBe('Thread')
+      expect(wrapper.find('.workbench-tab-label').text()).toBe('线程')
 
       await wrapper.find('.mock-thread-title').trigger('click')
       await settle()
-      expect(wrapper.find('.workbench-tab-label').text()).toBe('换核验证')
+      expect(wrapper.find('.workbench-tab-label').text()).toBe('线程')
     })
 
     it('线程不进 picker / 空态清单 —— 可选 tab 集合一个字不变(classic 逐像素闸)', () => {
       const wrapper = mountPanel()
       const labels = wrapper.findAll('.empty-action').map(button => button.text())
-      expect(labels).toEqual(['Files', 'Terminal', 'Browser', 'Board'])
-      expect(wrapper.text()).not.toContain('Thread')
+      expect(labels).toEqual(['Files', 'Terminal', 'Browser', '看板'])
+      expect(wrapper.text()).not.toContain('线程')
+    })
+
+    /* 线程是两层(列表 → 详情)。落在哪一层由入口决定:
+       带靶子进来的(「展开执行 →」/ 左栏活卡片)知道要看哪一条 → 详情;
+       进房自动备齐不知道 → 列表,替用户挑一条塞满整面是替他做选择。 */
+    it('带靶子的入口落详情层,进房自动备齐落列表层 —— 两者共用同一条页签', async () => {
+      const wrapper = mountPanel()
+      const vm = wrapper.vm as unknown as ThreadApi & {
+        openRoomTabs: (roomSessionId: string, threadSessionId?: string) => void
+      }
+
+      vm.openThread('work-1', '换核验证')
+      await settle()
+      expect(wrapper.find('.mock-thread-workbench').text()).toContain('work-1')
+
+      // 进房:即便房面顺手算出了一条默认工作会话,右栏也停在列表层
+      vm.openRoomTabs('room-1', 'work-1')
+      await settle()
+      expect(wrapper.find('.mock-thread-workbench').exists()).toBe(false)
+      expect(wrapper.find('.threads-empty').exists()).toBe(true)
+      expect(wrapper.findAll('.workbench-tab-label').filter(label => label.text() === '线程')).toHaveLength(1)
     })
 
     it('看板 tab 原地不动(方案 C 不把看板迁全屏)', async () => {
       const wrapper = mountPanel()
-      await wrapper.findAll('.empty-action').find(button => button.text() === 'Board')!.trigger('click')
+      await wrapper.findAll('.empty-action').find(button => button.text() === '看板')!.trigger('click')
       await settle()
-      expect(wrapper.find('.workbench-tab-label').text()).toBe('Board')
+      expect(wrapper.find('.workbench-tab-label').text()).toBe('看板')
     })
   })
 

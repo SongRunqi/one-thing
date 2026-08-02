@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   ROOM_DEFAULT_DAILY_COST_USD,
   ROOM_DEFAULT_MAX_CHAIN,
+  ROOM_DEFAULT_MAX_CONCURRENT_TURNS,
   ROOM_DEFAULT_MAX_TURN_SAY_CALLS,
   ROOM_DEFAULT_MAX_TURN_TOOL_CALLS,
   diffRoomSettings,
   hasRoomSettingsChanges,
+  orderRoomSpeakers,
   readRoomSettings,
   sameRoomMembers,
   validateRoomSettings,
@@ -37,6 +39,10 @@ describe('readRoomSettings', () => {
       maxTurnToolCalls: 30,
       maxTurnSayCalls: 8,
       maxChain: ROOM_DEFAULT_MAX_CHAIN,
+      maxConcurrentTurns: ROOM_DEFAULT_MAX_CONCURRENT_TURNS,
+      responseMode: 'parallel',
+      speakOrder: ['pm', 'fe'],
+      relayLoops: 0,
       permissionMode: 'auto-accept-edits',
       frozen: true,
     })
@@ -48,6 +54,10 @@ describe('readRoomSettings', () => {
       maxTurnToolCalls: ROOM_DEFAULT_MAX_TURN_TOOL_CALLS,
       maxTurnSayCalls: ROOM_DEFAULT_MAX_TURN_SAY_CALLS,
       maxChain: ROOM_DEFAULT_MAX_CHAIN,
+      maxConcurrentTurns: ROOM_DEFAULT_MAX_CONCURRENT_TURNS,
+      responseMode: 'parallel',
+      speakOrder: ['pm'],
+      relayLoops: 0,
       permissionMode: 'normal',
       frozen: false,
     })
@@ -173,5 +183,81 @@ describe('diffRoomSettings — only changed items are sent', () => {
       maxTurnToolCalls: 0,
     }))
     expect(plan.budgets).toEqual({ maxTurnSayCalls: 0, maxTurnToolCalls: 0 })
+  })
+})
+
+/** 响应模式三件套(docs/design/collab-speaking-order.md)。 */
+describe('响应模式', () => {
+  it('次序表读出来始终是完整的一份:配置里列过的在前,其余按名册序补齐', () => {
+    const draft = readRoomSettings({
+      name: 'x',
+      room: { memberAgentIds: ['a', 'b', 'c'], speakOrder: ['c', 'gone'] },
+    })
+    expect(draft.speakOrder).toEqual(['c', 'a', 'b'])
+  })
+
+  it('orderRoomSpeakers 丢掉已离房的 id,并保住其余次序', () => {
+    expect(orderRoomSpeakers(['gone', 'b'], ['a', 'b'])).toEqual(['b', 'a'])
+  })
+
+  it('切到顺序模式会把模式和次序一起写出去', () => {
+    const initial = readRoomSettings(SOURCE)
+    const plan = diffRoomSettings(initial, draftOf({
+      responseMode: 'serial',
+      speakOrder: ['fe', 'pm'],
+    }))
+    expect(plan.roomUpdate).toEqual({ responseMode: 'serial', speakOrder: ['fe', 'pm'] })
+  })
+
+  it('次序相等是序列相等 —— 只换顺序也算改动', () => {
+    const initial = readRoomSettings({
+      name: 'x',
+      room: { memberAgentIds: ['a', 'b'], responseMode: 'serial' },
+    })
+    const plan = diffRoomSettings(initial, { ...initial, speakOrder: ['b', 'a'] })
+    expect(plan.roomUpdate).toEqual({ speakOrder: ['b', 'a'] })
+  })
+
+  it('并行模式下不写次序与轮次 —— 一次无关的保存不该钉死一份没人编辑过的次序', () => {
+    const initial = readRoomSettings(SOURCE)
+    const plan = diffRoomSettings(initial, draftOf({ speakOrder: ['fe', 'pm'], relayLoops: 3 }))
+    expect(plan.roomUpdate).toBeUndefined()
+  })
+
+  /**
+   * 编排(collab-coordinator-plan.md)之后这条**反过来了**。
+   *
+   * 接力时代顺序模式把并发上限钉死成 1(依次是靠并发压出来的),所以这一格不写。
+   * 编排之后串行由**批边界**保证,而批**内**是并行的(`[[a,b,c]]` = 三个人一起说)
+   * —— 这一格回到它本来的意思,每一种模式下都要能编辑、能写出去。留着旧断言会把
+   * 它在新形态下锁死。
+   */
+  it('每一种模式都写同时发言上限 —— 编排之后它管的是"一批里几个人一起说"', () => {
+    for (const responseMode of ['auto', 'serial', 'parallel'] as const) {
+      const initial = readRoomSettings({
+        name: 'x',
+        room: { memberAgentIds: ['a', 'b'], responseMode },
+      })
+      const plan = diffRoomSettings(initial, { ...initial, maxConcurrentTurns: 3 })
+      expect(plan.budgets).toEqual({ maxConcurrentTurns: 3 })
+    }
+  })
+
+  it('智能模式同样写次序建议与轮次 —— 次序是给协调器的建议,轮次是天花板', () => {
+    const initial = readRoomSettings({
+      name: 'x',
+      room: { memberAgentIds: ['a', 'b'], responseMode: 'auto' },
+    })
+    const plan = diffRoomSettings(initial, { ...initial, speakOrder: ['b', 'a'], relayLoops: 2 })
+    expect(plan.roomUpdate).toEqual({ speakOrder: ['b', 'a'], relayLoops: 2 })
+  })
+
+  it('同时发言上限走 budgets 那条通道', () => {
+    const plan = diffRoomSettings(readRoomSettings(SOURCE), draftOf({ maxConcurrentTurns: 2 }))
+    expect(plan.budgets).toEqual({ maxConcurrentTurns: 2 })
+  })
+
+  it('轮次是负数时拒绝保存', () => {
+    expect(validateRoomSettings(draftOf({ relayLoops: -1 }))).toBe('轮次必须是不小于 0 的数字')
   })
 })

@@ -134,13 +134,14 @@ async function buildRuntimeSystemPrompt(
 				: undefined,
 		],
 		["agents-md", loadAgentsMdInstructions(ctx.workingDirectory)],
-		// Mutable at runtime (the variable tool writes to it): kept last among
-		// the static sections so a change invalidates the smallest possible
-		// prompt-cache prefix.
+		// 常量字节(cache-safe):这一段只指路,**不装任何变量值** —— 状态走
+		// `<context-update>` 尾部块,其余的靠 keys/get 读(§R.4)。变量因此永远
+		// 不再打穿 system 前缀。有没有这一段只取决于 `variable` 工具在不在
+		// (readonly 工具档没有它,那时这句话会是假的)。
 		[
 			"context-variables",
-			ctx.contextVariables?.trim() &&
-				`<context-variables desc="${CONTEXT_VARIABLES_INTRO}">\n${ctx.contextVariables.trim()}\n</context-variables>`,
+			Boolean(ctx.hasTools && ctx.toolNames?.includes("variable")) &&
+				`<context-variables>\n${CONTEXT_VARIABLES_INTRO}\n</context-variables>`,
 		],
 	];
 	for (const plugin of plugins) sections.push(["plugins", plugin]);
@@ -463,7 +464,6 @@ async function collectPlugins(
 		skills: ctx.skills,
 		workingDirectory: ctx.workingDirectory,
 		workingDirectoryRoots: ctx.workingDirectoryRoots,
-		contextVariables: ctx.contextVariables,
 		activeProject: ctx.activeProject,
 		knownProjects: ctx.knownProjects,
 		toolNames: ctx.toolNames,
