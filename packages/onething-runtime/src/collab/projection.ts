@@ -230,20 +230,6 @@ export function formatCollabFoldedLine(folded: {
 export const COLLAB_NOTIFICATION_TAG = 'Notification'
 
 /**
- * 块上的一句固定说明 —— 这是什么、要回话走哪个工具。
- *
- * 2026-08-02 加回来的,但**不是**那块被删掉的 `<turn reason=…>` 舞台指示复活:
- * 那块每回合重写一遍「Your turn / the room is waiting on you」,是在替模型决定
- * 该不该说话;这一句只回答"这段文本是什么、想回话按哪个键",而且措辞恒定 ——
- * 一句不随回合变的话不会把偏见按回合放大。
- *
- * 写死在块上而不是只留在 system prompt 里,是因为它落在上下文最末:真机上模型
- * 反复「写而未发」(想了回复却没调工具),而机制说明离决策点越远越容易被跳过。
- */
-export const COLLAB_NOTIFICATION_DESC =
-  ''
-
-/**
  * 尾部的「你没读过的那些」。
  *
  * 位置是缓存决定的(见 history-window.ts 文件头):插在 `<History>` 中间会让
@@ -253,6 +239,11 @@ export const COLLAB_NOTIFICATION_DESC =
  * 空未读时返回 `''`:一个 `<Notification count="0"/>` 是在告诉模型"什么都没发生",
  * 而这句话本身就是噪声,不如不说。**除非** `scheduled` 在场 —— 那时"你被点到了
  * 但没有新消息"本身就是一条数据,而且 drive 必须非空(A.2 ②)。
+ *
+ * 块上**没有** `desc` 说明属性(C2-1 清理)。这里曾挂过一句「这是什么、要回话走
+ * 哪个工具」的固定说明,后来内容被清空、渲染却还照写一个 ` desc=""` —— 一个空
+ * 属性对模型是纯噪声,对读代码的人是"这里好像有句说明"的假线索。机制说明归
+ * system prompt 的 `<where_you_are>`;要让它回来,请连同非空的措辞一起回来。
  */
 export function formatCollabNotificationBlock(options: {
   /** 已经裹好 `<message … rel>` 信封的未读行。 */
@@ -277,7 +268,6 @@ export function formatCollabNotificationBlock(options: {
 }): string {
   const seen = formatCollabMessageTime(options.seenAt)
   const attributes = [
-    ` desc="${escapeCollabXmlAttribute(COLLAB_NOTIFICATION_DESC)}"`,
     ` count="${options.lines.length}"`,
     seen ? ` seen_until="${escapeCollabXmlAttribute(seen)}"` : '',
     options.elided ? ` elided="${options.elided}"` : '',
@@ -434,89 +424,11 @@ export function buildCollabChatRoomPayload(
 // rule itself is shared with the willingness window (P2-16), so a departed
 // member is signed the same way in both.
 
-/**
- * A projected row, as the merge pass needs to see it. Both projections produce
- * rows of this shape — the pure one below and the ChatMessage-level adapter in
- * app/engine/stream/message-helpers.ts.
- */
-export interface CollabProjectedRowLike {
-  role: string
-  content: string
-  agentId?: string
-  attachments?: unknown[]
-}
-
-export interface MergeCollabProjectedRowsOptions<TRow> {
-  /** Rows dropped downstream: adjacency looks straight through them. */
-  isTransparent?: (row: TRow) => boolean
-  /** Rows carrying structure a text merge would silently discard. */
-  hasStructuralPayload?: (row: TRow) => boolean
-}
-
-/**
- * Merge adjacent same-side blocks — the ONE implementation (R4, 债3 + P2-13).
- *
- * 房间投影塌成一条 user 消息之后(collab-chatroom-payload.md),房间侧已经没有
- * 相邻可合的行了;留下这个函数是因为执行会话那一支还要用它:一块 `<ChatRoom>`
- * 后面追一条驱动信封,两条相邻 user 消息仍然是严格交替 provider 的 400。
- *
- * Alternation-strict providers reject two consecutive turns on the same side,
- * so the projection has always merged consecutive user blocks. It did so twice,
- * inline, in two walks that were only ever "kept in sync by agreement" — and
- * they shared a blind spot: nobody merged the ASSISTANT side. Since W14b an
- * agent says things with `say`, one message per call, so a member that sends
- * three lines in one turn produces three adjacent assistant rows in its own
- * projection, and the request 400s.
- *
- * As a post-pass rather than an inline push, because that is what makes it one
- * function instead of two: the walks disagree about what a row IS (a plain
- * `{role, content}` versus a whole ChatMessage), and they agree completely
- * about what adjacency means.
- *
- * Never merges a row that carries structure (tool calls and their companions):
- * dropping those to concatenate text is how orphan tool_results are made, and
- * the 400 this fixes is not worth trading for that one.
- */
-export function mergeCollabProjectedRows<TRow extends CollabProjectedRowLike>(
-  rows: readonly TRow[],
-  options: MergeCollabProjectedRowsOptions<TRow> = {},
-): TRow[] {
-  const isTransparent = options.isTransparent
-    ?? ((row: TRow) => row.role !== 'user' && row.role !== 'assistant')
-  const hasStructuralPayload = options.hasStructuralPayload ?? (() => false)
-
-  const merged: TRow[] = []
-  /** Where the last mergeable row sits in `merged`; -1 before the first one. */
-  let targetIndex = -1
-
-  for (const row of rows) {
-    if (isTransparent(row)) {
-      merged.push(row)
-      continue
-    }
-    const target = targetIndex >= 0 ? merged[targetIndex] : undefined
-    const mergeable = target
-      && !hasStructuralPayload(row)
-      && target.role === row.role
-      && (row.role === 'user' || target.agentId === row.agentId)
-    if (target && mergeable) {
-      // Clone: a self message is pushed as the ORIGINAL stored object, and
-      // rewriting its content in place would edit the transcript itself.
-      merged[targetIndex] = {
-        ...target,
-        content: `${target.content}\n\n${row.content}`,
-        ...(row.attachments?.length
-          ? { attachments: [...(target.attachments ?? []), ...row.attachments] }
-          : {}),
-      }
-      continue
-    }
-    merged.push(row)
-    targetIndex = merged.length - 1
-  }
-
-  return merged
-}
+// 相邻同侧行的合并(R4 的 `mergeCollabProjectedRows`)已于 C2-1 删除。
+// 它留下来的理由是「执行会话那一支还要用它」,而 W18 之后执行会话走的是普通
+// 会话那条路(message-helpers.ts 的 `return messages`),再没有人调过它 ——
+// 生产零消费者,只剩它自己的单测在证明它自己还活着。真需要合并相邻同侧行时
+// 从 git 历史里取回来,比留一个没人跑的分支便宜。
 
 /**
  * Project a room transcript into the activated agent's view — **one `user`
@@ -547,52 +459,17 @@ export function mergeCollabProjectedRows<TRow extends CollabProjectedRowLike>(
  * 一条 `<History>` 都没有 → 返回空数组,而不是一块空快照:没有房间内容时凭空
  * 塞一个壳进上下文,只是让模型多读一遍它已经知道的花名册。
  *
- * NOTE: the production projection is projectRoomMessagesForModel in
- * app/engine/stream/message-helpers.ts, which applies these SAME rules at the
- * ChatMessage level (attachments 归拢到这一条上) and shares the payload builder
- * above. Behavioral changes to the five classes must land in both — this module
- * is the tested spec.
+ * 方向(C2-1 纠正,此前这段注释把它写反了):**下面这个纯层 walk 就是生产实现**。
+ * 它经 `buildCollabDriveRoomContext` 喂给 app/collab/turn.ts —— W18 之后每一个被
+ * 驱动的房回合都跑在执行会话里,而房间内容是跟着 drive 走这条路进去的。
  *
- * The boundary of "both" (2026-07-30): this spec's input is a ROOM message list
- * and class 4 above is final for it — a drive never enters a room projection.
- * The adapter has one job this spec cannot have, because it takes a SESSION: an
- * `kind === 'agent'` execution session is projected as "the room's projection +
- * this round's own drive appended at the tail". That is not an exception to class
- * 4 (the drive is not a room message and never becomes one); it is the adapter
- * assembling the model input of a turn that runs outside the room. Nothing to
- * mirror here — a spec over room messages has no execution session to read.
+ * app/engine/stream/message-helpers.ts 的 `projectRoomMessagesForModel` 是**遗留
+ * 适配器**:它只在 `kind === 'room'` 的会话直接进流式时才醒过来,而 W18 之后
+ * ingress 把房内用户消息挡在流式之外,只剩 pre-W18 的旧房转录理论上够得着它。
+ * 那一支已冻结,不接新特性;这里改了规则不必去同步它(反过来也一样)。
+ * 两侧仍共用同一个载荷 builder,`room-projection.test.ts` 有一条逐字对拍钉住它们
+ * 走到 builder 之前的那一段。
  */
-/**
- * 投影走一遍之后得到的**三堆行** —— 载荷组装之前的那一步(v3 V1)。
- *
- * 拆出来是因为它有了第二个消费者:drive。v3 之后房间内容不再每轮重投影,而是
- * 跟着 drive 写进执行会话一次,于是"把房消息渲染成 `<message from>` 行"这件事同时
- * 服务两处。**渲染只有一份**——两份迟早会分家,而分家的形态就是 P5 §2 那五个
- * 缺口(同一条规则写两三遍、写歪了)。
- *
- * 这里只回答"哪些行、什么内容"，不回答"包成什么壳":`<ChatRoom>` 那层壳归
- * `buildCollabChatRoomPayload`,drive 那边则压根不要壳。
- */
-export interface CollabProjectedLines {
-  /** 已读且未折叠的 —— 载荷里的 `<History>` 正文。 */
-  history: string[]
-  /** 未读的,带 `rel` —— 载荷里的 `<Notification>` 正文。 */
-  unreadLines: string[]
-  /** 折叠掉了多少、覆盖哪几天;没折叠时 undefined。 */
-  folded?: CollabFoldedSummary
-}
-
-export function collectCollabProjectedLines(
-  options: ProjectRoomHistoryOptions,
-): CollabProjectedLines {
-  const walked = walkCollabRoomProjection(options)
-  return {
-    history: walked.history,
-    unreadLines: walked.unreadLines,
-    ...(walked.foldedSummary ? { folded: walked.foldedSummary } : {}),
-  }
-}
-
 function walkCollabRoomProjection(options: ProjectRoomHistoryOptions): {
   history: string[]
   unreadLines: string[]
@@ -754,6 +631,15 @@ export function buildCollabDriveRoomContext(options: ProjectRoomHistoryOptions &
   return lines.filter(Boolean).join('\n')
 }
 
+/**
+ * 整间房塌成一条 `user` 消息的那个形态 —— **可执行的 spec 入口**(C2-1 定性)。
+ *
+ * 生产驱动走的是 `buildCollabDriveRoomContext`(不包 `<ChatRoom>` 壳),所以这个
+ * 函数今天没有生产调用点;它活着是因为 walk 内核那五类消息的取舍、信封署名、
+ * @ 重绘、引用行与表情统计,全部由它承载断言(collab/__tests__ 六个文件),而
+ * `room-projection.test.ts` 那条逐字对拍还要用它当遗留适配器的对照面 —— 删掉它
+ * 等于把这段共享内核的覆盖一起删掉。**不要**给它接新特性:要改的是 walk。
+ */
 export function projectRoomHistory(options: ProjectRoomHistoryOptions): ProjectedRoomMessage[] {
   const { history, unreadLines, foldedSummary, userLabel } = walkCollabRoomProjection(options)
   const window = options.window

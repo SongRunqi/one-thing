@@ -13,10 +13,9 @@
 import { describe, expect, it } from "vitest";
 import { decideCollabActivations } from "../activation.js";
 import { COLLAB_DM_PAIR_MAX_CHAIN } from "../types.js";
-import {
-	COLLAB_ROOM_TOOLS,
-	resolveCollabToolAllowlist,
-} from "../tool-surface.js";
+import { COLLAB_ROOM_TOOLS } from "../tool-surface.js";
+// 工具面的唯一实现在 agents 层(C2「工具面单点」):collab 只出地板表。
+import { resolveAgentToolSurface } from "../../agents/profile.js";
 import {
 	buildCollabRoomContext,
 	buildCollabRoomSystemPrompt,
@@ -197,7 +196,7 @@ describe("§3.4 工具面:双人房走群房那一路", () => {
 		// 双成员房不是 `dm: true` 那一格(D7 的 union 是单成员私聊的特权),它按普通
 		// 群房解析 —— 今天两格的工具清单一样,但走的确实是不同的那一格。
 		expect(
-			resolveCollabToolAllowlist({ kind: "agent", ownTools: ["read"] }),
+			resolveAgentToolSurface({ sessionKind: "agent", ownTools: ["read"] }),
 		).toEqual(["read", "send_message", "board", "history"]);
 	});
 });

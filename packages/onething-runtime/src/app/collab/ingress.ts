@@ -11,7 +11,6 @@
  */
 import { randomUUID } from 'node:crypto'
 import {
-  isActiveAgent,
   type ChatMessage,
   type ChatMessageMention,
   type ChatMessageReplyTo,
@@ -19,7 +18,7 @@ import {
 } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
-import { findAgent } from '../agents/index.js'
+import { collabSessionRoomMembers } from './members.js'
 import {
   COLLAB_MESSAGE_SOURCE,
   buildCollabMentions,
@@ -49,21 +48,13 @@ export interface CollabRoomInboundCommand {
   mentions?: ChatMessageMention[]
 }
 
-/** @ 能落在谁身上:退休的成员不算(域模型 §3.2)—— 点不到,也就不会被激活。 */
+/**
+ * @ 能落在谁身上:退休的成员不算(域模型 §3.2)—— 点不到,也就不会被激活。
+ *
+ * 不带 `description`:这一面只做**匹配**,一句职责说明进不了任何判据。
+ */
 function roomMembers(session: { room?: { memberAgentIds?: string[] } }): CollabAgentLike[] {
-  const members: CollabAgentLike[] = []
-  for (const id of session.room?.memberAgentIds ?? []) {
-    const agent = findAgent(id)
-    if (!agent || !isActiveAgent(agent)) continue
-    members.push({
-      id: agent.id,
-      name: agent.name,
-      title: agent.title,
-      avatar: agent.avatar,
-      avatarImage: agent.avatarImage,
-    })
-  }
-  return members
+  return collabSessionRoomMembers(session)
 }
 
 /**

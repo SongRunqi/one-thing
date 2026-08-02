@@ -10,7 +10,7 @@
  *  - 没有新东西就返回空串，让 drive 保持只有一行。
  */
 import { describe, expect, it } from 'vitest'
-import { COLLAB_NOTIFICATION_DESC, buildCollabDriveRoomContext } from '../projection.js'
+import { buildCollabDriveRoomContext } from '../projection.js'
 import { planCollabHistoryWindow } from '../history-window.js'
 import type { CollabAgentLike, CollabMessageLike } from '../types.js'
 
@@ -96,7 +96,8 @@ describe('drive 携带的房间内容', () => {
    */
   it('点将 · 零未读 → 自闭合的 count="0" 块,而不是空串', () => {
     const block = build('m4', { scheduled: 'coordinator' })
-    expect(block.startsWith(`<Notification desc="${COLLAB_NOTIFICATION_DESC}"`)).toBe(true)
+    // C2-1:块上不再有 desc 说明属性(常量早已清空,渲染却还在写 ` desc=""`)。
+    expect(block.startsWith('<Notification count=')).toBe(true)
     expect(block).toContain('count="0"')
     expect(block.endsWith('/>')).toBe(true)
     expect(block).toContain('seen_until=')

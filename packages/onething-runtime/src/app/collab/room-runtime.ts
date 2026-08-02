@@ -40,11 +40,11 @@ import {
   type CollabActivationReason,
   type CollabAgentLike,
 } from '@onething/runtime/collab'
-import { isActiveAgent, type ChatMessage, type ChatSession } from '@shared/ipc.js'
+import { type ChatMessage, type ChatSession } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
-import { findAgent } from '../agents/index.js'
+import { collabSessionRoomMembers } from './members.js'
 import { getStorePath } from '../stores/paths.js'
 
 /** One activation as the queue and the durable record both see it. */
@@ -566,23 +566,12 @@ export function clearRoomTimers(): void {
  * 退休的成员不在里面(域模型 §3.2 激活链一行):它照旧留在 `memberAgentIds`
  * 里(数据不动,成员条上是墓碑),但不再被提名、不再被 @ 到、也不进模型看到的
  * 花名册 —— 一个永远沉默的名字出现在这三处,只会让房间对着它空转。
+ *
+ * 投影本身归 `members.ts`(B8 的单一投影点);这里只是它带着房间语义的转发口,
+ * 既有的十来个调用点因此一个字都不用改。
  */
 export function roomMembers(session: ChatSession): CollabAgentLike[] {
-  const ids = session.room?.memberAgentIds ?? []
-  const members: CollabAgentLike[] = []
-  for (const id of ids) {
-    const agent = findAgent(id)
-    if (!agent || !isActiveAgent(agent)) continue
-    members.push({
-      id: agent.id,
-      name: agent.name,
-      title: agent.title,
-      description: agent.description,
-      avatar: agent.avatar,
-      avatarImage: agent.avatarImage,
-    })
-  }
-  return members
+  return collabSessionRoomMembers(session, { withDescription: true })
 }
 
 /**

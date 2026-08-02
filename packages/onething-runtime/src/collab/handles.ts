@@ -106,6 +106,45 @@ export type CollabHandleResolution =
   | { ok: true; agentId: string }
   | { ok: false; error: string }
 
+/** `名字#句柄` 被拆开之后的样子。字段全是**语法**,一个判定都没做。 */
+export interface CollabHandleQuery {
+  /** 归一后的整串:去掉两端空白与前导 `@`。空串 = 模型什么也没写。 */
+  raw: string
+  /** `#` 前那一截。没有 `#` 时是空串 —— 裸写的整串归 `handle`,不归这里。 */
+  name: string
+  /** `#` 后那一截;没有 `#` 时就是整串(裸句柄与裸名字在语法上分不开)。 */
+  handle: string
+  /** 原串里有没有 `#`。带 `#` = 模型明确在写句柄,判定可以更严。 */
+  hashed: boolean
+}
+
+/**
+ * 「名字#句柄」的**唯一**语法切分口(架构审查 B8)。
+ *
+ * 从前有三份:这里的四档解析、`dm` 的用户档匹配、`history` 的 `who` 过滤,
+ * 各自 `lastIndexOf('#')` 一遍。三份切分意味着三种「什么算名字、什么算句柄、
+ * `@` 要不要剥、空白要不要 trim」——而它们答的是同一个问题,只是**答完之后**
+ * 拿去干的事不同(授权解析要严,过滤可以宽)。
+ *
+ * 所以收口收在这一层:切分只有一份,宽严的差别留在各自的比较步里。
+ *
+ * `lastIndexOf` 而不是 `indexOf`:名字本身可以含 `#`(模型抄一段带卡号的话进
+ * 来),而句柄永远在最后一截。
+ */
+export function splitCollabHandleQuery(
+  query: string | undefined | null,
+): CollabHandleQuery {
+  const raw = (query ?? '').trim().replace(/^@/, '')
+  const hashAt = raw.lastIndexOf('#')
+  if (hashAt < 0) return { raw, name: '', handle: raw, hashed: false }
+  return {
+    raw,
+    name: raw.slice(0, hashAt).trim(),
+    handle: raw.slice(hashAt + 1).trim(),
+    hashed: true,
+  }
+}
+
 /**
  * 入站:模型写的一个"谁"(dm 的 to、board 的 assignee),解析成 agentId。
  *
@@ -121,7 +160,7 @@ export function resolveCollabAgentHandle(
   query: string | undefined | null,
   agents: readonly CollabAgentLike[],
 ): CollabHandleResolution {
-  const raw = (query ?? '').trim().replace(/^@/, '')
+  const { raw, name: namePart, handle: handlePart, hashed } = splitCollabHandleQuery(query)
   if (!raw) return { ok: false, error: '没说是谁 —— 填花名册里的写法「名字#句柄」。' }
 
   const handles = buildCollabAgentHandles(agents)
@@ -130,12 +169,8 @@ export function resolveCollabAgentHandle(
   const byId = agents.find(agent => agent.id === raw)
   if (byId) return { ok: true, agentId: byId.id }
 
-  const hashAt = raw.lastIndexOf('#')
-  const handlePart = hashAt >= 0 ? raw.slice(hashAt + 1).trim() : raw
-  const namePart = hashAt >= 0 ? raw.slice(0, hashAt).trim() : ''
-
   // 2/3. 句柄(带不带名字都走同一条:句柄说了算)
-  if (handlePart && (hashAt >= 0 || looksLikeHandle(handlePart))) {
+  if (handlePart && (hashed || looksLikeHandle(handlePart))) {
     const exact = [...handles].filter(([, handle]) => handle === handlePart)
     if (exact.length === 1) return { ok: true, agentId: exact[0][0] }
     // 模型可能抄短了或抄长了 —— 唯一前缀仍然是明确的指认。
@@ -148,7 +183,7 @@ export function resolveCollabAgentHandle(
     if (prefix.length > 1) {
       return { ok: false, error: `句柄「#${handlePart}」不止一个人对得上:${listCandidates(prefix)}。` }
     }
-    if (hashAt >= 0 && namePart) {
+    if (hashed && namePart) {
       // 句柄写错了但名字可能是真的 —— 说清楚哪一半错了,别让它以为人不在。
       const byName = agents.filter(agent => agent.name?.trim() === namePart)
       if (byName.length === 1) {

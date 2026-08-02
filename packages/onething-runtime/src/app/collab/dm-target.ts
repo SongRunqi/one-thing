@@ -12,9 +12,11 @@
  * 拒绝同款措辞——列出候选,让模型用精确写法再说一次(A1「绝不 default 冒充」)。
  */
 import {
-  COLLAB_USER_CONSTANT_WORDS,
+  collabIdentityAnswersTo,
+  collabUserIdentity,
   formatCollabAgentHandle,
   resolveCollabAgentHandle,
+  splitCollabHandleQuery,
   type CollabAgentLike,
 } from '@onething/runtime/collab'
 import { resolveUserIdentity } from './user-identity.js'
@@ -28,42 +30,38 @@ export type CollabDmTargetResolution =
   | { ok: false; error: string }
 
 /**
- * 两个常量词。**即使用户从没配置过资料**,`dm to:"用户"` 也必须可达 ——
- * 一个只在配置之后才存在的通道等于没有通道。
+ * 这个写法指的是用户吗。
  *
- * 单一属主(collab-handle-codec.md §2.1):这份表同时是裸句柄「名实相符」判据
- * 的别名来源(`collabUserIdentity` 的 aliases)。两处各抄一份的下场是可预见的
- * —— 改一处、另一处安静地不认,而"另一处"正是这次泄漏的现场。
+ * 三份匹配实现的收口(架构审查 B8):此前这里自己 `lastIndexOf('#')` 切一遍、
+ * 自己抄一份常量词表比对,于是"什么算名字、名字对不上算不算否决"这两件事
+ * 在同事档与用户档各有一套。现在语法切分走 `splitCollabHandleQuery`(与
+ * `resolveCollabAgentHandle` 同一份),名实相符走 `collabIdentityAnswersTo`
+ * (别名表就是 `collabUserIdentity` 的 aliases,不再有第二份常量词表)。
+ *
+ * 判定本身一字未改:
+ *  - 裸写 —— 常量词(用户 / user)或本名,别名表说了算;
+ *  - `#句柄` / 裸句柄 / `名字#句柄` —— **以句柄为准**,名字只当显示,与同事档
+ *    逐字同构;但名字写了就不能是别人的(写成「小李#我的句柄」不算指用户)。
  */
-const USER_CONSTANT_WORDS: readonly string[] = COLLAB_USER_CONSTANT_WORDS
-
-/** 这个写法指的是用户吗。句柄与英文常量词按小写比,中文名按原文比。 */
 function matchesUser(raw: string, identity: { label: string; handle: string }): boolean {
-  const lower = raw.toLowerCase()
-  if (USER_CONSTANT_WORDS.includes(lower)) return true
+  const self = collabUserIdentity(identity.label, identity.handle)
+  const query = splitCollabHandleQuery(raw)
 
-  const handle = identity.handle.toLowerCase()
-  // 句柄的三种写法:裸句柄、`#句柄`、`名字#句柄`(与同事行逐字同构)。
-  if (lower === handle || lower === `#${handle}`) return true
-  const hashAt = raw.lastIndexOf('#')
-  if (hashAt >= 0) {
-    const namePart = raw.slice(0, hashAt).trim()
-    const handlePart = raw.slice(hashAt + 1).trim().toLowerCase()
-    if (handlePart === handle) {
-      // 名字对不上不算否决:花名册里那一行写的是「名字#句柄(用户)」,而
-      // 「以句柄为准,名字只当显示」是既有的 agent 解析口径,这里一致。
-      return namePart === identity.label || USER_CONSTANT_WORDS.includes(namePart.toLowerCase()) || !namePart
-    }
-  }
+  // 裸写:整串直接问别名表。`一天` / `用户` / `USER` 都在这一格答完。
+  if (!query.hashed && collabIdentityAnswersTo(self, query.raw)) return true
 
-  return raw === identity.label
+  const handle = self.handle.toLowerCase()
+  // 空句柄不该匹配任何东西 —— 否则一个没配过资料的用户会认领掉 `#`(以及裸写
+  // 的空串)。既有实现在这里是漏的,收口顺手补上。
+  if (!handle || query.handle.toLowerCase() !== handle) return false
+  return !query.name || collabIdentityAnswersTo(self, query.name)
 }
 
 export function resolveDmTarget(
   query: string | undefined | null,
   agents: readonly CollabAgentLike[],
 ): CollabDmTargetResolution {
-  const raw = (query ?? '').trim().replace(/^@/, '')
+  const { raw } = splitCollabHandleQuery(query)
   if (!raw) return { ok: false, error: '要发给谁?to 填花名册里的写法「名字#句柄」,发给用户本人就写「用户」。' }
 
   const identity = resolveUserIdentity()

@@ -17,10 +17,9 @@ import {
   getAgentLoopContextBlockReason,
   getAgentLoopTransientTail,
 } from '@onething/core/engine'
-import { resolveAgentProfile } from '@onething/runtime/agents'
 import * as store from '../../store.js'
 import { goalRuntimeHooks } from '../../goals/runtime-hooks.js'
-import { defaultAgent, findAgent } from '../../agents/index.js'
+import { resolveAgentProfileForSessionObject } from '../../agents/profile.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
 import { getMCPRouterToolDefinition } from '../../mcp/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
@@ -153,14 +152,16 @@ function createAgentLoopRuntimeAdapters(
     getMCPRouterToolDefinition,
     getAgentToolAllowlist: (agentId: string | undefined, session?: unknown) => {
       // Fallback only: a run with a resolved profile reads the snapshot
-      // instead (see stream-runtime.ts). Same pure rule either way — the
-      // collab room/work special-casing that used to live here is now a
-      // capability grant inside resolveAgentProfile.
-      return resolveAgentProfile({
-        // persona/能力功能兜底(域模型 §3.3),与 profile.ts 同一条规则。
-        agent: findAgent(agentId) ?? defaultAgent(),
-        session: { kind: (session as { kind?: string } | undefined)?.kind },
-      }).tools
+      // instead (see stream-runtime.ts)。真链路恒在回合入口解析好快照
+      // (agent-loop-executor.ts),这条只接住"直接 build runtime"的调用。
+      //
+      // C2「工具面单点」:它必须与快照**同解**,所以走的是同一个解析入口,而不是
+      // 就地再写一遍会话输入 —— 旧写法只喂了 kind、漏了 dm,快照一缺席就会把 D7
+      // 私聊那一格悄悄算成群房那一格。少喂一个字段就是一条潜伏分叉。
+      return resolveAgentProfileForSessionObject(
+        session as ChatSession | undefined,
+        agentId,
+      ).tools
     },
     buildProjectPromptVars: buildProjectDirsPromptVars,
     buildPrompt: (promptOptions: Parameters<typeof buildPrompt>[0]) => buildPrompt({

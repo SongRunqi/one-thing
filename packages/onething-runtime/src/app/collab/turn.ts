@@ -18,7 +18,6 @@
  */
 import { randomUUID } from "node:crypto";
 import {
-	COLLAB_MESSAGE_SOURCE,
 	COLLAB_USAGE_SOURCE_ROOM,
 	buildCollabChainHoldLine,
 	buildCollabDriveRoomContext,
@@ -32,11 +31,8 @@ import {
 	decideCollabActivations,
 	formatCollabTurnBreakerNote,
 	isCollabDriveMessage,
-	isCollabHarvestMessage,
 	isCollabPassMessage,
-	isCollabSayMessage,
 	isAgentPairDmRoom,
-	isCollabThinkingMessage,
 	isUserDmRoom,
 	planCollabHistoryWindow,
 	resolveCollabTurnBreakerLimits,
@@ -71,6 +67,15 @@ import {
 } from "./typing-observer.js";
 import { isRoomOverBudget } from "./budget.js";
 import { issueCollabDriveToken } from "./drive-guard.js";
+// C2-5: 起跑与收尾的机械动作与 worker.ts 共用一份(信封、模型绑定、僵尸兜底、
+// 房内 say 收割)。同一段代码抄两遍的代价这里现过形 —— 僵尸 abort 先在 worker
+// 那边补上,房这条路被落下了整整一版。
+import {
+	abortCollabZombieStream,
+	collabAgentModelFields,
+	collabDriveEnvelope,
+	scanCollabRoomSays,
+} from "./turn-primitives.js";
 import {
 	advanceWatermark,
 	chainGateAllows,
@@ -257,22 +262,13 @@ function harvestTurnMessages(
 	agentId: string,
 	sinceTs: number,
 ): CollabTurnHarvest {
-	const says: ChatMessage[] = [];
-	let legacySpeech: ChatMessage | undefined;
-	for (let index = roomSession.messages.length - 1; index >= 0; index--) {
-		const message = roomSession.messages[index];
-		if (message.timestamp < sinceTs) break;
-		if (message.role !== "assistant" || message.agentId !== agentId) continue;
-		if (isCollabSayMessage(message)) {
-			says.unshift(message);
-			continue;
-		}
-		if (isCollabHarvestMessage(message)) continue;
-		// Neither a say nor a harvest post: only a pre-W18 in-room turn can be
-		// this, and back then it WAS the utterance.
-		if (!legacySpeech && !isCollabThinkingMessage(message))
-			legacySpeech = message;
-	}
+	// 房间那一趟是与 worker 共用的收割核心(C2-5):同一个倒序扫描、同一个
+	// 「早于 drive 就停」的边界。worker 只取 `says`,房这边还要 `legacySpeech`。
+	const { says, legacySpeech } = scanCollabRoomSays(
+		roomSession.messages,
+		agentId,
+		sinceTs,
+	);
 
 	// `turnMessage` is the NEWEST assistant record of the window — the silence
 	// branch reads it to tell "the turn ran and said nothing" from "never ran".
@@ -923,17 +919,17 @@ async function runActivationTurn(options: {
 	 */
 	const emitDrive = async (content: string): Promise<void> => {
 		await getEventBus().emit(agentSessionId, {
-			type: "command:send-message",
+			// 信封骨架与任务回合共用一份(C2-5):type/source/origin/标题抑制,以及
+			// 计费归属那一格 —— 房回合记 ROOM,那是与 worker 有意的分歧,做成参数。
 			// The room's connector: the turn runs elsewhere, but it answers the
 			// room, and outbound routing/permission affinity follow the room.
-			channel: roomChannel(roomSessionId),
-			content,
-			source: COLLAB_MESSAGE_SOURCE,
-			origin: {
-				transport: "api",
-				source: COLLAB_MESSAGE_SOURCE,
-				receivedAt: Date.now(),
-			},
+			...collabDriveEnvelope({
+				channel: roomChannel(roomSessionId),
+				content,
+				// W13.3: bill this turn as room spend, not anonymous chat.
+				// Attribution only — the budget gate below still sums by sessionId.
+				usageSource: COLLAB_USAGE_SOURCE_ROOM,
+			}),
 			// P2-8: the marker says what this is, the token proves who sent it. Only
 			// the coordinator that minted it this process can put this value on a
 			// command, so the engine's room/exec gate can stop trusting a string.
@@ -950,11 +946,7 @@ async function runActivationTurn(options: {
 			...(record.sourceMessageId
 				? { collabSourceMessageId: record.sourceMessageId }
 				: {}),
-			suppressTitleGeneration: true,
-			// W13.3: bill this turn as room spend, not anonymous chat. Attribution
-			// only — the budget gate below still sums by sessionId.
-			usageSource: COLLAB_USAGE_SOURCE_ROOM,
-			// 这里刻意 **没有** initialToolChoice。
+			// 这里刻意 **不强制**回合的首个工具调用。
 			//
 			// W22 曾把回合首调 named-force 成 say(「判定即承诺」:意愿判定说了要
 			// 发言,那开口即 say)。2026-07-30 移除:真机的代价是无话可说的 agent
@@ -972,20 +964,9 @@ async function runActivationTurn(options: {
 			// 与 unsent 度量。
 			// W18b 的 stay_silent 空转事故也不会回归:那个工具已删除,沉默就是不调
 			// 任何工具,没有可空转的落点(tool-surface.ts 自己就是这么论证的)。
-			// Per-agent thinking preference (D1): binding stores an effort level
-			// string; the command contract wants thinking:boolean + thinkingEffort.
-			// All three are dropped for a pinned session (P1-4, see modelPinned).
-			...(modelPinned
-				? {}
-				: {
-						...(agent.model?.providerId
-							? { providerId: agent.model.providerId }
-							: {}),
-						...(agent.model?.modelId ? { model: agent.model.modelId } : {}),
-						...(agent.model?.thinking && agent.model?.providerId
-							? { thinking: true, thinkingEffort: agent.model.thinking }
-							: {}),
-					}),
+			//
+			// 模型绑定的取舍与任务回合共用一份(C2-5),含 pinned 短路的全部理由。
+			...collabAgentModelFields(agent, modelPinned),
 		} as Parameters<ReturnType<typeof getEventBus>["emit"]>[1]);
 	};
 
@@ -1065,14 +1046,9 @@ async function runActivationTurn(options: {
 	persistRoomState(roomSessionId, runtime);
 
 	const outcome = await turnEnded;
-	if (outcome === "timeout") {
-		// Never leave a zombie stream: the wait gave up, but the request did not —
-		// it keeps burning full-context round-trips against a turn nobody is
-		// listening to any more, and the agent lock is about to be handed to the
-		// next room. worker.ts:363 fixed the same hole on the work path; the room
-		// path was left behind.
-		getStreamEngineSafe()?.abort(agentSessionId);
-	}
+	// 超时不留僵尸流(C2-5 起与 worker 同一份实现)。这个洞当年先在任务那条路上
+	// 补好、房这条路被落下了整整一版 —— 合成一处之后不再有「只补一边」的形态。
+	abortCollabZombieStream(outcome, agentSessionId);
 
 	// Harvest whatever persisted, regardless of outcome — an aborted partial IS
 	// in the transcript and must count exactly like it will on boot replay

@@ -103,3 +103,29 @@ export function isColleague(agent: Pick<OnethingAgentDefinition, 'kind'>): boole
 export function isActiveAgent(agent: Pick<OnethingAgentDefinition, 'status'>): boolean {
   return (agent.status ?? 'active') === 'active'
 }
+
+/**
+ * 墓碑文案(M4)——**双口径,单一属主**(架构审查 B8)。
+ *
+ * 「名字不可考的这一位」在系统里有两句话,不是笔误,是两个受众:
+ *
+ *  - `'ui'` → 「已注销」。人看的:成员条、看板菜单、署名、Agent 管理页。用户
+ *    删过这个人,「注销」对应的正是 TA 按下的那个动作。
+ *  - `'model'` → 「前成员」。模型看的:信封的 `from`、意愿判定窗口的行首、日
+ *    摘要的署名。这里要说的是**与这间房的关系**(它曾经在,现在不在),而不是
+ *    账号状态 —— 说「已注销」会让模型以为这是个可操作的状态,进而去试着"恢复"
+ *    或者绕开它。
+ *
+ * 之所以要一个属主:此前这两句话在 8 处各写各的字面量,于是"改词"这件事等于
+ * "grep 得干净",而 grep 不干净的那一处会安静地留在真机上。双口径是设计,
+ * 8 份字面量不是。
+ */
+export const AGENT_TOMBSTONE_UI_NAME = '已注销'
+
+/** 模型面的墓碑口径。见 `AGENT_TOMBSTONE_UI_NAME` 的双口径说明。 */
+export const AGENT_TOMBSTONE_MODEL_NAME = '前成员'
+
+/** 受众 → 墓碑文案。加第三种受众之前先读上面那段为什么是两种。 */
+export function agentTombstoneLabel(audience: 'ui' | 'model'): string {
+  return audience === 'model' ? AGENT_TOMBSTONE_MODEL_NAME : AGENT_TOMBSTONE_UI_NAME
+}

@@ -24,18 +24,20 @@ import {
 /**
  * Capability packs. A grant either REPLACES the agent's own allowlist (the
  * pack IS the surface) or is UNIONed into it (the pack is a floor layered on
- * the agent's real tools). Both rules are lifted from collab/tool-surface.ts
- * unchanged — including which mode each pack uses, so the two files cannot
- * drift into two different answers for the same question.
+ * the agent's real tools).
+ *
+ * 分工:工具**表**(房面地板 / 工作台面地板)是 collab 的产品口径,来自
+ * collab/tool-surface.ts;**规则**(哪个 kind 拿哪一格、怎么叠)只在这里实现。
+ * C2「工具面单点」(2026-08-03):collab 那边曾有一份同义的
+ * `resolveCollabToolAllowlist`,两处互相在注释里要求对方保持一致,而对齐真的
+ * 漂过一次 —— 那份已删,这里是唯一的答案,不再有人肉对齐的义务。
  *
  * Both packs are UNION grants (collab-team-v2 §2.1): say/board are a floor
  * layered on the agent's own tools; an agent without a whitelist stays
  * unrestricted. `collab-room` was briefly a REPLACE grant (2026-07-30 收紧,
  * over MCP tool noise in room turns), reverted the same day by user decision —
  * light work may run inline in a room turn, heavy work still goes through a
- * board card into a work session. The reasoning lives in
- * collab/tool-surface.ts; this file must agree with it or the two answer the
- * same question differently.
+ * board card into a work session.
  */
 export interface AgentToolGrant {
   id: string
@@ -219,8 +221,12 @@ export interface ResolveAgentProfileInput {
  *
  * A `replace` grant would win outright and ignore the agent's own list; no
  * built-in pack uses it today (room/agent went replace on 2026-07-30 and was
- * reverted to union the same day, mirrored in collab/tool-surface.ts). `union`
- * grants layer onto a curated list; with no list there is nothing to restrict.
+ * reverted to union the same day). `union` grants layer onto a curated list;
+ * with no list there is nothing to restrict.
+ *
+ * 这是「这一回合能用哪些工具」的**唯一**实现(C2,2026-08-03):房、私聊、
+ * 工作台、普通会话都从这里出答案,调用方要么读回合开头解析好的 profile 快照,
+ * 要么调这个函数 —— 不该有第三条自己算的路。
  */
 export function resolveAgentToolSurface(input: {
   ownTools?: readonly string[] | null

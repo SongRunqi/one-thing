@@ -27,6 +27,7 @@ import {
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { findAgent } from '../agents/index.js'
+import { collabSessionRoomMembers } from './members.js'
 import { generateChatResponse } from '../providers/index.js'
 import {
   getEffectiveProviderConfig,
@@ -58,13 +59,17 @@ function dayOf(timestamp: number): string {
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`
 }
 
+/**
+ * 摘要的署名表。
+ *
+ * 与激活面相反,这里 **退休的照列**(`includeRetired`):摘要回答的是"这条是
+ * 谁说的",而退休不会让说过的话消失 —— 漏掉它,那一天的转录里就会冒出一个
+ * 「前成员」占位顶替一个名字还在的人。
+ *
+ * 不带头像也不带 description:摘要是散文,进不去也用不上。
+ */
 function roomAgents(session: ChatSession): CollabAgentLike[] {
-  const agents: CollabAgentLike[] = []
-  for (const id of session.room?.memberAgentIds ?? []) {
-    const agent = findAgent(id)
-    if (agent) agents.push({ id: agent.id, name: agent.name, title: agent.title })
-  }
-  return agents
+  return collabSessionRoomMembers(session, { withAvatar: false, includeRetired: true })
 }
 
 /**

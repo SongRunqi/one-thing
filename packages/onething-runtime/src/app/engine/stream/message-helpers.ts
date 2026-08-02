@@ -23,14 +23,9 @@ import {
 import {
 	appendCollabReactionSummary,
 	buildCollabChatRoomPayload,
-	createCollabFoldedAccumulator,
 	formatCollabFlattenedToolCall,
-	formatCollabDigestLines,
-	formatCollabFoldedLine,
-	formatCollabNotificationBlock,
 	formatCollabUserLabel,
 	COLLAB_SYSTEM_SPEAKER_LABEL,
-	resolveCollabUnreadRelation,
 	wrapCollabMessageEnvelope,
 	formatCollabReplyQuote,
 	isCollabDriveMessage,
@@ -41,11 +36,9 @@ import {
 	renderCollabModelMention,
 	resolveCollabSpeakerLabel,
 	type CollabAgentLike,
-	type CollabHistoryWindow,
 } from "@onething/runtime/collab";
 import { findAgent } from "../../agents/index.js";
 import { resolveUserIdentity } from "../../collab/user-identity.js";
-import { getCollabDigestsForDays } from "../../collab/digest-store.js";
 import * as store from "../../store.js";
 
 export { formatMessagesForLog, getTextFromContent, sanitizeToolResultForAI };
@@ -185,19 +178,19 @@ export function buildHistoryMessages(
  * 只知道别的 agent **声称**了什么),未标记的系统行仍是显示态。Ordinary
  * sessions pass through untouched.
  *
- * The RULES are specified and unit-tested in @onething/runtime/collab
- * projection.ts (projectRoomHistory), and the payload itself is assembled by
- * the SAME builder both sides import — 只改一边 = 测试全绿而真机没变。这里多做
- * 的只有 ChatMessage 层的事:attachments 归拢到这一条上、id 取第一条房间消息的。
+ * **遗留分支(C2-1 冻结)**。W18 之后被驱动的房回合都跑在执行会话里,而 ingress
+ * 把房内用户消息挡在流式之外 —— 于是 `kind === 'room'` 的会话直接进流式这条路,
+ * 今天只有 pre-W18 的旧房转录理论上够得着。生产投影是纯层的
+ * `walkCollabRoomProjection`(经 `buildCollabDriveRoomContext` 进 drive)。
  *
- * ONE thing is adapter-only and has no counterpart in the pure spec: the
- * `kind === 'agent'` branch below, which turns an EXECUTION session into
- * "room projection + this round's drive". The spec's input is a room message
- * list; it has no notion of an execution session, so there is nothing to
- * mirror there — see the branch's own comment for the boundary.
+ * 冻结的意思是:**保持现行为,不接新特性**。这里曾写着"与纯 spec 必须逐字同构、
+ * 只改一边 = 测试全绿而真机没变" —— 那条同步义务已经作废(纯层才是真机走的那条),
+ * 留着只会让下一个人为一条死路径付双份改动。两侧仍共用同一个载荷 builder,
+ * `__tests__/room-projection.test.ts` 有一条逐字对拍钉住走到 builder 之前的那一段。
  *
- * 导出只为可测:attachments 归拢与「id 取第一条房间消息」都活在 ChatMessage
- * 这一层,而 buildHistoryMessages 出口处已经把它们换成 provider 的形状了。
+ * 这里比纯层多做的只有 ChatMessage 层的事:attachments 归拢到这一条上、id 取第
+ * 一条房间消息的。导出只为可测 —— buildHistoryMessages 出口处已经把它们换成
+ * provider 的形状了。
  */
 export function projectRoomMessagesForModel(
 	messages: ChatMessage[],
@@ -218,14 +211,6 @@ export function projectRoomMessagesForModel(
 		};
 		collab?: { roomSessionId?: string; seenMessageId?: string };
 	},
-	/**
-	 * 读者的视野(collab/history-window.ts)。只有 `kind === 'agent'` 那一支算得
-	 * 出它(游标存在执行会话上),所以它是**参数**而不是从 session 里读 ——
-	 * 一间房被谁读、读到哪儿,不是房间的属性。
-	 *
-	 * 不给 = 老行为:全量逐字、无折叠、无未读块。
-	 */
-	window?: CollabHistoryWindow,
 ): ChatMessage[] {
 	/**
 	 * 房回合就是一条普通会话(collab-agent-view-v3.md,V2)。
@@ -298,40 +283,21 @@ export function projectRoomMessagesForModel(
 	 * 别的行可挂,而 merge pass 本来就是这么合并 attachments 的)。
 	 */
 	const history: string[] = [];
-	const unreadLines: string[] = [];
-	const folded = createCollabFoldedAccumulator();
 	const attachments: NonNullable<ChatMessage["attachments"]> = [];
 	/** 第一条**进得了投影**的房间消息 —— 这一条的 id 就是整块的 id(决定 5)。 */
 	let anchor: ChatMessage | undefined;
 	/**
-	 * 三条互斥的去处(collab/history-window.ts):折叠掉 / 进未读块 / 进历史。
-	 * 与纯 spec(projection.ts 的同名闭包)必须逐字同构 —— 只改一边 = 测试全绿
-	 * 而真机没变。
+	 * 每条投得出来的行都进 `<History>`,全量逐字。
 	 *
-	 * 折叠掉的那些**不贡献 attachments、不当 anchor**:它们没进上下文,把它们的
-	 * 附件挂上去等于凭空给模型一份它读不到出处的图。
+	 * C2-1:这里原本还有折叠与未读两条岔路,由一个 `window` 参数守着 —— 而全仓
+	 * 没有任何调用点(生产的、测试的)传过第三个参数,`window` 恒为 undefined,
+	 * 两条岔路一次都没走到过。视野窗口是纯层那条路的能力(planCollabHistoryWindow
+	 * → buildCollabDriveRoomContext),这个遗留适配器上它只是个摆设。
 	 */
-	const record = (index: number, message: ChatMessage, line: string) => {
-		if (window?.folded.has(index)) {
-			folded.note(message.timestamp);
-			return;
-		}
+	const record = (message: ChatMessage, line: string) => {
 		if (!anchor) anchor = message;
 		if (message.attachments?.length) attachments.push(...message.attachments);
-		if (window?.unread.has(index)) {
-			unreadLines.push(line);
-			return;
-		}
 		history.push(line);
-	};
-	/** 未读行才带 `rel`;历史里不带(按条计费的固定开销 × 全量投影)。 */
-	const relOf = (index: number, message: ChatMessage): { rel?: string } => {
-		if (!window?.unread.has(index)) return {};
-		return {
-			rel: resolveCollabUnreadRelation(message, selfAgentId, (messageId) =>
-				messages.find((entry) => entry.id === messageId)?.agentId,
-			),
-		};
 	};
 
 	/**
@@ -374,7 +340,7 @@ export function projectRoomMessagesForModel(
 	const speakerLabel = (agentId: string | undefined): string =>
 		resolveCollabSpeakerLabel(agentId, [], (id) => findAgent(id)?.name);
 
-	for (const [index, message] of messages.entries()) {
+	for (const message of messages) {
 		if (message.role === "assistant") {
 			if (isCollabPassMessage(message.content)) continue;
 			// W14b: a thinking record is not speech and leaves the projection for
@@ -396,13 +362,11 @@ export function projectRoomMessagesForModel(
 				const own = [message.content, ...flattened].filter(Boolean).join("\n");
 				if (own) {
 					record(
-						index,
 						message,
 						wrapCollabMessageEnvelope(
 							speakerLabel(message.agentId),
 							own,
 							message.timestamp,
-							relOf(index, message),
 						),
 					);
 				}
@@ -413,15 +377,12 @@ export function projectRoomMessagesForModel(
 				.join("\n");
 			if (!body) continue;
 			// collab-team-v2 §6.2 信封:说话人搬进 from 属性,正文里不再重复名字。
-			// 与纯 spec(projection.ts)必须逐字一致 —— 只改一边 = 测试全绿真机没变。
 			record(
-				index,
 				message,
 				wrapCollabMessageEnvelope(
 					speakerLabel(message.agentId),
 					withImMetadata(message, body),
 					message.timestamp,
-					relOf(index, message),
 				),
 			);
 			continue;
@@ -435,13 +396,11 @@ export function projectRoomMessagesForModel(
 			// 缓存进局部变量正是它以后不跟着改的开始。
 			const user = resolveUserIdentity();
 			record(
-				index,
 				message,
 				wrapCollabMessageEnvelope(
 					formatCollabUserLabel(user.label, user.handle),
 					withImMetadata(message, renderMentions(message)),
 					message.timestamp,
-					relOf(index, message),
 				),
 			);
 			continue;
@@ -451,13 +410,11 @@ export function projectRoomMessagesForModel(
 			// 什么。role='system' 留在外面等于谁也读不到 —— 下游整类丢弃。
 			if (message.content) {
 				record(
-					index,
 					message,
 					wrapCollabMessageEnvelope(
 						COLLAB_SYSTEM_SPEAKER_LABEL,
 						message.content,
 						message.timestamp,
-						relOf(index, message),
 					),
 				);
 			}
@@ -466,14 +423,11 @@ export function projectRoomMessagesForModel(
 		// error/unmarked system are display-only; downstream filtering ignores them.
 	}
 
-	// 一条都没有 → 什么也不投(与纯 spec 同):没有房间内容时凭空塞一个空壳
-	// 进上下文,只是让模型多读一遍它已经知道的花名册。
-	//
-	// 「只有未读」照投:那正是"我离开期间群里说了话"这一种最需要被读到的形态。
-	if (history.length === 0 && unreadLines.length === 0) return [];
+	// 一条都没有 → 什么也不投(与纯层同):没有房间内容时凭空塞一个空壳进上下文,
+	// 只是让模型多读一遍它已经知道的花名册。
+	if (history.length === 0) return [];
 	const identity = resolveUserIdentity();
 	const anchorMessage = anchor ?? messages[0];
-	const foldedSummary = folded.summary();
 	return [
 		{
 			// 全新的一行,而不是 `...anchorMessage`:整块房间不该继承某一条消息的
@@ -489,25 +443,8 @@ export function projectRoomMessagesForModel(
 				userLabel: identity.label,
 				userHandle: identity.handle,
 				history,
-				// P2:折叠了才读摘要 —— 没折叠还放摘要,等于把同一天的事说两遍。
-				// 读的是**已有的**那些:生成是回合收尾之后的后台任务,所以今天第一个
-				// 回合看到的折叠段还没摘要,下一轮才有。
-				...(foldedSummary
-					? {
-							foldedLine: formatCollabFoldedLine(foldedSummary),
-							digestLines: formatCollabDigestLines(
-								getCollabDigestsForDays(
-									roomSession?.id ?? "",
-									foldedSummary.days,
-								),
-							),
-						}
-					: {}),
-				newMessagesBlock: formatCollabNotificationBlock({
-					lines: unreadLines,
-					...(window?.seenAt !== undefined ? { seenAt: window.seenAt } : {}),
-					...(window?.unreadElided ? { elided: window.unreadElided } : {}),
-				}),
+				// 没有 foldedLine / digestLines / newMessagesBlock:那三块都由视野
+				// 窗口驱动,而这条遗留路径上窗口永远不存在(见 record 的注释)。
 			}),
 			timestamp: anchorMessage?.timestamp ?? Date.now(),
 			...(attachments.length ? { attachments } : {}),

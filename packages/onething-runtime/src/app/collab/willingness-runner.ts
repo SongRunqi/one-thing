@@ -26,6 +26,7 @@ import {
 import { isActiveAgent, type ChatMessage } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { findAgent } from '../agents/index.js'
+import { collabRoomMembers } from './members.js'
 import { generateChatResponse } from '../providers/index.js'
 import {
   getEffectiveProviderConfig,
@@ -234,20 +235,10 @@ export async function judgeWillingness(
   // 判定材料里的花名册:退休的成员不列(域模型 §3.2)。它还在
   // memberAgentIds 里、成员条上还看得见墓碑,但对模型来说房间里已经没有这个
   // 人可以指望了 —— 列出来只会诱导它把活儿推给一个永远不会应答的名字。
-  const members = (session.room.memberAgentIds ?? [])
-    .map((id): CollabAgentLike | null => {
-      const agent = findAgent(id)
-      if (!agent || !isActiveAgent(agent)) return null
-      return {
-        id: agent.id,
-        name: agent.name,
-        title: agent.title,
-        description: agent.description,
-        avatar: agent.avatar,
-        avatarImage: agent.avatarImage,
-      }
-    })
-    .filter((member): member is CollabAgentLike => member !== null)
+  //
+  // 带 `description`:这是**模型面**的材料,一句职责说明正是"这件事该谁接"
+  // 的依据。
+  const members = collabRoomMembers(session.room.memberAgentIds, { withDescription: true })
 
   const verdicts = await Promise.all(
     asked.map(candidate =>

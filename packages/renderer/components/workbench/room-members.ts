@@ -16,6 +16,7 @@
  * 「点得开线程」的场合(私聊房头徽标),两者的差别收在那一个选项里。
  */
 import type { CollabBoard } from '@shared/ipc'
+import { agentTombstoneLabel } from '@onething/runtime/agents/model'
 import { findAgentDoingTask, type AgentDoingTask } from '@/components/chat/agent-activity'
 import type { RoomMemberEntry } from '@/components/chat/room-member-strip'
 
@@ -37,8 +38,8 @@ export interface OpenMembersDetail {
 
 export type RoomPresenceGroupKey = 'busy' | 'idle' | 'retired'
 
-/** 墓碑行的副文案:名字还挂在花名册上,历史照旧读得出来。 */
-export const ROOM_MEMBER_RETIRED_DETAIL = '已注销 · 历史可读'
+/** 墓碑行的副文案:名字还挂在花名册上,历史照旧读得出来。文案属主见 model.ts。 */
+export const ROOM_MEMBER_RETIRED_DETAIL = `${agentTombstoneLabel('ui')} · 历史可读`
 
 export interface RoomPresenceMember extends RoomMemberEntry {
   /** 名下有 doing 卡 = 在忙。已注销恒 false(墓碑不参与在场判定)。 */
@@ -59,7 +60,7 @@ export interface RoomPresenceGroup {
 const GROUP_LABEL: Record<RoomPresenceGroupKey, string> = {
   busy: '在忙',
   idle: '空闲',
-  retired: '已注销',
+  retired: agentTombstoneLabel('ui'),
 }
 
 const GROUP_ORDER: readonly RoomPresenceGroupKey[] = ['busy', 'idle', 'retired']

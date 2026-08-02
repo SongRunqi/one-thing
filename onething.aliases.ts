@@ -151,6 +151,10 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   // (find 是前缀匹配,先命中者赢)。
   { find: '@onething/runtime/agents/identity', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/identity.ts') },
   { find: '@onething/runtime/agents/presence', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/presence.ts') },
+  // 同上第三支:域模型的投影与判定(model.ts)。renderer 吃它是为了墓碑文案的
+  // 单一属主(架构审查 B8)—— 它只 `import type` store.ts,类型被擦掉,node:fs
+  // 进不了浏览器包。
+  { find: '@onething/runtime/agents/model', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/model.ts') },
   { find: '@onething/runtime/agents', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/index.ts') },
   { find: '@onething/runtime/collab', replacement: resolve(projectRoot, 'packages/onething-runtime/src/collab/index.ts') },
   { find: '@onething/runtime/files/ripgrep', replacement: resolve(projectRoot, 'packages/onething-runtime/src/files/ripgrep.ts') },

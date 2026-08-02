@@ -18,7 +18,6 @@ import {
   COLLAB_DRIVE_LABEL_TASK_REVIEW,
   COLLAB_MAX_HALTS,
   COLLAB_MAX_REJECTIONS,
-  COLLAB_MESSAGE_SOURCE,
   COLLAB_USAGE_SOURCE_WORK,
   buildCollabSilentDeliveryLine,
   buildCollabTaskAssignedLine,
@@ -31,7 +30,6 @@ import {
   buildCollabTaskRequeueRefusedLine,
   renderCollabBoardDigest,
   isCollabDriveMessage,
-  isCollabSayMessage,
   isCollabThinkingMessage,
   type CollabBoardEvent,
   type CollabTask,
@@ -48,6 +46,14 @@ import { getCollabTask, loadCollabBoard, onCollabBoardEvent, patchCollabTask } f
 import { budgetDayKey } from './budget.js'
 import { collabRoomFolder, ensureCollabRoomFolder } from './room-folder.js'
 import { observeCollabSayTyping } from './typing-observer.js'
+// C2-5: 起跑与收尾的机械动作与 turn.ts 共用一份 —— 信封骨架、模型绑定取舍、
+// 超时僵尸兜底、房内 say 的倒序收割。
+import {
+  abortCollabZombieStream,
+  collabAgentModelFields,
+  collabDriveEnvelope,
+  scanCollabRoomSays,
+} from './turn-primitives.js'
 
 const MAX_CONCURRENT_WORK_PER_ROOM = 2
 const MAX_CONCURRENT_WORK_GLOBAL = 4
@@ -431,32 +437,22 @@ async function spawnWork(roomSessionId: string, task: CollabTask): Promise<void>
       agentId: assignee,
     })
     await getEventBus().emit(workSessionId, {
-      type: 'command:send-message',
-      channel: host.roomChannel(roomSessionId),
-      content: buildBriefing(roomSessionId, getCollabTask(roomSessionId, task.id) ?? task, resuming),
-      source: COLLAB_MESSAGE_SOURCE,
-      origin: { transport: 'api', source: COLLAB_MESSAGE_SOURCE, receivedAt: Date.now() },
-      suppressTitleGeneration: true,
-      // W13.3: task execution is room work, not a chat turn.
-      usageSource: COLLAB_USAGE_SOURCE_WORK,
+      // 信封骨架与房回合共用一份(C2-5)。计费归属那一格是有意的分歧:
+      // 任务执行记 WORK,房回合记 ROOM —— 所以它是参数,不是被抹平的常量。
+      ...collabDriveEnvelope({
+        channel: host.roomChannel(roomSessionId),
+        content: buildBriefing(roomSessionId, getCollabTask(roomSessionId, task.id) ?? task, resuming),
+        // W13.3: task execution is room work, not a chat turn.
+        usageSource: COLLAB_USAGE_SOURCE_WORK,
+      }),
       // P1-4: no override on a pinned session — see workModelPinned above.
-      ...(workModelPinned
-        ? {}
-        : {
-            ...(agent.model?.providerId ? { providerId: agent.model.providerId } : {}),
-            ...(agent.model?.modelId ? { model: agent.model.modelId } : {}),
-            ...(agent.model?.thinking && agent.model?.providerId
-              ? { thinking: true, thinkingEffort: agent.model.thinking }
-              : {}),
-          }),
+      ...collabAgentModelFields(agent, workModelPinned),
     } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
 
     const outcome = await host.waitForTurn(workSessionId, WORK_START_TIMEOUT_MS, WORK_TOTAL_TIMEOUT_MS)
-    if (outcome === 'timeout') {
-      // Never leave a zombie stream: the slot is about to be freed and the
-      // one-worker-per-task invariant depends on the stream actually ending.
-      getStreamEngineSafe()?.abort(workSessionId)
-    }
+    // 超时不留僵尸流(C2-5 起与 turn.ts 同一份实现):槽位马上要放,而
+    // 「一张卡同时只有一个 worker」这条不变式指望流真的结束。
+    abortCollabZombieStream(outcome, workSessionId)
     // The harvest is NOT part of the spawn (P3). The catch below means "this
     // task never started, put it back" — and it used to swallow harvest
     // failures too, so a card the worker had already delivered into `review`
@@ -485,6 +481,10 @@ async function spawnWork(roomSessionId: string, task: CollabTask): Promise<void>
  * The room transcript is the only honest place to ask: a `say` from a work
  * session lands in the ROOM under the worker's name, and the harvest's whole
  * job is now to fill the gap only when there is one.
+ *
+ * 扫描核心与房回合共用(C2-5,`scanCollabRoomSays` —— 那一版是超集)。这里只要
+ * 它的 `says`:`legacySpeech` 是 pre-W18 房内回合才有的形状,一个工作会话不会
+ * 产生它,而下游(交付兜底)问的也只是"它自己说过话没有"。
  */
 function collabSaysSince(
   roomSessionId: string,
@@ -492,13 +492,7 @@ function collabSaysSince(
   sinceTs: number,
 ): ChatMessage[] {
   const messages = (store.getSession(roomSessionId)?.messages ?? []) as ChatMessage[]
-  const says: ChatMessage[] = []
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index]
-    if (message.timestamp < sinceTs) break
-    if (message.agentId === agentId && isCollabSayMessage(message)) says.unshift(message)
-  }
-  return says
+  return scanCollabRoomSays(messages, agentId, sinceTs).says
 }
 
 async function harvestWork(

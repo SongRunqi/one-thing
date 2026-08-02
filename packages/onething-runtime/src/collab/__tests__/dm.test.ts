@@ -11,7 +11,6 @@
 import { describe, expect, it } from "vitest";
 import { decideCollabActivations } from "../activation.js";
 import { isAgentPairDmRoom, isUserDmRoom } from "../dm.js";
-import { resolveCollabToolAllowlist } from "../tool-surface.js";
 import { buildCollabCommonRules } from "../agent-rules.js";
 import {
 	buildCollabRoomContext,
@@ -131,26 +130,28 @@ describe("D6 免判激活", () => {
 describe("D7 dm 工具面 = union", () => {
 	it("白名单 ∪ send_message/board/history,与群房当前语义同解但走自己那一格", () => {
 		expect(
-			resolveCollabToolAllowlist({
-				kind: "agent",
-				dm: true,
+			resolveAgentToolSurface({
+				sessionKind: "agent",
+				sessionDm: true,
 				ownTools: ["read"],
 			}),
 		).toEqual(["read", "send_message", "board", "history"]);
 		expect(
-			resolveCollabToolAllowlist({
-				kind: "room",
-				dm: true,
+			resolveAgentToolSurface({
+				sessionKind: "room",
+				sessionDm: true,
 				ownTools: ["read", "send_message"],
 			}),
 		).toEqual(["read", "send_message", "board", "history"]);
 	});
 
 	it("没有白名单 = 不限制(union 之后即全量)", () => {
-		expect(resolveCollabToolAllowlist({ kind: "agent", dm: true })).toBeNull();
+		expect(
+			resolveAgentToolSurface({ sessionKind: "agent", sessionDm: true }),
+		).toBeNull();
 	});
 
-	it("能力档案侧同解:dm 走 collab-dm 那一格,且它是 union", () => {
+	it("dm 走的确实是 collab-dm 那一格,且它是 union", () => {
 		expect(
 			resolveAgentToolSurface({
 				ownTools: ["bash"],
@@ -165,7 +166,7 @@ describe("D7 dm 工具面 = union", () => {
 				sessionDm: true,
 			}),
 		).toBeNull();
-		// 显式 grant 也是 union(与 tool-surface.ts 的答案必须一致)
+		// 显式 grant 也是 union(会话 kind 推出来的那一格与手写 grant 同解)
 		expect(
 			resolveAgentToolSurface({ ownTools: ["bash"], grants: ["collab-dm"] }),
 		).toEqual(["bash", "send_message", "board", "history"]);
@@ -173,16 +174,16 @@ describe("D7 dm 工具面 = union", () => {
 
 	it("dm 标记不越界到工作台会话", () => {
 		expect(
-			resolveCollabToolAllowlist({
-				kind: "work",
-				dm: true,
+			resolveAgentToolSurface({
+				sessionKind: "work",
+				sessionDm: true,
 				ownTools: ["read"],
 			}),
 		).toEqual(["read", "board", "send_message"]);
 		expect(
-			resolveCollabToolAllowlist({
-				kind: "chat",
-				dm: true,
+			resolveAgentToolSurface({
+				sessionKind: "chat",
+				sessionDm: true,
 				ownTools: ["read"],
 			}),
 		).toEqual(["read"]);

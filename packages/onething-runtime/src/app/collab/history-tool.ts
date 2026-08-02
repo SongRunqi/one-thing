@@ -33,7 +33,9 @@ import {
   isCollabProjectedSystemLine,
   isCollabRoomFact,
   resolveCollabSpeakerLabel,
+  splitCollabHandleQuery,
   wrapCollabMessageEnvelope,
+  type CollabHandleQuery,
 } from '@onething/runtime/collab'
 import { createHistoryTool, type HistoryToolResult } from '@onething/runtime/tools'
 import { scanJsonlLog } from '@onething/core/session'
@@ -177,17 +179,37 @@ function dayOf(timestamp: number): string {
 }
 
 /**
- * `who` 的匹配：名字、`名字#句柄`、裸 id、「用户」、「系统」都认。
+ * 署名对不对得上 `who` —— **宽松**的那一档比较。
  *
- * 宽松是有意的 —— 模型手里可能有花名册的 name/handle，也可能从
- * `<message from="Iris#eba0c4b7">` 里照抄一整串。认得越全，它越不需要猜；而这一面
- * 只影响**过滤**，不影响授权（房集合已经锁死了）。
+ * 收口纪律(架构审查 B8):语法切分与 `dm` / `board` 共用
+ * `splitCollabHandleQuery`,宽松**只体现在这最后一步**。此前这里连切分都没有,
+ * 靠"署名整串里含 `#`"这个巧合让 `名字#句柄` 走通;于是同一个写法在授权面
+ * (dm)与过滤面(history)是两套语法,而两套语法的差异只会在真机上被发现。
+ *
+ * 为什么这一面可以宽松:它只决定**这条要不要列出来**,不决定谁能看到哪间房
+ * (房集合早就锁死了)。模型手里可能是花名册的 name、可能是从
+ * `<message from="Iris#eba0c4b7">` 里照抄的一整串、也可能只记得半个名字 ——
+ * 认得越全,它越不需要猜。
  */
+function looselyAnswersTo(label: string, query: CollabHandleQuery): boolean {
+  const haystack = label.toLowerCase()
+  if (haystack.includes(query.raw.toLowerCase())) return true
+  if (!query.hashed) return false
+  // 整串对不上时两截各自再问一次:模型可能拿旧名字配了新句柄(此时句柄对),
+  // 也可能句柄抄错了而名字是真的。任一截认得出来就算命中。
+  const name = query.name.toLowerCase()
+  const handle = query.handle.toLowerCase()
+  return (Boolean(handle) && haystack.includes(handle))
+    || (Boolean(name) && haystack.includes(name))
+}
+
+/** `who` 的匹配:名字、`名字#句柄`、裸 id、「用户」、「系统」都认。 */
 function matchesWho(message: ChatMessage, needle: string): boolean {
-  const wanted = needle.trim().toLowerCase().replace(/^@/, '')
+  const query = splitCollabHandleQuery(needle)
+  const wanted = query.raw.toLowerCase()
   if (!wanted) return true
   if (isCollabProjectedSystemLine(message)) {
-    return COLLAB_SYSTEM_SPEAKER_LABEL.toLowerCase().includes(wanted)
+    return looselyAnswersTo(COLLAB_SYSTEM_SPEAKER_LABEL, query)
   }
   const agentId = message.agentId
   if (!agentId) {
@@ -195,12 +217,14 @@ function matchesWho(message: ChatMessage, needle: string): boolean {
     // 那工具描述里写的「用户」就是一句谎话 —— 而模型照着描述填,查回来是空。
     if ((COLLAB_USER_CONSTANT_WORDS as readonly string[]).includes(wanted)) return true
     const user = resolveUserIdentity()
-    return formatCollabUserLabel(user.label, user.handle).toLowerCase().includes(wanted)
-      || user.label.toLowerCase().includes(wanted)
+    return looselyAnswersTo(formatCollabUserLabel(user.label, user.handle), query)
+      || looselyAnswersTo(user.label, query)
   }
   if (agentId.toLowerCase() === wanted) return true
-  return resolveCollabSpeakerLabel(agentId, [], id => findAgent(id)?.name)
-    .toLowerCase().includes(wanted)
+  return looselyAnswersTo(
+    resolveCollabSpeakerLabel(agentId, [], id => findAgent(id)?.name),
+    query,
+  )
 }
 
 function clip(text: string): string {

@@ -42,10 +42,11 @@ import {
 } from '@onething/runtime/collab'
 import { createSayTool, type SayToolResult } from '@onething/runtime/tools'
 import { registerRetiredAgentToolName } from '@onething/core'
-import { isActiveAgent, type ChatMessage } from '@shared/ipc.js'
+import { type ChatMessage } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
+import { collabRoomMembers } from './members.js'
 import { isRoomOverBudget } from './coordinator.js'
 import { buildCollabIdentityDirectory } from './identity-directory.js'
 import { resolveUserIdentity } from './user-identity.js'
@@ -98,22 +99,14 @@ function resolveSayContext(sessionId: string, requestedRoom?: string): SayContex
  * add a zero-width flicker after the light already went out.
  */
 
-/** say 里的 @ 能落在谁身上:退休的成员不算(域模型 §3.2)。 */
+/**
+ * say 里的 @ 能落在谁身上:退休的成员不算(域模型 §3.2)。
+ *
+ * 不带 `description`:这一面只做**匹配**(把 `@名字#句柄` 解析成 mentions),
+ * 职责说明进不了任何判据。
+ */
 function roomMembers(roomSessionId: string): CollabAgentLike[] {
-  const room = store.getSession(roomSessionId)?.room
-  const members: CollabAgentLike[] = []
-  for (const id of room?.memberAgentIds ?? []) {
-    const agent = findAgent(id)
-    if (!agent || !isActiveAgent(agent)) continue
-    members.push({
-      id: agent.id,
-      name: agent.name,
-      title: agent.title,
-      avatar: agent.avatar,
-      avatarImage: agent.avatarImage,
-    })
-  }
-  return members
+  return collabRoomMembers(store.getSession(roomSessionId)?.room?.memberAgentIds)
 }
 
 function authorLabelOf(message: ChatMessage): string {

@@ -8,7 +8,7 @@ import {
   withFileLockSync,
   type CoreCachedJsonFileOptions,
 } from '@onething/core/storage'
-import { agentIdentity, type OnethingAgentIdentity } from './model.js'
+import { agentIdentity, agentTombstoneLabel, type OnethingAgentIdentity } from './model.js'
 
 export const DEFAULT_ONETHING_AGENT_ID = 'default'
 export const DEFAULT_ONETHING_AGENT_NAME = 'Default Agent'
@@ -188,8 +188,13 @@ export interface OnethingAgentStore {
   defaultAgent(): OnethingAgentDefinition
   /**
    * @deprecated 过渡期兼容(M4):= `findAgent(id) ?? defaultAgent()`,真发生
-   * fallback 时打 warn 埋点。调用点烧完后删;新代码禁用,按语义归位到
+   * fallback 时打 warn 埋点。新代码禁用,按语义归位到
    * findAgent / requireAgent / displayAgent / defaultAgent 之一。
+   *
+   * 删除判据(清点于架构审查 B8,别再写"调用点烧完"这种无法验收的话):产品侧
+   * **唯一**存活点是 `app/agents/store.ts` 的同名 wrapper 及其在
+   * `app/agents/index.ts` 里的 re-export,其余引用全在测试里。那两处一摘,这个
+   * 方法连同实现里的 warn 埋点一起删。
    */
   getAgent(agentId: string | undefined | null): OnethingAgentDefinition
   agentExists(agentId: string | undefined | null): boolean
@@ -469,7 +474,13 @@ export function createOnethingAgentStore(options: CreateOnethingAgentStoreOption
       const agent = findAgent(agentId)
       if (agent) return agentIdentity(agent)
       // 墓碑占位(M4):未知 id 也要能渲染,但绝不套 default 的名字头像。
-      return { id: agentId ?? '', name: '已注销', kind: 'colleague', status: 'retired' }
+      // 文案走 model.ts 的属主 —— 这是渲染面,取 'ui' 口径。
+      return {
+        id: agentId ?? '',
+        name: agentTombstoneLabel('ui'),
+        kind: 'colleague',
+        status: 'retired',
+      }
     },
 
     defaultAgent,

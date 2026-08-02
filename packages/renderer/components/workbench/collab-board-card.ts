@@ -15,6 +15,7 @@ import {
   type CollabTaskEvidence,
   type CollabTaskStatus,
 } from '@shared/ipc.js'
+import { agentTombstoneLabel } from '@onething/runtime/agents/model'
 import { AGENT_AVATAR_FALLBACK } from '@/components/common/agent-avatar'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 
@@ -50,8 +51,8 @@ export const BOARD_MENU_FALLBACK_AVATAR = AGENT_AVATAR_FALLBACK
 /** A card completed by hand still gets an honest report line in the room. */
 export const BOARD_USER_COMPLETE_SUMMARY = '用户在看板上标记完成'
 
-/** 墓碑文案(域模型 M4):已退休与查无此人共用这一个词。 */
-const BOARD_MENU_TOMBSTONE_NAME = '已注销'
+/** 墓碑文案(域模型 M4):已退休与查无此人共用这一个词。属主在 model.ts(B8)。 */
+const BOARD_MENU_TOMBSTONE_NAME = agentTombstoneLabel('ui')
 
 function agentLabel(agentId: string, agents: readonly BoardMenuAgent[]): string {
   const agent = agents.find(candidate => candidate.id === agentId)

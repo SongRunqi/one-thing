@@ -24,13 +24,6 @@ export interface CollabRoomBudgets {
   maxConcurrentTurns?: number
 }
 
-export interface CollabRoomConfig {
-  memberAgentIds: string[]
-  pmAgentId?: string
-  budgets?: CollabRoomBudgets
-  frozen?: boolean
-}
-
 /**
  * In-flight card statuses an agent can be told about (W9.3).
  *

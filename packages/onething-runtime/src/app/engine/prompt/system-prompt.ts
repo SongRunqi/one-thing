@@ -20,8 +20,8 @@ import {
   buildCollabRoomSystemPrompt,
   isAgentPairDmRoom,
   isUserDmRoom,
-  type CollabAgentLike,
 } from '@onething/runtime/collab'
+import { collabRoomMembers } from '../../collab/members.js'
 import { collabUserPromptFields } from '../../collab/user-identity.js'
 import type { PromptProviderConfig } from './plugin-context.js'
 import type { PromptActiveProject, PromptKnownProjects } from './types.js'
@@ -89,23 +89,19 @@ function collabRoomOverrides(
   const room = roomSessionId === session.id ? session : store.getSession(roomSessionId)
   if (room?.kind !== 'room' || !room.room) return null
 
-  const toRosterAgent = (agentId: string): CollabAgentLike | null => {
-    const agent = findAgent(agentId)
-    if (!agent) return null
-    return {
-      id: agent.id,
-      name: agent.name,
-      title: agent.title,
-      description: agent.description,
-      avatar: agent.avatar,
-      avatarImage: agent.avatarImage,
-    }
-  }
   const selfAgent = session.agentId ? findAgent(session.agentId) : null
   if (!selfAgent) return null
-  const members = room.room.memberAgentIds
-    .map(toRosterAgent)
-    .filter((member): member is CollabAgentLike => member !== null)
+  /**
+   * 提示词里的花名册。带 `description`(模型据此判断这件事该找谁),且**退休的
+   * 照列**(`includeRetired`)—— 与激活面相反,因为转录里还有它说过的话,花名册
+   * 里没有它的话,模型读到那些发言会以为房间里混进了外人。
+   *
+   * 投影本身走 `collab/members.ts` 的单一点(架构审查 B8)。
+   */
+  const members = collabRoomMembers(room.room.memberAgentIds, {
+    withDescription: true,
+    includeRetired: true,
+  })
   if (members.length === 0) return null
 
   return {

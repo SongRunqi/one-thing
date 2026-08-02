@@ -1,3 +1,4 @@
+import { agentTombstoneLabel } from "../agents/model.js";
 import { buildCollabCommonRules } from "./agent-rules.js";
 import { formatCollabAgentHandle } from "./handles.js";
 import type { CollabAgentLike } from "./types.js";
@@ -481,5 +482,7 @@ export function resolveCollabSpeakerLabel(
 	const agent = agents.find((candidate) => candidate.id === agentId);
 	if (agent) return formatCollabAgentHandle(agentId, agent.name);
 	const known = resolveAgentName?.(agentId)?.trim();
-	return formatCollabAgentHandle(agentId, known || "前成员");
+	// 墓碑文案的属主是 agents/model.ts;这一句是**给模型看**的,所以取 'model'
+	// 口径(「前成员」——说的是与这间房的关系,不是账号状态)。
+	return formatCollabAgentHandle(agentId, known || agentTombstoneLabel("model"));
 }

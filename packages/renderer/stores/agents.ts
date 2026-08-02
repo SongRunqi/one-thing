@@ -8,6 +8,7 @@ import {
   type AgentIdentity,
   type AgentRemovalOutcome,
 } from '@shared/ipc'
+import { agentTombstoneLabel } from '@onething/runtime/agents/model'
 import { platformApi } from '@/platform'
 
 export const DEFAULT_AGENT_ID = 'default'
@@ -141,7 +142,14 @@ export const useAgentsStore = defineStore('agents', () => {
   function displayAgent(agentId?: string | null): AgentIdentity {
     const agent = findAgent(agentId)
     if (agent) return agentIdentity(agent)
-    return { id: agentId ?? '', name: '已注销', kind: 'colleague', status: 'retired' }
+    // 文案走 runtime 的单一属主(架构审查 B8):UI 面取 'ui' 口径。这里是那个
+    // 镜像的另一半 —— 两侧同一句话,靠同一个常量而不是靠 grep 保持一致。
+    return {
+      id: agentId ?? '',
+      name: agentTombstoneLabel('ui'),
+      kind: 'colleague',
+      status: 'retired',
+    }
   }
 
   /**

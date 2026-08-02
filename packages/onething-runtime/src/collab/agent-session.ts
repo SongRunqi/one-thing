@@ -21,8 +21,23 @@
  *
  * 下面三个导出是**委托**,一行实现都没有:IM 化新增了 dm 房两族 id,所有
  * `agent-*` 派生 id 的构造因此收进一个属主(agent-domain-model.md §5),
- * 字面量前缀只剩那边一处。既有调用点(app/collab/*)保持原名不动 —— 换名字
- * 是另一件事,本期只搬家、输出逐字节不变。
+ * 字面量前缀只剩那边一处。
+ *
+ * ## 属主是 `agents/identity.ts`,这三个名字是过渡壳(架构审查 B8)
+ *
+ * 同一件事两个名字,是"下一个人该 import 哪一个"的持续成本。清点过一次,
+ * 产品侧还剩 10 处调用点:
+ *
+ *  - `collabAgentSessionId` —— app/collab/{turn.ts ×5, coordinator.ts,
+ *    planner.ts, agent-session.ts};
+ *  - `collabAgentSessionIdsForScan` —— app/collab/{budget.ts, queue.ts};
+ *  - `isCollabAgentSessionId` —— 产品侧**零**调用点(只剩 barrel 与测试)。
+ *
+ * 撤掉的判据不是"过了一个版本",而是**上面那张表清空**:每一处改成直接
+ * import `agents/identity.ts` 的同义名(`execSessionId` /
+ * `execSessionIdsForScan` / `isAgentExecSessionId`),这个文件的前三个导出连同
+ * barrel 里的三行一起删。名字后半段(`collabAgentSessionName` 一族)不在此列
+ * —— 那是 collab 自己的显示约定,本来就该住在这里。
  *
  * 按相对路径 import 单文件而不走 `@onething/runtime/agents` barrel:那个 barrel
  * 带着 agents/store.ts(读 agents.json,吃 node fs),而 collab barrel 是
@@ -44,17 +59,28 @@ export const COLLAB_AGENT_SESSION_PREFIX = AGENT_EXEC_SESSION_PREFIX
  * (collab-team-v2 §1.1:每群每 agent 一条常驻会话)。
  *
  * 语义与"为什么 id 里要带房间"的完整来历见 `agents/identity.ts#execSessionId`。
+ *
+ * @deprecated 用 `agents/identity.ts#execSessionId`。撤除判据见文件头。
  */
 export function collabAgentSessionId(agentId: string, roomSessionId?: string): string | null {
   return execSessionId(agentId, roomSessionId)
 }
 
-/** 迁移期要扫的执行会话集合(§1.4)。见 identity.ts#execSessionIdsForScan。 */
+/**
+ * 迁移期要扫的执行会话集合(§1.4)。见 identity.ts#execSessionIdsForScan。
+ *
+ * @deprecated 用 `agents/identity.ts#execSessionIdsForScan`。判据见文件头。
+ */
 export function collabAgentSessionIdsForScan(agentId: string, roomSessionId: string): string[] {
   return execSessionIdsForScan(agentId, roomSessionId)
 }
 
-/** Is this id an agent execution session? (id-only test — no store needed.) */
+/**
+ * Is this id an agent execution session? (id-only test — no store needed.)
+ *
+ * @deprecated 用 `agents/identity.ts#isAgentExecSessionId`。产品侧已零调用点,
+ * 只等 barrel 与测试改名 —— 三个委托里最先可以删的就是它。
+ */
 export function isCollabAgentSessionId(sessionId: string | undefined): boolean {
   return isAgentExecSessionId(sessionId)
 }

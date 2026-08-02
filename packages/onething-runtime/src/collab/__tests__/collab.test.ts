@@ -8,7 +8,7 @@ import {
 import { computeCollabChainCount, collabMessageCountsTowardChain, collabMessageResetsChain } from '../chain.js'
 import { parseCollabMentions } from '../mentions.js'
 import { isCollabPassMessage } from '../pass.js'
-import { formatCollabReplyQuote, mergeCollabProjectedRows, projectRoomHistory } from '../projection.js'
+import { formatCollabReplyQuote, projectRoomHistory } from '../projection.js'
 import {
   buildCollabRoomContext,
   buildCollabRoomSystemPrompt,
@@ -936,85 +936,10 @@ describe('buildCollabRoomSystemPrompt', () => {
   })
 })
 
-/**
- * R4 / P2-13 — adjacency is one function now (mergeCollabProjectedRows), and it
- * finally covers the assistant side.
- *
- * Both projections merged consecutive USER blocks, inline, in two hand-kept-in-
- * sync walks — and neither merged assistant blocks. Since W14b an agent speaks
- * one message per `say` call, so a member that says three things in one turn
- * produced three adjacent assistant rows in its own projection and a 400 from
- * any alternation-strict provider.
- */
-describe('mergeCollabProjectedRows (R4)', () => {
-  it('merges consecutive user blocks', () => {
-    expect(mergeCollabProjectedRows([
-      { role: 'user', content: '<message from="用户">一</message>' },
-      { role: 'user', content: '<message from="小李">二</message>' },
-      { role: 'assistant', content: '三' },
-    ])).toEqual([
-      { role: 'user', content: '<message from="用户">一</message>\n\n<message from="小李">二</message>' },
-      { role: 'assistant', content: '三' },
-    ])
-  })
-
-  it('merges consecutive assistant blocks from the SAME agent', () => {
-    expect(mergeCollabProjectedRows([
-      { role: 'assistant', content: '一', agentId: 'fe' },
-      { role: 'assistant', content: '二', agentId: 'fe' },
-    ])).toEqual([{ role: 'assistant', content: '一\n\n二', agentId: 'fe' }])
-  })
-
-  it('never merges across agents', () => {
-    const rows = [
-      { role: 'assistant', content: '一', agentId: 'fe' },
-      { role: 'assistant', content: '二', agentId: 'pm' },
-    ]
-    expect(mergeCollabProjectedRows(rows)).toEqual(rows)
-  })
-
-  it('leaves an alternating transcript alone', () => {
-    const rows = [
-      { role: 'user', content: '问' },
-      { role: 'assistant', content: '答', agentId: 'fe' },
-      { role: 'user', content: '再问' },
-    ]
-    expect(mergeCollabProjectedRows(rows)).toEqual(rows)
-  })
-
-  it('looks straight through display-only rows — downstream drops them', () => {
-    const merged = mergeCollabProjectedRows([
-      { role: 'user', content: '一' },
-      { role: 'system', content: '房间已全部暂停' },
-      { role: 'user', content: '二' },
-    ])
-    expect(merged).toEqual([
-      { role: 'user', content: '一\n\n二' },
-      { role: 'system', content: '房间已全部暂停' },
-    ])
-  })
-
-  it('refuses to merge a row carrying structure — orphan tool_results are worse', () => {
-    const rows = [
-      { role: 'assistant', content: '一', agentId: 'fe' },
-      { role: 'assistant', content: '二', agentId: 'fe', toolCalls: [{ id: 'c1' }] },
-    ]
-    expect(mergeCollabProjectedRows(rows, {
-      hasStructuralPayload: row => Boolean((row as { toolCalls?: unknown[] }).toolCalls?.length),
-    })).toEqual(rows)
-  })
-
-  it('concatenates attachments when it merges, and never edits the source row', () => {
-    const first = { role: 'user', content: '一', attachments: [{ id: 'a' }] }
-    const second = { role: 'user', content: '二', attachments: [{ id: 'b' }] }
-    const merged = mergeCollabProjectedRows([first, second])
-
-    expect(merged).toEqual([{ role: 'user', content: '一\n\n二', attachments: [{ id: 'a' }, { id: 'b' }] }])
-    // A self message is pushed as the ORIGINAL stored object — rewriting it in
-    // place would edit the transcript itself.
-    expect(first).toEqual({ role: 'user', content: '一', attachments: [{ id: 'a' }] })
-  })
-})
+// R4 / P2-13 的 `mergeCollabProjectedRows` 及其这一组用例已于 C2-1 删除:那个
+// 函数唯一的存活理由是"执行会话那一支还要用它",而 W18 之后执行会话走的是普通
+// 会话那条路,生产零调用点 —— 剩下的只是一组在证明自己还活着的用例。相邻同侧
+// 行的合并若再需要,从 git 历史取回。下面这组钉的是**另一半**,与它无关。
 
 /**
  * 一条消息一个信封,一间房一块 History(collab-chatroom-payload.md)。

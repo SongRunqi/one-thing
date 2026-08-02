@@ -45,8 +45,9 @@ import { buildCollabSilentDeliveryLine } from "../system-lines.js";
 import {
 	COLLAB_ROOM_TOOLS,
 	COLLAB_WORK_REQUIRED_TOOLS,
-	resolveCollabToolAllowlist,
 } from "../tool-surface.js";
+// 「这一回合能用哪些工具」只有一处实现(C2「工具面单点」),collab 这边只留地板表。
+import { resolveAgentToolSurface } from "../../agents/profile.js";
 import type { CollabAgentLike, CollabMessageLike } from "../types.js";
 
 const MEMBERS: CollabAgentLike[] = [
@@ -456,14 +457,14 @@ describe("工具面(D5 + W14b,union 语义)", () => {
 		// Union(collab-team-v2 §2.1;2026-07-30 曾收紧为 replace,同日应用户
 		// 要求撤销):配了白名单 → own ∪ {send_message, board},轻活可以在群回合直接做。
 		expect(
-			resolveCollabToolAllowlist({ kind: "room", ownTools: ["read"] }),
+			resolveAgentToolSurface({ sessionKind: "room", ownTools: ["read"] }),
 		).toEqual(["read", "send_message", "board", "history"]);
 		// 没配白名单 = 跟随全局 = 不限制。
-		expect(resolveCollabToolAllowlist({ kind: "room" })).toBeNull();
-		expect(resolveCollabToolAllowlist({ kind: "agent" })).toBeNull();
+		expect(resolveAgentToolSurface({ sessionKind: "room" })).toBeNull();
+		expect(resolveAgentToolSurface({ sessionKind: "agent" })).toBeNull();
 		expect(
-			resolveCollabToolAllowlist({
-				kind: "agent",
+			resolveAgentToolSurface({
+				sessionKind: "agent",
 				ownTools: ["read", "render_preview"],
 			}),
 		).toEqual(["read", "render_preview", "send_message", "board", "history"]);
@@ -471,10 +472,10 @@ describe("工具面(D5 + W14b,union 语义)", () => {
 
 	it("UNIONs send_message + board into a work session whitelist, keeping its real tools", () => {
 		expect(
-			resolveCollabToolAllowlist({ kind: "work", ownTools: ["read"] }),
+			resolveAgentToolSurface({ sessionKind: "work", ownTools: ["read"] }),
 		).toEqual(["read", "board", "send_message"]);
 		expect(
-			resolveCollabToolAllowlist({ kind: "work", ownTools: ["read", "send_message"] }),
+			resolveAgentToolSurface({ sessionKind: "work", ownTools: ["read", "send_message"] }),
 		).toEqual(["read", "send_message", "board"]);
 	});
 
@@ -485,20 +486,20 @@ describe("工具面(D5 + W14b,union 语义)", () => {
 		expect(COLLAB_WORK_REQUIRED_TOOLS).not.toContain("stay_silent");
 		for (const kind of ["room", "agent", "work", "chat"]) {
 			expect(
-				resolveCollabToolAllowlist({ kind, ownTools: ["read"] }) ?? [],
+				resolveAgentToolSurface({ sessionKind: kind, ownTools: ["read"] }) ?? [],
 			).not.toContain("stay_silent");
 		}
 	});
 
 	it("leaves a work session with no whitelist unrestricted, and never touches chats", () => {
 		expect(
-			resolveCollabToolAllowlist({ kind: "work", ownTools: null }),
+			resolveAgentToolSurface({ sessionKind: "work", ownTools: null }),
 		).toBeNull();
 		expect(
-			resolveCollabToolAllowlist({ kind: "chat", ownTools: null }),
+			resolveAgentToolSurface({ sessionKind: "chat", ownTools: null }),
 		).toBeNull();
 		expect(
-			resolveCollabToolAllowlist({ kind: "chat", ownTools: ["read"] }),
+			resolveAgentToolSurface({ sessionKind: "chat", ownTools: ["read"] }),
 		).toEqual(["read"]);
 	});
 });

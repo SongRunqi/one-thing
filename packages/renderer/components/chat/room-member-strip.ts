@@ -11,6 +11,7 @@
  */
 
 import { isActiveAgent, isColleague, type AgentKind, type AgentStatus } from '@shared/ipc'
+import { agentTombstoneLabel } from '@onething/runtime/agents/model'
 import { AGENT_AVATAR_FALLBACK } from '@/components/common/agent-avatar'
 
 /** The agent fields the strip reads; an AgentDefinition satisfies it. */
@@ -28,8 +29,13 @@ export interface RoomStripAgent {
   status?: AgentStatus
 }
 
-/** 墓碑的名字(域模型 M4):查无此人与已退休共用这一个词。 */
-export const ROOM_MEMBER_TOMBSTONE_NAME = '已注销'
+/**
+ * 墓碑的名字(域模型 M4):查无此人与已退休共用这一个词。
+ *
+ * 文案属主在 `@onething/runtime/agents/model`(架构审查 B8);这里保留具名常量
+ * 是因为下面的 tooltip 要拿它**当判据**用(「名字就是墓碑词」= 名字不可考)。
+ */
+export const ROOM_MEMBER_TOMBSTONE_NAME = agentTombstoneLabel('ui')
 
 export interface RoomMemberEntry {
   id: string
@@ -58,7 +64,9 @@ export function formatRoomMemberTooltip(entry: RoomMemberEntry): string {
   if (entry.isPm) parts.push('负责人')
   // 墓碑上加一句 —— 「这个人还在花名册里,但已经注销了」比一个灰掉的名字更明白。
   // 查无此人时把 id 也带上:名字已经不可考,id 是唯一能对上号的东西。
-  if (entry.isRetired) parts.push(entry.name === ROOM_MEMBER_TOMBSTONE_NAME ? entry.id : '已注销')
+  if (entry.isRetired) {
+    parts.push(entry.name === ROOM_MEMBER_TOMBSTONE_NAME ? entry.id : ROOM_MEMBER_TOMBSTONE_NAME)
+  }
   return parts.join(' · ')
 }
 

@@ -93,7 +93,15 @@ export function execSessionId(agentId: string, roomSessionId?: string): string |
  * 被应答过"。换 id 形态之后,戳记分散在新旧两处:不并集扫,升级后的第一次 boot
  * 会把旧会话里已应答过的消息当成没应答过,整屋子重放一遍。
  *
- * 一个版本之后旧集可以撤掉。
+ * ## 什么时候可以只扫新集
+ *
+ * 判据不是"发过一个版本"(那只是时间流逝,与哪台机器上还留着什么无关),而是
+ * **存储里再没有旧形态的会话**:`<store>/sessions/` 下不存在任何形如
+ * `agent-exec-<agentId>`(**不带**房间后缀)的会话目录。
+ *
+ * 那一天到了,这个函数与 `execSessionId` 的无房间重载一起撤,两个消费点
+ * (`app/collab/budget.ts`、`app/collab/queue.ts`)改成直接调 `execSessionId`。
+ * 在那之前少扫一处 = 整间房重放一遍,代价远大于多读一条不存在的会话。
  */
 export function execSessionIdsForScan(agentId: string, roomSessionId: string): string[] {
   const scoped = execSessionId(agentId, roomSessionId)

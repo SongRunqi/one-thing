@@ -18,6 +18,14 @@ const store = createOnethingAgentStore({
   agentsPath: () => getAgentsPath(),
 })
 
+/**
+ * 下面每一处 `as AgentDefinition` 都靠 `OnethingAgentDefinition` 与 shared 的
+ * `AgentDefinition` **逐字段同构**成立(产品层禁 import @shared/ipc,故两份类型)。
+ * cast 本身永远不会报错,所以那个前提由测试盯住:
+ * `packages/onething-runtime/src/agents/__tests__/model.test.ts` 的
+ * 「mirror discipline」—— 任一侧加/删字段,那里的键集表就红。
+ */
+
 /** Load agents.json into memory once (and persist the normalized shape). */
 export async function initializeAgents(): Promise<void> {
   await store.initialize()

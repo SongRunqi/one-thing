@@ -5,10 +5,10 @@
  * store so revs/broadcast/coordinator events all apply.
  */
 import { createBoardTool } from '@onething/runtime/tools'
-import { resolveCollabAgentHandle, type CollabAgentLike, type CollabBoardAction } from '@onething/runtime/collab'
-import { isActiveAgent } from '@shared/ipc.js'
+import { resolveCollabAgentHandle, type CollabBoardAction } from '@onething/runtime/collab'
 import * as store from '../store.js'
 import { findAgent } from '../agents/index.js'
+import { collabRoomMembers } from './members.js'
 import { applyBoardAction } from './board-store.js'
 
 function agentName(agentId: string): string {
@@ -48,12 +48,8 @@ export const BoardTool = createBoardTool({
   resolveMember(roomSessionId, nameOrId) {
     const room = store.getSession(roomSessionId)?.room
     if (!room) return null
-    const members: CollabAgentLike[] = []
-    for (const memberId of room.memberAgentIds) {
-      const agent = findAgent(memberId)
-      if (!agent || !isActiveAgent(agent)) continue
-      members.push({ id: agent.id, name: agent.name, title: agent.title })
-    }
+    // 纯文本解析:头像与职责说明都进不了判据,所以两样都不取。
+    const members = collabRoomMembers(room.memberAgentIds, { withAvatar: false })
     const resolved = resolveCollabAgentHandle(nameOrId, members)
     return resolved.ok ? resolved.agentId : null
   },

@@ -6,7 +6,6 @@ import {
   resolveAgentProfile,
   resolveAgentToolSurface,
 } from '../profile.js'
-import { resolveCollabToolAllowlist } from '../../collab/tool-surface.js'
 import type { OnethingAgentDefinition } from '../store.js'
 
 function agent(overrides: Partial<OnethingAgentDefinition> = {}): OnethingAgentDefinition {
@@ -21,12 +20,14 @@ function agent(overrides: Partial<OnethingAgentDefinition> = {}): OnethingAgentD
 }
 
 describe('resolveAgentToolSurface', () => {
-  /* The collab rules moved here verbatim; this table is the proof. Note the
-     'agent' kind: since W18 the room RESPONSE turn runs in the agent's own
-     execution session, so it must take the room branch too. */
+  /* 「这一回合能用哪些工具」的唯一实现,这张表就是它的全部场景(C2 之前 collab
+     那份同义实现的用例已并进来,连带它的 dm 分支)。注意 'agent' 这一格:W18
+     之后房回合跑在 agent 自己的执行会话里,所以它必须与 'room' 同解 —— 工具面
+     跟着**回合**走,不跟着存消息的那个会话走。 */
   const cases: Array<{
     name: string
     kind?: string
+    dm?: boolean
     ownTools: string[] | null
     expected: string[] | null
   }> = [
@@ -38,30 +39,53 @@ describe('resolveAgentToolSurface', () => {
     { name: 'room without allowlist stays unrestricted', kind: 'room', ownTools: null, expected: null },
     { name: 'agent kind unions', kind: 'agent', ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history'] },
     { name: 'agent kind without allowlist stays unrestricted', kind: 'agent', ownTools: null, expected: null },
+    // D7:单成员 dm 房走 `collab-dm` 那一格。今天与群房同解,分开登记是为了将来
+    // 能分开动(群房若再次收紧成 replace,托管私聊不能跟着被收窄)。
+    { name: 'dm room unions', kind: 'room', dm: true, ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history'] },
+    { name: 'dm room without allowlist stays unrestricted', kind: 'room', dm: true, ownTools: null, expected: null },
+    { name: 'dm agent kind unions', kind: 'agent', dm: true, ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history'] },
+    // dm 只对房回合有意义:work / chat 不因为这个标记改答案。
+    { name: 'dm flag does not reach work', kind: 'work', dm: true, ownTools: ['bash'], expected: ['bash', 'board', 'send_message'] },
+    { name: 'dm flag does not reach chat', kind: undefined, dm: true, ownTools: ['bash'], expected: ['bash'] },
     { name: 'work unions', kind: 'work', ownTools: ['bash'], expected: ['bash', 'board', 'send_message'] },
     { name: 'work without allowlist stays unrestricted', kind: 'work', ownTools: null, expected: null },
     { name: 'work does not duplicate', kind: 'work', ownTools: ['board'], expected: ['board', 'send_message'] },
+    { name: 'room does not duplicate', kind: 'room', ownTools: ['send_message'], expected: ['send_message', 'board', 'history'] },
     { name: 'unknown kind passes through', kind: 'archive', ownTools: ['bash'], expected: ['bash'] },
   ]
 
   for (const testCase of cases) {
-    it(`${testCase.name} — matches the collab rule it mirrors`, () => {
-      const surface = resolveAgentToolSurface({
+    it(`${testCase.name}`, () => {
+      expect(resolveAgentToolSurface({
         ownTools: testCase.ownTools,
         sessionKind: testCase.kind,
-      })
-      expect(surface).toEqual(testCase.expected)
-      expect(surface).toEqual(
-        resolveCollabToolAllowlist({ kind: testCase.kind, ownTools: testCase.ownTools }),
-      )
+        sessionDm: testCase.dm,
+      })).toEqual(testCase.expected)
     })
   }
+
+  /**
+   * W22 退役清单:任何会话的工具面里都不该再出现 `stay_silent`。事故形状是
+   * 一个惰性工具 + 一个「必须调工具」的开局 = 永不终止的落点(77 次/四回合,
+   * 真机 2026-07-28)。断路器是兜底,这条是根除。
+   */
+  it('offers stay_silent to NOBODY — the tool is retired', () => {
+    for (const kind of ['room', 'agent', 'work', 'chat']) {
+      for (const dm of [false, true]) {
+        expect(
+          resolveAgentToolSurface({ ownTools: ['read'], sessionKind: kind, sessionDm: dm }) ?? [],
+        ).not.toContain('stay_silent')
+      }
+    }
+  })
 
   it('applies an explicit grant outside collab sessions', () => {
     // union grants: layered onto the agent's own tools.
     expect(resolveAgentToolSurface({ ownTools: ['bash'], grants: ['collab-work'] }))
       .toEqual(['bash', 'board', 'send_message'])
     expect(resolveAgentToolSurface({ ownTools: ['bash'], grants: ['collab-room'] }))
+      .toEqual(['bash', 'send_message', 'board', 'history'])
+    expect(resolveAgentToolSurface({ ownTools: ['bash'], grants: ['collab-dm'] }))
       .toEqual(['bash', 'send_message', 'board', 'history'])
   })
 

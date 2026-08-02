@@ -13,7 +13,6 @@ export {
   type CollabMessageLike,
   type CollabReplyToLike,
   type CollabRoomBudgets,
-  type CollabRoomConfig,
   type CollabSelfTaskFact,
   type CollabSelfTaskStatus,
   type CollabSessionKind,
@@ -177,8 +176,10 @@ export {
   parseCollabHandleMentions,
   renderCollabModelMention,
   resolveCollabAgentHandle,
+  splitCollabHandleQuery,
   stripCollabAgentHandles,
   type CollabAddressable,
+  type CollabHandleQuery,
   type CollabHandleResolution,
 } from './handles.js'
 /** 身份目录:句柄编解码的共用真源(collab-handle-codec.md §2.1)。
@@ -207,11 +208,9 @@ export {
   COLLAB_ADOPTED_ECHO_TAG,
   COLLAB_CHATROOM_TAG,
   COLLAB_ENVELOPE_TAG,
-  COLLAB_NOTIFICATION_DESC,
   COLLAB_NOTIFICATION_TAG,
   buildCollabChatRoomPayload,
   buildCollabDriveRoomContext,
-  collectCollabProjectedLines,
   formatCollabAdoptedEcho,
   formatCollabFlattenedToolCall,
   formatCollabFoldedLine,
@@ -219,12 +218,8 @@ export {
   formatCollabReplyQuote,
   formatCollabUserLabel,
   wrapCollabMessageEnvelope,
-  mergeCollabProjectedRows,
   projectRoomHistory,
   type BuildCollabChatRoomPayloadOptions,
-  type CollabProjectedLines,
-  type CollabProjectedRowLike,
-  type MergeCollabProjectedRowsOptions,
   type ProjectedRoomMessage,
   type ProjectRoomHistoryOptions,
 } from './projection.js'
@@ -347,7 +342,6 @@ export {
 export {
   COLLAB_ROOM_TOOLS,
   COLLAB_WORK_REQUIRED_TOOLS,
-  resolveCollabToolAllowlist,
 } from './tool-surface.js'
 export {
   COLLAB_PLAN_MAX_WAVES,

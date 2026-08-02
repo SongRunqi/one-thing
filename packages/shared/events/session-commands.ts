@@ -14,17 +14,6 @@ import type { VoiceTranscriptMetadata } from '../ipc/voice.js'
 import type { MessageOrigin } from '../ipc/channel-identity.js'
 import type { JsonObject } from '../json.js'
 
-/**
- * The forced opening tool choice a drive may carry. Structurally the subset of
- * the agent loop's `AgentToolChoice` that a COMMAND is allowed to express —
- * 'auto'/'none' are the loop's own defaults and have no business travelling on
- * a send-message command. Declared here rather than imported so the shared
- * contract keeps depending on nothing.
- */
-export type SessionInitialToolChoice =
-  | 'required'
-  | { type: 'function'; function: { name: string } }
-
 export interface SendMessageCommand {
   type: 'command:send-message'
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
@@ -62,21 +51,6 @@ export interface SendMessageCommand {
    * gate still sums by sessionId, unchanged.
    */
   usageSource?: string
-  /**
-   * Force the FIRST model call of this turn into a tool call — either "some
-   * tool" or a NAMED one (W18b).
-   *
-   * NOBODY sets it today. The collab room drive was its only producer (W22
-   * pinned the opening call to `say`) and 2026-07-30 removed that: an agent with
-   * nothing to add had no way to stay quiet and answered with 「不说了」 instead
-   * (see app/collab/turn.ts). The field stays in the contract because forcing
-   * the opening call is a legitimate mechanism a future caller may want — the
-   * transport, the engine and the agent loop all still honour it.
-   *
-   * Paths that leave it unset behave exactly as before. Dropped by the agent
-   * loop when the model does not advertise forced tool use.
-   */
-  initialToolChoice?: SessionInitialToolChoice
   /**
    * Provider/model the caller resolved and displayed at the moment of
    * sending (e.g. the renderer's model picker). When set, the engine uses

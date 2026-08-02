@@ -201,7 +201,7 @@ describe('projectRoomHistory — 三路分派', () => {
       window,
     })
     const content = projected.content
-    expect(content).toContain('<Notification desc=')
+    expect(content).toContain('<Notification count=')
     expect(content).toContain('count="1"')
     expect(content).toContain('rel="mentions-you"')
     // 出现且只出现一次 —— 未读不在历史里重复一遍。

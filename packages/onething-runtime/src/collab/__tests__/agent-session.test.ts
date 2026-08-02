@@ -17,9 +17,11 @@ import {
   collabAgentSessionName,
   isCollabAgentSessionId,
   resolveCollabSayRoomSessionId,
-  resolveCollabToolAllowlist,
   stripCollabAgentSessionName,
 } from '../index.js'
+// 工具面的唯一实现在 agents 层(C2「工具面单点」):collab 只出地板表,
+// 「这一回合能用哪些工具」由 resolveAgentToolSurface 一处作答。
+import { resolveAgentToolSurface } from '../../agents/profile.js'
 
 describe('执行会话 id 派生', () => {
   it('derives a stable id from the agent id (ensure is idempotent by construction)', () => {
@@ -100,17 +102,17 @@ describe('say 的房间路由(三级优先级)', () => {
 describe('工具面跟着回合走', () => {
   it('gives an execution session the room surface — own tools plus say + board', () => {
     // Union(2026-07-30 收紧同日撤销):白名单叠加 say/board,没配则不限制。
-    expect(resolveCollabToolAllowlist({ kind: 'agent', ownTools: ['read'] }))
+    expect(resolveAgentToolSurface({ sessionKind: 'agent', ownTools: ['read'] }))
       .toEqual(['read', ...COLLAB_ROOM_TOOLS])
     // 'agent' and 'room' mean the same thing here — the surface follows the
     // turn, not the session that stores the messages.
-    expect(resolveCollabToolAllowlist({ kind: 'agent' }))
-      .toEqual(resolveCollabToolAllowlist({ kind: 'room' }))
+    expect(resolveAgentToolSurface({ sessionKind: 'agent' }))
+      .toEqual(resolveAgentToolSurface({ sessionKind: 'room' }))
   })
 
   it('leaves work sessions and ordinary sessions untouched', () => {
-    expect(resolveCollabToolAllowlist({ kind: 'work', ownTools: ['read'] }))
+    expect(resolveAgentToolSurface({ sessionKind: 'work', ownTools: ['read'] }))
       .toEqual(['read', 'board', 'send_message'])
-    expect(resolveCollabToolAllowlist({ kind: 'chat', ownTools: null })).toBeNull()
+    expect(resolveAgentToolSurface({ sessionKind: 'chat', ownTools: null })).toBeNull()
   })
 })

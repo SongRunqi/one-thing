@@ -340,7 +340,7 @@ describe('removed members stop taking the floor', () => {
     // 指令块删除之后 drive 只剩数据;房里一条未读都没有时,兜底是那个自闭合的
     // `count="0"` 块 —— 空字符串不是数据,一条空 user 消息更不是。
     expect(String((driveCommands()[0].event as { content?: string }).content))
-      .toContain('<Notification desc=')
+      .toContain('<Notification count=')
     expect(String((driveCommands()[0].event as { content?: string }).content))
       .toContain('count="0"')
   })

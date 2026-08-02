@@ -9,6 +9,7 @@
  *
  * 所以分工是明确的:**摘要当主力,工具当兜底**。
  */
+import { agentTombstoneLabel } from '../agents/model.js'
 import { escapeCollabPromptText } from './inline-tags.js'
 import { COLLAB_SYSTEM_SPEAKER_LABEL, isCollabProjectedSystemLine } from './system-lines.js'
 import type { CollabAgentLike, CollabMessageLike } from './types.js'
@@ -50,7 +51,8 @@ export function buildCollabDigestPrompt(options: {
   const nameOf = (agentId: string | undefined): string => {
     if (!agentId) return '成员'
     const known = options.agents.find(agent => agent.id === agentId)
-    return known?.name ?? options.resolveAgentName?.(agentId) ?? '前成员'
+    // 墓碑文案的属主是 agents/model.ts;摘要是喂给模型的散文,取 'model' 口径。
+    return known?.name ?? options.resolveAgentName?.(agentId) ?? agentTombstoneLabel('model')
   }
   const lines = options.messages
     .map(message => {

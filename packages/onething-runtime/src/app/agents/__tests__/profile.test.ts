@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { resolveCollabToolAllowlist } from '@onething/runtime/collab'
+import { resolveAgentToolSurface } from '@onething/runtime/agents'
 import type { AgentDefinition, ChatSession } from '@shared/ipc.js'
 
 /* Mock paths are resolved from THIS file, not from the module under test. */
@@ -69,26 +69,51 @@ describe('resolveAgentProfileForSession', () => {
   })
 
   /**
-   * 房回合的工具面 = **own ∪ 房面**(collab-team-v2 §2.1)。
+   * 这一层负责的**不是**工具面规则(规则只有一处:`resolveAgentToolSurface`),
+   * 而是「喂给规则的输入对不对」—— kind 从哪读、dm 那一格怎么推。所以断言不硬编
+   * 清单,而是对着规则本身:规则将来怎么改,这里跟着走;红的只会是"输入喂错了"。
    *
-   * 这条断言此前写的是 `['send_message', 'board']` —— 那是 2026-07-30 收紧成 replace 的形态,
-   * 而那次收紧**同日就撤销了**;真正的规则在 `collab/tool-surface.ts` 的
-   * `resolveCollabToolAllowlist`,纯层那份测试(`src/agents/__tests__/profile.test.ts`)
-   * 一直跟着它走,这一份没跟上,于是 P3 给房面加 `room_history` 时它才红。
-   *
-   * 所以这里**不硬编清单**,改成对着规则本身断言:两处再分叉时,红的会是规则那一份,
-   * 而不是这一份的字面期望。
+   * (这条断言此前硬编过 `['send_message', 'board']` —— 那是 2026-07-30 收紧成
+   * replace 的形态,而那次收紧同日就撤销了,于是 P3 给房面加 `room_history` 时
+   * 它才红。C2 之后连"两份实现"本身都没了,这里守的是输入那一段。)
    */
-  it('房回合的工具面 = agent 自己的 ∪ 房面(与 collab 规则同解)', () => {
+  it('房回合:kind 喂到了规则里,工具面 = agent 自己的 ∪ 房面', () => {
     state.agent = agent({ tools: ['bash'] })
     state.session = session({ kind: 'agent' })
 
     expect(resolveAgentProfileForSession('session-1').tools).toEqual(
-      resolveCollabToolAllowlist({ kind: 'agent', ownTools: ['bash'] }),
+      resolveAgentToolSurface({ sessionKind: 'agent', ownTools: ['bash'] }),
     )
     // 自己的工具没被顶掉,房面也确实加上了(否则上面那条断言会跟着规则一起错)
     expect(resolveAgentProfileForSession('session-1').tools).toContain('bash')
     expect(resolveAgentProfileForSession('session-1').tools).toContain('send_message')
+  })
+
+  /**
+   * dm 那一格的输入是**算出来的**(isUserDmRoom:人数即形态),不是会话上现成的
+   * 字段 —— 少推一次就等于把 D7 那一格悄悄换成群房那一格。单成员房这里钉死。
+   */
+  it('单成员私聊:dm 被推导出来并喂进规则(collab-dm 那一格)', () => {
+    state.agent = agent({ tools: ['bash'] })
+    state.session = session({
+      kind: 'room',
+      room: { memberAgentIds: ['agent-a'], dm: true },
+    } as Partial<ChatSession>)
+
+    expect(resolveAgentProfileForSession('session-1').tools).toEqual(
+      resolveAgentToolSurface({ sessionKind: 'room', sessionDm: true, ownTools: ['bash'] }),
+    )
+  })
+
+  /** 工作台会话:另一格地板(board + send_message),同样由 kind 推出。 */
+  it('工作台会话:kind=work 拿工作台那一格', () => {
+    state.agent = agent({ tools: ['bash'] })
+    state.session = session({ kind: 'work' } as Partial<ChatSession>)
+
+    expect(resolveAgentProfileForSession('session-1').tools).toEqual(
+      resolveAgentToolSurface({ sessionKind: 'work', ownTools: ['bash'] }),
+    )
+    expect(resolveAgentProfileForSession('session-1').tools).toContain('board')
   })
 
   /**

@@ -47,11 +47,25 @@ function sessionProfileInput(session: ChatSession | null | undefined) {
 
 /** Resolve the profile for a session from the live agent/session/settings stores. */
 export function resolveAgentProfileForSession(sessionId: string): EffectiveAgentProfile {
-  const session = getSession(sessionId)
+  return resolveAgentProfileForSessionObject(getSession(sessionId))
+}
+
+/**
+ * 同一次解析,给**已经握着会话对象**的调用方(agent-loop 的兜底口径:它拿到的
+ * 是引擎传下来的 session,不必再回 store 查一次)。
+ *
+ * 存在的理由是 C2「工具面单点」:兜底那条路曾经就地重写了一份「kind → 会话输入」,
+ * 只喂了 kind、漏了 dm —— 一旦快照缺席就会把 D7 私聊那一格算成群房那一格。喂给
+ * 规则的输入也只该有一处推导,所以两条路共用这一个函数。
+ */
+export function resolveAgentProfileForSessionObject(
+  session: ChatSession | null | undefined,
+  agentId?: string,
+): EffectiveAgentProfile {
   return resolveAgentProfile({
     // 功能兜底(域模型 §3.3,非解析 fallback):无 agentId 或查无此人的会话由
     // default persona 接手 —— 这是 default agent 的既有职责,显式写出。
-    agent: findAgent(session?.agentId) ?? defaultAgent(),
+    agent: findAgent(agentId ?? session?.agentId) ?? defaultAgent(),
     session: sessionProfileInput(session),
     settings: getSettings(),
   })
