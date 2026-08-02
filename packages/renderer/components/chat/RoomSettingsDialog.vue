@@ -456,11 +456,20 @@ const memberAgents = computed(() =>
 const hasLiveTurn = computed(() => {
   const snapshot = collabBoardStore.coordinatorFor(props.sessionId)
   if (!snapshot) return true
-  return snapshot.turns.length > 0 || snapshot.queue.length > 0 || snapshot.judging > 0
+  // 「有人在说」这一格与停止按钮读的是**同一个派生**(架构收敛 C4 §1):
+  // 从前这里读快照的 `turns`、按钮读 `collab:turn-active` 的事件账,同一个问题
+  // 两个答案。排队与判定在飞是这一格额外要提醒的(它们同样会被这次保存打断),
+  // 按钮不管那些 —— 那不是"停得掉的东西"。
+  return collabBoardStore.isRoomTurnActive(props.sessionId)
+    || snapshot.queue.length > 0
+    || snapshot.judging > 0
 })
 
 watch(() => props.visible, async visible => {
   if (!visible) return
+  // 「拿不到快照按有处理」是兜底,不是常态:面板打开时补一次水,那句
+  // 「将中止正在进行的发言」就不必在一间安静的房间里也说一遍(C4 §1)。
+  collabBoardStore.ensureCoordinator(props.sessionId)
   error.value = ''
   spentTodayText.value = ''
   confirmingClear.value = false
@@ -534,6 +543,9 @@ async function clearHistory(): Promise<void> {
       error.value = response?.error || '清空失败'
       return
     }
+    // 这一处**留着**(架构收敛 C4 §3):清空动的不是房间配置而是**转录** ——
+    // 列表行上的最后一句、消息数、时间戳全变了,而 `session:collab-updated`
+    // 只带 room 快照,盖不住这些。
     await sessionsStore.loadSessions()
     close()
   } catch (cause) {
@@ -582,7 +594,8 @@ async function save(): Promise<void> {
         return
       }
     }
-    await sessionsStore.loadSessions()
+    // 三条写入口(房间设置 / 预算 / 暂停)各自播一条 `session:collab-updated`,
+    // 会话列表就地合并(架构收敛 C4 §3)—— 这里曾经是一次全量 `loadSessions()`。
     close()
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause)

@@ -128,6 +128,9 @@ vi.mock('../room-runtime.js', () => ({
   persistRoomState: (roomSessionId: string) => {
     mocks.persisted.push(roomSessionId)
   },
+  // 私聊房的形状修复分支会播一条 `session:collab-updated`(架构收敛 C4 §3)。
+  // 这一面钉的是"发不发得出去",不是那条推送 —— 收进空实现即可。
+  emitCollabRoomUpdated: () => {},
 }))
 
 const { sendCollabDm } = await import('../dm-tool.js')

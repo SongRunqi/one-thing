@@ -22,14 +22,44 @@ vi.mock('@/platform', () => ({
   },
 }))
 
-function emitTyping(sessionId: string, agentId: string, typing: boolean): void {
+let seq = 0
+
+/**
+ * 一次协调器广播 —— 打字名单的**唯一**来源(架构收敛 C4 §1)。
+ *
+ * 从前这里发的是 `collab:typing` 的单人开关。事件还在线上,但渲染层不再拿它
+ * 记账:名单是整份到达的,于是"迟到的一条 false 抹掉后一轮的 true"这种事在
+ * 这一层已经不可能发生。
+ */
+function emitTyping(sessionId: string, agentIds: string[]): void {
+  const state = {
+    roomSessionId: sessionId,
+    mode: 'parallel',
+    frozen: false,
+    seq: ++seq,
+    at: Date.now(),
+    speaking: agentIds,
+    typing: agentIds,
+    turns: [],
+    queue: [],
+    judging: 0,
+    judgingAgentIds: [],
+    gates: {
+      chain: { value: 0, max: 32 },
+      concurrency: { value: 0, max: 6 },
+      budget: { value: 0, max: 5 },
+    },
+    plan: null,
+    log: [],
+  }
   for (const handler of mocks.handlers) {
-    handler({ sessionId, event: { type: 'collab:typing', agentId, typing } })
+    handler({ sessionId, event: { type: 'collab:coordinator-changed', state } })
   }
 }
 
 beforeEach(() => {
   mocks.handlers.length = 0
+  seq = 0
   setActivePinia(createPinia())
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-07-28T10:00:00Z'))
@@ -57,8 +87,7 @@ describe('CollabTypingLine', () => {
     const wrapper = mount(CollabTypingLine, { props: { sessionId: 'room-1' } })
     useCollabBoardStore().ensureSubscribed()
 
-    emitTyping('room-1', 'agent-li', true)
-    emitTyping('room-1', 'agent-yan', true)
+    emitTyping('room-1', ['agent-li', 'agent-yan'])
     await nextTick()
 
     expect(wrapper.text()).toContain('🔧小李、🔎小研')
@@ -72,29 +101,27 @@ describe('CollabTypingLine', () => {
     const wrapper = mount(CollabTypingLine, { props: { sessionId: 'room-1' } })
     useCollabBoardStore().ensureSubscribed()
 
-    emitTyping('room-1', 'agent-ghost', true)
+    emitTyping('room-1', ['agent-ghost'])
     await nextTick()
 
     expect(wrapper.text()).toContain('已注销')
     expect(wrapper.text()).not.toContain('agent-ghost')
   })
 
-  it('disappears on typing:false, and on a stale true that never got one', async () => {
+  it('名单缩短就少一个人;整份名单陈旧了(60s 没有新快照)整行退场', async () => {
     const wrapper = mount(CollabTypingLine, { props: { sessionId: 'room-1' } })
     useCollabBoardStore().ensureSubscribed()
 
-    emitTyping('room-1', 'agent-li', true)
-    emitTyping('room-1', 'agent-yan', true)
+    emitTyping('room-1', ['agent-li', 'agent-yan'])
     await nextTick()
     expect(wrapper.find('.collab-typing').exists()).toBe(true)
 
-    emitTyping('room-1', 'agent-li', false)
+    emitTyping('room-1', ['agent-yan'])
     await nextTick()
     expect(wrapper.text()).not.toContain('agent-li')
     expect(wrapper.find('.collab-typing').exists()).toBe(true)
 
-    // agent-yan's false never arrives: the 1s pulse re-reads the store and the
-    // expiry retires the line on its own.
+    // 协调器再也没说过话:1s 脉搏重读 store,兜底把整行退掉。
     vi.advanceTimersByTime(61_000)
     await nextTick()
     expect(wrapper.find('.collab-typing').exists()).toBe(false)
@@ -108,11 +135,11 @@ describe('CollabTypingLine', () => {
     useCollabBoardStore().ensureSubscribed()
     expect(setInterval).not.toHaveBeenCalled()
 
-    emitTyping('room-1', 'agent-li', true)
+    emitTyping('room-1', ['agent-li'])
     await nextTick()
     expect(setInterval).toHaveBeenCalledTimes(1)
 
-    emitTyping('room-1', 'agent-li', false)
+    emitTyping('room-1', [])
     await nextTick()
     expect(clearInterval).toHaveBeenCalledTimes(1)
 

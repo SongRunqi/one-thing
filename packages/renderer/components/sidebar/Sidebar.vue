@@ -994,6 +994,9 @@ async function openContact(contact: SidebarContact): Promise<void> {
       showContactError(response?.error || '打不开私聊')
       return
     }
+    // 这一处**留着**(架构收敛 C4 §3):第一次点某个联系人时私聊房是**新建**的,
+    // 而 `session:collab-updated` 只改已知的行。下一行的 openSession 要求它已经
+    // 在列表里 —— 与 RoomCreateDialog 同一条动线。
     await sessionsStore.loadSessions()
     workspaceStore.openSession(response.roomSessionId)
   } catch (cause) {

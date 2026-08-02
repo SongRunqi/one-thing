@@ -223,6 +223,37 @@ export interface CollabCoordinatorState {
   frozen: boolean
   turns: CollabCoordinatorTurn[]
   queue: CollabCoordinatorQueued[]
+  /**
+   * 「谁在说话」—— 此刻占着这间房发言权的 agent(架构收敛 C4 §1)。
+   *
+   * 取的是 `roomOccupancy`(inFlight ∪ activeTurns),也就是 C1 那份**占用视图**,
+   * 所以它是 `turns` 的超集:一条刚出队、还卡在闸上或 agent 锁上的激活同样属于
+   * "这间房有东西在跑",而喊停(`stopRoomFloor` 换世代号)对它同样有效 ——
+   * 停止按钮的可见性因此与"停得掉的东西"完全同宽。
+   *
+   * 这个字段存在的理由是**口径统一**:停止按钮从前读 `collab:turn-active` 的
+   * 事件账,状态面读这份快照,「在忙」又从看板 doing 卡现算,三本账各自漂移,
+   * 而事件账在窗口重载后直接归零(没有任何补水)。现在只有这一本。
+   */
+  speaking: string[]
+  /**
+   * 此刻正在打字的 agent(IM typing,multi-agent-collab-im §2.4)。
+   *
+   * 与 `speaking` 同存一份快照,但**不是**同一件事:typing 在一轮里明灭数次
+   * (每次 `say` 的参数流),speaking 一轮只翻两次。停止按钮读后者,打字行读前者。
+   */
+  typing: string[]
+  /** 快照生成时刻(ms)。typing 的 60s 陈旧兜底挂在它上面 —— 丢了一条 false 的房间
+   *  会忘掉那盏灯,而不是永远亮着。 */
+  at: number
+  /**
+   * 单调序号,每广播一次 +1(与 `CollabBoard.seq` 同一条纪律,P2-18)。
+   *
+   * 广播、冷启动 GET 两条路会赛跑,而到达顺序什么都证明不了:渲染层据此丢弃
+   * **比屏幕上更旧**的快照。GET 带的是"上一次广播的号",所以一发比它新的广播
+   * 总能顶掉一条迟到的 GET 回包。缺这个字段的旧数据读作 0。
+   */
+  seq: number
   /** 在飞的意愿判定轮数(并行模式);0 = 此刻没有判定在跑。 */
   judging: number
   /** 这一轮判定在问谁 —— 常驻条那句「4 人在判断要不要接话」的名字来源。 */

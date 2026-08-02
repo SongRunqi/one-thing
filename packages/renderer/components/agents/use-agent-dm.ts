@@ -24,6 +24,9 @@ export function useAgentDmOpener() {
         dmError.value = response?.error || '打不开私聊'
         return ''
       }
+      // 这一处**留着**(架构收敛 C4 §3):`ensureCollabDmRoom` 幂等,但第一次调用
+      // 是**新建**一间房,而 `session:collab-updated` 只改已知的行。调用方拿到 id
+      // 之后马上就要导航过去,那一拍它必须已经在列表里。
       await useSessionsStore().loadSessions()
       return response.roomSessionId
     } catch (cause) {

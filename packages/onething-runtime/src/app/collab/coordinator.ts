@@ -60,6 +60,7 @@ import {
   clearRoomTimers,
   currentFloorEpoch,
   deleteRoomRuntime,
+  emitCollabRoomUpdated,
   isRoom,
   removeCollabRoomDirectory,
   isAgentSpeaking,
@@ -426,6 +427,9 @@ export function setCollabRoomFrozen(roomSessionId: string, frozen: boolean): boo
   // 暂停/恢复是状态条上最显眼的一格(常驻条直接换成「已暂停 · 恢复」),不推的话
   // 面板要等下一次调度才追上一个用户刚刚亲手拨过的开关。
   broadcastCollabCoordinator(roomSessionId)
+  // `frozen` 也是会话列表读的房间字段(看板面板的暂停开关此前靠写完 loadSessions
+  // 全量重拉),所以这里同时播一份房间快照(C4 §3)。
+  emitCollabRoomUpdated(roomSessionId)
   return updated
 }
 
@@ -675,6 +679,9 @@ export function setCollabRoomConfig(
   }
   // 模式、次序表、名册都改状态条的样子(接力那一段整段出现或消失)。
   broadcastCollabCoordinator(roomSessionId)
+  // 会话列表那一侧(成员条、房名、设置面板)从此吃这条推送,而不是每个写入方
+  // 自己 `loadSessions()` 全量重拉(C4 §3)。
+  emitCollabRoomUpdated(roomSessionId)
   return { success: true }
 }
 
@@ -755,6 +762,8 @@ export function setCollabRoomBudgets(
     // 新额度可能解除封锁 — 立刻重试排队中的激活与任务。
     if (runtime.queue.length > 0) void processQueue(roomSessionId)
     broadcastCollabCoordinator(roomSessionId)
+    // 预算同样是会话列表读的房间字段(看板面板的预算格)(C4 §3)。
+    emitCollabRoomUpdated(roomSessionId)
   }
   return updated
 }

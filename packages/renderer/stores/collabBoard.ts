@@ -11,8 +11,9 @@ import { invalidateCollabTagCards } from '@/composables/collabInlineTags'
  */
 /** A 'typing: true' with no matching false is forgotten after this long. The
  *  coordinator's false can go missing (crash, restart, dropped event) and a
- *  room stuck at "正在输入" forever is worse than one that forgets — so trues
- *  carry their timestamp and expire on read. */
+ *  room stuck at "正在输入" forever is worse than one that forgets — so the
+ *  SNAPSHOT carries the timestamp and its typing list expires on read
+ *  (架构收敛 C4 §1:兜底挂在快照上,不再是每个 true 自带一个死线)。 */
 const TYPING_TTL_MS = 60_000
 /**
  * A permission event is a hint that the session's ask set MOVED, not a delta to
@@ -26,18 +27,6 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
   const boards = ref<Record<string, CollabBoard>>({})
   /** Sessions with a permission ask outstanding (worker waiting on approval). */
   const pendingAsks = ref<Record<string, number>>({})
-  /** IM typing indicator (multi-agent-collab-im §2.4): sessionId → agentId →
-   *  last 'typing: true' timestamp. Insertion order = who started first. */
-  const typing = ref<Record<string, Record<string, number>>>({})
-  /**
-   * 房间当前有没有一轮发言在跑(collab-team-v2 §5.1 入口①):
-   * roomSessionId → 占着场子的 agentId。
-   *
-   * 与 `typing` 分开存是刻意的:typing 在一轮里明灭数次(每次 say 的参数流),
-   * 拿它当停止按钮的可见性,按钮就会在两句话之间消失 —— 正好是想打断的人伸手
-   * 的那几秒。这个信号一轮只翻两次,窗口与主进程 `abortRoomTurn` 的靶完全同宽。
-   */
-  const roomTurnAgents = ref<Record<string, string>>({})
   /**
    * 协调器运行时状态(docs/design/collab-coordinator-inspector.md):
    * roomSessionId → 最近一次快照。
@@ -45,9 +34,21 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
    * 挂在这个 store 而不是新开一个:它与看板走的是**同一条**会话事件通道,而
    * `ensureSubscribed` 是那条通道唯一的订阅处 —— 为一个分支再开一个 store,
    * 就有了两处订阅、两份生命周期,以及迟早对不上的两个"是否已订阅"标志。
+   *
+   * **「agent 现在在干嘛」的唯一账本**(架构收敛 C4 §1)。此前这件事有四个口径:
+   * `collab:turn-active` 事件攒的一本(停止按钮读它,而且**没有冷启动补水** ——
+   * 窗口中途重载,按钮的账直接丢)、协调器快照一本(设置面板读它)、
+   * `collab:typing` 事件 + 60s TTL 一本(打字行读它)、看板 doing 卡现算一本。
+   * 四本各自漂移,真机上已经出过「常驻条 10–40s 显示空闲」的回归。
+   *
+   * 现在 speaking / typing 都是快照的字段,两个消费点读同一份派生;
+   * `collab:turn-active` 与 `collab:typing` 仍然在线上(向后兼容),但渲染层
+   * **不再拿它们记账** —— 后端在同一处触发点上推快照,那才是真值。
    */
   const coordinators = ref<Record<string, CollabCoordinatorState>>({})
   const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** 已经补过水的房(冷启动 GET 每间房一次就够,之后跟着广播走)。 */
+  const hydratedCoordinators = new Set<string>()
   let subscribed = false
 
   /**
@@ -86,64 +87,65 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     }, PENDING_RECONCILE_DEBOUNCE_MS))
   }
 
-  function setTyping(sessionId: string, agentId: string, isTyping: boolean): void {
-    const current = typing.value[sessionId]
-    if (isTyping) {
-      // Spreading an existing key keeps its original slot, so a re-affirmed
-      // typing (the coordinator restates true before every drive) refreshes
-      // the deadline without reshuffling the name order.
-      typing.value = { ...typing.value, [sessionId]: { ...current, [agentId]: Date.now() } }
-      return
-    }
-    if (!current || !(agentId in current)) return
-    const next = { ...current }
-    delete next[agentId]
-    typing.value = { ...typing.value, [sessionId]: next }
+  /**
+   * 采纳一份协调器快照 —— **唯一**的写入口(广播、冷启动 GET 都走它)。
+   *
+   * 与看板的 `applySnapshot` 同一条去序规则(P2-18):比屏幕上更旧的快照丢掉。
+   * 两条路会赛跑,而到达顺序什么都证明不了 —— 一次在广播之前发出的 GET 完全
+   * 可能在广播之后才回来,把停止按钮按回到上一帧。`seq` 由主进程每广播一次 +1,
+   * 所以"更旧"是事实而不是猜测;缺这个字段的旧数据读作 0(0 < 0 为假,照收)。
+   *
+   * 这条规则同时替掉了老的「关窗只认关它的那个人」:迟到的一条 idle 不再需要
+   * 带着 agentId 来自证身份,它带的是号,号小就不算数。
+   */
+  function applyCoordinatorSnapshot(sessionId: string, state: CollabCoordinatorState): void {
+    const current = coordinators.value[sessionId]
+    if (current && (state.seq ?? 0) < (current.seq ?? 0)) return
+    coordinators.value = { ...coordinators.value, [sessionId]: state }
   }
 
   /**
-   * 关窗只认关它的那个人 —— 一条迟到的 idle 不该抹掉后一轮已经开的窗。房间的
-   * 回合队列是串行的,但事件跨进程,顺序不是免费的。
+   * 冷启动补水:这间房的快照拉一次(每间房一次,之后跟着广播走)。
+   *
+   * 停止按钮此前的病根就在这里 —— 它读的是事件账,而 `load()` 只重建看板与
+   * 待审批数,于是「窗口在一轮发言中途重载」= 按钮的账凭空消失,而下一条事件
+   * 要等这一轮结束才来。
    */
-  function setRoomTurnActive(sessionId: string, agentId: string, active: boolean): void {
-    if (active) {
-      roomTurnAgents.value = { ...roomTurnAgents.value, [sessionId]: agentId }
-      return
-    }
-    if (roomTurnAgents.value[sessionId] !== agentId) return
-    const next = { ...roomTurnAgents.value }
-    delete next[sessionId]
-    roomTurnAgents.value = next
+  function ensureCoordinator(roomSessionId: string | undefined | null): void {
+    if (!roomSessionId || hydratedCoordinators.has(roomSessionId)) return
+    hydratedCoordinators.add(roomSessionId)
+    void loadCoordinator(roomSessionId)
   }
 
-  /** 这个房间此刻有没有可以停的一轮。 */
+  /** 这个房间此刻有没有可以停的一轮 —— 停止按钮与「在忙」读的同一格。 */
   function isRoomTurnActive(sessionId: string | undefined | null): boolean {
-    return Boolean(sessionId && roomTurnAgents.value[sessionId])
+    if (!sessionId) return false
+    return (coordinators.value[sessionId]?.speaking?.length ?? 0) > 0
   }
 
   function ensureSubscribed(): void {
     if (subscribed) return
+    // 宿主没有这条通道(单测的裸 platformApi、还没接上的 web 端)时什么都不做,
+    // 而且**不置位** —— 装不上就该在下次还能再试一次。
+    if (typeof platformApi.onSessionEvent !== 'function') return
     subscribed = true
     platformApi.onSessionEvent(envelope => {
       const event = envelope.event as
         | {
           type?: string
           board?: CollabBoard
-          agentId?: string
-          typing?: boolean
-          active?: boolean
           state?: CollabCoordinatorState
         }
         | undefined
       if (!event?.type) return
       if (event.type === 'collab:board-changed' && event.board) {
         applySnapshot(envelope.sessionId, event.board)
-      } else if (event.type === 'collab:typing' && typeof event.agentId === 'string') {
-        setTyping(envelope.sessionId, event.agentId, event.typing === true)
-      } else if (event.type === 'collab:turn-active' && typeof event.agentId === 'string') {
-        setRoomTurnActive(envelope.sessionId, event.agentId, event.active === true)
       } else if (event.type === 'collab:coordinator-changed' && event.state) {
-        coordinators.value = { ...coordinators.value, [envelope.sessionId]: event.state }
+        // 「谁在说 / 谁在打字」全在这一份里(C4 §1)。`collab:typing` 与
+        // `collab:turn-active` 照旧在线上,但这里**刻意不接**:后端在同一处触发
+        // 点上推快照,再接一遍就是第二本账,而两本账迟早对不上 —— 那正是这次
+        // 收敛要拆掉的东西。
+        applyCoordinatorSnapshot(envelope.sessionId, event.state)
       } else if (event.type === 'permission:request' || event.type === 'permission:settled') {
         // The event says "something moved here"; the count comes from the ask.
         scheduleReconcile(envelope.sessionId)
@@ -153,6 +155,9 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
 
   async function load(roomSessionId: string): Promise<void> {
     ensureSubscribed()
+    // 看板补水的同时把协调器那一份也补上(C4 §1):停止按钮、打字行与「在忙」
+    // 读的都是它,而它们分布在几个不打开看板的界面上。
+    ensureCoordinator(roomSessionId)
     try {
       const response = await platformApi.getCollabBoard(roomSessionId)
       if (response.success && response.board) {
@@ -245,11 +250,12 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
    */
   async function loadCoordinator(roomSessionId: string): Promise<void> {
     if (!roomSessionId) return
-    ensureSubscribed()
+    hydratedCoordinators.add(roomSessionId)
     try {
-      const response = await platformApi.getCollabCoordinator(roomSessionId)
-      if (response.success && response.state) {
-        coordinators.value = { ...coordinators.value, [roomSessionId]: response.state }
+      ensureSubscribed()
+      const response = await platformApi.getCollabCoordinator?.(roomSessionId)
+      if (response?.success && response.state) {
+        applyCoordinatorSnapshot(roomSessionId, response.state)
       }
     } catch (error) {
       console.error('[collabBoard] coordinator load failed:', error)
@@ -260,21 +266,27 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     return (roomSessionId && coordinators.value[roomSessionId]) || null
   }
 
-  /** Members currently typing in a room, oldest first. Expiry is applied here
-   *  rather than on a standing timer — nothing ticks while a room is quiet;
-   *  the caller re-reads (CollabTypingLine's 1s pulse) only while it shows. */
+  /**
+   * Members currently typing in a room, oldest first(名单顺序由后端的 Set
+   * 插入序给出:先开口的在前)。
+   *
+   * 陈旧兜底挂在**快照时间戳**上而不是每个 true 自己的死线:名单是整份替换的,
+   * 所以"这份名单是什么时候的"才是那个唯一有意义的问题。协调器进程崩了、事件
+   * 掉了,一间房最多顶着一分钟的旧名单,而不是永远停在「正在输入」。
+   * 过期在**读**的时候判,所以安静的房间一个定时器都不跑
+   * (CollabTypingLine 的 1s 脉搏只在显示期间存在)。
+   */
   function typingAgents(sessionId: string | undefined | null): string[] {
     if (!sessionId) return []
-    const entry = typing.value[sessionId]
-    if (!entry) return []
-    const cutoff = Date.now() - TYPING_TTL_MS
-    return Object.keys(entry).filter(agentId => entry[agentId] > cutoff)
+    const snapshot = coordinators.value[sessionId]
+    if (!snapshot?.typing?.length) return []
+    if (Date.now() - (snapshot.at ?? 0) > TYPING_TTL_MS) return []
+    return [...snapshot.typing]
   }
 
   return {
     boards,
     pendingAsks,
-    typing,
     load,
     boardFor,
     applySnapshot,
@@ -285,9 +297,10 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     findTask,
     focusedTask,
     focusTask,
-    roomTurnAgents,
     isRoomTurnActive,
     coordinators,
+    applyCoordinatorSnapshot,
+    ensureCoordinator,
     loadCoordinator,
     coordinatorFor,
   }

@@ -261,7 +261,8 @@ async function commit(update: {
       showError(response?.error || '保存失败')
       return
     }
-    await sessionsStore.loadSessions()
+    // 名册的新样子由 `session:collab-updated` 推回来(架构收敛 C4 §3)——
+    // 这里曾经是一次全量 `loadSessions()`,为了一个字段重拉整张会话表。
   } catch (cause) {
     showError(cause instanceof Error ? cause.message : String(cause))
   } finally {

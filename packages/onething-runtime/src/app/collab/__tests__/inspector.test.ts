@@ -65,10 +65,11 @@ const {
   buildCollabCoordinatorState,
   forgetCollabInspector,
   noteCollabSchedule,
+  setCollabTypingState,
   shutdownCollabInspector,
   COLLAB_LOG_LIMIT,
 } = await import('../inspector.js')
-const { roomRuntime, clearRoomRuntimes } = await import('../room-runtime.js')
+const { emitCollabRoomUpdated, roomRuntime, clearRoomRuntimes } = await import('../room-runtime.js')
 
 const ROOM = 'room-1'
 
@@ -262,5 +263,105 @@ describe('广播节流', () => {
     await vi.advanceTimersByTimeAsync(2_000)
     expect(events()).toHaveLength(1)
     vi.useRealTimers()
+  })
+
+  /**
+   * 活动窗口(架构收敛 C4 §1):「谁在说 / 谁在打字」是界面上会**动**的东西 ——
+   * 停止按钮的出现、打字波纹的亮灭。按秒节流的话,想打断的人要等最多一秒按钮
+   * 才画出来,而一句短 `say` 的灯会被整个吞掉。
+   */
+  it('活动转变走短窗口,不必陪一次普通推送等满一秒', async () => {
+    vi.useFakeTimers()
+    broadcastCollabCoordinator(ROOM)                  // 立即发一次
+    broadcastCollabCoordinator(ROOM)                  // 普通推送:排到 1s 之后
+    expect(events()).toHaveLength(1)
+
+    setCollabTypingState(ROOM, 'a', true)             // 活动:要在 120ms 内说
+    await vi.advanceTimersByTimeAsync(200)
+    const all = events()
+    expect(all).toHaveLength(2)
+    expect((all[1].state as { typing: string[] }).typing).toEqual(['a'])
+    vi.useRealTimers()
+  })
+})
+
+describe('活动快照(C4 §1/§2)', () => {
+  it('speaking 读的是占用视图 —— inFlight ∪ activeTurns,是 turns 的超集', () => {
+    const runtime = roomRuntime(ROOM)
+    runtime.activeTurns.set('agent-exec-a-room-1', {
+      agentSessionId: 'agent-exec-a-room-1',
+      agentId: 'a',
+      reason: 'mention',
+      startedAt: 1,
+    })
+    // 刚出队、还卡在闸上/锁上的那一条同样属于"这间房有东西在跑",而喊停对它
+    // 同样有效 —— 停止按钮的可见性因此与"停得掉的东西"同宽。
+    runtime.inFlight.set('r2', { id: 'r2', agentId: 'b', reason: 'self-elected', stage: 'queued' })
+
+    const snapshot = buildCollabCoordinatorState(ROOM)
+    expect(snapshot?.turns.map(turn => turn.agentId)).toEqual(['a'])
+    expect(new Set(snapshot?.speaking)).toEqual(new Set(['a', 'b']))
+  })
+
+  it('运行时不存在时 speaking 是空的,而不是读不到', () => {
+    expect(buildCollabCoordinatorState(ROOM)?.speaking).toEqual([])
+    expect(buildCollabCoordinatorState(ROOM)?.typing).toEqual([])
+  })
+
+  it('typing 由灭灯漏斗记账:点亮 → 名单里有,熄灭 → 名单里没有', () => {
+    setCollabTypingState(ROOM, 'a', true)
+    setCollabTypingState(ROOM, 'b', true)
+    expect(buildCollabCoordinatorState(ROOM)?.typing).toEqual(['a', 'b'])
+
+    setCollabTypingState(ROOM, 'a', false)
+    expect(buildCollabCoordinatorState(ROOM)?.typing).toEqual(['b'])
+
+    // 没记过的人熄灯是空操作 —— 四个生产点都会兜底发 false。
+    setCollabTypingState(ROOM, 'ghost', false)
+    expect(buildCollabCoordinatorState(ROOM)?.typing).toEqual(['b'])
+  })
+
+  it('seq 单调递增,每广播一次 +1;GET 带的是上一次广播的号', () => {
+    expect(buildCollabCoordinatorState(ROOM)?.seq).toBe(0)
+
+    broadcastCollabCoordinator(ROOM)
+    const first = events().at(-1)?.state as { seq: number }
+    expect(first.seq).toBe(1)
+    // 纯读不发号:一次冷启动 GET 不该显得比刚发出去的那一帧更新。
+    expect(buildCollabCoordinatorState(ROOM)?.seq).toBe(1)
+  })
+
+  it('房间没了,号也从头开始(表项跟着房一起收)', () => {
+    broadcastCollabCoordinator(ROOM)
+    expect(buildCollabCoordinatorState(ROOM)?.seq).toBe(1)
+    forgetCollabInspector(ROOM)
+    expect(buildCollabCoordinatorState(ROOM)?.seq).toBe(0)
+  })
+})
+
+describe('房间配置推送(C4 §3)', () => {
+  function updates(): Array<Record<string, unknown>> {
+    return mocks.emitted
+      .filter(entry => entry.event.type === 'session:collab-updated')
+      .map(entry => entry.event)
+  }
+
+  it('带全量小快照(房名 + room),读的是刚落下去的那一份', () => {
+    seed({ frozen: true, responseMode: 'serial' })
+    emitCollabRoomUpdated(ROOM)
+
+    const all = updates()
+    expect(all).toHaveLength(1)
+    expect(all[0]).toMatchObject({
+      name: '官网改版组',
+      room: { memberAgentIds: ['a', 'b', 'c'], frozen: true, responseMode: 'serial' },
+    })
+  })
+
+  it('不是房间会话就没有可播的 —— 一条 room 缺席的推送比不推更坏', () => {
+    mocks.sessions.set('chat-1', { id: 'chat-1', name: '直聊', messages: [] })
+    emitCollabRoomUpdated('chat-1')
+    emitCollabRoomUpdated('nope')
+    expect(updates()).toHaveLength(0)
   })
 })

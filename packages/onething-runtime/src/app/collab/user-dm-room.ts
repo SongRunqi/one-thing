@@ -15,6 +15,7 @@ import { isActiveAgent } from '@shared/ipc.js'
 import { isColleague, userDmRoomId } from '@onething/runtime/agents'
 import * as store from '../store.js'
 import { findAgent } from '../agents/index.js'
+import { emitCollabRoomUpdated } from './room-runtime.js'
 
 /**
  * Get(或惰性创建)某个 agent 的托管私聊房,返回房间会话 id。
@@ -78,6 +79,9 @@ export function ensureUserDmRoom(agentId: string): string | null {
           : {}),
       },
     })
+    // 名册被改写过 —— 播一份房间快照,会话表上那一格(成员、dm 标记)当场跟上,
+    // 而不是等某个调用方想起来全量重拉(架构收敛 C4 §3)。
+    emitCollabRoomUpdated(roomSessionId)
   }
   if (session.agentId !== agentId) store.updateSessionAgent(roomSessionId, agentId)
   if (agent.name && session.name !== agent.name) store.renameSession(roomSessionId, agent.name)

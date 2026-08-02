@@ -943,7 +943,9 @@ const hasActiveGeneration = computed(() => {
   if (!sessionId) return false
   // 群聊房间会话上从来没有流(W18 之后回合跑在成员的执行会话里),所以
   // isSessionGenerating 对房间永远是 false,停止按钮从未被画出来过。房间的
-  // "在跑"由 collab:turn-active 说了算(collab-team-v2 §5.1 入口①)。
+  // "在跑"由协调器快照的 `speaking` 说了算(collab-team-v2 §5.1 入口①;
+  // 架构收敛 C4 §1 把它从 `collab:turn-active` 的事件账换成了快照 ——
+  // 事件账没有冷启动补水,窗口在一轮发言中途重载,按钮的账就凭空没了)。
   return chatStore.isSessionGenerating(sessionId) || collabBoardStore.isRoomTurnActive(sessionId)
 })
 

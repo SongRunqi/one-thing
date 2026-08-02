@@ -402,7 +402,10 @@ export async function processQueue(roomSessionId: string): Promise<void> {
       // 两张表,少放一次就等于把一格永久锁死。
       releaseFloorHold(runtime, record.id)
       tasks.delete(record.id)
-      broadcastCollabCoordinator(roomSessionId)
+      // 活动窗口(C4 §1):这一发就是占用视图**清空**的那一发 —— 回合窗关掉时
+      // 这条记录还在 `inFlight` 里,所以停止按钮要等到这里才该熄。按秒节流会让
+      // 它在一场已经结束的对话上多亮一秒。
+      broadcastCollabCoordinator(roomSessionId, { activity: true })
     })
     tasks.set(record.id, task)
   }

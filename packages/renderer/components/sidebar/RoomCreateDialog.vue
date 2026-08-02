@@ -188,6 +188,9 @@ async function create(): Promise<void> {
       error.value = response.error || '创建失败'
       return
     }
+    // 这一处**留着**(架构收敛 C4 §3):`session:collab-updated` 是"改一行",
+    // 而这里要的是"加一行" —— 刚出生的房还不在列表里,`openSession` 下一行就
+    // 要它在。事件驱动的补拉是异步的,盖不住这个同一拍的顺序要求。
     await sessionsStore.loadSessions()
     workspaceStore.openSession(response.session.id)
     name.value = ''

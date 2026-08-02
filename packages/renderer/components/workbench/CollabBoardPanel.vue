@@ -352,7 +352,8 @@ async function commitBudget(): Promise<void> {
       return
     }
     hint.value = ''
-    await sessionsStore.loadSessions()
+    // 新预算由 `session:collab-updated` 推回来(架构收敛 C4 §3);这里曾经是一次
+    // 全量 `loadSessions()`。
   } catch (error) {
     hint.value = error instanceof Error ? error.message : String(error)
   }
@@ -422,7 +423,7 @@ async function toggleFrozen(): Promise<void> {
       return
     }
     hint.value = ''
-    await sessionsStore.loadSessions()
+    // 冻结开关的新位置由 `session:collab-updated` 推回来(架构收敛 C4 §3)。
   } catch (error) {
     hint.value = error instanceof Error ? error.message : String(error)
   }

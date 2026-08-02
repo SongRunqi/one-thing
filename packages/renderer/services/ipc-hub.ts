@@ -231,6 +231,17 @@ export function initializeIPCHub() {
         store.handleSessionRenamed({ sessionId, name: (event as any).name })
         break
 
+      // 房间配置(名册 / 房名 / PM / 预算 / 冻结 / 响应模式)变了(架构收敛 C4 §3)。
+      // 载全量小快照,列表就地合并 —— 写入方不再需要各自 `loadSessions()` 全量重拉。
+      case 'session:collab-updated':
+        import('@/stores/sessions').then(({ useSessionsStore }) => {
+          useSessionsStore().applyCollabRoomUpdate(sessionId, {
+            name: (event as any).name,
+            room: (event as any).room,
+          })
+        })
+        break
+
       case 'request:snapshot':
         console.log('[IPCHub] request:snapshot', sessionId, (event as any).snapshot?.turn)
         store.handleRequestSnapshot({ sessionId, snapshot: (event as any).snapshot })

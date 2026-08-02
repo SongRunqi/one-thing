@@ -54,7 +54,7 @@ import {
 import { getCollabDigestsForDays } from "./digest-store.js";
 import { collabUserPromptFields } from "./user-identity.js";
 import { attachCollabMentions } from "./mentions.js";
-import { broadcastCollabCoordinator, noteCollabSchedule } from "./inspector.js";
+import { noteCollabSchedule } from "./inspector.js";
 import {
 	belongsToLiveCollabPlan,
 	noteCollabPlanSpoke,
@@ -704,7 +704,10 @@ export async function driveActivation(
 		// 一次,但那时回合还没进 `activeTurns`(闸检查 + agent 锁都在中间),快照里
 		// 队列少了一条、在跑却还是空 —— 不补这一发,整个回合的 10–40s 里常驻条都
 		// 显示「空闲」,「谁在说 + 秒表」要到收尾那次广播才短暂闪现。
-		broadcastCollabCoordinator(roomSessionId);
+		//
+		// 补的那一发现在**长在 `emitCollabTurnActive` 里**(架构收敛 C4 §1):回合窗
+		// 的两条边就是快照 `speaking` 的两条边,让它们共用一个触发点,才不会再出现
+		// "补了这一处、漏了那一处"。这里因此只留下面那一行。
 		// collab-team-v2 §5.1 入口①: tell the ROOM its turn window is open, so the
 		// renderer can draw a stop button. The room session emits no `stream:start`
 		// of its own (the stream lives in the execution session), which is why the

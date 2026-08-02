@@ -608,6 +608,32 @@ export function roomChannel(sessionId: string): string | undefined {
 }
 
 /**
+ * 房间配置变了,把**全量小快照**播进会话通道(架构收敛 C4 §3)。
+ *
+ * 每一个改 `session.room` 的写入点在落盘之后调它一次,一行,不用管房间是什么形态
+ * ——读的就是刚落下去的那份真值。放在这里而不是协调器里:它是「这间房的读写原语」
+ * 那一族(与 `postSystemLine` / `roomChannel` 同族),而建房的两条路
+ * (`room-create` / `user-dm-room`)不该为了发一条事件去 import 整个协调器。
+ *
+ * 落盘之后再调,不是之前:快照现读 store,读到旧值就等于播了一条假消息。
+ */
+export function emitCollabRoomUpdated(roomSessionId: string): void {
+  const session = store.getSession(roomSessionId)
+  if (session?.kind !== 'room' || !session.room) return
+  try {
+    void getEventBus().emit(roomSessionId, {
+      type: 'session:collab-updated',
+      name: session.name,
+      room: session.room,
+    } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+  } catch (error) {
+    // 播不出去不是写失败:建房的两条路会在事件系统起来之前跑(daemon 的建房
+    // RPC、boot 期的私聊修复),而"房建好了但没人收到通知"远好过"房没建成"。
+    console.error('[collab] room update broadcast failed:', error)
+  }
+}
+
+/**
  * Operational system line: budget, chain gate, freeze, turn failures,
  * permission reminders. Display-only — never enters the model projection
  * (W9.1: machine bookkeeping is not a room fact).

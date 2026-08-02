@@ -8,7 +8,7 @@
  * The Session state machine reduces these events into SessionState.
  */
 
-import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ContextVariable, SessionGoal, ThinkingEffort } from '../ipc.js'
+import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ChatSession, ContextVariable, SessionGoal, ThinkingEffort } from '../ipc.js'
 import type { CollabBoard, CollabCoordinatorState } from '../ipc/collab.js'
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
@@ -324,6 +324,29 @@ export interface SessionRenamedEvent {
   name: string
 }
 
+/**
+ * 这间房的**配置**变了 —— 名册 / 房名 / PM / 预算 / 冻结 / 响应模式(架构收敛 C4 §3)。
+ *
+ * 在它之前,房间配置根本没有会话列表级的推送:每一个写入方(成员条、设置面板、
+ * 建房对话框、联系人开私聊、看板面板的两个开关)各自在写完之后手动 `loadSessions()`
+ * 全量重拉一遍会话表 —— 七处,散在五个文件里,新加一个写入口就漏一处,而漏掉的
+ * 症状是"改完不生效,切一下会话又生效了",最难归因的那一类。
+ *
+ * 载**全量小快照**,与 `collab:board-changed` / `collab:coordinator-changed` 同一条
+ * 理由:room 对象本来就小,而全量替换省掉了增量合并那一整类 bug。渲染层按会话 id
+ * 就地合并,不动列表里的其它项。
+ *
+ * 房名单独带一份是因为它不在 `room` 里(它是会话自己的名字);走 `renameSession`
+ * 的改名照旧由 `session:renamed` 负责,这里只在 room 写入顺带改了名时填上。
+ */
+export interface SessionCollabUpdatedEvent {
+  type: 'session:collab-updated'
+  /** 会话名(房名)。没有变化时也照发 —— 快照哲学:接收方只认最新那一份。 */
+  name?: string
+  /** 房间配置的全量快照。房间被降级/删除这种事不走这条通道。 */
+  room: NonNullable<ChatSession['room']>
+}
+
 // ── Steering events ─────────────────────────────
 
 /** A steering message was persisted and queued; retractable until consumed. */
@@ -454,6 +477,7 @@ export type SessionEvent =
   | ToolExecutingEvent
   | ToolMetadataEvent
   | SessionRenamedEvent
+  | SessionCollabUpdatedEvent
   | SteeringQueuedEvent
   | SteeringConsumedEvent
   | SteeringRetractedEvent

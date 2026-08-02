@@ -354,7 +354,14 @@ describe('CollabBoardPanel 刹车反馈 (P1-4)', () => {
     expect(wrapper.find('.board-hint').text()).toContain('bridge down')
   })
 
-  it('leaves no hint and reloads when the freeze lands', async () => {
+  /**
+   * 架构收敛 C4 §3:成功之后**不再**全量重拉会话表 —— 冻结开关的新位置由主进程
+   * 的 `session:collab-updated` 推回来,会话列表就地合并那一行。
+   *
+   * 这一条因此从"成功要 reload"翻成"成功也不该 reload":为一个布尔字段重拉整张
+   * 会话表是这次收敛拆掉的七处之一,而这里正是其中之一。
+   */
+  it('leaves no hint and does NOT reload the session list when the freeze lands', async () => {
     mocks.platformApi.setCollabRoomFrozen.mockResolvedValue({ success: true })
     const wrapper = await mountPanel([card()])
     const sessions = useSessionsStore()
@@ -364,7 +371,7 @@ describe('CollabBoardPanel 刹车反馈 (P1-4)', () => {
     await settle()
 
     expect(wrapper.find('.board-hint').exists()).toBe(false)
-    expect(loadSessions).toHaveBeenCalled()
+    expect(loadSessions).not.toHaveBeenCalled()
   })
 
   it('reports a refused budget write on the same line', async () => {

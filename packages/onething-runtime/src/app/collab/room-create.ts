@@ -24,6 +24,7 @@
 import { isActiveAgent, type ChatSession } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { findAgent } from '../agents/index.js'
+import { emitCollabRoomUpdated } from './room-runtime.js'
 
 /** 房间配置的落库形状。`RoomConfig` 没进 `@shared/ipc` 的桶,从会话类型上取更稳。 */
 type RoomConfig = NonNullable<ChatSession['room']>
@@ -140,5 +141,11 @@ export function ensureCollabGroupRoom(
     return { success: false, error: 'Failed to write room config' }
   }
 
+  // 房间配置已经落库 —— 播一份全量小快照(架构收敛 C4 §3)。
+  //
+  // 建房这条路上它是**补充**而不是替代:一间刚出生的房还不在渲染层的会话表里,
+  // 而这条事件是"就地合并某个已知会话",合并不出一行新的。调用方(建房对话框、
+  // 联系人开私聊)照旧要把新会话拿进列表才打得开。
+  emitCollabRoomUpdated(session.id)
   return { success: true, session: store.getSession(session.id) ?? session }
 }

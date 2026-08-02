@@ -33,6 +33,7 @@ import {
   maxChainFor,
   maxConcurrentTurnsFor,
   peekRoomRuntime,
+  roomOccupancy,
   type RoomRuntime,
 } from './room-runtime.js'
 
@@ -42,12 +43,40 @@ export const COLLAB_LOG_LIMIT = 32
 /** 广播节流。快照本身很小,但一次判定轮能在几毫秒里连着改好几处状态。 */
 const BROADCAST_THROTTLE_MS = 1_000
 
+/**
+ * **活动**转变(谁在说、谁在打字)的节流窗口 —— 比上面那道短一个量级。
+ *
+ * 这两件事不是"面板上的一个数字",而是界面上会**动**的东西:停止按钮的出现、
+ * 打字波纹的亮灭。按秒节流的话,想打断的人要等最多一秒按钮才画出来,而一句短
+ * `say` 的灯会被整个吞掉("打了又删"那一帧再也看不到)。
+ *
+ * 仍然是节流而不是直发:同一个回合里 `say` 可以连着调好几次,而 120ms 已经短到
+ * 人眼读作"立刻"。
+ */
+const ACTIVITY_BROADCAST_THROTTLE_MS = 120
+
 interface InspectorRoomState {
   log: CollabCoordinatorLogEntry[]
+  /**
+   * 此刻在打字的人 —— 快照里 `typing` 的**唯一**真值来源(架构收敛 C4 §1/§2)。
+   *
+   * 这是文件头第 1 条纪律("不新增一份账")的第二个例外,理由与「刚才」同款:
+   * typing 没有别处可读。它不像 `activeTurns` 那样是调度自己握着的状态,而是
+   * `say` 的参数流打出来的一串脉冲,过去只以事件形式存在 —— 于是每个消费者都得
+   * 自己攒一本,而窗口一重载那本账就归零。
+   *
+   * 写入点只有 `emitCollabTyping` 一处(四个生产点全从那道漏斗过),所以"事件发了
+   * 但账没记"这种分家不可能发生。
+   */
+  typing: Set<string>
+  /** 已经广播过几次 —— 快照的单调序号(渲染层据此丢弃乱序到达的旧快照)。 */
+  seq: number
   /** 上一次真正发出去的时刻(节流用)。 */
   lastSentAt: number
   /** 节流窗口里攒下的那一次待发。 */
   pending?: ReturnType<typeof setTimeout>
+  /** 那一次待发的到期时刻 —— 短窗口的请求要能抢在长窗口的待发之前。 */
+  pendingDueAt?: number
 }
 
 const rooms = new Map<string, InspectorRoomState>()
@@ -61,7 +90,7 @@ function inspectorState(roomSessionId: string): InspectorRoomState | null {
     // 长进程里单调增长。会话已经不是房间就不再立新表项;已有表项照常用,
     // 它们由 forget 负责收。
     if (store.getSession(roomSessionId)?.kind !== 'room') return null
-    state = { log: [], lastSentAt: 0 }
+    state = { log: [], typing: new Set(), seq: 0, lastSentAt: 0 }
     rooms.set(roomSessionId, state)
   }
   return state
@@ -107,10 +136,18 @@ export function buildCollabCoordinatorState(roomSessionId: string): CollabCoordi
 
   return {
     roomSessionId,
+    // 每次 build 都现取一个新号是错的:冷启动 GET 是**读**,它不该显得比刚发出去
+    // 的那一帧更新。带上"上一次广播的号",于是一发新广播总能顶掉一条迟到的回包,
+    // 而一条比屏幕更旧的回包会被渲染层丢掉。
+    seq: inspector?.seq ?? 0,
+    at: Date.now(),
     mode: session.room?.responseMode === 'serial'
       ? 'serial'
       : planRoom ? 'auto' : 'parallel',
     frozen: session.room?.frozen === true,
+    // 占用视图(C1)—— 与链闸、调度泵读的是同一张表,不是"为了显示"另算一遍。
+    speaking: runtime ? [...roomOccupancy(runtime)] : [],
+    typing: [...(inspector?.typing ?? [])],
     turns: [...(runtime?.activeTurns.values() ?? [])].map(turn => ({
       agentId: turn.agentId,
       reason: turn.reason ?? '',
@@ -194,27 +231,72 @@ export function noteCollabSchedule(
 }
 
 /**
- * 推一次状态(按秒节流)。
+ * 打字灯的**唯一**记账点(架构收敛 C4 §2)。
+ *
+ * 四个生产点(观察器的起落、调度泵激活收尾的兜底、冻结清队、成员移除)照旧各管
+ * 各的职责 —— 它们改的是**后端真值**;传播则统一走快照。于是"迟到的 false 抹掉
+ * 了新一轮的 true"这条老病没有了容身之处:渲染层不再按 agentId 直删,它只认
+ * 带序号的整份名单。
+ *
+ * 与灯同步推一次快照,走短窗口:这盏灯是会动的东西,按秒节流会把短句整个吞掉。
+ */
+export function setCollabTypingState(roomSessionId: string, agentId: string, typing: boolean): void {
+  const state = inspectorState(roomSessionId)
+  if (!state) return
+  const changed = typing ? !state.typing.has(agentId) : state.typing.delete(agentId)
+  if (typing) state.typing.add(agentId)
+  // 没变就不推:一轮里 `say` 会连着确认好几次 true,每次都推等于把节流白费掉。
+  if (!changed) return
+  broadcastCollabCoordinator(roomSessionId, { activity: true })
+}
+
+/**
+ * 推一次状态(节流)。
  *
  * 节流窗口里再来的推送**攒成一次尾发**,而不是丢掉:最后那一次通常正是"停下来了"
  * 这种最该被看见的状态,丢了界面就永远停在倒数第二帧。
+ *
+ * `activity: true` 走短窗口(见 `ACTIVITY_BROADCAST_THROTTLE_MS`)。两个窗口共用
+ * 同一个待发槽 —— 快照是**现算的全量**,谁触发的都一样,所以规则只有一条:
+ * 到期早的那一发说了算。一发已经排在 900ms 之后的普通推送,不该把一次要在 120ms
+ * 内亮起来的灯拖着一起等。
  */
-export function broadcastCollabCoordinator(roomSessionId: string): void {
+export function broadcastCollabCoordinator(
+  roomSessionId: string,
+  options: { activity?: boolean } = {},
+): void {
   const state = inspectorState(roomSessionId)
-  if (!state || state.pending) return
-  const elapsed = Date.now() - state.lastSentAt
-  if (elapsed >= BROADCAST_THROTTLE_MS) {
+  if (!state) return
+  const throttleMs = options.activity ? ACTIVITY_BROADCAST_THROTTLE_MS : BROADCAST_THROTTLE_MS
+  const now = Date.now()
+  const elapsed = now - state.lastSentAt
+  if (elapsed >= throttleMs) {
+    clearPending(state)
     emitCoordinatorState(roomSessionId, state)
     return
   }
+  const dueAt = now + (throttleMs - elapsed)
+  // 已经排了一发、而且到期不比这一发晚 —— 让它去说。
+  if (state.pending && state.pendingDueAt !== undefined && state.pendingDueAt <= dueAt) return
+  clearPending(state)
+  state.pendingDueAt = dueAt
   state.pending = setTimeout(() => {
-    state.pending = undefined
+    clearPending(state)
     emitCoordinatorState(roomSessionId, state)
-  }, BROADCAST_THROTTLE_MS - elapsed)
+  }, dueAt - now)
   state.pending.unref?.()
 }
 
+function clearPending(state: InspectorRoomState): void {
+  if (state.pending) clearTimeout(state.pending)
+  state.pending = undefined
+  state.pendingDueAt = undefined
+}
+
 function emitCoordinatorState(roomSessionId: string, state: InspectorRoomState): void {
+  // 号在 build 之前 +1 —— `buildCollabCoordinatorState` 读的就是这个字段,
+  // 于是发出去的那一份自带比上一发更大的号。
+  state.seq += 1
   const snapshot = buildCollabCoordinatorState(roomSessionId)
   if (!snapshot) return
   state.lastSentAt = Date.now()

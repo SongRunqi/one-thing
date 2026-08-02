@@ -24,14 +24,20 @@
  */
 import { createCollabTypingTracker, type CollabTypingSignal } from '@onething/runtime/collab'
 import { getEventBus } from '../events/index.js'
+import { broadcastCollabCoordinator, setCollabTypingState } from './inspector.js'
 
 /**
  * IM typing indicator (§2.4). Since W19 `true` means "this member's `say` call
  * is streaming its words right now"; `false` means that line is done — or that
  * the turn settled without one, the "typed and deleted" case the design wants
  * the room to see as a light that came on and went out.
+ *
+ * 这道漏斗同时**记账**(架构收敛 C4 §2):四个生产点全从这里过,所以协调器快照里
+ * 的 `typing` 与发出去的这条事件不可能分家。事件本身留着 —— 向后兼容,以及给
+ * 网关那类不读快照的消费者;渲染层的账本只有快照那一本。
  */
 export function emitCollabTyping(roomSessionId: string, agentId: string, typing: boolean): void {
+  setCollabTypingState(roomSessionId, agentId, typing)
   void getEventBus().emit(roomSessionId, {
     type: 'collab:typing',
     agentId,
@@ -50,6 +56,10 @@ export function emitCollabTyping(roomSessionId: string, agentId: string, typing:
  * wants to interrupt is reaching for it.
  */
 export function emitCollabTurnActive(roomSessionId: string, agentId: string, active: boolean): void {
+  // 回合窗的两条边正是 `activeTurns` 的登记与摘除,而快照的 `speaking` 读的就是
+  // 那张表 —— 在这里推一发,「谁在说」与「有没有可以停的东西」就永远同源同时
+  // (架构收敛 C4 §1)。走活动窗口:停止按钮要在人伸手的那一刻就已经画好。
+  broadcastCollabCoordinator(roomSessionId, { activity: true })
   void getEventBus().emit(roomSessionId, {
     type: 'collab:turn-active',
     agentId,

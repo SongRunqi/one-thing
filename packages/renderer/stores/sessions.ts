@@ -480,10 +480,37 @@ export const useSessionsStore = defineStore("sessions", () => {
 			if (response.success) {
 				sessions.value = response.sessions || [];
 				// Don't auto-create new chat on app open - let user choose
+				hydrateRoomCoordinators();
 			}
 		} finally {
 			isLoading.value = false;
 		}
+	}
+
+	/**
+	 * 房间的「谁在说 / 谁在打字」冷启动补水(架构收敛 C4 §1)。
+	 *
+	 * 这件事必须在**知道哪些会话是房间**的地方做,而那只有这里 —— collabBoard
+	 * store 拿到的永远是一个个孤立的 id。停止按钮从前读的是 `collab:turn-active`
+	 * 的事件账,而事件不会为一个已经开着的窗口重放:窗口在一轮发言中途重载,
+	 * 按钮就整轮消失。补一次 GET 就没有这回事了。
+	 *
+	 * 每间房一次(collabBoard 自己去重),不阻塞列表加载,失败静默 —— 拿不到
+	 * 快照只是回到"等下一次广播",不是一个要打断用户的错误。
+	 */
+	function hydrateRoomCoordinators(): void {
+		const roomIds = sessions.value
+			.filter((session) => session.kind === "room")
+			.map((session) => session.id);
+		if (roomIds.length === 0) return;
+		void import("./collabBoard")
+			.then(({ useCollabBoardStore }) => {
+				const boardStore = useCollabBoardStore();
+				for (const id of roomIds) boardStore.ensureCoordinator(id);
+			})
+			.catch(() => {
+				/* 没挂 pinia / web 端没有 rooms:补水不是关键路径 */
+			});
 	}
 
 	function isNewChatDraftId(sessionId?: string | null): boolean {
@@ -1280,6 +1307,36 @@ export const useSessionsStore = defineStore("sessions", () => {
 	}
 
 	/**
+	 * `session:collab-updated` 落到列表上(架构收敛 C4 §3)。
+	 *
+	 * **就地增量**:只动这一条会话的 `room` 与 `name`,列表里其它项一个都不碰。
+	 * 从前每个写入方(成员条、设置面板、看板面板的两个开关)在写完之后各自
+	 * `loadSessions()` 全量重拉 —— 七处散在五个文件里,新加一个写入口就漏一处,
+	 * 而漏掉的症状是"改完不生效,切一下会话又生效了"。
+	 *
+	 * `room` 是全量小快照,所以这里是**替换**而不是合并:后端刚落盘的那一份就是
+	 * 真值,字段级合并只会把一个刚被清掉的 pmAgentId 留在屏幕上。
+	 *
+	 * 不认识的会话 id 直接忽略:这条事件是"改一行",不是"加一行"。主进程新建的
+	 * 房间要进列表,走的是 ipc-hub 那条既有的 `refreshSessionListIfUnknown`。
+	 */
+	function applyCollabRoomUpdate(
+		sessionId: string,
+		payload: { name?: string; room?: SessionListItem["room"] },
+	): void {
+		const session = sessions.value.find((s) => s.id === sessionId);
+		if (!session || !payload.room) return;
+		session.kind = "room";
+		session.room = payload.room;
+		// 房名跟着走,但空名字不算改名 —— 那是"这次写入没碰名字"的形状。
+		if (payload.name && session.name !== payload.name) {
+			session.name = payload.name;
+		}
+		// sessions 是 ref<Array>,行内字段的写不会自己通知订阅者。
+		triggerRef(sessions);
+	}
+
+	/**
 	 * Apply an incoming `session:goal-updated` event (null = goal cleared).
 	 * The map is the single source of truth for the goal status bar.
 	 */
@@ -1423,6 +1480,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		archiveSession,
 		updateSessionTokenStats,
 		updateSessionVariables,
+		applyCollabRoomUpdate,
 		fetchVariables,
 		updateSessionGoal,
 		fetchGoal,
