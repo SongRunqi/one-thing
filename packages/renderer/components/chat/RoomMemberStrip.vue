@@ -76,7 +76,6 @@ import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import ContextMenu from '@/components/common/ContextMenu.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 import { AGENT_AVATAR_FALLBACK } from '@/components/common/agent-avatar'
-import { platformApi } from '@/platform'
 import { useAgentsStore } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
 import {
@@ -256,13 +255,13 @@ async function commit(update: {
   if (saving.value) return
   saving.value = true
   try {
-    const response = await platformApi.updateCollabRoom(props.sessionId, update)
+    // 写与回填约定都在 sessions store 的 action 里(架构收敛 C4 §4):名册的新
+    // 样子由 `session:collab-updated` 推回来,组件不碰镜像。
+    const response = await sessionsStore.updateCollabRoom(props.sessionId, update)
     if (!response?.success) {
       showError(response?.error || '保存失败')
       return
     }
-    // 名册的新样子由 `session:collab-updated` 推回来(架构收敛 C4 §3)——
-    // 这里曾经是一次全量 `loadSessions()`,为了一个字段重拉整张会话表。
   } catch (cause) {
     showError(cause instanceof Error ? cause.message : String(cause))
   } finally {

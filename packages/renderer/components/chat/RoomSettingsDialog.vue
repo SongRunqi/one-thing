@@ -538,15 +538,13 @@ async function clearHistory(): Promise<void> {
   clearing.value = true
   error.value = ''
   try {
-    const response = await platformApi.clearCollabRoomHistory(props.sessionId, clearMemberDms.value)
+    // 清空后那一次全量重拉在 action 里(架构收敛 C4 §4):清空动的不是房间配置
+    // 而是**转录**,`session:collab-updated` 只带 room 快照盖不住它。
+    const response = await sessionsStore.clearCollabRoomHistory(props.sessionId, clearMemberDms.value)
     if (!response?.success) {
       error.value = response?.error || '清空失败'
       return
     }
-    // 这一处**留着**(架构收敛 C4 §3):清空动的不是房间配置而是**转录** ——
-    // 列表行上的最后一句、消息数、时间戳全变了,而 `session:collab-updated`
-    // 只带 room 快照,盖不住这些。
-    await sessionsStore.loadSessions()
     close()
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause)
@@ -572,30 +570,30 @@ async function save(): Promise<void> {
   error.value = ''
   try {
     // Each item goes to the channel that owns it; only changed items are sent
-    // (membership posts 群公告, freezing aborts live streams).
+    // (membership posts 群公告, freezing aborts live streams). 三条都走 sessions
+    // store 的 action(架构收敛 C4 §4),回填约定写在那里:各自播一条
+    // `session:collab-updated`,会话列表就地合并,组件不碰镜像。
     if (plan.roomUpdate) {
-      const response = await platformApi.updateCollabRoom(props.sessionId, plan.roomUpdate)
+      const response = await sessionsStore.updateCollabRoom(props.sessionId, plan.roomUpdate)
       if (!response?.success) {
         error.value = response?.error || '保存失败'
         return
       }
     }
     if (plan.budgets) {
-      const response = await platformApi.setCollabRoomBudgets(props.sessionId, plan.budgets)
+      const response = await sessionsStore.setCollabRoomBudgets(props.sessionId, plan.budgets)
       if (!response?.success) {
         error.value = response?.error || '预算保存失败'
         return
       }
     }
     if (plan.frozen !== undefined) {
-      const response = await platformApi.setCollabRoomFrozen(props.sessionId, plan.frozen)
+      const response = await sessionsStore.setCollabRoomFrozen(props.sessionId, plan.frozen)
       if (!response?.success) {
         error.value = response?.error || '暂停开关保存失败'
         return
       }
     }
-    // 三条写入口(房间设置 / 预算 / 暂停)各自播一条 `session:collab-updated`,
-    // 会话列表就地合并(架构收敛 C4 §3)—— 这里曾经是一次全量 `loadSessions()`。
     close()
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : String(cause)

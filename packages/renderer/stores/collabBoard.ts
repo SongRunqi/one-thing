@@ -1,7 +1,18 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { CollabBoard, CollabCoordinatorState, CollabTask } from '@shared/ipc.js'
+import { computed, ref } from 'vue'
+import type {
+  CollabBoard,
+  CollabBoardAction,
+  CollabBoardActResponse,
+  CollabCoordinatorState,
+  CollabTask,
+  CollabTaskStopResponse,
+  PermissionInfo,
+} from '@shared/ipc.js'
 import { platformApi } from '@/platform'
+// 静态引没有环:chat 对 sessions 的依赖是**动态** import,所以静态图上
+// sessions → collabBoard → chat 是一条直线。
+import { useChatStore } from './chat'
 import { invalidateCollabTagCards } from '@/composables/collabInlineTags'
 
 /**
@@ -25,8 +36,29 @@ const PENDING_RECONCILE_DEBOUNCE_MS = 200
 
 export const useCollabBoardStore = defineStore('collabBoard', () => {
   const boards = ref<Record<string, CollabBoard>>({})
-  /** Sessions with a permission ask outstanding (worker waiting on approval). */
-  const pendingAsks = ref<Record<string, number>>({})
+  /**
+   * 待审批权限的**唯一** renderer 账本(架构收敛 C4 §5)。
+   *
+   * sessionId → `getPendingPermissions` 反查回来的那一份**全量** prompt 列表。
+   * 此前这件事有三个消费者、两种存储模型:这里按 ±1 攒的徽标计数、ipc-hub 按
+   * `permission:request/queued/settled` 事件增删的 chat store 卡片状态、
+   * MessageList 切会话时自己直查再自己投影的一份。三处各写各的,谁后到谁说了算,
+   * 而审批是安全面 —— "屏幕上有没有这张卡"不允许有第二个答案。
+   *
+   * 存全量而不是计数,是因为只有全量能同时喂两个消费者:徽标要的是长度,卡片
+   * 要的是 prompt 对象本身(callId / promptState / targetChannel)。存计数就等于
+   * 逼着卡片那一侧另开一本 —— 那正是收敛前的样子。
+   */
+  const pendingPrompts = ref<Record<string, PermissionInfo[]>>({})
+  /** Sessions with a permission ask outstanding (worker waiting on approval).
+   *  由账本派生的读数,不是第二份存储。 */
+  const pendingAsks = computed<Record<string, number>>(() => {
+    const counts: Record<string, number> = {}
+    for (const [sessionId, prompts] of Object.entries(pendingPrompts.value)) {
+      counts[sessionId] = prompts.length
+    }
+    return counts
+  })
   /**
    * 协调器运行时状态(docs/design/collab-coordinator-inspector.md):
    * roomSessionId → 最近一次快照。
@@ -52,6 +84,24 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
   let subscribed = false
 
   /**
+   * 每问一次 +1。迟到的答案按号丢弃 —— 与看板 / 协调器快照的 `seq` 去序同一条
+   * 纪律,只是这里的号由**发问方**自己发。
+   *
+   * 反查有一个已知时序坑:settle 事件先到、反查后到,而那次反查是在 settle
+   * 之前发出的,答案里还带着刚被批掉的 ask。照单全收 = 把一张用户已经按过的
+   * 审批卡重新贴回屏幕,这在审批面上是最不能接受的一种漂移。core 是**先摘牌再
+   * 广播**(`removePending` 在 `emitSettled` 之前),所以只要保证"最后一次发问
+   * 的答案说了算",这扇窗就关上了。
+   */
+  const reconcileGenerations = new Map<string, number>()
+
+  function nextReconcileGeneration(sessionId: string): number {
+    const next = (reconcileGenerations.get(sessionId) ?? 0) + 1
+    reconcileGenerations.set(sessionId, next)
+    return next
+  }
+
+  /**
    * Ask the main process what this session is actually waiting on (P1-3).
    *
    * The badge used to be kept by ±1 event accounting, which cannot be right
@@ -62,17 +112,24 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
    * window reopened over a worker waiting for approval showed no badge at all.
    *
    * `getPendingPermissions` is the source of truth core already exposes
-   * (promptState and all), so the count is derived rather than accumulated.
+   * (promptState and all), so the ledger is derived rather than accumulated.
    * Queued prompts count too — a session sitting behind its own queue is still
    * a session waiting on the user, which is exactly what the badge claims.
+   *
+   * 反查回来的那一份同时喂两个消费者:徽标读长度,卡片读 `applyPendingPermissionSnapshot`
+   * 投影出来的 toolCall 标志位(架构收敛 C4 §5)。
    */
   async function reconcilePending(sessionId: string): Promise<void> {
+    const generation = nextReconcileGeneration(sessionId)
     try {
       const response = await platformApi.getPendingPermissions(sessionId)
-      const count = response?.success && response.pending ? response.pending.length : 0
-      pendingAsks.value = { ...pendingAsks.value, [sessionId]: count }
+      // 更新的一问已经在路上(或已经答完),这份答案不再是真相。
+      if (reconcileGenerations.get(sessionId) !== generation) return
+      const prompts = response?.success && response.pending ? response.pending : []
+      pendingPrompts.value = { ...pendingPrompts.value, [sessionId]: prompts }
+      useChatStore().applyPendingPermissionSnapshot(sessionId, prompts)
     } catch (error) {
-      // Keep the last known count: a failed read is not evidence of an empty
+      // Keep the last known ledger: a failed read is not evidence of an empty
       // queue, and dropping the badge would tell the user the opposite.
       console.error('[collabBoard] pending reconcile failed:', error)
     }
@@ -81,10 +138,63 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
   function scheduleReconcile(sessionId: string): void {
     const existing = reconcileTimers.get(sessionId)
     if (existing) clearTimeout(existing)
+    // 事件一到就把号往前推:在飞的那次反查是在这条事件之前发出的,它的答案
+    // 已经过期,不该再落到屏幕上。
+    nextReconcileGeneration(sessionId)
     reconcileTimers.set(sessionId, setTimeout(() => {
       reconcileTimers.delete(sessionId)
       void reconcilePending(sessionId)
     }, PENDING_RECONCILE_DEBOUNCE_MS))
+  }
+
+  /**
+   * 权限事件的**唯一**落点(架构收敛 C4 §5)。
+   *
+   * 事件在这里只有两个身份:
+   *  1. 「这个会话的欠账动了,去重新问一次」—— 三种事件一视同仁,合并成一次反查;
+   *  2. settle 额外**转达一个只有事件里才有的事实**:decision。账本答得出"还欠
+   *     不欠",答不出"刚才那次是批还是拒",而 allowed 要把 pending 推成
+   *     executing。这不是记账,是转达 —— 账本本身仍然只从反查来。
+   *
+   * 两个水龙头都往这里灌(ipc-hub 的全局分发、以及本 store 自己的会话事件订阅):
+   * 反查按 sessionId 合并,收尾函数对已经收干净的卡是空操作,所以重复触发是安全的。
+   */
+  function notePermissionEvent(
+    sessionId: string,
+    event: {
+      type: string
+      requestId?: string
+      toolCallIds?: string[]
+      decision?: 'allowed' | 'rejected'
+    },
+  ): void {
+    if (event.type === 'permission:settled' && event.toolCallIds?.length) {
+      useChatStore().handlePermissionSettled({
+        sessionId,
+        requestId: event.requestId ?? '',
+        toolCallIds: event.toolCallIds,
+        decision: event.decision ?? 'rejected',
+      })
+    }
+    scheduleReconcile(sessionId)
+  }
+
+  /**
+   * 一个会话被搬上屏幕时的补水(架构收敛 C4 §5)。
+   *
+   * 从前这是 MessageList 里的一段直查加一段手写投影:组件自己认识 prompt 的形状,
+   * 自己决定 queued 该走哪个 handler。补水与事件因此走两条不同的路,而"切回一个
+   * 正在等审批的会话"是唯一能把两条路的分歧照出来的场景。现在组件只说"这个会话
+   * 上屏了",形状与投影规则一概不知道。
+   */
+  async function ensurePendingForSession(sessionId: string | undefined | null): Promise<void> {
+    if (!sessionId) return
+    await reconcilePending(sessionId)
+  }
+
+  /** 这个会话此刻还欠哪些审批 —— 卡片与徽标之外,别处要用也读这一格。 */
+  function pendingPromptsFor(sessionId: string | undefined | null): PermissionInfo[] {
+    return (sessionId && pendingPrompts.value[sessionId]) || []
   }
 
   /**
@@ -135,6 +245,9 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
           type?: string
           board?: CollabBoard
           state?: CollabCoordinatorState
+          requestId?: string
+          toolCallIds?: string[]
+          decision?: 'allowed' | 'rejected'
         }
         | undefined
       if (!event?.type) return
@@ -146,9 +259,13 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
         // 点上推快照,再接一遍就是第二本账,而两本账迟早对不上 —— 那正是这次
         // 收敛要拆掉的东西。
         applyCoordinatorSnapshot(envelope.sessionId, event.state)
-      } else if (event.type === 'permission:request' || event.type === 'permission:settled') {
-        // The event says "something moved here"; the count comes from the ask.
-        scheduleReconcile(envelope.sessionId)
+      } else if (
+        event.type === 'permission:request'
+        || event.type === 'permission:queued'
+        || event.type === 'permission:settled'
+      ) {
+        // The event says "something moved here"; the ledger comes from the ask.
+        notePermissionEvent(envelope.sessionId, event as Parameters<typeof notePermissionEvent>[1])
       }
     })
   }
@@ -202,6 +319,45 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     boards.value = { ...boards.value, [roomSessionId]: board }
     // 行内 <card> 的验真结果是按 id 记住的,新快照可能刚建了(或删了)那张卡。
     invalidateCollabTagCards()
+  }
+
+  /**
+   * 看板写入(架构收敛 C4 §4)。
+   *
+   * **回填约定就在这里**:回复带着看板就当场 `applySnapshot` 落账。回复在成功与
+   * 失败**两条路上都带板**,所以一次被拒的写也照样从真值重画 —— 这正是冲突提示
+   * 说得出"已刷新"的底气。30ms 合并广播随后还会再来一份,`seq` 去序保证它不会
+   * 把刚落的这一帧按回去。
+   *
+   * 从前这段约定写在 CollabBoardPanel 里:组件调完 platformApi 自己记得回填。
+   * 新开一个写入点忘了回填的症状是"点了没反应",而没有任何东西会报错。
+   *
+   * 不吞错:桥抛错就抛给调用方,提示语归 UI —— store 不替谁决定怎么说话。
+   */
+  async function actBoard(
+    roomSessionId: string,
+    action: CollabBoardAction,
+  ): Promise<CollabBoardActResponse> {
+    const response = await platformApi.actCollabBoard(roomSessionId, action)
+    if (response?.board) applySnapshot(roomSessionId, response.board)
+    return response
+  }
+
+  /**
+   * 停一张卡正在跑的执行(collab-team-v2 §5.1 入口②)。
+   *
+   * 停止不是一次看板写入:它停的是运行时的一条流,卡的收敛与群里的说明都由主
+   * 进程那一侧一起办掉,看板的新样子跟着 `collab:board-changed` 广播回来。回复
+   * 万一带了板也照收(与 `actBoard` 同一条回填约定),不带就等广播。
+   */
+  async function stopTask(
+    roomSessionId: string,
+    taskId: string,
+  ): Promise<CollabTaskStopResponse> {
+    const response = await platformApi.stopCollabTask(roomSessionId, taskId)
+    const board = (response as { board?: CollabBoard })?.board
+    if (board) applySnapshot(roomSessionId, board)
+    return response
   }
 
   /**
@@ -287,11 +443,17 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
   return {
     boards,
     pendingAsks,
+    pendingPrompts,
+    pendingPromptsFor,
     load,
     boardFor,
     applySnapshot,
+    actBoard,
+    stopTask,
     hasPendingAsk,
     reconcilePending,
+    notePermissionEvent,
+    ensurePendingForSession,
     typingAgents,
     ensureSubscribed,
     findTask,

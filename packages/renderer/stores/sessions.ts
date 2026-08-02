@@ -1336,6 +1336,88 @@ export const useSessionsStore = defineStore("sessions", () => {
 		triggerRef(sessions);
 	}
 
+	// ── 房间配置的写路径(架构收敛 C4 §4)──────────────────────────────────
+	//
+	// 四个写入口(成员条、设置面板、看板面板的两个开关)从前各自直调 platformApi,
+	// 「写完镜像怎么更新」这条约定就散在四个组件里。收进来之后约定只写一遍:
+	//
+	//   **回填 = `session:collab-updated` 事件**(C4-α 建的那条)。主进程落盘后播
+	//   一条带 room 全量小快照的事件,ipc-hub 交给上面的 `applyCollabRoomUpdate`
+	//   就地增量。所以这些 action **不碰本地状态**,一行都不改 —— 组件写完也
+	//   不需要 `loadSessions()` 全量重拉(那正是 C4-α 拆掉的七处)。
+	//
+	// 一律不吞错:桥抛错就抛给调用方,提示语归 UI。失败的回复原样返回,组件按自己
+	// 的措辞显示 —— store 不替谁决定怎么说话。
+
+	// 这三个是**纯转交**,所以刻意不写成 async:多包一层 async 就多一个微任务,
+	// 而"按下去到提示出现之间隔了几个 tick"是会被 UI 看见的。
+	function updateCollabRoom(
+		sessionId: string,
+		update: import("@shared/ipc.js").CollabRoomUpdatePatch,
+	) {
+		return platformApi.updateCollabRoom(sessionId, update);
+	}
+
+	function setCollabRoomBudgets(
+		sessionId: string,
+		budgets: import("@shared/ipc.js").CollabRoomBudgetsPatch,
+	) {
+		return platformApi.setCollabRoomBudgets(sessionId, budgets);
+	}
+
+	function setCollabRoomFrozen(sessionId: string, frozen: boolean) {
+		return platformApi.setCollabRoomFrozen(sessionId, frozen);
+	}
+
+	/**
+	 * 建一间群(架构收敛 C4 §4)。
+	 *
+	 * 这里的回填约定与上面三个**不同**:`session:collab-updated` 是"改一行",而
+	 * 建房要的是"加一行" —— 刚出生的房还不在列表里,调用方下一句就要 `openSession`
+	 * 它。事件驱动的补拉是异步的,盖不住这个同一拍的顺序要求,所以这一次全量
+	 * `loadSessions()` 留着,而且**留在 action 里**:契约从"组件记得刷"变成
+	 * "action 保证可见"。
+	 */
+	async function createCollabRoom(
+		name: string,
+		room: {
+			memberAgentIds: string[];
+			pmAgentId?: string;
+			budgets?: { dailyCostUSD?: number; maxChain?: number };
+			dm?: true;
+		},
+	) {
+		const response = await platformApi.createSession(name, {
+			kind: "room",
+			room,
+		});
+		if (response.success && response.session) {
+			await loadSessions();
+		}
+		return response;
+	}
+
+	/**
+	 * 清空一间房的转录(架构收敛 C4 §4)。
+	 *
+	 * 回填也不是 `session:collab-updated`:清空动的不是房间配置而是**转录** ——
+	 * 列表行上的最后一句、消息数、时间戳全变了,而那条事件只带 room 快照,盖不住
+	 * 这些。所以这一次全量重拉同样留在 action 里。
+	 */
+	async function clearCollabRoomHistory(
+		sessionId: string,
+		includeMemberDms?: boolean,
+	) {
+		const response = await platformApi.clearCollabRoomHistory(
+			sessionId,
+			includeMemberDms,
+		);
+		if (response?.success) {
+			await loadSessions();
+		}
+		return response;
+	}
+
 	/**
 	 * Apply an incoming `session:goal-updated` event (null = goal cleared).
 	 * The map is the single source of truth for the goal status bar.
@@ -1481,6 +1563,11 @@ export const useSessionsStore = defineStore("sessions", () => {
 		updateSessionTokenStats,
 		updateSessionVariables,
 		applyCollabRoomUpdate,
+		updateCollabRoom,
+		setCollabRoomBudgets,
+		setCollabRoomFrozen,
+		createCollabRoom,
+		clearCollabRoomHistory,
 		fetchVariables,
 		updateSessionGoal,
 		fetchGoal,

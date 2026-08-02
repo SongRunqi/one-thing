@@ -149,7 +149,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
 import { useCollabBoardStore } from '@/stores/collabBoard'
-import { platformApi } from '@/platform'
+import { useSessionsStore } from '@/stores/sessions'
 import {
   buildCoordinatorBar,
   buildCoordinatorGateRows,
@@ -171,6 +171,7 @@ const emit = defineEmits<{
 
 const agentsStore = useAgentsStore()
 const collabBoardStore = useCollabBoardStore()
+const sessionsStore = useSessionsStore()
 
 /**
  * 展开状态**存在组件里而不是 localStorage**:它是一次会话内的注意力,不是偏好。
@@ -229,7 +230,7 @@ const logRows = computed(() => buildCoordinatorLogRows(state.value, resolveName)
 async function resume(): Promise<void> {
   if (!props.roomSessionId) return
   try {
-    await platformApi.setCollabRoomFrozen(props.roomSessionId, false)
+    await sessionsStore.setCollabRoomFrozen(props.roomSessionId, false)
   } catch (error) {
     console.error('[coordinator] resume failed:', error)
   }

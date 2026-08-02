@@ -1,15 +1,15 @@
 /**
  * 房间消息的表情回应 —— 从 `MessageList.vue` 抬出的那一段(去复用重构 R1)。
  *
- * 抬出来是因为房面(`RoomSurface`)也收 `SayMessageRow` 的 `react` 事件,而这段
- * 逻辑里有两条不能各写一遍的纪律:
- *  1. **不做乐观写**:主进程广播 `message:updated`、store 合并,chips 永远显示
- *     真正落盘的东西。因此一次被拒的写在结构上是"看不见"的 —— 那正是下面这行
- *     失败痕迹存在的理由(P2-19)。
- *  2. **过桥的每个参数都是原始值**:响应式代理过不了结构化克隆(W7 血教训)。
+ * 抬出来是因为房面(`RoomSurface`)也收 `SayMessageRow` 的 `react` 事件。这里现在
+ * 只剩**失败痕迹**这一件事:写本身与它的回填约定(`message:updated` 广播)归
+ * chat store 的 `reactToCollabMessage`(架构收敛 C4 §4)。
+ *
+ * 失败痕迹之所以必须存在:这条写路径不做乐观更新,chips 永远显示真正落盘的东西,
+ * 所以一次被拒的写在结构上是"看不见"的(P2-19)—— 不说一句就等于按了没反应。
  */
 import { onScopeDispose, ref } from 'vue'
-import { platformApi } from '@/platform'
+import { useChatStore } from '@/stores/chat'
 
 const HINT_LINGER_MS = 4000
 
@@ -31,10 +31,10 @@ export function useCollabReactions(getSessionId: () => string | undefined) {
     const sessionId = getSessionId()
     if (!sessionId || !messageId || !emoji) return
     try {
-      const response = await platformApi.reactToCollabMessage(
-        String(sessionId),
-        String(messageId),
-        String(emoji),
+      const response = await useChatStore().reactToCollabMessage(
+        sessionId,
+        messageId,
+        emoji,
         { type: 'user' },
       )
       if (response && response.success === false) {

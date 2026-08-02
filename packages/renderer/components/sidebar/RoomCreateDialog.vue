@@ -123,7 +123,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
-import { platformApi } from '@/platform'
 import { useAgentsStore } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -176,22 +175,18 @@ async function create(): Promise<void> {
   error.value = ''
   try {
     const budget = Number.isFinite(dailyBudget.value) && dailyBudget.value >= 0 ? dailyBudget.value : 5
-    const response = await platformApi.createSession(name.value.trim(), {
-      kind: 'room',
-      room: {
-        memberAgentIds: [...memberIds.value],
-        ...(pmAgentId.value ? { pmAgentId: pmAgentId.value } : {}),
-        budgets: { dailyCostUSD: budget },
-      },
+    // 建房后那一次全量重拉在 action 里(架构收敛 C4 §4):`session:collab-updated`
+    // 是"改一行",而这里要的是"加一行" —— 刚出生的房还不在列表里,下一句
+    // `openSession` 就要它在。契约因此从"组件记得刷"变成"action 保证可见"。
+    const response = await sessionsStore.createCollabRoom(name.value.trim(), {
+      memberAgentIds: [...memberIds.value],
+      ...(pmAgentId.value ? { pmAgentId: pmAgentId.value } : {}),
+      budgets: { dailyCostUSD: budget },
     })
     if (!response.success || !response.session) {
       error.value = response.error || '创建失败'
       return
     }
-    // 这一处**留着**(架构收敛 C4 §3):`session:collab-updated` 是"改一行",
-    // 而这里要的是"加一行" —— 刚出生的房还不在列表里,`openSession` 下一行就
-    // 要它在。事件驱动的补拉是异步的,盖不住这个同一拍的顺序要求。
-    await sessionsStore.loadSessions()
     workspaceStore.openSession(response.session.id)
     name.value = ''
     memberIds.value = []

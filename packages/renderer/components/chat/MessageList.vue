@@ -213,6 +213,7 @@ import {
 } from './assistant-message-outline'
 import { ArrowDown } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
+import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
@@ -301,6 +302,7 @@ function handleJumpToMessage(messageId: string) {
 const { reactionHint, react: handleReact } = useCollabReactions(() => effectiveSessionId.value)
 
 const chatStore = useChatStore()
+const collabBoardStore = useCollabBoardStore()
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const messageScrollbarRef = ref<InstanceType<typeof Scrollbar> | null>(null)
@@ -1834,58 +1836,27 @@ onUnmounted(() => {
 })
 
 
-// When session changes, reload any pending permission requests
-// This fixes the issue where permission requests are "lost" after switching sessions
-// Watch both sessionId AND messages.length to ensure messages are loaded before restoring permissions
+// 切会话 / 消息刚加载完时,让待审批账本对一次账(架构收敛 C4 §5)。
+//
+// 这里从前是一段组件内直查 `getPendingPermissions` + 一段手写投影:组件自己认识
+// prompt 的形状,自己决定 queued 走哪个 handler。于是补水与事件是两条路,而"切回
+// 一个正在等审批的会话"是唯一能把两条路的分歧照出来的场景。现在只说一句"这个会话
+// 上屏了",拉取、去序与投影全归账本。
+//
+// 两个触发边保持原样:会话变了,或者消息刚从 0 变成非 0 —— 投影要落到 toolCall 上,
+// 消息没到就没有落点(queued 在找不到 toolCall 时是丢弃而不是缓存的)。
 watch(
   [effectiveSessionId, () => props.messages.length],
   async ([newSessionId, msgCount], [oldSessionId, oldMsgCount]) => {
     if (!newSessionId) return
 
-    // Only restore permissions when:
-    // 1. Session changed AND has messages
-    // 2. Messages just loaded (went from 0 to non-0)
     const sessionChanged = newSessionId !== oldSessionId
     const messagesJustLoaded = oldMsgCount === 0 && msgCount > 0
 
     if (!sessionChanged && !messagesJustLoaded) return
     if (msgCount === 0) return  // Messages not loaded yet, wait
 
-    try {
-      const response = await platformApi.getPendingPermissions(newSessionId)
-      if (response.success && response.pending && response.pending.length > 0) {
-        console.log('[Frontend] Loading pending permissions for session:', newSessionId, response.pending.length)
-        // Apply each pending permission to the UI via the store. Queued
-        // prompts (waiting behind the session's serialized prompt queue, or
-        // coalesced followers) get a waiting state, not a respond card.
-        for (const info of response.pending) {
-          if (info.promptState === 'queued') {
-            if (info.callId) {
-              chatStore.handlePermissionQueued({
-                sessionId: info.sessionId,
-                requestId: info.id,
-                messageId: info.messageId,
-                toolCallId: info.callId,
-              })
-            }
-            continue
-          }
-          chatStore.handlePermissionRequest({
-            sessionId: info.sessionId,
-            requestId: info.id,
-            messageId: info.messageId,
-            callId: info.callId,
-            permissionType: info.type,
-            title: info.title,
-            pattern: info.pattern,
-            metadata: info.metadata,
-            canRespond: (info.targetChannel || 'ipc') === 'ipc',
-          })
-        }
-      }
-    } catch (error) {
-      console.error('[Frontend] Failed to load pending permissions:', error)
-    }
+    await collabBoardStore.ensurePendingForSession(newSessionId)
   },
   { immediate: true }
 )

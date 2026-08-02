@@ -12,6 +12,7 @@ import { platformApi } from '@/platform'
  */
 
 import { useChatStore } from '@/stores/chat'
+import { useCollabBoardStore } from '@/stores/collabBoard'
 import {
   isCollabDriveMessage,
   isCollabPassMessage,
@@ -148,37 +149,19 @@ export function initializeIPCHub() {
         store.handleSkillActivated({ sessionId, messageId: '', skillName: event.skillName })
         break
 
-      // Permission events
+      // Permission events —— 三条都只是"这个会话的欠账动了"这一句话。
+      //
+      // 这里从前是按事件 ± 地改 chat store 的卡片状态,与 collabBoard 的反查账本
+      // 并列成两种存储模型(架构收敛 C4 §5)。现在事件统一交给账本:它去重新问一次
+      // `getPendingPermissions`,再把那份全量投影到消息上。卡片出现、queued 晋升
+      // actionable、settle 后消失,全部是同一份账的三个断面,不再有先后之争。
+      //
+      // settle 的 decision 是事件里独有的事实(账本答得出"还欠不欠",答不出"上次
+      // 是批还是拒"),`notePermissionEvent` 会当场转达,不等那 200ms 的反查。
       case 'permission:request':
-        store.handlePermissionRequest({
-          sessionId,
-          requestId: event.requestId,
-          messageId: event.messageId,
-          callId: event.toolCallId,
-          permissionType: event.permissionType,
-          title: event.title,
-          pattern: event.pattern,
-          metadata: event.metadata,
-          canRespond: event.targetChannel === 'ipc',
-        })
-        break
-
       case 'permission:queued':
-        store.handlePermissionQueued({
-          sessionId,
-          requestId: event.requestId,
-          messageId: event.messageId,
-          toolCallId: event.toolCallId,
-        })
-        break
-
       case 'permission:settled':
-        store.handlePermissionSettled({
-          sessionId,
-          requestId: event.requestId,
-          toolCallIds: event.toolCallIds,
-          decision: event.decision,
-        })
+        useCollabBoardStore().notePermissionEvent(sessionId, event)
         break
 
       // Message lifecycle events (event-driven message creation)

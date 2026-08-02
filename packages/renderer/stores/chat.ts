@@ -13,10 +13,12 @@ import { perfMark, perfMeasure } from "@/utils/perf";
 import type {
 	ChatMessage,
 	ChatMessageMention,
+	ChatMessageReactionActor,
 	ChatMessageReplyTo,
 	GetSessionMessagesPageResponse,
 	GetSessionUserMarkersResponse,
 	MessageAttachment,
+	PermissionInfo,
 	Step,
 	ToolCall,
 	ToolPartialResult,
@@ -2692,6 +2694,107 @@ export const useChatStore = defineStore("chat", () => {
 		if (changed) triggerRef(sessionMessages);
 	}
 
+	/**
+	 * 把「这个会话此刻还欠哪些审批」的一份**全量账**投影到消息上(架构收敛 C4 §5)。
+	 *
+	 * 唯一的调用方是 collabBoard 里的待审批账本 —— 那本账的内容永远来自
+	 * `getPendingPermissions` 反查,所以这里收到的 `pending` 是真值而不是增量。
+	 * 从前这件事有两条路:ipc-hub 按事件一条条 ± 地改这些标志位,MessageList
+	 * 切会话时又自己直查一遍、自己决定 queued 走哪个 handler。两条路对同一批
+	 * 标志位各写各的,谁后到谁说了算。
+	 *
+	 * 投影是 (账本 × 当前消息) 的纯函数,**不留上一份快照**:哪些卡该消失,是拿
+	 * 屏幕上还举着手的 toolCall 去对账本,而不是拿这次快照去减上次快照 —— 后者
+	 * 就是又一本账,而这次收敛要的正是"只剩一本"。
+	 *
+	 * 消息还没加载的会话直接跳过:此刻它没有可投影的载体,而 `handlePermissionQueued`
+	 * 在找不到 toolCall 时是**丢弃**而不是缓存的(与 request 不同)。等消息到了,
+	 * 搬它上屏的那一方会再 ensure 一次。
+	 */
+	function applyPendingPermissionSnapshot(
+		sessionId: string,
+		pending: PermissionInfo[],
+	): void {
+		const messages = getSessionMessagesRef(sessionId);
+		if (!messages.length) return;
+
+		// 1) 账本里没有的,屏幕上就不该还举着手。settle 事件走的是同一个收尾
+		//    函数,所以这一步对已经收干净的卡是空操作(它自己会跳过)。
+		const live = new Set(
+			pending
+				.map((info) => info.callId)
+				.filter((callId): callId is string => Boolean(callId)),
+		);
+		for (const message of messages) {
+			for (const toolCall of message.toolCalls ?? []) {
+				if (!toolCall.requiresConfirmation && !toolCall.permissionQueued)
+					continue;
+				if (live.has(toolCall.id)) continue;
+				handlePermissionSettled({
+					sessionId,
+					requestId: toolCall.permissionId ?? "",
+					toolCallIds: [toolCall.id],
+					// 反查只答得出"还欠不欠",答不出"上次是批还是拒" —— 而 'allowed'
+					// 会把 pending 推成 executing。推不出来的事就不要瞎猜:按拒绝口径
+					// 收尾只撤掉卡片,状态留给随后的工具结果去写。
+					decision: "rejected",
+				});
+			}
+		}
+
+		// 2) 账本里有的,照原样贴上去。queued(排在队头后面的、以及被合并的跟随
+		//    调用)只给等待态,不给可按的卡 —— 与事件路同一条规矩。
+		for (const info of pending) {
+			if (info.promptState === "queued") {
+				if (info.callId) {
+					handlePermissionQueued({
+						sessionId: info.sessionId || sessionId,
+						requestId: info.id,
+						messageId: info.messageId,
+						toolCallId: info.callId,
+					});
+				}
+				continue;
+			}
+			handlePermissionRequest({
+				sessionId: info.sessionId || sessionId,
+				requestId: info.id,
+				messageId: info.messageId,
+				callId: info.callId,
+				permissionType: info.type,
+				title: info.title,
+				pattern: info.pattern,
+				metadata: info.metadata,
+				canRespond: (info.targetChannel || "ipc") === "ipc",
+			});
+		}
+	}
+
+	/**
+	 * 房间消息的表情回应(架构收敛 C4 §4:写路径收进 store)。
+	 *
+	 * **回填约定 = `message:updated` 广播**:这里一个字都不乐观写,主进程落盘后
+	 * 播一条 `message:updated`,ipc-hub 交给 `updateSessionMessage` 合并,chips
+	 * 显示的永远是真正落了盘的东西。因此一次被拒的写在结构上是"看不见"的 ——
+	 * 调用方拿到 `success: false` 之后得自己说一句,不然按了等于没按。
+	 *
+	 * 过桥的每个参数都取原始值:响应式代理过不了结构化克隆(W7 血教训)。
+	 * 失败不吞:桥抛错就让它抛到调用方,由 UI 决定怎么显示。
+	 */
+	function reactToCollabMessage(
+		sessionId: string,
+		messageId: string,
+		emoji: string,
+		actor: ChatMessageReactionActor,
+	) {
+		return platformApi.reactToCollabMessage(
+			String(sessionId),
+			String(messageId),
+			String(emoji),
+			actor,
+		);
+	}
+
 	return {
 		// Per-session state maps
 		sessionMessages,
@@ -2739,6 +2842,8 @@ export const useChatStore = defineStore("chat", () => {
 		handlePermissionRequest,
 		handlePermissionQueued,
 		handlePermissionSettled,
+		applyPendingPermissionSnapshot,
+		reactToCollabMessage,
 		handleMessageCreated,
 		handleAssistantCreated,
 		handleMessageDeleted,

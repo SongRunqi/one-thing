@@ -346,14 +346,14 @@ async function commitBudget(): Promise<void> {
   const value = Number.isFinite(budgetDraft.value) && budgetDraft.value >= 0 ? budgetDraft.value : null
   if (value === null || !selectedRoomId.value) return
   try {
-    const response = await platformApi.setCollabRoomBudgets(selectedRoomId.value, { dailyCostUSD: value })
+    // 写与回填约定都在 sessions store 的 action 里(架构收敛 C4 §4);
+    // 新预算由 `session:collab-updated` 推回来。
+    const response = await sessionsStore.setCollabRoomBudgets(selectedRoomId.value, { dailyCostUSD: value })
     if (!response?.success) {
       hint.value = response?.error || '预算没有保存成功'
       return
     }
     hint.value = ''
-    // 新预算由 `session:collab-updated` 推回来(架构收敛 C4 §3);这里曾经是一次
-    // 全量 `loadSessions()`。
   } catch (error) {
     hint.value = error instanceof Error ? error.message : String(error)
   }
@@ -417,13 +417,13 @@ async function toggleFrozen(): Promise<void> {
   if (!selectedRoomId.value) return
   const next = !isFrozen.value
   try {
-    const response = await platformApi.setCollabRoomFrozen(selectedRoomId.value, next)
+    const response = await sessionsStore.setCollabRoomFrozen(selectedRoomId.value, next)
     if (!response?.success) {
       hint.value = response?.error || (next ? '暂停没有生效' : '恢复没有生效')
       return
     }
     hint.value = ''
-    // 冻结开关的新位置由 `session:collab-updated` 推回来(架构收敛 C4 §3)。
+    // 冻结开关的新位置由 `session:collab-updated` 推回来(架构收敛 C4 §3/§4)。
   } catch (error) {
     hint.value = error instanceof Error ? error.message : String(error)
   }
@@ -522,7 +522,7 @@ async function runMenuAction(itemId: string): Promise<void> {
   // 都由主进程那一侧一起办掉(collab-team-v2 §5.1 入口②)。
   if (itemId === BOARD_CARD_STOP_WORK_ITEM_ID) {
     try {
-      const response = await platformApi.stopCollabTask(roomSessionId, task.id)
+      const response = await boardStore.stopTask(roomSessionId, task.id)
       hint.value = response?.success
         ? (response.stopped ? '' : '这张卡当前没有在跑的执行')
         : (response?.error || '停止失败')
@@ -535,10 +535,9 @@ async function runMenuAction(itemId: string): Promise<void> {
   const action = buildBoardCardAction(itemId, task)
   if (!action) return
   try {
-    const response = await platformApi.actCollabBoard(roomSessionId, action)
-    // The reply carries the board on BOTH paths, so a refused write still
-    // repaints from truth — that is what makes the conflict hint honest.
-    if (response?.board) boardStore.applySnapshot(roomSessionId, response.board)
+    // 回填(回复带板就当场落账)在 `boardStore.actBoard` 里 —— 一次被拒的写也照样
+    // 从真值重画,这才是下面这句冲突提示的底气。
+    const response = await boardStore.actBoard(roomSessionId, action)
     hint.value = response?.success
       ? ''
       : isBoardRevConflict(response?.error) ? BOARD_CONFLICT_HINT : (response?.error || '操作失败')

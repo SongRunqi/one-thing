@@ -221,4 +221,24 @@ describe('RoomMemberStrip', () => {
     expect(wrapper.find('.member-error').text()).toBe('负责人必须是房间成员')
     wrapper.unmount()
   })
+
+  /**
+   * 写路径经 sessions store 的 action(架构收敛 C4 §4)。桩掉 action 之后桥一次
+   * 都不该被碰到 —— 回填约定(`session:collab-updated`)因此有了唯一的落点,
+   * 成员条不再自己记着"写完要不要刷"。
+   */
+  it('writes through the sessions store action, not the bridge', async () => {
+    const sessionsStore = useSessionsStore()
+    const updateCollabRoom = vi.spyOn(sessionsStore, 'updateCollabRoom')
+      .mockResolvedValue({ success: true } as never)
+    const wrapper = await open()
+
+    await wrapper.findAll('.member-chip:not(.member-add)')[1].trigger('contextmenu')
+    await wrapper.findAll('.app-context-item')[0].trigger('click')
+    await nextTick()
+
+    expect(updateCollabRoom).toHaveBeenCalledWith('room-1', { pmAgentId: 'fe' })
+    expect(api.updateCollabRoom).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
 })

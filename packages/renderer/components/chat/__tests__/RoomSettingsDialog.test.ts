@@ -124,6 +124,32 @@ describe('RoomSettingsDialog', () => {
     wrapper.unmount()
   })
 
+  /**
+   * 三条写路径都经 sessions store 的 action(架构收敛 C4 §4)。桩掉 action 之后桥
+   * 一次都不该被碰到 —— 回填约定(`session:collab-updated`)因此只写在一处。
+   */
+  it('writes through the sessions store actions, not the bridge', async () => {
+    const sessionsStore = useSessionsStore()
+    const updateCollabRoom = vi.spyOn(sessionsStore, 'updateCollabRoom')
+      .mockResolvedValue({ success: true } as never)
+    const setFrozen = vi.spyOn(sessionsStore, 'setCollabRoomFrozen')
+      .mockResolvedValue({ success: true } as never)
+    const wrapper = await open()
+
+    await wrapper.findAll('.member-line')[2].trigger('click') // + 小研
+    await wrapper.findAll('.member-line')[3].trigger('click') // 暂停房间
+    await wrapper.findAll('.text-action')[1].trigger('click') // 保存
+    await nextTick()
+
+    expect(updateCollabRoom).toHaveBeenCalledWith('room-1', {
+      memberAgentIds: ['pm', 'fe', 'research'],
+    })
+    expect(setFrozen).toHaveBeenCalledWith('room-1', true)
+    expect(api.updateCollabRoom).not.toHaveBeenCalled()
+    expect(api.setCollabRoomFrozen).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('drops the PM when the PM is unticked, and clears it with null', async () => {
     const wrapper = await open()
     await wrapper.findAll('.member-line')[0].trigger('click') // − 阿明 (PM)

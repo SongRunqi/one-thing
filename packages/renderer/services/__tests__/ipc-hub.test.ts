@@ -175,4 +175,41 @@ describe('IPC hub stream subscriptions', () => {
       { type: 'text', content: 'final', turnIndex: 1 },
     ])
   })
+
+  /**
+   * ± 累积路径退役(架构收敛 C4 §5)。
+   *
+   * 这里从前直接改 chat store 的卡片状态,与 collabBoard 的反查账本并列成两种
+   * 存储模型。现在三条事件都只是一句"这个会话的欠账动了",交给账本去重新问。
+   */
+  it('hands every permission event to the pending ledger instead of applying deltas', async () => {
+    const { initializeIPCHub } = await import('../ipc-hub')
+    const { useChatStore } = await import('@/stores/chat')
+    const { useCollabBoardStore } = await import('@/stores/collabBoard')
+    const chat = useChatStore()
+    const board = useCollabBoardStore()
+    const noted = vi.spyOn(board, 'notePermissionEvent').mockImplementation(() => {})
+    const applied = vi.spyOn(chat, 'handlePermissionRequest')
+    const queued = vi.spyOn(chat, 'handlePermissionQueued')
+    const settled = vi.spyOn(chat, 'handlePermissionSettled')
+
+    initializeIPCHub()
+    for (const event of [
+      { type: 'permission:request', requestId: 'p1', toolCallId: 'tc1', messageId: 'm1' },
+      { type: 'permission:queued', requestId: 'p2', toolCallId: 'tc2', messageId: 'm1' },
+      { type: 'permission:settled', requestId: 'p1', toolCallIds: ['tc1'], decision: 'allowed' },
+    ]) {
+      sessionEventCallback?.({ sessionId: 's1', event })
+    }
+
+    expect(noted).toHaveBeenCalledTimes(3)
+    expect(noted.mock.calls.map(call => (call[1] as { type: string }).type)).toEqual([
+      'permission:request',
+      'permission:queued',
+      'permission:settled',
+    ])
+    expect(applied).not.toHaveBeenCalled()
+    expect(queued).not.toHaveBeenCalled()
+    expect(settled).not.toHaveBeenCalled()
+  })
 })

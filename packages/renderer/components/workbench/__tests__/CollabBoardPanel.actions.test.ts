@@ -12,6 +12,7 @@ import type { CollabBoard, CollabTask } from '@shared/ipc.js'
 import CollabBoardPanel from '../CollabBoardPanel.vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useAgentsStore } from '@/stores/agents'
+import { useCollabBoardStore } from '@/stores/collabBoard'
 
 const mocks = vi.hoisted(() => ({
   platformApi: {
@@ -156,6 +157,40 @@ describe('CollabBoardPanel card actions (W16)', () => {
     mocks.platformApi.actCollabBoard.mockResolvedValue({ success: false, error: 'Not a room session' })
     await pick(wrapper, '移到 完成')
     expect(wrapper.find('.board-hint').text()).toBe('Not a room session')
+  })
+
+  /**
+   * 写路径经 store action(架构收敛 C4 §4)。
+   *
+   * 桩掉 action 之后桥应该一次都不被碰到 —— 这就是"回填约定有落点"的可执行
+   * 证据:面板不再自己知道写完要 applySnapshot,新加一个写入点也漏不掉。
+   */
+  it('writes through the board store action, not the bridge', async () => {
+    const boardStore = useCollabBoardStore()
+    const actBoard = vi.spyOn(boardStore, 'actBoard')
+      .mockResolvedValue({ success: true, board: board([]) } as never)
+    const wrapper = await mountPanel([card()])
+
+    await pick(wrapper, '移到 完成')
+
+    expect(actBoard).toHaveBeenCalledWith('room-1', {
+      action: 'move',
+      taskId: 'task-1',
+      status: 'done',
+      expectedRev: 3,
+    })
+    expect(mocks.platformApi.actCollabBoard).not.toHaveBeenCalled()
+  })
+
+  it('stops a running card through the board store action', async () => {
+    const boardStore = useCollabBoardStore()
+    const stopTask = vi.spyOn(boardStore, 'stopTask')
+      .mockResolvedValue({ success: true, stopped: true } as never)
+    const wrapper = await mountPanel([card({ status: 'doing', assigneeAgentId: 'fe', workSessionIds: ['work-1'] })])
+
+    await pick(wrapper, '停止执行')
+
+    expect(stopTask).toHaveBeenCalledWith('room-1', 'task-1')
   })
 })
 

@@ -54,6 +54,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/stores/chat', () => ({ useChatStore: () => mocks.chatStore }))
+// 待审批账本(架构收敛 C4 §5):MessageList 只说"这个会话上屏了",拉取与投影归它。
+vi.mock('@/stores/collabBoard', () => ({
+  useCollabBoardStore: () => ({ ensurePendingForSession: vi.fn() }),
+}))
 vi.mock('@/stores/sessions', () => ({ useSessionsStore: () => mocks.sessionsStore }))
 vi.mock('@/stores/settings', () => ({ useSettingsStore: () => mocks.settingsStore }))
 vi.mock('@/platform', () => ({ platformApi: mocks.platformApi }))
