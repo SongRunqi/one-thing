@@ -283,7 +283,11 @@ export function formatCollabSayReceipt(messageId: string): string {
  * 2026-08-02 由 `say` 改名为 `send_message`
  * (docs/design/collab-turn-protocol-and-identity.md A)。这个常量是**工具名**,
  * 与落盘的 `COLLAB_SAY_SOURCE`('collab-say')无关 —— 后者是持久化约定,不动。
- * 打字信号观察器(`typing.ts`)与断路器按这个名字认调用,所以它必须跟着改名走。
+ *
+ * 打字信号观察器(`typing.ts`)与断路器(`circuit-breaker.ts`)**不**直接比这个
+ * 常量,走 `isCollabSendCall`:事件流里带的是模型吐出来的原始名,而模型仍会照着
+ * 旧转录吐 `say`。只认现名,那一次调用就发得出消息、却点不亮灯也不进计数
+ * (架构审查 B7 抓到的正是这个)。
  */
 export const COLLAB_SEND_MESSAGE_TOOL_NAME = 'send_message'
 
@@ -314,6 +318,36 @@ export const COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME = 'say'
  * 拆除条件与 `say` 相同:改名前的会话历史被摘要压掉、或危险区清空拿到干净基线。
  */
 export const COLLAB_DM_LEGACY_TOOL_NAME = 'dm'
+
+/**
+ * 退役名的全集。**这是登记处**:`app/collab/say-tool.ts` 把这些名字喂进 core 的
+ * 退役表(派发用),观察器则直接读这张表(识别用)。加第四个名字时改这里一处。
+ */
+export const COLLAB_SEND_RETIRED_TOOL_NAMES: readonly string[] = [
+  COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME,
+  COLLAB_DM_LEGACY_TOOL_NAME,
+]
+
+/**
+ * 这次调用是一次「发消息」吗?—— 现名 + 退役名归一后的判据(架构审查 B7)。
+ *
+ * 观察器(打字灯 `typing.ts`、断路器 `circuit-breaker.ts`)此前**严格等于**
+ * `send_message`。而事件流里带的是**模型吐出来的原始工具名**:派发那一头有退役
+ * 表兜底(runner 的 toolMap miss → `resolveRetiredAgentToolName`),所以一次
+ * `say` 调用照样执行、照样把消息发出去 —— 但对观察器来说它根本不是发言。真机
+ * 症状因此是"消息发出来了,打字灯没亮过,断路器也没数它"。
+ *
+ * **为什么不查 core 的退役表**:那张表是**运行期登记**的(`say-tool.ts` 装配时
+ * 才写入),而这几个文件是纯层 —— 一个不启动装配层的单测里表是空的,判据会随
+ * 启动顺序变结果。名字这一层的事实(哪些名字曾经是发送面)本来就住在这个文件
+ * 里,查常量是同一个事实的更早、更稳的形态。core 那张表管的是**派发**,这里管
+ * 的是**识别**,两者由同一组常量喂养,不会各自漂移。
+ */
+export function isCollabSendCall(toolName: string | undefined | null): boolean {
+  if (!toolName) return false
+  return toolName === COLLAB_SEND_MESSAGE_TOOL_NAME
+    || COLLAB_SEND_RETIRED_TOOL_NAMES.includes(toolName)
+}
 
 /**
  * 沉默 = 什么都不调 (2026-07-30) — why there is no `stay_silent`, and no forced

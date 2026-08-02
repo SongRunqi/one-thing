@@ -22,6 +22,7 @@ export {
  *  in say.js / system-lines.js) all delegate here. */
 export {
   classifyCollabRoomMessage,
+  isCollabChainResetMessage,
   isCollabRoomFact,
   type CollabRoomMessageKind,
 } from './classify.js'
@@ -203,6 +204,7 @@ export {
   type CollabReplyGapOptions,
 } from './reply-quote.js'
 export {
+  COLLAB_ADOPTED_ECHO_TAG,
   COLLAB_CHATROOM_TAG,
   COLLAB_ENVELOPE_TAG,
   COLLAB_NOTIFICATION_DESC,
@@ -210,6 +212,7 @@ export {
   buildCollabChatRoomPayload,
   buildCollabDriveRoomContext,
   collectCollabProjectedLines,
+  formatCollabAdoptedEcho,
   formatCollabFlattenedToolCall,
   formatCollabFoldedLine,
   formatCollabNotificationBlock,
@@ -257,6 +260,7 @@ export {
   type CollabTurnLogToolCall,
 } from './turn-log.js'
 export {
+  collabChainGateAllows,
   decideCollabActivations,
   formatCollabActivationLabel,
   resolveCollabChainCap,

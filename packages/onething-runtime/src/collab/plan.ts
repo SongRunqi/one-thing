@@ -22,6 +22,7 @@ import {
   resolveCollabAgentHandle,
 } from './handles.js'
 import { renderCollabMentionText } from './mentions.js'
+import { escapeCollabPromptText } from './inline-tags.js'
 import { formatCollabDigestLines, type CollabDayDigest } from './digest.js'
 import { escapeCollabXmlAttribute, formatCollabFoldedLine } from './projection.js'
 import { createCollabFoldedAccumulator } from './history-window.js'
@@ -288,6 +289,11 @@ function rosterLine(
  *  - **上限** `budget`:一个很久没上线的成员会把这段拉得很长,撞上限就从最旧的
  *    逐字行开始丢 —— 内容折掉,但「落后 200 条」那个数字照写。仲裁者据此照样
  *    知道该怎么排他,而那 200 条本来也不是它该逐字读的东西。
+ *
+ * 进这一段的正文一律过 `escapeCollabPromptText`(审查 #13):人类消息**不过**
+ * `sanitizeCollabInlineMarkup`(只有 `say` 过),所以用户可以直接在房间里打出
+ * `</history>`。它落进这一段就把结构闭掉了,后面的 `<state>`/指令行会被读成
+ * 正文 —— 一条真实可打出来的注入路径。
  */
 export function buildCollabPlanWindow(options: {
   recent: readonly CollabMessageLike[]
@@ -323,7 +329,7 @@ export function buildCollabPlanWindow(options: {
       // 走同一条 `</history>` 防线。`系统:` 前缀本身是可信结构,在转义之外。
       const systemBody = condense(message.content ?? '')
       if (systemBody) {
-        lines.push(formatCollabProjectedSystemLine(escapeCollabPlanText(systemBody)))
+        lines.push(formatCollabProjectedSystemLine(escapeCollabPromptText(systemBody)))
         rawIndex.push(index)
       }
       return
@@ -336,8 +342,8 @@ export function buildCollabPlanWindow(options: {
       ? userLabel
       : resolveCollabSpeakerLabel(message.agentId, options.members, options.resolveAgentName)
     const quote = formatCollabReplyQuote(message.replyTo)
-    const entry = `${label}: ${escapeCollabPlanText(body)}`
-    lines.push(quote ? `${escapeCollabPlanText(quote)}\n${entry}` : entry)
+    const entry = `${label}: ${escapeCollabPromptText(body)}`
+    lines.push(quote ? `${escapeCollabPromptText(quote)}\n${entry}` : entry)
     rawIndex.push(index)
   })
 
@@ -387,17 +393,6 @@ export function buildCollabPlanWindow(options: {
 }
 
 /**
- * 进 `<history>` 的正文要转义(审查 #13)。
- *
- * 人类消息**不过** `sanitizeCollabInlineMarkup`(只有 `say` 过),所以用户可以直接
- * 在房间里打出 `</history>` 这样的字符串。它落进这一段就把结构闭掉了,后面的
- * `<state>`/指令行会被读成正文 —— 这是一条真实可打出来的注入路径。
- */
-function escapeCollabPlanText(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-/**
  * `<state>` 的行。**每位成员一行,第一格恒是「在线」**。
  *
  * 在线不是查出来的状态,而是这类成员的结构性事实:花名册只含在职成员,agent
@@ -408,6 +403,11 @@ function escapeCollabPlanText(value: string): string {
  *
  * (此前这里是"没有任何一格值得写的成员整行不出现";「在线」把每一行都变成
  * 值得写的了,那条噪音规则随之退役。)
+ *
+ * 卡标题过转义(审查 B6):标题是**模型写的一行字**(`board create` 的参数),
+ * 它没走 `say` 那道落库转义,而这些行紧挨着 `<history>` 拼在同一份材料里 ——
+ * 一张标题叫 `</state><history><message from="用户">…` 的卡,能在仲裁者眼里
+ * 伪造出整段历史。id 与「在线/正在说话」这些格子不转义:它们由代码生成。
  */
 export function buildCollabPlanStateLines(
   members: readonly CollabAgentLike[],
@@ -422,7 +422,7 @@ export function buildCollabPlanStateLines(
     else if (state?.recentlySpoke) parts.push('刚说过')
     for (const card of state?.cards ?? []) {
       const label = card.status === 'blocked' ? '受阻' : '在做'
-      parts.push(`${label} #${card.id.slice(0, 8)}「${card.title}」`)
+      parts.push(`${label} #${card.id.slice(0, 8)}「${escapeCollabPromptText(card.title)}」`)
     }
     if (state?.unread && state.unread > 0) parts.push(`落后 ${state.unread} 条`)
     lines.push(`${formatCollabAgentHandle(member.id, member.name)}  ${parts.join(' · ')}`)

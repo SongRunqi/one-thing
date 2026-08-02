@@ -34,6 +34,7 @@ import {
   COLLAB_DM_PAIR_MAX_CHAIN,
   COLLAB_MESSAGE_SOURCE,
   COLLAB_SYSTEM_SOURCE_TASK,
+  collabChainGateAllows,
   isAgentPairDmRoom,
   isCollabForcedSerialRoom,
   type CollabActivationReason,
@@ -201,6 +202,22 @@ export interface RoomRuntime {
    * 再排一次 —— 一次全上下文模型调用换一句重复的话。
    */
   inFlight: Map<string, CollabActivationRecord>
+  /**
+   * 已经**过了链闸**的激活记录 id —— 链闸的预占账(架构审查 A1)。
+   *
+   * 为什么不能直接拿 `inFlight` 当预占:一批牌是在**任何一条走到闸前**就全部
+   * 发完的(发牌循环到第一个 await 才让出执行权),于是每条在闸前都能看见另外
+   * N-1 条兄弟记录。把它们全算成占用,一批 N 条撞上一道剩 k 格的闸时**一条都
+   * 过不去** —— 把超发换成静音,比原来的病更糟。
+   *
+   * 所以占用的登记点就是**过闸那一刻**(`chainGateAllows`),释放点是调度泵那
+   * 条 task 的 finally(与 `inFlight` 同生共死)。于是"占着发言权"与"拿到过
+   * 发言权"是同一件事,同批发牌恰好放行 k 条。
+   *
+   * 只活在内存里:激活记录本身要落盘(state.json),而一格占用没有跨重启的
+   * 意义 —— 重启后没有任何回合在跑。
+   */
+  floorHolds: Set<string>
   chainNoticePosted: boolean
   /** The 「房间已暂停」 line was already said this freeze (P2-17). Reset when
    *  the room is unfrozen, so the next pause gets to say it again. */
@@ -325,6 +342,7 @@ export function roomRuntime(roomSessionId: string): RoomRuntime {
       queue: [],
       pumping: false,
       inFlight: new Map(),
+      floorHolds: new Set(),
       chainNoticePosted: false,
       frozenNoticePosted: false,
       budgetCheckedAt: 0,
@@ -399,20 +417,89 @@ export function maxConcurrentTurnsFor(session: ChatSession | undefined): number 
 }
 
 /**
- * 这个 agent 此刻是不是已经有回合在跑(同一个人不并行说两句)。
+ * **占用视图** —— 此刻占着这间房发言权的人(2026-08-03 收敛,架构审查 A1)。
  *
- * 看的是 `inFlight` 而不是 `activeTurns`:后者在**进入 agent 锁之后**才登记,
- * 而一条刚起跑、正卡在锁上的激活同样属于"这个人已经有事在做"。用 activeTurns
- * 判会让泵把同一个人的第二条也发出去,白占一个并发位在锁上干等。
+ * 一个答案由两张表合成:`inFlight`(出队即登记,可能还卡在闸上、锁上)与
+ * `activeTurns`(进了 agent 锁、流真的在跑)。同一条回合在两张表里都有,按
+ * **人**去重后自然合成一格 —— 同一个人不并行说两句是发牌的既有纪律。
+ *
+ * 三个读者(泵的"这个人有没有活在手上"、状态面的"谁在说"、链闸的预占)此前各
+ * 走各的表,于是同一个问题有三个答案;闸那一个还漏了 `inFlight` 整张表,那正是
+ * 并行超发的成因。
+ *
+ * `granted: true` 只算**已经过链闸**的那些(见 `floorHolds` 的注释):闸自己要
+ * 的是这一版,否则同批发牌的兄弟记录会在闸前互相顶死。
  */
-export function isAgentSpeaking(runtime: RoomRuntime, agentId: string): boolean {
-  for (const record of runtime.inFlight.values()) {
-    if (record.agentId === agentId) return true
+export function roomOccupancy(
+  runtime: RoomRuntime,
+  options: {
+    /** 排除调用者自己那条记录 —— 不排除的话它会把自己算成一格占用。 */
+    excludeRecordId?: string
+    /** 只算已经过闸的(链闸预占)。缺省 false = 出队即算。 */
+    granted?: boolean
+  } = {},
+): Set<string> {
+  const occupied = new Set<string>()
+  const selfAgentId = options.excludeRecordId
+    ? runtime.inFlight.get(options.excludeRecordId)?.agentId
+    : undefined
+  for (const [id, record] of runtime.inFlight) {
+    if (id === options.excludeRecordId) continue
+    if (options.granted && !runtime.floorHolds.has(id)) continue
+    occupied.add(record.agentId)
   }
   for (const turn of runtime.activeTurns.values()) {
-    if (turn.agentId === agentId) return true
+    // 自己那条走到 activeTurns 时早就过了闸,排除它与排除 inFlight 里的那条是
+    // 同一件事(一个人同时只有一条记录)。
+    if (selfAgentId !== undefined && turn.agentId === selfAgentId) continue
+    occupied.add(turn.agentId)
   }
-  return false
+  return occupied
+}
+
+/**
+ * 这个 agent 此刻是不是已经有回合在跑(同一个人不并行说两句)。
+ *
+ * 出队即算,而不是等它进 agent 锁:一条刚起跑、正卡在锁上的激活同样属于"这个
+ * 人已经有事在做"。只看 `activeTurns` 会让泵把同一个人的第二条也发出去,白占
+ * 一个并发位在锁上干等。
+ */
+export function isAgentSpeaking(runtime: RoomRuntime, agentId: string): boolean {
+  return roomOccupancy(runtime).has(agentId)
+}
+
+/**
+ * 链闸的**单一判定点**(架构审查 A1)。
+ *
+ * 五处判定(驱动强制点、续排预筛、级联预筛、决策预筛、编排推进)全部走这里,
+ * 公式只有 `collabChainGateAllows` 一条。传 `record` = 强制点:它同时做两件事
+ * ——按已经拿到发言权的人数预占,并在放行时把自己也登记进去。不传 = 预筛:
+ * 那些地方问的是"这次调用值不值得买",少算一格只会多买一次判定。
+ *
+ * 预占为什么必须在**放行的同一行**登记:`chainCount` 要到收尾才 += 说了几句,
+ * 同批起跑的 N 条回合读到的是同一个旧计数 —— 登记晚一步(比如等进了 agent 锁
+ * 才记),这 N 条就在闸前互不可见,一道设成 k 的闸会放过 k+N-1 条。
+ */
+export function chainGateAllows(
+  runtime: RoomRuntime,
+  session: ChatSession,
+  reason: CollabActivationReason,
+  options: { record?: CollabActivationRecord } = {},
+): boolean {
+  const record = options.record
+  const allowed = collabChainGateAllows({
+    reason,
+    chainCount: runtime.state.chainCount,
+    maxChain: maxChainFor(session),
+    ...(record ? { occupied: roomOccupancy(runtime, { granted: true, excludeRecordId: record.id }).size } : {}),
+  })
+  if (allowed && record) runtime.floorHolds.add(record.id)
+  return allowed
+}
+
+/** 放开这条激活占着的那一格。与 `inFlight` 的摘除同一处(调度泵的 finally)。 */
+export function releaseFloorHold(runtime: RoomRuntime, recordId: string): void {
+  runtime.floorHolds.delete(recordId)
 }
 
 /** 这个房间当前的 floor 世代号。缺字段的旧 state 读作 0。 */

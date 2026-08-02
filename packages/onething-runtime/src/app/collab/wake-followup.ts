@@ -135,6 +135,8 @@ async function fulfill(key: string, why: 'settled' | 'timeout'): Promise<void> {
     sessionId: entry.senderSessionId,
     content: formatCollabWakePoke(mention),
     room: entry.wakeRoomSessionId,
+    // 清零的**可重放**那一半:标记落在这条 poke 上,boot 重算认它作边界。
+    chainReset: true,
   })
   if (!said.ok || !said.messageId) {
     // 发起回合早就结束了,没有人可以回执(§3.2 失败面):只留痕。
@@ -158,6 +160,9 @@ async function fulfill(key: string, why: 'settled' | 'timeout'): Promise<void> {
    * 由头来自**别处的一个回合**(那间私聊房里刚跑完的那一轮),对这个群而言
    * 就是一次新的外部输入 —— 与人类插话同语义。房内乒乓不走这条路,6 条闸照拦;
    * 预算闸照常兜底,是 poke 风暴的最后一道防线(§3.3)。
+   *
+   * 这里清的是 **live 那一半**;可重放的那一半是上面那条 poke 上的
+   * `collabChainReset` 标记(架构审查 A2)。
    */
   runtime.state.chainCount = 0
   runtime.chainNoticePosted = false

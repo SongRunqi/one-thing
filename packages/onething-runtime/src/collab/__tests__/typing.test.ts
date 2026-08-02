@@ -74,12 +74,37 @@ describe('W19 — 信号源:只有 say 的参数流亮灯', () => {
   })
 
   it('stays dark for any non-say tool, named or not', () => {
-    // The predicate is a whitelist of ONE name, not a blacklist — a tool the
+    // The predicate is a whitelist (现名 + 退役名), not a blacklist — a tool the
     // room surface has never heard of must not light the room either.
     expect(run([
       START,
       inputStart('call-1', 'read'),
       inputEnd('call-1', 'read'),
+      COMPLETE,
+    ])).toEqual([])
+  })
+
+  it('退役名 `say` 照样亮灯 —— 事件流带的是模型吐出来的原始名(审查 B7)', () => {
+    // 派发那一头有退役表兜底,所以这一次调用**确实**把消息发出去了。观察器只认
+    // 现名的话,真机症状就是"消息发出来了,打字灯从没亮过"。
+    expect(run([
+      START,
+      inputStart('call-1', 'say'),
+      inputEnd('call-1', 'say'),
+      COMPLETE,
+    ])).toEqual([true, false])
+  })
+
+  it('退役名的私聊档仍然不亮这间房的灯 —— 归一只换名字,不换判据', () => {
+    // `dm` 是另一个退役名,而它天生带 `to`:归一之后它是一次 send,但仍是私聊档。
+    expect(run([
+      START,
+      {
+        type: 'tool:input-start',
+        toolCallId: 'call-1',
+        toolName: 'dm',
+        toolCall: { toolId: 'dm', arguments: { to: '小李#fe', content: '牌发你了' } },
+      },
       COMPLETE,
     ])).toEqual([])
   })

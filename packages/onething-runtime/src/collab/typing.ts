@@ -36,7 +36,7 @@
  * never to a stuck light.
  */
 import {
-  COLLAB_SEND_MESSAGE_TOOL_NAME,
+  isCollabSendCall,
   isCollabSendIntoRoom,
   type CollabSendArgsLike,
   type CollabTurnToolCallLike,
@@ -121,7 +121,9 @@ export function createCollabTypingTracker(
       if (!signal?.type) return null
 
       if (signal.type === 'tool:input-start') {
-        if (toolNameOf(signal) !== COLLAB_SEND_MESSAGE_TOOL_NAME) return null
+        // 现名 + 退役名(`isCollabSendCall`):事件流带的是模型吐出来的原始名,
+        // 一次照着旧转录写的 `say` 调用照样会把消息发出去,那盏灯就该跟着亮。
+        if (!isCollabSendCall(toolNameOf(signal))) return null
         const toolCallId = toolCallIdOf(signal)
         if (!toolCallId) return null
         // 参数已经看得见(非流式 provider 的形状)且这一发不是发进这间房 ——

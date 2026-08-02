@@ -44,6 +44,36 @@ export function resolveCollabChainCap(
   return maxChain
 }
 
+/**
+ * 链闸的**唯一判据**(2026-08-03 收敛,架构审查 A1)。
+ *
+ * 五处判定此前各写各的公式(驱动强制点、续排预筛、级联预筛、决策预筛、编排
+ * 推进),其中编排那一处干脆绕过了 `resolveCollabChainCap`。公式只有一条:
+ * 「已经说出口的 + 已经拿到发言权还没说的 < 这条激活的上限」。
+ *
+ * `occupied` 是并行化补上的那一半:`chainCount` 要到收尾(harvest)才 += 说了
+ * 几句,所以同时起跑的 N 条回合读到的是**同一个**旧计数,各自都能过闸 ——
+ * 一道设成 8 的闸会放过 8+N 条。已经过闸的每条按至少一句预占一格,闸的语义
+ * (无人类输入时最多连着说几条)因此在并行下仍然成立。
+ *
+ * **预筛处不传它**:那些地方问的是"这次判定/这次续排还值不值得买",少算一格
+ * 只会多买一次调用,而不会多说出一句话 —— 说不说得出口由强制点回答。
+ *
+ * 住在这里而不是 `chain.ts`:那个模块管的是"从转录里数出几条",这里管的是
+ * "够不够格再说一条";两者共用的只有 `resolveCollabChainCap`,而把这个函数
+ * 放进 chain.ts 会让 chain ⇄ activation 成环。
+ */
+export function collabChainGateAllows(input: {
+  reason: CollabActivationReason
+  chainCount: number
+  maxChain: number
+  /** 已经过闸、还没把自己那句算进 `chainCount` 的回合数。缺省 0(预筛)。 */
+  occupied?: number
+}): boolean {
+  const cap = resolveCollabChainCap(input.reason, input.maxChain)
+  return input.chainCount + (input.occupied ?? 0) < cap
+}
+
 /** A delivery landed on the board and the lead is being pulled in to review. */
 export const COLLAB_DRIVE_LABEL_TASK_REVIEW = '任务交付待评审'
 /**
@@ -212,11 +242,15 @@ export function decideCollabActivations(
 
   // Only mentions are decided here, so this is the FULL cap by construction
   // (W21 tiering: self-election gates tighter, and it gates in the coordinator
-  // where the willingness round is paid for). Routed through the resolver
-  // anyway so the two call sites read as one rule.
+  // where the willingness round is paid for). 走同一个判据函数,五处判定因此
+  // 只有一条公式 —— 这里是**预筛**(不传 occupied):最终答案在驱动强制点。
   if (
     options.authorKind === 'agent'
-    && options.chainCount >= resolveCollabChainCap('mention', options.maxChain)
+    && !collabChainGateAllows({
+      reason: 'mention',
+      chainCount: options.chainCount,
+      maxChain: options.maxChain,
+    })
   ) {
     return { activations: [], blockedByChain: mentioned.length > 0 }
   }

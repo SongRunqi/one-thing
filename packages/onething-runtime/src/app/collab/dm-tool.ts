@@ -194,10 +194,12 @@ export async function sendCollabDm(input: {
   if (!roomSessionId) return { ok: false, error: DM_REFUSED_NO_ROOM }
 
   // 落库走 send_message 的执行器:显式指定房间,于是"发进哪间房"这件事不靠会话指针。
+  // `chainReset` 让这条消息**自己**带着清零标记落库(见下面那段注释)。
   const said = await speakIntoCollabRoom({
     sessionId: input.sessionId,
     content: input.message,
     room: roomSessionId,
+    chainReset: true,
   })
   // 冻结、超预算、空正文 —— 发送执行器的拒绝文案原样透传,措辞本身就是可操作的。
   if (!said.ok || !said.messageId) {
@@ -216,6 +218,11 @@ export async function sendCollabDm(input: {
    *
    * 边界:房内回合的乒乓**不**经过这条路(那是 turn.ts 的级联),6 条闸照拦。
    * 能走到这里的只有"别处的某个回合决定来这间房说句话",而那本来就是新输入。
+   *
+   * 这里清的是 **live 那一半**。可重放的那一半在上面那次落库上:消息带着
+   * `collabChainReset`,boot 重算(collab/chain.ts)认它作清零边界。两半都要
+   * 有 —— 只清内存的话,没有人类在场的 pair 房重启一次,重算值必然 ≥ live 值,
+   * 顶格冻死,只能等下一次跨房注入(架构审查 A2)。
    */
   runtime.state.chainCount = 0
   runtime.chainNoticePosted = false

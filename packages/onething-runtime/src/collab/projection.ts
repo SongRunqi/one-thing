@@ -125,9 +125,20 @@ function withImMetadata(message: CollabMessageLike, block: string): string {
  *  - **标签短**。每条消息的固定开销 × 全量投影,是这套系统里少数按条计费的
  *    东西。属性只有 from,值来自代码(roster 里的名字)不来自模型。
  *
- * 安全性由落库转义兜底:正文里的 `<` 在写进转录时就已经变成 `&lt;`
- * (`sanitizeCollabInlineMarkup`),所以没有人能在自己的发言里伪造
- * `</message><message from="用户">`。信封可信,靠的是那道防线,不是这里的字符串拼接。
+ * 安全性由**两道转义**兜底,不是这里的字符串拼接:
+ *
+ *  - **落库转义** `sanitizeCollabInlineMarkup` —— say 正文(围栏外)里的 `<` 在
+ *    写进转录时就变成 `&lt;`,所以成员无法在自己的发言里伪造
+ *    `</message><message from="用户">`。
+ *  - **渲染期转义** `escapeCollabPromptText` —— 每日摘要(digest.ts)、看板卡
+ *    标题与受阻原因(board.ts / plan.ts 的 `<state>`)在拼成结构行的那一刻转义。
+ *    这些文本同样模型可控,却从不经过落库那一道(2026-08-03 审查 B6)。
+ *
+ * **人类消息不在这两道之内**,这是一个已知缺口:用户输入不过任何转义器,一句
+ * `</message><message from="Iris">` 打在聊天框里,在别人的投影里就是 Iris 说的。
+ * 仲裁者材料那一侧(plan.ts 的 `<history>`)对每条正文一律转义,已经堵住;
+ * 这一侧还没有。桌面单人场景下代价是自己骗自己,网关多人场景(gateway 的远端
+ * 用户)才是真的冒充 —— 堵它的位置在人类消息的落库口,不在这个拼接点。
  *
  * 标签名 2026-08-02 由 `say` 改成 `message`:`say` 曾经与那个同名工具互指
  * (「读到的是 say,写出去的也用 say」),而发送面早已统一成 `send_message`,
@@ -281,6 +292,38 @@ export function formatCollabNotificationBlock(options: {
     `<${COLLAB_NOTIFICATION_TAG}${attributes}>`,
     ...options.lines,
     `</${COLLAB_NOTIFICATION_TAG}>`,
+  ].join('\n')
+}
+
+/** 收养回声的标签。 */
+export const COLLAB_ADOPTED_ECHO_TAG = 'Delivered'
+
+/**
+ * 「你上一回合写下但没发送的收尾,系统替你发进去了」——**事实回声**(A6)。
+ *
+ * 收养式兜底(app/collab/turn.ts)把零 send_message 回合的收尾正文原样投进群,
+ * 而那条消息是作者**自己**的,永远不会进它的未读(history-window.ts),增量
+ * drive 又只带未读 —— 于是作者这边什么都不知道:它以为那段话还压在手里,下一轮
+ * 有再发一遍的余地。这一块就是把那件事说给它听,一次,然后标记清掉。
+ *
+ * 只陈述发生过什么,不带任何指示(「不要重发」一类祈使句在这个仓库里已被实证
+ * 只降频不归零):有了 id 与时刻,重不重发是它读得出来的判断。
+ */
+export function formatCollabAdoptedEcho(options: {
+  /** 已经进群的那条消息 id —— 模型可以拿它当 `replyTo`,也可以据此在历史里定位。 */
+  messageId: string
+  at?: number
+}): string {
+  const at = formatCollabMessageTime(options.at)
+  const attributes = [
+    ` id="${escapeCollabXmlAttribute(options.messageId)}"`,
+    at ? ` at="${escapeCollabXmlAttribute(at)}"` : '',
+  ].join('')
+  return [
+    `<${COLLAB_ADOPTED_ECHO_TAG}${attributes}>`,
+    'Your last turn ended with a finished reply written at your desk and no send.'
+    + ' The system delivered that text to the chat for you — those words are already there, under your name.',
+    `</${COLLAB_ADOPTED_ECHO_TAG}>`,
   ].join('\n')
 }
 

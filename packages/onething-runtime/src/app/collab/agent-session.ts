@@ -143,6 +143,51 @@ export function advanceSeenCursor(agentSessionId: string, seenMessageId: string)
 }
 
 /**
+ * 记下"这一轮的收尾正文已由框架代发进群",等下一次 drive 回声(架构审查 A6)。
+ *
+ * 为什么需要这条记录:被收养的消息署**作者本人**的名,而"自己的消息永不进未读"
+ * (collab/history-window.ts)+「增量 drive 只带未读」= 作者读不到它 —— 它那边
+ * 的事实仍然是"我写了但没发出去",而那正是下一轮重发的由头。
+ *
+ * 住在执行会话的 collab 上,与已读游标同一个理由:每(agent × 房)一条常驻会话,
+ * 这条会话本身就是键;它跟着 transcript 活过重启,而收养也可能发生在重启前一轮。
+ * 写法沿用 `advanceSeenCursor` —— 整份 collab 展开重写,别的字段一个不动。
+ */
+export function noteCollabAdoptedEcho(agentSessionId: string, messageId: string): boolean {
+  const session = store.getSession(agentSessionId)
+  if (session?.kind !== 'agent') return false
+  const collab = session.collab
+  const roomSessionId = collab?.roomSessionId
+  if (!roomSessionId) return false
+  return store.updateSessionCollab(agentSessionId, {
+    collab: { ...collab, roomSessionId, adoptedEchoMessageId: messageId, adoptedEchoAt: Date.now() },
+  })
+}
+
+/**
+ * 取走待回声的那条(读 + 清,一次性)。
+ *
+ * 读完就清,而不是等回声真的进了 drive 才清:回声本身会落进 drive 消息成为历史,
+ * 说一次就够;而一次没送出去的 drive(引擎没绑、被喊停)重发时房间内容整块都会
+ * 重算,少一行"上一轮代发过"不会让模型多说什么 —— 反过来(清晚了,连着两轮都
+ * 回声)才是噪声。
+ */
+export function takeCollabAdoptedEcho(
+  agentSessionId: string,
+): { messageId: string; at?: number } | undefined {
+  const session = store.getSession(agentSessionId)
+  const collab = session?.collab
+  const messageId = collab?.adoptedEchoMessageId
+  if (!collab || !messageId) return undefined
+  const at = collab.adoptedEchoAt
+  const next = { ...collab }
+  delete next.adoptedEchoMessageId
+  delete next.adoptedEchoAt
+  store.updateSessionCollab(agentSessionId, { collab: next })
+  return { messageId, ...(typeof at === 'number' ? { at } : {}) }
+}
+
+/**
  * 把已读游标退回"从未读过"(清空聊天记录)。
  *
  * 游标指向的那条消息已经不存在了,而 `advanceSeenCursor` 的"查无此条就不动"

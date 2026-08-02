@@ -39,7 +39,7 @@ import { billCollabPlanUsage } from '../usage/bill-side-line.js'
 import { collabUserPromptFields } from './user-identity.js'
 import { loadCollabBoard } from './board-store.js'
 import { getCollabDigests } from './digest-store.js'
-import { maxChainFor, peekRoomRuntime, roomMembers } from './room-runtime.js'
+import { maxChainFor, peekRoomRuntime, roomMembers, roomOccupancy } from './room-runtime.js'
 
 /** 一次编排调用的死线。比判定的 8s 宽一点 —— 它只发一次,而且全房在等它。 */
 const PLAN_TIMEOUT_MS = 12_000
@@ -130,9 +130,10 @@ function collectMemberState(
    */
   const unreadAfter = (cursorIndex: number): number =>
     messages.slice(cursorIndex + 1).filter(isCollabProjectedRoomMessage).length
-  const speaking = new Set(
-    [...(runtime?.activeTurns.values() ?? [])].map(turn => turn.agentId),
-  )
+  // 「谁在说」走**占用视图**(room-runtime.ts),与泵的"这个人有活在手上"、
+  // 链闸的预占同一张表 —— 只读 `activeTurns` 会漏掉刚发牌、还卡在闸/锁上的那
+  // 几位,而仲裁者据此排批次时它们已经注定要开口了(架构审查 A1)。
+  const speaking = runtime ? roomOccupancy(runtime) : new Set<string>()
   // 「刚说过」与冷却同一口径 —— 两处分家的话,仲裁者看到的"刚说过"与并行那侧
   // 筛人用的"刚说过"会是两个答案。
   const recent = selectRecentCollabConversationMessages(messages, COLLAB_SELF_ELECT_COOLDOWN)

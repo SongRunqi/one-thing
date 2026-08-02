@@ -187,8 +187,10 @@ describe('成功路径', () => {
     })
     expect(mocks.created).toEqual([PAIR_ROOM])
     // 房间是**显式**指定的:发言落在哪间房不靠会话指针猜。
+    // `chainReset` 让这条注入**自己**带着清零标记落库(A2):live 侧那次清零
+    // 只活在内存里,标记是它可重放的那一半。
     expect(mocks.said).toEqual([
-      { sessionId: EXEC, content: '接口这块想跟你对一下', room: PAIR_ROOM },
+      { sessionId: EXEC, content: '接口这块想跟你对一下', room: PAIR_ROOM, chainReset: true },
     ])
     // 激活理由是 'mention' —— dm 就是点名,该走满格链长闸、该被去重。
     expect(mocks.enqueued).toEqual([{

@@ -250,6 +250,18 @@ export interface CollabWorkRef {
   seenMessageId?: string
   /** 游标落盘时刻,诊断与 UI 用;判定一律以 `seenMessageId` 为准。 */
   seenAt?: number
+  /**
+   * 待回流的**收养回声**(kind='agent',架构审查 A6):上一回合写下却没发送的
+   * 收尾正文,已由框架代发进群,这是那条消息的 id。
+   *
+   * 存在的理由是一条视野盲区:被收养的消息署作者本人的名,而"自己的消息永不
+   * 进未读"(collab/history-window.ts)+「增量 drive 只带未读」= 作者永远读不到
+   * 它,于是它以为那段话还压在手里。下一次 drive 组装时读走这个字段、渲染一行
+   * 事实回声,然后**清掉** —— 说一次就够,回声本身落进 drive 消息成为历史。
+   */
+  adoptedEchoMessageId?: string
+  /** 代发那一刻(回声里的时间)。与 `adoptedEchoMessageId` 同生共死。 */
+  adoptedEchoAt?: number
 }
 
 /**
@@ -369,6 +381,16 @@ export interface ChatMessage {
    * and on every non-drive message; the renderer never reads it.
    */
   collabSourceMessageId?: string
+  /**
+   * 这条房间消息是**外部注入**,落库即把该房的链长计数清零(架构审查 A2)。
+   *
+   * 跨房私聊注入(`send_message` 带 `to`)与 wake poke 打这个标:它们的由头来自
+   * 另一间房的一个回合,对这间房而言是新的外部输入 —— 与人类插话同语义。live
+   * 侧本来就就地清零,这个标记是它**可重放**的那一半:boot 重算(collab/chain.ts)
+   * 认它作清零边界,否则没有人类在场的 agent ⇄ agent 房重启后必然顶格冻死。
+   * 缺席 = 普通消息(旧转录零迁移)。
+   */
+  collabChainReset?: boolean
   /** IM emoji reactions on this message (rooms only, see the type). */
   reactions?: ChatMessageReaction[]
   voice?: VoiceTranscriptMetadata

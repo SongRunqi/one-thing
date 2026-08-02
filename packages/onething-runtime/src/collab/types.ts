@@ -118,6 +118,11 @@ export interface CollabMessageLike {
    * pre-W23 drives and on everything that is not a drive.
    */
   collabSourceMessageId?: string
+  /**
+   * 这条消息是**外部注入**,落库即把这间房的链长清零(A2)。跨房 dm 与 wake
+   * poke 打这个标,判定收在 `classify.ts`。缺席 = 普通消息。
+   */
+  collabChainReset?: boolean
 }
 
 /** Default chain cap: consecutive agent CHAT messages without human input.

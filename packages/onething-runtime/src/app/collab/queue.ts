@@ -21,7 +21,6 @@ import {
   isCollabForcedSerialRoom,
   isCollabPlanRoom,
   isUserDmRoom,
-  resolveCollabChainCap,
   routeCollabRoomWake,
   synthesizeCollabSerialPlan,
   type CollabPlan,
@@ -42,6 +41,7 @@ import { isRoomOverBudget, msUntilNextBudgetDay } from './budget.js'
 import {
   advanceWatermark,
   bumpFloorEpoch,
+  chainGateAllows,
   currentFloorEpoch,
   isAgentSpeaking,
   isSupersededByFloor,
@@ -49,6 +49,7 @@ import {
   maxConcurrentTurnsFor,
   persistRoomState,
   postSystemLine,
+  releaseFloorHold,
   roomMembers,
   roomRuntime,
   scheduleRoomTimer,
@@ -397,6 +398,9 @@ export async function processQueue(roomSessionId: string): Promise<void> {
       if (settleActivation(roomSessionId, runtime, record, result)) parked = true
     })().finally(() => {
       runtime.inFlight.delete(record.id)
+      // 链闸那一格的释放点(A1)。与 inFlight 同生共死 —— 占用视图读的就是这
+      // 两张表,少放一次就等于把一格永久锁死。
+      releaseFloorHold(runtime, record.id)
       tasks.delete(record.id)
       broadcastCollabCoordinator(roomSessionId)
     })
@@ -603,10 +607,8 @@ async function electContinuationSpeakers(
   const session = store.getSession(roomSessionId)
   if (session?.kind !== 'room' || !session.room) return
   // 与回合级联同一道闸(turn.ts):链已到自荐上限时,一次判定的钱都不花 ——
-  // 判出来的自荐也会被驱动门冻住,白买 N 次调用。
-  if (runtime.state.chainCount >= resolveCollabChainCap('self-elected', maxChainFor(session))) {
-    return
-  }
+  // 判出来的自荐也会被驱动门冻住,白买 N 次调用。**预筛**,不预占。
+  if (!chainGateAllows(runtime, session, 'self-elected')) return
   const targetMessageId = session.messages.at(-1)?.id
   const elected = await electWillingSpeakers({
     roomSessionId,
@@ -695,13 +697,18 @@ export async function handleRoomUserMessage(roomSessionId: string, message: Chat
   // 就没有由头(状态条 §4)。
   noteCollabSchedule(roomSessionId, { kind: 'received' })
 
-  // 链闸解冻的**唯一真源**:一条真实的人类消息(§6.2 的 resets 那一条)。
+  // 链闸解冻的**人类那一路**:一条真实的人类消息(§6.2 的 resets 那一条)。
   //
-  // 曾经还有第二处 —— coordinator 里一个 `steering:consumed` 订阅。它从 W18
+  // 不是"唯一真源"(那句话在 2026-08-03 之前就已经不准确了):跨房 dm 注入
+  // (dm-tool.ts)与 wake poke(wake-followup.ts)同样清零 —— 它们的由头来自
+  // 另一间房的一个回合,对这间房而言同样是新的外部输入。那两处除了就地清零,
+  // 还在落库的那条消息上打 `collabChainReset` 标记,于是 boot 重算认得出同一个
+  // 边界(chain.ts);这一条不用打标,因为人类消息本身就是重算认的边界。
+  //
+  // 曾经还有第三处 —— coordinator 里一个 `steering:consumed` 订阅。它从 W18
   // 起就是死的(那个事件发在执行会话上,而订阅带着 `isRoom` 门),而现在它连
   // 冗余的价值都没有:房间的用户消息全部经由 ingress 走到这里,steer 注入的
-  // 那条也不例外 —— 它就是这个函数正在处理的这一条。两处做同一件事,迟早会有
-  // 一处先改。
+  // 那条也不例外 —— 它就是这个函数正在处理的这一条。
   runtime.state.chainCount = 0
   runtime.chainNoticePosted = false
 

@@ -145,6 +145,8 @@ describe('兑现时机', () => {
       sessionId: 'agent-exec-fe-room-game',
       content: '@阿明#pm 我在私聊里给你发了消息 —— 看完后请回到这里回应。',
       room: GAME_ROOM,
+      // 清零的可重放那一半:标记落在 poke 这条消息上,boot 重算认它(A2)。
+      chainReset: true,
     }])
     // 由头来自别处的一个回合 = 新的外部输入(collab-turn-protocol-and-identity.md C)。
     expect(mocks.runtimes.get(GAME_ROOM)).toMatchObject({

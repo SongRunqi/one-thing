@@ -90,6 +90,28 @@ describe('回合断路器 — 上限矩阵', () => {
     }])
   })
 
+  it('退役名 `say` 进发言计数 —— 事件流带的是模型吐出来的原始名(审查 B7)', () => {
+    // 派发那一头有退役表兜底,所以这些调用**确实**都发出去了。只认现名的话,
+    // 刷屏闸恰好在最需要它的那种回合(模型正照着旧转录连发 `say`)上静默失灵。
+    const breaker = createCollabTurnCircuitBreaker({ maxSayCalls: 2 })
+    expect(breaker.observe(exec('c-0', 'say'))).toBeNull()
+    expect(breaker.sayCalls).toBe(1)
+    expect(breaker.observe(exec('c-1', 'say'))).toBeNull()
+    expect(breaker.observe(exec('c-2', 'say'))).toMatchObject({ reason: 'say', sayCalls: 3 })
+  })
+
+  it('退役名 `dm` 只吃 total 那道闸 —— 归一只换名字,不换私聊档的计数口径', () => {
+    const breaker = createCollabTurnCircuitBreaker()
+    breaker.observe({
+      type: 'tool:execution-start',
+      toolCallId: 'c-0',
+      toolName: 'dm',
+      args: { to: '小李#fe', content: '牌发你了' },
+    })
+    expect(breaker.toolCalls).toBe(1)
+    expect(breaker.sayCalls).toBe(0)
+  })
+
   it('counts says toward the TOTAL too — a say flood is also a tool flood', () => {
     // With the say cap lifted, a full say budget plus enough board reads to
     // clear the total still trips on the total: the two caps are not

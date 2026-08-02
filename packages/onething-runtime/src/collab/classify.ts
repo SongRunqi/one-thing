@@ -147,6 +147,26 @@ export function isCollabThinkingMessage(message: SourceMarked): boolean {
 }
 
 /**
+ * **外部注入的链闸清零标记**(2026-08-03,架构审查 A2)。
+ *
+ * 不是第八种 kind:它与 kind 正交(带标记的那条本身是一条正常的 `say`,照常
+ * 投影、照常署名),说的是另一件事 —— 「这条消息的由头来自这间房**之外**」。
+ *
+ * 为什么必须落在消息上:跨房 dm 注入(dm-tool.ts)与 wake poke(wake-followup.ts)
+ * 都在 live 侧把 `chainCount` 清零,而 boot 重算(chain.ts)只认人类消息 ——
+ * 于是没有人类在场的 agent ⇄ agent 房重启一次,重算值必然 ≥ live 值,顶格
+ * 冻死,只能等下一次跨房注入。标记让"清零"变成**可重放**的事实。
+ *
+ * 旧转录没有这个字段 → 读作 false,行为与标记存在之前逐字相同(marker 是规则,
+ * 不是迁移)。
+ */
+export function isCollabChainResetMessage(
+  message: Pick<CollabMessageLike, 'collabChainReset'>,
+): boolean {
+  return message.collabChainReset === true
+}
+
+/**
  * Is this a system line the model gets to read? Marked-source system messages
  * only — an unmarked system message (budget, chain gate, freeze, permission
  * reminder) is display-only, and a marked source on a non-system role is not a

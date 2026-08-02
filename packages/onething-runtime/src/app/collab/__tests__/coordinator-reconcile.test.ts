@@ -26,6 +26,7 @@ interface FakeMessage {
   source?: string
   timestamp: number
   collabSourceMessageId?: string
+  collabChainReset?: boolean
   origin?: { source?: string }
   toolCalls?: Array<{ toolName?: string; toolId?: string }>
   mentions?: Array<{ agentId: string; label: string }>
@@ -526,5 +527,50 @@ describe('W23 — 关键点强制 flush', () => {
     // Harvest advanced the watermark onto the say, and that is what is on disk.
     const say = room().messages.find(item => item.source === 'collab-say')
     expect(state.lastProcessedMessageId).toBe(say?.id)
+  })
+})
+
+/**
+ * A2 — 外部注入的清零要**跨得过重启**(架构审查 2026-08-03)。
+ *
+ * 跨房 dm 注入与 wake poke 在 live 侧把 `chainCount` 清零,而 boot 重算此前只认
+ * 人类消息。没有人类在场的房间(agent ⇄ agent pair 房)因此有一个必现的死法:
+ * 重启后重算值 ≥ live 值,链闸顶格,谁都开不了口,只能等下一次跨房注入 ——
+ * 而那正是被冻住的东西。修法是把清零**物化在消息上**(`collabChainReset`),
+ * 于是 live 与重放读的是同一个边界。
+ */
+describe('A2 — 外部注入的清零跨得过重启', () => {
+  /** 一段没有人类插话的转录:三条发言,然后一条跨房注入落进来。 */
+  function seedInjectedTranscript(marked: boolean): void {
+    for (const line of ['一', '二', '三']) {
+      pushInto(ROOM, { role: 'assistant', agentId: 'fe', content: line, source: 'collab-say' })
+    }
+    pushInto(ROOM, {
+      role: 'assistant',
+      agentId: 'pm',
+      content: '别处那一轮让我来这儿说一句',
+      source: 'collab-say',
+      ...(marked ? { collabChainReset: true } : {}),
+    })
+  }
+
+  function replayedChainCount(): number | undefined {
+    return (storedState() as unknown as { chainCount?: number }).chainCount
+  }
+
+  it('带标记的注入是重算的清零边界 —— 重启后与 live 一样是 0', async () => {
+    seedInjectedTranscript(true)
+    await restart()
+
+    // live 侧那次清零(dm-tool / wake-followup)得到的就是 0;两个数必须一致,
+    // 否则重启会悄悄把闸挪走(chain.ts 文件头的硬约束)。
+    expect(replayedChainCount()).toBe(0)
+  })
+
+  it('旧转录没有标记 → 行为与今天逐字相同(marker 是规则,不是迁移)', async () => {
+    seedInjectedTranscript(false)
+    await restart()
+
+    expect(replayedChainCount()).toBe(4)
   })
 })

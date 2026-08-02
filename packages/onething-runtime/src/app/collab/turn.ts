@@ -25,6 +25,7 @@ import {
 	buildCollabElsewhere,
 	collabAgentSessionId,
 	collectCollabFoldedFacts,
+	formatCollabAdoptedEcho,
 	formatCollabAgentHandle,
 	formatCollabNotificationBlock,
 	createCollabTurnCircuitBreaker,
@@ -37,7 +38,6 @@ import {
 	isAgentPairDmRoom,
 	isCollabThinkingMessage,
 	isUserDmRoom,
-	resolveCollabChainCap,
 	planCollabHistoryWindow,
 	resolveCollabTurnBreakerLimits,
 	type CollabMentionLike,
@@ -49,7 +49,12 @@ import { getEventBus } from "../events/index.js";
 import { getStreamEngineSafe } from "../engine/index.js";
 import { isActiveAgent } from "@shared/ipc.js";
 import { findAgent } from "../agents/index.js";
-import { advanceSeenCursor, ensureCollabAgentSession } from "./agent-session.js";
+import {
+	advanceSeenCursor,
+	ensureCollabAgentSession,
+	noteCollabAdoptedEcho,
+	takeCollabAdoptedEcho,
+} from "./agent-session.js";
 import { getCollabDigestsForDays } from "./digest-store.js";
 import { collabUserPromptFields } from "./user-identity.js";
 import { attachCollabMentions } from "./mentions.js";
@@ -68,6 +73,7 @@ import { isRoomOverBudget } from "./budget.js";
 import { issueCollabDriveToken } from "./drive-guard.js";
 import {
 	advanceWatermark,
+	chainGateAllows,
 	isSupersededByFloor,
 	maxChainFor,
 	peekRoomRuntime,
@@ -570,13 +576,12 @@ export async function driveActivation(
 	// 闸按激活原因分档,但只剩两档:'task-event' 豁免(Infinity,pre-W21 的
 	// 短路),其余共用房间那一格的连续发言上限 —— 主动接话曾有一道固定的更严
 	// 闸,已撤(见 resolveCollabChainCap)。
-	const chainCap = resolveCollabChainCap(record.reason, maxChainFor(session));
-	// 并行化:`chainCount` 要到收尾(harvest)才 += 说了几句,所以同时起跑的 N 条
-	// 回合读到的是**同一个**旧计数,各自都能过闸 —— 一道设成 8 的闸会放过 8+N 条。
-	// 已经在跑的每条按至少一句预占一格,闸的语义(无人类输入时最多连着说几条)
-	// 因此在并行下仍然成立。
-	const speaking = runtime.activeTurns.size;
-	if (runtime.state.chainCount + speaking >= chainCap) {
+	//
+	// **这里是链闸的强制点**(其余四处是预筛),所以带上 `record` 走预占那一版:
+	// 过闸即占一格、出队即释放。此前它读的是 `activeTurns.size`,而登记在 agent
+	// 锁**里面** —— 同批发牌的回合在闸前互不可见,最多超发 concurrency-1 条
+	// (架构审查 A1)。
+	if (!chainGateAllows(runtime, session, record.reason, { record })) {
 		// A self-election that hits its tighter cap is DROPPED, not parked. It was
 		// an impulse about one particular message ("我想接这句"), and parking it
 		// means the impulse resurfaces stale right after the human reopens the room
@@ -1018,7 +1023,16 @@ async function runActivationTurn(options: {
 		previousDriveAt(agentSessionId),
 		driveStartTs,
 	);
-	// drive = 房间内容 + 别处发生的事,句号。
+	/**
+	 * 上一轮的收尾正文被框架代发过 —— 说一次(架构审查 A6)。
+	 *
+	 * 取走即清:这一块本身会随 drive 落盘成为历史,下一轮不必再说。放在最末尾
+	 * 而不是混进房间内容里,因为它说的不是"房里发生了什么",而是"你上一轮那段
+	 * 话的下落";而且它是这条 drive 里唯一一句关于**自己**的事实,恰好该在
+	 * recency 最强的位置被读到。
+	 */
+	const adoptedEcho = takeCollabAdoptedEcho(agentSessionId);
+	// drive = 房间内容 + 别处发生的事 + 上一轮的代发回声,句号。
 	//
 	// 这里曾有一个 `<turn agent=… reason=…>` 尾注块(「Your turn. Nothing here
 	// reaches the room on its own — `say` is what sends…」)。2026-08-02 整块删除:
@@ -1029,7 +1043,18 @@ async function runActivationTurn(options: {
 	//
 	// 原块的三项职能各归其位:机制→system prompt;激活理由→`<Notification
 	// scheduled>` 属性与每行的 `rel`;drive 非空→零未读时的自闭合 count="0" 块。
-	const drive = [roomContext, elsewhere].filter(Boolean).join("\n\n");
+	const drive = [
+		roomContext,
+		elsewhere,
+		adoptedEcho
+			? formatCollabAdoptedEcho({
+					messageId: adoptedEcho.messageId,
+					...(adoptedEcho.at !== undefined ? { at: adoptedEcho.at } : {}),
+				})
+			: "",
+	]
+		.filter(Boolean)
+		.join("\n\n");
 	await emitDrive(
 		// 兜底:两块都空(比如任务事件把一位同事叫起来,而房里一条未读都没有)。
 		// 空 drive 就是一条空的 user 消息;`count="0"` 至少是一条真数据。
@@ -1099,6 +1124,13 @@ async function runActivationTurn(options: {
 				});
 				if (delivered.ok) {
 					adoptedDelivery = true;
+					// 事实回声的登记(架构审查 A6):代发的是**作者自己**的消息,而
+					// 自己的消息永远不进自己的未读(history-window.ts)+ 增量 drive
+					// 只带未读 —— 不留这一笔,作者下一轮读到的世界里那段话仍然没发
+					// 出去,再发一遍是它合理的下一步。回声在下一次 drive 组装时兑现。
+					if (delivered.messageId) {
+						noteCollabAdoptedEcho(agentSessionId, delivered.messageId);
+					}
 					// 重新收割:收养进群的那条消息带着 COLLAB_SAY_SOURCE,从这里起
 					// 它就是一条普通的 say —— 计链、mentions 级联、水位、编排记账
 					// 全部走下面的正常发言分支,不另开一条半吊子路径。
@@ -1270,10 +1302,8 @@ async function runActivationTurn(options: {
 			// no point spending one call per member for records the drive gate will
 			// freeze. Mentions are unaffected: they were decided above, at the full
 			// cap, before this line.
-			if (
-				runtime.state.chainCount <
-				resolveCollabChainCap("self-elected", maxChainFor(after))
-			) {
+			// **预筛**(不带 record):不预占,少算一格的代价只是多买一次判定。
+			if (chainGateAllows(runtime, after, "self-elected")) {
 				const elected = await cascade.electWillingSpeakers({
 					roomSessionId,
 					session: after,

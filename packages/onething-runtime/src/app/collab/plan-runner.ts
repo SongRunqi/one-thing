@@ -26,6 +26,7 @@ import type { ChatSession } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { noteCollabSchedule } from './inspector.js'
 import {
+  chainGateAllows,
   currentFloorEpoch,
   maxChainFor,
   persistRoomState,
@@ -238,8 +239,13 @@ export function stepCollabPlan(options: {
   }
 
   const spoke = plan.waveSpoke
-  const maxChain = maxChainFor(session)
-  if (Number.isFinite(maxChain) && runtime.state.chainCount >= maxChain) {
+  // 与其余四处同一个判据(架构审查 A1)。此前这里直接拿 `maxChain` 比,绕过了
+  // `resolveCollabChainCap` —— 编排派出来的是 'relay',分档结果与这里逐字相同,
+  // 但"相同"是靠人肉核对维持的,而那正是收敛要拆掉的东西。
+  // **预筛**(不预占):这一步问的是"下一批还发不发",发出去的每一条到了驱动
+  // 强制点还要各自过一次闸。
+  if (!chainGateAllows(runtime, session, COLLAB_PLAN_REASON)) {
+    const maxChain = maxChainFor(session)
     if (!runtime.chainNoticePosted) {
       runtime.chainNoticePosted = true
       postSystemLine(

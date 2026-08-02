@@ -32,6 +32,7 @@ import {
 	collabMessageCountsTowardChain,
 	computeCollabChainCount,
 } from "../chain.js";
+import { collabChainGateAllows } from "../activation.js";
 import { COLLAB_MESSAGE_SOURCE, isCollabDriveMessage } from "../types.js";
 import { projectRoomHistory } from "../projection.js";
 import { buildWillingnessWindow } from "../willingness.js";
@@ -140,6 +141,62 @@ describe("epoch matrix — chain accounting", () => {
 		expect(
 			computeCollabChainCount([SAY, SAY, { role: "user", content: "停" }, SAY]),
 		).toBe(1);
+	});
+
+	/**
+	 * A2:没有人类在场的房间(agent ⇄ agent pair 房)靠**外部注入**解冻,而注入
+	 * 此前只清 live 那一侧的计数 —— 重启一次,重算值必然 ≥ live 值,顶格冻死。
+	 */
+	it("resets on a marked external injection — and the marked message itself counts zero", () => {
+		const injected = { ...SAY, collabChainReset: true, content: "别处让我来说一句" };
+		// live 侧:注入把计数清成 0,注入这条自己不计(它不是这间房某个回合的
+		// 产物),随后那一轮说了一句 = 1。重算必须落在同一个数上。
+		expect(computeCollabChainCount([SAY, SAY, injected])).toBe(0);
+		expect(computeCollabChainCount([SAY, SAY, injected, SAY])).toBe(1);
+	});
+
+	it("an unmarked transcript is unchanged — the marker is a rule, not a migration", () => {
+		expect(computeCollabChainCount([SAY, SAY, SAY])).toBe(3);
+	});
+});
+
+/**
+ * 链闸的唯一判据(A1)。五处判定共用这一条公式,`occupied` 是并行化补上的那半:
+ * 过了闸还没说话的每一条按至少一句预占一格。
+ */
+describe("chain gate — one formula, five call sites", () => {
+	it("counts what was said plus what already holds the floor", () => {
+		const gate = (chainCount: number, occupied: number) =>
+			collabChainGateAllows({
+				reason: "mention",
+				chainCount,
+				maxChain: 3,
+				occupied,
+			});
+		expect(gate(2, 0)).toBe(true);
+		// 两条已经过闸的回合各占一格 —— 第三条撞闸,而只看 chainCount 会放它过去。
+		expect(gate(1, 2)).toBe(false);
+		expect(gate(3, 0)).toBe(false);
+	});
+
+	it("keeps the task-event exemption and the 0 = 不限 convention", () => {
+		expect(
+			collabChainGateAllows({
+				reason: "task-event",
+				chainCount: 99,
+				maxChain: 3,
+				occupied: 5,
+			}),
+		).toBe(true);
+		// maxChain 的 0/负数归一在 `maxChainFor` 那一层完成,闸拿到的已经是
+		// Infinity —— 这里钉的是"拿到 Infinity 就永远放行"。
+		expect(
+			collabChainGateAllows({
+				reason: "self-elected",
+				chainCount: 99,
+				maxChain: Number.POSITIVE_INFINITY,
+			}),
+		).toBe(true);
 	});
 });
 
@@ -364,9 +421,13 @@ describe("情况说明 — send_message is stated as a FACT (v3 铁律)", () => 
 		expect(note).toContain("You are at your own desk");
 		expect(note).toContain("delivered to you here, like notifications");
 		expect(note).toContain("not a chat input box");
-		expect(note).toContain(
-			"there is no other send button, and nothing sends on its own",
-		);
+		expect(note).toContain("there is no other send button");
+		// 「nothing sends on its own」曾经跟在后面 —— 收养式兜底(A6)之后那是
+		// 一句假话:被收养的那一轮里,确实有东西替它发了。改成如实说出兜底,
+		// 并钉成**补救**(a repair after the fact)而不是第二个可选出口。
+		expect(note).not.toContain("nothing sends on its own");
+		expect(note).toContain("the system delivers that text for you");
+		expect(note).toContain("not a second way to send");
 		// 「turn text」这个自造行话全仓退役 —— 工位上的字就是笔记。
 		expect(note).not.toContain("turn text");
 	});

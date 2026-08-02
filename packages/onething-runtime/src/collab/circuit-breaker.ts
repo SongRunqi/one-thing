@@ -33,7 +33,7 @@
  * that would otherwise pay for the next full-context request.
  */
 import {
-  COLLAB_SEND_MESSAGE_TOOL_NAME,
+  isCollabSendCall,
   isCollabSendDmCall,
   type CollabSendArgsLike,
   type CollabTurnToolCallLike,
@@ -196,8 +196,12 @@ export function createCollabTurnCircuitBreaker(
       // 之前 `dm` 是另一个工具名,它从来只吃 total 那道闸;合并只换了名字,不该
       // 顺手把"给八个人各发一张牌"判成刷屏。总数照计 —— 那道闸问的是"这一轮还
       // 在做事吗",与话说给谁听无关。
+      //
+      // 名字按 `isCollabSendCall` 归一(架构审查 B7):事件流带的是模型吐出来的
+      // 原始名,一次 `say` 调用发得出消息却不进这一格,刷屏闸就在最需要它的那种
+      // 回合(模型正照着旧范例连发)上静默失灵。
       if (
-        toolNameOf(signal) === COLLAB_SEND_MESSAGE_TOOL_NAME
+        isCollabSendCall(toolNameOf(signal))
         && !isCollabSendDmCall(signal.args ?? signal.toolCall?.arguments)
       ) {
         sayCalls += 1

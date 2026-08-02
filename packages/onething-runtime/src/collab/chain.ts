@@ -1,3 +1,4 @@
+import { isCollabChainResetMessage } from './classify.js'
 import { isCollabPassMessage } from './pass.js'
 import { isCollabSayMessage, isCollabThinkingMessage } from './say.js'
 import { isCollabDriveMessage, isCollabHarvestMessage, type CollabMessageLike } from './types.js'
@@ -9,10 +10,14 @@ import { isCollabDriveMessage, isCollabHarvestMessage, type CollabMessageLike } 
  *  - ignores: drive messages, thinking records, pass turns, harvest posts,
  *             display-only roles
  *  - resets:  a real human message (non-drive user message) — 活的那侧由
- *             `handleRoomUserMessage` 在收到消息的第一时间清零,是唯一真源。
+ *             `handleRoomUserMessage` 在收到消息的第一时间清零。
  *             Steered messages satisfy this predicate too, so a transcript
  *             replay reaches the same count. (曾经还有一个 `steering:consumed`
  *             订阅做同一件事;它从 W18 起就没生效过,已删 —— 见 coordinator.ts。)
+ *             **以及**带 `collabChainReset` 标记的外部注入(跨房 dm、wake poke):
+ *             那两处 live 侧照旧就地清零,标记是它们**可重放**的那一半 ——
+ *             没有它,无人类在场的 pair 房重启后重算值必然 ≥ live 值,顶格冻死
+ *             (A2)。旧转录没有标记,行为与今天逐字相同。
  *
  * W14b epoch discipline: a turn that says three things counts three, because
  * the LIVE coordinator counts one per say and the boot recompute walks the
@@ -38,11 +43,18 @@ export function collabMessageCountsTowardChain(message: CollabMessageLike): bool
 }
 
 export function collabMessageResetsChain(message: CollabMessageLike): boolean {
+  // 外部注入(跨房 dm / wake poke)与人类插话同语义:由头来自这间房之外,
+  // 讨论被推到了新的地方。判定收在 classify.ts —— 这里不比字符串。
+  if (isCollabChainResetMessage(message)) return true
   if (message.role !== 'user') return false
   return !isCollabDriveMessage(message)
 }
 
-/** Recompute the chain count from a transcript tail (boot reconciliation). */
+/** Recompute the chain count from a transcript tail (boot reconciliation).
+ *
+ *  清零优先于计数(if / else if):带标记的那条注入**自己也不计一格** ——
+ *  live 侧同样如此(它不是这间房某个回合的产物,`noteAgentSpoke` 走不到它),
+ *  两个数因此仍然逐条对得上。 */
 export function computeCollabChainCount(messages: readonly CollabMessageLike[]): number {
   let count = 0
   for (const message of messages) {

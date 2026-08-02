@@ -211,6 +211,15 @@ export async function speakIntoCollabRoom(input: {
   mentions?: string[]
   replyTo?: string
   room?: string
+  /**
+   * 这条消息是**外部注入**,落库即把目标房的链长清零(架构审查 A2)。
+   *
+   * 只有跨房的两条路会传 true(`send_message` 带 `to` 的私聊注入、wake poke):
+   * 它们的由头来自另一间房的一个回合,对目标房而言是新的外部输入。标记落在
+   * 消息上而不是只改内存计数,是为了让 boot 重算认得出同一个清零边界 ——
+   * 没有它,无人类在场的 pair 房重启一次就顶格冻死。房内的普通发言不传。
+   */
+  chainReset?: boolean
 }): Promise<SayToolResult> {
   const context = resolveSayContext(input.sessionId, input.room)
   if (!context) return { ok: false, error: COLLAB_SAY_REFUSED_NO_ROOM }
@@ -288,6 +297,9 @@ export async function speakIntoCollabRoom(input: {
     // fallback available for old transcripts (W14a).
     ...(mentions.length > 0 ? { mentions } : {}),
     ...(replyTo ? { replyTo } : {}),
+    // 只写 true,不写 false:缺席就是"普通消息",与旧转录同形(marker 是规则,
+    // 不是迁移)。
+    ...(input.chainReset ? { collabChainReset: true } : {}),
   }
   recentSays.set(fingerprint, { messageId: message.id, at: now })
   store.addMessage(context.roomSessionId, message)

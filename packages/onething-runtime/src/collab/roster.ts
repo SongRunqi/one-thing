@@ -125,7 +125,13 @@ function buildWhereYouAre(options: { place: string; audience: string }): string 
 		// 只负责把图画对。
 		`You are at your own desk, working as yourself. What happens in ${options.place} is delivered to you here, like notifications.`,
 		"This desk is not a chat input box. Text written here stays here: what you write is a note to yourself, and your reasoning stays with it.",
-		`\`send_message\` is the send button that carries words to ${options.audience} — there is no other send button, and nothing sends on its own.`,
+		// 后半句原本是绝对化的「nothing sends on its own」,而收养式兜底
+		// (app/collab/turn.ts)恰恰会代发 —— 在被收养的那一轮里那是一句假话,
+		// 而模型据以推断"我没发送 = 群里没有这段话"正是重复发言的由头(A6)。
+		// 改成如实说出那道兜底,并把它钉成**补救**而不是第二个按钮:一个可用的
+		// 备选出口会把发送率往下拉,而一次事后修补不会。
+		`\`send_message\` is the send button that carries words to ${options.audience} — there is no other send button.`,
+		"If a turn ever ends with a finished reply written here and never sent, the system delivers that text for you and tells you it did — a repair after the fact, not a second way to send.",
 		"</where_you_are>",
 	].join("\n");
 }

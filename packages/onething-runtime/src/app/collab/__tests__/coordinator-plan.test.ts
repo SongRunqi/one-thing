@@ -37,7 +37,13 @@ interface FakeSession {
   name: string
   kind?: string
   agentId?: string
-  collab?: { roomSessionId?: string }
+  collab?: {
+    roomSessionId?: string
+    seenMessageId?: string
+    /** 待回流的收养回声(A6)。 */
+    adoptedEchoMessageId?: string
+    adoptedEchoAt?: number
+  }
   room?: FakeRoom
   messages: FakeMessage[]
 }
@@ -407,6 +413,30 @@ describe('验收:一条消息一次调用', () => {
     expect(concurrentPeak).toBeGreaterThan(1)
   })
 
+  /**
+   * A1(架构审查 2026-08-03):链闸此前读 `runtime.activeTurns`,而回合是在
+   * **agent 锁里面**才登记进那张表的 —— 同一批发出去的 N 条在闸前互相看不见,
+   * 各自读到同一个旧 `chainCount`,一道剩 k 格的闸会放过 k+N-1 条。
+   *
+   * 修法是过闸即占位(room-runtime.ts `chainGateAllows`),于是"闸剩几格"在并行
+   * 下仍然是一个能数得清的数。
+   */
+  it('链闸在并行发牌下不超发:闸剩 2 格、一批 4 条 → 恰好放行 2 条(A1)', async () => {
+    seedRoom({ budgets: { maxChain: 2, maxConcurrentTurns: 4 } })
+    mocks.planReply = { waves: [['a', 'b', 'c', 'd']], cycle: false, why: '大家都说说' }
+    coordinator.initializeCollabCoordinator()
+    turnScript = agentId => ({ content: `${agentId} 说一句` })
+
+    await sendUserMessage('大家怎么看')
+
+    // 修之前这里是 4:四条回合各花一次全上下文调用,把一道设成 2 的闸变成摆设。
+    expect(driveOrder).toHaveLength(2)
+    expect(spoken).toHaveLength(2)
+    // 撞闸的是义务型激活(编排派的 'relay'),按住不丢,房里留一行说明 ——
+    // 一行,不是每条一行。
+    expect(systemLines().filter(line => line.includes('我先按住了'))).toHaveLength(1)
+  })
+
   it('**批间串行**:第二批要等第一批全部落地 —— 后说的人才读得到前面的话', async () => {
     seedRoom()
     mocks.planReply = { waves: [['a', 'b'], ['c']], cycle: false, why: '先议后总结' }
@@ -495,6 +525,59 @@ describe('验收:一条消息一次调用', () => {
     expect(log.some(entry => entry.kind === 'adopted' && entry.agentId === 'a')).toBe(true)
     expect(log.some(entry => entry.kind === 'unsent')).toBe(false)
     expect(log.some(entry => entry.kind === 'silent')).toBe(false)
+  })
+
+  /**
+   * A6:被收养的消息署**作者本人**的名,而"自己的消息永不进未读"
+   * (history-window.ts)+「增量 drive 只带未读」= 作者永远读不到它。不回声的话,
+   * 它下一轮读到的世界里那段话仍然压在手里,重发是它合理的下一步。
+   */
+  it('收养之后下一轮 drive 带一行事实回声,标记随取随清(A6)', async () => {
+    seedRoom()
+    mocks.planReply = { waves: [['a']], cycle: false, why: '' }
+    coordinator.initializeCollabCoordinator()
+    let turn = 0
+    mocks.driveHandler = (sessionId: string) => {
+      turn += 1
+      const adopting = turn === 1
+      setTimeout(() => {
+        if (adopting) {
+          // 零 say + 大段收尾正文 = 写而未发,框架代发。
+          pushInto(sessionId, {
+            role: 'assistant',
+            agentId: 'a',
+            content:
+              '好的,我来当这个上帝。配置:狼人一名、预言家一名、猎人一名、村民一名。天黑请闭眼,等我逐个私信发牌。',
+            source: 'collab-turn',
+          })
+        } else {
+          pushInto(sessionId, { role: 'assistant', agentId: 'a', content: '(想了想)', source: 'collab-turn' })
+          push({ role: 'assistant', agentId: 'a', content: '第一夜开始', source: 'collab-say' })
+        }
+        emitOn(sessionId, { type: 'stream:start' })
+        emitOn(sessionId, { type: 'stream:complete' })
+      }, 0)
+    }
+
+    await sendUserMessage('开始吧')
+    const adopted = room().messages.find(
+      message => message.source === 'collab-say' && message.agentId === 'a',
+    )
+    expect(adopted).toBeDefined()
+
+    await sendUserMessage('继续')
+
+    const drives = mocks.emitted.filter(entry => entry.event.type === 'command:send-message')
+    const content = String(drives.at(-1)?.event.content ?? '')
+    // 只陈述发生过什么(带 id 与时刻),不带"别重发"一类祈使句 —— 措辞层的
+    // 劝导在这个仓库里已被实证只降频不归零。
+    expect(content).toContain('<Delivered')
+    expect(content).toContain(String(adopted?.id))
+    // 说一次就够:回声随 drive 落盘成为历史,标记当场清掉。
+    const exec = mocks.sessions.get('agent-exec-a-room-1') as FakeSession
+    expect(exec.collab?.adoptedEchoMessageId).toBeUndefined()
+    // 第一轮那条 drive 里当然没有回声(收养还没发生)。
+    expect(String(drives[0]?.event.content ?? '')).not.toContain('<Delivered')
   })
 
   it('收尾自语低于阈值不被收养:短正文零 say 仍是真沉默', async () => {
