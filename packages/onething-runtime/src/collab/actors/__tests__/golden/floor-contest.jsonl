@@ -1,0 +1,9 @@
+{"id":"fc-1","role":"user","content":"@阿娜 @阿波 @小西 三位都看一下这版方案。","timestamp":1000,"mentions":[{"agentId":"ana","label":"阿娜"},{"agentId":"bo","label":"阿波"},{"agentId":"cy","label":"小西"}]}
+{"id":"fc-2","role":"assistant","agentId":"ana","content":"看了，主流程没问题，边界情况我补两条。","timestamp":1100}
+{"id":"fc-3","role":"assistant","agentId":"bo","content":"数据口径我核过一遍，对得上。","timestamp":1200}
+{"id":"fc-4","role":"assistant","agentId":"cy","content":"文案我改了三处，等会儿发出来。","timestamp":1300}
+{"id":"fc-5","role":"assistant","agentId":"dan","content":"我也想说一句：排期得往后挪。","timestamp":1400}
+{"id":"fc-6","role":"assistant","agentId":"eve","content":"附议，挪一周比较稳。","timestamp":1500}
+{"id":"fc-7","role":"user","content":"先停一下，换个角度：先说风险。","timestamp":1600}
+{"id":"fc-8","role":"assistant","agentId":"dan","content":"最大的风险是签名那步没人盯。","timestamp":1700}
+{"id":"fc-9","role":"assistant","agentId":"eve","content":"第二个风险是灰度名单还没定。","timestamp":1800}

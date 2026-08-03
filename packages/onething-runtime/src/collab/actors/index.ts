@@ -1,9 +1,10 @@
 /**
  * Collab v3 的 actor 面(`@onething/runtime/collab/actors`)。
  *
- * 这里只有**协议**与**验收架**:动词表(D0)、金重放架(D0)。真正的
- * Room/Agent/Referee actor 是 D1-D3,落地时从这里取动词、从
- * `@onething/core/actors` 取内核。设计:docs/design/collab-actor-v3.md。
+ * 这里是**协议**、**验收架**与**纯规则**:动词表(D0)、金重放架(D0)、
+ * 房间的账与三道闸(D1 `room-rules.ts`)、发言策略族(D1 `floor-policy.ts`)。
+ * 带 IO 的那一半(落盘、mailbox、宿主端口)在 `@onething/app` 的
+ * `collab/actors/`。设计:docs/design/collab-actor-v3.md。
  */
 export {
   COLLAB_ACTOR_VERB_TABLE_IS_EXHAUSTIVE,
@@ -76,3 +77,58 @@ export type {
   CollabActorReplayResult,
   CollabActorReplayTranscript,
 } from './replay.js'
+
+export {
+  collabFloorSeats,
+  createCollabFreeFloorPolicy,
+  orderCollabHands,
+  resolveCollabFloorPolicy,
+} from './floor-policy.js'
+export type {
+  CollabFloorDecision,
+  CollabFloorDecisionInput,
+  CollabFloorGrantCandidate,
+  CollabFloorPolicy,
+  CollabRaisedHand,
+} from './floor-policy.js'
+
+export {
+  applyCollabRoomPassthrough,
+  applyCollabRoomPhaseChange,
+  applyCollabRoomPosted,
+  applyCollabRoomRaiseHand,
+  applyCollabRoomSetPolicy,
+  applyCollabRoomSpeak,
+  applyCollabRoomYield,
+  buildCollabRoomBudgetHoldLine,
+  bumpCollabRoomEpoch,
+  COLLAB_ROOM_ACCOUNT_VERSION,
+  COLLAB_ROOM_DEFAULT_FLOOR_POLICY,
+  COLLAB_ROOM_FROZEN_LINE,
+  COLLAB_ROOM_FROZEN_LINE_DM,
+  COLLAB_SPEAK_REFUSED_EXPIRED_LEASE,
+  COLLAB_SPEAK_REFUSED_LEASE_OWNER,
+  COLLAB_SPEAK_REFUSED_NO_LEASE,
+  COLLAB_SPEAK_REFUSED_STALE_LEASE,
+  collabRoomActiveLeases,
+  collabRoomChainEntryOf,
+  collabRoomEventId,
+  collabRoomHolders,
+  createCollabRoomAccount,
+  enqueueCollabHand,
+  foldCollabRoomChain,
+  normalizeCollabRoomAccount,
+  openCollabRoomBroadcast,
+  pruneCollabRoomFloor,
+  settleCollabRoomBroadcast,
+} from './room-rules.js'
+export type {
+  CollabRoomAccount,
+  CollabRoomChainEntry,
+  CollabRoomEffects,
+  CollabRoomGates,
+  CollabRoomIdSource,
+  CollabRoomPendingBroadcast,
+  CollabRoomStep,
+  CollabRoomTranscriptMessage,
+} from './room-rules.js'

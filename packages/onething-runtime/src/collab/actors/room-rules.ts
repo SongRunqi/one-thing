@@ -1,0 +1,1050 @@
+/**
+ * RoomActor 的**账与规则**(docs/design/collab-actor-v3.md §1.4 / §3)。
+ *
+ * 房间在 v3 里只剩三件事:**转录**(消息落在哪)、**发言权**(谁能开口)、
+ * **三道闸**(冻结 / 预算 / 链)。这个文件是后两件的全部规则,写成一组
+ * **纯函数**:输入一份账 + 一个动词 + 一组闸读数,输出一份新账 + 一串效果。
+ *
+ * 为什么规则与 actor 分家:
+ *
+ * 1. **单账无双实现**(§1.4 的硬要求)。v2 的链计数有两套 —— live 那侧
+ *    `noteAgentSpoke` 逐条 ++,重启那侧 `computeCollabChainCount` 扫转录重算,
+ *    两套公式漂过不止一次(harvest 该不该计、thinking 该不该计、外部注入清不清
+ *    零,每一条都是补出来的)。v3 只留一条:**链数 = 上一个清零事件以来发出的
+ *    租约数**。live 是这个 reducer 跑一遍,重放是同一个 reducer 再跑一遍 ——
+ *    不是"两份实现对得上",是**同一份实现跑两次**。
+ *
+ * 2. **金重放要的是同步决策**。重放架的管线接缝是同步的(`onPosted` 直接返回
+ *    动词),而 actor 的循环是异步的。把决策抽成纯函数之后,真机与重放走的是
+ *    同一行代码,快照才有资格当行为对照。
+ *
+ * 三面纪律(§3)在这里的落点:这一层只产出**账**(返回值)与**转录**(effects
+ * 里的 messages),谁把它们落盘是 `app/collab/actors/` 的事;流(在飞租约的
+ * 内存态)不存在于这里 —— 租约本身就是账的一部分,重启后照样验得出真伪。
+ */
+import type { FloorLease, FloorLeaseLedger } from '@onething/core/actors'
+import {
+  activeFloorLeases,
+  bumpFloorEpoch,
+  canIssueFloorLease,
+  createFloorLeaseLedger,
+  isFloorLeaseExpired,
+  issueFloorLease,
+  pruneFloorLeases,
+  revokeFloorLease,
+  validateFloorLeaseId,
+} from '@onething/core/actors'
+
+import { collabChainGateAllows, type CollabActivationReason } from '../activation.js'
+import { collabMessageResetsChain } from '../chain.js'
+import { COLLAB_SAY_SOURCE, isCollabRoomFact } from '../classify.js'
+import { stripCollabAgentHandles, type CollabAddressable } from '../handles.js'
+import { resolveCollabMentionIds } from '../mentions.js'
+import {
+  COLLAB_SAY_REFUSED_BUDGET,
+  COLLAB_SAY_REFUSED_EMPTY,
+  COLLAB_SAY_REFUSED_FROZEN,
+  COLLAB_SAY_REFUSED_NOT_MEMBER,
+  normalizeCollabSayContent,
+  resolveCollabSayMentions,
+} from '../say.js'
+import { buildCollabChainHoldLine } from '../system-lines.js'
+import type { CollabAgentLike, CollabMentionLike } from '../types.js'
+import {
+  createCollabFreeFloorPolicy,
+  resolveCollabFloorPolicy,
+  type CollabRaisedHand,
+} from './floor-policy.js'
+import {
+  collabActorRef,
+  collabRoomFloorGranted,
+  collabRoomFloorRevoked,
+  collabRoomPhaseChanged,
+  collabRoomPosted,
+  type CollabActorVerb,
+  type CollabAgentRaiseHandVerb,
+  type CollabAgentSpeakVerb,
+  type CollabAgentYieldVerb,
+  type CollabFloorPolicyName,
+  type CollabFloorPolicyParams,
+  type CollabFloorRevokeReason,
+  type CollabRefereeSetFloorPolicyVerb,
+  type CollabRoomPostedVerb,
+} from './protocol.js'
+
+/**
+ * v3 房间账的版本号。
+ *
+ * **不是** v2 `state.json` 的 `version: 1` 的续号 —— 两份账是两个文件、两套
+ * 字段、两条生命周期(v2 那份归 coordinator,D6 才删)。共用一个版本号会让
+ * 「读到 1 该按哪套解析」变成一个真问题。
+ */
+export const COLLAB_ROOM_ACCOUNT_VERSION = 1
+
+/** 一次广播的在飞记录 —— 崩溃点续播的账(§1.4「成员 mailbox 逐一投递」)。 */
+export interface CollabRoomPendingBroadcast {
+  /** 事件身份。确定性派生,重投不变 —— 消费端的去重窗按它认。 */
+  eventId: string
+  /** 还没投到的成员,按序。投一个删一个,空了整条记录移除。 */
+  pending: string[]
+  /** 事件本体。续播时不重新决策 —— 决策已经发生过了,再决策一次就是两个事实。 */
+  verb: CollabActorVerb
+  at: number
+}
+
+/**
+ * 房间账。**同步原子写、先于转录**(§3)。
+ *
+ * `floor` 直接嵌 core 的租约账:代数、在外的牌、撤销过的牌号,一份不拆。拆开
+ * 存(比如只存 leaseId 列表)等于在这里重实现一遍 core 已经测过的验票规则。
+ */
+export interface CollabRoomAccount {
+  version: typeof COLLAB_ROOM_ACCOUNT_VERSION
+  roomId: string
+  /** 在飞租约表 + 代数 + 撤销史(core `FloorLeaseLedger`)。 */
+  floor: FloorLeaseLedger
+  /**
+   * 链计数 = **上一个清零事件以来发出的租约数**。
+   *
+   * 计在发牌那一刻,而不是说话那一刻 —— 这一条同时解掉了 v2 的两个病:
+   *  - 并行超发:v2 的 `chainCount` 要等回合收尾才 +=,同批起跑的 N 条读到同一个
+   *    旧计数各自过闸,于是要靠一张 `floorHolds` 预占表把闸补回来(A1)。发牌即
+   *    计数之后,预占这个概念直接不存在;
+   *  - live/重放双实现:数"说了几句"要认 harvest / thinking / pass 三种标记,
+   *    数"发了几张牌"只要数 `room:floor-granted`。
+   */
+  chainCount: number
+  /** 最近一次清零是哪条消息干的(排障与对账)。 */
+  chainResetMessageId?: string
+  /** 已消费到哪条消息。只前进,不后退(v2 `advanceWatermark` 的同一条纪律)。 */
+  watermark: { messageId?: string; at?: number }
+  /** 当前相位(`phase` 策略;D1 只存不用)。 */
+  phase?: string
+  /** 当前发言策略。裁判缺席 = `free`。 */
+  policy: { name: CollabFloorPolicyName; params?: CollabFloorPolicyParams }
+  /** 举手队列。 */
+  hands: CollabRaisedHand[]
+  /** 发牌用的确定性牌号计数器。随机牌号会让金重放每次都变。 */
+  leaseSeq: number
+  /**
+   * 每张在外的牌是**因为什么**发的。
+   *
+   * 不塞进 `FloorLease`(那是 core 的骨架类型,不认识 collab 的激活理由),也不
+   * 从举手队列现查 —— 发牌那一刻手就从队里摘掉了,查不回来。快照的「谁在说、
+   * 为什么」读它,D3 的批量裁决同样要它当输入。牌作废时一起清。
+   */
+  leaseReasons: Record<string, CollabActivationReason>
+  /** 落库消息的确定性种子计数器(重放用;真机的 id 由宿主给)。 */
+  messageSeq: number
+  /**
+   * 「同一次只说一遍」的闩锁(v2 `chainNoticePosted` / `frozenNoticePosted` 的
+   * 泛化)。撞闸每次都贴一行,房间会被自己的运营噪声淹掉。
+   */
+  notices: { frozen: boolean; budget: boolean; chain: boolean }
+  /** 在飞广播,按发生序。 */
+  broadcasts: CollabRoomPendingBroadcast[]
+  /**
+   * 单调序号。每一次**对外可见的状态变化** +1,C4 的快照协议按它丢弃迟到的包。
+   * 与 `CollabBoard.seq` / `CollabCoordinatorState.seq` 同一条纪律。
+   */
+  seq: number
+}
+
+/** 三道闸这一刻的读数 + 房间的形态。由宿主现取(它才知道设置与账本)。 */
+export interface CollabRoomGates {
+  /** 总闸:房间被暂停了。 */
+  frozen: boolean
+  /** 费用闸:今天的预算已经用完。 */
+  overBudget: boolean
+  /** 链闸上限。`Infinity` = 不限。 */
+  maxChain: number
+  /** 并发上限。0 或负数 = 不限。 */
+  maxConcurrent: number
+  /** 在职成员(授权面)。 */
+  members: readonly CollabAgentLike[]
+  /** 识别面:哪串字符算一个真身份(用户、退休成员)。缺省退回 `members`。 */
+  directory?: readonly CollabAddressable[]
+  /** agent ⇄ agent 的双成员私聊房 —— 链闸文案分支(那里没有人类可召唤)。 */
+  pairDm?: boolean
+  /**
+   * 发出去的牌的墙钟上限(ms)。**缺省 = 不自动过期**,只能被让位、撤销或换代
+   * 作废(core `FloorLease.ttlMs` 的同一套约定)。
+   *
+   * 为什么默认没有 ttl:一个回合合法地跑十分钟是常态(工具链路长),给它一个
+   * 猜出来的墙钟只会在真机上表现为"说到一半被收了牌"。要收就由宿主显式配。
+   */
+  leaseTtlMs?: number
+  now: number
+  /** 预算行要的两个数(拿不到就退化成不带数字的那句)。 */
+  budgetSpentUSD?: number
+  budgetLimitUSD?: number
+}
+
+/**
+ * RoomActor 落进房间转录的一条消息。
+ *
+ * **字段与 v2 的 `ChatMessage` 逐字段同形** —— 「转录零迁移」这条承诺就落在这个
+ * 类型上:v3 写下的消息必须能被 v2 的分类器(`classifyCollabRoomMessage`)、
+ * 投影(`isCollabRoomFact`)、渲染层一字不改地读懂。app 层有一条测试钉住它。
+ */
+export interface CollabRoomTranscriptMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: number
+  agentId?: string
+  source?: string
+  mentions?: CollabMentionLike[]
+  collabChainReset?: boolean
+}
+
+/** 一次转换的产物。账是返回值,这些是副作用清单 —— 由 actor 去执行。 */
+export interface CollabRoomEffects {
+  /** 广播给成员 mailbox 的动词,按序。 */
+  broadcast: CollabActorVerb[]
+  /** 追加进房间转录的消息(账落盘之后才写:账先于转录)。 */
+  messages: CollabRoomTranscriptMessage[]
+  /** 这一步真正发出去的牌 —— 调用方要把它交到 agent 手上。 */
+  granted: FloorLease[]
+  /** 动词被拒时给调用方的可操作文案(措辞是 C1/C2 资产,一个字不动)。 */
+  refusal?: string
+}
+
+export interface CollabRoomStep {
+  account: CollabRoomAccount
+  effects: CollabRoomEffects
+}
+
+/** 落库消息的 id 来源。重放传确定性派生,真机传 `randomUUID`。 */
+export interface CollabRoomIdSource {
+  newMessageId(seed: string): string
+}
+
+/* ── 拒绝与系统行文案 ──────────────────────────────────────────────────────
+ *
+ * 冻结/预算这两句与 v2 `queue.ts` / `budget.ts` 里的字面量**逐字相同**。这里
+ * 复制而不是抽公共导出,是因为那两个文件属于 v2 调度链,D6 会整层删掉 ——
+ * 为一段活不过这个月的代码去改它,换来的只是一次多余的回归面。删掉那一侧时
+ * 这里就是唯一的一份。
+ */
+
+/** 房间被暂停,@ 落了空。群房那句(v2 queue.ts 的同一串字)。 */
+export const COLLAB_ROOM_FROZEN_LINE = '房间已暂停,@ 暂时无人应答——恢复后再说一声'
+/** 同上,双成员私聊版 —— 那里说"无人应答"读着别扭(没有别人)。 */
+export const COLLAB_ROOM_FROZEN_LINE_DM = '这间私聊已暂停,TA 暂时不会回复——恢复后再说一声'
+
+/** 预算闸的房间行(v2 budget.ts 的同一串字)。 */
+export function buildCollabRoomBudgetHoldLine(options: {
+  spentUSD?: number
+  limitUSD?: number
+}): string {
+  if (typeof options.spentUSD !== 'number' || typeof options.limitUSD !== 'number') {
+    return '今天这个房间的预算已经用完——明天自动恢复,或调整房间预算'
+  }
+  return `今天这个房间已花费 $${options.spentUSD.toFixed(2)},达到日预算 $${options.limitUSD}`
+    + '——明天自动恢复,或调整房间预算'
+}
+
+/**
+ * 没牌就开口。
+ *
+ * 这是 v3 才有的失败态 —— v2 里"能不能说"是调度决定的,agent 手上没有可以
+ * 拿错的东西。措辞沿用 §4.5 的送达态口径:说清没送达,并说清下一步。
+ */
+export const COLLAB_SPEAK_REFUSED_NO_LEASE =
+  '消息未送达:你现在没有这间群聊的发言权。先举手(raise-hand),拿到发言权再说。'
+/** 手里的牌是上一代的 —— 换相/重启/用户喊停之后。 */
+export const COLLAB_SPEAK_REFUSED_STALE_LEASE =
+  '消息未送达:你手里的发言权已经作废了(这间群聊换过一轮)。重新举手再说。'
+/** 牌过期了(墙钟)。 */
+export const COLLAB_SPEAK_REFUSED_EXPIRED_LEASE =
+  '消息未送达:你的发言权已经超时收回了。重新举手再说。'
+/** 拿着别人的牌说话。 */
+export const COLLAB_SPEAK_REFUSED_LEASE_OWNER =
+  '消息未送达:这张发言权不是发给你的。'
+
+/* ── 账的构造与形状校验 ──────────────────────────────────────────────────── */
+
+export function createCollabRoomAccount(
+  roomId: string,
+  options: { epoch?: number; policy?: CollabFloorPolicyName } = {},
+): CollabRoomAccount {
+  return {
+    version: COLLAB_ROOM_ACCOUNT_VERSION,
+    roomId,
+    floor: createFloorLeaseLedger(roomId, options.epoch),
+    chainCount: 0,
+    watermark: {},
+    policy: { name: options.policy ?? 'free' },
+    hands: [],
+    leaseSeq: 0,
+    leaseReasons: {},
+    messageSeq: 0,
+    notices: { frozen: false, budget: false, chain: false },
+    broadcasts: [],
+    seq: 0,
+  }
+}
+
+/**
+ * 读回来的账做一次形状归一。
+ *
+ * 半份账比没有账更糟:一个 `floor.active` 读成 undefined 的房间会在第一次发牌时
+ * 炸在 `[...undefined]` 上,而那一刻离"文件是什么时候写坏的"已经很远了。认不出
+ * 形状就当新账 —— 代价是一次链计数归零(下一条人类消息本来也会归零)。
+ */
+export function normalizeCollabRoomAccount(value: unknown, roomId: string): CollabRoomAccount {
+  const fresh = createCollabRoomAccount(roomId)
+  if (!value || typeof value !== 'object') return fresh
+  const raw = value as Partial<CollabRoomAccount>
+  if (raw.version !== COLLAB_ROOM_ACCOUNT_VERSION) return fresh
+
+  const floor = raw.floor
+  const ledger: FloorLeaseLedger = floor && typeof floor === 'object' && Array.isArray(floor.active)
+    ? {
+        roomId,
+        epoch: typeof floor.epoch === 'number' ? floor.epoch : fresh.floor.epoch,
+        active: floor.active.filter(isFloorLeaseShape),
+        revoked: Array.isArray(floor.revoked) ? floor.revoked.filter(id => typeof id === 'string') : [],
+      }
+    : fresh.floor
+
+  return {
+    version: COLLAB_ROOM_ACCOUNT_VERSION,
+    roomId,
+    floor: ledger,
+    chainCount: typeof raw.chainCount === 'number' && raw.chainCount >= 0 ? raw.chainCount : 0,
+    ...(typeof raw.chainResetMessageId === 'string' ? { chainResetMessageId: raw.chainResetMessageId } : {}),
+    watermark: raw.watermark && typeof raw.watermark === 'object' ? { ...raw.watermark } : {},
+    ...(typeof raw.phase === 'string' ? { phase: raw.phase } : {}),
+    policy: raw.policy && typeof raw.policy.name === 'string' ? { ...raw.policy } : { name: 'free' },
+    hands: Array.isArray(raw.hands) ? raw.hands.filter(isRaisedHandShape) : [],
+    leaseSeq: typeof raw.leaseSeq === 'number' ? raw.leaseSeq : 0,
+    leaseReasons: raw.leaseReasons && typeof raw.leaseReasons === 'object' ? { ...raw.leaseReasons } : {},
+    messageSeq: typeof raw.messageSeq === 'number' ? raw.messageSeq : 0,
+    notices: {
+      frozen: raw.notices?.frozen === true,
+      budget: raw.notices?.budget === true,
+      chain: raw.notices?.chain === true,
+    },
+    broadcasts: Array.isArray(raw.broadcasts) ? raw.broadcasts.filter(isPendingBroadcastShape) : [],
+    seq: typeof raw.seq === 'number' ? raw.seq : 0,
+  }
+}
+
+function isFloorLeaseShape(value: unknown): value is FloorLease {
+  if (!value || typeof value !== 'object') return false
+  const lease = value as Partial<FloorLease>
+  return typeof lease.leaseId === 'string'
+    && typeof lease.epoch === 'number'
+    && typeof lease.agentId === 'string'
+    && typeof lease.issuedAt === 'number'
+}
+
+function isRaisedHandShape(value: unknown): value is CollabRaisedHand {
+  if (!value || typeof value !== 'object') return false
+  const hand = value as Partial<CollabRaisedHand>
+  return typeof hand.agentId === 'string' && typeof hand.at === 'number'
+    && (hand.origin === 'mention' || hand.origin === 'hand')
+}
+
+function isPendingBroadcastShape(value: unknown): value is CollabRoomPendingBroadcast {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Partial<CollabRoomPendingBroadcast>
+  return typeof record.eventId === 'string'
+    && Array.isArray(record.pending)
+    && !!record.verb
+    && typeof (record.verb as { type?: unknown }).type === 'string'
+}
+
+/* ── 读口 ──────────────────────────────────────────────────────────────── */
+
+/** 此刻手里有有效牌的人。发牌的「同 agent 不双持」与快照的 `speaking` 同读它。 */
+export function collabRoomHolders(account: CollabRoomAccount, now: number): Set<string> {
+  return new Set(activeFloorLeases(account.floor, now).map(lease => lease.agentId))
+}
+
+/** 此刻在外的有效牌。 */
+export function collabRoomActiveLeases(account: CollabRoomAccount, now: number): FloorLease[] {
+  return activeFloorLeases(account.floor, now)
+}
+
+/* ── 链账:唯一的一条公式 ────────────────────────────────────────────────── */
+
+/** 链账认得的两种事件。其余动词与链无关。 */
+export type CollabRoomChainEntry = { kind: 'reset' } | { kind: 'lease' }
+
+/**
+ * 一个动词对链账意味着什么。
+ *
+ * 只有两种:发出一张牌(+1)、一个清零事件(归零)。清零判据**直接复用 C1 的
+ * `collabMessageResetsChain`** —— 人类 posted 与带 `collabChainReset` 标记的
+ * 外部注入,一个字都不重写。
+ */
+export function collabRoomChainEntryOf(verb: CollabActorVerb): CollabRoomChainEntry | null {
+  if (verb.type === 'room:floor-granted') return { kind: 'lease' }
+  if (verb.type === 'room:posted' && collabMessageResetsChain(verb.message)) return { kind: 'reset' }
+  return null
+}
+
+/**
+ * 从一串动词重算链数。**重放对账用的就是它**。
+ *
+ * live 侧走的是 `applyCollabRoom*` 里的 `chainCount ± `,而两者必须逐条相等 ——
+ * app 层有一条测试把同一份剧本的 live 值与这个 fold 值比死。
+ */
+export function foldCollabRoomChain(verbs: readonly CollabActorVerb[]): number {
+  let count = 0
+  for (const verb of verbs) {
+    const entry = collabRoomChainEntryOf(verb)
+    if (!entry) continue
+    if (entry.kind === 'reset') count = 0
+    else count += 1
+  }
+  return count
+}
+
+/* ── 内部:发牌 ────────────────────────────────────────────────────────── */
+
+interface GrantOutcome {
+  account: CollabRoomAccount
+  broadcast: CollabActorVerb[]
+  messages: CollabRoomTranscriptMessage[]
+  granted: FloorLease[]
+}
+
+function emptyEffects(): CollabRoomEffects {
+  return { broadcast: [], messages: [], granted: [] }
+}
+
+/**
+ * 一条运营系统行。
+ *
+ * 不打 source 标记 —— `classifyCollabRoomMessage` 因此读作 `operational-line`:
+ * 只给人看,永不进模型投影(W9.1「机器的账不是房间的事实」)。序号由调用方传进来
+ * 并接住返回值,一次转换里贴两行也不会撞 id。
+ */
+function systemLine(
+  roomId: string,
+  ids: CollabRoomIdSource,
+  content: string,
+  now: number,
+  messageSeq: number,
+): { message: CollabRoomTranscriptMessage; messageSeq: number } {
+  const next = messageSeq + 1
+  return {
+    message: {
+      id: ids.newMessageId(`${roomId}:sys:${next}`),
+      role: 'system',
+      content,
+      timestamp: now,
+    },
+    messageSeq: next,
+  }
+}
+
+/**
+ * 发牌 —— 三道闸的**单点**。
+ *
+ * 次序是契约:先策略排队,再冻结,再预算,最后逐张过链闸。为什么链闸放最后 ——
+ * 它是唯一**逐张**判定的闸(前两道是全房性质,撞上就整批停发),而逐张判定必须
+ * 建立在"这一张真的要发"之上,否则一批被冻结吃掉的候选会白白把链数推高。
+ */
+function grantFloor(
+  account: CollabRoomAccount,
+  gates: CollabRoomGates,
+  ids: CollabRoomIdSource,
+  input: { mentioned?: readonly string[]; sourceMessageId?: string },
+): GrantOutcome {
+  const policy = resolveCollabFloorPolicy(account.policy.name)
+  const holders = collabRoomHolders(account, gates.now)
+  const memberIds = gates.members.map(member => member.id)
+  const mentioned = (input.mentioned ?? []).filter(agentId => memberIds.includes(agentId))
+
+  const decision = policy.decide({
+    mentioned,
+    hands: account.hands,
+    holders,
+    activeLeases: holders.size,
+    maxConcurrent: gates.maxConcurrent,
+    members: memberIds,
+    ...(account.phase ? { phase: account.phase } : {}),
+    ...(account.policy.params ? { params: account.policy.params } : {}),
+  })
+
+  const broadcast: CollabActorVerb[] = []
+  const messages: CollabRoomTranscriptMessage[] = []
+  const granted: FloorLease[] = []
+
+  let ledger = account.floor
+  let chainCount = account.chainCount
+  let leaseSeq = account.leaseSeq
+  let messageSeq = account.messageSeq
+  const notices = { ...account.notices }
+  const leaseReasons = { ...account.leaseReasons }
+  const issuedAgentIds = new Set<string>()
+
+  /** 这一刻真的有人想说话吗 —— 没人想说,任何一道闸都没有开口的理由。 */
+  const wanted = decision.grants.length > 0 || mentioned.length > 0
+
+  // 闩锁由**它自己那道闸**放开,不由别的事件放开(v2:`frozenNoticePosted` 在
+  // 解冻时清、`chainNoticePosted` 在清零时清)。共用一个清点会让"人类说了一句话"
+  // 把冻结通知也一起放开,于是同一次暂停被反复播报。
+  if (!gates.frozen) notices.frozen = false
+  if (!gates.overBudget) notices.budget = false
+
+  if (gates.frozen) {
+    // 冻结吃掉一个 @ 必须说出来(P2-17):在一间自己一小时前暂停掉的房里写
+    // 「@小李 看一下」而**什么都没发生**,读起来是房间坏了,不是房间停了。
+    if (wanted && !notices.frozen) {
+      notices.frozen = true
+      const line = systemLine(
+        account.roomId,
+        ids,
+        gates.pairDm ? COLLAB_ROOM_FROZEN_LINE_DM : COLLAB_ROOM_FROZEN_LINE,
+        gates.now,
+        messageSeq,
+      )
+      messages.push(line.message)
+      messageSeq = line.messageSeq
+    }
+  } else if (gates.overBudget) {
+    if (wanted && !notices.budget) {
+      notices.budget = true
+      const line = systemLine(
+        account.roomId,
+        ids,
+        buildCollabRoomBudgetHoldLine({
+          ...(gates.budgetSpentUSD === undefined ? {} : { spentUSD: gates.budgetSpentUSD }),
+          ...(gates.budgetLimitUSD === undefined ? {} : { limitUSD: gates.budgetLimitUSD }),
+        }),
+        gates.now,
+        messageSeq,
+      )
+      messages.push(line.message)
+      messageSeq = line.messageSeq
+    }
+  } else {
+    for (const candidate of decision.grants) {
+      // 并发上限:策略已经按座位排过一遍,这里是账自己的复核 —— 策略是可替换的,
+      // 闸不是。
+      if (!canIssueFloorLease(ledger, gates.now, gates.maxConcurrent)) break
+
+      if (!collabChainGateAllows({ reason: candidate.reason, chainCount, maxChain: gates.maxChain })) {
+        // 顶格。队里的手不清 —— 它们在等下一个清零事件,而不是被丢掉。
+        if (!notices.chain) {
+          notices.chain = true
+          const line = systemLine(
+            account.roomId,
+            ids,
+            buildCollabChainHoldLine({
+              maxChain: gates.maxChain,
+              ...(gates.pairDm ? { pairDm: true } : {}),
+            }),
+            gates.now,
+            messageSeq,
+          )
+          messages.push(line.message)
+          messageSeq = line.messageSeq
+        }
+        break
+      }
+
+      leaseSeq += 1
+      const issued = issueFloorLease(ledger, {
+        agentId: candidate.agentId,
+        now: gates.now,
+        // 确定性牌号。随机牌号会让金重放的快照每次都变(D0 已为这条立过测试)。
+        leaseId: `${account.roomId}#L${leaseSeq}`,
+        ...(gates.leaseTtlMs === undefined ? {} : { ttlMs: gates.leaseTtlMs }),
+      })
+      ledger = issued.ledger
+      // 发牌即计链(见 `CollabRoomAccount.chainCount` 的注释):v2 的预占账在
+      // 这一行之后就没有存在的理由了。
+      chainCount += 1
+      leaseReasons[issued.lease.leaseId] = candidate.reason
+      granted.push(issued.lease)
+      issuedAgentIds.add(candidate.agentId)
+      broadcast.push(collabRoomFloorGranted({
+        roomId: account.roomId,
+        agentId: candidate.agentId,
+        lease: issued.lease,
+      }))
+    }
+  }
+
+  // 队列结算:发出去的手摘掉;被点名但没拿到牌的,**留在队首**等下一次机会 ——
+  // @ 是直通授牌,座位满不该把它降级成一次普通举手。
+  let hands = account.hands.filter(hand => !issuedAgentIds.has(hand.agentId))
+  for (const agentId of mentioned) {
+    if (issuedAgentIds.has(agentId)) continue
+    if (holders.has(agentId)) continue
+    hands = enqueueCollabHand(hands, {
+      agentId,
+      at: gates.now,
+      origin: 'mention',
+      reason: 'mention',
+      ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
+    })
+  }
+
+  return {
+    account: {
+      ...account,
+      floor: ledger,
+      chainCount,
+      hands,
+      leaseSeq,
+      leaseReasons,
+      messageSeq,
+      notices,
+    },
+    broadcast,
+    messages,
+    granted,
+  }
+}
+
+/** 牌作废时把它的理由一起清掉 —— 账不留死条目。 */
+function forgetLeaseReasons(
+  reasons: Record<string, CollabActivationReason>,
+  leaseIds: readonly string[],
+): Record<string, CollabActivationReason> {
+  if (leaseIds.length === 0) return reasons
+  const next = { ...reasons }
+  for (const leaseId of leaseIds) delete next[leaseId]
+  return next
+}
+
+/**
+ * 举手入队。同一个人重复举手**不叠加**:一只手就是一只手,叠加只会让一个
+ * 反复举手的 agent 把队列刷满并连拿数张牌。
+ *
+ * 升级是允许的:一只普通手被 @ 到之后升为 `mention` 起源(直通),时刻保留原值
+ * —— 它排在前面靠的是起源,不是把等待时间抹掉。
+ */
+export function enqueueCollabHand(
+  hands: readonly CollabRaisedHand[],
+  hand: CollabRaisedHand,
+): CollabRaisedHand[] {
+  const existing = hands.findIndex(entry => entry.agentId === hand.agentId)
+  if (existing < 0) return [...hands, hand]
+  const previous = hands[existing]
+  const merged: CollabRaisedHand = {
+    ...previous,
+    origin: previous.origin === 'mention' || hand.origin === 'mention' ? 'mention' : 'hand',
+    reason: hand.origin === 'mention' ? hand.reason : previous.reason,
+    ...(hand.urgency ? { urgency: hand.urgency } : {}),
+    ...(hand.why ? { why: hand.why } : {}),
+    ...(hand.sourceMessageId ? { sourceMessageId: hand.sourceMessageId } : {}),
+  }
+  const next = [...hands]
+  next[existing] = merged
+  return next
+}
+
+/* ── 转换 ──────────────────────────────────────────────────────────────── */
+
+/**
+ * 房间收到一条消息(用户投递、或某个 agent 的发言落地之后的回声)。
+ *
+ * 四件事,按序:广播 → 推水位 → 清链 → 发牌。清链必须在发牌**之前** ——
+ * 反过来的话人类那句话先被旧链数挡住,再清零,于是「你说一句话讨论就继续」
+ * 这句承诺要等到下一条消息才兑现。
+ */
+export function applyCollabRoomPosted(
+  account: CollabRoomAccount,
+  verb: CollabRoomPostedVerb,
+  gates: CollabRoomGates,
+  ids: CollabRoomIdSource,
+  options: {
+    /** 这条 posted 自己就是这次转换写下的消息(speak 的回流口)。 */
+    extraMessages?: readonly CollabRoomTranscriptMessage[]
+  } = {},
+): CollabRoomStep {
+  const message = verb.message
+  let next: CollabRoomAccount = { ...account }
+  const effects = emptyEffects()
+  effects.messages.push(...(options.extraMessages ?? []))
+
+  // 房间把每一条消息播给全体成员 —— 可见性边界就是成员表(§0.1)。
+  effects.broadcast.push(verb)
+
+  // 水位只前进(v2 `advanceWatermark`:两条消息并发处理时,后到先完的那条
+  // 会被先到后完的那条用更旧的位置盖回去)。
+  const at = message.timestamp
+  if (at === undefined || next.watermark.at === undefined || at >= next.watermark.at) {
+    next.watermark = {
+      ...(message.id ? { messageId: message.id } : {}),
+      ...(at === undefined ? {} : { at }),
+    }
+  }
+
+  if (collabMessageResetsChain(message)) {
+    next.chainCount = 0
+    if (message.id) next.chainResetMessageId = message.id
+    // 只放开**链**那一把闩:下一次顶格该重新说一遍。冻结/预算两把由它们自己那道
+    // 闸放开(见 `grantFloor`)—— 一条人类消息不解冻房间,也不补预算。
+    next.notices = { ...next.notices, chain: false }
+  }
+
+  // 运营行、drive、thinking 不是发牌时机 —— 判据走 C1 的单一分类器,不比字符串。
+  if (isCollabRoomFact(message)) {
+    const authorAgentId = verb.author.kind === 'agent' ? verb.author.id : undefined
+    const mentioned = resolveCollabMentionIds(message, gates.members)
+      .filter(agentId => agentId && agentId !== authorAgentId)
+    const outcome = grantFloor(next, gates, ids, {
+      mentioned,
+      ...(message.id ? { sourceMessageId: message.id } : {}),
+    })
+    next = outcome.account
+    effects.broadcast.push(...outcome.broadcast)
+    effects.messages.push(...outcome.messages)
+    effects.granted.push(...outcome.granted)
+  }
+
+  next.seq = account.seq + 1
+  return { account: next, effects }
+}
+
+/** 举手。已经有牌的人举手是空操作 —— 它已经站在台上了。 */
+export function applyCollabRoomRaiseHand(
+  account: CollabRoomAccount,
+  verb: CollabAgentRaiseHandVerb,
+  gates: CollabRoomGates,
+  ids: CollabRoomIdSource,
+  options: { reason?: CollabActivationReason } = {},
+): CollabRoomStep {
+  const effects = emptyEffects()
+  if (collabRoomHolders(account, gates.now).has(verb.agentId)) {
+    return { account, effects }
+  }
+
+  let next: CollabRoomAccount = {
+    ...account,
+    hands: enqueueCollabHand(account.hands, {
+      agentId: verb.agentId,
+      at: gates.now,
+      origin: 'hand',
+      reason: options.reason ?? 'self-elected',
+      ...(verb.urgency ? { urgency: verb.urgency } : {}),
+      ...(verb.why ? { why: verb.why } : {}),
+      ...(verb.sourceMessageId ? { sourceMessageId: verb.sourceMessageId } : {}),
+    }),
+  }
+
+  const outcome = grantFloor(next, gates, ids, {
+    ...(verb.sourceMessageId ? { sourceMessageId: verb.sourceMessageId } : {}),
+  })
+  next = outcome.account
+  effects.broadcast.push(...outcome.broadcast)
+  effects.messages.push(...outcome.messages)
+  effects.granted.push(...outcome.granted)
+
+  next.seq = account.seq + 1
+  return { account: next, effects }
+}
+
+/**
+ * 说话 —— 唯一发送面(§2「speak 的工具面形态」)。
+ *
+ * 验票在最前面:**没牌不许开口**,这是「说话即行动」的结构保证。其后的三道门
+ * (冻结 / 成员 / 预算)与拒绝文案原样沿用 v2 的 `speakIntoCollabRoom`,因为
+ * 那些措辞本身是资产 —— agent 拿到的是一句能照做的话,不是一个 error。
+ *
+ * **说话不计链**:链数是发出的牌数,牌在发的时候就计过了。一个回合说三句话在
+ * v2 里计三格,在 v3 里计一格 —— 这是有意的口径变化,因为闸要挡的是"轮流讲了
+ * 多少轮",不是"打了多少字"。
+ */
+export function applyCollabRoomSpeak(
+  account: CollabRoomAccount,
+  verb: CollabAgentSpeakVerb,
+  gates: CollabRoomGates,
+  ids: CollabRoomIdSource,
+): CollabRoomStep {
+  const check = validateFloorLeaseId(account.floor, verb.leaseId, gates.now)
+  if (!check.valid) {
+    return { account, effects: { ...emptyEffects(), refusal: refusalForLease(check.reason) } }
+  }
+  if (check.lease.agentId !== verb.agentId) {
+    return { account, effects: { ...emptyEffects(), refusal: COLLAB_SPEAK_REFUSED_LEASE_OWNER } }
+  }
+
+  if (gates.frozen) {
+    return { account, effects: { ...emptyEffects(), refusal: COLLAB_SAY_REFUSED_FROZEN } }
+  }
+  if (!gates.members.some(member => member.id === verb.agentId)) {
+    // 回合中途被移出群(W6):名册是现读的,刚被请出去的人不能把话说完。
+    return { account, effects: { ...emptyEffects(), refusal: COLLAB_SAY_REFUSED_NOT_MEMBER } }
+  }
+  if (gates.overBudget) {
+    return { account, effects: { ...emptyEffects(), refusal: COLLAB_SAY_REFUSED_BUDGET } }
+  }
+
+  const content = normalizeCollabSayContent(verb.content)
+  if (!content) {
+    return { account, effects: { ...emptyEffects(), refusal: COLLAB_SAY_REFUSED_EMPTY } }
+  }
+
+  const directory = gates.directory ?? gates.members
+  const mentions = resolveCollabSayMentions({
+    content,
+    ...(verb.mentions ? { mentionAgentIds: verb.mentions.map(mention => mention.agentId) } : {}),
+    members: gates.members,
+    directory,
+  })
+  // 句柄出栈(collab-agent-handle.md §2.4):`@小李#3f9c1e2a` 还原成 `@小李`,
+  // 身份已经进了 mentions[]。
+  const spoken = stripCollabAgentHandles(content, directory)
+
+  const messageSeq = account.messageSeq + 1
+  const message: CollabRoomTranscriptMessage = {
+    id: ids.newMessageId(`${account.roomId}:say:${messageSeq}`),
+    role: 'assistant',
+    agentId: verb.agentId,
+    content: spoken,
+    timestamp: gates.now,
+    source: COLLAB_SAY_SOURCE,
+    // 空 mentions 数组是一个真答案("谁都没点"),所以缺席而不是存空 —— 那正是
+    // 老转录的名字扫描兜底还能用的原因(W14a)。
+    ...(mentions.length > 0 ? { mentions } : {}),
+  }
+
+  const posted = collabRoomPosted({
+    roomId: account.roomId,
+    author: collabActorRef('agent', verb.agentId),
+    message,
+  })
+
+  // 说出口的话立刻**回到房间的入口** —— 它和一条人类消息一样是一次 posted:
+  // 广播给全体成员、推水位、里面的 @ 直通授牌。不走这一条的话,agent 之间就永远
+  // @ 不动对方(只有人类的 @ 算数),而「@ = 直通授牌」这条决策没有说只对人类成立。
+  //
+  // 复用同一个转换而不是抄一遍发牌:抄一遍就是第二本账,而这正是 v3 要消灭的东西。
+  return applyCollabRoomPosted({ ...account, messageSeq }, posted, gates, ids, {
+    extraMessages: [message],
+  })
+}
+
+function refusalForLease(reason: string): string {
+  if (reason === 'stale-epoch') return COLLAB_SPEAK_REFUSED_STALE_LEASE
+  if (reason === 'expired') return COLLAB_SPEAK_REFUSED_EXPIRED_LEASE
+  return COLLAB_SPEAK_REFUSED_NO_LEASE
+}
+
+/** 让位:交牌,空出来的座位立刻给队里下一个。 */
+export function applyCollabRoomYield(
+  account: CollabRoomAccount,
+  verb: CollabAgentYieldVerb,
+  gates: CollabRoomGates,
+  ids: CollabRoomIdSource,
+): CollabRoomStep {
+  const effects = emptyEffects()
+  const held = account.floor.active.some(lease => lease.leaseId === verb.leaseId)
+  if (!held) {
+    // 交一张不存在的牌:无害,不报错(重投/迟到的 yield 就长这样)。
+    return { account, effects }
+  }
+
+  let next: CollabRoomAccount = {
+    ...account,
+    floor: revokeFloorLease(account.floor, verb.leaseId),
+    leaseReasons: forgetLeaseReasons(account.leaseReasons, [verb.leaseId]),
+  }
+  effects.broadcast.push(collabRoomFloorRevoked({
+    roomId: account.roomId,
+    agentId: verb.agentId,
+    leaseId: verb.leaseId,
+    reason: 'yield',
+  }))
+
+  const outcome = grantFloor(next, gates, ids, {})
+  next = outcome.account
+  effects.broadcast.push(...outcome.broadcast)
+  effects.messages.push(...outcome.messages)
+  effects.granted.push(...outcome.granted)
+
+  next.seq = account.seq + 1
+  return { account: next, effects }
+}
+
+/**
+ * 换代:代数 +1,在外的牌**全部作废**。
+ *
+ * 用在换相、用户喊停、房间被冻住这三处。不逐一通知任何人 —— agent 重启后手里
+ * 攥着的那张旧牌,自己验一次就知道过期了(§1.4 代数存在的全部理由)。
+ */
+export function bumpCollabRoomEpoch(
+  account: CollabRoomAccount,
+  reason: CollabFloorRevokeReason,
+  now: number,
+): CollabRoomStep {
+  const effects = emptyEffects()
+  const revoked: string[] = []
+  for (const lease of activeFloorLeases(account.floor, now)) {
+    revoked.push(lease.leaseId)
+    effects.broadcast.push(collabRoomFloorRevoked({
+      roomId: account.roomId,
+      agentId: lease.agentId,
+      leaseId: lease.leaseId,
+      reason,
+    }))
+  }
+  const bumped = bumpFloorEpoch(account.floor)
+  return {
+    account: {
+      ...account,
+      floor: pruneFloorLeases(bumped, now),
+      leaseReasons: forgetLeaseReasons(account.leaseReasons, revoked),
+      seq: account.seq + 1,
+    },
+    effects,
+  }
+}
+
+/** 换相(§1.5 `phase` 策略的动词面)。换相即换代 —— 上一相的牌一律作废。 */
+export function applyCollabRoomPhaseChange(
+  account: CollabRoomAccount,
+  phase: string,
+  now: number,
+): CollabRoomStep {
+  const previousPhase = account.phase
+  const stepped = bumpCollabRoomEpoch(account, 'epoch-bumped', now)
+  const next: CollabRoomAccount = { ...stepped.account, phase, hands: [] }
+  stepped.effects.broadcast.push(collabRoomPhaseChanged({
+    roomId: account.roomId,
+    phase,
+    ...(previousPhase ? { previousPhase } : {}),
+    epoch: next.floor.epoch,
+  }))
+  return { account: next, effects: stepped.effects }
+}
+
+/**
+ * 裁判换策略。D1 只**记下来** —— 换策略要不要收回在外的牌是 D3 的语义决定,
+ * 提前替它决定等于让 D3 去改一条已经有测试钉住的行为。
+ */
+export function applyCollabRoomSetPolicy(
+  account: CollabRoomAccount,
+  verb: CollabRefereeSetFloorPolicyVerb,
+): CollabRoomStep {
+  const next: CollabRoomAccount = {
+    ...account,
+    policy: { name: verb.policy, ...(verb.params ? { params: verb.params } : {}) },
+    ...(verb.params?.phase ? { phase: verb.params.phase } : {}),
+    seq: account.seq + 1,
+  }
+  return { account: next, effects: emptyEffects() }
+}
+
+/**
+ * 过期回收。牌带 ttl 时由宿主定期调 —— 一个跑飞的回合不该永远占着座位。
+ *
+ * 回收之后立刻重新发牌:空出来的座位就是给队里下一个人的。
+ */
+export function pruneCollabRoomFloor(
+  account: CollabRoomAccount,
+  gates: CollabRoomGates,
+  ids: CollabRoomIdSource,
+): CollabRoomStep {
+  const expired = account.floor.active.filter(lease => isFloorLeaseExpired(lease, gates.now))
+  if (expired.length === 0) return { account, effects: emptyEffects() }
+
+  const effects = emptyEffects()
+  let ledger = account.floor
+  for (const lease of expired) {
+    ledger = revokeFloorLease(ledger, lease.leaseId)
+    effects.broadcast.push(collabRoomFloorRevoked({
+      roomId: account.roomId,
+      agentId: lease.agentId,
+      leaseId: lease.leaseId,
+      reason: 'expired',
+    }))
+  }
+
+  const outcome = grantFloor(
+    {
+      ...account,
+      floor: ledger,
+      leaseReasons: forgetLeaseReasons(account.leaseReasons, expired.map(lease => lease.leaseId)),
+    },
+    gates,
+    ids,
+    {},
+  )
+  effects.broadcast.push(...outcome.broadcast)
+  effects.messages.push(...outcome.messages)
+  effects.granted.push(...outcome.granted)
+
+  return { account: { ...outcome.account, seq: account.seq + 1 }, effects }
+}
+
+/**
+ * 只落账 + 透传的动词(dm-open / wake / card-event / membership-changed)。
+ *
+ * D1 的边界就在这里:这些动词的**语义**分别属于 D2(私聊房生命周期)与
+ * D3/D4(相位、看板)。房间此刻能诚实做到的只有两件事 —— 把它记进序号、把它
+ * 原样播出去。假装实现一半的语义,比留一个明确的透传口更贵。
+ */
+export function applyCollabRoomPassthrough(
+  account: CollabRoomAccount,
+  verb: CollabActorVerb,
+): CollabRoomStep {
+  return {
+    account: { ...account, seq: account.seq + 1 },
+    effects: { ...emptyEffects(), broadcast: [verb] },
+  }
+}
+
+/* ── 广播账 ────────────────────────────────────────────────────────────── */
+
+/**
+ * 事件 id 的确定性派生(复用重放架 `roomId:messageId` 的思路)。
+ *
+ * 同一封信重投多少次 id 都不变 —— 这是消费端去重窗唯一认得的东西。所以派生的
+ * 材料必须是**事件的身份**(哪间房、哪条消息/哪张牌),不能掺进投递时刻或重试
+ * 次数,那些是"这一次投递"的属性。
+ */
+export function collabRoomEventId(roomId: string, verb: CollabActorVerb, ordinal: number): string {
+  switch (verb.type) {
+    case 'room:posted':
+      return `evt:${roomId}:${verb.message.id ?? `n${ordinal}`}`
+    case 'room:floor-granted':
+      return `evt:${roomId}:${verb.lease.leaseId}`
+    case 'room:floor-revoked':
+      return `evt:${roomId}:${verb.leaseId}:${verb.reason}`
+    case 'room:phase-changed':
+      return `evt:${roomId}:phase:${verb.epoch}`
+    default:
+      return `evt:${roomId}:${verb.type}:${ordinal}`
+  }
+}
+
+/** 登记一次在飞广播。投递之前先落账 —— 崩在中途才有东西可续。 */
+export function openCollabRoomBroadcast(
+  account: CollabRoomAccount,
+  record: CollabRoomPendingBroadcast,
+): CollabRoomAccount {
+  return { ...account, broadcasts: [...account.broadcasts, record] }
+}
+
+/** 一个成员投完了。投一个销一个,空了整条记录移除。 */
+export function settleCollabRoomBroadcast(
+  account: CollabRoomAccount,
+  eventId: string,
+  agentId: string,
+): CollabRoomAccount {
+  const broadcasts: CollabRoomPendingBroadcast[] = []
+  for (const record of account.broadcasts) {
+    if (record.eventId !== eventId) {
+      broadcasts.push(record)
+      continue
+    }
+    const pending = record.pending.filter(id => id !== agentId)
+    if (pending.length > 0) broadcasts.push({ ...record, pending })
+  }
+  return { ...account, broadcasts }
+}
+
+/** D1 只内置 `free` —— 导出一个现成的,省得每个调用点各造一个。 */
+export const COLLAB_ROOM_DEFAULT_FLOOR_POLICY = createCollabFreeFloorPolicy()
