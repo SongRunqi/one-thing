@@ -81,6 +81,29 @@ interface InspectorRoomState {
 
 const rooms = new Map<string, InspectorRoomState>()
 
+/**
+ * v3 房账的供数口(D6-a 接线)。
+ *
+ * C4 快照协议是「renderer 几乎不改」那条承诺的落点,而广播的**次序纪律**(seq
+ * 单调、节流、活动窗)全在这个文件里。所以 v3 不另开一条广播路,只把「调度那几格
+ * 从哪儿读」换掉:装上之后 `speaking / turns / queue / judging / gates / plan` 来自
+ * RoomActor 的账,没装(或这间房还没有 v3 actor)就照旧读 v2 运行时。
+ *
+ * 两格**不**从 v3 拿:
+ *  - `typing` —— 打字灯是这个文件的账(见 `InspectorRoomState.typing`),v3 的
+ *    房账里没有它,也不该有:它是 `say` 参数流打出来的脉冲,不是调度状态;
+ *  - `log` —— 「刚才」同理,历史没有别处可读。
+ *
+ * `seq` 同样由这里盖:它是**这条广播通道**的号,不是房账的版本号。用房账的 seq
+ * 会让两间房各说各的号,而渲染层拿它做的是「比屏幕上那份新吗」的判断。
+ */
+type CollabRoomSnapshotSource = (roomSessionId: string) => CollabCoordinatorState | null
+let v3SnapshotSource: CollabRoomSnapshotSource | null = null
+
+export function configureCollabRoomSnapshotSource(source: CollabRoomSnapshotSource | null): void {
+  v3SnapshotSource = source
+}
+
 function inspectorState(roomSessionId: string): InspectorRoomState | null {
   let state = rooms.get(roomSessionId)
   if (!state) {
@@ -133,6 +156,18 @@ export function buildCollabCoordinatorState(roomSessionId: string): CollabCoordi
   const runtime = peekRoomRuntime(roomSessionId)
   const inspector = rooms.get(roomSessionId)
   const planRoom = isCollabPlanRoom(session.room)
+
+  // v3 接线之后调度那几格来自房账;seq / typing / 「刚才」仍归这里(见上)。
+  const v3 = v3SnapshotSource?.(roomSessionId) ?? null
+  if (v3) {
+    return {
+      ...v3,
+      seq: inspector?.seq ?? 0,
+      at: Date.now(),
+      typing: [...(inspector?.typing ?? [])],
+      log: [...(inspector?.log ?? [])],
+    }
+  }
 
   return {
     roomSessionId,

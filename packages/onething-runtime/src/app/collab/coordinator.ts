@@ -51,6 +51,7 @@ import {
   shutdownCollabInspector,
 } from './inspector.js'
 import { configureCollabDriveGuard } from './drive-guard.js'
+import { resetCollabV3RoomAccount } from './actors/turn-context.js'
 import { resetCollabSeenCursor } from './agent-session.js'
 import { forgetCollabDigests } from './digest-store.js'
 import { clearCollabWakeFollowups } from './wake-followup.js'
@@ -338,6 +339,16 @@ export async function clearCollabRoomHistory(
   }
   runtime.chainNoticePosted = false
   persistRoomState(roomSessionId, runtime)
+  /**
+   * v3 的那本账一起清(D6-a 接线)。
+   *
+   * 「对话记忆」在 v2 散在七处;v3 里房间那一份**全在账里**(水位、链数、举手、
+   * 租约、发言策略),所以这里只多一行 —— 但少这一行,清空之后的第一个回合会
+   * 带着旧水位跑:模型读到的"未读"是空的,而房间以为讨论已经进行到第 6 轮。
+   *
+   * 运行时没起(或这不是一间 v3 房)时它是空操作。
+   */
+  await resetCollabV3RoomAccount(roomSessionId)
   forgetCollabDigests(roomSessionId)
   // 「刚才」清零。表项被删之后活房间会按需重建 —— 重建出来的正是一份空的。
   forgetCollabInspector(roomSessionId)

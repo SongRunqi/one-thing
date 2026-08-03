@@ -37,7 +37,9 @@ import { findAgent } from '../../agents/index.js'
 import { getEventBus } from '../../events/index.js'
 import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../store.js'
+import { noteCollabAdoptedEcho } from '../agent-session.js'
 import { issueCollabDriveToken } from '../drive-guard.js'
+import { emitCollabTurnActive, observeCollabSayTyping } from '../typing-observer.js'
 import {
   abortCollabZombieStream,
   collabAgentModelFields,
@@ -51,6 +53,11 @@ import type {
   CollabMindTurnRequest,
   CollabMindTurnResult,
 } from './mind-port.js'
+import {
+  beginCollabV3Turn,
+  collabV3SpeakPort,
+  endCollabV3Turn,
+} from './turn-context.js'
 
 /** 起流的等待上限。没见到 `stream:start` 就是没跑起来。 */
 const TURN_START_TIMEOUT_MS = 20_000
@@ -58,6 +65,8 @@ const TURN_START_TIMEOUT_MS = 20_000
 const TURN_TOTAL_TIMEOUT_MS = 10 * 60_000
 /** 注入等一个工具回合边界的上限。超过它就当作「这一轮不会再读了」。 */
 const STEER_CONSUME_TIMEOUT_MS = 10 * 60_000
+/** 收尾正文超过这个长度还零 say = 「写而未发」;更短的当收尾自语,算真沉默。 */
+const COLLAB_UNSENT_PROSE_MIN = 40
 
 /** 注入消息在执行会话里的来源标记 —— 刻意**不是** `COLLAB_MESSAGE_SOURCE`。
  *  那个标记的语义是「这是一条驱动」,而注入消息会被引擎持久化进执行会话;打上
@@ -132,20 +141,28 @@ function toMindSay(message: ChatMessage): CollabMindSay {
   }
 }
 
-/** 回合的宿主消息 —— 执行会话里这一窗最新的那条 assistant 记录。 */
+/**
+ * 回合的宿主消息 —— 执行会话里这一窗最新的那条 assistant 记录。
+ *
+ * 多带一个 `prose`(正文原文),端口内部用:收养式兜底要搬运的就是它。它**不**
+ * 进 `CollabMindTurnResult` —— 那一层只需要「有没有、有多长」,给它全文等于让每
+ * 一个读者都有机会把回合正文当成一条发言(见 `mind-port.ts` 的 `turnMessage`)。
+ */
 function harvestTurnMessage(
   execSessionId: string,
   sinceTs: number,
-): { id?: string; proseChars: number; at?: number } | undefined {
+): { id?: string; proseChars: number; at?: number; prose: string } | undefined {
   const messages = store.getSession(execSessionId)?.messages ?? []
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
     if (message.timestamp < sinceTs) break
     if (message.role !== 'assistant') continue
+    const prose = (message.content ?? '').trim()
     return {
       ...(message.id ? { id: message.id } : {}),
-      proseChars: (message.content ?? '').trim().length,
+      proseChars: prose.length,
       ...(typeof message.timestamp === 'number' ? { at: message.timestamp } : {}),
+      prose,
     }
   }
   return undefined
@@ -188,39 +205,94 @@ export function createCollabEngineMindPort(
       const startedAt = now()
       const driveToken = issueCollabDriveToken()
 
-      const turnEnded = waitForTerminalEvent(
-        request.execSessionId,
-        options.startTimeoutMs,
-        options.totalTimeoutMs,
-      )
-      await getEventBus().emit(request.execSessionId, {
-        ...collabDriveEnvelope({
-          channel: roomConnector(request.roomSessionId),
-          content: request.driveContent,
-          // W13.3:这一轮记房间的账,不是匿名 chat。归属而已 —— 预算闸仍按
-          // sessionId 求和。
-          usageSource: COLLAB_USAGE_SOURCE_ROOM,
-        }),
-        // 标记说这是什么,令牌证明是谁发的:引擎的 room/exec 门因此不必信一个字符串。
-        ...(driveToken ? { collabDriveToken: driveToken } : {}),
-        // 这一轮答的是哪张牌。落在执行会话里 = 一份比内存账活得久的幂等凭据。
-        collabLeaseId: request.lease.leaseId,
-        ...collabAgentModelFields(agent, modelPinned),
-      } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+      /**
+       * 回合语境的登记(D6-a)。
+       *
+       * `send_message` 只拿得到 `sessionId`,而 v3 的房间验票 —— 票在这张表里。
+       * 登记必须在 **emit 之前**:总线是同步投递的,工具可能在 `emit` 还没返回
+       * 的时候就已经被调用了。
+       */
+      beginCollabV3Turn({
+        agentId: request.agentId,
+        roomSessionId: request.roomSessionId,
+        execSessionId: request.execSessionId,
+        leaseId: request.lease.leaseId,
+        epoch: request.lease.epoch,
+        startedAt,
+      })
+      // W19 的灯:观察器挂在**执行会话**的事件流上(回合就跑在那儿),灯点在房间。
+      // 断路器同理 —— 它是引擎侧的回合内计数,与这里挂不挂无关,v3 回合照样受它管。
+      const detachTyping = observeCollabSayTyping({
+        sessionId: request.execSessionId,
+        roomSessionId: request.roomSessionId,
+        agentId: request.agentId,
+      })
+      // 停止按钮要在人伸手的那一刻就已经画好(collab-team-v2 §5.1)。
+      emitCollabTurnActive(request.roomSessionId, request.agentId, true)
 
-      const outcome = await turnEnded
-      // 等待放弃了,请求并没有:它会继续拿整个上下文来回打,而这一轮已经没有人在听。
-      abortCollabZombieStream(outcome, request.execSessionId)
+      try {
+        const turnEnded = waitForTerminalEvent(
+          request.execSessionId,
+          options.startTimeoutMs,
+          options.totalTimeoutMs,
+        )
+        await getEventBus().emit(request.execSessionId, {
+          ...collabDriveEnvelope({
+            channel: roomConnector(request.roomSessionId),
+            content: request.driveContent,
+            // W13.3:这一轮记房间的账,不是匿名 chat。归属而已 —— 预算闸仍按
+            // sessionId 求和。
+            usageSource: COLLAB_USAGE_SOURCE_ROOM,
+          }),
+          // 标记说这是什么,令牌证明是谁发的:引擎的 room/exec 门因此不必信一个字符串。
+          ...(driveToken ? { collabDriveToken: driveToken } : {}),
+          // 这一轮答的是哪张牌。落在执行会话里 = 一份比内存账活得久的幂等凭据。
+          collabLeaseId: request.lease.leaseId,
+          ...collabAgentModelFields(agent, modelPinned),
+        } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
 
-      // 不论结局都收割:一个被 abort 的半截回合里说出去的话**已经在房间里了**。
-      const roomMessages = store.getSession(request.roomSessionId)?.messages ?? []
-      const { says } = scanCollabRoomSays(roomMessages, request.agentId, startedAt)
-      const turnMessage = harvestTurnMessage(request.execSessionId, startedAt)
+        const outcome = await turnEnded
+        // 等待放弃了,请求并没有:它会继续拿整个上下文来回打,而这一轮已经没有人在听。
+        abortCollabZombieStream(outcome, request.execSessionId)
 
-      return {
-        outcome,
-        says: says.map(toMindSay),
-        ...(turnMessage ? { turnMessage } : {}),
+        // 不论结局都收割:一个被 abort 的半截回合里说出去的话**已经在房间里了**。
+        const roomMessages = store.getSession(request.roomSessionId)?.messages ?? []
+        const { says } = scanCollabRoomSays(roomMessages, request.agentId, startedAt)
+        const turnMessage = harvestTurnMessage(request.execSessionId, startedAt)
+        const harvested = says.map(toMindSay)
+
+        /**
+         * 收养式兜底(2026-08-02「写而未发」,v3 落点)。
+         *
+         * 零 say + 收尾正文达标 = 它写完了却没按发送。**只搬运已写好的文本,不再
+         * 驱动模型** —— 被拆除的 W14d nudge 死在补救轮里模型重发,而这里的前提就是
+         * 本回合零发送,重复在结构上不可能发生。
+         *
+         * 走的是与 `send_message` **同一条** speak(同一张牌、同一套门、同一个幂等
+         * 窗),所以收养出来的消息与它自己说的那句在房间里没有任何区别。
+         */
+        if (outcome === 'complete' && harvested.length === 0) {
+          const adopted = await adoptUnsentProse(request, turnMessage?.prose ?? '')
+          if (adopted) harvested.push(adopted)
+        }
+
+        return {
+          outcome,
+          says: harvested,
+          ...(turnMessage
+            ? {
+                turnMessage: {
+                  ...(turnMessage.id ? { id: turnMessage.id } : {}),
+                  proseChars: turnMessage.proseChars,
+                  ...(turnMessage.at === undefined ? {} : { at: turnMessage.at }),
+                },
+              }
+            : {}),
+        }
+      } finally {
+        detachTyping()
+        emitCollabTurnActive(request.roomSessionId, request.agentId, false)
+        endCollabV3Turn(request.execSessionId, request.lease.leaseId)
       }
     },
 
@@ -292,6 +364,42 @@ export function createCollabEngineMindPort(
       }
       return false
     },
+  }
+}
+
+/**
+ * 「写而未发」的收养:把回合里写好却没送出去的正文,经**同一张牌**代发进房间。
+ *
+ * 三条与 v2 逐条对齐:
+ *  - **阈值**(`COLLAB_UNSENT_PROSE_MIN`):更短的当收尾自语,算真沉默;
+ *  - **回声登记**:代发的是作者**自己**的消息,而自己的消息永不进自己的未读
+ *    (history-window.ts)—— 不留这一笔,作者下一轮读到的世界里那段话仍然没发
+ *    出去,再发一遍是它合理的下一步(架构审查 A6);
+ *  - **失败不重试**:房间冻结 / 超预算 / 已除名,回落静默收尾。
+ *
+ * 返回值带 `messageId` —— AgentActor 据此认出「这句已经在房间里了」,不会再发一次
+ * `agent:speak`(见 `agent-actor.ts` 的收尾)。
+ */
+async function adoptUnsentProse(
+  request: CollabMindTurnRequest,
+  prose: string,
+): Promise<CollabMindSay | undefined> {
+  if (prose.length < COLLAB_UNSENT_PROSE_MIN) return undefined
+  const speak = collabV3SpeakPort()
+  if (!speak) return undefined
+  try {
+    const delivered = await speak({
+      agentId: request.agentId,
+      roomSessionId: request.roomSessionId,
+      leaseId: request.lease.leaseId,
+      content: prose,
+    })
+    if (!delivered.ok || !delivered.messageId) return undefined
+    noteCollabAdoptedEcho(request.execSessionId, delivered.messageId)
+    return { content: prose, messageId: delivered.messageId }
+  } catch (error) {
+    console.error('[collab-v3] 收养式代发失败:', error)
+    return undefined
   }
 }
 

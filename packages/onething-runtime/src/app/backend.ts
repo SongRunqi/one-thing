@@ -35,7 +35,7 @@ import {
 } from './engine/index.js'
 import type { BindableStreamSender } from './engine/stream-engine.js'
 import { registerBuiltinTriggers } from './engine/triggers/index.js'
-import { initializeCollabCoordinator, shutdownCollabCoordinator } from './collab/index.js'
+import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from './collab/index.js'
 import { Permission } from './permission/index.js'
 import { bootstrapVariableSystem } from './variables/index.js'
 import { bootstrapGoalStreamBreakers } from './goals/runtime-hooks.js'
@@ -181,7 +181,14 @@ export async function createOnethingBackend(
     // dynamic import here left the collab modules bundled INSIDE the desktop
     // entry chunk (the ingress gate references them statically), and the CLI
     // daemon's dynamic load then pulled the whole electron entry into Node.
-    initializeCollabCoordinator()
+    //
+    // D6-a(docs/design/collab-actor-v3.md §6):协作的生产路径从 v2 协调器换成
+    // v3 actor 运行时。boot 里那一趟 marker 门控的迁移住在它里面 —— 单向门只有
+    // 一个触发点,而这里是唯一一个会在启动时走到它的地方。
+    //
+    // `await`:迁移与房账续播都要落盘,而它们必须排在第一条用户消息之前 ——
+    // 一间还没续播完的房收到 posted,会把上一条命没投完的广播与新消息交错投出去。
+    await initializeCollabV3Runtime()
   }
 
   if (options.mcpAcp) {
@@ -202,7 +209,7 @@ export async function createOnethingBackend(
     async shutdown() {
       if (options.collab) {
         try {
-          shutdownCollabCoordinator()
+          await shutdownCollabV3Runtime()
         } catch (error) {
           console.error('[Backend] collab shutdown error:', error)
         }

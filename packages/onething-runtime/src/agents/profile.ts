@@ -54,13 +54,11 @@ export const AGENT_TOOL_GRANTS: readonly AgentToolGrant[] = [
   { id: 'collab-dm', tools: COLLAB_ROOM_TOOLS, mode: 'union' },
   { id: 'collab-work', tools: COLLAB_WORK_REQUIRED_TOOLS, mode: 'union' },
   /**
-   * Collab v3 D2 的跨房笔记(docs/design/collab-actor-v3.md §1.2)。
+   * Collab v3 的跨房笔记(docs/design/collab-actor-v3.md §1.2)。
    *
-   * **登记了,但暂时不由任何 session kind 隐含** —— `GRANTS_BY_SESSION_KIND` 里
-   * 没有指向它的那一行,要它的会话得在 agent 的 `toolGrants` 里显式点名。这不是
-   * 遗漏:v2 的调度链到 D6 才退役,今天把 notebook 挂进房/工作台的地板,等于让
-   * 每一个 v2 回合都多带一个工具,而写下的笔记要到 v3 接线才有人读。D6 接线时
-   * 这里改的是**一行**(把 `collab-notebook` 加进那两张 kind 表),不是一次重构。
+   * D2 登记时刻意不由任何 kind 隐含(v2 回合带一个没人读的工具是纯损耗);
+   * **D6-a 接线后由 `NOTEBOOK_SESSION_KINDS` 隐含** —— v3 的心智循环在每一条
+   * drive 的尾部注入笔记,写下的东西从此有读者。
    */
   { id: 'collab-notebook', tools: COLLAB_NOTEBOOK_TOOLS, mode: 'union' },
 ]
@@ -81,6 +79,19 @@ const DM_GRANTS_BY_SESSION_KIND: Readonly<Record<string, string>> = {
   room: 'collab-dm',
   agent: 'collab-dm',
 }
+
+/**
+ * 笔记的那一格(collab v3 D6-a)。
+ *
+ * 与上面两张表**并列而不是替换**:笔记是跨房的私人本子,与「这一回合在哪间房」
+ * 无关,所以它不该跟着 room / dm 的分支走 —— 那两张表回答的是"这一格该给哪一份
+ * 房面地板",而这一条回答的是"这个 kind 的回合是不是一个 v3 心智回合"。
+ *
+ * 少一格 `room`:W18 之后房回合跑在执行会话里(kind='agent'),留在 kind='room'
+ * 的只有旧形状的房内流,而那条路上没有 v3 的心智循环。与 `COLLAB_VENUE_TOOLS`
+ * 的 `notebook: ['agent', 'work']` 逐格对齐 —— 场子门与工具面必须说同一句话。
+ */
+const NOTEBOOK_SESSION_KINDS: ReadonlySet<string> = new Set(['agent', 'work'])
 
 /**
  * Permission modes ordered STRICTEST FIRST. Composition takes the stricter of
@@ -252,6 +263,9 @@ export function resolveAgentToolSurface(input: {
       ?? GRANTS_BY_SESSION_KIND[input.sessionKind]
     : undefined
   if (implied) grantIds.add(implied)
+  if (input.sessionKind && NOTEBOOK_SESSION_KINDS.has(input.sessionKind)) {
+    grantIds.add('collab-notebook')
+  }
 
   const grants = AGENT_TOOL_GRANTS.filter(grant => grantIds.has(grant.id))
   const replacement = grants.find(grant => grant.mode === 'replace')

@@ -102,8 +102,9 @@ describe('say 的房间路由(三级优先级)', () => {
 describe('工具面跟着回合走', () => {
   it('gives an execution session the room surface — own tools plus say + board', () => {
     // Union(2026-07-30 收紧同日撤销):白名单叠加 say/board,没配则不限制。
+    // D6-a:v3 的心智回合跑在这个 kind 上,所以地板比房面多一格笔记。
     expect(resolveAgentToolSurface({ sessionKind: 'agent', ownTools: ['read'] }))
-      .toEqual(['read', ...COLLAB_ROOM_TOOLS])
+      .toEqual(['read', ...COLLAB_ROOM_TOOLS, 'notebook'])
     // 'agent' and 'room' mean the same thing here — the surface follows the
     // turn, not the session that stores the messages.
     expect(resolveAgentToolSurface({ sessionKind: 'agent' }))
@@ -112,7 +113,7 @@ describe('工具面跟着回合走', () => {
 
   it('leaves work sessions and ordinary sessions untouched', () => {
     expect(resolveAgentToolSurface({ sessionKind: 'work', ownTools: ['read'] }))
-      .toEqual(['read', 'board', 'send_message'])
+      .toEqual(['read', 'board', 'send_message', 'notebook'])
     expect(resolveAgentToolSurface({ sessionKind: 'chat', ownTools: null })).toBeNull()
   })
 })

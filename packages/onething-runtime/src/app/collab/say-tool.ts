@@ -51,6 +51,11 @@ import { isRoomOverBudget } from './coordinator.js'
 import { buildCollabIdentityDirectory } from './identity-directory.js'
 import { resolveUserIdentity } from './user-identity.js'
 import { collabLinkedRoomSessionId } from './venue.js'
+import {
+  collabV3RoomPostPort,
+  resolveCollabV3SpeakRoute,
+  type CollabV3SpeakPort,
+} from './actors/turn-context.js'
 
 interface SayContext {
   roomSessionId: string
@@ -225,6 +230,25 @@ export async function speakIntoCollabRoom(input: {
   const content = normalizeCollabSayContent(input.content)
   if (!content) return { ok: false, error: COLLAB_SAY_REFUSED_EMPTY }
 
+  /**
+   * v3 的租约面(D6-a §3「speak 的工具面形态就是 send_message」)。
+   *
+   * 只在**这一轮在答的那间房**里生效(路由判据见 `resolveCollabV3SpeakRoute`)。
+   * 走这条路时,下面那四道门(冻结 / 成员 / 预算 / 空正文)、防冒名的 mention
+   * 白名单、句柄出栈全部由 RoomActor 的 `applyCollabRoomSpeak` 执行 —— 一字不改
+   * 地搬过去的正是**同一份**纯规则(C1/C2 的措辞资产因此没有第二份)。
+   *
+   * 留在这一层的只有两件房间管不着的事:**幂等窗**(它是"同一次调用重复到达"
+   * 的窗口,不是房间的账)与**引用快照**(要查被引的那条消息还在不在,而房间
+   * 那侧的纯规则不认识 store —— 快照由 v3 发言口补写)。
+   */
+  const v3 = resolveCollabV3SpeakRoute({
+    sessionId: input.sessionId,
+    roomSessionId: context.roomSessionId,
+    agentId: context.agentId,
+  })
+  if (v3) return speakThroughCollabLease(v3, context, input, content)
+
   const room = store.getSession(context.roomSessionId)
   if (room?.kind !== 'room' || !room.room) {
     // An explicit `room` that names nothing is a different mistake from having
@@ -305,8 +329,64 @@ export async function speakIntoCollabRoom(input: {
     type: 'message:user-created',
     message,
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+  /**
+   * 跨房落库之后**告诉那间房一声**(D6-a)。
+   *
+   * 走到这里的都是牌管不着的发言:私聊注入、工作台往母房汇报、旧形状的房内回合。
+   * 它们此前靠各自的调用方去 `enqueue` 一次激活;v3 里"送达即激活"是房间自己的
+   * 事 —— 一条 posted 进去,推水位、清链(消息自带 `collabChainReset`)、按 @
+   * 发牌全部照常。端口没装上(v3 未起)时这一行是空操作。
+   */
+  const post = collabV3RoomPostPort()
+  if (post) await post(context.roomSessionId, message)
 
   return { ok: true, messageId: message.id }
+}
+
+/**
+ * v3 回合里的一句话:经**租约**发进房间。
+ *
+ * 拒绝文案原样透传 —— 它来自与 v2 逐字相同的那几个常量(纯层
+ * `applyCollabRoomSpeak` 复用的就是 `COLLAB_SAY_REFUSED_*`),外加两条 v3 才有的
+ * 验票拒绝("这张牌不是你的" / "牌已作废")。模型读到的仍是一句能照做的话。
+ */
+async function speakThroughCollabLease(
+  route: { speak: CollabV3SpeakPort; leaseId: string },
+  context: SayContext,
+  input: { mentions?: string[]; replyTo?: string; chainReset?: boolean },
+  content: string,
+): Promise<SayToolResult> {
+  // 幂等窗的指纹建在**归一化后的正文**上:同一句话用 `@小李` 与 `@小李#3f9c1e2a`
+  // 两种写法写出来必须算作同一条,否则窗形同虚设(与 v2 同一条论证)。
+  const spoken = stripCollabAgentHandles(content, buildCollabIdentityDirectory())
+  const fingerprint = sayFingerprint({
+    roomSessionId: context.roomSessionId,
+    agentId: context.agentId,
+    content: spoken,
+    mentionAgentIds: input.mentions ?? [],
+    ...(input.replyTo ? { replyToMessageId: input.replyTo } : {}),
+  })
+  const now = Date.now()
+  const alreadySaid = lookupRecentSay(fingerprint, now)
+  // 什么都不落、什么都不播,而调用方被告知成功 —— 因为它确实成功了:那句话在
+  // 群里,就在这个 id 下面。
+  if (alreadySaid) return { ok: true, messageId: alreadySaid }
+
+  const delivered = await route.speak({
+    agentId: context.agentId,
+    roomSessionId: context.roomSessionId,
+    leaseId: route.leaseId,
+    // **原文**过去(不是 stripped):句柄要留给房间去解析 mentions,出栈在那之后。
+    content,
+    ...(input.mentions?.length ? { mentions: input.mentions } : {}),
+    ...(input.replyTo ? { replyToMessageId: input.replyTo } : {}),
+    ...(input.chainReset ? { chainReset: true } : {}),
+  })
+  if (!delivered.ok || !delivered.messageId) {
+    return { ok: false, error: delivered.error ?? COLLAB_SAY_REFUSED_NO_ROOM }
+  }
+  recentSays.set(fingerprint, { messageId: delivered.messageId, at: now })
+  return { ok: true, messageId: delivered.messageId }
 }
 
 /**

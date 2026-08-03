@@ -37,19 +37,21 @@ describe('resolveAgentToolSurface', () => {
     // 配了白名单 → own ∪ {say, board};没配 → 不限制。
     { name: 'room unions', kind: 'room', ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history'] },
     { name: 'room without allowlist stays unrestricted', kind: 'room', ownTools: null, expected: null },
-    { name: 'agent kind unions', kind: 'agent', ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history'] },
+    // D6-a 接线:v3 的心智回合跑在 kind='agent' 上,笔记从此进这一格的地板
+    // (`NOTEBOOK_SESSION_KINDS`)。kind='room' 没有 —— 那里没有 v3 心智循环。
+    { name: 'agent kind unions', kind: 'agent', ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history', 'notebook'] },
     { name: 'agent kind without allowlist stays unrestricted', kind: 'agent', ownTools: null, expected: null },
     // D7:单成员 dm 房走 `collab-dm` 那一格。今天与群房同解,分开登记是为了将来
     // 能分开动(群房若再次收紧成 replace,托管私聊不能跟着被收窄)。
     { name: 'dm room unions', kind: 'room', dm: true, ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history'] },
     { name: 'dm room without allowlist stays unrestricted', kind: 'room', dm: true, ownTools: null, expected: null },
-    { name: 'dm agent kind unions', kind: 'agent', dm: true, ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history'] },
+    { name: 'dm agent kind unions', kind: 'agent', dm: true, ownTools: ['bash'], expected: ['bash', 'send_message', 'board', 'history', 'notebook'] },
     // dm 只对房回合有意义:work / chat 不因为这个标记改答案。
-    { name: 'dm flag does not reach work', kind: 'work', dm: true, ownTools: ['bash'], expected: ['bash', 'board', 'send_message'] },
+    { name: 'dm flag does not reach work', kind: 'work', dm: true, ownTools: ['bash'], expected: ['bash', 'board', 'send_message', 'notebook'] },
     { name: 'dm flag does not reach chat', kind: undefined, dm: true, ownTools: ['bash'], expected: ['bash'] },
-    { name: 'work unions', kind: 'work', ownTools: ['bash'], expected: ['bash', 'board', 'send_message'] },
+    { name: 'work unions', kind: 'work', ownTools: ['bash'], expected: ['bash', 'board', 'send_message', 'notebook'] },
     { name: 'work without allowlist stays unrestricted', kind: 'work', ownTools: null, expected: null },
-    { name: 'work does not duplicate', kind: 'work', ownTools: ['board'], expected: ['board', 'send_message'] },
+    { name: 'work does not duplicate', kind: 'work', ownTools: ['board'], expected: ['board', 'send_message', 'notebook'] },
     { name: 'room does not duplicate', kind: 'room', ownTools: ['send_message'], expected: ['send_message', 'board', 'history'] },
     { name: 'unknown kind passes through', kind: 'archive', ownTools: ['bash'], expected: ['bash'] },
   ]

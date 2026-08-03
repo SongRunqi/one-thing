@@ -19,7 +19,18 @@ export {
   type CollabRoomConfigPatch,
   type CollabRoomConfigResult,
 } from './coordinator.js'
-export { abortCollabRoomTurnForStop } from './turn.js'
+/**
+ * 停止按钮那扇门走 v3 优先的路由(D6-a)。v2 的 `turn.ts` 那份仍在,由这扇门在
+ * 「这不是一间 v3 房」时回落 —— 见 `actors/stop-door.ts`。
+ */
+export { abortCollabRoomTurnForStop } from './actors/stop-door.js'
+/** Collab v3 运行时(D6-a):`createOnethingBackend` 的协作装配点。 */
+export {
+  initializeCollabV3Runtime,
+  isCollabV3RuntimeRunning,
+  shutdownCollabV3Runtime,
+  type CollabV3RuntimeOptions,
+} from './actors/runtime.js'
 /** 建群房的唯一入口(架构收敛 C3):校验 + 落库,壳层不留业务规则。 */
 export {
   ensureCollabGroupRoom,

@@ -28,6 +28,7 @@ import {
   type CollabAgentLike,
 } from '@onething/runtime/collab'
 import { isTrustedCollabDrive } from './drive-guard.js'
+import { collabV3RoomPostPort } from './actors/turn-context.js'
 
 export interface CollabRoomInboundCommand {
   content: string
@@ -138,5 +139,18 @@ export async function handleCollabRoomSendMessage(
     type: 'message:user-created',
     message,
   } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+  /**
+   * v3:落库之后**把这条消息投进 RoomActor**(D6-a 接线)。
+   *
+   * 次序是「先落库再投信」而不是反过来:房间的 `applyCollabRoomPosted` 对入口
+   * 的 posted 不写转录(转录归这里),而它随后要做的每一件事 —— 推水位、清链、
+   * 按 @ 发牌 —— 都以「这条消息已经在转录里」为前提。投信在前的话,拿到牌的
+   * 那位组装 drive 时读到的房间里还没有这句话。
+   *
+   * v2 的路径**一个字都没改**:协调器仍然订阅 `message:user-created`,只是
+   * D6-a 之后没有人再初始化它。端口没装上(v3 未起)时这一行是空操作。
+   */
+  const post = collabV3RoomPostPort()
+  if (post) await post(sessionId, message)
   return true
 }

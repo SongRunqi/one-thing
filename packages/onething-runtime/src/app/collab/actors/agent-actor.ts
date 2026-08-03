@@ -589,6 +589,15 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       // 的第一行),这里先停是为了不让一条注定被拒的话跑一趟 IO。
       if (turn.revoked) break
       if (!say.content.trim()) continue
+      /**
+       * **已经在房间里的那些不再发一遍**(D6 接线)。
+       *
+       * `messageId` 是「这句话已经落库」的凭据(见 `CollabMindSay` 的定义):
+       * 生产适配器收割的是房间转录里真实存在的消息 —— 那是 `send_message` 自己
+       * 经租约发进去的,再发一次就是同一句话进群两遍。剧本化的假端口不给这一格,
+       * 于是 D2 的回合语义(端口返回什么就说什么)一字不动。
+       */
+      if (say.messageId) continue
       await this.post(turn.roomId, collabAgentSpeak({
         roomId: turn.roomId,
         agentId: this.agentId,

@@ -48,6 +48,7 @@ import { collabLinkedRoomSessionId, collabToolAllowedInSession } from './venue.j
 import { registerCollabWakeFollowup } from './wake-followup.js'
 import { enqueue } from './queue.js'
 import { persistRoomState, roomRuntime } from './room-runtime.js'
+import { isCollabV3Wired } from './actors/turn-context.js'
 
 /** 拒绝文案。每一条都说清"是哪一种拒绝",因为模型能据此改做别的事。 */
 const DM_REFUSED_NO_SELF = '这一轮没有可用的发言身份,私聊发不出去。'
@@ -211,6 +212,50 @@ export async function sendCollabDm(input: {
     return { ok: false, error: said.error ?? DM_REFUSED_NO_ROOM }
   }
 
+  /**
+   * v3:清零与送达激活都归房间(D6-a)。
+   *
+   * 上面那次落库已经把消息投进了 RoomActor(`say-tool.ts` 的跨房分支),而房间
+   * 收到一条带 `collabChainReset` 的 posted 之后自己就会清链、按 @ 发牌、给对端
+   * 投信 —— 下面那两段是 v2 用两处内存账手工凑出来的同一件事。**不并存**:两本
+   * 账同时在写同一间房的链数,漂的那一天没人知道该信哪一本。
+   */
+  if (!isCollabV3Wired()) applyV2DmDelivery(roomSessionId, targetId, said.messageId)
+
+  // 唤醒登记(设计 §3.2)。**送达之后**才登记:门都过了、消息真的在那间房里,
+  // 才有"读完之后"这个时刻可以等。
+  if (wake?.ok) {
+    registerCollabWakeFollowup({
+      dmRoomSessionId: roomSessionId,
+      targetAgentId: targetId,
+      wakeRoomSessionId: wake.roomSessionId,
+      senderSessionId: input.sessionId,
+      senderAgentId: selfId,
+      sinceMessageId: said.messageId,
+    })
+  }
+
+  return {
+    ok: true,
+    targetKind: 'agent',
+    roomSessionId,
+    messageId: said.messageId,
+    peerName: target.name,
+    ...(wake?.ok ? { wakeRoomName: wake.roomName } : {}),
+  }
+}
+
+/**
+ * v2 的清零 + 送达激活(D6-b 随 queue/room-runtime 一起删)。
+ *
+ * 原样搬进一个函数,一行没改 —— 它是 D6-b 的对照面:v3 那条路要在真机上跑出
+ * 与它逐条等价的行为,才谈得上把它删掉。
+ */
+function applyV2DmDelivery(
+  roomSessionId: string,
+  targetId: string,
+  sourceMessageId: string,
+): void {
   const runtime = roomRuntime(roomSessionId)
   /**
    * 跨房 dm 注入 = 外部输入,于是这间 pair 房的链长清零
@@ -240,30 +285,8 @@ export async function sendCollabDm(input: {
     roomSessionId,
     runtime,
     [{ agentId: targetId, reason: 'mention' }],
-    said.messageId,
+    sourceMessageId,
   )
-
-  // 唤醒登记(设计 §3.2)。**送达之后**才登记:门都过了、消息真的在那间房里,
-  // 才有"读完之后"这个时刻可以等。
-  if (wake?.ok) {
-    registerCollabWakeFollowup({
-      dmRoomSessionId: roomSessionId,
-      targetAgentId: targetId,
-      wakeRoomSessionId: wake.roomSessionId,
-      senderSessionId: input.sessionId,
-      senderAgentId: selfId,
-      sinceMessageId: said.messageId,
-    })
-  }
-
-  return {
-    ok: true,
-    targetKind: 'agent',
-    roomSessionId,
-    messageId: said.messageId,
-    peerName: target.name,
-    ...(wake?.ok ? { wakeRoomName: wake.roomName } : {}),
-  }
 }
 
 /**

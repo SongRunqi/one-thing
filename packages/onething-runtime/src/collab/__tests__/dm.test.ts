@@ -135,7 +135,7 @@ describe("D7 dm 工具面 = union", () => {
 				sessionDm: true,
 				ownTools: ["read"],
 			}),
-		).toEqual(["read", "send_message", "board", "history"]);
+		).toEqual(["read", "send_message", "board", "history", "notebook"]);
 		expect(
 			resolveAgentToolSurface({
 				sessionKind: "room",
@@ -158,7 +158,7 @@ describe("D7 dm 工具面 = union", () => {
 				sessionKind: "agent",
 				sessionDm: true,
 			}),
-		).toEqual(["bash", "send_message", "board", "history"]);
+		).toEqual(["bash", "send_message", "board", "history", "notebook"]);
 		expect(
 			resolveAgentToolSurface({
 				ownTools: null,
@@ -179,7 +179,7 @@ describe("D7 dm 工具面 = union", () => {
 				sessionDm: true,
 				ownTools: ["read"],
 			}),
-		).toEqual(["read", "board", "send_message"]);
+		).toEqual(["read", "board", "send_message", "notebook"]);
 		expect(
 			resolveAgentToolSurface({
 				sessionKind: "chat",

@@ -197,7 +197,7 @@ describe("§3.4 工具面:双人房走群房那一路", () => {
 		// 群房解析 —— 今天两格的工具清单一样,但走的确实是不同的那一格。
 		expect(
 			resolveAgentToolSurface({ sessionKind: "agent", ownTools: ["read"] }),
-		).toEqual(["read", "send_message", "board", "history"]);
+		).toEqual(["read", "send_message", "board", "history", "notebook"]);
 	});
 });
 

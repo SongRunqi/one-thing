@@ -462,21 +462,22 @@ describe("工具面(D5 + W14b,union 语义)", () => {
 		// 没配白名单 = 跟随全局 = 不限制。
 		expect(resolveAgentToolSurface({ sessionKind: "room" })).toBeNull();
 		expect(resolveAgentToolSurface({ sessionKind: "agent" })).toBeNull();
+		// D6-a:kind='agent' 是 v3 心智回合的落点,地板比房面多一格笔记。
 		expect(
 			resolveAgentToolSurface({
 				sessionKind: "agent",
 				ownTools: ["read", "render_preview"],
 			}),
-		).toEqual(["read", "render_preview", "send_message", "board", "history"]);
+		).toEqual(["read", "render_preview", "send_message", "board", "history", "notebook"]);
 	});
 
 	it("UNIONs send_message + board into a work session whitelist, keeping its real tools", () => {
 		expect(
 			resolveAgentToolSurface({ sessionKind: "work", ownTools: ["read"] }),
-		).toEqual(["read", "board", "send_message"]);
+		).toEqual(["read", "board", "send_message", "notebook"]);
 		expect(
 			resolveAgentToolSurface({ sessionKind: "work", ownTools: ["read", "send_message"] }),
-		).toEqual(["read", "send_message", "board"]);
+		).toEqual(["read", "send_message", "board", "notebook"]);
 	});
 
 	it("offers stay_silent to NOBODY — the tool is retired (W22 退役清单)", () => {
