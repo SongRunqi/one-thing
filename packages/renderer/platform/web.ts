@@ -446,6 +446,8 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	"getCollabCoordinator",
 	// Agent 活动快照(D8 §3.1):供数在主进程的 v3 运行时里,与协调器同一条边界
 	"getCollabAgentActivity",
+	// 调度时间轴(D8 §3.3):账文件在主进程的 store 里,与 room folder 同一条理由
+	"getCollabSchedulerLog",
 	"updateCollabRoom",
 	"clearCollabRoomHistory",
 	"reactToCollabMessage",

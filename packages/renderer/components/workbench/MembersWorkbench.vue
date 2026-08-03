@@ -45,9 +45,11 @@
               :avatar-image="member.avatarImage"
               :size="36"
             />
+            <!-- 在场点。`is-busy` 保留(样板的空/实两态),`is-<presence>`
+                 再给三色 —— 三件不同的事在 D8 之前是同一个"在忙"。 -->
             <i
               class="member-dot"
-              :class="{ 'is-busy': member.busy }"
+              :class="[{ 'is-busy': member.busy }, `is-${member.presence}`]"
               aria-hidden="true"
             />
           </span>
@@ -82,10 +84,14 @@
  *
  * 数据一律复用既有口径,本组件不新增任何一份账:
  *  - 花名册 = `buildRoomMemberEntries`(房头成员堆同一份,含墓碑三态);
- *  - 在忙什么 = `findAgentDoingTask`(左栏活卡片同一份,W7)。
+ *  - **在场** = `resolveRoomMemberPresence`(房头四态徽标同一份,D8 §4.4)——
+ *    读 collabBoard 的 agents 账,不再从看板 doing 卡现算;
+ *  - **在做哪张卡** = `findAgentDoingTask`(左栏活卡片同一份,W7)。
+ *    这两件事在 D8 之前是同一个判据,而它在两个方向上都会撒谎(见
+ *    `chat/agent-activity.ts` 的文件头)。
  *
  * 下钻层本身是共享的 `AgentSpace`(agent-space-workbench.md P2):配置/会话/
- * 文件/搜索四面**就地渲染**,不再 `openAgentSpace` 跳去 Agents 管理页。行的
+ * 文件/搜索/大脑五面**就地渲染**,不再 `openAgentSpace` 跳去 Agents 管理页。行的
  * 落点由这个组件转给右栏宿主 —— 会话去主区页签,文件去右栏文件页签。
  */
 import { computed, ref, watch } from 'vue'
@@ -93,7 +99,10 @@ import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import { useAgentsStore, type AgentDetailTab } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
 import { useCollabBoardStore } from '@/stores/collabBoard'
-import { buildRoomMemberEntries } from '@/components/chat/room-member-strip'
+import {
+  buildRoomMemberEntries,
+  resolveRoomMemberPresence,
+} from '@/components/chat/room-member-strip'
 import { findAgentDoingTask } from '@/components/chat/agent-activity'
 import AgentSpace from '@/components/agents/AgentSpace.vue'
 import {
@@ -149,9 +158,19 @@ const entries = computed(() => buildRoomMemberEntries({
 
 const board = computed(() => (props.sessionId ? collabBoardStore.boardFor(props.sessionId) : null))
 
+/**
+ * 在场判定读 collabBoard 的 agents 账(D8 §4.4)—— 不再从看板 doing 卡现算。
+ * 补水每人一次,之后跟着 `collab:agent-changed` 走。
+ */
+watch(() => entries.value.map(entry => entry.id).join(','), () => {
+  const agentIds = entries.value.filter(entry => !entry.isRetired).map(entry => entry.id)
+  if (agentIds.length > 0) collabBoardStore.ensureAgentActivity(agentIds)
+}, { immediate: true })
+
 const groups = computed(() => buildRoomPresenceGroups({
   entries: entries.value,
   board: board.value,
+  presence: agentId => resolveRoomMemberPresence(collabBoardStore.agentActivityFor(agentId)),
 }))
 
 const memberCount = computed(() => countRoomPresenceMembers(groups.value))
@@ -236,6 +255,16 @@ function closeSpace(): void {
 .member-dot.is-busy {
   background: var(--ui-surface-panel-bg, var(--bg-panel));
   border-color: var(--ui-status-success-fg, var(--text-success));
+}
+
+/* 三色分别是三件不同的事(D8 §4.4):真在写字 / 拿着牌还没开始 / 在干一张卡的活。
+   顺序在 is-busy 之后,同特异性后来居上。 */
+.member-dot.is-holding {
+  border-color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+}
+
+.member-dot.is-working {
+  border-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .member-text {

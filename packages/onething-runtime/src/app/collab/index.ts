@@ -28,6 +28,17 @@ export {
  * 大脑、信箱、工作卡是跨房的 —— 任何一份房间快照里都没有它们的位置。
  */
 export { getCollabAgentActivity } from './agent-activity.js'
+/**
+ * 调度时间轴的尾读(D8 §3.3)——「刚才为什么是那样」的唯一读口。
+ *
+ * 读**账文件**、不经运行时:app 挂了也能查,而抓瞎最惨的时刻恰恰是进程不对劲的
+ * 时刻。UI 与诊断 CLI 走同一个函数,不各自 `readFileSync` 一遍(轮转、按日切文件、
+ * 坏行跳过这几条规则只该有一份实现)。
+ */
+export {
+  readCollabSchedulerLogTail,
+  type CollabSchedulerLogTailOptions,
+} from './actors/scheduler-log.js'
 /** 停止按钮那扇门(D6-b 起只有 v3 一条实现)—— 见 `actors/stop-door.ts`。 */
 export { abortCollabRoomTurnForStop } from './actors/stop-door.js'
 /** Collab v3 运行时(D6-a):`createOnethingBackend` 的协作装配点。 */

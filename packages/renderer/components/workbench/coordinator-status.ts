@@ -8,6 +8,8 @@
  * 这里连状态都不存,只是把后端那一份快照翻译成人话。
  */
 import type {
+  CollabAgentMind,
+  CollabCoordinatorBlockedBy,
   CollabCoordinatorGate,
   CollabCoordinatorLogEntry,
   CollabCoordinatorState,
@@ -32,6 +34,15 @@ export function coordinatorReasonLabel(reason: string): string {
   return REASON_LABEL[reason] ?? ''
 }
 
+/**
+ * 「这个人的大脑在哪」的读口 —— 由调用方从 collabBoard 的 agents 账注入
+ * (D8 观测体系 §4.6:全部 UI 从两本快照账派生,这一面一个字段都不新增)。
+ *
+ * 不给 = 一律当空闲。「读不到」与「空闲」在界面上刻意是同一个样子:为"还没补上水"
+ * 单开一个加载态,只会让安静的房间每次开面闪一下。
+ */
+export type CoordinatorMindResolver = (agentId: string) => CollabAgentMind | null | undefined
+
 // ── 常驻条 ────────────────────────────────────────────────────────────────
 
 export type CoordinatorLamp = 'run' | 'wait' | 'idle' | 'off'
@@ -44,6 +55,14 @@ export interface CoordinatorBarView {
   tail: string
   /** 暂停/撞闸时条上直接给动作 —— 那两种状态用户唯一想做的事就是解开它。 */
   action: 'resume' | null
+  /**
+   * 这间房的 actor 处理事件失败了几次(D8 §3.4)。>0 时条尾亮一颗红点。
+   *
+   * 死信在 D8 之前是一个**没有消费者**的内存环:一封信炸了,循环继续跑,而系统
+   * 静默地变哑 —— 用户看到的是「它没回应」,真相是「它试过但炸了」。这颗点是分开
+   * 这两件事的地方,详情在后台面板的时间轴上。
+   */
+  deadLetters: number
 }
 
 /**
@@ -51,71 +70,99 @@ export interface CoordinatorBarView {
  *
  * 一个正在跑的回合旁边挂着一道已经撞上的闸时,用户要先知道后者 —— 前者自己会
  * 结束,后者不动手就永远不会。
+ *
+ * 「谁在动」这一句在 D8 里改了词(蓝图 §4.1)。旧词是「N 人正在说」,而 v3 有
+ * **第三种状态**:牌发出去之后要先躺进那个 agent 的信箱,等它的心智循环取到这一批
+ * 才起跑,而那颗大脑此刻可能正在别的房里想。「持牌等大脑」在 v2 的词汇表里没有
+ * 对应词,于是状态条把它画成「正在说」—— 用户看见一个在说话、实则一个字都还没写
+ * 的人。两个数字分开写,那句谎就说不出来了。
  */
 export function buildCoordinatorBar(
   state: CollabCoordinatorState | null,
-  resolveName: (agentId: string) => string,
+  /**
+   * 留着但**不再用**:改词之后这一行只说数字了(见上)。名字下沉到「现在」那几行
+   * (那儿有整行宽度写「(在别处思考)」这样的后缀)。参数保留是为了不动四个调用点
+   * 与整套用例的形状 —— 而那正是这次改词最容易夹带回归的地方。
+   */
+  _resolveName: (agentId: string) => string,
 ): CoordinatorBarView {
   const modeLabel = state?.mode === 'serial'
     ? '顺序'
     : state?.mode === 'auto' ? '智能' : '并行'
-  if (!state) return { lamp: 'off', text: '空闲', tail: modeLabel, action: null }
+  const deadLetters = state?.deadLetterCount ?? 0
+  const base = { tail: modeLabel, action: null as 'resume' | null, deadLetters }
+  if (!state) return { ...base, lamp: 'off', text: '空闲' }
 
   if (state.frozen) {
-    return { lamp: 'idle', text: '已暂停 · 队列已清空', tail: '', action: 'resume' }
+    return { ...base, lamp: 'idle', text: '已暂停 · 队列已清空', tail: '', action: 'resume' }
   }
 
   const chain = state.gates.chain
   if (chain.max > 0 && chain.value >= chain.max) {
-    return {
-      lamp: 'wait',
-      text: `已按住 · 连聊 ${chain.max} 条`,
-      tail: modeLabel,
-      action: null,
-    }
+    return { ...base, lamp: 'wait', text: `已按住 · 连聊 ${chain.max} 条` }
   }
 
   const budget = state.gates.budget
   if (budget.max > 0 && budget.value >= budget.max) {
-    return { lamp: 'wait', text: '已按住 · 今日预算用尽', tail: modeLabel, action: null }
+    return { ...base, lamp: 'wait', text: '已按住 · 今日预算用尽' }
   }
 
   if (state.judging > 0) {
     // 判定阶段刻意不点名:候选面没有被单独记下来,而编一份名字比不给更糟。
     const asked = state.judgingAgentIds.length
     return {
+      ...base,
       lamp: 'wait',
       text: asked > 0 ? `${asked} 人在判断要不要接话` : '正在判断谁接话',
-      tail: modeLabel,
-      action: null,
     }
   }
 
-  const running = state.turns[0]
-  if (running) {
-    const others = state.turns.length - 1
-    const who = resolveName(running.agentId)
+  const holding = state.turns.length
+  if (holding > 0) {
+    const generating = countCoordinatorGenerating(state)
     return {
-      lamp: 'run',
-      text: others > 0 ? `${who} 等 ${state.turns.length} 人正在说` : `${who} 正在说`,
+      ...base,
+      // 一个人都没在生成 = 满屋子的牌都在等大脑 —— 那是 wait,不是 run。
+      lamp: generating > 0 ? 'run' : 'wait',
+      text: `持牌 ${holding} · 生成中 ${generating}`,
       tail: state.plan ? `${modeLabel} · 第 ${state.plan.waveCount + 1} 批` : modeLabel,
-      action: null,
     }
   }
 
   if (state.queue.length > 0) {
-    return { lamp: 'wait', text: `${state.queue.length} 人排队中`, tail: modeLabel, action: null }
+    return { ...base, lamp: 'wait', text: `${state.queue.length} 人排队中` }
   }
 
-  return { lamp: 'off', text: '空闲', tail: modeLabel, action: null }
+  return { ...base, lamp: 'off', text: '空闲' }
+}
+
+/** 此刻**真在生成**的牌数(判据是 turn-context 登记簿,不是租约表)。 */
+export function countCoordinatorGenerating(state: CollabCoordinatorState | null): number {
+  return (state?.turns ?? []).filter(turn => turn.executing).length
 }
 
 // ── 「现在」 ──────────────────────────────────────────────────────────────
 
+/**
+ * 一张牌此刻的三态(D8 §1 词汇表修正)。
+ *
+ * `waiting-mind` 与 `thinking-elsewhere` 在旧词汇表里都读作「正在说」,而它们要
+ * 用户做的事完全不同:前者是这颗大脑一会儿就轮到这间房(等就是了),后者是它此刻
+ * 正被**别的房**占着 —— 「怎么半天不说话」的答案在另一扇窗里。
+ */
+export type CoordinatorHoldState = 'generating' | 'thinking-elsewhere' | 'waiting-mind'
+
+/** 持牌未执行时名字后面那一截。 */
+const HOLD_SUFFIX: Readonly<Record<CoordinatorHoldState, string>> = {
+  generating: '',
+  'thinking-elsewhere': '(在别处思考)',
+  'waiting-mind': '(等大脑)',
+}
+
 export interface CoordinatorNowRow {
   key: string
   /** 状态字形 —— 头像在下面的线程列表里已经是主角,这一段要的是阶段。 */
-  glyph: '▶' | '○' | '◌'
+  glyph: '▶' | '◐' | '○' | '◌'
   running: boolean
   name: string
   reason: string
@@ -124,23 +171,57 @@ export interface CoordinatorNowRow {
   /** 排队的行才有:撤 的靶子。 */
   activationId: string
   startedAt: number
+  /** 持牌行才有;其余行是 null。 */
+  hold: CoordinatorHoldState | null
+}
+
+/**
+ * 一张牌的三态。`executing` 说得出前一种,后两种要问 agents 账 ——
+ * 「等大脑」与「在别处思考」的分界只有那本账知道(房间账里根本没有别的房)。
+ */
+export function resolveCoordinatorHoldState(input: {
+  roomSessionId: string
+  agentId: string
+  executing: boolean
+  resolveMind?: CoordinatorMindResolver
+}): CoordinatorHoldState {
+  if (input.executing) return 'generating'
+  const mind = input.resolveMind?.(input.agentId)
+  if (mind?.state === 'thinking' && mind.roomSessionId && mind.roomSessionId !== input.roomSessionId) {
+    return 'thinking-elsewhere'
+  }
+  // 大脑说它就在这间房想,但登记簿里没有这张牌 —— 那也是"还没起跑",归「等大脑」:
+  // 这一格说的是牌的处境,不是大脑的处境。
+  return 'waiting-mind'
 }
 
 export function buildCoordinatorNowRows(
   state: CollabCoordinatorState | null,
   resolveName: (agentId: string) => string,
+  resolveMind?: CoordinatorMindResolver,
 ): CoordinatorNowRow[] {
   if (!state) return []
-  const rows: CoordinatorNowRow[] = state.turns.map(turn => ({
-    key: `turn:${turn.agentSessionId}`,
-    glyph: '▶' as const,
-    running: true,
-    name: resolveName(turn.agentId),
-    reason: coordinatorReasonLabel(turn.reason),
-    agentSessionId: turn.agentSessionId,
-    activationId: '',
-    startedAt: turn.startedAt,
-  }))
+  const rows: CoordinatorNowRow[] = state.turns.map(turn => {
+    const hold = resolveCoordinatorHoldState({
+      roomSessionId: state.roomSessionId,
+      agentId: turn.agentId,
+      executing: turn.executing,
+      ...(resolveMind ? { resolveMind } : {}),
+    })
+    return {
+      key: `turn:${turn.agentSessionId}`,
+      // 实心 ▶ 只给真在写字的那一张。空心 ◐ = 牌在手上,人还没开始 ——
+      // 两个字形之外不加别的记号:这一列本来就只回答"处在什么阶段"。
+      glyph: hold === 'generating' ? ('▶' as const) : ('◐' as const),
+      running: true,
+      name: `${resolveName(turn.agentId)}${HOLD_SUFFIX[hold]}`,
+      reason: coordinatorReasonLabel(turn.reason),
+      agentSessionId: turn.agentSessionId,
+      activationId: '',
+      startedAt: turn.startedAt,
+      hold,
+    }
+  })
 
   for (const queued of state.queue) {
     rows.push({
@@ -152,6 +233,7 @@ export function buildCoordinatorNowRows(
       agentSessionId: '',
       activationId: queued.id,
       startedAt: 0,
+      hold: null,
     })
   }
 
@@ -165,9 +247,152 @@ export function buildCoordinatorNowRows(
       agentSessionId: '',
       activationId: '',
       startedAt: 0,
+      hold: null,
     })
   }
   return rows
+}
+
+// ── 排队:六道闸的细分 ────────────────────────────────────────────────────
+
+export interface CoordinatorQueueBadge {
+  key: CollabCoordinatorBlockedBy
+  /** 徽标上那三个字。 */
+  label: string
+  count: number
+  /** hover 明细:这道闸要用户做什么 + 卡在上面的人。 */
+  hint: string
+  /**
+   * 这道闸**要人动手**吗。
+   *
+   * 前两道(裁决中、等座位)几秒后自解,后四道(链闸、相位、冻结、预算)不动手
+   * 就永远不会开 —— 而在细分之前它们在界面上长得一模一样,「怎么没人理我」这个
+   * 问题因此只能靠猜。这一格就是那条分界线,呈现层据它决定要不要扎眼。
+   */
+  actionable: boolean
+}
+
+const BLOCKED_LABEL: Readonly<Record<CollabCoordinatorBlockedBy, string>> = {
+  judging: '裁决中',
+  seats: '等座位',
+  chain: '链闸',
+  phase: '相位挂起',
+  frozen: '冻结',
+  budget: '预算',
+}
+
+/** 每道闸的一句人话:说清**下一步要谁做什么**,而不是复述闸的名字。 */
+const BLOCKED_HINT: Readonly<Record<CollabCoordinatorBlockedBy, string>> = {
+  judging: '正在判谁先说,几秒后自解',
+  seats: '同时发言已满,等人让位',
+  chain: '连聊到上限,你说句话就放开',
+  phase: '不在活跃相,要换相才轮得到',
+  frozen: '房间已暂停,恢复后才排得上',
+  budget: '今日预算用尽,明天恢复或改配额',
+}
+
+/** 自解的两道 vs 要人动手的四道(见 `CoordinatorQueueBadge.actionable`)。 */
+const BLOCKED_ACTIONABLE: ReadonlySet<CollabCoordinatorBlockedBy> = new Set<CollabCoordinatorBlockedBy>([
+  'chain',
+  'phase',
+  'frozen',
+  'budget',
+])
+
+/** 闸的呈现次序:自解的在前,要动手的在后 —— 读到最后一个才是"该你出手了"。 */
+const BLOCKED_ORDER: readonly CollabCoordinatorBlockedBy[] = [
+  'judging',
+  'seats',
+  'chain',
+  'phase',
+  'frozen',
+  'budget',
+]
+
+/**
+ * 「N 人排队中」→ 按 `blockedBy` 细分的徽标(蓝图 §4.1)。
+ *
+ * 一个笼统的排队数底下是六件成因完全不同的事,而这个函数就是把它们分开。空的闸
+ * 整格不出现(不画「链闸 0」)。
+ */
+export function buildCoordinatorQueueBadges(
+  state: CollabCoordinatorState | null,
+  resolveName: (agentId: string) => string,
+): CoordinatorQueueBadge[] {
+  if (!state?.queue.length) return []
+  const names = new Map<CollabCoordinatorBlockedBy, string[]>()
+  for (const queued of state.queue) {
+    const key = queued.blockedBy
+    const bucket = names.get(key) ?? []
+    bucket.push(resolveName(queued.agentId))
+    names.set(key, bucket)
+  }
+  return BLOCKED_ORDER
+    .filter(key => names.has(key))
+    .map(key => {
+      const who = names.get(key) ?? []
+      return {
+        key,
+        label: BLOCKED_LABEL[key],
+        count: who.length,
+        hint: `${BLOCKED_HINT[key]} · ${who.join(' ')}`,
+        actionable: BLOCKED_ACTIONABLE.has(key),
+      }
+    })
+}
+
+// ── 裁决窗三态 ────────────────────────────────────────────────────────────
+
+/** 降级要**亮牌**:回落 FIFO 是一次失败,不是一个答案。 */
+export const COORDINATOR_JUDGMENT_DEGRADED_TEXT = '裁决降级:FIFO'
+
+export type CoordinatorJudgmentView =
+  /** 还没开始问。`countdown` 是那个虚点旁边的倒计秒(`opensAt` 到了就是 0)。 */
+  | { state: 'debouncing'; opensAt: number; countdown: string; text: string }
+  /** 在飞:候选头像 + 转圈。 */
+  | { state: 'inflight'; candidates: string[]; since: number; text: string }
+  /** 降级:黄牌。`reason` 是账上那句占位,完整成因在时间轴的 judge-degraded 行。 */
+  | { state: 'degraded'; reason: string; at: number; text: string }
+
+/**
+ * 裁决窗此刻画成什么。`idle` 给 `null` —— **不画**,而不是画一句「空闲」:
+ * 状态条那一格只在有事发生时占位置。
+ *
+ * 三态各画各的样子,是因为它们在旧的两格里(`judging` / `judgingAgentIds`)会塌成
+ * 同一个答案:一次回落 FIFO 表现为 `judging: 0`,与「没有裁决在跑」一模一样,而它
+ * 恰恰是必须修的那一类。
+ */
+export function buildCoordinatorJudgment(
+  state: CollabCoordinatorState | null,
+  resolveName: (agentId: string) => string,
+  now: number,
+): CoordinatorJudgmentView | null {
+  const judgment = state?.judgment
+  if (!judgment || judgment.state === 'idle') return null
+  if (judgment.state === 'debouncing') {
+    const seconds = Math.max(0, Math.ceil((judgment.opensAt - now) / 1000))
+    return {
+      state: 'debouncing',
+      opensAt: judgment.opensAt,
+      countdown: `${seconds}s`,
+      text: '准备裁决',
+    }
+  }
+  if (judgment.state === 'inflight') {
+    const candidates = judgment.candidates.map(resolveName).filter(Boolean)
+    return {
+      state: 'inflight',
+      candidates,
+      since: judgment.since,
+      text: candidates.length > 0 ? `裁决 ${candidates.length} 人` : '裁决中',
+    }
+  }
+  return {
+    state: 'degraded',
+    reason: judgment.reason,
+    at: judgment.at,
+    text: COORDINATOR_JUDGMENT_DEGRADED_TEXT,
+  }
 }
 
 // ── 闸 ────────────────────────────────────────────────────────────────────

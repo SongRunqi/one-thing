@@ -302,6 +302,29 @@ describe('C4 快照', () => {
     expect(snapshot.judging).toBe(0)
   })
 
+  // O1 记下的那个缺口:窗在裁决落地的同一个同步步里被 `grantFloor` 关掉,于是
+  // `judgment: 'degraded'` 从来没活到任何一次快照组装 —— 黄牌永远亮不起来。
+  it('裁决降级之后快照读得到黄牌,而不是与「没有裁决在跑」混成一格', async () => {
+    const h = harness({ store: createCollabRoomAccountMemoryStore(), referee: true })
+    h.clock.now = 1_000
+    const opened = h.actor.decide(collabAgentRaiseHand({ roomId: ROOM, agentId: 'ana' }))
+    const token = opened.judgment?.token
+    expect(token).toBeDefined()
+    expect(h.actor.snapshot().judgment).toEqual({ state: 'inflight', candidates: ['ana'], since: 1_000 })
+
+    h.clock.now = 2_000
+    await h.actor.commit(h.actor.decide(collabRefereeVerdictVerb({
+      roomId: ROOM,
+      refereeId: 'judge',
+      verdict: { token: token!, grants: [], degraded: true, why: 'timeout' },
+    })))
+
+    // 窗已经关了(账上没有在飞裁决),但快照仍然说得出「刚刚降级过」。
+    expect(h.actor.account.judgment).toBeUndefined()
+    expect(h.actor.snapshot().judging).toBe(0)
+    expect(h.actor.snapshot().judgment).toEqual({ state: 'degraded', reason: 'timeout', at: 2_000 })
+  })
+
   it('seq 单调:每一次状态变化都比上一帧新', async () => {
     const h = harness({ store: createCollabRoomAccountMemoryStore() })
     const seen: number[] = [h.actor.snapshot().seq]

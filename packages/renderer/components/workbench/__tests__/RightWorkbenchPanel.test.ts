@@ -269,10 +269,13 @@ describe('RightWorkbenchPanel', () => {
       expect(wrapper.find('.workbench-tab-label').text()).toBe('线程')
     })
 
-    it('线程不进 picker / 空态清单 —— 可选 tab 集合一个字不变(classic 逐像素闸)', () => {
+    /* 「调度」(D8 §4.5 的总览)是 picker 里的第五格:它**不属于任何一间房**,
+       所以落点是工具页签而不是房间背台的一格。线程仍然不进 picker —— 它必须绑
+       一个房,picker 里点一下开不出有意义的空白页。 */
+    it('线程不进 picker / 空态清单 —— 可选 tab 集合只多了「调度」', () => {
       const wrapper = mountPanel()
       const labels = wrapper.findAll('.empty-action').map(button => button.text())
-      expect(labels).toEqual(['Files', 'Terminal', 'Browser', '看板'])
+      expect(labels).toEqual(['Files', 'Terminal', 'Browser', '看板', '调度'])
       expect(wrapper.text()).not.toContain('线程')
     })
 

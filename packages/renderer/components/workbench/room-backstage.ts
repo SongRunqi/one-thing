@@ -30,10 +30,15 @@ import type { ShellMode } from '@/types'
  * `space` 只在私聊房出现,顶替 `members` —— 一对一没有"成员"这回事,那一格
  * 直接就是对方的空间页。
  */
-export type RoomBackstageSegmentKey = 'threads' | 'members' | 'space' | 'board'
+export type RoomBackstageSegmentKey = 'threads' | 'members' | 'space' | 'board' | 'schedule'
 
-/** 状态点的三种含义(样板 `.dot.run / .dot.wait / .dot.new`)。 */
-export type RoomBackstageDot = 'run' | 'wait' | 'new'
+/**
+ * 状态点的四种含义(样板 `.dot.run / .dot.wait / .dot.new`,D8 补 `fault`)。
+ *
+ * `fault` 是 D8 加的:调度格上有死信 —— 一封信炸了,循环继续跑而系统静默变哑。
+ * 它与 `wait`(有事等你处理)刻意分开:等你放行是正常流程的一步,炸了不是。
+ */
+export type RoomBackstageDot = 'run' | 'wait' | 'new' | 'fault'
 
 export interface RoomBackstageSegment {
   key: RoomBackstageSegmentKey
@@ -43,12 +48,13 @@ export interface RoomBackstageSegment {
   dot: RoomBackstageDot | null
 }
 
-/** 四个固定文案。写成常量是为了让"标题不变"这件事有一处可断言的锚。 */
+/** 五个固定文案。写成常量是为了让"标题不变"这件事有一处可断言的锚。 */
 export const ROOM_BACKSTAGE_LABELS: Readonly<Record<RoomBackstageSegmentKey, string>> = {
   threads: '线程',
   members: '成员',
   space: '空间',
   board: '看板',
+  schedule: '调度',
 }
 
 /** 空态文案(样板 三 · 空态):空的是内容,不是入口。 */
@@ -117,15 +123,25 @@ export interface RoomBackstageSignals {
   boardAwaiting?: boolean
   /** 有成员的私聊未读 → 成员格亮墨点。 */
   membersUnread?: boolean
+  /**
+   * 这间房的 actor 处理事件失败过 → 调度格亮红点(D8 §3.4)。
+   *
+   * 与另外三个信号刻意不同档:那三个说的是"有事在发生",这个说的是**有事坏了**。
+   * 在它之前,一封炸掉的信只让系统静默地变哑 —— 用户看见的是「它没回应」。
+   */
+  scheduleFaulted?: boolean
 }
 
 /**
  * 这间房的分段器。**格数只由房的形态决定,与内容无关** ——
  * 一条线程都没有的房照样有「线程」格(空的是内容,不是入口)。
  *
- * 群房三格:线程 / 成员 / 看板。
- * 私聊房两格:线程 / 空间 —— 一对一没有"成员"这回事,而看板是干活现场的东西,
- * 样板把它从私聊背台里拿掉了(见 right-panel.html 设计决策第五条)。
+ * 群房四格:线程 / 成员 / 看板 / 调度。
+ * 私聊房三格:线程 / 空间 / 调度 —— 一对一没有"成员"这回事,而看板是干活现场的
+ * 东西,样板把它从私聊背台里拿掉了(见 right-panel.html 设计决策第五条)。
+ *
+ * 「调度」是 D8 加的第四格,而且**两种形态都有**:私聊房一样有租约、有闸、有死信,
+ * 一间只有两个人的房照样会卡住 —— 而在这一格之前,那种卡住完全不可见。
  */
 export function buildRoomBackstageSegments(input: {
   isDm: boolean
@@ -137,9 +153,14 @@ export function buildRoomBackstageSegments(input: {
     label: ROOM_BACKSTAGE_LABELS.threads,
     dot: signals.threadsRunning ? 'run' : null,
   }
+  const schedule: RoomBackstageSegment = {
+    key: 'schedule',
+    label: ROOM_BACKSTAGE_LABELS.schedule,
+    dot: signals.scheduleFaulted ? 'fault' : null,
+  }
 
   if (input.isDm) {
-    return [threads, { key: 'space', label: ROOM_BACKSTAGE_LABELS.space, dot: null }]
+    return [threads, { key: 'space', label: ROOM_BACKSTAGE_LABELS.space, dot: null }, schedule]
   }
 
   return [
@@ -154,6 +175,7 @@ export function buildRoomBackstageSegments(input: {
       label: ROOM_BACKSTAGE_LABELS.board,
       dot: signals.boardAwaiting ? 'wait' : null,
     },
+    schedule,
   ]
 }
 

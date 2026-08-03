@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => ({
     ],
   },
   sessions: [] as Array<Record<string, unknown>>,
+  /** agents 账(D8 §4.4):在忙判定从这里来,不再从看板 doing 卡现算。 */
+  activity: {} as Record<string, Record<string, unknown> | null>,
 }))
 
 const BASE_SESSIONS: Array<Record<string, unknown>> = [
@@ -66,8 +68,25 @@ vi.mock('@/stores/collabBoard', () => ({
     ensureSubscribed: vi.fn(),
     load: mocks.loadBoard,
     boardFor: () => mocks.board,
+    ensureAgentActivity: vi.fn(),
+    agentActivityFor: (agentId: string) => mocks.activity[agentId] ?? null,
+    focusTask: vi.fn(),
   }),
 }))
+
+/** 一份「这个人在写字」的活动快照 —— 在忙判定的唯一来源。 */
+function generating(roomSessionId = 'room-1'): Record<string, unknown> {
+  return {
+    agentId: 'x',
+    seq: 1,
+    at: Date.now(),
+    mind: { state: 'thinking', roomSessionId, since: Date.now() },
+    heldLeases: [],
+    inbox: { depth: 0 },
+    workers: [],
+    deadLetterCount: 0,
+  }
+}
 
 vi.mock('@/components/common/AgentAvatar.vue', () => ({
   default: { name: 'AgentAvatar', props: ['avatar', 'avatarImage', 'size'], template: '<i class="mock-avatar" />' },
@@ -97,6 +116,8 @@ describe('MembersWorkbench', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.sessions = BASE_SESSIONS.map(session => ({ ...session }))
+    // 小林在写字 —— 在忙判定的唯一来源(看板那张 doing 卡只提供卡名)。
+    mocks.activity = { lin: generating() }
   })
 
   it('列表按在场分三段,段头带计数', () => {
@@ -107,6 +128,34 @@ describe('MembersWorkbench', () => {
     expect(wrapper.findAll('.member-row')).toHaveLength(3)
     expect(wrapper.find('.member-row').text()).toContain('编辑 session.ts')
     expect(wrapper.findAll('.member-row').at(2)!.classes()).toContain('is-off')
+  })
+
+  /**
+   * 口径换过一次(D8 §4.4)。这一条是那次换口径**在组件上**的反向断言:
+   * 看板照旧摆着小林那张 doing 卡,但 agents 账说他闲着 —— 界面必须听账的。
+   */
+  it('在忙判定听 agents 账,不听看板 doing 卡', () => {
+    mocks.activity = {}
+    const wrapper = mountPanel()
+    const heads = wrapper.findAll('.member-group-head').map(node => node.text())
+
+    expect(heads).toEqual(['空闲 — 2', '已注销 — 1'])
+    // 卡名照旧显示 —— 「TA 在做哪张卡」本来就该由看板回答,那是另一个问题。
+    expect(wrapper.find('.member-row').text()).toContain('编辑 session.ts')
+  })
+
+  it('三态各有各的颜色 —— 「持牌等大脑」不再与「生成中」混成一个点', () => {
+    mocks.activity = {
+      lin: {
+        ...generating(),
+        mind: { state: 'idle' },
+        heldLeases: [{ roomSessionId: 'room-1', leaseId: 'L1', since: 1, executing: false }],
+      },
+    }
+    const wrapper = mountPanel()
+    const dot = wrapper.find('.member-row .member-dot')
+    expect(dot.classes()).toContain('is-busy')
+    expect(dot.classes()).toContain('is-holding')
   })
 
   it('点成员在**同一个面板里**下钻空间页,并回报落点(不新开 tab)', async () => {

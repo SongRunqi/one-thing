@@ -13,6 +13,7 @@ import {
 import { buildCollabChainHoldLine } from '../../system-lines.js'
 import type { CollabAgentLike, CollabMessageLike } from '../../types.js'
 import { collabFloorSeats, createCollabFreeFloorPolicy, orderCollabHands } from '../floor-policy.js'
+import { collabRefereeVerdictVerb } from '../referee-rules.js'
 import {
   collabAgentRaiseHand,
   collabAgentSpeak,
@@ -25,6 +26,7 @@ import {
   applyCollabRoomPhaseChange,
   applyCollabRoomPosted,
   applyCollabRoomRaiseHand,
+  applyCollabRoomSetPolicy,
   applyCollabRoomSpeak,
   applyCollabRoomYield,
   bumpCollabRoomEpoch,
@@ -42,6 +44,7 @@ import {
   type CollabRoomAccount,
   type CollabRoomGates,
   type CollabRoomIdSource,
+  type CollabRoomStep,
 } from '../room-rules.js'
 
 const ROOM = 'room-1'
@@ -575,5 +578,125 @@ describe('策略与账的形状', () => {
     expect(first.account.seq).toBe(1)
     const second = postUser(first.account, userSays('二', [], 'b'))
     expect(second.account.seq).toBe(2)
+  })
+})
+
+/* ── 降级留痕(D8 观测体系 O2 前置修)────────────────────────────────────── */
+
+describe('裁决降级的痕', () => {
+  /** 挂了裁判的房 —— `free` 的举手先进裁决窗。 */
+  const refereeGates = (overrides: Partial<CollabRoomGates> = {}): CollabRoomGates =>
+    gates({ referee: true, ...overrides })
+
+  /** 开一扇窗:一条消息 + 一只手。返回账与窗的 token。 */
+  function openWindow(
+    account: CollabRoomAccount,
+    options: { messageId?: string; agentId?: string; now?: number } = {},
+  ): { account: CollabRoomAccount; token: string } {
+    const messageId = options.messageId ?? 'm1'
+    const now = options.now ?? 1_000
+    const posted = applyCollabRoomPosted(
+      account,
+      collabRoomPosted({
+        roomId: ROOM,
+        author: collabActorRef('user', 'user'),
+        message: userSays('看看', [], messageId),
+      }),
+      refereeGates({ now }),
+      IDS,
+    )
+    const raised = applyCollabRoomRaiseHand(
+      posted.account,
+      collabAgentRaiseHand({ roomId: ROOM, agentId: options.agentId ?? 'ana', sourceMessageId: messageId }),
+      refereeGates({ now }),
+      IDS,
+    )
+    const token = raised.account.judgment?.token
+    expect(token).toBeDefined()
+    return { account: raised.account, token: token! }
+  }
+
+  function verdict(
+    account: CollabRoomAccount,
+    input: { token: string; grants?: string[]; why?: string; degraded?: boolean; now?: number },
+  ): CollabRoomStep {
+    return applyCollabRoomSetPolicy(
+      account,
+      collabRefereeVerdictVerb({
+        roomId: ROOM,
+        refereeId: 'referee',
+        verdict: {
+          token: input.token,
+          grants: input.grants ?? [],
+          ...(input.why ? { why: input.why } : {}),
+          ...(input.degraded ? { degraded: true } : {}),
+        },
+      }),
+      refereeGates({ now: input.now ?? 2_000 }),
+      IDS,
+    )
+  }
+
+  // 这一条就是 O1 记下的那个缺口:窗在同一个同步步里被 `grantFloor` 关掉,
+  // `judgment: 'degraded'` 因此从来没活到任何一次快照组装 —— 黄牌没地方站。
+  it('降级之后窗当场关掉,但痕留在账上(这正是快照读得到黄牌的唯一途径)', () => {
+    const opened = openWindow(createCollabRoomAccount(ROOM))
+    const stepped = verdict(opened.account, { token: opened.token, degraded: true, why: 'timeout', now: 2_000 })
+
+    expect(stepped.account.judgment).toBeUndefined()
+    expect(stepped.account.lastDegraded).toEqual({ reason: 'timeout', at: 2_000 })
+  })
+
+  it('没给理由时留一句诚实的占位 —— 完整成因在时间轴的 judge-degraded 行上', () => {
+    const opened = openWindow(createCollabRoomAccount(ROOM))
+    const stepped = verdict(opened.account, { token: opened.token, degraded: true, now: 2_000 })
+    expect(stepped.account.lastDegraded).toEqual({ reason: 'unspecified', at: 2_000 })
+  })
+
+  it('正常裁决不留痕 —— 只有失败才亮牌', () => {
+    const opened = openWindow(createCollabRoomAccount(ROOM))
+    const stepped = verdict(opened.account, { token: opened.token, grants: ['ana'], why: '她提的问题' })
+    expect(stepped.account.lastDegraded).toBeUndefined()
+  })
+
+  // 清痕的判据是「这间房又去买了一次裁决」,不是「又来了一条消息」:在下一扇窗
+  // 开出来之前,上一次降级一直是这间房现在这个样子的解释。
+  it('痕活到下一次开窗才清,中间的普通消息不清它', () => {
+    const opened = openWindow(createCollabRoomAccount(ROOM))
+    const degraded = verdict(opened.account, { token: opened.token, degraded: true, why: 'timeout', now: 2_000 })
+
+    // 一条谁都没 @ 的消息:不开窗,痕照旧在。
+    const chatter = applyCollabRoomPosted(
+      degraded.account,
+      collabRoomPosted({
+        roomId: ROOM,
+        author: collabActorRef('user', 'user'),
+        message: userSays('随便说说', [], 'm2'),
+      }),
+      refereeGates({ now: 3_000 }),
+      IDS,
+    )
+    expect(chatter.account.lastDegraded).toEqual({ reason: 'timeout', at: 2_000 })
+
+    // 又有人举手 → 新窗开出来,上一次降级才算翻篇。
+    const reopened = openWindow(chatter.account, { messageId: 'm3', agentId: 'bo', now: 4_000 })
+    expect(reopened.account.judgment?.state).toBe('pending')
+    expect(reopened.account.lastDegraded).toBeUndefined()
+  })
+
+  it('痕过得了一次落盘往返 —— 形状不对的当没降级过', () => {
+    const opened = openWindow(createCollabRoomAccount(ROOM))
+    const degraded = verdict(opened.account, { token: opened.token, degraded: true, why: 'timeout', now: 2_000 })
+    const roundTrip = normalizeCollabRoomAccount(
+      JSON.parse(JSON.stringify(degraded.account)),
+      ROOM,
+    )
+    expect(roundTrip.lastDegraded).toEqual({ reason: 'timeout', at: 2_000 })
+
+    const broken = normalizeCollabRoomAccount(
+      { ...JSON.parse(JSON.stringify(degraded.account)), lastDegraded: { reason: 'timeout' } },
+      ROOM,
+    )
+    expect(broken.lastDegraded).toBeUndefined()
   })
 })

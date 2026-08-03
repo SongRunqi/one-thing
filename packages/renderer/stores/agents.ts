@@ -19,7 +19,11 @@ export const DEFAULT_AGENT_ID = 'default'
  * P2 的「履历」升格成了「会话」——同一份四栏,名字换了,因为空间页里它旁边
  * 现在还站着文件与搜索,「履历」读起来像是把那三面也包了进去。
  */
-export type AgentDetailTab = 'config' | 'sessions' | 'files' | 'search'
+/**
+ * `mind`(D8 观测体系 §4.3)只在**空间页**出现,管理页那四面里没有它:
+ * 大脑是运行时的此刻,而管理页问的是"这个人是怎么配的"。
+ */
+export type AgentDetailTab = 'config' | 'sessions' | 'files' | 'search' | 'mind'
 
 /**
  * App 监听这个事件展开 Agents **管理页**。深层组件(消息署名、房头)够不到 App 的

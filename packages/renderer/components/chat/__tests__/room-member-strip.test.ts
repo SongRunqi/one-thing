@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import type { CollabAgentActivitySnapshot } from '@shared/ipc'
 import {
   ROOM_MEMBER_FALLBACK_AVATAR,
   buildAddableRoomAgents,
   buildRoomMemberEntries,
+  formatRoomMemberPresence,
   formatRoomMemberTooltip,
   planRoomMemberAdd,
   planRoomMemberRemoval,
+  resolveRoomMemberPresence,
   type RoomStripAgent,
 } from '../room-member-strip'
 
@@ -149,5 +152,114 @@ describe('planRoomMemberRemoval', () => {
   it('refuses somebody who is not in the room', () => {
     expect(planRoomMemberRemoval({ memberAgentIds: ['fe', 'pm'], agentId: 'ghost' }))
       .toEqual({ error: 'TA 已经不在这个群里' })
+  })
+})
+
+
+/* ── 四态徽标(D8 观测体系 §4.4)──────────────────────────────────────────── */
+
+function activity(patch: Partial<CollabAgentActivitySnapshot> = {}): CollabAgentActivitySnapshot {
+  return {
+    agentId: 'fe',
+    seq: 1,
+    at: 10_000,
+    mind: { state: 'idle' },
+    heldLeases: [],
+    inbox: { depth: 0 },
+    workers: [],
+    deadLetterCount: 0,
+    ...patch,
+  }
+}
+
+const lease = (executing: boolean, roomSessionId = 'room-1') => ({
+  roomSessionId,
+  leaseId: `${roomSessionId}#L1`,
+  since: 1_000,
+  executing,
+})
+
+const worker = (status: 'running' | 'done' | 'interrupted') => ({
+  cardId: 'card-1',
+  roomSessionId: 'room-1',
+  status,
+  since: 1_000,
+})
+
+describe('resolveRoomMemberPresence — 四态', () => {
+  it('大脑在想 = 生成中', () => {
+    expect(resolveRoomMemberPresence(activity({
+      mind: { state: 'thinking', roomSessionId: 'room-1', since: 1 },
+    }))).toBe('generating')
+  })
+
+  it('大脑那一格拿不到时退回牌上的登记簿标志', () => {
+    expect(resolveRoomMemberPresence(activity({ heldLeases: [lease(true)] }))).toBe('generating')
+  })
+
+  /**
+   * 这一格是整套徽标存在的理由:v3 里牌发出去之后要先躺进那个 agent 的信箱,
+   * 而那颗大脑此刻可能正在别的房里想。旧口径(看板 doing 卡)根本表达不了它。
+   */
+  it('有牌但没在生成 = 持牌等大脑,不与生成中混成一格', () => {
+    expect(resolveRoomMemberPresence(activity({ heldLeases: [lease(false)] }))).toBe('holding')
+  })
+
+  it('没牌但有在做的卡 = 干活中', () => {
+    expect(resolveRoomMemberPresence(activity({ workers: [worker('running')] }))).toBe('working')
+  })
+
+  it('做完 / 被打断的卡不算在干活 —— 一张三天前做完的卡不该让人永远亮着', () => {
+    expect(resolveRoomMemberPresence(activity({ workers: [worker('done')] }))).toBe('idle')
+    expect(resolveRoomMemberPresence(activity({ workers: [worker('interrupted')] }))).toBe('idle')
+  })
+
+  it('次序即优先级:在写字 > 拿着牌 > 在干活', () => {
+    expect(resolveRoomMemberPresence(activity({
+      mind: { state: 'thinking', roomSessionId: 'room-1', since: 1 },
+      heldLeases: [lease(false)],
+      workers: [worker('running')],
+    }))).toBe('generating')
+    expect(resolveRoomMemberPresence(activity({
+      heldLeases: [lease(false)],
+      workers: [worker('running')],
+    }))).toBe('holding')
+  })
+
+  it('读不到 = 空闲(徽标上两者本来就是同一个样子:都不画)', () => {
+    expect(resolveRoomMemberPresence(null)).toBe('idle')
+    expect(resolveRoomMemberPresence(undefined)).toBe('idle')
+    expect(resolveRoomMemberPresence(activity())).toBe('idle')
+  })
+})
+
+describe('formatRoomMemberPresence — tooltip 里那半句「在哪儿」', () => {
+  const roomName = (id: string): string => (id === 'room-9' ? '排期房' : '')
+
+  // 「TA 怎么不理我」的答案往往正是「TA 在别的房忙着」。
+  it('生成中带上房名', () => {
+    expect(formatRoomMemberPresence(activity({
+      mind: { state: 'thinking', roomSessionId: 'room-9', since: 1 },
+    }), roomName)).toBe('在「排期房」生成中')
+  })
+
+  it('房名翻不出来时退回 id', () => {
+    expect(formatRoomMemberPresence(activity({
+      mind: { state: 'thinking', roomSessionId: 'room-77', since: 1 },
+    }), roomName)).toBe('在「room-77」生成中')
+  })
+
+  it('持牌报张数,干活报卡数', () => {
+    expect(formatRoomMemberPresence(activity({
+      heldLeases: [lease(false, 'room-1'), lease(false, 'room-2')],
+    }), roomName)).toBe('持 2 张牌,等大脑')
+    expect(formatRoomMemberPresence(activity({
+      workers: [worker('running'), worker('done')],
+    }), roomName)).toBe('在干活(1 张卡)')
+  })
+
+  it('空闲不出词 —— 徽标不画,tooltip 也不该多一截', () => {
+    expect(formatRoomMemberPresence(activity(), roomName)).toBe('')
+    expect(formatRoomMemberPresence(null, roomName)).toBe('')
   })
 })

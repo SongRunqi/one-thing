@@ -131,6 +131,14 @@
           :agent-id="agentId"
           @open-file="(path: string) => emit('open-file', path)"
         />
+        <!-- 「大脑」(D8 §4.3):此刻在哪间房想、持哪几张牌、邮箱压了多少、
+             手上几张卡、死信几封。数据全部来自 collabBoard 的 agents 账。 -->
+        <AgentMindPane
+          v-else-if="activeTab === 'mind'"
+          :agent-id="agentId"
+          @open-session="onOpenSession"
+          @open-card="(cardId: string) => collabBoardStore.focusTask(cardId)"
+        />
         <AgentSearchPane
           v-else
           :agent-id="agentId"
@@ -162,9 +170,11 @@ import ThreadChatDetail from '@/components/workbench/ThreadChatDetail.vue'
 import { isActiveAgent } from '@shared/ipc'
 import type { AgentDoingTask } from '@/components/chat/agent-activity'
 import { buildAgentSpaceSubtitle } from '@/components/workbench/agent-space'
+import { useCollabBoardStore } from '@/stores/collabBoard'
 import AgentConfigForm from './AgentConfigForm.vue'
 import AgentSessionsPane from './AgentSessionsPane.vue'
 import AgentFilesPane from './AgentFilesPane.vue'
+import AgentMindPane from './AgentMindPane.vue'
 import AgentSearchPane from './AgentSearchPane.vue'
 import { useAgentDmOpener } from './use-agent-dm'
 import '@/styles/agent-space.css'
@@ -193,12 +203,21 @@ const emit = defineEmits<{
 }>()
 
 const agentsStore = useAgentsStore()
+const collabBoardStore = useCollabBoardStore()
 
+/**
+ * 五面(D8 加了「大脑」)。
+ *
+ * 新的一面**加在末尾、不改默认落点**:每一个既有入口(侧栏点头像、say 署名、
+ * 成员表下钻)进来仍然停在「配置」。大脑是这一面最新鲜的信息,但把落点搬过去
+ * 是另一个产品决定 —— 不该顺手夹带在"加一个 tab"里。
+ */
 const SPACE_FACES: ReadonlyArray<{ key: AgentDetailTab; label: string }> = [
   { key: 'config', label: '配置' },
   { key: 'sessions', label: '会话' },
   { key: 'files', label: '文件' },
   { key: 'search', label: '搜索' },
+  { key: 'mind', label: '大脑' },
 ]
 
 const activeTab = ref<AgentDetailTab>(props.initialTab || 'config')

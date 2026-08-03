@@ -113,10 +113,12 @@ describe('AgentSpace — 右栏的空间页', () => {
     expect(wrapper.find('.space-desc').text()).toContain('盯架构边界')
   })
 
-  it('四面并列,默认停在配置 —— 配置是就地的真表单', () => {
+  // D8 的「大脑」加在**末尾**,默认落点一个字节不变:把落点搬过去是另一个产品
+  // 决定,不该顺手夹带在"加一个 tab"里。
+  it('五面并列,默认仍停在配置 —— 配置是就地的真表单', () => {
     const wrapper = mountSpace()
     expect(wrapper.findAll('.space-tab').map(node => node.text()))
-      .toEqual(['配置', '会话', '文件', '搜索'])
+      .toEqual(['配置', '会话', '文件', '搜索', '大脑'])
     expect(wrapper.find('.agent-config-form').exists()).toBe(true)
   })
 

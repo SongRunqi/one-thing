@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   pendingAsks: new Set<string>(),
   unread: new Set<string>(),
   dmRooms: {} as Record<string, { id: string }>,
+  coordinators: {} as Record<string, { deadLetterCount?: number }>,
 }))
 
 vi.mock('@/stores/chat', () => ({
@@ -33,10 +34,11 @@ vi.mock('@/stores/collabBoard', () => ({
     load: vi.fn(),
     boardFor: () => mocks.board,
     hasPendingAsk: (id: string) => mocks.pendingAsks.has(id),
+    coordinatorFor: (id: string) => mocks.coordinators[id] ?? null,
   }),
 }))
 
-/* 三格的内容各有各的单测;这一层的契约是"哪几格 / 在哪一格 / 亮不亮点"。 */
+/* 四格的内容各有各的单测;这一层的契约是"哪几格 / 在哪一格 / 亮不亮点"。 */
 vi.mock('../RoomThreadsWorkbench.vue', () => ({
   default: {
     name: 'RoomThreadsWorkbench',
@@ -57,6 +59,14 @@ vi.mock('../MembersWorkbench.vue', () => ({
         <button class="mock-open-thread" @click="$emit('open-thread', 'work-7', 't')">线程</button>
       </div>
     `,
+  },
+}))
+
+vi.mock('../RoomSchedulePanel.vue', () => ({
+  default: {
+    name: 'RoomSchedulePanel',
+    props: ['roomSessionId', 'initialFilter', 'landingNonce'],
+    template: '<div class="mock-schedule">{{ initialFilter }}</div>',
   },
 }))
 
@@ -93,18 +103,19 @@ describe('RoomBackstagePanel — 分段器,不是页签', () => {
     mocks.pendingAsks = new Set()
     mocks.unread = new Set()
     mocks.dmRooms = {}
+    mocks.coordinators = {}
   })
 
-  it('群房三格、私聊房两格,格子上没有 ✕ 也没有 ＋', () => {
+  it('群房四格、私聊房三格,格子上没有 ✕ 也没有 ＋', () => {
     const group = mount(RoomBackstagePanel, { props: { roomSessionId: 'room-1' } })
-    expect(group.findAll('.seg-cell').map(cell => cell.text())).toEqual(['线程', '成员', '看板'])
+    expect(group.findAll('.seg-cell').map(cell => cell.text())).toEqual(['线程', '成员', '看板', '调度'])
     expect(group.find('.app-tabs-close').exists()).toBe(false)
     expect(group.html()).not.toContain('tab-add')
 
     const dm = mount(RoomBackstagePanel, {
       props: { roomSessionId: 'dm-1', isDm: true, dmAgentId: 'lin' },
     })
-    expect(dm.findAll('.seg-cell').map(cell => cell.text())).toEqual(['线程', '空间'])
+    expect(dm.findAll('.seg-cell').map(cell => cell.text())).toEqual(['线程', '空间', '调度'])
   })
 
   it('私聊房的「空间」格直接停在那一个人的空间页(没有成员表)', () => {
@@ -130,7 +141,7 @@ describe('RoomBackstagePanel — 分段器,不是页签', () => {
     expect(wrapper.find('.mock-threads').text()).toBe('work-3')
   })
 
-  it('换格不丢另一格里的位置(三格常驻挂着,不是销毁重建)', async () => {
+  it('换格不丢另一格里的位置(常驻挂着,不是销毁重建)', async () => {
     const wrapper = mount(RoomBackstagePanel, { props: { roomSessionId: 'room-1' } })
     await wrapper.find('.seg-cell:nth-child(2)').trigger('click')
     await wrapper.find('.mock-open-thread').trigger('click')
@@ -144,7 +155,7 @@ describe('RoomBackstagePanel — 分段器,不是页签', () => {
     expect(visible(wrapper, '.mock-members')).toBe(true)
   })
 
-  it('状态点:线程在跑(绿)/ 看板待你(橙)/ 成员未读(墨),而且不显示计数', async () => {
+  it('状态点:线程在跑(绿)/ 成员未读(墨)/ 看板待你(橙)/ 调度死信(红),而且不显示计数', async () => {
     mocks.sessions = [
       { ...GROUP_ROOM },
       { id: 'work-1', kind: 'work', agentId: 'lin', collab: { roomSessionId: 'room-1' } },
@@ -156,14 +167,18 @@ describe('RoomBackstagePanel — 分段器,不是页签', () => {
     }
     mocks.dmRooms = { lin: { id: 'dm-lin' } }
     mocks.unread = new Set(['dm-lin'])
+    mocks.coordinators = { 'room-1': { deadLetterCount: 3 } }
 
     const wrapper = mount(RoomBackstagePanel, { props: { roomSessionId: 'room-1' } })
     const cells = wrapper.findAll('.seg-cell')
     expect(cells[0].find('.seg-dot').classes()).toContain('is-run')
     expect(cells[1].find('.seg-dot').classes()).toContain('is-new')
     expect(cells[2].find('.seg-dot').classes()).toContain('is-wait')
-    // 两条线程在跑,但格子上只有一颗点 —— 有没有,不是几个
+    // 死信自己一档:等你放行是正常流程的一步,炸了不是。
+    expect(cells[3].find('.seg-dot').classes()).toContain('is-fault')
+    // 两条线程在跑、三封信炸了,但格子上都只有一颗点 —— 有没有,不是几个
     expect(wrapper.text()).not.toContain('2')
+    expect(wrapper.text()).not.toContain('3')
   })
 
   it('外部落座:看板 / 成员 / 线程各归各位;私聊房请求看板则原地不动', async () => {
@@ -227,7 +242,7 @@ describe('RoomBackstagePanel — 最窄 250px 的结构约束', () => {
     return match?.[1] ?? ''
   }
 
-  it('三格严格等分(flex: 1 1 0),不可横向滚动', () => {
+  it('每格严格等分(flex: 1 1 0),不可横向滚动', () => {
     expect(ruleOf('.seg-cell')).toContain('flex: 1 1 0')
     expect(ruleOf('.backstage-seg')).not.toContain('overflow')
   })

@@ -150,6 +150,14 @@
 
           <CollabBoardPanel v-else-if="tab.type === 'board'" />
 
+          <!-- 调度总览(D8 §4.5):四个必答问题里的第三个 ——「整个系统在忙什么」。
+               它**不属于任何一间房**,所以落点是工具页签而不是房间背台的一格。 -->
+          <SchedulingOverviewWorkbench
+            v-else-if="tab.type === 'scheduling'"
+            @open-session="openSessionTab"
+            @open-agent="(agentId: string) => openAgentTab(agentId)"
+          />
+
           <!-- 线程是**两层**:这间房的执行会话列表 → 选中 → 该会话详情
              (详情是 `ThreadChatDetail` = 既有聊天 UI,由这层壳就地渲染,不新开页签)。 -->
           <RoomThreadsWorkbench
@@ -264,7 +272,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
-import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Terminal, UserRound, Users, X } from 'lucide-vue-next'
+import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Radar, Terminal, UserRound, Users, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import Tabs from '@/components/common/Tabs.vue'
@@ -273,6 +281,7 @@ import EditorWorkbench from '@/components/editor/EditorWorkbench.vue'
 import TerminalView from '@/components/terminal/TerminalView.vue'
 import BrowserPanel from './browser/BrowserPanel.vue'
 import CollabBoardPanel from './CollabBoardPanel.vue'
+import SchedulingOverviewWorkbench from './SchedulingOverviewWorkbench.vue'
 import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
 import MembersWorkbench from './MembersWorkbench.vue'
 import AgentSpace from '@/components/agents/AgentSpace.vue'
@@ -293,7 +302,7 @@ import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable, ShellMode } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent'
+type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'scheduling'
 
 interface WorkbenchTab {
   id: string
@@ -375,7 +384,7 @@ function landBackstageSegment(
 }
 
 /** 固定短标签(不参与截断):样板右栏的常驻三条。 */
-const FIXED_LABEL_TABS = new Set<WorkbenchTabType>(['thread', 'members', 'board'])
+const FIXED_LABEL_TABS = new Set<WorkbenchTabType>(['thread', 'members', 'board', 'scheduling'])
 
 const tabOptions: Array<{
   type: WorkbenchTabType
@@ -387,6 +396,8 @@ const tabOptions: Array<{
   { type: 'terminal', title: 'Terminal', icon: Terminal, categorySlot: 6 },
   { type: 'browser', title: 'Browser', icon: Globe2, categorySlot: 7 },
   { type: 'board', title: '看板', icon: ClipboardList, categorySlot: 8 },
+  // 调度总览与看板同一条能力闸(collabRooms):没有房间就没有调度可看。
+  { type: 'scheduling', title: '调度', icon: Radar, categorySlot: 8 },
 ]
 
 const pickerOpen = ref(false)
@@ -405,7 +416,7 @@ const canUseCollabRooms = computed(() => platformApi.capabilities.collabRooms)
 const availableTabOptions = computed(() =>
   tabOptions.filter(option =>
     (option.type !== 'terminal' || canUseTerminal.value) &&
-    (option.type !== 'board' || canUseCollabRooms.value)),
+    ((option.type !== 'board' && option.type !== 'scheduling') || canUseCollabRooms.value)),
 )
 let variableRequestId = 0
 
@@ -538,6 +549,7 @@ function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'thread') return ListTree
   if (type === 'members') return Users
   if (type === 'agent') return UserRound
+  if (type === 'scheduling') return Radar
   return Files
 }
 
@@ -549,6 +561,7 @@ function tabCategorySlot(type: WorkbenchTabType): number {
   if (type === 'thread') return 3
   if (type === 'members') return 2
   if (type === 'agent') return 2
+  if (type === 'scheduling') return 8
   return 5
 }
 

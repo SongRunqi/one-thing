@@ -20,6 +20,22 @@
         aria-hidden="true"
       />
       <span class="cd-who">{{ bar.text }}</span>
+      <!-- 死信红点:一封信炸了,循环继续跑而系统静默变哑 —— 这颗点是「它没回应」
+           与「它试过但炸了」之间的第一条分界线。点它跳后台的调度时间轴。 -->
+      <button
+        v-if="bar.deadLetters > 0"
+        type="button"
+        class="cd-dead"
+        :title="`${bar.deadLetters} 封事件处理失败 —— 去看时间轴`"
+        :aria-label="`${bar.deadLetters} 封事件处理失败`"
+        @click.stop="openDeadLetters"
+      >
+        <i
+          class="cd-dead-dot"
+          aria-hidden="true"
+        />
+        {{ bar.deadLetters }}
+      </button>
       <span class="cd-tail">
         <button
           v-if="bar.action === 'resume'"
@@ -47,7 +63,11 @@
           v-for="row in nowRows"
           :key="row.key"
           class="cd-now"
-          :class="{ 'is-run': row.running, 'is-flat': !row.agentSessionId && !row.activationId }"
+          :class="{
+            'is-run': row.hold === 'generating',
+            'is-hold': row.hold !== null && row.hold !== 'generating',
+            'is-flat': !row.agentSessionId && !row.activationId,
+          }"
           @click="row.agentSessionId && emit('openThread', row.agentSessionId)"
         >
           <i class="cd-glyph">{{ row.glyph }}</i>
@@ -65,6 +85,59 @@
           >
             停
           </button>
+        </div>
+      </template>
+
+      <!-- 排队:六道闸细分成徽标。要人动手的四道(链闸/相位/冻结/预算)加重,
+           自解的两道(裁决中/等座位)保持轻 —— 眼睛该先落在需要出手的那一格。 -->
+      <template v-if="queueBadges.length">
+        <div class="cd-sec">
+          排队
+        </div>
+        <div class="cd-badges">
+          <span
+            v-for="badge in queueBadges"
+            :key="badge.key"
+            class="cd-badge"
+            :class="{ 'is-actionable': badge.actionable }"
+            :title="badge.hint"
+          >{{ badge.label }} {{ badge.count }}</span>
+        </div>
+      </template>
+
+      <!-- 裁决窗三态。防抖 = 虚点 + 倒计;在飞 = 转圈 + 候选;降级 = 黄牌。 -->
+      <template v-if="judgment">
+        <div class="cd-sec">
+          裁决
+        </div>
+        <div
+          class="cd-judge"
+          :class="`is-${judgment.state}`"
+          :title="judgment.state === 'degraded' ? `降级成因:${judgment.reason}` : ''"
+        >
+          <i
+            class="cd-judge-mark"
+            aria-hidden="true"
+          />
+          <span class="cd-judge-text">{{ judgment.text }}</span>
+          <span
+            v-if="judgment.state === 'debouncing'"
+            class="cd-judge-at"
+          >{{ judgment.countdown }}</span>
+          <span
+            v-else-if="judgment.state === 'inflight'"
+            class="cd-judge-at"
+          >{{ formatCoordinatorElapsed(judgment.since, now) }}</span>
+          <span
+            v-else
+            class="cd-judge-at"
+          >{{ formatCoordinatorAgo(judgment.at, now) }}</span>
+        </div>
+        <div
+          v-if="judgment.state === 'inflight' && judgment.candidates.length"
+          class="cd-judge-who"
+        >
+          {{ judgment.candidates.join(' · ') }}
         </div>
       </template>
 
@@ -153,12 +226,15 @@ import { useSessionsStore } from '@/stores/sessions'
 import {
   buildCoordinatorBar,
   buildCoordinatorGateRows,
+  buildCoordinatorJudgment,
   buildCoordinatorLogRows,
   buildCoordinatorNowRows,
   buildCoordinatorPlan,
+  buildCoordinatorQueueBadges,
   formatCoordinatorAgo,
   formatCoordinatorElapsed,
 } from './coordinator-status'
+import { OPEN_ROOM_SCHEDULE_EVENT, type OpenRoomScheduleDetail } from './room-schedule'
 
 const props = defineProps<{ roomSessionId: string }>()
 
@@ -201,8 +277,13 @@ function stopTicking(): void {
   timer = undefined
 }
 
+// 裁决窗的防抖倒计与在飞计时也要秒针 —— 一个不走的倒计时读起来像卡死了。
 watch(
-  () => open.value && (state.value?.turns.length ?? 0) > 0,
+  () => open.value && (
+    (state.value?.turns.length ?? 0) > 0
+    || state.value?.judgment.state === 'debouncing'
+    || state.value?.judgment.state === 'inflight'
+  ),
   ticking => {
     stopTicking()
     if (!ticking) return
@@ -221,8 +302,24 @@ onUnmounted(stopTicking)
 
 const resolveName = (agentId: string): string => agentsStore.displayAgent(agentId).name
 
+/**
+ * 「持牌等大脑」与「在别处思考」的分界读 agents 账(D8 §4.6)——
+ * 房间账里根本没有别的房,这个问题在那本账里问不出来。
+ *
+ * 补水按**这间房此刻持牌的人**要,而不是全体成员:一个安静的成员没有任何一格要画。
+ */
+const collabAgents = collabBoardStore
+watch(() => (state.value?.turns ?? []).map(turn => turn.agentId).join(','), () => {
+  const agentIds = (state.value?.turns ?? []).map(turn => turn.agentId).filter(Boolean)
+  if (agentIds.length > 0) collabAgents.ensureAgentActivity(agentIds)
+}, { immediate: true })
+
+const resolveMind = (agentId: string) => collabBoardStore.agentActivityFor(agentId)?.mind ?? null
+
 const bar = computed(() => buildCoordinatorBar(state.value, resolveName))
-const nowRows = computed(() => buildCoordinatorNowRows(state.value, resolveName))
+const nowRows = computed(() => buildCoordinatorNowRows(state.value, resolveName, resolveMind))
+const queueBadges = computed(() => buildCoordinatorQueueBadges(state.value, resolveName))
+const judgment = computed(() => buildCoordinatorJudgment(state.value, resolveName, now.value))
 const gateRows = computed(() => buildCoordinatorGateRows(state.value))
 const plan = computed(() => buildCoordinatorPlan(state.value, resolveName))
 const logRows = computed(() => buildCoordinatorLogRows(state.value, resolveName))
@@ -234,6 +331,20 @@ async function resume(): Promise<void> {
   } catch (error) {
     console.error('[coordinator] resume failed:', error)
   }
+}
+
+/**
+ * 死信红点 → 后台的「调度」页,时间轴过滤到 dead-letter。
+ *
+ * 走 window 事件而不是往上 emit:状态条挂在线程格里,而调度页是**另一格** ——
+ * 一路把 ref 透传上去只为了换一格,与「打开成员」那条链路是同一种耦合
+ * (契约见 `room-schedule.ts`,与 `OPEN_MEMBERS_EVENT` 同一条解耦线路)。
+ */
+function openDeadLetters(): void {
+  if (!props.roomSessionId) return
+  window.dispatchEvent(new CustomEvent<OpenRoomScheduleDetail>(OPEN_ROOM_SCHEDULE_EVENT, {
+    detail: { roomSessionId: props.roomSessionId, filter: 'dead-letter' },
+  }))
 }
 </script>
 
@@ -316,6 +427,30 @@ async function resume(): Promise<void> {
   font-size: 10.5px;
 }
 
+/* 死信:条尾一颗红点 + 计数。用 danger 语义色族的 fg,不自己兑 color-mix。 */
+.cd-dead {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-status-danger-fg, var(--color-danger, #a33));
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cd-dead-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ui-status-danger-fg, var(--color-danger, #a33));
+}
+
 .cd-chev {
   flex: 0 0 auto;
   width: 8px;
@@ -371,6 +506,108 @@ async function resume(): Promise<void> {
 
 .cd-now.is-run .cd-glyph {
   color: var(--ui-status-success-fg, var(--color-success, #4d6108));
+}
+
+/* 持牌但还没起跑:字形压暗一档。它不是"在跑",也不是"没排上" —— 那个中间态
+   在这一列里就该长成一个中间的样子。 */
+.cd-now.is-hold .cd-glyph {
+  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+}
+
+.cd-now.is-hold .cd-name {
+  color: var(--ui-text-secondary-fg, var(--text));
+}
+
+/* ── 排队徽标 ── */
+.cd-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 3px 12px 5px;
+}
+
+.cd-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+/* 要人动手的四道闸加重:眼睛该先落在这一格上,自解的两道不必抢注意力。 */
+.cd-badge.is-actionable {
+  border-color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+}
+
+/* ── 裁决窗三态 ── */
+.cd-judge {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 11.5px;
+}
+
+.cd-judge-mark {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* 防抖:一个**虚**点 —— 窗还没开,钱还没花。 */
+.cd-judge.is-debouncing .cd-judge-mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ui-text-muted-fg, var(--muted));
+}
+
+/* 在飞:一圈转着的弧。转圈是"正在花钱"唯一诚实的记号。 */
+.cd-judge.is-inflight .cd-judge-mark {
+  border: 1.4px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-top-color: var(--ui-text-primary-fg, var(--text));
+  border-radius: 50%;
+  width: 9px;
+  height: 9px;
+  animation: cd-judge-spin 0.9s linear infinite;
+}
+
+@keyframes cd-judge-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 降级:黄牌。一次回落 FIFO 是失败,不是答案 —— 它必须与「没有裁决在跑」长得
+   完全不一样,那正是这一格存在的全部理由。 */
+.cd-judge.is-degraded {
+  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+}
+
+.cd-judge.is-degraded .cd-judge-mark {
+  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  border-radius: 1px;
+}
+
+.cd-judge-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cd-judge-at {
+  flex: 0 0 auto;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cd-judge-who {
+  padding: 0 12px 4px 26px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
 }
 
 .cd-name {

@@ -500,6 +500,10 @@ export const IPC_CHANNELS = {
 	// 'collab:agent-changed' 会话事件。与协调器那扇门是**两本互不派生的账**:
 	// 大脑、信箱、工作卡是跨房的,任何一份房间快照里都没有它们的位置。
 	COLLAB_AGENT_ACTIVITY_GET: "collab:agent-activity-get",
+	// 调度时间轴的尾读(D8 观测体系 §3.3)。回答四个必答问题里的最后一个 ——
+	// 「**刚才**为什么是那样」。前三个问的是此刻,快照答得了;这一个问的是过去,
+	// 而过去只在盘上的 scheduler-log.jsonl 里。**只读**,没有写口。
+	COLLAB_SCHEDULER_LOG_TAIL: "collab:scheduler-log-tail",
 	COLLAB_MESSAGE_REACT: "collab:message-react",
 	// 用户 ↔ agent 托管私聊房的 get-or-create(docs/design/agent-im-dm.md D1)。
 	// 幂等:id 从 agentId 派生,同一个 agent 永远同一间房。

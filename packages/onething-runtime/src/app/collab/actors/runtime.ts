@@ -649,6 +649,10 @@ function roomJudgmentOrPhaseChanged(
 ): boolean {
   if (before.judgment?.state !== after.judgment?.state) return true
   if (before.judgment?.token !== after.judgment?.token) return true
+  // 降级的痕(O2 前置修)也算一次转变 —— 而且是**最该被看见**的那一次:窗在同一步里
+  // 就关了,只比 `judgment` 的话这条转变在这个判据下完全不可见,黄牌要等下一件事
+  // 才顺带播出去。
+  if (before.lastDegraded?.at !== after.lastDegraded?.at) return true
   return before.phase !== after.phase
 }
 

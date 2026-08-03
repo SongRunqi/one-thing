@@ -5,13 +5,21 @@
  * 悄悄写错、又最难在真机上看出来的地方(一个读错的闸看起来和读对的一模一样)。
  */
 import { describe, expect, it } from 'vitest'
-import type { CollabCoordinatorState } from '@shared/ipc'
+import type {
+  CollabAgentMind,
+  CollabCoordinatorBlockedBy,
+  CollabCoordinatorState,
+} from '@shared/ipc'
 import {
   buildCoordinatorBar,
   buildCoordinatorGateRows,
+  buildCoordinatorJudgment,
   buildCoordinatorLogRows,
   buildCoordinatorNowRows,
   buildCoordinatorPlan,
+  buildCoordinatorQueueBadges,
+  countCoordinatorGenerating,
+  COORDINATOR_JUDGMENT_DEGRADED_TEXT,
   formatCoordinatorAgo,
   formatCoordinatorElapsed,
 } from '../coordinator-status'
@@ -56,11 +64,16 @@ const turn = (agentId: string, reason = 'relay', executing = false) => ({
 })
 
 /** 一条排队的手。`blockedBy` 缺省「等座位」—— 六道闸里最无害的那一格。 */
-const queued = (id: string, agentId: string, reason: string) => ({
+const queued = (
+  id: string,
+  agentId: string,
+  reason: string,
+  blockedBy: CollabCoordinatorBlockedBy = 'seats',
+) => ({
   id,
   agentId,
   reason,
-  blockedBy: 'seats' as const,
+  blockedBy,
 })
 
 describe('常驻条', () => {
@@ -74,33 +87,52 @@ describe('常驻条', () => {
     expect(buildCoordinatorBar(state(), name)).toMatchObject({ text: '空闲', lamp: 'off', tail: '并行' })
   })
 
-  it('有人在说 → 报名字,有编排在飞时右端带批数', () => {
+  /**
+   * D8 改词(蓝图 §4.1)。旧词是「N 人正在说」,而 v3 有第三种状态:牌发出去之后
+   * 要先躺进那个 agent 的信箱,大脑此刻可能正在别的房里想。两个数字分开写,
+   * 「一个在说话、实则一个字都没写的人」这句谎就说不出来了。
+   */
+  it('持牌与生成中分开报,有编排在飞时右端带批数', () => {
     const bar = buildCoordinatorBar(
       state({
         mode: 'serial',
-        turns: [turn('a')],
+        turns: [turn('a', 'relay', true)],
         plan: { waves: [['a'], ['b']], waveIndex: 0, waveCount: 6, cycle: true, why: '', loops: 0 },
       }),
       name,
     )
-    expect(bar).toMatchObject({ lamp: 'run', text: '阿般 正在说', tail: '顺序 · 第 7 批' })
+    expect(bar).toMatchObject({ lamp: 'run', text: '持牌 1 · 生成中 1', tail: '顺序 · 第 7 批' })
   })
 
-  it('多人并行时说清一共几个', () => {
-    expect(buildCoordinatorBar(state({ turns: [turn('a'), turn('b')] }), name).text)
-      .toBe('阿般 等 2 人正在说')
+  it('持牌 ≠ 在说:两张牌只有一张在生成时,条上就看得出来', () => {
+    expect(buildCoordinatorBar(state({ turns: [turn('a', 'relay', true), turn('b')] }), name).text)
+      .toBe('持牌 2 · 生成中 1')
+  })
+
+  // 一屋子的牌全在等大脑 = 没有任何一个字在被写出来,那是 wait 不是 run。
+  it('一个都没在生成时灯是 wait —— 没有人在动,只是牌发出去了', () => {
+    expect(buildCoordinatorBar(state({ turns: [turn('a'), turn('b')] }), name))
+      .toMatchObject({ lamp: 'wait', text: '持牌 2 · 生成中 0' })
+  })
+
+  it('死信计数跟着条走 —— 「它没回应」与「它试过但炸了」不是一回事', () => {
+    expect(buildCoordinatorBar(state(), name).deadLetters).toBe(0)
+    expect(buildCoordinatorBar(state({ deadLetterCount: 4 }), name).deadLetters).toBe(4)
+    // 暂停/撞闸这些压过一切的支路上也照样带着它。
+    expect(buildCoordinatorBar(state({ frozen: true, deadLetterCount: 2 }), name).deadLetters).toBe(2)
+    expect(buildCoordinatorBar(null, name).deadLetters).toBe(0)
   })
 
   it('**闸优先于在跑**:自己会结束的事排在不动手就不会结束的事之后', () => {
     const bar = buildCoordinatorBar(
-      state({ turns: [turn('a')], gates: { ...state().gates, chain: { value: 32, max: 32 } } }),
+      state({ turns: [turn('a', 'relay', true)], gates: { ...state().gates, chain: { value: 32, max: 32 } } }),
       name,
     )
     expect(bar).toMatchObject({ lamp: 'wait', text: '已按住 · 连聊 32 条' })
   })
 
   it('暂停压过一切,并且把「恢复」直接给到条上', () => {
-    const bar = buildCoordinatorBar(state({ frozen: true, turns: [turn('a')] }), name)
+    const bar = buildCoordinatorBar(state({ frozen: true, turns: [turn('a', 'relay', true)] }), name)
     expect(bar).toMatchObject({ text: '已暂停 · 队列已清空', action: 'resume' })
   })
 
@@ -131,19 +163,56 @@ describe('现在', () => {
   it('在跑的在前、排队的在后,判定那条垫底', () => {
     const rows = buildCoordinatorNowRows(
       state({
-        turns: [turn('a', 'relay')],
+        turns: [turn('a', 'relay', true)],
         queue: [queued('q1', 'b', 'mention')],
         judging: 1,
       }),
       name,
     )
     expect(rows.map(row => row.glyph)).toEqual(['▶', '○', '◌'])
-    expect(rows[0]).toMatchObject({ name: '阿般', reason: '轮到发言', running: true })
-    expect(rows[1]).toMatchObject({ name: '小李', reason: '被 @ 激活', activationId: 'q1' })
+    expect(rows[0]).toMatchObject({ name: '阿般', reason: '轮到发言', running: true, hold: 'generating' })
+    expect(rows[1]).toMatchObject({ name: '小李', reason: '被 @ 激活', activationId: 'q1', hold: null })
+  })
+
+  /**
+   * 持牌未执行的两种成因,是 D8 词汇表修正的落点:「等大脑」是这颗脑子一会儿就
+   * 轮到这间房(等就是了),「在别处思考」是它此刻被另一间房占着 —— 后者的答案
+   * 在另一扇窗里,而在这一格之前它们在界面上长得一模一样。
+   */
+  it('持牌未执行:大脑在别的房 → 「在别处思考」,读不到 / 空闲 → 「等大脑」', () => {
+    const minds: Record<string, CollabAgentMind> = {
+      a: { state: 'thinking', roomSessionId: 'room-9', since: 1 },
+      b: { state: 'idle' },
+    }
+    const rows = buildCoordinatorNowRows(
+      state({ turns: [turn('a'), turn('b'), turn('c')] }),
+      name,
+      agentId => minds[agentId] ?? null,
+    )
+    expect(rows.map(row => row.glyph)).toEqual(['◐', '◐', '◐'])
+    expect(rows.map(row => row.name))
+      .toEqual(['阿般(在别处思考)', '小李(等大脑)', 'Iris(等大脑)'])
+    expect(rows.map(row => row.hold))
+      .toEqual(['thinking-elsewhere', 'waiting-mind', 'waiting-mind'])
+  })
+
+  // 大脑说它就在这间房想,但登记簿里没有这张牌 —— 那也是"还没起跑"。
+  it('大脑就在本房但没起跑 → 仍是「等大脑」,不冒充「在别处」', () => {
+    const rows = buildCoordinatorNowRows(
+      state({ turns: [turn('a')] }),
+      name,
+      () => ({ state: 'thinking', roomSessionId: 'room-1', since: 1 }),
+    )
+    expect(rows[0]).toMatchObject({ name: '阿般(等大脑)', hold: 'waiting-mind' })
+  })
+
+  it('不给大脑读口时一律当空闲 —— 冷启动不该闪一下加载态', () => {
+    const rows = buildCoordinatorNowRows(state({ turns: [turn('a')] }), name)
+    expect(rows[0]).toMatchObject({ name: '阿般(等大脑)', hold: 'waiting-mind' })
   })
 
   it('在跑的行带得走执行会话 id —— 那是下钻和「停」的靶子', () => {
-    const rows = buildCoordinatorNowRows(state({ turns: [turn('a')] }), name)
+    const rows = buildCoordinatorNowRows(state({ turns: [turn('a', 'relay', true)] }), name)
     expect(rows[0].agentSessionId).toBe('agent-exec-a-room-1')
   })
 })
@@ -393,5 +462,109 @@ describe('时间', () => {
     expect(formatCoordinatorElapsed(now - 12_000, now)).toBe('0:12')
     expect(formatCoordinatorElapsed(now - 132_000, now)).toBe('2:12')
     expect(formatCoordinatorElapsed(0, now)).toBe('')
+  })
+})
+
+/* ── D8:排队细分与裁决三态 ──────────────────────────────────────────────── */
+
+describe('排队徽标 —— 「N 人排队中」底下的六件事', () => {
+  it('按闸分格,空的闸整格不出现', () => {
+    const badges = buildCoordinatorQueueBadges(
+      state({
+        queue: [
+          queued('q1', 'a', 'mention', 'chain'),
+          queued('q2', 'b', 'self-elected', 'seats'),
+          queued('q3', 'c', 'self-elected', 'chain'),
+        ],
+      }),
+      name,
+    )
+    expect(badges.map(badge => badge.key)).toEqual(['seats', 'chain'])
+    expect(badges.map(badge => badge.count)).toEqual([1, 2])
+    expect(badges.map(badge => badge.label)).toEqual(['等座位', '链闸'])
+  })
+
+  /**
+   * 这一条是这组徽标存在的**全部理由**:前两道闸几秒后自解,后四道不动手就永远
+   * 不会开,而在细分之前它们长得一模一样 ——「怎么没人理我」因此只能靠猜。
+   */
+  it('自解的两道 vs 要人动手的四道:分界钉死在 actionable 上', () => {
+    const of = (blockedBy: CollabCoordinatorBlockedBy): boolean =>
+      buildCoordinatorQueueBadges(state({ queue: [queued('q', 'a', 'mention', blockedBy)] }), name)[0]
+        .actionable
+    expect([of('judging'), of('seats')]).toEqual([false, false])
+    expect([of('chain'), of('phase'), of('frozen'), of('budget')]).toEqual([true, true, true, true])
+  })
+
+  it('hover 明细说的是「下一步谁做什么」+ 卡在上面的人', () => {
+    const [badge] = buildCoordinatorQueueBadges(
+      state({ queue: [queued('q1', 'a', 'mention', 'chain'), queued('q2', 'b', 'mention', 'chain')] }),
+      name,
+    )
+    expect(badge.hint).toBe('连聊到上限,你说句话就放开 · 阿般 小李')
+  })
+
+  it('次序:自解的在前,要动手的在后 —— 读到最后一格才是「该你出手了」', () => {
+    const badges = buildCoordinatorQueueBadges(
+      state({
+        queue: [
+          queued('q1', 'a', 'mention', 'budget'),
+          queued('q2', 'b', 'mention', 'judging'),
+          queued('q3', 'c', 'mention', 'phase'),
+        ],
+      }),
+      name,
+    )
+    expect(badges.map(badge => badge.key)).toEqual(['judging', 'phase', 'budget'])
+  })
+
+  it('没人排队就没有徽标', () => {
+    expect(buildCoordinatorQueueBadges(state(), name)).toEqual([])
+    expect(buildCoordinatorQueueBadges(null, name)).toEqual([])
+  })
+})
+
+describe('裁决窗三态', () => {
+  const now = 10_000_000
+
+  it('空闲不画 —— 那一格只在有事发生时占位置', () => {
+    expect(buildCoordinatorJudgment(state(), name, now)).toBeNull()
+    expect(buildCoordinatorJudgment(null, name, now)).toBeNull()
+  })
+
+  it('防抖:带倒计秒,到点归 0 而不是负数', () => {
+    expect(buildCoordinatorJudgment(
+      state({ judgment: { state: 'debouncing', opensAt: now + 2_400 } }), name, now,
+    )).toMatchObject({ state: 'debouncing', countdown: '3s' })
+    expect(buildCoordinatorJudgment(
+      state({ judgment: { state: 'debouncing', opensAt: now - 5_000 } }), name, now,
+    )).toMatchObject({ countdown: '0s' })
+  })
+
+  it('在飞:候选换成名字,数得出几个人', () => {
+    expect(buildCoordinatorJudgment(
+      state({ judgment: { state: 'inflight', candidates: ['a', 'b'], since: now - 800 } }), name, now,
+    )).toMatchObject({ state: 'inflight', candidates: ['阿般', '小李'], text: '裁决 2 人' })
+  })
+
+  /**
+   * 降级必须与「没有裁决在跑」长得完全不一样:一次回落 FIFO 在旧的两格
+   * (`judging: 0`)里与"闲着"一模一样,而它恰恰是必须修的那一类。
+   */
+  it('降级:亮黄牌,成因原样带上', () => {
+    const view = buildCoordinatorJudgment(
+      state({ judgment: { state: 'degraded', reason: 'timeout', at: now - 3_000 } }), name, now,
+    )
+    expect(view).toMatchObject({ state: 'degraded', reason: 'timeout', at: now - 3_000 })
+    expect(view?.text).toBe(COORDINATOR_JUDGMENT_DEGRADED_TEXT)
+    expect(view?.text).not.toBe('')
+  })
+})
+
+describe('生成中计数', () => {
+  it('数的是登记簿(executing),不是租约表', () => {
+    expect(countCoordinatorGenerating(state({ turns: [turn('a'), turn('b')] }))).toBe(0)
+    expect(countCoordinatorGenerating(state({ turns: [turn('a', 'relay', true), turn('b')] }))).toBe(1)
+    expect(countCoordinatorGenerating(null)).toBe(0)
   })
 })

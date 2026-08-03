@@ -584,24 +584,32 @@ export function buildCollabRoomActorSnapshot(options: {
  * `degraded` **必须单独一格** —— 它在旧的 `judging: 0` 里与「没有裁决在跑」长得
  * 一模一样,而那是一次必须修的链断。
  *
+ * 降级那一格读的是 `account.lastDegraded` 而不是 `account.judgment`(O2 前置修):
+ * 窗在裁决落地的**同一个同步步**里就被 `grantFloor` 关掉了,`judgment: 'degraded'`
+ * 因此从来没有活到任何一次快照组装 —— O1 记下的那个"读不到"就是这件事。窗照旧当场
+ * 关,痕留到下一次开窗,黄牌于是有了站的地方。
+ *
  * `debouncing` 在 v3 没有产生点(房间是事件驱动开窗,不防抖),所以这里给不出它 ——
- * 这不是遗漏,是 v3 的事实。
+ * 那一格由运行时在 `roomSnapshotOf` 里补(防抖只有它知道)。
  */
 function buildCollabRoomActorJudgmentView(account: CollabRoomAccount): CollabCoordinatorJudgment {
   const judgment = account.judgment
-  if (!judgment) return { state: 'idle' }
-  if (judgment.state === 'pending') {
+  if (judgment?.state === 'pending') {
     return {
       state: 'inflight',
       candidates: account.hands.map(hand => hand.agentId),
       since: judgment.openedAt,
     }
   }
-  if (judgment.state === 'degraded') {
-    // 降级的成因(超时/读不懂/端口炸)在裁判那侧,账里只留下「降级了」。
-    // 给一句诚实的占位而不是编一个原因 —— 完整成因在时间轴的 judge-degraded 行上。
+  // `judgment.state === 'degraded'` 这条路在真机上走不到(见上),留着是因为它在
+  // 逻辑上仍然是同一个答案 —— 一份没经过 `grantFloor` 的账(重放、纯测试)读得到它。
+  if (judgment?.state === 'degraded') {
     return { state: 'degraded', reason: judgment.why ?? 'unspecified', at: judgment.openedAt }
   }
+  const degraded = account.lastDegraded
+  // 降级的成因(超时/读不懂/端口炸)在裁判那侧,账里只留下一句话与一个时刻。
+  // 给一句诚实的占位而不是编一个原因 —— 完整成因在时间轴的 judge-degraded 行上。
+  if (degraded) return { state: 'degraded', reason: degraded.reason || 'unspecified', at: degraded.at }
   return { state: 'idle' }
 }
 

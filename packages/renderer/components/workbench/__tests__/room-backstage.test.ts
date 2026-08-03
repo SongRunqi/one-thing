@@ -48,43 +48,76 @@ describe('resolveRightPanelForm — 右栏两形态', () => {
 })
 
 describe('buildRoomBackstageSegments — 固定几格', () => {
-  it('群房恒三格,私聊房恒两格 —— 与内容无关', () => {
+  it('群房恒四格,私聊房恒三格 —— 与内容无关', () => {
     const group = buildRoomBackstageSegments({ isDm: false })
-    expect(group.map(segment => segment.key)).toEqual(['threads', 'members', 'board'])
-    expect(group.map(segment => segment.label)).toEqual(['线程', '成员', '看板'])
+    expect(group.map(segment => segment.key)).toEqual(['threads', 'members', 'board', 'schedule'])
+    expect(group.map(segment => segment.label)).toEqual(['线程', '成员', '看板', '调度'])
 
     const dm = buildRoomBackstageSegments({ isDm: true })
-    expect(dm.map(segment => segment.key)).toEqual(['threads', 'space'])
-    expect(dm.map(segment => segment.label)).toEqual(['线程', '空间'])
+    expect(dm.map(segment => segment.key)).toEqual(['threads', 'space', 'schedule'])
+    expect(dm.map(segment => segment.label)).toEqual(['线程', '空间', '调度'])
+  })
+
+  /**
+   * 「调度」两种形态都有(D8 §4.2):一间只有两个人的私聊房一样有租约、有闸、
+   * 有死信,照样会卡住 —— 而在这一格之前那种卡住完全不可见。
+   */
+  it('私聊房也有调度格 —— 两个人的房照样会卡住', () => {
+    expect(buildRoomBackstageSegments({ isDm: true }).some(segment => segment.key === 'schedule'))
+      .toBe(true)
   })
 
   /**
    * 页签形态崩掉的第一个症状是"按需才开 → 看不到线程"。分段器的反面保证:
-   * 一条线程、一个成员、一张卡都没有的房,三格照样在(空的是内容,不是入口)。
+   * 一条线程、一个成员、一张卡都没有的房,四格照样在(空的是内容,不是入口)。
    */
   it('一条内容都没有时格子照样在', () => {
-    expect(buildRoomBackstageSegments({ isDm: false, signals: {} })).toHaveLength(3)
+    expect(buildRoomBackstageSegments({ isDm: false, signals: {} })).toHaveLength(4)
   })
 
   it('标题不随内容变:亮不亮点都是同一组文案', () => {
     const quiet = buildRoomBackstageSegments({ isDm: false })
     const busy = buildRoomBackstageSegments({
       isDm: false,
-      signals: { threadsRunning: true, boardAwaiting: true, membersUnread: true },
+      signals: {
+        threadsRunning: true,
+        boardAwaiting: true,
+        membersUnread: true,
+        scheduleFaulted: true,
+      },
     })
     expect(busy.map(segment => segment.label)).toEqual(quiet.map(segment => segment.label))
-    expect(quiet.map(segment => segment.label))
-      .toEqual([ROOM_BACKSTAGE_LABELS.threads, ROOM_BACKSTAGE_LABELS.members, ROOM_BACKSTAGE_LABELS.board])
+    expect(quiet.map(segment => segment.label)).toEqual([
+      ROOM_BACKSTAGE_LABELS.threads,
+      ROOM_BACKSTAGE_LABELS.members,
+      ROOM_BACKSTAGE_LABELS.board,
+      ROOM_BACKSTAGE_LABELS.schedule,
+    ])
   })
 
-  it('状态点长在格子上:线程绿 / 看板橙 / 成员墨,静默时一颗不画', () => {
+  it('状态点长在格子上:线程绿 / 成员墨 / 看板橙 / 调度红,静默时一颗不画', () => {
     const busy = buildRoomBackstageSegments({
       isDm: false,
-      signals: { threadsRunning: true, boardAwaiting: true, membersUnread: true },
+      signals: {
+        threadsRunning: true,
+        boardAwaiting: true,
+        membersUnread: true,
+        scheduleFaulted: true,
+      },
     })
-    expect(busy.map(segment => segment.dot)).toEqual(['run', 'new', 'wait'])
+    expect(busy.map(segment => segment.dot)).toEqual(['run', 'new', 'wait', 'fault'])
     expect(buildRoomBackstageSegments({ isDm: false }).map(segment => segment.dot))
-      .toEqual([null, null, null])
+      .toEqual([null, null, null, null])
+  })
+
+  // 死信与「待你」刻意不同档:等你放行是正常流程的一步,炸了不是。
+  it('死信是自己一档(fault),不与看板的 wait 混成一个颜色', () => {
+    const [, , board, schedule] = buildRoomBackstageSegments({
+      isDm: false,
+      signals: { boardAwaiting: true, scheduleFaulted: true },
+    })
+    expect(board.dot).toBe('wait')
+    expect(schedule.dot).toBe('fault')
   })
 })
 

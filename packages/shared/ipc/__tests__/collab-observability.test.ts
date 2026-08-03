@@ -29,6 +29,9 @@ import type {
   CollabCoordinatorQueued,
   CollabCoordinatorState,
   CollabCoordinatorTurn,
+  CollabSchedulerLogEntry,
+  CollabSchedulerLogTailRequest,
+  CollabSchedulerLogTailResponse,
 } from '../collab.js'
 
 /* ── agent 活动快照(§3.1)────────────────────────────────────────────────── */
@@ -158,6 +161,44 @@ describe('D8 观测契约', () => {
     const some: CollabAgentActivityGetRequest = { agentIds: ['iris'] }
     expect(all.agentIds).toBeUndefined()
     expect(some.agentIds).toEqual(['iris'])
+  })
+
+  /**
+   * 时间轴那扇门(§3.3)。
+   *
+   * 这里**刻意没有字段穷尽表**:行的完整判别联合(14 类)属主在纯层的
+   * `CollabSchedulerLogRow`,契约层只钉住"每一行都有的两格"并整体透传。抄一份
+   * 14 类的表进来,就要在每次加一类行时记得改两处 —— 漏掉哪一处都不报错,只是
+   * 那一类行在界面上静默地长成一个空白。所以这一条验的是**透传没有丢格**。
+   */
+  it('时间轴是只读的一扇门:通道在册、两格恒有、其余整体透传(§3.3)', () => {
+    expect(IPC_CHANNELS.COLLAB_SCHEDULER_LOG_TAIL).toBe('collab:scheduler-log-tail')
+
+    // 一行 judge-verdict:`why` / `elapsedMs` / `model` 三格是这一行存在的全部
+    // 理由(「刚才为什么没人理我」),它们必须原样过得来。
+    const verdict: CollabSchedulerLogEntry = {
+      at: 1_000,
+      type: 'judge-verdict',
+      token: 'room#J1',
+      order: ['iris'],
+      why: '她提的问题',
+      elapsedMs: 820,
+      model: 'deepseek-chat',
+      triggeredBy: 'room#J1',
+    }
+    expect(verdict.why).toBe('她提的问题')
+    expect(verdict.elapsedMs).toBe(820)
+
+    const request: CollabSchedulerLogTailRequest = { roomSessionId: 'room-1' }
+    const filtered: CollabSchedulerLogTailRequest = {
+      roomSessionId: 'room-1',
+      limit: 40,
+      types: ['dead-letter'],
+    }
+    const response: CollabSchedulerLogTailResponse = { success: true, rows: [verdict] }
+    expect(request.limit).toBeUndefined()
+    expect(filtered.types).toEqual(['dead-letter'])
+    expect(response.rows?.[0]?.type).toBe('judge-verdict')
   })
 
   it('房间快照的字段表是穷尽的,且 D8 三格都在(§3.2)', () => {

@@ -456,6 +456,43 @@ export interface CollabAgentActivityGetResponse {
   activities?: CollabAgentActivitySnapshot[]
 }
 
+// ── 调度时间轴(D8 观测体系 §3.3)──────────────────────────────────────────
+//
+// 两本快照回答的都是**此刻**。这一扇门回答另一个问题:「**刚才**为什么是那样?」
+// —— 谁举了手、裁判怎么排的、为什么这么排、牌发给了谁、谁被哪道闸拦了、有没有
+// 一封信炸了。那些事在 D8 之前只活在 inspector 的内存环里(≤32 条,重启即失忆),
+// 而抓瞎最惨的时刻恰恰是进程不对劲的时刻。
+//
+// **只读,没有写口**:账由记账的那几个 actor 单点写(谁转换状态谁记账)。
+
+/**
+ * 时间轴上的一行,**整体透传**。
+ *
+ * 完整判别联合的属主是纯层的 `CollabSchedulerLogRow`(14 类,带因果 `triggeredBy`
+ * 与「正文永不入账」的类型级门)。契约层不重抄一份:抄一份就要在每次加一类行时
+ * 记得改两处,漏掉哪一处都不报错 —— 只是那一类行在界面上静默地长成一个空白。
+ * 所以这里只钉住**每一行都有的两格**,判别由读的那一侧按 `type` 收窄。
+ */
+export type CollabSchedulerLogEntry = {
+  at: number
+  type: string
+} & Record<string, unknown>
+
+export interface CollabSchedulerLogTailRequest {
+  roomSessionId: string
+  /** 尾读几条。缺席 = 主进程的默认尾长。 */
+  limit?: number
+  /** 只要这几类(`CollabSchedulerLogRow['type']` 的字面量)。缺席 = 全要。 */
+  types?: string[]
+}
+
+export interface CollabSchedulerLogTailResponse {
+  success: boolean
+  error?: string
+  /** **新在前** —— 回查从最近一步往回看,不是从开天辟地往下翻。 */
+  rows?: CollabSchedulerLogEntry[]
+}
+
 /** Update room budgets. Only provided fields change; 0 disables that gate. */
 export interface CollabRoomBudgetsRequest {
   roomSessionId: string

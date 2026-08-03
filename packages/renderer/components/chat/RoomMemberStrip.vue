@@ -23,6 +23,14 @@
         :avatar-image="entry.avatarImage"
         :size="22"
       />
+      <!-- 四态徽标(D8 §4.4):生成中 / 持牌等大脑 / 干活中 / 空闲(不画)。
+           读的是 collabBoard 的 agents 账,不再从看板 doing 卡现算。 -->
+      <i
+        v-if="presenceOf(entry.id) !== 'idle'"
+        class="member-badge"
+        :class="`is-${presenceOf(entry.id)}`"
+        aria-hidden="true"
+      />
     </button>
 
     <!-- dm 房没有 ＋:形态即身份,加个人就把私聊变成群了(P1b 遗留发现 4)。 -->
@@ -78,12 +86,15 @@ import type { ContextMenuItem } from '@/components/common/context-menu'
 import { AGENT_AVATAR_FALLBACK } from '@/components/common/agent-avatar'
 import { useAgentsStore } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
+import { useCollabBoardStore } from '@/stores/collabBoard'
 import {
   buildAddableRoomAgents,
   buildRoomMemberEntries,
+  formatRoomMemberPresence,
   formatRoomMemberTooltip,
   planRoomMemberAdd,
   planRoomMemberRemoval,
+  resolveRoomMemberPresence,
   type RoomMemberEntry,
 } from './room-member-strip'
 import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
@@ -102,6 +113,7 @@ const props = defineProps<{
 
 const agentsStore = useAgentsStore()
 const sessionsStore = useSessionsStore()
+const collabBoardStore = useCollabBoardStore()
 
 const ADD_PREFIX = 'add:'
 const REMOVE_ID = 'remove'
@@ -146,8 +158,34 @@ watch(() => props.sessionId, () => {
   if (!agentsStore.hasLoaded) void agentsStore.loadAgents().catch(() => {})
 }, { immediate: true })
 
+/**
+ * 这一屋子人的活动快照补一次水(每人一次,之后跟着 `collab:agent-changed` 走)。
+ *
+ * 挂在名册上而不是 sessionId 上:换房只是换一份名册,而已经补过水的人不必再问。
+ */
+watch(memberAgentIds, ids => {
+  if (ids.length > 0) collabBoardStore.ensureAgentActivity(ids)
+}, { immediate: true })
+
+/** 墓碑不参与在场判定 —— 名字还挂在花名册上,但那个人不会再动了。 */
+function presenceOf(agentId: string): ReturnType<typeof resolveRoomMemberPresence> {
+  const entry = entries.value.find(item => item.id === agentId)
+  if (entry?.isRetired) return 'idle'
+  return resolveRoomMemberPresence(collabBoardStore.agentActivityFor(agentId))
+}
+
+const resolveRoomName = (roomSessionId: string): string =>
+  sessionsStore.sessions.find(item => item.id === roomSessionId)?.name || roomSessionId
+
 function tooltip(entry: RoomMemberEntry): string {
-  return formatRoomMemberTooltip(entry)
+  const base = formatRoomMemberTooltip(entry)
+  if (entry.isRetired) return base
+  // 「TA 怎么不理我」的答案往往正是「TA 在别的房忙着」—— 那半句只有 tooltip 说得下。
+  const presence = formatRoomMemberPresence(
+    collabBoardStore.agentActivityFor(entry.id),
+    resolveRoomName,
+  )
+  return presence ? `${base} · ${presence}` : base
 }
 
 function showError(message: string): void {
@@ -281,6 +319,7 @@ async function commit(update: {
 /* 24px stamps on a hairline, overlapped so the row reads as one group.
    No fill, no shadow — the emoji is the identity, the ring is the frame. */
 .member-chip {
+  position: relative;
   width: 24px;
   height: 24px;
   flex: 0 0 24px;
@@ -304,8 +343,40 @@ async function commit(update: {
   border-radius: 50%;
 }
 
+/* 在场徽标:右下角一颗 6px 的点,压在环上。
+   三色分别是三件不同的事,而它们在 D8 之前是同一个"在忙":
+     绿 = 真在写字;黄 = 拿着牌还没开始(v3 特有);蓝 = 在干一张卡的活。
+   不画 = 空闲 —— 第四态刻意没有记号,一屋子安静的人不该长满点。
+   徽标带一圈与 chip 底色同色的描边:头像叠压时它才不会糊进邻座的脸。 */
+.member-badge {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--ui-tab-bar-surface-bg, var(--ui-surface-app-bg, var(--bg)));
+}
+
+.member-badge.is-generating {
+  background: var(--ui-status-success-fg, var(--color-success, #4d6108));
+}
+
+.member-badge.is-holding {
+  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+}
+
+.member-badge.is-working {
+  background: var(--ui-accent-primary-fg, var(--accent));
+}
+
 .member-chip + .member-chip {
   margin-left: -6px;
+}
+
+/* 叠压的那一排里,亮着徽标的人浮到上面 —— 否则右下角那颗点会被邻座压掉。 */
+.member-chip:has(.member-badge) {
+  z-index: 1;
 }
 
 /* 双人紧凑形态(§4.3):不叠压。叠印是"一群人"的记号 —— 两个人并排站着就够了,

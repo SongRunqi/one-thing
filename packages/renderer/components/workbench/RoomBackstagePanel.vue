@@ -65,6 +65,18 @@
         :room-session-id="roomSessionId"
         @open-thread="landOnThread"
       />
+
+      <!-- 调度(D8 §4.2):租约 / 举手 / 裁决 / 时间轴。**按需挂**(v-if 在
+           activeSegment 上)—— 时间轴是一次读到底的账文件,不该在没人看的时候
+           跟着每次换房去读一遍盘。 -->
+      <RoomSchedulePanel
+        v-if="activeSegment === 'schedule'"
+        :key="`schedule-${roomSessionId}`"
+        class="backstage-view"
+        :room-session-id="roomSessionId"
+        :initial-filter="scheduleFilter"
+        :landing-nonce="scheduleNonce"
+      />
     </div>
   </section>
 </template>
@@ -88,15 +100,17 @@
  * 数据一个字段都不新增:在跑读 `isSessionGenerating`,待你读 `hasPendingAsk`,
  * 新消息读 `isUnreadSession`。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import RoomThreadsWorkbench from './RoomThreadsWorkbench.vue'
 import MembersWorkbench from './MembersWorkbench.vue'
 import RoomBoardWorkbench from './RoomBoardWorkbench.vue'
+import RoomSchedulePanel from './RoomSchedulePanel.vue'
 import { hasRunningRoomThread } from './room-threads'
 import { hasRoomBoardAwaiting } from './room-board'
+import { OPEN_ROOM_SCHEDULE_EVENT, type OpenRoomScheduleDetail } from './room-schedule'
 import {
   buildRoomBackstageSegments,
   fallbackRoomBackstageSegment,
@@ -161,12 +175,22 @@ const membersUnread = computed(() => {
   })
 })
 
+/**
+ * 调度格的红点 = 这间房的 actor 处理事件失败过(D8 §3.4)。
+ *
+ * 与另外三个信号同一条纪律:**不显示计数**,只回答"有没有"(计数在状态条尾部
+ * 那颗红点上,而这里只是入口)。读的是协调器快照那一格,不新开一本账。
+ */
+const scheduleFaulted = computed(() =>
+  (collabBoardStore.coordinatorFor(props.roomSessionId)?.deadLetterCount ?? 0) > 0)
+
 const segments = computed(() => buildRoomBackstageSegments({
   isDm: props.isDm,
   signals: {
     threadsRunning: threadsRunning.value,
     boardAwaiting: boardAwaiting.value,
     membersUnread: membersUnread.value,
+    scheduleFaulted: scheduleFaulted.value,
   },
 }))
 
@@ -177,6 +201,27 @@ const activeSegment = ref<RoomBackstageSegmentKey>('threads')
 const threadFocus = ref('')
 /** 成员/空间格的下钻靶子('' = 成员表)。私聊房恒是那一个人。 */
 const memberFocus = ref('')
+/** 调度格的时间轴过滤('' = 全部);死信红点跳过来时是 'dead-letter'。 */
+const scheduleFilter = ref('')
+/** 每收到一次落座指令 +1 —— 同一个过滤器也要能重放(再点一次 = 再带我去一次)。 */
+const scheduleNonce = ref(0)
+
+/**
+ * 状态条那颗死信红点的落点(契约见 `room-schedule.ts`)。
+ *
+ * 走 window 事件而不是逐层 emit:派事件的状态条挂在**线程格**里,而目标是它隔壁
+ * 那一格 —— 与 `OPEN_MEMBERS_EVENT` 同一条解耦线路,同一条理由。
+ */
+function onOpenSchedule(event: Event): void {
+  const detail = (event as CustomEvent<OpenRoomScheduleDetail>).detail
+  if (!detail?.roomSessionId || detail.roomSessionId !== props.roomSessionId) return
+  scheduleFilter.value = detail.filter || ''
+  scheduleNonce.value += 1
+  activeSegment.value = 'schedule'
+}
+
+window.addEventListener(OPEN_ROOM_SCHEDULE_EVENT, onOpenSchedule)
+onUnmounted(() => { window.removeEventListener(OPEN_ROOM_SCHEDULE_EVENT, onOpenSchedule) })
 
 /** 形态变了(群 ↔ 私聊)当前格可能已经不存在 —— 兜回第一格,不留死格。 */
 watch(segments, list => {
@@ -193,6 +238,7 @@ watch(() => [props.roomSessionId, props.isDm, props.dmAgentId] as const, () => {
   activeSegment.value = 'threads'
   threadFocus.value = ''
   memberFocus.value = props.isDm ? props.dmAgentId : ''
+  scheduleFilter.value = ''
 }, { immediate: true })
 
 /**
@@ -314,6 +360,11 @@ defineExpose({ segments, activeSegment })
 
 .seg-dot.is-new {
   background: var(--ui-text-primary-fg, var(--text));
+}
+
+/* 死信:与 wait 分开的一档 —— 等你放行是正常流程的一步,炸了不是。 */
+.seg-dot.is-fault {
+  background: var(--ui-status-danger-fg, var(--color-danger, #a33));
 }
 
 .backstage-body {

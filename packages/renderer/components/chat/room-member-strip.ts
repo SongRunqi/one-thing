@@ -10,7 +10,13 @@
  * arithmetic (unknown ids, the last-member floor, PM hand-over) is testable.
  */
 
-import { isActiveAgent, isColleague, type AgentKind, type AgentStatus } from '@shared/ipc'
+import {
+  isActiveAgent,
+  isColleague,
+  type AgentKind,
+  type AgentStatus,
+  type CollabAgentActivitySnapshot,
+} from '@shared/ipc'
 import { agentTombstoneLabel } from '@onething/runtime/agents/model'
 import { AGENT_AVATAR_FALLBACK } from '@/components/common/agent-avatar'
 
@@ -95,6 +101,59 @@ export function buildRoomMemberEntries(options: {
       isRetired: !agent || !isActiveAgent(agent),
     }
   })
+}
+
+/* ── 在场徽标:四态,读 agents 账(D8 观测体系 §4.4)────────────────────────
+ *
+ * 这四个格子替掉的是 C4 审查里那个「四口径」问题的**最后一块**:「谁在忙」从前是
+ * 从看板的 doing 卡现算的 —— 一张卡躺在「在做」列里,这个人就被画成在忙,哪怕
+ * TA 此刻一个字都没在写,甚至根本没有那间房的发言权。
+ *
+ * 现在判据只有一本账(collabBoard 的 `agents`),而且它说得出旧口径根本表达不了的
+ * 那一格:**持牌等大脑**。
+ *
+ * 判据是**按人**而不是按房的,这是刻意的:一个大脑同一时刻至多在一间房里想
+ * (v3 宪法),所以「TA 在生成」是一个关于这个人的事实,不是关于这间房的。真正
+ * 有用的那半句「在**哪儿**」交给 tooltip —— 「TA 怎么不理我」的答案往往正是
+ * 「TA 在别的房忙着」,而按房过滤会把这句话直接删掉。
+ */
+
+export type RoomMemberPresence = 'generating' | 'holding' | 'working' | 'idle'
+
+/**
+ * 一位同事此刻的在场态。拿不到快照 = 空闲(「读不到」与「空闲」在徽标上是同一
+ * 个样子:都不画,而人本来就该是空闲居多)。
+ *
+ * 次序即优先级:在写字 > 拿着牌还没开始 > 在干活 > 闲着。
+ */
+export function resolveRoomMemberPresence(
+  activity: CollabAgentActivitySnapshot | null | undefined,
+): RoomMemberPresence {
+  if (!activity) return 'idle'
+  if (activity.mind.state === 'thinking') return 'generating'
+  // 大脑循环那一格拿不到时退回牌上的登记簿标志(两者在真机上说的是同一件事)。
+  if (activity.heldLeases.some(lease => lease.executing)) return 'generating'
+  if (activity.heldLeases.length > 0) return 'holding'
+  if (activity.workers.some(worker => worker.status === 'running')) return 'working'
+  return 'idle'
+}
+
+/** 徽标的 tooltip 后缀。`resolveRoomName` 翻不出名字就退回 id。 */
+export function formatRoomMemberPresence(
+  activity: CollabAgentActivitySnapshot | null | undefined,
+  resolveRoomName: (roomSessionId: string) => string,
+): string {
+  const presence = resolveRoomMemberPresence(activity)
+  if (presence === 'idle' || !activity) return ''
+  if (presence === 'generating') {
+    const room = activity.mind.state === 'thinking'
+      ? (resolveRoomName(activity.mind.roomSessionId) || activity.mind.roomSessionId)
+      : ''
+    return room ? `在「${room}」生成中` : '生成中'
+  }
+  if (presence === 'holding') return `持 ${activity.heldLeases.length} 张牌,等大脑`
+  const running = activity.workers.filter(worker => worker.status === 'running').length
+  return `在干活(${running} 张卡)`
 }
 
 /**

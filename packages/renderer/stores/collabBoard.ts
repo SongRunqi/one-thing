@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type {
+  CollabAgentActivitySnapshot,
   CollabBoard,
   CollabBoardAction,
   CollabBoardActResponse,
@@ -26,6 +27,16 @@ import { invalidateCollabTagCards } from '@/composables/collabInlineTags'
  *  SNAPSHOT carries the timestamp and its typing list expires on read
  *  (架构收敛 C4 §1:兜底挂在快照上,不再是每个 true 自带一个死线)。 */
 const TYPING_TTL_MS = 60_000
+/**
+ * 一份多久没动过的 agent 活动快照就不再算数(D8 观测体系 §4.6)。
+ *
+ * 与 typing 那把兜底同一条纪律(挂在快照的 `at` 上、在**读**的时候判,安静的房间
+ * 一个定时器都不跑),但阈值刻意大一个量级:typing 明灭在秒级,而一个人「在这间房
+ * 里想」合法地能想十分钟(工具链路长)。取十分钟是在两种错法里选代价小的那一种 ——
+ * 短了,一个真在跑的长回合会被画成空闲(比不显示更糟:它撒谎);长了,一帧丢掉的
+ * 「它停下来了」多顶一会儿。窗口重载有冷启动 GET 兜底,所以后一种错法自愈得掉。
+ */
+const AGENT_ACTIVITY_TTL_MS = 600_000
 /**
  * A permission event is a hint that the session's ask set MOVED, not a delta to
  * apply — several can land in one tick (a settle immediately followed by the
@@ -78,9 +89,29 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
    * **不再拿它们记账** —— 后端在同一处触发点上推快照,那才是真值。
    */
   const coordinators = ref<Record<string, CollabCoordinatorState>>({})
+  /**
+   * 「这个人现在在干嘛」的**唯一**账本(D8 观测体系 §3.1/§4.6):
+   * agentId → 最近一次活动快照。
+   *
+   * 与协调器那本是**两本互不派生的账**,而不是一本拆两半:大脑在哪间房想、信箱
+   * 积压多少、手上几张工作卡,全都是**跨房**的事实,任何一份房间快照里都没有它们
+   * 的位置。硬要从 N 份房间快照里拼一个人的状态,拼出来的是 N 份各自过期的碎片。
+   *
+   * 与协调器那本同一条纪律,一条不少:
+   *  - 全量小快照 + `seq` 去序(广播与冷启动 GET 会赛跑,到达顺序什么都证明不了);
+   *  - 冷启动 GET **每人一次**补水,之后跟着广播走;
+   *  - 陈旧兜底挂在快照的 `at` 上,读的时候判。
+   *
+   * 这本账落地之后,「谁在忙」的最后一个野口径(看板 doing 卡现算)也收进来了 ——
+   * C4 那四个口径至此只剩这两本快照。看板仍然回答「TA 在做**哪张卡**」(那是看板的
+   * 问题),但「TA 此刻忙不忙」只由这本账说了算。
+   */
+  const agents = ref<Record<string, CollabAgentActivitySnapshot>>({})
   const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>()
   /** 已经补过水的房(冷启动 GET 每间房一次就够,之后跟着广播走)。 */
   const hydratedCoordinators = new Set<string>()
+  /** 已经补过水的人(同上,每人一次)。 */
+  const hydratedAgents = new Set<string>()
   let subscribed = false
 
   /**
@@ -227,6 +258,75 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     void loadCoordinator(roomSessionId)
   }
 
+  /**
+   * 采纳一份 agent 活动快照 —— **唯一**的写入口(广播、冷启动 GET 都走它)。
+   *
+   * 与协调器快照逐字同一条去序规则:比屏幕上更旧的丢掉。号由主进程每广播一次 +1,
+   * GET 带的是"上一次广播的号"(它是读,不发号),所以一发比它新的广播总能顶掉
+   * 一条迟到的 GET 回包。
+   */
+  function applyAgentActivitySnapshot(activity: CollabAgentActivitySnapshot): void {
+    const agentId = activity?.agentId
+    if (!agentId) return
+    const current = agents.value[agentId]
+    if (current && (activity.seq ?? 0) < (current.seq ?? 0)) return
+    agents.value = { ...agents.value, [agentId]: activity }
+  }
+
+  /**
+   * 冷启动补水:这几位同事的活动快照各拉一次(每人一次,之后跟着广播走)。
+   *
+   * 不带 `agentIds` = 此刻开着心智循环的全部(总览页要的就是这一档)。带上则**逐个
+   * 都有回答** —— 一位没在跑循环的同事回一份空闲快照而不是被悄悄跳过,否则界面上
+   * 「读不到」与「空闲」是两个样子,冷启动会闪一下空白。
+   *
+   * 与 `ensureCoordinator` 同款:去重表在**发问之前**置位,一个人只问一次。
+   */
+  function ensureAgentActivity(agentIds?: readonly string[]): void {
+    if (!agentIds) {
+      void loadAgentActivity()
+      return
+    }
+    const wanted = agentIds.filter(agentId => agentId && !hydratedAgents.has(agentId))
+    if (wanted.length === 0) return
+    for (const agentId of wanted) hydratedAgents.add(agentId)
+    void loadAgentActivity(wanted)
+  }
+
+  async function loadAgentActivity(agentIds?: readonly string[]): Promise<void> {
+    try {
+      ensureSubscribed()
+      // 数组在 IPC 边界上重建成裸字符串:Vue 的响应式代理过不了 structured clone。
+      const response = await platformApi.getCollabAgentActivity?.(
+        agentIds ? agentIds.map(id => String(id)) : undefined,
+      )
+      if (!response?.success || !response.activities) return
+      for (const activity of response.activities) {
+        hydratedAgents.add(activity.agentId)
+        applyAgentActivitySnapshot(activity)
+      }
+    } catch (error) {
+      console.error('[collabBoard] agent activity load failed:', error)
+    }
+  }
+
+  /**
+   * 这位同事此刻的样子。陈旧的一份读作**没有**(见 `AGENT_ACTIVITY_TTL_MS`)。
+   *
+   * 「拿不到」与「空闲」在界面上刻意是同一个样子:四态徽标的第四态就是"不画",
+   * 而一个人本来就该是空闲居多 —— 为"还没补上水"单开一个加载态,只会让安静的
+   * 房间在每次开面时闪一下。
+   */
+  function agentActivityFor(
+    agentId: string | undefined | null,
+  ): CollabAgentActivitySnapshot | null {
+    if (!agentId) return null
+    const snapshot = agents.value[agentId]
+    if (!snapshot) return null
+    if (Date.now() - (snapshot.at ?? 0) > AGENT_ACTIVITY_TTL_MS) return null
+    return snapshot
+  }
+
   /** 这个房间此刻有没有可以停的一轮 —— 停止按钮与「在忙」读的同一格。 */
   function isRoomTurnActive(sessionId: string | undefined | null): boolean {
     if (!sessionId) return false
@@ -245,6 +345,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
           type?: string
           board?: CollabBoard
           state?: CollabCoordinatorState
+          activity?: CollabAgentActivitySnapshot
           requestId?: string
           toolCallIds?: string[]
           decision?: 'allowed' | 'rejected'
@@ -253,6 +354,11 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
       if (!event?.type) return
       if (event.type === 'collab:board-changed' && event.board) {
         applySnapshot(envelope.sessionId, event.board)
+      } else if (event.type === 'collab:agent-changed' && event.activity) {
+        // 信封挂在房上,账按 `activity.agentId` 归 —— 同一个人的快照会从 TA 此刻
+        // 牵涉到的每一间房各来一份(后端刻意的扇出),`seq` 去序把重复的收干净。
+        hydratedAgents.add(event.activity.agentId)
+        applyAgentActivitySnapshot(event.activity)
       } else if (event.type === 'collab:coordinator-changed' && event.state) {
         // 「谁在说 / 谁在打字」全在这一份里(C4 §1)。`collab:typing` 与
         // `collab:turn-active` 照旧在线上,但这里**刻意不接**:后端在同一处触发
@@ -465,5 +571,10 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     ensureCoordinator,
     loadCoordinator,
     coordinatorFor,
+    agents,
+    applyAgentActivitySnapshot,
+    ensureAgentActivity,
+    loadAgentActivity,
+    agentActivityFor,
   }
 })

@@ -259,6 +259,17 @@ const electronAPI = {
 			IPC_CHANNELS.COLLAB_AGENT_ACTIVITY_GET,
 			agentIds ? { agentIds: agentIds.map((id) => String(id)) } : {},
 		),
+	// 调度时间轴尾读(D8 §3.3)。只读:账由记账的那几个 actor 单点写,渲染层
+	// 连一个写口都不该看得见。`types` 原样递过去(整体透传)。
+	getCollabSchedulerLog: (
+		roomSessionId: string,
+		options?: { limit?: number; types?: string[] },
+	) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_SCHEDULER_LOG_TAIL, {
+			roomSessionId,
+			...(typeof options?.limit === 'number' ? { limit: options.limit } : {}),
+			...(options?.types?.length ? { types: options.types.map((type) => String(type)) } : {}),
+		}),
 	updateCollabRoom: (roomSessionId: string, update: CollabRoomUpdatePatch) =>
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_UPDATE, { roomSessionId, ...update }),
 	// 清空聊天记录(危险区):房间转录 + 每位成员的执行会话与已读游标 + 看板一起归零;

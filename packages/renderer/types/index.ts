@@ -830,6 +830,14 @@ export interface ElectronAPI {
 	getCollabAgentActivity: (
 		agentIds?: string[],
 	) => Promise<import("@shared/ipc.js").CollabAgentActivityGetResponse>;
+	/**
+	 * 调度时间轴的尾读(D8 观测体系 §3.3)——「刚才为什么是那样」的读口。
+	 * **只读**,新在前;读的是账文件,不经运行时。desktop-only。
+	 */
+	getCollabSchedulerLog: (
+		roomSessionId: string,
+		options?: { limit?: number; types?: string[] },
+	) => Promise<import("@shared/ipc.js").CollabSchedulerLogTailResponse>;
 	/** Team settings (W6): only provided fields change; pmAgentId null clears. */
 	updateCollabRoom: (
 		roomSessionId: string,

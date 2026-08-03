@@ -13,6 +13,7 @@ import type {
   CollabRoomFrozenRequest,
   CollabRoomSpendRequest,
   CollabRoomUpdateRequest,
+  CollabSchedulerLogTailRequest,
   CollabTaskStopRequest,
 } from '@shared/ipc.js'
 import { loadCollabBoard } from '@onething/app/collab/board-store.js'
@@ -25,11 +26,16 @@ import {
   getCollabRoomSpend,
   listCollabRoomFolder,
   reactToCollabMessage,
+  readCollabSchedulerLogTail,
   setCollabRoomBudgets,
   setCollabRoomConfig,
   setCollabRoomFrozen,
   stopCollabTaskWork,
+  type CollabSchedulerLogTailOptions,
 } from '@onething/app/collab/index.js'
+
+/** 时间轴过滤的类型表属主在纯层;这里只是把 wire 上那串裸字符串接回去。 */
+type CollabSchedulerLogTailTypes = NonNullable<CollabSchedulerLogTailOptions['types']>
 
 export function registerCollabHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.COLLAB_BOARD_GET, (_event, request: CollabBoardGetRequest) => {
@@ -87,6 +93,26 @@ export function registerCollabHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.COLLAB_AGENT_ACTIVITY_GET, (_event, request?: CollabAgentActivityGetRequest) => {
     try {
       return { success: true, activities: getCollabAgentActivity(request?.agentIds) }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  /**
+   * 调度时间轴的尾读(D8 §3.3)。纯读、同步 —— 读的是账文件,不经运行时。
+   *
+   * `types` 原样递下去(整体透传):哪几类行合法是纯层那张 14 类表的事,这里再抄
+   * 一份就是第二本会漂的枚举。递一个不存在的类型的后果是"过滤出空",不是错误 ——
+   * 而那正是想要的失败模式。
+   */
+  ipcMain.handle(IPC_CHANNELS.COLLAB_SCHEDULER_LOG_TAIL, (_event, request: CollabSchedulerLogTailRequest) => {
+    try {
+      if (!request?.roomSessionId) return { success: false, error: 'Missing roomSessionId' }
+      const rows = readCollabSchedulerLogTail(request.roomSessionId, {
+        ...(typeof request.limit === 'number' ? { limit: request.limit } : {}),
+        ...(request.types?.length ? { types: request.types as CollabSchedulerLogTailTypes } : {}),
+      })
+      return { success: true, rows }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }

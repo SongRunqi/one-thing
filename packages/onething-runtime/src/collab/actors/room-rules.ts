@@ -145,6 +145,23 @@ export interface CollabRoomAccount {
   judgment?: CollabRoomJudgment
   /** 开过几扇裁决窗。窗的 token 由它派生 —— 随机 id 会让金重放每次都变。 */
   judgmentSeq: number
+  /**
+   * 最近一次**裁决降级**(D8 观测体系 O2:黄牌要有地方站)。
+   *
+   * 为什么必须多这一格:降级发生在 `applyCollabRoomSetPolicy` 的 token 分支里,而
+   * 那一步紧接着就调 `grantFloor` —— 后者把「不是 pending 的窗」一律关掉(那是对的,
+   * 一份答完的裁决留着只会让下一次决策拿陈旧的结果发牌)。于是 `judgment: 'degraded'`
+   * 这个态**在同一个同步步里生灭**,任何一份快照都读不到它,黄牌永远亮不起来。
+   *
+   * 所以降级的"留痕"与裁决窗的"生死"必须是两格:窗照旧当场关掉,痕留到**下一次
+   * 开窗**才清 —— 而不是下一条消息、不是一个墙钟超时。判据是「这间房又去买了一次
+   * 裁决」:那一刻上一次降级才真正翻篇,在此之前它一直是这间房现在这个样子的解释。
+   *
+   * 与 `judgment` 同为账里的一格而不是现算:成因(超时/读不懂/端口炸)只有裁判那侧
+   * 知道,而它经由 `verdictDegraded` 那一步之后就消失了 —— 现算无从算起。完整成因
+   * 在时间轴的 `judge-degraded` 行上,这里只留一句话与一个时刻。
+   */
+  lastDegraded?: { reason: string; at: number }
   /** 举手队列。 */
   hands: CollabRaisedHand[]
   /** 发牌用的确定性牌号计数器。随机牌号会让金重放每次都变。 */
@@ -364,6 +381,9 @@ export function normalizeCollabRoomAccount(value: unknown, roomId: string): Coll
     // 的答案(比丢一次裁决贵得多 —— 丢一次裁决只是这轮回落 FIFO)。
     ...(isCollabRoomJudgmentShape(raw.judgment) ? { judgment: { ...raw.judgment } } : {}),
     judgmentSeq: typeof raw.judgmentSeq === 'number' ? raw.judgmentSeq : 0,
+    // 认不出形状就当没降级过 —— 一句读不出来的解释不如没有解释(黄牌宁可不亮,
+    // 也不要亮成一句空话)。
+    ...(isLastDegradedShape(raw.lastDegraded) ? { lastDegraded: { ...raw.lastDegraded } } : {}),
     hands: Array.isArray(raw.hands) ? raw.hands.filter(isRaisedHandShape) : [],
     leaseSeq: typeof raw.leaseSeq === 'number' ? raw.leaseSeq : 0,
     leaseReasons: raw.leaseReasons && typeof raw.leaseReasons === 'object' ? { ...raw.leaseReasons } : {},
@@ -385,6 +405,12 @@ function isFloorLeaseShape(value: unknown): value is FloorLease {
     && typeof lease.epoch === 'number'
     && typeof lease.agentId === 'string'
     && typeof lease.issuedAt === 'number'
+}
+
+function isLastDegradedShape(value: unknown): value is { reason: string; at: number } {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Partial<{ reason: string; at: number }>
+  return typeof record.reason === 'string' && typeof record.at === 'number'
 }
 
 function isRaisedHandShape(value: unknown): value is CollabRaisedHand {
@@ -595,6 +621,9 @@ function grantFloor(
   let judgment: CollabRoomJudgment | undefined =
     account.judgment?.state === 'pending' ? account.judgment : undefined
   let judgmentRequest: CollabRoomJudgmentRequest | undefined
+  // 降级的痕活到**下一次开窗**(见 `CollabRoomAccount.lastDegraded`)。窗一开,
+  // 这间房又去买裁决了,上一次降级才算翻篇。
+  let lastDegraded = account.lastDegraded
   const notices = { ...account.notices }
   const leaseReasons = { ...account.leaseReasons }
   const issuedAgentIds = new Set<string>()
@@ -643,6 +672,7 @@ function grantFloor(
     // 开裁决窗。**在闸里面**:冻住/烧光的房不该去买一次裁决调用。
     if (decision.openJudgment) {
       judgmentSeq += 1
+      lastDegraded = undefined
       judgment = {
         token: collabJudgmentToken(account.roomId, judgmentSeq),
         ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
@@ -749,6 +779,7 @@ function grantFloor(
       // 策略没动游标就保留原值 —— `undefined` 在这里是"没意见",不是"清空"。
       ...(decision.state ? { policyState: decision.state } : {}),
       ...(judgment ? { judgment } : { judgment: undefined }),
+      ...(lastDegraded ? { lastDegraded } : { lastDegraded: undefined }),
     },
     broadcast,
     messages,
@@ -1146,6 +1177,12 @@ export function applyCollabRoomSetPolicy(
         ...(degraded ? {} : { grants: [...(verb.params?.verdict ?? [])] }),
         ...(verb.params?.why ? { why: verb.params.why } : {}),
       },
+      // 降级要**留痕**:下面那一步 `grantFloor` 会把这扇答完的窗当场关掉,于是
+      // `judgment: 'degraded'` 在同一个同步步里就没了 —— 黄牌没有它站的地方
+      // (见 `CollabRoomAccount.lastDegraded`)。痕活到下一次开窗。
+      ...(degraded
+        ? { lastDegraded: { reason: verb.params?.why || 'unspecified', at: gates.now } }
+        : {}),
     }
     const effects = emptyEffects()
     const outcome = grantFloor(resolved, gates, ids, {
