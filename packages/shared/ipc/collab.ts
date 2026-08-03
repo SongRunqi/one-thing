@@ -438,6 +438,24 @@ export interface CollabAgentActivitySnapshot {
   deadLetterCount: number
 }
 
+/**
+ * 冷启动补水:问几位同事此刻的活动快照(D8 §3.1 的 GET 口)。
+ *
+ * `agentIds` 缺席 = 全要(此刻开着心智循环的那些)。带上则**逐个都有回答** ——
+ * 一位没在跑循环的同事回一份空闲快照而不是被悄悄跳过:「读不到」与「空闲」在
+ * 界面上必须是同一个样子,否则冷启动会闪一下空白(C4 那条老纪律)。
+ */
+export interface CollabAgentActivityGetRequest {
+  agentIds?: string[]
+}
+
+export interface CollabAgentActivityGetResponse {
+  success: boolean
+  error?: string
+  /** 顺序与请求一致;不带 `agentIds` 时是运行时枚举序。 */
+  activities?: CollabAgentActivitySnapshot[]
+}
+
 /** Update room budgets. Only provided fields change; 0 disables that gate. */
 export interface CollabRoomBudgetsRequest {
   roomSessionId: string

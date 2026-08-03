@@ -82,6 +82,30 @@ describe('createWebPlatformApi', () => {
     expect(() => cleanup()).not.toThrow()
   })
 
+  /**
+   * Agent 活动快照(D8 观测体系 §3.1)在 web 上是 desktop-only —— 供数在主进程的
+   * v3 运行时里,与协调器那扇门同一条边界。
+   *
+   * 钉的是「**降级成一句明确的失败**」而不是 `undefined`:后者会让调用方在
+   * `response.success` 上炸掉,而那个栈离成因很远(渲染层不该知道自己跑在哪个宿主
+   * 上,它只该读得懂回答)。
+   */
+  it('degrades getCollabAgentActivity to an explicit refusal on web', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('server unavailable')
+    }))
+    vi.stubGlobal('navigator', {})
+
+    const { createWebPlatformApi, WEB_DESKTOP_ONLY_PLATFORM_METHODS } = await import('../web.js')
+    expect(WEB_DESKTOP_ONLY_PLATFORM_METHODS).toContain('getCollabAgentActivity')
+
+    const api = createWebPlatformApi()
+    await expect(api.getCollabAgentActivity(['iris'])).resolves.toEqual({
+      success: false,
+      error: 'Platform method "getCollabAgentActivity" is not available in the web host yet.',
+    })
+  })
+
   it('opens settings in the current browser tab', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('server unavailable')

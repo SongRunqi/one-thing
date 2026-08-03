@@ -250,6 +250,15 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SPEND_GET, { roomSessionId }),
 	getCollabCoordinator: (roomSessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_COORDINATOR_GET, { roomSessionId }),
+	// Agent 活动快照的冷启动补水(D8 §3.1)。不带 agentIds = 此刻开着心智循环的
+	// 全部同事;带上则逐个都有回答(没在跑的回一份空闲快照,不是被跳过)。
+	// 数组在边界上重建成裸字符串:Vue 的响应式代理过不了 structured clone,
+	// 而调用方没有可靠办法知道自己手里正握着一个(W7 血教训)。
+	getCollabAgentActivity: (agentIds?: string[]) =>
+		ipcRenderer.invoke(
+			IPC_CHANNELS.COLLAB_AGENT_ACTIVITY_GET,
+			agentIds ? { agentIds: agentIds.map((id) => String(id)) } : {},
+		),
 	updateCollabRoom: (roomSessionId: string, update: CollabRoomUpdatePatch) =>
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_UPDATE, { roomSessionId, ...update }),
 	// 清空聊天记录(危险区):房间转录 + 每位成员的执行会话与已读游标 + 看板一起归零;

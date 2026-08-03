@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type {
+  CollabAgentActivityGetRequest,
   CollabBoardActRequest,
   CollabBoardGetRequest,
   CollabCoordinatorGetRequest,
@@ -19,6 +20,7 @@ import {
   applyUserCollabBoardAction,
   clearCollabRoomHistory,
   ensureUserDmRoom,
+  getCollabAgentActivity,
   getCollabCoordinatorState,
   getCollabRoomSpend,
   listCollabRoomFolder,
@@ -69,6 +71,22 @@ export function registerCollabHandlers(): void {
     try {
       const state = getCollabCoordinatorState(request.roomSessionId)
       return state ? { success: true, state } : { success: false, error: 'Not a room session' }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  /**
+   * Agent 活动快照的冷启动补水(D8 §3.1)。纯读、同步 —— 九格全部从运行时现算,
+   * 不碰磁盘。
+   *
+   * 整体透传(与 COLLAB_BOARD_ACT 同一条纪律):`agentIds` 缺席就是缺席,handler
+   * 不替调用方决定"缺席等于全要"还是"缺席等于零个" —— 那条语义在 app 层
+   * (`getCollabAgentActivity`),这里再写一遍就是第二本会漂的规则。
+   */
+  ipcMain.handle(IPC_CHANNELS.COLLAB_AGENT_ACTIVITY_GET, (_event, request?: CollabAgentActivityGetRequest) => {
+    try {
+      return { success: true, activities: getCollabAgentActivity(request?.agentIds) }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }

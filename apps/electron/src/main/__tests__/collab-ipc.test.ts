@@ -10,10 +10,15 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import type { CollabRoomBudgetsPatch, CollabRoomUpdatePatch } from '@shared/ipc.js'
+import type {
+  CollabAgentActivityGetRequest,
+  CollabRoomBudgetsPatch,
+  CollabRoomUpdatePatch,
+} from '@shared/ipc.js'
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, request: unknown) => unknown>(),
+  getCollabAgentActivity: vi.fn((_agentIds?: readonly string[]) => [] as unknown[]),
   setCollabRoomConfig: vi.fn((_roomSessionId: string, _patch: unknown) => ({ success: true })),
   setCollabRoomBudgets: vi.fn((_roomSessionId: string, _patch: unknown) => true),
   ensureUserDmRoom: vi.fn((_agentId: string): string | null => 'agent-dm-fe'),
@@ -40,6 +45,8 @@ vi.mock('@onething/app/collab/index.js', () => ({
   reactToCollabMessage: (...args: unknown[]) => mocks.reactToCollabMessage(...(args as [])),
   applyUserCollabBoardAction: (...args: unknown[]) => mocks.applyUserCollabBoardAction(...(args as [])),
   clearCollabRoomHistory: (...args: unknown[]) => mocks.clearCollabRoomHistory(...(args as [])),
+  getCollabAgentActivity: (...args: unknown[]) =>
+    mocks.getCollabAgentActivity(...(args as [readonly string[] | undefined])),
 }))
 
 const { registerCollabHandlers } = await import('../ipc/collab.js')
@@ -68,6 +75,10 @@ function invokeClearHistory(request: unknown): unknown {
   return mocks.handlers.get(IPC_CHANNELS.COLLAB_ROOM_CLEAR_HISTORY)?.({}, request)
 }
 
+function invokeAgentActivity(request?: unknown): unknown {
+  return mocks.handlers.get(IPC_CHANNELS.COLLAB_AGENT_ACTIVITY_GET)?.({}, request)
+}
+
 const EMPTY_BOARD = { version: 1, tasks: [] }
 
 beforeEach(() => {
@@ -84,6 +95,8 @@ beforeEach(() => {
   mocks.applyUserCollabBoardAction.mockResolvedValue({ success: true, board: EMPTY_BOARD })
   mocks.clearCollabRoomHistory.mockClear()
   mocks.clearCollabRoomHistory.mockResolvedValue({ success: true, clearedMessageCount: 3 })
+  mocks.getCollabAgentActivity.mockClear()
+  mocks.getCollabAgentActivity.mockReturnValue([])
   registerCollabHandlers()
 })
 
@@ -313,5 +326,61 @@ describe('COLLAB_ROOM_CLEAR_HISTORY', () => {
     mocks.clearCollabRoomHistory.mockImplementation(() => { throw new Error('store exploded') })
     expect(await invokeClearHistory({ roomSessionId: 'room-1' }))
       .toEqual({ success: false, error: 'store exploded' })
+  })
+})
+
+/**
+ * Agent 活动快照的冷启动补水(D8 观测体系 §3.1)。
+ *
+ * 同一条整体透传纪律 —— 这扇门只有一格(`agentIds`),而「缺席等于全要」是 app 层
+ * 的语义,handler 一个字都不该替它做主。下面那条穷尽性钉的就是这件事:
+ * shared 请求类型加一格而中转没跟上,编译当场红。
+ */
+describe('COLLAB_AGENT_ACTIVITY_GET (D8 O1)', () => {
+  const ACTIVITY = {
+    agentId: 'iris',
+    seq: 3,
+    at: 1_000,
+    mind: { state: 'idle' as const },
+    heldLeases: [],
+    inbox: { depth: 0 },
+    workers: [],
+    deadLetterCount: 0,
+  }
+
+  it('把请求里那几位带过去,回一份快照数组', () => {
+    mocks.getCollabAgentActivity.mockReturnValue([ACTIVITY])
+    expect(invokeAgentActivity({ agentIds: ['iris'] }))
+      .toEqual({ success: true, activities: [ACTIVITY] })
+    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(['iris'])
+  })
+
+  it('`agentIds` 缺席就是缺席 —— handler 不替 app 层决定它等于什么', () => {
+    invokeAgentActivity({})
+    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(undefined)
+    // 连整个请求都没有也一样(preload 在没有 agentIds 时投的就是 `{}`,
+    // 而 daemon / 测试可能一个参数都不给)。
+    invokeAgentActivity()
+    expect(mocks.getCollabAgentActivity).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('空数组原样过河,不被兜回"全要"', () => {
+    invokeAgentActivity({ agentIds: [] })
+    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith([])
+  })
+
+  it('turns a thrown error into a failed response', () => {
+    mocks.getCollabAgentActivity.mockImplementation(() => { throw new Error('runtime exploded') })
+    expect(invokeAgentActivity({ agentIds: ['iris'] }))
+      .toEqual({ success: false, error: 'runtime exploded' })
+  })
+
+  /** 同一条 keyof 穷尽纪律:请求类型的每一格都到得了 app 层。 */
+  it('shared 请求的每个键都到得了 app 层(keyof 穷尽)', () => {
+    const request: Record<keyof CollabAgentActivityGetRequest, unknown> = {
+      agentIds: ['iris', 'bram'],
+    }
+    invokeAgentActivity(request)
+    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(['iris', 'bram'])
   })
 })

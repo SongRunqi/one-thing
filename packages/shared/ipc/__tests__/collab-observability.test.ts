@@ -15,7 +15,10 @@
  */
 import { describe, expect, it } from 'vitest'
 
+import { IPC_CHANNELS } from '../channels.js'
 import type {
+  CollabAgentActivityGetRequest,
+  CollabAgentActivityGetResponse,
   CollabAgentActivitySnapshot,
   CollabAgentHeldLease,
   CollabAgentMind,
@@ -52,6 +55,40 @@ type AgentActivityStray = Exclude<
 >
 const AGENT_ACTIVITY_IS_EXHAUSTIVE: [AgentActivityMissing] extends [never]
   ? [AgentActivityStray] extends [never]
+    ? true
+    : never
+  : never = true
+
+/* ── GET 补水通道(§3.1,O1)──────────────────────────────────────────────── */
+
+const ACTIVITY_GET_REQUEST_FIELDS = ['agentIds'] as const satisfies
+  readonly (keyof CollabAgentActivityGetRequest)[]
+type ActivityGetRequestMissing = Exclude<
+  keyof CollabAgentActivityGetRequest,
+  (typeof ACTIVITY_GET_REQUEST_FIELDS)[number]
+>
+type ActivityGetRequestStray = Exclude<
+  (typeof ACTIVITY_GET_REQUEST_FIELDS)[number],
+  keyof CollabAgentActivityGetRequest
+>
+const ACTIVITY_GET_REQUEST_IS_EXHAUSTIVE: [ActivityGetRequestMissing] extends [never]
+  ? [ActivityGetRequestStray] extends [never]
+    ? true
+    : never
+  : never = true
+
+const ACTIVITY_GET_RESPONSE_FIELDS = ['success', 'error', 'activities'] as const satisfies
+  readonly (keyof CollabAgentActivityGetResponse)[]
+type ActivityGetResponseMissing = Exclude<
+  keyof CollabAgentActivityGetResponse,
+  (typeof ACTIVITY_GET_RESPONSE_FIELDS)[number]
+>
+type ActivityGetResponseStray = Exclude<
+  (typeof ACTIVITY_GET_RESPONSE_FIELDS)[number],
+  keyof CollabAgentActivityGetResponse
+>
+const ACTIVITY_GET_RESPONSE_IS_EXHAUSTIVE: [ActivityGetResponseMissing] extends [never]
+  ? [ActivityGetResponseStray] extends [never]
     ? true
     : never
   : never = true
@@ -104,6 +141,23 @@ describe('D8 观测契约', () => {
     for (const field of ['mind', 'heldLeases', 'inbox', 'workers', 'deadLetterCount'] as const) {
       expect(AGENT_ACTIVITY_FIELDS).toContain(field)
     }
+  })
+
+  /**
+   * 补水通道:一扇门 + 两个形状。
+   *
+   * 通道常量单独断言一次是刻意的 —— 一个只在 `channels.ts` 里存在、渲染层与主进程
+   * 各自用字面量拼出来的通道名,是"改一处漏一处"最经典的现场。
+   */
+  it('GET 补水的请求/回应字段表是穷尽的,通道常量在册(§3.1)', () => {
+    expect(ACTIVITY_GET_REQUEST_IS_EXHAUSTIVE).toBe(true)
+    expect(ACTIVITY_GET_RESPONSE_IS_EXHAUSTIVE).toBe(true)
+    expect(IPC_CHANNELS.COLLAB_AGENT_ACTIVITY_GET).toBe('collab:agent-activity-get')
+    // 地址(要问谁)是可选的:缺席 = 此刻开着心智循环的全部。
+    const all: CollabAgentActivityGetRequest = {}
+    const some: CollabAgentActivityGetRequest = { agentIds: ['iris'] }
+    expect(all.agentIds).toBeUndefined()
+    expect(some.agentIds).toEqual(['iris'])
   })
 
   it('房间快照的字段表是穷尽的,且 D8 三格都在(§3.2)', () => {

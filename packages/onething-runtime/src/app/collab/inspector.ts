@@ -28,24 +28,15 @@ import type {
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
 import { maxChainFor, maxConcurrentTurnsFor } from './room-runtime.js'
+import {
+  clearCollabSnapshotThrottle,
+  createCollabSnapshotThrottle,
+  scheduleCollabSnapshot,
+  type CollabSnapshotThrottle,
+} from './snapshot-throttle.js'
 
 /** 「刚才」最多留几条。定长环形缓冲 —— 一间房不会因为聊得久而涨内存。 */
 export const COLLAB_LOG_LIMIT = 32
-
-/** 广播节流。快照本身很小,但一次判定轮能在几毫秒里连着改好几处状态。 */
-const BROADCAST_THROTTLE_MS = 1_000
-
-/**
- * **活动**转变(谁在说、谁在打字)的节流窗口 —— 比上面那道短一个量级。
- *
- * 这两件事不是"面板上的一个数字",而是界面上会**动**的东西:停止按钮的出现、
- * 打字波纹的亮灭。按秒节流的话,想打断的人要等最多一秒按钮才画出来,而一句短
- * `say` 的灯会被整个吞掉("打了又删"那一帧再也看不到)。
- *
- * 仍然是节流而不是直发:同一个回合里 `say` 可以连着调好几次,而 120ms 已经短到
- * 人眼读作"立刻"。
- */
-const ACTIVITY_BROADCAST_THROTTLE_MS = 120
 
 interface InspectorRoomState {
   log: CollabCoordinatorLogEntry[]
@@ -63,12 +54,8 @@ interface InspectorRoomState {
   typing: Set<string>
   /** 已经广播过几次 —— 快照的单调序号(渲染层据此丢弃乱序到达的旧快照)。 */
   seq: number
-  /** 上一次真正发出去的时刻(节流用)。 */
-  lastSentAt: number
-  /** 节流窗口里攒下的那一次待发。 */
-  pending?: ReturnType<typeof setTimeout>
-  /** 那一次待发的到期时刻 —— 短窗口的请求要能抢在长窗口的待发之前。 */
-  pendingDueAt?: number
+  /** 双档节流槽(共用件在 `snapshot-throttle.ts`)。 */
+  throttle: CollabSnapshotThrottle
 }
 
 const rooms = new Map<string, InspectorRoomState>()
@@ -105,7 +92,7 @@ function inspectorState(roomSessionId: string): InspectorRoomState | null {
     // 长进程里单调增长。会话已经不是房间就不再立新表项;已有表项照常用,
     // 它们由 forget 负责收。
     if (store.getSession(roomSessionId)?.kind !== 'room') return null
-    state = { log: [], typing: new Set(), seq: 0, lastSentAt: 0 }
+    state = { log: [], typing: new Set(), seq: 0, throttle: createCollabSnapshotThrottle() }
     rooms.set(roomSessionId, state)
   }
   return state
@@ -114,15 +101,13 @@ function inspectorState(roomSessionId: string): InspectorRoomState | null {
 /** 房间没了,它的「刚才」也就没了(与 `deleteRoomRuntime` 同一时机)。 */
 export function forgetCollabInspector(roomSessionId: string): void {
   const state = rooms.get(roomSessionId)
-  if (state?.pending) clearTimeout(state.pending)
+  if (state) clearCollabSnapshotThrottle(state.throttle)
   rooms.delete(roomSessionId)
 }
 
 /** 进程收摊:清掉所有待发的定时器,别让一次广播活过协调器本身。 */
 export function shutdownCollabInspector(): void {
-  for (const state of rooms.values()) {
-    if (state.pending) clearTimeout(state.pending)
-  }
+  for (const state of rooms.values()) clearCollabSnapshotThrottle(state.throttle)
   rooms.clear()
 }
 
@@ -245,13 +230,8 @@ export function setCollabTypingState(roomSessionId: string, agentId: string, typ
 /**
  * 推一次状态(节流)。
  *
- * 节流窗口里再来的推送**攒成一次尾发**,而不是丢掉:最后那一次通常正是"停下来了"
- * 这种最该被看见的状态,丢了界面就永远停在倒数第二帧。
- *
- * `activity: true` 走短窗口(见 `ACTIVITY_BROADCAST_THROTTLE_MS`)。两个窗口共用
- * 同一个待发槽 —— 快照是**现算的全量**,谁触发的都一样,所以规则只有一条:
- * 到期早的那一发说了算。一发已经排在 900ms 之后的普通推送,不该把一次要在 120ms
- * 内亮起来的灯拖着一起等。
+ * 双档规则与它的三条论证全在 `snapshot-throttle.ts` —— agent 快照那条链用的是同
+ * 一个件,而不是同一段被抄了第二遍的代码。这里只负责「谁在播、播的是什么」。
  */
 export function broadcastCollabCoordinator(
   roomSessionId: string,
@@ -259,30 +239,11 @@ export function broadcastCollabCoordinator(
 ): void {
   const state = inspectorState(roomSessionId)
   if (!state) return
-  const throttleMs = options.activity ? ACTIVITY_BROADCAST_THROTTLE_MS : BROADCAST_THROTTLE_MS
-  const now = Date.now()
-  const elapsed = now - state.lastSentAt
-  if (elapsed >= throttleMs) {
-    clearPending(state)
-    emitCoordinatorState(roomSessionId, state)
-    return
-  }
-  const dueAt = now + (throttleMs - elapsed)
-  // 已经排了一发、而且到期不比这一发晚 —— 让它去说。
-  if (state.pending && state.pendingDueAt !== undefined && state.pendingDueAt <= dueAt) return
-  clearPending(state)
-  state.pendingDueAt = dueAt
-  state.pending = setTimeout(() => {
-    clearPending(state)
-    emitCoordinatorState(roomSessionId, state)
-  }, dueAt - now)
-  state.pending.unref?.()
-}
-
-function clearPending(state: InspectorRoomState): void {
-  if (state.pending) clearTimeout(state.pending)
-  state.pending = undefined
-  state.pendingDueAt = undefined
+  scheduleCollabSnapshot(
+    state.throttle,
+    () => { emitCoordinatorState(roomSessionId, state) },
+    options,
+  )
 }
 
 function emitCoordinatorState(roomSessionId: string, state: InspectorRoomState): void {
@@ -291,7 +252,7 @@ function emitCoordinatorState(roomSessionId: string, state: InspectorRoomState):
   state.seq += 1
   const snapshot = buildCollabCoordinatorState(roomSessionId)
   if (!snapshot) return
-  state.lastSentAt = Date.now()
+  state.throttle.lastSentAt = Date.now()
   void getEventBus().emit(roomSessionId, {
     type: 'collab:coordinator-changed',
     state: snapshot,

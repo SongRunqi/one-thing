@@ -198,6 +198,19 @@ export interface CollabAgentWorkerFailure {
 export type CollabAgentOrphanPolicy = 'interrupt' | 'respawn'
 
 /**
+ * 一次值得播出去的活动转变(D8 观测体系 §3.1 的发射点)。
+ *
+ * 四类不是随手分的,它们决定走哪一档节流:前三类是界面上会**动**的东西(大脑的
+ * 忙闲、牌的得失、手的起落 —— 徽标从🟡翻到🟢就是它们),走 120ms 的活动档;
+ * `inbox` 是一个数字(积压深度),走 1s 的普通档。
+ *
+ * 这个 actor **不认识**广播链路:钩子由宿主接(与 `onTurnFailure` / `schedulerLog`
+ * 同一条纪律)。一个 import 了 inspector 的 actor 会把「跑一轮回合」的测试面
+ * 拉上整条会话事件总线。
+ */
+export type CollabAgentActivityTransition = 'mind' | 'lease' | 'worker' | 'inbox'
+
+/**
  * 重活委托的接线(D4 §1.6)。**不配 = 这个 agent 没有手**:收到 spawn-worker 会
  * 进 dead-letter,而不是被静静吞掉 —— 一张永远不会开工的卡是这套系统里最贵的
  * 一种沉默。
@@ -268,12 +281,21 @@ export interface CollabAgentActorOptions
    * 因为改的是房账;两边各记各的,一件事永远只有一个产生点。
    */
   schedulerLog?: CollabSchedulerLogSink
+  /**
+   * 活动转变的观测钩子(D8 §3.1)。缺省不通知。
+   *
+   * 每一处调用点都紧跟在**账真的变了**之后 —— 观测不跑在真值前面(与
+   * `recordSchedulerRow` 同一条纪律)。节流归宿主,这里是无脑每次都喊。
+   */
+  onActivity?: (transition: CollabAgentActivityTransition) => void
 }
 
 interface InFlightTurn {
   roomId: string
   leaseId: string
   execSessionId: string
+  /** 起跑时刻 —— agent 快照的 `mind.since` 读它(「想了多久」)。 */
+  startedAt: number
   /** 牌在回合中途被收了(换相 / 冻结 / 用户喊停)。收尾时不再交牌、不再发言。 */
   revoked: boolean
   /**
@@ -307,6 +329,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
   private readonly workerSlots: CollabWorkerSlotLedger
   private readonly onWorkerFailure: ((failure: CollabAgentWorkerFailure) => void) | undefined
   private readonly schedulerLog: CollabSchedulerLogSink | undefined
+  private readonly onActivity: ((transition: CollabAgentActivityTransition) => void) | undefined
   private readonly workerFailures: CollabAgentWorkerFailure[] = []
   /** 在外的手,按 workerId。**内存态** —— 跨重启的那一面在账的子清单里。 */
   private readonly children = new Map<string, CollabWorkerChildActor>()
@@ -340,6 +363,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     this.workerSlots = options.worker?.slots ?? createCollabWorkerSlotLedger()
     this.onWorkerFailure = options.onWorkerFailure
     this.schedulerLog = options.schedulerLog
+    this.onActivity = options.onActivity
     // 别人放开一个槽位,轮到我排队的那张卡走了 —— 不订这一条,全局闸会把跨
     // agent 的队列饿死(见 `CollabWorkerSlotLedger.onRelease`)。
     this.unsubscribeSlots = options.worker
@@ -360,6 +384,17 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
   /** 此刻在跑的那一轮(没有就是 null)。观测用。 */
   get inFlightRoomId(): string | null {
     return this.turn?.roomId ?? null
+  }
+
+  /**
+   * 此刻在跑的那一轮 + 它起跑的时刻(D8 §3.1 的 `mind`)。
+   *
+   * 与 `inFlightRoomId` 是同一份真相的两个投影,留着后者是因为它已经有调用点。
+   * 「一个大脑」这条宪法在这里是可观测的:`this.turn` 至多一个,所以这个 getter
+   * 永远至多指向一间房。
+   */
+  get inFlightTurn(): { roomId: string; startedAt: number } | null {
+    return this.turn ? { roomId: this.turn.roomId, startedAt: this.turn.startedAt } : null
   }
 
   get turnFailures(): readonly CollabAgentTurnFailure[] {
@@ -395,27 +430,41 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     await this.settle()
   }
 
+  /**
+   * 一封信 —— 外加一次「积压变了」的通知。
+   *
+   * 通知排在 `finally` 里而不是成功路径上:一封炸掉的信同样把它从积压里划走了
+   * (ActorBase 记 dead-letter 之后照常 ack 整批),而快照里那个深度必须跟着走。
+   * 只在成功时通知,一条坏信会让界面上的积压永远比真值多一。
+   */
   protected async handleEvent(event: ActorEvent<CollabActorVerb>): Promise<void> {
-    const verb = event.payload
+    try {
+      await this.dispatch(event.payload, event.at)
+    } finally {
+      this.noteActivity('inbox')
+    }
+  }
+
+  private dispatch(verb: CollabActorVerb, eventAt: number): Promise<void> {
     switch (verb.type) {
       case 'room:posted':
-        return this.onPosted(verb, event.at)
+        return this.onPosted(verb, eventAt)
       case 'room:floor-granted':
         return this.onFloorGranted(verb)
       case 'room:floor-revoked':
         return this.onFloorRevoked(verb)
       case 'room:phase-changed':
-        return this.onPhaseChanged(verb, event.at)
+        return this.onPhaseChanged(verb, eventAt)
       case 'room:membership-changed':
-        return this.onMembershipChanged(verb, event.at)
+        return this.onMembershipChanged(verb, eventAt)
       case 'room:card-event':
-        return this.onCardEvent(verb, event.at)
+        return this.onCardEvent(verb, eventAt)
       case 'agent:spawn-worker':
         return this.onSpawnWorker(verb)
       case 'agent:worker-result':
-        return this.onWorkerResult(verb, event.at)
+        return this.onWorkerResult(verb, eventAt)
       case 'agent:note':
-        return this.onNote(verb, event.at)
+        return this.onNote(verb, eventAt)
       // 寻址错了的信原样吞掉,**不记 dead-letter**:这几个动词是 agent → room /
       // referee → room 的,投到一个 agent 的信箱里只可能是宿主接错了线或一次
       // 回流。让它污染 dead-letter,「它没回应」与「它试过但炸了」就分不开了。
@@ -532,6 +581,9 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       epoch: lease.epoch,
       issuedAt: lease.issuedAt,
     }))
+    // 「持牌等大脑」这一帧的产生点(D8 §1):牌到手了,而这一轮还没起跑 ——
+    // 那正是 v2 词汇表里根本没有的第三种状态,不播出去就永远看不见。
+    this.noteActivity('lease')
 
     const execSessionId = this.host.execSessionId(this.agentId, verb.roomId)
     if (!execSessionId) {
@@ -553,11 +605,15 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       roomId: verb.roomId,
       leaseId: lease.leaseId,
       execSessionId,
+      startedAt: now,
       revoked: false,
       missed: [],
       done: Promise.resolve(),
     }
     this.turn = turn
+    // 大脑亮了。排在 `runTurn` **之前**:那一行不 await,而观测要的是"这一刻它
+    // 开始想了",不是"这一轮跑完之后回头看它想过"。
+    this.noteActivity('mind')
     // **起了就放手**:循环继续收信,steer 因此还有机会并进这一轮(见文件头)。
     turn.done = this.runTurn(turn, lease, driveContent, through, now)
   }
@@ -581,7 +637,12 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     } catch (error) {
       this.recordTurnFailure(turn, error)
     } finally {
-      if (this.turn === turn) this.turn = null
+      if (this.turn === turn) {
+        this.turn = null
+        // 大脑灭了。在 `finally` 里 —— 一轮跑砸了的回合同样要把灯关掉,否则界面上
+        // 那个人会永远停在"正在思考"。
+        this.noteActivity('mind')
+      }
     }
   }
 
@@ -640,6 +701,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       await this.releaseLease(turn.roomId, turn.leaseId, result.says.length ? 'done' : 'nothing-to-add')
     } else {
       this.save(dropCollabAgentLease(this.state, turn.leaseId))
+      this.noteActivity('lease')
     }
 
     // 牌交完了,再回头处理注入迟到的那几条。次序不能反 —— 举手要在「我手里
@@ -656,6 +718,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
   ): Promise<void> {
     // 账先落:交牌的信可能投不出去(房间没了),而「我不再持有这张牌」是本地事实。
     this.save(dropCollabAgentLease(this.state, leaseId))
+    this.noteActivity('lease')
     await this.post(roomId, collabAgentYield({ roomId, agentId: this.agentId, leaseId, reason }))
   }
 
@@ -663,6 +726,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     if (verb.agentId !== this.agentId) return Promise.resolve()
     if (this.turn?.leaseId === verb.leaseId) this.turn.revoked = true
     this.save(clearCollabAgentHand(dropCollabAgentLease(this.state, verb.leaseId), verb.roomId))
+    this.noteActivity('lease')
     return Promise.resolve()
   }
 
@@ -775,6 +839,9 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       cardId: verb.cardId,
       triggeredBy: verb.cardId,
     }))
+    // 「干活中」那盏🔵灯的产生点。与记账同一处、同一时刻:两者读的是刚落下去的
+    // 那一份子清单,不会各说各的。
+    this.noteActivity('worker')
     this.workerSlots.acquire()
 
     const child = new CollabWorkerChildActor({
@@ -845,6 +912,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       outcome: verb.outcome,
       triggeredBy: verb.workerId,
     }))
+    this.noteActivity('worker')
     await this.pumpWorkerQueue()
   }
 
@@ -881,6 +949,8 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     const at = this.host.now()
     const adoption = adoptCollabAgentWorkerOrphans(this.state, at)
     this.save(adoption.account)
+    // 上一条命留下的那几只手全部标断了 —— 冷启动的第一份快照该看见这件事。
+    if (adoption.orphans.length > 0) this.noteActivity('worker')
 
     const policy = options.policy ?? this.worker?.orphanPolicy ?? 'interrupt'
     const respawned: string[] = []
@@ -1048,6 +1118,20 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
 
   private fold(entry: CollabFoldEntry): void {
     this.save(pushCollabAgentFold(this.state, entry, this.foldBuffer))
+  }
+
+  /**
+   * 活动转变的**唯一**通知出口(D8 §3.1)。
+   *
+   * 与 `recordSchedulerRow` 同一条纪律:全程吞错 —— 观测不能变成第二个故障源。
+   * 节流不在这里:这个 actor 无脑每次都喊,攒不攒由宿主那侧的 per-agent 槽决定。
+   */
+  private noteActivity(transition: CollabAgentActivityTransition): void {
+    try {
+      this.onActivity?.(transition)
+    } catch {
+      // 观测钩子自己炸了不能反过来影响循环(与 ActorBase 的 dead-letter 同一条)。
+    }
   }
 
   private async post(roomId: string, verb: CollabActorVerb): Promise<void> {

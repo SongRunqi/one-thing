@@ -82,9 +82,26 @@ export type CollabV3RoomPostPort = (
  */
 export type CollabV3RoomResetPort = (roomSessionId: string) => Promise<boolean>
 
+/**
+ * 登记簿动了一下(D8 观测体系 §3.2)。
+ *
+ * 这张表是「持牌等大脑」与「生成中」唯一的分界线,而在 D8 之前它是**零广播**的:
+ * 一轮回合起跑或收尾,房间快照里的 `executing`、agent 快照里的 `mind` 同时翻面,
+ * 却没有任何人被告知 —— 于是状态条上那个「持牌 N · 生成中 M」的 M 是个死数字,
+ * 要等下一次别的什么事顺带播一遍才会动。
+ *
+ * 仍然是端口而不是 import:这个模块的零 import 是它能同时被 say 工具与引擎引用的
+ * 全部理由(见文件头),为一次观测破例就是把那条论证作废。
+ */
+export type CollabV3TurnObserver = (
+  turn: CollabV3TurnContext,
+  phase: 'begin' | 'end',
+) => void
+
 let speakPort: CollabV3SpeakPort | null = null
 let roomPostPort: CollabV3RoomPostPort | null = null
 let roomResetPort: CollabV3RoomResetPort | null = null
+let turnObserver: CollabV3TurnObserver | null = null
 const turns = new Map<string, CollabV3TurnContext>()
 
 /** 装上(或以 null 摘下)真正的发言口。摘下之后 say 工具整条回落 v2 落库路径。 */
@@ -125,9 +142,24 @@ export function isCollabV3Wired(): boolean {
   return roomPostPort !== null
 }
 
+/** 装上(或以 null 摘下)登记簿的观测口。摘下之后起落两端都不再通知任何人。 */
+export function configureCollabV3TurnObserver(observer: CollabV3TurnObserver | null): void {
+  turnObserver = observer
+}
+
+/** 通知观测口。**全程吞错** —— 观测不能变成第二个故障源(与死信钩子同一条)。 */
+function notifyTurnObserver(turn: CollabV3TurnContext, phase: 'begin' | 'end'): void {
+  try {
+    turnObserver?.(turn, phase)
+  } catch (error) {
+    console.warn('[collab-v3] 回合登记簿的观测口炸了(回合照跑):', error)
+  }
+}
+
 /** 记一轮。同一条会话重复登记按后来者算 —— 前一轮已经不在了。 */
 export function beginCollabV3Turn(context: CollabV3TurnContext): void {
   turns.set(context.execSessionId, context)
+  notifyTurnObserver(context, 'begin')
 }
 
 /**
@@ -139,6 +171,7 @@ export function endCollabV3Turn(execSessionId: string, leaseId?: string): void {
   if (!current) return
   if (leaseId && current.leaseId !== leaseId) return
   turns.delete(execSessionId)
+  notifyTurnObserver(current, 'end')
 }
 
 /** 这条执行会话此刻在跑的那一轮(没有就是 undefined)。 */
@@ -149,6 +182,17 @@ export function findCollabV3Turn(execSessionId: string): CollabV3TurnContext | u
 /** 这间房此刻在飞的全部回合 —— 喊停要按住的就是它们。 */
 export function collabV3TurnsInRoom(roomSessionId: string): CollabV3TurnContext[] {
   return [...turns.values()].filter(turn => turn.roomSessionId === roomSessionId)
+}
+
+/**
+ * 这位同事此刻在飞的回合 —— agent 快照的 `mind` 与 `executing` 读它(D8 §3.1)。
+ *
+ * 「一个大脑」保证了它至多有一条,但这里仍然返回数组:那条不变式由 AgentActor
+ * 的 `settle()` 实现,而一个**观测**函数不该建立在被观测者的正确性之上 —— 真要
+ * 有第二条,快照该把它画出来,而不是悄悄丢掉一条。
+ */
+export function collabV3TurnsOfAgent(agentId: string): CollabV3TurnContext[] {
+  return [...turns.values()].filter(turn => turn.agentId === agentId)
 }
 
 /** 停机 / 测试收摊。 */

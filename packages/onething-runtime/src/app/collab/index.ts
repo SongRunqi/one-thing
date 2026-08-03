@@ -21,6 +21,13 @@ export {
   type CollabRoomConfigPatch,
   type CollabRoomConfigResult,
 } from './room-config.js'
+/**
+ * Agent 视角的冷启动补水(D8 观测体系 §3.1)。
+ *
+ * 与 `getCollabCoordinatorState` 是**两本互不派生的账**:房间那本按房广播,而
+ * 大脑、信箱、工作卡是跨房的 —— 任何一份房间快照里都没有它们的位置。
+ */
+export { getCollabAgentActivity } from './agent-activity.js'
 /** 停止按钮那扇门(D6-b 起只有 v3 一条实现)—— 见 `actors/stop-door.ts`。 */
 export { abortCollabRoomTurnForStop } from './actors/stop-door.js'
 /** Collab v3 运行时(D6-a):`createOnethingBackend` 的协作装配点。 */

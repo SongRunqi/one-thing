@@ -496,6 +496,10 @@ export const IPC_CHANNELS = {
 	// 协调器状态条的冷启动读取;实时更新走 'collab:coordinator-changed' 会话事件
 	// (与看板同一条链路)。
 	COLLAB_COORDINATOR_GET: "collab:coordinator-get",
+	// Agent 活动快照的冷启动补水(D8 观测体系 §3.1);实时更新走
+	// 'collab:agent-changed' 会话事件。与协调器那扇门是**两本互不派生的账**:
+	// 大脑、信箱、工作卡是跨房的,任何一份房间快照里都没有它们的位置。
+	COLLAB_AGENT_ACTIVITY_GET: "collab:agent-activity-get",
 	COLLAB_MESSAGE_REACT: "collab:message-react",
 	// 用户 ↔ agent 托管私聊房的 get-or-create(docs/design/agent-im-dm.md D1)。
 	// 幂等:id 从 agentId 派生,同一个 agent 永远同一间房。

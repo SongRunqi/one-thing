@@ -67,6 +67,17 @@ export interface ActorMailboxSource<TEvent> {
    * 处理完了(D0 实测踩到过)。未确认口径让在飞的那一批一直算数,直到账落盘。
    */
   pendingCount(): number
+  /**
+   * 最旧那封**还没 ack** 的信是什么时候到的(没有积压 = undefined)。
+   *
+   * 可选:观测面(D8 §3.1 的 `inbox.oldestAt`)问的问题是「这个人的积压压了多久」,
+   * 而 `pendingCount` 只答得出「压了多少」。两者一起才分得开「刚进来两封」与
+   * 「两封在那儿躺了十分钟」——后者是一条卡死的心智循环,前者什么事都没有。
+   *
+   * 声明成可选而不是必选:`ActorMailboxSource` 有一堆手写替身(测试、重放),
+   * 为一个纯观测的读口让它们全部红一遍,代价与收益不成比例。
+   */
+  oldestPendingAt?(): number | undefined
   /** 结束迭代。已经交出去的在飞批由调用方自己 drain。 */
   close(): void
 }
@@ -243,6 +254,11 @@ export class DurableMailbox<TEvent extends ActorEvent = ActorEvent> implements A
     return this.entries.length - this.ackedIndex
   }
 
+  /** 最旧那封未 ack 的信的到达时刻。O(1) —— 游标位那一条就是它。 */
+  oldestPendingAt(): number | undefined {
+    return this.entries[this.ackedIndex]?.event.at
+  }
+
   async *batches(): AsyncIterableIterator<ActorMailboxBatch<TEvent>> {
     if (this.iterating) throw new Error('[actor-mailbox] single consumer only — batches() is already running')
     this.iterating = true
@@ -363,6 +379,11 @@ export class InMemoryMailbox<TEvent extends ActorEvent = ActorEvent> implements 
   /** 未 ack 的积压(含在飞的那一批)。口径同 `DurableMailbox`。 */
   pendingCount(): number {
     return this.entries.length - this.ackedIndex
+  }
+
+  /** 最旧那封未 ack 的信的到达时刻。口径同 `DurableMailbox`。 */
+  oldestPendingAt(): number | undefined {
+    return this.entries[this.ackedIndex]?.event.at
   }
 
   async *batches(): AsyncIterableIterator<ActorMailboxBatch<TEvent>> {

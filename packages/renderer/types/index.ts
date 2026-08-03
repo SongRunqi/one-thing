@@ -822,6 +822,14 @@ export interface ElectronAPI {
 	getCollabCoordinator: (
 		roomSessionId: string,
 	) => Promise<import("@shared/ipc.js").CollabCoordinatorGetResponse>;
+	/**
+	 * Agent 活动快照的冷启动补水(D8 观测体系 §3.1);实时更新走
+	 * 'collab:agent-changed' 会话事件。`agentIds` 缺席 = 此刻开着心智循环的全部。
+	 * desktop-only。
+	 */
+	getCollabAgentActivity: (
+		agentIds?: string[],
+	) => Promise<import("@shared/ipc.js").CollabAgentActivityGetResponse>;
 	/** Team settings (W6): only provided fields change; pmAgentId null clears. */
 	updateCollabRoom: (
 		roomSessionId: string,

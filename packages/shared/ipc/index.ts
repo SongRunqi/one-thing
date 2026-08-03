@@ -16,6 +16,8 @@ export {
 	isActiveAgent,
 } from "./agents.js";
 export type {
+	CollabAgentActivityGetRequest,
+	CollabAgentActivityGetResponse,
 	CollabAgentActivitySnapshot,
 	CollabAgentHeldLease,
 	CollabAgentMind,

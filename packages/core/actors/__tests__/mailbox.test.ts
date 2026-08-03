@@ -61,6 +61,31 @@ describe('DurableMailbox', () => {
     await iterator.return?.()
   })
 
+  /**
+   * 「压了多久」——观测面(D8 §3.1 的 `inbox.oldestAt`)问的第二个问题。
+   *
+   * `pendingCount` 只答得出「压了多少」,而「刚进来两封」与「两封在那儿躺了十分钟」
+   * 是完全不同的两件事:后者是一条卡死的心智循环。
+   */
+  it('oldestPendingAt 指向最旧那封**未 ack** 的信;清空之后是 undefined', async () => {
+    const mailbox = await DurableMailbox.open<ActorEvent<{ text: string }>>({ dir, ownerId: 'a1' })
+    expect(mailbox.oldestPendingAt()).toBeUndefined()
+
+    await mailbox.append(event('e1', 100))
+    await mailbox.append(event('e2', 200))
+    expect(mailbox.oldestPendingAt()).toBe(100)
+
+    // ack 掉第一封:队头往后走一格,时刻跟着走。
+    mailbox.ack(1)
+    expect(mailbox.pendingCount()).toBe(1)
+    expect(mailbox.oldestPendingAt()).toBe(200)
+
+    mailbox.ack(2)
+    expect(mailbox.pendingCount()).toBe(0)
+    expect(mailbox.oldestPendingAt()).toBeUndefined()
+    mailbox.close()
+  })
+
   it('空时挂起,新事件到达才醒', async () => {
     const mailbox = await DurableMailbox.open<ActorEvent<{ text: string }>>({ dir, ownerId: 'a1' })
     const iterator = mailbox.batches()
@@ -226,5 +251,18 @@ describe('InMemoryMailbox', () => {
     const pending = iterator.next()
     mailbox.close()
     expect((await pending).done).toBe(true)
+  })
+
+  it('oldestPendingAt 与持久版同口径', async () => {
+    const mailbox = new InMemoryMailbox<ActorEvent<{ text: string }>>()
+    expect(mailbox.oldestPendingAt()).toBeUndefined()
+    await mailbox.append(event('e1', 100))
+    await mailbox.append(event('e2', 200))
+    expect(mailbox.oldestPendingAt()).toBe(100)
+    mailbox.ack(1)
+    expect(mailbox.oldestPendingAt()).toBe(200)
+    mailbox.ack(2)
+    expect(mailbox.oldestPendingAt()).toBeUndefined()
+    mailbox.close()
   })
 })

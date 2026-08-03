@@ -73,10 +73,17 @@ import {
   type CollabCardEventKind,
   type CollabHandEvaluator,
   type CollabRaisedHand,
+  type CollabRoomAccount,
   type CollabRoomJudgmentRequest,
 } from '@onething/runtime/collab/actors'
 import { isActiveAgent, type ChatMessage, type CollabCoordinatorState } from '@shared/ipc.js'
 
+import {
+  broadcastCollabAgentActivity,
+  configureCollabAgentActivitySource,
+  shutdownCollabAgentActivity,
+  type CollabAgentActivityView,
+} from '../agent-activity.js'
 import { findAgent, listAgents } from '../../agents/index.js'
 import { getEventBus } from '../../events/index.js'
 import { getStreamEngineSafe } from '../../engine/index.js'
@@ -140,6 +147,7 @@ import {
   configureCollabV3RoomPostPort,
   configureCollabV3RoomResetPort,
   configureCollabV3SpeakPort,
+  configureCollabV3TurnObserver,
   type CollabV3SpeakInput,
   type CollabV3SpeakResult,
 } from './turn-context.js'
@@ -182,8 +190,19 @@ interface RuntimeState {
   roomPending: Map<string, Promise<RoomEntry | undefined>>
   agentPending: Map<string, Promise<AgentEntry | undefined>>
   budget: Map<string, BudgetCell>
-  /** 每间房那扇**还没去买**的裁决窗(见 `scheduleJudgment`)。 */
-  judgments: Map<string, { timer: ReturnType<typeof setTimeout>; request: CollabRoomJudgmentRequest }>
+  /**
+   * 每间房那扇**还没去买**的裁决窗(见 `scheduleJudgment`)。
+   *
+   * `opensAt` 是这一拍的到期时刻 —— 房间快照的 `judgment: 'debouncing'` 读它。
+   * 防抖窗在房账里没有对应字段(房间是事件驱动开窗,不防抖),它是**运行时**的
+   * 状态:钱还没花出去。少了这一格,「防抖」与「在飞」在界面上长得一模一样,
+   * 而它们的等待理由完全不同(一个几十毫秒后自解,一个正在烧一次模型调用)。
+   */
+  judgments: Map<string, {
+    timer: ReturnType<typeof setTimeout>
+    request: CollabRoomJudgmentRequest
+    opensAt: number
+  }>
   slots: CollabWorkerSlotLedger
   referee: CollabRefereeActor
   /** 调度时间轴的落盘面(D8 §3.3)。三个产生点共用同一个实例。 */
@@ -327,7 +346,21 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
   configureCollabV3RoomResetPort(resetRoomAccount)
   // ④ 状态条:C4 快照协议的供数改由房账出(seq / typing / 「刚才」仍归 inspector,
   //    见 `configureCollabRoomSnapshotSource` 的注释)。
-  configureCollabRoomSnapshotSource(roomId => runtime.rooms.get(roomId)?.actor.snapshot() ?? null)
+  configureCollabRoomSnapshotSource(roomId => roomSnapshotOf(runtime, roomId))
+  // ④' Agent 视角(D8 §3.1):另一本账,九格全部现算,供数口的实现在下面。
+  configureCollabAgentActivitySource({
+    agent: agentId => agentActivityViewOf(runtime, agentId),
+    agentIds: () => [...runtime.agents.keys()],
+    rooms: () => collabRoomAccountsOf(runtime),
+    now: () => Date.now(),
+  })
+  // ④'' 回合登记簿:起落两端各推一次(房间那侧的 `executing`、agent 那侧的
+  //     `mind` 同时翻面)。在 D8 之前这张表是零广播的,于是「持牌 N · 生成中 M」
+  //     里的 M 是个要等别的事顺带播一遍才会动的死数字。
+  configureCollabV3TurnObserver(turn => {
+    broadcastCollabCoordinator(turn.roomSessionId, { activity: true })
+    broadcastCollabAgentActivity(turn.agentId, { activity: true })
+  })
 
   // ⑤ 删房:actor 跟着走。房目录整个被删掉(`removeCollabRoomDirectory`),
   //    v3 的账与信箱就在那个目录下,所以这里只需要把内存里的循环停掉。
@@ -367,6 +400,8 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
   configureCollabV3RoomPostPort(null)
   configureCollabV3RoomResetPort(null)
   configureCollabRoomSnapshotSource(null)
+  configureCollabAgentActivitySource(null)
+  configureCollabV3TurnObserver(null)
 
   for (const dispose of runtime.disposers) {
     try { dispose() } catch { /* noop */ }
@@ -381,6 +416,7 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
    *    已经没有房间在听了(collab-send-channel-and-wake.md §3.2)。
    */
   shutdownCollabInspector()
+  shutdownCollabAgentActivity()
   shutdownCollabBoardBroadcasts()
   clearCollabWakeFollowups()
   // 还没去买的裁决窗跟着收摊:一次网络往返不该活过它的发行方(v2 那侧的
@@ -526,7 +562,14 @@ async function ensureAgent(agentId: string): Promise<AgentEntry | undefined> {
         console.error(`[collab-v3] ${agentId} 的手 ${failure.workerId} 失败:`, failure.error)
       },
       schedulerLog: runtime.schedulerLog,
-      onDeadLetter: deadLetterSink(`agent:${agentId}`),
+      onDeadLetter: deadLetterSink(`agent:${agentId}`, undefined, agentId),
+      /**
+       * D8 §3.1 的发射点接线。档位按转变认:大脑 / 牌 / 手是界面上会**动**的东西
+       * (成员条那四态徽标读的就是它们),走 120ms;`inbox` 是一个数字,走秒。
+       */
+      onActivity: transition => {
+        broadcastCollabAgentActivity(agentId, { activity: transition !== 'inbox' })
+      },
     })
     const entry: AgentEntry = { agentId, actor, mailbox }
     runtime.agents.set(agentId, entry)
@@ -578,30 +621,113 @@ async function resumeKnownRooms(): Promise<void> {
  * 挂在 `decide` 而不是 `commit`:决策是唯一改账的地方,而快照读的就是账。
  * `broadcastCollabCoordinator` 自带节流(秒级 + 活动窗 120ms),所以这里可以
  * 无脑每次都喊 —— 节流的属主只有一个。
+ *
+ * **档位按转变认**(D8 §3.2 的发射时机):裁决窗与相位是界面上会**动**的东西
+ * (转圈、黄牌、挂起徽标),它们走 120ms 那一档。其余照旧走秒 —— 闸的读数、
+ * 链长这类数字慢一拍没人看得出来,而每一次决策都按 120ms 推等于把节流关掉。
  */
 class WiredRoomActor extends CollabRoomActor {
   override decide(verb: CollabActorVerb): ReturnType<CollabRoomActor['decide']> {
+    const before = this.account
     const effects = super.decide(verb)
-    broadcastCollabCoordinator(this.roomId)
+    const activity = roomJudgmentOrPhaseChanged(before, this.account)
+    broadcastCollabCoordinator(this.roomId, activity ? { activity: true } : {})
     return effects
   }
 }
 
 /**
+ * 裁决窗的态或相位变了吗 —— 「三态转变各播一次」的判据(D8 §3.2)。
+ *
+ * 判的是**状态**而不是「有没有 judgment 这个对象」:`pending → degraded` 是最该
+ * 被看见的那一次转变(降级要亮黄牌),而两者在"对象还在不在"这个口径下是同一
+ * 个答案。
+ */
+function roomJudgmentOrPhaseChanged(
+  before: CollabRoomAccount,
+  after: CollabRoomAccount,
+): boolean {
+  if (before.judgment?.state !== after.judgment?.state) return true
+  if (before.judgment?.token !== after.judgment?.token) return true
+  return before.phase !== after.phase
+}
+
+/**
+ * 这间房此刻的 C4 快照 —— 房账 + **运行时才知道的那一格**。
+ *
+ * 防抖窗只存在于运行时(见 `RuntimeState.judgments` 的注释):房账在开窗那一刻就
+ * 已经是 `pending`,而钱要再过一拍才花出去。快照层把这一拍画成 `debouncing`,
+ * 于是「防抖 → 在飞 → 降级」三态在界面上是三个样子,而不是两个。
+ */
+function roomSnapshotOf(runtime: RuntimeState, roomId: string): CollabCoordinatorState | null {
+  const snapshot = runtime.rooms.get(roomId)?.actor.snapshot()
+  if (!snapshot) return null
+  const debounce = runtime.judgments.get(roomId)
+  if (!debounce || snapshot.judgment.state !== 'inflight') return snapshot
+  return { ...snapshot, judgment: { state: 'debouncing', opensAt: debounce.opensAt } }
+}
+
+/** 各房账 —— agent 快照的 `heldLeases` 扫的就是它(租约的唯一权威)。 */
+function* collabRoomAccountsOf(
+  runtime: RuntimeState,
+): Iterable<{ roomSessionId: string; account: CollabRoomAccount }> {
+  for (const [roomSessionId, entry] of runtime.rooms) {
+    yield { roomSessionId, account: entry.actor.account }
+  }
+}
+
+/**
+ * 一位同事的原始事实(D8 §3.1 的供数口)。
+ *
+ * 四样各有各的属主,这里只是把它们摆到一起:循环状态在 AgentActor、账在它的
+ * `state.json`、积压在 mailbox 的游标差、死信在 ActorBase 的环。**一个字都不新记**。
+ */
+function agentActivityViewOf(
+  runtime: RuntimeState,
+  agentId: string,
+): CollabAgentActivityView | undefined {
+  const entry = runtime.agents.get(agentId)
+  if (!entry) return undefined
+  const inFlight = entry.actor.inFlightTurn
+  const oldestAt = entry.mailbox.oldestPendingAt()
+  return {
+    inFlight: inFlight
+      ? { roomSessionId: inFlight.roomId, since: inFlight.startedAt }
+      : null,
+    account: entry.actor.account,
+    inbox: {
+      // 游标差,O(1) —— 不数文件行(一条跑了三个月的信箱有几万行)。
+      depth: entry.mailbox.pendingCount(),
+      ...(oldestAt === undefined ? {} : { oldestAt }),
+    },
+    deadLetterCount: entry.actor.deadLetterCount,
+  }
+}
+
+/**
  * 死信的三路出口(D8 §3.4)。实现在 `scheduler-log.ts` 的
- * `createCollabDeadLetterSink` —— 这里只是把它接到两类 actor 上。
+ * `createCollabDeadLetterSink` —— 这里只是把它接到两类 actor 上,并在第一路
+ * (计数)上再推一次快照:计数本身是 ActorBase 的环长,不新记一本,但**没人播
+ * 的话那个红点要等下一件事顺带才亮**,而系统静默变哑正是死信要治的那个病。
  */
 function deadLetterSink(
   actorId: string,
   fallbackRoomId?: string,
+  agentId?: string,
 ): ReturnType<typeof createCollabDeadLetterSink> {
-  return createCollabDeadLetterSink({
+  const sink = createCollabDeadLetterSink({
     actorId,
     ...(fallbackRoomId ? { roomId: fallbackRoomId } : {}),
     // 装配时运行时一定在(两个调用点都在 `ensureRoom` / `ensureAgent` 里),
     // 但闭包活得比它长 —— 收摊之后的迟到死信写进一份孤儿 store 好过 NPE。
     log: { append: (roomId, row) => state?.schedulerLog.append(roomId, row) },
   })
+  return deadLetter => {
+    sink(deadLetter)
+    // 红点走普通档:它是一个计数,不是一盏会闪的灯。
+    if (fallbackRoomId) broadcastCollabCoordinator(fallbackRoomId)
+    if (agentId) broadcastCollabAgentActivity(agentId)
+  }
 }
 
 /* ── 投递 ─────────────────────────────────────────────────────────────── */
@@ -645,6 +771,9 @@ async function postToAgent(
     to: collabActorRef('agent', agentId),
     payload: verb,
   }))
+  // 积压涨了一条(D8 §3.1 的 `inbox`)。普通档:这是一个数字,不是一盏会闪的灯。
+  // 消化那一侧由 AgentActor 的 `handleEvent` 收尾通知 —— 一进一出各有一处。
+  broadcastCollabAgentActivity(agentId)
 }
 
 /**
@@ -781,9 +910,14 @@ export function stopCollabV3RoomFloor(sessionId: string): boolean | null {
   return hadFloor || turns.length > 0
 }
 
-/** 这间房此刻的 C4 快照(状态条冷启动读它)。不是 v3 房就是 null。 */
+/**
+ * 这间房此刻的 C4 快照(状态条冷启动读它)。不是 v3 房就是 null。
+ *
+ * 走与广播**同一个**组装函数 —— 防抖窗那一格只有运行时知道,两条路各拼一份的话
+ * 冷启动看到的裁决态会与广播出去的那一份不一样。
+ */
 export function peekCollabV3RoomSnapshot(roomSessionId: string): CollabCoordinatorState | null {
-  return state?.rooms.get(roomSessionId)?.actor.snapshot() ?? null
+  return state ? roomSnapshotOf(state, roomSessionId) : null
 }
 
 /**
@@ -1070,12 +1204,21 @@ function scheduleJudgment(request: CollabRoomJudgmentRequest): void {
   if (pending) clearTimeout(pending.timer)
   const timer = setTimeout(() => {
     runtime.judgments.delete(request.roomId)
+    // 起飞:这一拍过完,窗从「防抖」翻成「在飞」—— 钱是从这一刻开始花的。
+    broadcastCollabCoordinator(request.roomId, { activity: true })
     void runtime.referee.adjudicate(request).catch((error: unknown) => {
       console.error('[collab-v3] 裁决失败:', error)
     })
   }, JUDGMENT_DEBOUNCE_MS)
   timer.unref?.()
-  runtime.judgments.set(request.roomId, { timer, request })
+  runtime.judgments.set(request.roomId, {
+    timer,
+    request,
+    opensAt: Date.now() + JUDGMENT_DEBOUNCE_MS,
+  })
+  // 开窗:虚点亮起来。走活动档 —— 这一拍只有 150ms,按秒节流的话它会被整个吞掉,
+  // 而那正是「刚才为什么没人理我」最开头的那一帧。
+  broadcastCollabCoordinator(request.roomId, { activity: true })
 }
 
 /** 把等着的那几扇窗立刻买掉。停机与装配级测试用 —— 生产靠上面那一拍。 */
@@ -1087,6 +1230,8 @@ async function flushJudgments(): Promise<void> {
   for (const entry of pending) {
     clearTimeout(entry.timer)
     if (runtime.stopping) continue
+    // 与定时器那条路同一帧:窗从「防抖」翻成「在飞」。
+    broadcastCollabCoordinator(entry.request.roomId, { activity: true })
     try {
       await runtime.referee.adjudicate(entry.request)
     } catch (error) {

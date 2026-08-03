@@ -444,6 +444,8 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	"setCollabRoomBudgets",
 	"getCollabRoomSpend",
 	"getCollabCoordinator",
+	// Agent 活动快照(D8 §3.1):供数在主进程的 v3 运行时里,与协调器同一条边界
+	"getCollabAgentActivity",
 	"updateCollabRoom",
 	"clearCollabRoomHistory",
 	"reactToCollabMessage",

@@ -170,7 +170,9 @@ const { handleCollabRoomSendMessage } = await import('../../ingress.js')
 const { createCollabScriptedMindPort } = await import('../mind-port.js')
 const { createCollabScriptedRefereeJudgePort } = await import('../referee-actor.js')
 const { collabV3MigrationMarkerPath, readCollabV3MigrationMarker } = await import('../migrate.js')
-const { beginCollabV3Turn, findCollabV3Turn } = await import('../turn-context.js')
+const { beginCollabV3Turn, endCollabV3Turn, findCollabV3Turn } = await import('../turn-context.js')
+const { getCollabAgentActivity } = await import('../../agent-activity.js')
+const { readCollabSchedulerLogTail } = await import('../scheduler-log.js')
 const { speakIntoCollabRoom } = await import('../../say-tool.js')
 const { COLLAB_SAY_SOURCE } = await import('@onething/runtime/collab')
 const { isTrustedCollabDrive } = await import('../../drive-guard.js')
@@ -440,5 +442,250 @@ describe('D6-a 装配:生命周期', () => {
     // 收摊之后没有协调器可以签发令牌 —— fail closed。
     expect(isTrustedCollabDrive({ collabDriveToken: 'nope' })).toBe(false)
     expect(peekCollabV3RoomSnapshot(ROOM)).toBeNull()
+  })
+})
+
+/**
+ * D8 观测体系 O1:**发射时机**(docs/design/collab-v3-observability.md §3.1/§3.2)。
+ *
+ * O0 把该有的格子接上了真数,而一份没人播的真数与没有是一回事 —— 用户看到的仍然
+ * 是上一次顺带播出去的那一帧。这一组问的全部是「变了之后有没有人被告知」。
+ */
+describe('D8 O1:agent 快照的发射与补水', () => {
+  function agentChanges(agentId: string): Array<Record<string, unknown>> {
+    return mocks.emitted
+      .filter(entry => entry.event.type === 'collab:agent-changed')
+      .map(entry => entry.event.activity as Record<string, unknown>)
+      .filter(activity => activity.agentId === agentId)
+  }
+
+  /**
+   * 亮灯与灭灯是**两处**产生点,而中间那一段被节流合并掉是对的 —— 所以这条用例
+   * 不数帧数,它数的是「thinking 这一帧到底有没有到过渲染层」。挂住心智端口让
+   * 那一态停住,是让它可被观测的唯一办法(不挂住的话整条环在一个节流窗里跑完,
+   * 出去的只有终态)。
+   */
+  it('大脑亮灯与灭灯各有一处产生点,序列合理且 seq 单调', async () => {
+    seedRoom(['fe'])
+    const mind = createCollabScriptedMindPort([
+      { agentId: 'fe', roomId: ROOM, says: ['收到'] },
+    ])
+    const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
+    mind.hold()
+    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await warmCollabV3Agents()
+
+    await handleCollabRoomSendMessage(ROOM, {
+      content: '@小李 看下登录页',
+      mentions: [{ agentId: 'fe', label: '小李' }],
+    })
+    try {
+      await vi.waitFor(() => {
+        expect(agentChanges('fe').map(activity => (activity.mind as { state: string }).state))
+          .toContain('thinking')
+      })
+      // 「持牌等大脑」与「生成中」在同一份快照里分得开:牌在手上,登记簿还空着。
+      const thinking = agentChanges('fe').find(
+        activity => (activity.mind as { state: string }).state === 'thinking',
+      )
+      expect(thinking?.heldLeases).toEqual([
+        expect.objectContaining({ roomSessionId: ROOM, executing: false }),
+      ])
+    } finally {
+      mind.release()
+    }
+    await drainCollabV3Runtime()
+
+    await vi.waitFor(() => {
+      expect(agentChanges('fe').at(-1)?.mind).toEqual({ state: 'idle' })
+    })
+    const changes = agentChanges('fe')
+    // 号单调:渲染层拿它做的是「比屏幕上那份新吗」的判断,倒退一次就画错一帧。
+    const seqs = changes.map(activity => activity.seq as number)
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
+    expect(new Set(seqs).size).toBe(seqs.length)
+    // 收尾那一份:牌交了、卡没有、积压清了。
+    expect(changes.at(-1)?.heldLeases).toEqual([])
+  })
+
+  it('快照播到房间会话上 —— agent 快照没有自己的会话,信封挂在它牵涉到的房', async () => {
+    seedRoom()
+    const mind = createCollabScriptedMindPort([{ agentId: 'fe', roomId: ROOM, says: ['嗯'] }])
+    const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
+    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await warmCollabV3Agents()
+
+    await handleCollabRoomSendMessage(ROOM, {
+      content: '@小李 在吗',
+      mentions: [{ agentId: 'fe', label: '小李' }],
+    })
+    await drainCollabV3Runtime()
+
+    const envelopes = mocks.emitted.filter(entry => entry.event.type === 'collab:agent-changed')
+    expect(envelopes.length).toBeGreaterThan(0)
+    expect(new Set(envelopes.map(entry => entry.sessionId))).toEqual(new Set([ROOM]))
+  })
+
+  it('GET 补水读的是当前号,九格从真运行时现算', async () => {
+    seedRoom()
+    const mind = createCollabScriptedMindPort([{ agentId: 'fe', roomId: ROOM, says: ['嗯'] }])
+    const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
+    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await warmCollabV3Agents()
+
+    await handleCollabRoomSendMessage(ROOM, {
+      content: '@小李 在吗',
+      mentions: [{ agentId: 'fe', label: '小李' }],
+    })
+    await drainCollabV3Runtime()
+
+    const [activity] = getCollabAgentActivity(['fe'])
+    expect(activity?.agentId).toBe('fe')
+    // 跑完一轮之后:大脑空了、牌交了、积压清了、说过话了。
+    expect(activity?.mind).toEqual({ state: 'idle' })
+    expect(activity?.heldLeases).toEqual([])
+    expect(activity?.inbox.depth).toBe(0)
+    expect(activity?.lastSpokeAt).toBeGreaterThan(0)
+    expect(activity?.deadLetterCount).toBe(0)
+
+    // **读不发号**:补水连着两次,号不动。
+    const seq = activity?.seq ?? -1
+    expect(getCollabAgentActivity(['fe'])[0]?.seq).toBe(seq)
+    // 而它必须是这条通道真的播过的那个号(不是恒 0)。
+    expect(seq).toBeGreaterThan(0)
+  })
+
+  it('没在跑循环的同事也回一份空闲快照,不是被跳过', async () => {
+    seedRoom()
+    await initializeCollabV3Runtime({ ports: { mind: createCollabScriptedMindPort() } })
+    const [ghost] = getCollabAgentActivity(['ghost'])
+    expect(ghost).toMatchObject({ agentId: 'ghost', mind: { state: 'idle' }, deadLetterCount: 0 })
+  })
+})
+
+describe('D8 O1:房间快照的发射时机', () => {
+  function coordinatorStates(): Array<Record<string, unknown>> {
+    return mocks.emitted
+      .filter(entry => entry.event.type === 'collab:coordinator-changed')
+      .map(entry => (entry.event.state as Record<string, unknown>))
+  }
+
+  function judgmentStates(): Array<string | undefined> {
+    return coordinatorStates().map(
+      state => (state.judgment as { state: string } | undefined)?.state,
+    )
+  }
+
+  /**
+   * 防抖与在飞在 O1 之前长得一模一样(房账在开窗那一刻就是 `pending`),而它们的
+   * 等待理由完全不同:一个几十毫秒后自解,一个正在烧一次模型调用。裁判端口挂住,
+   * 于是「在飞」这一态停住可被观测 —— 真机上它通常只有一两秒。
+   */
+  it('裁决窗:防抖(钱还没花)与在飞(正在烧)是两个样子,而且各自播过', async () => {
+    seedRoom()
+    const mind = createCollabScriptedMindPort([{ agentId: 'pm', roomId: ROOM, says: ['我来接'] }])
+    const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, hangs: true }])
+    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await warmCollabV3Agents()
+
+    await handleCollabRoomSendMessage(ROOM, { content: '这个需求谁跟一下' })
+
+    // ① 那一拍还没过完:虚点。
+    await vi.waitFor(() => {
+      expect(peekCollabV3RoomSnapshot(ROOM)?.judgment.state).toBe('debouncing')
+    }, { interval: 5, timeout: 2_000 })
+    // ② 一拍过完:调用起飞(裁判挂着,所以这一态稳定)。
+    await vi.waitFor(() => {
+      expect(peekCollabV3RoomSnapshot(ROOM)?.judgment.state).toBe('inflight')
+    }, { interval: 5, timeout: 2_000 })
+
+    // 两态都**播出去过** —— 只在 GET 里看得见等于没有:界面靠推送活着。
+    await vi.waitFor(() => {
+      expect(judgmentStates()).toContain('debouncing')
+      expect(judgmentStates()).toContain('inflight')
+    }, { interval: 10, timeout: 2_000 })
+  })
+
+  /**
+   * 第三处转变:窗**关掉**。
+   *
+   * 判完与降级在这一处走同一条路 —— `applyCollabRoomSetPolicy` 在同一次 `decide`
+   * 里把窗结掉并立刻按结果发牌,所以 `degraded` 那一格是同一步之内被消费掉的
+   * (它的完整成因落在时间轴的 `judge-degraded` 行上,那是 O0 的活)。O1 在这里
+   * 该保证的只有一件事:**关窗这一帧没有被吞掉**。
+   */
+  it('裁决窗关掉的那一帧也播得出去,降级的成因落在时间轴上', async () => {
+    seedRoom()
+    const mind = createCollabScriptedMindPort([{ agentId: 'pm', roomId: ROOM, says: ['我来接'] }])
+    const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, degraded: true }])
+    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await warmCollabV3Agents()
+
+    await handleCollabRoomSendMessage(ROOM, { content: '这个需求谁跟一下' })
+    await drainCollabV3Runtime()
+
+    // 窗关了,而且这一帧真的播出去过(在飞那一态之后必须有一帧把转圈收掉,
+    // 否则状态条会永远停在"正在判"上)。
+    await vi.waitFor(() => {
+      expect(judgmentStates()).toContain('idle')
+    }, { interval: 10, timeout: 2_000 })
+    expect(peekCollabV3RoomSnapshot(ROOM)?.judging).toBe(0)
+
+    // 降级本身没有从系统里消失 —— 它在时间轴上,带着成因与耗时。
+    const rows = readCollabSchedulerLogTail(ROOM, { types: ['judge-degraded'] })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ type: 'judge-degraded' })
+  })
+
+  it('登记簿的起落各推一次房间快照 —— 「持牌 N · 生成中 M」里的 M 要活', async () => {
+    seedRoom(['fe'])
+    const mind = createCollabScriptedMindPort([{ agentId: 'fe', roomId: ROOM, says: ['我想想'] }])
+    const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
+    mind.hold()
+    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await warmCollabV3Agents()
+
+    await handleCollabRoomSendMessage(ROOM, {
+      content: '@小李 在吗',
+      mentions: [{ agentId: 'fe', label: '小李' }],
+    })
+    try {
+      await vi.waitFor(() => {
+        expect(mind.calls.length).toBeGreaterThan(0)
+      })
+      const lease = peekCollabV3Room(ROOM)!.account.floor.active[0]!
+      // 牌在外面、登记簿是空的 = 「持牌等大脑」(v3 特有的第三种状态)。
+      expect(peekCollabV3RoomSnapshot(ROOM)?.turns.map(turn => turn.executing)).toEqual([false])
+
+      mocks.emitted.length = 0
+      beginCollabV3Turn({
+        agentId: 'fe',
+        roomSessionId: ROOM,
+        execSessionId: mind.calls[0]!.execSessionId,
+        leaseId: lease.leaseId,
+        epoch: lease.epoch,
+        startedAt: Date.now(),
+      })
+      // 登记那一刻就播,而且播的是**翻面之后**的那一份。
+      await vi.waitFor(() => {
+        expect(coordinatorStates().length).toBeGreaterThan(0)
+      })
+      expect(peekCollabV3RoomSnapshot(ROOM)?.turns.map(turn => turn.executing)).toEqual([true])
+      expect(
+        coordinatorStates().at(-1)?.turns as Array<{ executing: boolean }>,
+      ).toEqual([expect.objectContaining({ executing: true })])
+
+      mocks.emitted.length = 0
+      endCollabV3Turn(mind.calls[0]!.execSessionId, lease.leaseId)
+      await vi.waitFor(() => {
+        expect(coordinatorStates().length).toBeGreaterThan(0)
+      })
+      expect(
+        coordinatorStates().at(-1)?.turns as Array<{ executing: boolean }>,
+      ).toEqual([expect.objectContaining({ executing: false })])
+    } finally {
+      mind.release()
+    }
+    await drainCollabV3Runtime()
   })
 })
