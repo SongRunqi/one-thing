@@ -53,11 +53,19 @@ import {
   type CollabMessageLike,
 } from '@onething/runtime/collab'
 import {
+  adoptCollabAgentWorkerOrphans,
   advanceCollabAgentDelivered,
   advanceCollabAgentRead,
   buildCollabFoldedEnvelope,
   buildCollabMindDrive,
+  buildCollabWorkerFoldEntry,
   clearCollabAgentHand,
+  collabAgentSpawnWorker,
+  collabWorkerRunning,
+  collabWorkerRunningForCard,
+  createCollabWorkerRecord,
+  settleCollabAgentWorker,
+  startCollabAgentWorker,
   collabAgentLeaseOf,
   collabAgentRoomAccount,
   collabAgentSpeak,
@@ -75,9 +83,12 @@ import {
   type CollabActorVerb,
   type CollabAgentAccount,
   type CollabAgentNoteVerb,
+  type CollabAgentSpawnWorkerVerb,
+  type CollabAgentWorkerRecord,
   type CollabAgentWorkerResultVerb,
   type CollabFoldEntry,
   type CollabHandEvaluator,
+  type CollabWorkerLimits,
   type CollabRoomCardEventVerb,
   type CollabRoomFloorGrantedVerb,
   type CollabRoomFloorRevokedVerb,
@@ -92,6 +103,14 @@ import {
 } from './agent-mailbox.js'
 import type { CollabMindPort, CollabMindTurnResult } from './mind-port.js'
 import { buildCollabAgentNotebookBlock, type CollabNotebookStore } from './notebook-store.js'
+import {
+  CollabWorkerChildActor,
+  admitCollabWorkerSpawn,
+  createCollabWorkerSlotLedger,
+  type CollabWorkerBoardPort,
+  type CollabWorkerMindPort,
+  type CollabWorkerSlotLedger,
+} from './worker-child.js'
 
 /** 房间的投递口 —— agent → room 的动词从这里出去。 */
 export interface CollabAgentOutbox {
@@ -163,6 +182,55 @@ export interface CollabAgentTurnFailure {
   at: number
 }
 
+/** 一只手炸了(派生/监护那一侧,不是工作本身跑砸了 —— 后者是一个正常的终局)。 */
+export interface CollabAgentWorkerFailure {
+  cardId: string
+  workerId: string
+  error: Error
+  at: number
+}
+
+/** 孤儿处置。默认 `interrupt` —— 理由见 `recoverWorkers`。 */
+export type CollabAgentOrphanPolicy = 'interrupt' | 'respawn'
+
+/**
+ * 重活委托的接线(D4 §1.6)。**不配 = 这个 agent 没有手**:收到 spawn-worker 会
+ * 进 dead-letter,而不是被静静吞掉 —— 一张永远不会开工的卡是这套系统里最贵的
+ * 一种沉默。
+ */
+export interface CollabAgentWorkerOptions {
+  port: CollabWorkerMindPort
+  /**
+   * 结果回投口 —— 写进**父自己的信箱**(而不是回调父的方法)。
+   * 理由见 `worker-child.ts` 文件头:回投必须与别的信排同一条队。
+   */
+  postResult(verb: CollabAgentWorkerResultVerb): void | Promise<void>
+  /** 卡状态的推进面。缺席 = 不推(D4 的测试面就是这样跑的)。 */
+  board?: CollabWorkerBoardPort
+  /**
+   * 全局并发的那本账。**必须由宿主注入同一个实例**,不然「全局」就退化成
+   * 「per-agent 的第二个名字」——默认现开一本正是这个退化,它只对单 agent 的
+   * 测试成立。
+   */
+  slots?: CollabWorkerSlotLedger
+  limits?: CollabWorkerLimits
+  /** 墙钟(端口执行)。缺省走 `worker-rules.ts` 里那两个数。 */
+  timeouts?: { startTimeoutMs?: number; totalTimeoutMs?: number }
+  orphanPolicy?: CollabAgentOrphanPolicy
+  summaryMaxChars?: number
+  /** 重派时新手的 id。缺省 `<旧 id>~resume` —— 旧记录因此不会被覆盖掉。 */
+  newWorkerId?(input: { cardId: string; previousWorkerId: string }): string
+}
+
+/** 一次重启对账的结果。 */
+export interface CollabAgentWorkerRecovery {
+  /** 上一条命留下的在跑记录(**账里已经标成 interrupted**)。 */
+  orphans: CollabAgentWorkerRecord[]
+  policy: CollabAgentOrphanPolicy
+  /** 重派出去的新 workerId(policy = interrupt 时为空)。 */
+  respawned: string[]
+}
+
 export interface CollabAgentActorOptions
   extends Omit<ActorBaseOptions<ActorEvent<CollabActorVerb>>, 'id'> {
   agentId: string
@@ -184,6 +252,10 @@ export interface CollabAgentActorOptions
   onTurnFailure?: (failure: CollabAgentTurnFailure) => void
   /** 回合失败环形容量,默认 50。 */
   maxTurnFailures?: number
+  /** 重活委托(D4)。不配 = 这个 agent 只会说话,不会干活。 */
+  worker?: CollabAgentWorkerOptions
+  /** 一只手炸了的观测钩子。 */
+  onWorkerFailure?: (failure: CollabAgentWorkerFailure) => void
 }
 
 interface InFlightTurn {
@@ -219,6 +291,21 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
   private readonly onTurnFailure: ((failure: CollabAgentTurnFailure) => void) | undefined
   private readonly maxTurnFailures: number
   private readonly failures: CollabAgentTurnFailure[] = []
+  private readonly worker: CollabAgentWorkerOptions | undefined
+  private readonly workerSlots: CollabWorkerSlotLedger
+  private readonly onWorkerFailure: ((failure: CollabAgentWorkerFailure) => void) | undefined
+  private readonly workerFailures: CollabAgentWorkerFailure[] = []
+  /** 在外的手,按 workerId。**内存态** —— 跨重启的那一面在账的子清单里。 */
+  private readonly children = new Map<string, CollabWorkerChildActor>()
+  /**
+   * 被并发闸挡住、排着队的那些卡。
+   *
+   * **只在内存里**(与 v2 `pendingByRoom` 同一条):进程死了队列没了,而卡还在
+   * 板上 —— 续做是一个决定(人 / 负责人 / 下一次回合里的 agent 用 board start
+   * 作出),不是一次自动重驱。
+   */
+  private readonly workerQueue: CollabAgentSpawnWorkerVerb[] = []
+  private readonly unsubscribeSlots: (() => void) | undefined
 
   private state: CollabAgentAccount
   private turn: InFlightTurn | null = null
@@ -236,6 +323,18 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     this.notebookBudget = options.notebookBudget
     this.onTurnFailure = options.onTurnFailure
     this.maxTurnFailures = options.maxTurnFailures ?? DEFAULT_TURN_FAILURE_CAPACITY
+    this.worker = options.worker
+    this.workerSlots = options.worker?.slots ?? createCollabWorkerSlotLedger()
+    this.onWorkerFailure = options.onWorkerFailure
+    // 别人放开一个槽位,轮到我排队的那张卡走了 —— 不订这一条,全局闸会把跨
+    // agent 的队列饿死(见 `CollabWorkerSlotLedger.onRelease`)。
+    this.unsubscribeSlots = options.worker
+      ? this.workerSlots.onRelease(() => {
+        void this.pumpWorkerQueue().catch((error: unknown) => {
+          this.recordWorkerFailure('', error)
+        })
+      })
+      : undefined
     this.state = this.accountStore.load(options.agentId)
   }
 
@@ -269,8 +368,15 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     }
   }
 
-  /** 停循环,并等在飞的那一轮跑完(优雅停机没必要制造半个回合)。 */
+  /**
+   * 停循环,并等在飞的那一轮跑完(优雅停机没必要制造半个回合)。
+   *
+   * **不等在外的手**:一个 30 分钟墙钟的工作不该把退出卡住。它们在账上仍是
+   * `running`,下一条命的 `recoverWorkers` 认领 —— 崩溃与优雅停机在这一面走
+   * 同一条路,于是那条路每次启动都在被走(而不是只在事故里被走)。
+   */
   override async stop(): Promise<void> {
+    this.unsubscribeSlots?.()
     await super.stop()
     await this.settle()
   }
@@ -290,6 +396,8 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
         return this.onMembershipChanged(verb, event.at)
       case 'room:card-event':
         return this.onCardEvent(verb, event.at)
+      case 'agent:spawn-worker':
+        return this.onSpawnWorker(verb)
       case 'agent:worker-result':
         return this.onWorkerResult(verb, event.at)
       case 'agent:note':
@@ -302,7 +410,6 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       case 'agent:yield':
       case 'agent:dm-open':
       case 'agent:wake':
-      case 'agent:spawn-worker':
       case 'referee:set-floor-policy':
         return Promise.resolve()
       default:
@@ -574,18 +681,237 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     return Promise.resolve()
   }
 
-  /** D4 占位:记账 + 进折叠素材。回投的语义(卡的下一步)归 D4。 */
-  private onWorkerResult(verb: CollabAgentWorkerResultVerb, at: number): Promise<void> {
-    if (verb.agentId !== this.agentId) return Promise.resolve()
-    this.save(recordCollabAgentWorkerResult(this.state))
-    this.fold({
-      kind: 'worker',
-      at,
-      key: foldKey('worker', verb.workerId, verb.cardId),
+  /* ── 重活委托(D4 §1.6) ──────────────────────────────────────────────── */
+
+  /**
+   * 派活。
+   *
+   * 触发源是**对话回合里的 board start**(D6 接线):群里被指派只是通知,开工
+   * 由被指派的人自己说了算 —— 「assign = 通知 ≠ 开工」这条已拍板决策在 v3 一字
+   * 不改(§8)。这个方法只管「已经决定要开工了,现在派一只手」。
+   *
+   * 两道去重都在这里,而且都是**结构性**的:同一张卡已经有手在做、或已经排在
+   * 队里,再来一封 spawn 是空操作。判据是卡不是 workerId —— 一次重投与「群里
+   * 又催了一次」在这一层是同一件事,而两只手做同一张卡会互相覆盖对方的写入。
+   */
+  private async onSpawnWorker(verb: CollabAgentSpawnWorkerVerb): Promise<void> {
+    if (verb.agentId !== this.agentId) return
+    if (!this.worker) {
+      // 抛出去 = 这封信进 dead-letter。静静吞掉的话,症状是「那张卡永远停在
+      // todo」,而排障要从看板一路查到接线,才发现根本没人配过工作端口。
+      throw new Error(`[collab-agent] ${this.agentId} 未配工作端口,收到 spawn-worker(card=${verb.cardId})`)
+    }
+    if (collabWorkerRunningForCard(this.state.workers, verb.cardId)) return
+    if (this.workerQueue.some(entry => entry.cardId === verb.cardId)) return
+    this.workerQueue.push(verb)
+    await this.pumpWorkerQueue()
+  }
+
+  /**
+   * 队列泵:能派几只派几只。
+   *
+   * 两个触发点(手收工时、回投落账时)都调它,而且它是幂等的 —— 每一次都重新
+   * 问一遍闸。**不能只在收工时泵**:per-agent 的在跑数读的是账里的子清单,而
+   * 子清单是在回投那封信被处理时才收尾的,比手收工晚一步。
+   */
+  private async pumpWorkerQueue(): Promise<void> {
+    const worker = this.worker
+    if (!worker) return
+    while (this.workerQueue.length > 0) {
+      const admission = admitCollabWorkerSpawn({
+        agentRunning: collabWorkerRunning(this.state.workers).length,
+        slots: this.workerSlots,
+        ...(worker.limits ? { limits: worker.limits } : {}),
+      })
+      if (!admission.admitted) return
+      const verb = this.workerQueue.shift()
+      if (!verb) return
+      await this.startWorker(verb)
+    }
+  }
+
+  private async startWorker(verb: CollabAgentSpawnWorkerVerb): Promise<void> {
+    const worker = this.worker
+    if (!worker) return
+    const at = this.host.now()
+
+    // 账先落(§3 三面纪律)。崩在这一行与派生之间,重启对账认得出这个孤儿 ——
+    // 反过来(先派生后落账)崩掉的那只手在账上从来没存在过,永远查不出来。
+    this.save(startCollabAgentWorker(this.state, createCollabWorkerRecord({
+      workerId: verb.workerId,
       cardId: verb.cardId,
-      ok: verb.ok,
+      roomId: verb.roomId,
+      startedAt: at,
+      ...(verb.workSessionId ? { workSessionId: verb.workSessionId } : {}),
+    })))
+    this.workerSlots.acquire()
+
+    const child = new CollabWorkerChildActor({
+      agentId: this.agentId,
+      workerId: verb.workerId,
+      port: worker.port,
+      ...(worker.board ? { board: worker.board } : {}),
+      postResult: result => worker.postResult(result),
+      ...(worker.timeouts ? { limits: worker.timeouts } : {}),
+      ...(worker.summaryMaxChars === undefined ? {} : { summaryMaxChars: worker.summaryMaxChars }),
+      now: () => this.host.now(),
     })
-    return Promise.resolve()
+    this.children.set(verb.workerId, child)
+    await child.begin(verb, `worker:${verb.workerId}:card:${verb.cardId}`)
+    // **不 await 收工** —— 并行豁免的落点(见 `worker-child.ts` 文件头)。心智
+    // 循环立刻回去收信,这只手在外面自己跑。
+    void this.superviseWorker(verb.workerId, child)
+  }
+
+  /** 监护任务:等这只手收工,放槽位,再泵一次队列。**不在心智循环里跑**。 */
+  private async superviseWorker(workerId: string, child: CollabWorkerChildActor): Promise<void> {
+    let cardId = ''
+    try {
+      cardId = (await child.settled).cardId
+    } catch (error) {
+      this.recordWorkerFailure(workerId, error)
+    }
+    this.workerSlots.release()
+    this.children.delete(workerId)
+    try {
+      await child.stop()
+      await this.pumpWorkerQueue()
+    } catch (error) {
+      this.recordWorkerFailure(workerId, error, cardId)
+    }
+  }
+
+  /**
+   * 回投落地:记账 → 收尾子清单 → 进折叠素材 → 泵队列。
+   *
+   * 折叠素材那一行就是**「父不需要主动查」**的兑现:下一个对话回合的信封里自然
+   * 有一条「你那张卡完了/没完」,而正文一个字都没有(卡的标题本身就是正文 ——
+   * 见 `worker-rules.ts` 的 `buildCollabWorkerFoldEntry`)。
+   */
+  private async onWorkerResult(verb: CollabAgentWorkerResultVerb, at: number): Promise<void> {
+    if (verb.agentId !== this.agentId) return
+    let next = recordCollabAgentWorkerResult(this.state)
+    next = settleCollabAgentWorker(next, {
+      workerId: verb.workerId,
+      outcome: verb.outcome,
+      at,
+      ...(verb.workSessionId ? { workSessionId: verb.workSessionId } : {}),
+    })
+    this.save(next)
+    this.fold(buildCollabWorkerFoldEntry({
+      workerId: verb.workerId,
+      cardId: verb.cardId,
+      outcome: verb.outcome,
+      at,
+    }))
+    await this.pumpWorkerQueue()
+  }
+
+  /**
+   * 重启对账(§3「各 actor 独立自愈」)。
+   *
+   * 账里还挂着 `running` 的记录,只可能是上一条命没来得及给它收尾 —— 流从不
+   * 恢复,只重驱。两档处置:
+   *
+   *  - `interrupt`(**缺省**)—— 标断,把卡推回「没人在做」,并往折叠缓冲里放
+   *    一条素材:父在下一个对话回合自然知道这张卡断在半路。为什么这是缺省:
+   *    续做是一个**决定**(人 / 负责人 / 下一次回合里的 agent 用 board start
+   *    作出),v2 在真机上已经把它写死过一次 —— 自动重驱会在「机器重启」这种
+   *    与卡本身无关的原因上,把一张跑了 25 分钟的卡从头再跑一遍。
+   *  - `respawn` —— 带着原来的工作会话重派(现场就在那条会话里)。给自治度高
+   *    的房间留的档,由宿主显式选。
+   */
+  async recoverWorkers(options: { policy?: CollabAgentOrphanPolicy } = {}): Promise<CollabAgentWorkerRecovery> {
+    const at = this.host.now()
+    const adoption = adoptCollabAgentWorkerOrphans(this.state, at)
+    this.save(adoption.account)
+
+    const policy = options.policy ?? this.worker?.orphanPolicy ?? 'interrupt'
+    const respawned: string[] = []
+
+    for (const orphan of adoption.orphans) {
+      if (policy === 'respawn' && this.worker) {
+        const workerId = this.worker.newWorkerId?.({
+          cardId: orphan.cardId,
+          previousWorkerId: orphan.workerId,
+        }) ?? `${orphan.workerId}~resume`
+        this.workerQueue.push(collabAgentSpawnWorker({
+          agentId: this.agentId,
+          workerId,
+          cardId: orphan.cardId,
+          roomId: orphan.roomId,
+          ...(orphan.workSessionId ? { workSessionId: orphan.workSessionId } : {}),
+        }))
+        respawned.push(workerId)
+        continue
+      }
+      // 折叠素材只在 interrupt 那一档放:重派的话这张卡还在手上,「断了」是一句
+      // 会被下一条结果立刻推翻的话。
+      this.fold(buildCollabWorkerFoldEntry({
+        workerId: orphan.workerId,
+        cardId: orphan.cardId,
+        outcome: 'interrupted',
+        at,
+      }))
+      try {
+        await this.worker?.board?.interrupted({
+          roomId: orphan.roomId,
+          cardId: orphan.cardId,
+          agentId: this.agentId,
+          ...(orphan.workSessionId ? { workSessionId: orphan.workSessionId } : {}),
+          at,
+        })
+      } catch (error) {
+        this.recordWorkerFailure(orphan.workerId, error, orphan.cardId)
+      }
+    }
+
+    if (respawned.length > 0) await this.pumpWorkerQueue()
+    return { orphans: adoption.orphans, policy, respawned }
+  }
+
+  /** 在外的手(观测用)。 */
+  get runningWorkerIds(): string[] {
+    return [...this.children.keys()]
+  }
+
+  get queuedWorkerCards(): string[] {
+    return this.workerQueue.map(verb => verb.cardId)
+  }
+
+  get workerFailureLog(): readonly CollabAgentWorkerFailure[] {
+    return [...this.workerFailures]
+  }
+
+  /**
+   * 等在外的手全部收工。
+   *
+   * **`stop()` 刻意不调它**:一个 30 分钟墙钟的工作不该把退出卡住,而账里的
+   * `running` 记录会在下次启动被 `recoverWorkers` 认领 —— 崩溃与优雅停机在这一
+   * 面走同一条路,于是那条路每次启动都在被走。
+   */
+  async settleWorkers(): Promise<void> {
+    while (this.children.size > 0) {
+      await Promise.all([...this.children.values()].map(child => child.settled))
+      // 监护任务把 children 摘干净要一个微任务;摘完之后可能又泵起了下一只手。
+      await Promise.resolve()
+    }
+  }
+
+  private recordWorkerFailure(workerId: string, error: unknown, cardId = ''): void {
+    const failure: CollabAgentWorkerFailure = {
+      cardId,
+      workerId,
+      error: error instanceof Error ? error : new Error(String(error)),
+      at: this.host.now(),
+    }
+    this.workerFailures.push(failure)
+    while (this.workerFailures.length > this.maxTurnFailures) this.workerFailures.shift()
+    try {
+      this.onWorkerFailure?.(failure)
+    } catch {
+      // 观测钩子自己炸了不能反过来影响循环(与 ActorBase 的 dead-letter 同一条)。
+    }
   }
 
   /** 写笔记。转义在落盘那一侧(见 `notebook-store.ts` 文件头)。 */

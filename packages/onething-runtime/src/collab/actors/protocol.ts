@@ -195,6 +195,48 @@ export interface CollabFloorPolicyParams {
   phase?: string
   /** `phase`:该相位里允许说话的成员。 */
   activeMembers?: string[]
+  /**
+   * `phase`:**当前相位只有这些房能发牌**(D3)。
+   *
+   * 相位是跨房的:狼人杀的夜相里狼房活、群房死,而"活"这件事只有房间自己判得了
+   * ——所以裁判把整张活跃表下发给每一间房,每间房拿自己的 id 去对。给一张表而不是
+   * 给一个布尔,是因为布尔要求裁判知道自己此刻在跟谁说话,而下发是广播式的。
+   *
+   * 缺省(未配)= 所有房都活跃 —— 一间没配相位表的房不该因为别人换了相位就哑掉。
+   */
+  activeRooms?: string[]
+  /**
+   * `ring` / `waves`:一趟最多跑几圈(批)。**0 / 缺省 = 不限**。
+   *
+   * 「接力收棒权在配置(relayLoops)不在模型」这条已拍板决策的落点(§8)。名字沿用
+   * v2 的 `relayLoops` —— 它在设置面板里已经是这个意思,换个名字只会让同一个旋钮
+   * 在两代之间对不上号。
+   */
+  relayLoops?: number
+  /** `waves`:走完全部批次之后要不要从头再来(v2 `CollabPlan.cycle` 的同一格)。 */
+  cycle?: boolean
+  /**
+   * `free`:这间房挂了裁判 —— 举手先进**裁决窗**,等一次批量裁决,而不是直接 FIFO。
+   *
+   * 挂在 params 而不是另开一个动词:裁判在不在,本来就是"这间房用哪一档发言策略"
+   * 的一部分。
+   */
+  referee?: boolean
+  /**
+   * **裁决结果**:这一次触发的授牌次序(qm P0-2,O(N)→O(1))。
+   *
+   * 为什么裁决走 `set-floor-policy` 而不是新开一个 `referee:verdict` 动词:蓝图 §2
+   * 的动词表里 referee→room 只有这一个动词,而一次裁决答的正是「这一轮的发言策略
+   * 是什么次序」。新增一个只在一种策略下有意义的动词,换来的是每个消费端的穷尽
+   * switch 都要多一个分支,而它们对这件事无话可说。
+   */
+  verdict?: string[]
+  /** 裁决认领的窗口 id。对不上的裁决(上一次触发的)房间直接丢弃。 */
+  verdictToken?: string
+  /** 裁决没答上来(超时 / 读不懂)—— 房间回落 D1 的举手 FIFO。 */
+  verdictDegraded?: boolean
+  /** 一句话理由。进房间账的 notices 与状态条,不进模型。 */
+  why?: string
 }
 
 export interface CollabRefereeSetFloorPolicyVerb {
@@ -226,6 +268,44 @@ export interface CollabAgentSpawnWorkerVerb {
   cardId: string
   roomId: string
   title?: string
+  /** 卡的详情 —— 进任务书。标题装不下的那一半在这里。 */
+  description?: string
+  /**
+   * 续做:接着这条工作会话往下做(collab-team-v2 §5.3 的 v3 形态)。
+   *
+   * 缺席 = 新开一条。重开一条新会话等于把现场扔掉,让模型从零开始猜自己上次
+   * 做到哪儿了;重驱**同一条**则什么都不用做 —— 它自己的转录就是现场。
+   */
+  workSessionId?: string
+}
+
+/**
+ * 一份工作的终局。
+ *
+ * 前五个与端口的终端事件一一对应,另外两个是这一层自己的判断:
+ *  - `blocked` —— 它在看板上如实标了受阻。**与 `error` 必须分得开**:受阻是一个
+ *    结论(做不下去了,原因在卡上),error 是这一轮压根没跑成。
+ *  - `interrupted` —— 它没能自己收尾(进程死了),由父的重启对账认领。
+ */
+export type CollabWorkerOutcome =
+  | 'complete'
+  | 'blocked'
+  | 'error'
+  | 'aborted'
+  | 'timeout'
+  | 'skipped'
+  | 'interrupted'
+
+/**
+ * evidence 的一条引用。**只有引用,没有全文**(与折叠信封同一条保密纪律)。
+ *
+ * `kind: 'file'` 是它写过的一个路径,`kind: 'tool'` 是它调过的一个工具与次数。
+ * 两者都是**代码采集**的 —— 模型写不了这一格,那正是它存在的理由(v2 W9b.4)。
+ */
+export interface CollabWorkerEvidenceRef {
+  kind: 'file' | 'tool'
+  ref: string
+  count?: number
 }
 
 /** 子 actor 的结果回投父 mailbox:父在下一个对话回合自然「知道自己的活干完了」。 */
@@ -234,8 +314,14 @@ export interface CollabAgentWorkerResultVerb {
   agentId: string
   workerId: string
   cardId: string
-  ok: boolean
+  roomId: string
+  outcome: CollabWorkerOutcome
+  /** 交回父的一句话(已截断、已转义)。 */
   summary?: string
+  /** 代码采集的执行痕迹。只带引用 —— 正文留在工作会话里。 */
+  evidence?: CollabWorkerEvidenceRef[]
+  /** 这一段跑在哪条工作会话里(续做与排障读它)。 */
+  workSessionId?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

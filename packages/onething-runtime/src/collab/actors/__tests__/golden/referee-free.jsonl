@@ -1,0 +1,6 @@
+{"id":"rf-1","role":"user","content":"这版排期我拿不准，大家看看。","timestamp":1000}
+{"id":"rf-2","role":"assistant","agentId":"ana","content":"我先说：第三周排得太满了。","timestamp":1100}
+{"id":"rf-3","role":"assistant","agentId":"bo","content":"后端这边第三周确实吃紧，得砍一个。","timestamp":1200}
+{"id":"rf-4","role":"assistant","agentId":"cy","content":"设计稿可以晚一周给，不挡他们。","timestamp":1300}
+{"id":"rf-5","role":"user","content":"那就砍掉导出功能，谁来改排期？","timestamp":1400}
+{"id":"rf-6","role":"assistant","agentId":"ana","content":"我改，今天下班前发新版。","timestamp":1500}

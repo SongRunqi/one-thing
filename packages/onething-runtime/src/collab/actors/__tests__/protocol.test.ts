@@ -47,7 +47,15 @@ const SAMPLES: CollabActorVerb[] = [
   collabRefereeSetFloorPolicy({ roomId: 'r1', refereeId: 'ref', policy: 'ring', params: { order: ['a1', 'a2'] } }),
   collabAgentNote({ agentId: 'a1', note: '记一笔' }),
   collabAgentSpawnWorker({ agentId: 'a1', workerId: 'w1', cardId: 'c1', roomId: 'r1' }),
-  collabAgentWorkerResult({ agentId: 'a1', workerId: 'w1', cardId: 'c1', ok: true, summary: '做完了' }),
+  collabAgentWorkerResult({
+    agentId: 'a1',
+    workerId: 'w1',
+    cardId: 'c1',
+    roomId: 'r1',
+    outcome: 'complete',
+    summary: '做完了',
+    evidence: [{ kind: 'file', ref: 'src/a.ts' }],
+  }),
 ]
 
 describe('collab actor protocol', () => {

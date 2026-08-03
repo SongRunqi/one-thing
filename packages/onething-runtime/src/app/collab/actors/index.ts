@@ -82,9 +82,10 @@ export type {
 } from './mind-port.js'
 
 /**
- * **刻意不从这个桶里导出的两样**:
+ * **刻意不从这个桶里导出的三样**:
  *
- *  - `engine-mind-port.ts`(生产适配器)—— 它 import 引擎、总线、会话仓库;
+ *  - `engine-mind-port.ts`(对话回合的生产适配器)—— 它 import 引擎、总线、会话仓库;
+ *  - `worker-mind-port.ts`(工作回合的生产适配器,D4)—— 同上;
  *  - `notebook-tool.ts`(工具接线)—— 它 import 会话仓库。
  *
  * 这个桶今天的读者是**重放与测试**,它们跑在没有引擎、没有 store 的环境里。
@@ -96,10 +97,63 @@ export { CollabAgentActor } from './agent-actor.js'
 export type {
   CollabAgentActorHost,
   CollabAgentActorOptions,
+  CollabAgentOrphanPolicy,
   CollabAgentOutbox,
   CollabAgentRoomContextInput,
   CollabAgentTurnFailure,
+  CollabAgentWorkerFailure,
+  CollabAgentWorkerOptions,
+  CollabAgentWorkerRecovery,
 } from './agent-actor.js'
+
+/* ── D4:WorkerChildActor ───────────────────────────────────────────────── */
+
+export {
+  admitCollabWorkerSpawn,
+  CollabWorkerChildActor,
+  createCollabScriptedWorkerPort,
+  createCollabWorkerBoardRecorder,
+  createCollabWorkerSlotLedger,
+} from './worker-child.js'
+export type {
+  CollabScriptedWork,
+  CollabScriptedWorkerCall,
+  CollabScriptedWorkerPort,
+  CollabWorkerBoardCall,
+  CollabWorkerBoardPort,
+  CollabWorkerBoardRecorder,
+  CollabWorkerBoardSettledInput,
+  CollabWorkerBoardStartedInput,
+  CollabWorkerBoardVerdict,
+  CollabWorkerChildActorOptions,
+  CollabWorkerChildOutcome,
+  CollabWorkerMindPort,
+  CollabWorkerRunRequest,
+  CollabWorkerRunResult,
+  CollabWorkerSlotLedger,
+} from './worker-child.js'
+
+/* ── D3:RefereeActor ───────────────────────────────────────────────────── */
+
+/**
+ * `referee-judge.ts`(批量裁决的生产适配器)同样**不从这个桶导出** —— 它 import
+ * providers / store / 计费,与上面那三样同一条理由。D6 接线时按路径 import。
+ */
+export {
+  COLLAB_REFEREE_TIMEOUT_MS,
+  CollabRefereeActor,
+  createCollabScriptedRefereeJudgePort,
+} from './referee-actor.js'
+export type {
+  CollabRefereeActorHost,
+  CollabRefereeActorOptions,
+  CollabRefereeJudgePort,
+  CollabRefereeJudgeRequest,
+  CollabRefereeOutbox,
+  CollabRefereeTrace,
+  CollabScriptedJudgement,
+  CollabScriptedRefereeJudgePort,
+} from './referee-actor.js'
 
 export { collabDuetMembersOf, replayCollabDuet } from './agent-replay.js'
 export type {

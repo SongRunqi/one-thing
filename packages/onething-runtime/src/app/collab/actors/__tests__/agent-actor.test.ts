@@ -440,7 +440,14 @@ describe('保密不变量:他房正文不进 drive', () => {
     h.actor.start()
     await h.send(collabRoomPhaseChanged({ roomId: ROOM_B, phase: 'night', epoch: 2 }), 'e1')
     await h.send(collabRoomCardEvent({ roomId: ROOM_B, cardId: 'c-1', event: 'delivered', title: '给四号下毒' }), 'e2')
-    await h.send(collabAgentWorkerResult({ agentId: AGENT, workerId: 'w-1', cardId: 'c-1', ok: true, summary: '毒配好了' }), 'e3')
+    await h.send(collabAgentWorkerResult({
+      agentId: AGENT,
+      workerId: 'w-1',
+      cardId: 'c-1',
+      roomId: ROOM_B,
+      outcome: 'complete',
+      summary: '毒配好了',
+    }), 'e3')
     await h.send(collabRoomFloorGranted({ roomId: ROOM_A, agentId: AGENT, lease: lease(ROOM_A, 'L1') }), 'e4')
     await h.actor.drain()
 

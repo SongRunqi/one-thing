@@ -30,7 +30,16 @@ import type {
   CollabActorRef,
   CollabHandUrgency,
   CollabRoomPostedVerb,
+  CollabWorkerOutcome,
 } from './protocol.js'
+import {
+  adoptCollabWorkerOrphans,
+  normalizeCollabAgentWorkerRecords,
+  settleCollabWorkerRecord,
+  upsertCollabWorkerRecord,
+  type CollabAgentWorkerRecord,
+  type CollabWorkerStatus,
+} from './worker-rules.js'
 
 export const COLLAB_AGENT_ACCOUNT_VERSION = 1
 
@@ -92,8 +101,17 @@ export interface CollabAgentAccount {
   hands: string[]
   /** 手里的牌,按房。 */
   leases: CollabAgentLeaseRecord[]
-  /** 收到过几份子 actor 结果(D4 占位记账)。 */
+  /** 收到过几份子 actor 结果(观测口径,只增不减)。 */
   workerResults: number
+  /**
+   * 子清单:我派出去的那些手(D4,§1.6)。
+   *
+   * 它在账里而不在内存里,只为了一件事:**崩溃之后父能发现孤儿**。一条
+   * `running` 的记录能活到下一次进程启动,只可能是上一条命没来得及给它收尾 ——
+   * 重启对账因此有据可查(见 `adoptCollabAgentWorkerOrphans`)。并发闸也读它:
+   * per-agent 的在跑数就是这张表上 `running` 的条数,没有第二本账。
+   */
+  workers: CollabAgentWorkerRecord[]
   /** 单调序号。每一次账的变化 +1 —— 与房间账同一条纪律。 */
   seq: number
 }
@@ -109,6 +127,7 @@ export function createCollabAgentAccount(agentId: string): CollabAgentAccount {
     hands: [],
     leases: [],
     workerResults: 0,
+    workers: [],
     seq: 0,
   }
 }
@@ -171,6 +190,7 @@ export function normalizeCollabAgentAccount(value: unknown, agentId: string): Co
     hands: asStringArray(raw.hands),
     leases,
     workerResults: asNumber(raw.workerResults),
+    workers: normalizeCollabAgentWorkerRecords(raw.workers),
     seq: asNumber(raw.seq),
   }
 }
@@ -343,9 +363,57 @@ export function collabAgentLeaseOf(
   return account.leases.find(entry => entry.roomId === roomId)
 }
 
-/** 子 actor 结果记账(D4 占位:这里只数,回投的语义在 D4)。 */
+/**
+ * 子 actor 结果记账(观测口径)。
+ *
+ * 只数,不判成败 —— 成败在子清单的那条记录上(`settleCollabAgentWorker`)。两处
+ * 各答各的问题:这里答「回投这条路走通过几次」,那里答「那张卡到底怎么了」。
+ */
 export function recordCollabAgentWorkerResult(account: CollabAgentAccount): CollabAgentAccount {
   return { ...account, workerResults: account.workerResults + 1, seq: account.seq + 1 }
+}
+
+/* ── 子清单(D4 §1.6):账的那一面 ────────────────────────────────────────── */
+
+/** 派出去一只手。账先落再动手 —— 崩在这两步之间,重启对账认得出这个孤儿。 */
+export function startCollabAgentWorker(
+  account: CollabAgentAccount,
+  record: CollabAgentWorkerRecord,
+): CollabAgentAccount {
+  return { ...account, workers: upsertCollabWorkerRecord(account.workers, record), seq: account.seq + 1 }
+}
+
+/** 收尾一只手。认不出的 workerId 是空操作(一封迟到的回投不该凭空造记录)。 */
+export function settleCollabAgentWorker(
+  account: CollabAgentAccount,
+  input: {
+    workerId: string
+    outcome: CollabWorkerOutcome
+    at: number
+    status?: CollabWorkerStatus
+    workSessionId?: string
+  },
+): CollabAgentAccount {
+  const workers = settleCollabWorkerRecord(account.workers, input)
+  return { ...account, workers, seq: account.seq + 1 }
+}
+
+/**
+ * 重启对账:`running` 的记录认成孤儿并标 `interrupted`,把它们交出来。
+ *
+ * 怎么处置(重派 or 就此打住)不在这里 —— 那是策略,归 AgentActor 的
+ * `recoverWorkers`。这一层只回答「上一条命留下了什么」。
+ */
+export function adoptCollabAgentWorkerOrphans(
+  account: CollabAgentAccount,
+  at: number,
+): { account: CollabAgentAccount; orphans: CollabAgentWorkerRecord[] } {
+  const adoption = adoptCollabWorkerOrphans(account.workers, at)
+  if (adoption.orphans.length === 0) return { account, orphans: [] }
+  return {
+    account: { ...account, workers: adoption.workers, seq: account.seq + 1 },
+    orphans: adoption.orphans,
+  }
 }
 
 /* ── 举手评估 ─────────────────────────────────────────────────────────────── */

@@ -3,6 +3,7 @@
 日期：2026-08-02
 状态：方案（未实施）
 宿主目标：**macOS（Intel + Apple Silicon）、Windows 10/11、Linux** —— 三平台一等公民
+实施切片：mac 先行，详见 [agent-sandbox-mac.md](./agent-sandbox-mac.md)
 
 ---
 
@@ -93,7 +94,7 @@ onething (Electron main / apps/server)          [mac / win / linux]
 | 组件 | 不选（因为有平台缺口） | 选择（三平台通吃） |
 | --- | --- | --- |
 | 宿主↔guest 通道 | vsock（vhost-vsock 仅 Linux 宿主） | **virtio-serial** 字符通道，NDJSON 协议 |
-| 文件注入/提取 | virtio-fs（virtiofsd 仅 Linux 宿主）、9p（性能与语义坑） | **不共享文件系统**：输入打包成只读盘镜像挂进去，输出由 guest agent 从 overlay upperdir 打规范化 tar 经 virtio-serial 传回 |
+| 文件注入/提取 | virtio-fs（virtiofsd 仅 Linux 宿主）、9p（性能与语义坑） | **不共享文件系统**：输入 tar **直接当 raw 块设备**挂进去（guest `tar -xf /dev/vdb`，宿主无需任何 Linux 文件系统写入能力），输出由 guest 把规范化 tar 写进预分配的输出盘。**OCI layer → 磁盘镜像的组装也在 builder VM 内完成**，宿主侧零 Linux fs 代码 |
 | guest 网络 | TAP/bridge（三平台权限模型各异，Windows 要驱动） | **slirp 用户态网络**：无特权、三平台一致，且天然只有一个出口——宿主代理，网络管控不靠防火墙规则而靠拓扑 |
 | 宿主 RPC | — | unix socket（mac/linux）/ named pipe（win），interprocess crate 抹平 |
 
@@ -103,7 +104,7 @@ onething (Electron main / apps/server)          [mac / win / linux]
 
 - **VMM 控制**：自研 `QemuBackend`——spawn 捆绑的 qemu-system，QMP（QEMU 的 JSON RPC）做生命周期控制，virtio-serial 上跑自定义 guest 协议。不依赖 libvirt。
 - **guest init/agent**：Rust musl 静态小二进制，编 x86_64 + aarch64 双份进各自 rootfs。
-- **镜像**：`oci-distribution` + `oci-spec` 拉标准 OCI 镜像；层按 sha256 内容寻址存储，组装成 ext4 只读盘镜像（宿主侧用纯 Rust ext4 写入器生成，不依赖宿主有 mkfs）。基础镜像我们自己发布（固定 digest 的 debian-slim + 常用工具链，双架构）。
+- **镜像**：`oci-distribution` + `oci-spec` 拉标准 OCI 镜像；层按 sha256 内容寻址存储，**组装成磁盘镜像的那一步交给 builder VM 在 guest 内完成**（宿主没有 mkfs/overlayfs，也不该有）。基础镜像我们自己在 CI 预构建发布（固定 digest 的 debian-slim + 常用工具链，双架构），解决引导问题。
 - **网络代理**：宿主侧 `hudsucker`（Rust MITM 代理 crate）或自写 hyper 层；guest 内预置我们的 CA。
 - **RPC**：`interprocess` crate（unix socket / named pipe 统一抽象）+ NDJSON，复用 onething CLI daemon 的协议风格。
 - **哈希/存储**：blake3 内容寻址；账本追加式 JSONL（与会话存储风格一致）。
@@ -199,7 +200,7 @@ Tier C 保留很重要：onething 的 agent 经常就是要动用户自己的机
 | 期 | 交付 | 验收 |
 | --- | --- | --- |
 | **P0 技术尖刺** | 捆绑裁剪 QEMU 在 **mac(HVF)/win(WHPX)/linux(KVM)** 三平台跑通：直接内核启动固定 rootfs → guest init 经 virtio-serial 收命令 → 流式回传 → 拿 exit code。测冷启延迟基线 + TCG 降级路径验证 | `echo hi`、`cargo --version` 三平台跑通；延迟数据落文档；WHPX 不可用的 Windows 上 TCG 路径可用 |
-| **P1 执行核心** | OCI 镜像拉取与内容寻址缓存、Rust 侧 ext4 盘镜像生成、input layer 注入、guest overlayfs、规范化 tar diff、manifest/result 账本、`exec` RPC。网络先 off | 断网条件下"编译一个 crate"连跑 3 次 digest 全同；**同一 manifest 在 mac 和 linux 上 digest 相同** |
+| **P1 执行核心** | OCI 镜像拉取与内容寻址缓存、builder VM 内组装磁盘镜像、tar-as-block-device 进出、guest overlayfs、规范化 tar diff、manifest/result 账本、`exec` RPC。网络先 off | 断网条件下"编译一个 crate"连跑 3 次 digest 全同；**同一 manifest 在 mac 和 linux 上 digest 相同** |
 | **P2 录制与回放** | slirp→宿主 MITM 代理四档网络、CA 注入、net log 录制、`replay`/`verify` 动词、fs_diff 链式层 | `pip install requests && pytest` 在 mac 上 record，**在 Windows 上 replay 三次 digest 全同** |
 | **P3 确定性收紧** | 时钟/熵 strict 模式、单 vCPU 档、三平台确定性标杆套件进 CI、分歧点定位报告 | 标杆套件三平台交叉全绿；故意引入 `date`/`$RANDOM` 的负载被正确标记 nondeterministic 并指出首个分歧 |
 | **P4 性能** | VM 预热池、镜像层缓存策略、并发执行上限与排队；评估 QEMU snapshot（loadvm/migrate defer）做毫秒级恢复 | 预热命中时 exec 端到端 <100ms（硬件加速平台）；10 并发不互相污染 |

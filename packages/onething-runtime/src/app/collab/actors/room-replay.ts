@@ -29,13 +29,19 @@ import {
   collabAgentRaiseHand,
   collabAgentSpeak,
   collabAgentYield,
+  collabRefereeSetFloorPolicy,
+  collabRefereeVerdictVerb,
   collabRoomActiveLeases,
   collabRoomHolders,
   type CollabActorReplayContext,
   type CollabActorReplayPipeline,
   type CollabActorReplayTranscript,
   type CollabActorVerb,
+  type CollabFloorPolicyName,
+  type CollabFloorPolicyParams,
+  type CollabRefereeVerdict,
   type CollabRoomAccount,
+  type CollabRoomJudgmentRequest,
   type CollabRoomTranscriptMessage,
 } from '@onething/runtime/collab/actors'
 
@@ -55,6 +61,25 @@ export interface CollabRoomReplayOptions {
   pairDm?: boolean
   /** 时钟起点。重放不碰 `Date.now()`,时刻从转录派生。 */
   startedAt?: number
+  /* ── D3:策略与裁判 ─────────────────────────────────────────────────── */
+  /** 开局的发言策略。缺省 `free`(裁判缺席时的内置档)。 */
+  policy?: CollabFloorPolicyName
+  /** 策略参数(`ring` 的 `order`、`waves` 的批次表、`phase` 的活跃房表)。 */
+  policyParams?: CollabFloorPolicyParams
+  /** 开局相位(`phase` 剧本)。 */
+  phase?: string
+  /** 这间房挂了裁判吗 —— 挂了,`free` 的举手先进裁决窗。 */
+  referee?: boolean
+  /**
+   * **脚本化的裁决**(金重放专用)。
+   *
+   * 重放架的接缝是同步的,而真裁决是一次网络往返 —— 所以这里换成一个同步函数:
+   * 房间开窗 → 立刻问它 → 把答案当 `referee:set-floor-policy` 投回去。除了这次
+   * 「模型怎么想」,其余每一行都是真的(房间的账、闸、发牌、队列结算全走真代码)。
+   *
+   * 返回 `null` = 这一次裁判答不上来 → 降级裁决 → 房间回落举手 FIFO。
+   */
+  judge?(request: CollabRoomJudgmentRequest, account: CollabRoomAccount): CollabRefereeVerdict | null
 }
 
 /** 重放管线额外暴露的观测面 —— 测试拿它比账,不必去翻内部。 */
@@ -65,6 +90,11 @@ export interface CollabRoomActorReplayPipeline extends CollabActorReplayPipeline
   messages(): CollabRoomTranscriptMessage[]
   /** 全部动词,按序 —— 与 `replayRoomTranscript` 捕获的那一串相同。 */
   verbs(): CollabActorVerb[]
+  /**
+   * 买过几次裁决(D3)。**O(1) 的断言数它** —— 一个触发事件恰好一次,N 个候选
+   * 不是 N 次。
+   */
+  judgeCalls(): number
 }
 
 /** 转录里出现过的 agent,按首次出现序。重放的名册就是它。 */
@@ -102,6 +132,11 @@ export function createCollabRoomActorReplayPipeline(
   // 金快照每次都变(D0 已经为这条立过测试)。
   let clock = options.startedAt ?? 0
 
+  /** 房间开出来的裁决窗,攒在这里等同步结算(见 `settleJudgments`)。 */
+  let pendingJudgments: CollabRoomJudgmentRequest[] = []
+  /** 判过几次。**O(1) 的金重放断言数它** —— N 个候选一次调用。 */
+  let judgeCalls = 0
+
   const host: CollabRoomActorHost = {
     members: () => members,
     frozen: () => options.frozen === true,
@@ -109,6 +144,10 @@ export function createCollabRoomActorReplayPipeline(
     maxChain: () => maxChain,
     maxConcurrent: () => maxConcurrent,
     pairDm: () => options.pairDm === true,
+    referee: () => options.referee === true,
+    openJudgment: request => {
+      pendingJudgments.push(request)
+    },
     appendMessage: (_roomId, message) => {
       messages.push(message)
     },
@@ -138,13 +177,65 @@ export function createCollabRoomActorReplayPipeline(
    * 广播里与输入**同一个对象**的那一条要滤掉:一条用户 posted 进来,房间原样播
    * 出去,那是同一封信的两次出现 —— 记两遍会让快照读起来像房间把每条消息都
    * 复读了一遍,而且链账的 fold 会把同一个清零事件数两次(结果不变,但理由变脏了)。
+   *
+   * `decide()` 不走 `commit()`(重放不落转录、不投信箱),所以裁决窗要在这里自己
+   * 接一下 —— 真机那侧它由 `commit` 喊出去。
    */
   function run(verb: CollabActorVerb): void {
     verbs.push(verb)
     const effects = actor.decide(verb)
     for (const message of effects.messages) messages.push(message)
     verbs.push(...effects.broadcast.filter(entry => entry !== verb))
+    if (effects.judgment) pendingJudgments.push(effects.judgment)
   }
+
+  /**
+   * 把开着的裁决窗**当场结算掉**。
+   *
+   * 只在窗真的开着、且账里已经有手的时候判 —— 窗是在 `posted` 那一刻开的,而举手
+   * 发生在其后(重放里由 `onPosted` 替 agent 举),所以开窗那一刻候选常常是空的。
+   * 这与真机的时序是同一件事:那边隔着一次 mailbox 投递,这里隔着一个函数调用。
+   *
+   * 一扇窗**至多判一次**(窗关了就不再进这个循环)—— 这就是 O(1) 在金重放里的
+   * 可见形态:剧本里五个人举手,`judgeCalls` 也只会 +1。
+   */
+  function settleJudgments(): void {
+    for (let guard = 0; guard < 8 && pendingJudgments.length > 0; guard += 1) {
+      const open = pendingJudgments
+      pendingJudgments = []
+      for (const request of open) {
+        const account = actor.account
+        if (account.judgment?.token !== request.token || account.judgment.state !== 'pending') continue
+        if (account.hands.length === 0) continue
+        judgeCalls += 1
+        const verdict = options.judge?.(request, account)
+          // 没给 `judge` = 这间房挂了裁判但没人接 —— 降级,房间回落举手 FIFO。
+          // 悬着不判的话那扇窗永不关闭,而窗开着房间就不发牌(那正是要测的失败态)。
+          ?? { token: request.token, grants: [], degraded: true }
+        run(collabRefereeVerdictVerb({
+          roomId: options.roomId,
+          refereeId: 'replay-referee',
+          verdict,
+        }))
+      }
+    }
+  }
+
+  /** 开局下发一次策略 —— 剧本从第一条消息起就跑在那一档上。 */
+  function primePolicy(): void {
+    if (!options.policy && !options.policyParams && !options.phase) return
+    run(collabRefereeSetFloorPolicy({
+      roomId: options.roomId,
+      refereeId: 'replay-referee',
+      policy: options.policy ?? 'free',
+      params: {
+        ...options.policyParams,
+        ...(options.phase ? { phase: options.phase } : {}),
+      },
+    }))
+  }
+
+  primePolicy()
 
   return {
     name: 'room-actor',
@@ -152,13 +243,17 @@ export function createCollabRoomActorReplayPipeline(
       messages.length = 0
       verbs.length = 0
       clock = options.startedAt ?? 0
+      pendingJudgments = []
+      judgeCalls = 0
       if (options.members) {
         members.splice(0, members.length, ...options.members)
       } else {
         members.length = 0
       }
       actor = newActor()
+      primePolicy()
     },
+    judgeCalls: () => judgeCalls,
     account: () => actor.account,
     messages: () => [...messages],
     verbs: () => [...verbs],
@@ -175,6 +270,9 @@ export function createCollabRoomActorReplayPipeline(
 
       if (event.payload.author.kind !== 'agent') {
         run(event.payload)
+        // 人类/系统消息也可能开窗(它是触发事件),但那一刻队里通常没有手 ——
+        // 结算一次是为了让"窗开了、没人举手"这条路径也走到底(空裁决即关窗)。
+        settleJudgments()
         return verbs.slice(before)
       }
 
@@ -185,6 +283,8 @@ export function createCollabRoomActorReplayPipeline(
           agentId,
           ...(message.id ? { sourceMessageId: message.id } : {}),
         }))
+        // 手举完了才判 —— 这一步就是「攒进裁决窗」的可见形态。
+        settleJudgments()
       }
 
       const lease = collabRoomActiveLeases(actor.account, clock).find(entry => entry.agentId === agentId)
@@ -207,6 +307,9 @@ export function createCollabRoomActorReplayPipeline(
         leaseId: lease.leaseId,
         reason: 'done',
       }))
+      // 说完这句话本身是一次 posted(它回流进房间),可能又开一扇窗 —— 结算掉,
+      // 否则下一条消息进来时会撞上一扇上一轮的陈旧窗。
+      settleJudgments()
       return verbs.slice(before)
     },
   }

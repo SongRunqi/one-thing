@@ -53,8 +53,15 @@ import type { CollabAgentLike, CollabMentionLike } from '../types.js'
 import {
   createCollabFreeFloorPolicy,
   resolveCollabFloorPolicy,
+  type CollabFloorPolicyState,
   type CollabRaisedHand,
 } from './floor-policy.js'
+import {
+  collabJudgmentToken,
+  isCollabRoomJudgmentShape,
+  type CollabRoomJudgment,
+  type CollabRoomJudgmentRequest,
+} from './referee-rules.js'
 import {
   collabActorRef,
   collabRoomFloorGranted,
@@ -118,10 +125,26 @@ export interface CollabRoomAccount {
   chainResetMessageId?: string
   /** 已消费到哪条消息。只前进,不后退(v2 `advanceWatermark` 的同一条纪律)。 */
   watermark: { messageId?: string; at?: number }
-  /** 当前相位(`phase` 策略;D1 只存不用)。 */
+  /** 当前相位(`phase` 策略)。 */
   phase?: string
   /** 当前发言策略。裁判缺席 = `free`。 */
   policy: { name: CollabFloorPolicyName; params?: CollabFloorPolicyParams }
+  /**
+   * 策略自己的游标(`ring` 的环位、`waves` 的批位)。
+   *
+   * 住在账里而不是策略对象里:策略是每次决策现 `resolve` 出来的,而且崩溃后要重建
+   * ——一个活在闭包里的游标,重启之后环就从头开始了。换策略时整袋清空。
+   */
+  policyState?: CollabFloorPolicyState
+  /**
+   * 裁决窗(D3,`free` + 挂了裁判)。**同一间房只有一扇**。
+   *
+   * 它就是 qm P0-2 的 O(N)→O(1) 的落点:窗按**触发事件**开,窗开着的时候再来十只
+   * 手也还是那一次调用。窗的生死全在这一格上,没有第二份状态可漂。
+   */
+  judgment?: CollabRoomJudgment
+  /** 开过几扇裁决窗。窗的 token 由它派生 —— 随机 id 会让金重放每次都变。 */
+  judgmentSeq: number
   /** 举手队列。 */
   hands: CollabRaisedHand[]
   /** 发牌用的确定性牌号计数器。随机牌号会让金重放每次都变。 */
@@ -178,6 +201,14 @@ export interface CollabRoomGates {
   /** 预算行要的两个数(拿不到就退化成不带数字的那句)。 */
   budgetSpentUSD?: number
   budgetLimitUSD?: number
+  /**
+   * 这间房挂了裁判吗(D3)—— 挂了,`free` 的举手先进裁决窗。
+   *
+   * 与 `policy.params.referee` **求或**:裁判可以自己下发 `set-floor-policy` 把这一格
+   * 打开(它接管这间房),宿主也可以按房间设置直接打开(用户在设置里挂的那个)。
+   * 两条路都是同一件事,所以判据只有一条:任一为真即为真。
+   */
+  referee?: boolean
 }
 
 /**
@@ -208,6 +239,13 @@ export interface CollabRoomEffects {
   granted: FloorLease[]
   /** 动词被拒时给调用方的可操作文案(措辞是 C1/C2 资产,一个字不动)。 */
   refusal?: string
+  /**
+   * 这一步开出来的**裁决窗** —— 调用方(RefereeActor)拿它去买那一次模型调用。
+   *
+   * 是一张待办而不是一次调用:决策必须是同步的(金重放与真机走同一行代码),而
+   * 模型调用不可能同步。房间开完窗就把手挂起,答案什么时候回来是裁判那一侧的事。
+   */
+  judgment?: CollabRoomJudgmentRequest
 }
 
 export interface CollabRoomStep {
@@ -276,6 +314,7 @@ export function createCollabRoomAccount(
     chainCount: 0,
     watermark: {},
     policy: { name: options.policy ?? 'free' },
+    judgmentSeq: 0,
     hands: [],
     leaseSeq: 0,
     leaseReasons: {},
@@ -318,6 +357,13 @@ export function normalizeCollabRoomAccount(value: unknown, roomId: string): Coll
     watermark: raw.watermark && typeof raw.watermark === 'object' ? { ...raw.watermark } : {},
     ...(typeof raw.phase === 'string' ? { phase: raw.phase } : {}),
     policy: raw.policy && typeof raw.policy.name === 'string' ? { ...raw.policy } : { name: 'free' },
+    ...(raw.policyState && typeof raw.policyState === 'object'
+      ? { policyState: { ...raw.policyState } }
+      : {}),
+    // 认不出形状的裁决窗当**没开过**:一扇半份的窗会让房间永远挂着手等一个不会来
+    // 的答案(比丢一次裁决贵得多 —— 丢一次裁决只是这轮回落 FIFO)。
+    ...(isCollabRoomJudgmentShape(raw.judgment) ? { judgment: { ...raw.judgment } } : {}),
+    judgmentSeq: typeof raw.judgmentSeq === 'number' ? raw.judgmentSeq : 0,
     hands: Array.isArray(raw.hands) ? raw.hands.filter(isRaisedHandShape) : [],
     leaseSeq: typeof raw.leaseSeq === 'number' ? raw.leaseSeq : 0,
     leaseReasons: raw.leaseReasons && typeof raw.leaseReasons === 'object' ? { ...raw.leaseReasons } : {},
@@ -411,6 +457,7 @@ interface GrantOutcome {
   broadcast: CollabActorVerb[]
   messages: CollabRoomTranscriptMessage[]
   granted: FloorLease[]
+  judgment?: CollabRoomJudgmentRequest
 }
 
 function emptyEffects(): CollabRoomEffects {
@@ -449,6 +496,10 @@ function systemLine(
  * 次序是契约:先策略排队,再冻结,再预算,最后逐张过链闸。为什么链闸放最后 ——
  * 它是唯一**逐张**判定的闸(前两道是全房性质,撞上就整批停发),而逐张判定必须
  * 建立在"这一张真的要发"之上,否则一批被冻结吃掉的候选会白白把链数推高。
+ *
+ * D3 在"策略排队"那一步之后多了一件事:策略可能回答**「先别发,等裁决」**
+ * (`decision.openJudgment`)。开窗写在闸的**里面**而不是外面 —— 一间冻住的、
+ * 或者预算烧光的房不该去买一次裁决调用,而那正好是这两道闸站着的位置。
  */
 function grantFloor(
   account: CollabRoomAccount,
@@ -460,6 +511,10 @@ function grantFloor(
   const holders = collabRoomHolders(account, gates.now)
   const memberIds = gates.members.map(member => member.id)
   const mentioned = (input.mentioned ?? []).filter(agentId => memberIds.includes(agentId))
+  // 「挂了裁判」两条路求或:裁判自己下发的(params)、宿主按房间设置给的(gates)。
+  const params: CollabFloorPolicyParams | undefined = gates.referee
+    ? { ...account.policy.params, referee: true }
+    : account.policy.params
 
   const decision = policy.decide({
     mentioned,
@@ -468,8 +523,14 @@ function grantFloor(
     activeLeases: holders.size,
     maxConcurrent: gates.maxConcurrent,
     members: memberIds,
+    roster: gates.members,
+    roomId: account.roomId,
     ...(account.phase ? { phase: account.phase } : {}),
-    ...(account.policy.params ? { params: account.policy.params } : {}),
+    ...(account.policyState ? { state: account.policyState } : {}),
+    ...(account.judgment ? { judgment: account.judgment } : {}),
+    ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
+    ...(gates.pairDm ? { pairDm: true } : {}),
+    ...(params ? { params } : {}),
   })
 
   const broadcast: CollabActorVerb[] = []
@@ -480,12 +541,18 @@ function grantFloor(
   let chainCount = account.chainCount
   let leaseSeq = account.leaseSeq
   let messageSeq = account.messageSeq
+  let judgmentSeq = account.judgmentSeq
+  // 答完的窗当场关掉(不管这一轮有没有真发出牌):它已经是一个答案了,留着只会
+  // 让下一次决策拿一份陈旧的裁决去发牌。还在 `pending` 的原样留着等答案。
+  let judgment: CollabRoomJudgment | undefined =
+    account.judgment?.state === 'pending' ? account.judgment : undefined
+  let judgmentRequest: CollabRoomJudgmentRequest | undefined
   const notices = { ...account.notices }
   const leaseReasons = { ...account.leaseReasons }
   const issuedAgentIds = new Set<string>()
 
   /** 这一刻真的有人想说话吗 —— 没人想说,任何一道闸都没有开口的理由。 */
-  const wanted = decision.grants.length > 0 || mentioned.length > 0
+  const wanted = decision.grants.length > 0 || mentioned.length > 0 || decision.openJudgment === true
 
   // 闩锁由**它自己那道闸**放开,不由别的事件放开(v2:`frozenNoticePosted` 在
   // 解冻时清、`chainNoticePosted` 在清零时清)。共用一个清点会让"人类说了一句话"
@@ -525,6 +592,25 @@ function grantFloor(
       messageSeq = line.messageSeq
     }
   } else {
+    // 开裁决窗。**在闸里面**:冻住/烧光的房不该去买一次裁决调用。
+    if (decision.openJudgment) {
+      judgmentSeq += 1
+      judgment = {
+        token: collabJudgmentToken(account.roomId, judgmentSeq),
+        ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
+        openedAt: gates.now,
+        state: 'pending',
+      }
+      judgmentRequest = {
+        roomId: account.roomId,
+        token: judgment.token,
+        ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
+        openedAt: gates.now,
+        // 开窗那一刻的手。裁判读它当**下限** —— 举手是异步到的,真正的候选它自己
+        // 去房间现取(`CollabRefereeActorHost.candidates`)。
+        candidates: account.hands.map(hand => ({ ...hand })),
+      }
+    }
     for (const candidate of decision.grants) {
       // 并发上限:策略已经按座位排过一遍,这里是账自己的复核 —— 策略是可替换的,
       // 闸不是。
@@ -576,6 +662,19 @@ function grantFloor(
   // 队列结算:发出去的手摘掉;被点名但没拿到牌的,**留在队首**等下一次机会 ——
   // @ 是直通授牌,座位满不该把它降级成一次普通举手。
   let hands = account.hands.filter(hand => !issuedAgentIds.has(hand.agentId))
+
+  // 裁决**分批兑现**:一份「bo 然后 ana」的裁决在只有一个座位时先发 bo,剩下的
+  // 那半份留在窗里 —— 等 bo 让位,ana 直接按这份裁决上场。
+  //
+  // 不留的话,每一次让位都会重开一扇窗、再买一次调用,而那正是 O(1) 要消灭的东西
+  // (「一个触发事件一次调用」会退化成「一次发言一次调用」)。裁决排的是这一轮的
+  // 次序,一轮里有几次让位不该改变它的价钱。
+  if (account.judgment?.state === 'resolved') {
+    const remaining = (account.judgment.grants ?? []).filter(
+      agentId => !issuedAgentIds.has(agentId) && hands.some(hand => hand.agentId === agentId),
+    )
+    if (remaining.length > 0) judgment = { ...account.judgment, grants: remaining }
+  }
   for (const agentId of mentioned) {
     if (issuedAgentIds.has(agentId)) continue
     if (holders.has(agentId)) continue
@@ -598,10 +697,15 @@ function grantFloor(
       leaseReasons,
       messageSeq,
       notices,
+      judgmentSeq,
+      // 策略没动游标就保留原值 —— `undefined` 在这里是"没意见",不是"清空"。
+      ...(decision.state ? { policyState: decision.state } : {}),
+      ...(judgment ? { judgment } : { judgment: undefined }),
     },
     broadcast,
     messages,
     granted,
+    ...(judgmentRequest ? { judgment: judgmentRequest } : {}),
   }
 }
 
@@ -686,6 +790,13 @@ export function applyCollabRoomPosted(
     // 只放开**链**那一把闩:下一次顶格该重新说一遍。冻结/预算两把由它们自己那道
     // 闸放开(见 `grantFloor`)—— 一条人类消息不解冻房间,也不补预算。
     next.notices = { ...next.notices, chain: false }
+    // **人类消息重置环**(D3)。清链与重置环是同一件事的两面:讨论重新开始了,
+    // 接力该从起棒人重新数,编排该从第一批重新走 —— 沿用旧游标等于让人类那句话
+    // 落进上一轮的第三批里,而那一轮已经不存在了。
+    next.policyState = undefined
+    // 还没答的裁决窗一起作废:它判的是上一条消息该谁说,而那条消息刚被顶掉。
+    // 排队而不是作废的话,新消息要等一个已经过时的答案回来才轮得上。
+    if (next.judgment?.state === 'pending') next.judgment = undefined
   }
 
   // 运营行、drive、thinking 不是发牌时机 —— 判据走 C1 的单一分类器,不比字符串。
@@ -701,6 +812,7 @@ export function applyCollabRoomPosted(
     effects.broadcast.push(...outcome.broadcast)
     effects.messages.push(...outcome.messages)
     effects.granted.push(...outcome.granted)
+    if (outcome.judgment) effects.judgment = outcome.judgment
   }
 
   next.seq = account.seq + 1
@@ -740,6 +852,7 @@ export function applyCollabRoomRaiseHand(
   effects.broadcast.push(...outcome.broadcast)
   effects.messages.push(...outcome.messages)
   effects.granted.push(...outcome.granted)
+  if (outcome.judgment) effects.judgment = outcome.judgment
 
   next.seq = account.seq + 1
   return { account: next, effects }
@@ -863,6 +976,7 @@ export function applyCollabRoomYield(
   effects.broadcast.push(...outcome.broadcast)
   effects.messages.push(...outcome.messages)
   effects.granted.push(...outcome.granted)
+  if (outcome.judgment) effects.judgment = outcome.judgment
 
   next.seq = account.seq + 1
   return { account: next, effects }
@@ -902,39 +1016,124 @@ export function bumpCollabRoomEpoch(
   }
 }
 
-/** 换相(§1.5 `phase` 策略的动词面)。换相即换代 —— 上一相的牌一律作废。 */
+/**
+ * 换相(§1.5 `phase` 策略的动词面)。换相即换代 —— 上一相的牌一律作废。
+ *
+ * **举手挂起不丢**(D3):`phase` 这一档下队列**跨相位存活**。夜里举了手的村民
+ * 天亮就该说得上话,而不是得再被戳一次 —— 相位切换是"这间房此刻活不活",不是
+ * 一次重启。其余策略沿用 D1:换相清队(那里的换相多半是用户喊停的同义词)。
+ *
+ * 传了 `gates`/`ids` 就**当场重新发牌**:刚被激活的那一相里,挂着的手应该立刻
+ * 兑现。不传就只换相不发牌(D1 的三参调用点与测试沿用这条)。
+ */
 export function applyCollabRoomPhaseChange(
   account: CollabRoomAccount,
   phase: string,
   now: number,
+  gates?: CollabRoomGates,
+  ids?: CollabRoomIdSource,
 ): CollabRoomStep {
   const previousPhase = account.phase
+  const keepHands = account.policy.name === 'phase'
   const stepped = bumpCollabRoomEpoch(account, 'epoch-bumped', now)
-  const next: CollabRoomAccount = { ...stepped.account, phase, hands: [] }
-  stepped.effects.broadcast.push(collabRoomPhaseChanged({
+  let next: CollabRoomAccount = {
+    ...stepped.account,
+    phase,
+    ...(keepHands ? {} : { hands: [] }),
+    // 换相作废在飞的裁决:它判的是上一相该谁说。
+    judgment: undefined,
+    policyState: undefined,
+  }
+  const effects = stepped.effects
+  effects.broadcast.push(collabRoomPhaseChanged({
     roomId: account.roomId,
     phase,
     ...(previousPhase ? { previousPhase } : {}),
     epoch: next.floor.epoch,
   }))
-  return { account: next, effects: stepped.effects }
+
+  if (gates && ids) {
+    const outcome = grantFloor(next, { ...gates, now }, ids, {})
+    next = outcome.account
+    effects.broadcast.push(...outcome.broadcast)
+    effects.messages.push(...outcome.messages)
+    effects.granted.push(...outcome.granted)
+    if (outcome.judgment) effects.judgment = outcome.judgment
+  }
+
+  return { account: next, effects }
 }
 
 /**
- * 裁判换策略。D1 只**记下来** —— 换策略要不要收回在外的牌是 D3 的语义决定,
- * 提前替它决定等于让 D3 去改一条已经有测试钉住的行为。
+ * 裁判 → 房间的唯一动词,两件事共用(D3)。
+ *
+ * 1. **裁决投递**(带 `verdictToken`)—— 一次批量裁决的答案回来了。这不是换策略:
+ *    `policy` 那一格原样落回去,变的只有裁决窗。为什么裁决走这个动词而不是新开
+ *    一个,见 `CollabFloorPolicyParams.verdict` 的注释;
+ * 2. **换策略**(不带 token)—— 换档。整袋游标与在飞裁决一起清:半份旧游标比没有
+ *    游标更糟(`ring` 的环位拿去喂 `waves` 的批位是一个查不出来的错)。切到 `phase`
+ *    且相位真的变了,顺手走一次换相(换相即换代,上一档的牌一律作废)。
+ *
+ * 迟到的裁决(token 对不上当前的窗)**直接丢弃**:它判的是上一条消息该谁说,而
+ * 那条消息已经被顶掉了。拿它去发牌等于让房间回答一个没人再问的问题。
  */
 export function applyCollabRoomSetPolicy(
   account: CollabRoomAccount,
   verb: CollabRefereeSetFloorPolicyVerb,
+  gates: CollabRoomGates,
+  ids: CollabRoomIdSource,
 ): CollabRoomStep {
+  const token = verb.params?.verdictToken
+  if (token !== undefined) {
+    if (account.judgment?.token !== token || account.judgment.state !== 'pending') {
+      // 迟到 / 重投 / 认不领 —— 无害,不报错(至多多等一次触发)。
+      return { account, effects: emptyEffects() }
+    }
+    const degraded = verb.params?.verdictDegraded === true
+    const resolved: CollabRoomAccount = {
+      ...account,
+      judgment: {
+        ...account.judgment,
+        state: degraded ? 'degraded' : 'resolved',
+        ...(degraded ? {} : { grants: [...(verb.params?.verdict ?? [])] }),
+        ...(verb.params?.why ? { why: verb.params.why } : {}),
+      },
+    }
+    const effects = emptyEffects()
+    const outcome = grantFloor(resolved, gates, ids, {
+      ...(account.judgment.sourceMessageId ? { sourceMessageId: account.judgment.sourceMessageId } : {}),
+    })
+    effects.broadcast.push(...outcome.broadcast)
+    effects.messages.push(...outcome.messages)
+    effects.granted.push(...outcome.granted)
+    if (outcome.judgment) effects.judgment = outcome.judgment
+    return { account: { ...outcome.account, seq: account.seq + 1 }, effects }
+  }
+
   const next: CollabRoomAccount = {
     ...account,
     policy: { name: verb.policy, ...(verb.params ? { params: verb.params } : {}) },
-    ...(verb.params?.phase ? { phase: verb.params.phase } : {}),
+    policyState: undefined,
+    judgment: undefined,
     seq: account.seq + 1,
   }
-  return { account: next, effects: emptyEffects() }
+  const nextPhase = verb.params?.phase
+  if (nextPhase && nextPhase !== account.phase) {
+    // 换相走完整那条路(换代 + 广播 + 重新发牌),而不是只把 `phase` 那一格改掉:
+    // 上一相手里的牌必须作废,否则狼在天亮之后还能拿夜里那张牌开口。
+    const stepped = applyCollabRoomPhaseChange(next, nextPhase, gates.now, gates, ids)
+    return { account: { ...stepped.account, seq: account.seq + 1 }, effects: stepped.effects }
+  }
+  if (nextPhase) next.phase = nextPhase
+  // 换档之后立刻按新策略排一次:`ring` 换上来时棒子该当场传出去,而不是等下一条
+  // 消息。不重排的话「切成接力」在用户眼里是一个没有反应的开关。
+  const effects = emptyEffects()
+  const outcome = grantFloor(next, gates, ids, {})
+  effects.broadcast.push(...outcome.broadcast)
+  effects.messages.push(...outcome.messages)
+  effects.granted.push(...outcome.granted)
+  if (outcome.judgment) effects.judgment = outcome.judgment
+  return { account: { ...outcome.account, seq: account.seq + 1 }, effects }
 }
 
 /**
@@ -975,6 +1174,7 @@ export function pruneCollabRoomFloor(
   effects.broadcast.push(...outcome.broadcast)
   effects.messages.push(...outcome.messages)
   effects.granted.push(...outcome.granted)
+  if (outcome.judgment) effects.judgment = outcome.judgment
 
   return { account: { ...outcome.account, seq: account.seq + 1 }, effects }
 }

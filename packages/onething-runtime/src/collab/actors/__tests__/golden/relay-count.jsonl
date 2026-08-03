@@ -1,0 +1,7 @@
+{"id":"rc-1","role":"user","content":"@小博 从 1 开始，按顺序一人一个数到 6。","timestamp":1000,"mentions":[{"agentId":"bo","label":"小博"}]}
+{"id":"rc-2","role":"assistant","agentId":"bo","content":"1","timestamp":1100}
+{"id":"rc-3","role":"assistant","agentId":"cy","content":"2","timestamp":1200}
+{"id":"rc-4","role":"assistant","agentId":"ana","content":"3","timestamp":1300}
+{"id":"rc-5","role":"assistant","agentId":"bo","content":"4","timestamp":1400}
+{"id":"rc-6","role":"assistant","agentId":"cy","content":"5","timestamp":1500}
+{"id":"rc-7","role":"assistant","agentId":"ana","content":"6","timestamp":1600}

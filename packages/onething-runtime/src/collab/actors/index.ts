@@ -57,6 +57,8 @@ export type {
   CollabRoomMembershipChangedVerb,
   CollabRoomPhaseChangedVerb,
   CollabRoomPostedVerb,
+  CollabWorkerEvidenceRef,
+  CollabWorkerOutcome,
   CollabYieldReason,
 } from './protocol.js'
 
@@ -83,6 +85,9 @@ export type {
 export {
   collabFloorSeats,
   createCollabFreeFloorPolicy,
+  createCollabPhaseFloorPolicy,
+  createCollabRingFloorPolicy,
+  createCollabWavesFloorPolicy,
   orderCollabHands,
   resolveCollabFloorPolicy,
 } from './floor-policy.js'
@@ -91,8 +96,32 @@ export type {
   CollabFloorDecisionInput,
   CollabFloorGrantCandidate,
   CollabFloorPolicy,
+  CollabFloorPolicyState,
   CollabRaisedHand,
 } from './floor-policy.js'
+
+/* ── D3:Referee ────────────────────────────────────────────────────────── */
+
+export {
+  buildCollabRefereeJudgePrompt,
+  COLLAB_REFEREE_MAX_GRANTS,
+  COLLAB_REFEREE_RECENT_LIMIT,
+  COLLAB_REFEREE_SYSTEM,
+  COLLAB_REFEREE_WHY_LIMIT,
+  collabJudgmentToken,
+  collabRefereeVerdictVerb,
+  isCollabRoomJudgmentShape,
+  parseCollabRefereeVerdict,
+} from './referee-rules.js'
+export type {
+  BuildCollabRefereeJudgePromptOptions,
+  CollabRefereeJudgePrompt,
+  CollabRefereeVerdict,
+  CollabRoomJudgment,
+  CollabRoomJudgmentRequest,
+  CollabRoomJudgmentState,
+  ParseCollabRefereeVerdictOptions,
+} from './referee-rules.js'
 
 export {
   applyCollabRoomPassthrough,
@@ -171,6 +200,7 @@ export type {
 } from './notebook-rules.js'
 
 export {
+  adoptCollabAgentWorkerOrphans,
   advanceCollabAgentDelivered,
   advanceCollabAgentRead,
   buildCollabMindDrive,
@@ -191,8 +221,49 @@ export {
   recordCollabAgentLease,
   recordCollabAgentTurn,
   recordCollabAgentWorkerResult,
+  settleCollabAgentWorker,
+  startCollabAgentWorker,
   takeCollabAgentFold,
 } from './mind-rules.js'
+export {
+  adoptCollabWorkerOrphans,
+  admitCollabWorker,
+  buildCollabWorkerBriefing,
+  buildCollabWorkerFoldEntry,
+  COLLAB_WORKER_DELIVERABLE_PATH_KEYS,
+  COLLAB_WORKER_DELIVERABLE_TOOLS,
+  COLLAB_WORKER_EVIDENCE_EXCLUDED_TOOLS,
+  COLLAB_WORKER_EVIDENCE_MAX_REFS,
+  COLLAB_WORKER_EVIDENCE_REF_MAX_CHARS,
+  COLLAB_WORKER_MAX_GLOBAL,
+  COLLAB_WORKER_MAX_PER_AGENT,
+  COLLAB_WORKER_ROSTER_MAX,
+  COLLAB_WORKER_START_TIMEOUT_MS,
+  COLLAB_WORKER_SUMMARY_MAX_CHARS,
+  COLLAB_WORKER_WALL_CLOCK_MS,
+  collabWorkerOf,
+  collabWorkerOutcomeOk,
+  collabWorkerRunning,
+  collabWorkerRunningForCard,
+  collectCollabWorkerEvidence,
+  createCollabWorkerRecord,
+  normalizeCollabAgentWorkerRecords,
+  pruneCollabWorkerRecords,
+  settleCollabWorkerRecord,
+  truncateCollabWorkerSummary,
+  upsertCollabWorkerRecord,
+} from './worker-rules.js'
+export type {
+  BuildCollabWorkerBriefingOptions,
+  CollabAgentWorkerRecord,
+  CollabWorkerAdmission,
+  CollabWorkerAdmissionReason,
+  CollabWorkerLimits,
+  CollabWorkerOrphanAdoption,
+  CollabWorkerStatus,
+  CollabWorkerToolCallLike,
+} from './worker-rules.js'
+
 export type {
   BuildCollabMindDriveOptions,
   CollabAgentAccount,

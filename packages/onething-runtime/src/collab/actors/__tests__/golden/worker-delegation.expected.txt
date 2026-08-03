@@ -1,0 +1,22 @@
+## verbs
+in   room:posted author={"kind":"user","id":"user"} message={"id":"m-1","role":"user","content":"@小艾 把今天的会议纪要写一下","timestamp":1000,"mentions":[{"agentId":"iris","label":"小艾"}]} roomId="product-room"
+out  agent:raise-hand agentId="iris" roomId="product-room" sourceMessageId="m-1" urgency="high" why="被点名"
+in   room:floor-granted agentId="iris" lease={"leaseId":"L1","epoch":1,"roomId":"product-room","agentId":"iris","issuedAt":2000} roomId="product-room"
+out  agent:speak agentId="iris" content="好,我来写,写完发群里" leaseId="L1" roomId="product-room"
+out  agent:yield agentId="iris" leaseId="L1" reason="done" roomId="product-room"
+in   agent:spawn-worker agentId="iris" cardId="c-42" description="两页以内,发群里" roomId="product-room" title="写今天的会议纪要" workerId="w-42"
+in   agent:worker-result agentId="iris" cardId="c-42" evidence=[{"kind":"file","ref":"notes/0803.md"},{"kind":"tool","ref":"write","count":1}] outcome="complete" roomId="product-room" summary="纪要写好了,落在 notes/0803.md" workSessionId="work-42" workerId="w-42"
+in   room:floor-granted agentId="iris" lease={"leaseId":"L2","epoch":1,"roomId":"product-room","agentId":"iris","issuedAt":4000} roomId="product-room"
+out  agent:speak agentId="iris" content="纪要交了,细节在卡上" leaseId="L2" roomId="product-room"
+out  agent:yield agentId="iris" leaseId="L2" reason="done" roomId="product-room"
+## board
+started card=c-42 agent=iris at=3000
+settled card=c-42 agent=iris outcome=complete session=work-42 at=3000
+## drive 1
+<ChatRoom id="product-room" bootstrap="true"/>
+## drive 2
+<ChatRoom id="product-room" bootstrap="false"/>
+
+<elsewhere since="<time>">
+<worker at="<time>" card="c-42" ok="yes"/>
+</elsewhere>

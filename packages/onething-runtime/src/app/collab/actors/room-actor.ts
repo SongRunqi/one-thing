@@ -55,6 +55,7 @@ import {
   type CollabRoomEffects,
   type CollabRoomGates,
   type CollabRoomIdSource,
+  type CollabRoomJudgmentRequest,
   type CollabRoomPendingBroadcast,
   type CollabRoomTranscriptMessage,
 } from '@onething/runtime/collab/actors'
@@ -91,6 +92,21 @@ export interface CollabRoomActorHost {
   budget?(roomId: string): { spentUSD: number; limitUSD: number } | undefined
   /** 牌的墙钟上限(ms)。缺省不设 —— 牌只被让位/撤销/换代作废。 */
   leaseTtlMs?(roomId: string): number | undefined
+  /**
+   * 这间房挂了裁判吗(D3)。挂了 → `free` 的举手先进裁决窗,等一次批量裁决。
+   *
+   * 缺省(不实现)= 没挂 —— 普通群不需要显式裁判,房间用内置的举手 FIFO(§1.5)。
+   */
+  referee?(roomId: string): boolean
+  /**
+   * 房间开了一扇裁决窗 —— 拿去买那一次模型调用(`CollabRefereeActor.adjudicate`)。
+   *
+   * **通知,不是调用**:房间的决策必须同步,而裁决是一次网络往返。房间把窗记进账、
+   * 把手挂起,然后喊一声就走;答案什么时候以 `referee:set-floor-policy` 的形式投
+   * 回来,是裁判那一侧的事。不实现这个口 = 这间房没人裁决,窗会一直开着 —— 所以
+   * `referee()` 与它是一对,要开一起开。
+   */
+  openJudgment?(request: CollabRoomJudgmentRequest): void
   /** 房间转录:追加一条消息。D6 接上 `store.addMessage`。 */
   appendMessage(roomId: string, message: CollabRoomTranscriptMessage): void
   /** 成员信箱。返回 undefined = 这位此刻没有信箱,跳过(不算投递失败)。 */
@@ -160,6 +176,7 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       members: this.host.members(this.roomId),
       ...(directory ? { directory } : {}),
       ...(this.host.pairDm?.(this.roomId) ? { pairDm: true } : {}),
+      ...(this.host.referee?.(this.roomId) ? { referee: true } : {}),
       now: this.host.now(),
       ...(budget ? { budgetSpentUSD: budget.spentUSD, budgetLimitUSD: budget.limitUSD } : {}),
     }
@@ -179,12 +196,15 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     return step.effects
   }
 
-  /** 落转录 + 广播。账已经在 `decide` 里落过了。 */
+  /** 落转录 + 广播 + 把新开的裁决窗喊出去。账已经在 `decide` 里落过了。 */
   async commit(effects: CollabRoomEffects): Promise<void> {
     for (const message of effects.messages) {
       this.host.appendMessage(this.roomId, message)
     }
     await this.broadcast(effects.broadcast)
+    // 裁决窗喊在广播**之后**:窗一开手就挂起了,而挂起这件事的可见形态是"这一轮
+    // 没有 floor-granted"。先喊的话,裁判可能在成员还没收到这条消息时就判完了。
+    if (effects.judgment) this.host.openJudgment?.(effects.judgment)
   }
 
   protected async handleEvent(event: ActorEvent<CollabActorVerb>): Promise<void> {
@@ -240,9 +260,10 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       case 'agent:yield':
         return applyCollabRoomYield(this.state, verb, gates, this.ids)
       case 'referee:set-floor-policy':
-        return applyCollabRoomSetPolicy(this.state, verb)
+        return applyCollabRoomSetPolicy(this.state, verb, gates, this.ids)
       case 'room:phase-changed':
-        return applyCollabRoomPhaseChange(this.state, verb.phase, gates.now)
+        // 带闸带 id:刚被激活的相位里,挂着的手当场兑现(D3「换相后重新裁决」)。
+        return applyCollabRoomPhaseChange(this.state, verb.phase, gates.now, gates, this.ids)
       // 只落账 + 透传:语义分别归 D2(私聊生命周期)与 D3/D4(相位、看板)。
       case 'agent:dm-open':
       case 'agent:wake':
@@ -359,13 +380,16 @@ function finiteMax(value: number): number {
  * 房间 → renderer 的状态面(C4 快照协议原样复用,§5)。
  *
  * 形状与 v2 的 `buildCollabCoordinatorState` 完全一致 —— 渲染层一行不改就能读
- * v3 的房间,这是「转录零迁移」之外的第二条零迁移承诺。几处 D1 还给不出的字段
- * 诚实地给空值而不是编:
+ * v3 的房间,这是「转录零迁移」之外的第二条零迁移承诺。几处还给不出的字段诚实地
+ * 给空值而不是编:
  *  - `typing`:打字灯是 C4 观察器的账,D6 接线时接回来;
- *  - `judging` / `judgingAgentIds`:v3 的 `free` 没有 per-agent 意愿判定这一步
- *    (D3 的批量裁决会让这两格重新有值);
- *  - `plan`:编排是 `waves` 策略的事(D3);
  *  - `log`:「刚才」只活在内存环形缓冲里,D6 接线。
+ *
+ * D3 让两格重新有值,但含义变了,渲染层读到的数因此也变了 —— 这是有意的:
+ *  - `judging`:v2 是「几个人在各自判定」(N 次调用),v3 是**一扇窗开着**
+ *    (一次调用),所以它只会是 0 或 1。`judgingAgentIds` 是那一批候选 ——
+ *    「谁在等裁决」这个问题在两代里问的是同一件事,答案的代价差了 N 倍;
+ *  - `plan`:`waves` 策略的批次表,直接就是 v2 那份编排的形状。
  *
  * `agentSessionId` 用**牌号**顶着:停止按钮的靶子在 D1 还不存在(没有执行会话),
  * 而给一个空串会让下钻链接指向 undefined。牌号至少是一个真的、能查的东西。
@@ -402,8 +426,11 @@ export function buildCollabRoomActorSnapshot(options: {
       agentId: hand.agentId,
       reason: hand.reason,
     })),
-    judging: 0,
-    judgingAgentIds: [],
+    // 一扇窗 = 一次调用,所以这一格只会是 0 或 1(v2 那侧是 N)。
+    judging: account.judgment?.state === 'pending' ? 1 : 0,
+    judgingAgentIds: account.judgment?.state === 'pending'
+      ? account.hands.map(hand => hand.agentId)
+      : [],
     gates: {
       chain: { value: account.chainCount, max: finiteMax(gates.maxChain) },
       concurrency: { value: leases.length, max: finiteMax(gates.maxConcurrent) },
@@ -412,7 +439,30 @@ export function buildCollabRoomActorSnapshot(options: {
         max: gates.budgetLimitUSD ?? COLLAB_DEFAULT_DAILY_COST_USD,
       },
     },
-    plan: null,
+    plan: buildCollabRoomActorPlanView(account),
     log: [],
+  }
+}
+
+/**
+ * `waves` 策略的批次表 → C4 的编排视图。其余三档没有编排,给 `null`。
+ *
+ * 形状与 v2 那份逐格相同(waves / waveIndex / waveCount / cycle / why / loops),
+ * 所以状态条那块画布一行不用改 —— v3 换掉的是"编排从哪来"(裁判一次下发,而不是
+ * plan-runner 现算),不是"编排长什么样"。
+ */
+function buildCollabRoomActorPlanView(
+  account: CollabRoomAccount,
+): CollabCoordinatorState['plan'] {
+  if (account.policy.name !== 'waves') return null
+  const waves = (account.policy.params?.waves ?? []).filter(wave => wave.length > 0)
+  if (waves.length === 0) return null
+  return {
+    waves: waves.map(wave => [...wave]),
+    waveIndex: account.policyState?.waveIndex ?? 0,
+    waveCount: account.policyState?.waveCount ?? 0,
+    cycle: account.policy.params?.cycle === true,
+    why: account.policy.params?.why ?? '',
+    loops: account.policy.params?.relayLoops ?? 0,
   }
 }

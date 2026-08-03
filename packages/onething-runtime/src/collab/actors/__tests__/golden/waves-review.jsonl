@@ -1,0 +1,6 @@
+{"id":"wr-1","role":"user","content":"先出一版方案，然后两位一起评审。","timestamp":1000}
+{"id":"wr-2","role":"assistant","agentId":"ana","content":"方案初稿：先做导入，导出放二期。","timestamp":1100}
+{"id":"wr-3","role":"assistant","agentId":"bo","content":"导入这条链路后端两天能出。","timestamp":1200}
+{"id":"wr-4","role":"assistant","agentId":"cy","content":"交互上导入要有失败回执，别静默。","timestamp":1300}
+{"id":"wr-5","role":"assistant","agentId":"dan","content":"我也想补一句测试范围。","timestamp":1400}
+{"id":"wr-6","role":"user","content":"@小丹 你说说测试范围。","timestamp":1500,"mentions":[{"agentId":"dan","label":"小丹"}]}

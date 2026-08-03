@@ -5,16 +5,39 @@
  * 路径**:谁能说话藏在四个文件的控制流里,想换一种排法就得改控制流。v3 把它翻成
  * 一个接口 + 若干实现 —— 房间只问一句「这一刻该给谁发牌」,怎么答是策略的事。
  *
- * D1 只落地 `free`(裁判缺席时的内置档)。`ring` / `waves` / `phase` 是 D3,
- * 它们与 `free` 的区别全部落在这个 `decide` 上,房间一行都不用改 —— 这正是把
- * 策略做成接口(而不是在房间里写 switch)的理由。
+ * D1 只落地 `free`(裁判缺席时的内置档);D3 补齐 `ring` / `waves` / `phase`,
+ * 它们与 `free` 的区别**全部落在这个 `decide` 上,房间一行都不用改** —— 这正是把
+ * 策略做成接口(而不是在房间里写 switch)的理由,而 D3 是它第一次兑现。
  *
  * 这一层是**纯函数**:不碰时钟(`now` 一律由调用方传)、不碰账(只读入参、只返回
  * 决定)、不认识租约的落盘形态。发不发得成、发出去要不要计链,是房间的账说了算
  * (`room-rules.ts`)—— 策略只排队,不管闸。两件事分开的理由很实际:闸只有一套
  * (三道,单账),而策略会长出四种;把闸写进策略等于把它抄四遍。
+ *
+ * ## 四条策略的一句话
+ *
+ * | 策略 | 谁说话由什么决定 | 花不花模型调用 |
+ * | --- | --- | --- |
+ * | `free` | 一次批量裁决排全场;裁判缺席/答不上来 → 举手 FIFO | 一个触发事件一次 |
+ * | `ring` | 一个确定性的环,棒子依次传 | **零** |
+ * | `waves` | 裁判一次给出的批次表,批内并行批间串行 | 出编排时一次 |
+ * | `phase` | 当前相位活着的房才发牌;非活跃相位举手挂起 | **零** |
+ *
+ * 四条**共有**的一件事:`@` 提及直通授牌(§8 保留的已拍板决策)。它写在
+ * `takeMentioned()` 里,四个 `decide` 各调一次 —— 抽成公共第一步是因为"@ 在某个
+ * 策略下不灵"这件事必须是不可能的,而不是"我们记得每处都写了"。
+ *
+ * ## 策略自己的游标住在账里,不住在闭包里
+ *
+ * `ring` 要记环走到哪、`waves` 要记批走到哪。它们**不能**是策略对象的字段:策略
+ * 是每次决策现 `resolve` 出来的(房间不缓存它),而且账崩溃后要重建 —— 一个活在
+ * 闭包里的游标,重启之后环就从头开始了。所以游标进 `CollabFloorPolicyState`:
+ * 策略从入参读它,把新值放进 `decision.state`,房间原样落账。策略仍是纯函数。
  */
 import type { CollabActivationReason } from '../activation.js'
+import { buildCollabRelayRing, pickCollabRelayStarter } from '../speaking-order.js'
+import type { CollabAgentLike } from '../types.js'
+import type { CollabRoomJudgment } from './referee-rules.js'
 import type { CollabFloorPolicyName, CollabFloorPolicyParams, CollabHandUrgency } from './protocol.js'
 
 /**
@@ -47,6 +70,26 @@ export interface CollabFloorGrantCandidate {
   sourceMessageId?: string
 }
 
+/**
+ * 策略自己的游标 —— **住在房间账里**(见文件头)。
+ *
+ * 一个可选字段袋而不是四个策略各自的类型:房间只负责把 `decision.state` 原样落回
+ * 账里,它不该认识 ring 与 waves 的区别。策略之间字段不复用(ring 不读 wave*),
+ * 换策略时整袋清空(`applyCollabRoomSetPolicy`)—— 半份旧游标比没有游标更糟。
+ */
+export interface CollabFloorPolicyState {
+  /** `ring`:环上**下一个**该拿棒的人的下标。 */
+  ringCursor?: number
+  /** `ring`:已经走完几圈。`relayLoops` 到顶就收棒。 */
+  ringLaps?: number
+  /** `waves`:当前批次的下标。 */
+  waveIndex?: number
+  /** `waves`:当前这一批**已经发过牌**了吗 —— 批边界推进读它。 */
+  waveIssued?: boolean
+  /** `waves`:总共发过几批。`relayLoops × waves.length` 到顶就停。 */
+  waveCount?: number
+}
+
 export interface CollabFloorDecisionInput {
   /** 这一刻被 @ 到的成员(调用方已按名册过滤、已排除作者)。 */
   mentioned: readonly string[]
@@ -60,14 +103,40 @@ export interface CollabFloorDecisionInput {
   maxConcurrent: number
   /** 在职成员。不传 = 不校验(重放里名册从转录现取的场合)。 */
   members?: readonly string[]
-  /** 当前相位(`phase` 策略读它;`free` 忽略)。 */
+  /** 在职成员的完整形态(`ring` 要按名册序补环尾;不传就退回 `members`)。 */
+  roster?: readonly CollabAgentLike[]
+  /** 当前相位(`phase` 策略读它;其余忽略)。 */
   phase?: string
+  /** 这间房的 id —— `phase` 拿它去对活跃相位表。 */
+  roomId?: string
+  /** 策略自己的游标(上一次决策留下的)。 */
+  state?: CollabFloorPolicyState
+  /**
+   * 裁决窗此刻的状态(`free` 读它)。
+   *  - `undefined` —— 没开窗:该开就开,不该开就 FIFO;
+   *  - `pending` —— 开着等答案:手全部挂起,只放 @;
+   *  - `resolved` —— 答案来了:按 `grants` 的次序发;
+   *  - `degraded` —— 答不上来:回落 FIFO(= D1 的 `free`)。
+   */
+  judgment?: CollabRoomJudgment
+  /** 触发这次决策的消息 —— 开窗时记下来。 */
+  sourceMessageId?: string
+  /** 这间房免裁决吗(双成员私聊:没有第二个人要排次序)。 */
+  pairDm?: boolean
   params?: CollabFloorPolicyParams
 }
 
 export interface CollabFloorDecision {
   /** 按发牌次序排好的候选。 */
   grants: CollabFloorGrantCandidate[]
+  /**
+   * 这次决策要求**开一扇裁决窗**:队里的手先别发,等裁判一次判一批。
+   *
+   * 是一个请求而不是一个动作 —— 策略是纯的,开窗要写账、要通知裁判,那是房间的事。
+   */
+  openJudgment?: boolean
+  /** 策略游标的新值。缺席 = 这次决策没动游标。 */
+  state?: CollabFloorPolicyState
 }
 
 export interface CollabFloorPolicy {
@@ -102,65 +171,407 @@ export function orderCollabHands(hands: readonly CollabRaisedHand[]): CollabRais
     .map(entry => entry.hand)
 }
 
+/* ── 四条策略共用的取座位器 ──────────────────────────────────────────────── */
+
 /**
- * 免裁判的内置策略(§1.5「referee 缺席时房间用内置 free 策略」)。
+ * 一次决策里的座位账。
  *
- * 三条规则,全在下面这十几行里:
- *  1. **@ 提及直通授牌** —— 座位优先给被点名的人,不排队、不判定;
- *  2. 其余按**举手队列**发牌(mention 起源的手排在普通举手之前,见 `CollabRaisedHand.origin`);
- *  3. 座位数 = `maxConcurrent`(0 = 不限),且**同一个 agent 不并发持两张牌**。
- *
- * 刻意**没有**做的事:批量举手裁决(一次调用给全员排序,qm P0-2 的 O(N)→O(1))。
- * 那需要一次模型调用,而模型调用不属于纯层 —— D3 会把它做成 referee 下发的策略,
- * `free` 则永远是那条不花钱的降级路径(§7 风险 3 要的「对照与降级」)。
- *
- * `urgency` 记而不用:`free` 是先到先得,让紧急度插队就等于给了每个 agent 一个
- * 自评优先级的旋钮 —— 那是 D3 批量裁决要在**一次**判断里统一定夺的事,不是
- * 每个人自己说了算。字段留着,因为丢掉它 D3 就重建不出当时的现场。
+ * 本地副本而不是直接读入参:一次决策里先被选中的人立刻算作"手里有牌",否则同一条
+ * 消息里 @ 了同一个人两次会发出两张牌。四个策略共用同一个 —— 「同 agent 不双持」
+ * 与「座位有限」这两条在任何策略下都成立,抄四遍等于给它们四次漂开的机会。
  */
-export function createCollabFreeFloorPolicy(): CollabFloorPolicy {
+function createSeatTaker(input: CollabFloorDecisionInput): {
+  take(candidate: CollabFloorGrantCandidate): boolean
+  grants: CollabFloorGrantCandidate[]
+  seatsLeft(): number
+} {
+  const grants: CollabFloorGrantCandidate[] = []
+  const holders = new Set(input.holders)
+  const members = input.members ? new Set(input.members) : null
+  let seats = collabFloorSeats(input)
+
   return {
-    name: 'free',
-    decide(input: CollabFloorDecisionInput): CollabFloorDecision {
-      const grants: CollabFloorGrantCandidate[] = []
-      // 本地副本:一次决策里先被选中的人立刻算作"手里有牌",否则同一条消息
-      // 里 @ 了同一个人两次会发出两张牌。
-      const holders = new Set(input.holders)
-      const members = input.members ? new Set(input.members) : null
-      let seats = collabFloorSeats(input)
-
-      const take = (candidate: CollabFloorGrantCandidate): void => {
-        if (seats <= 0) return
-        if (holders.has(candidate.agentId)) return
-        if (members && !members.has(candidate.agentId)) return
-        holders.add(candidate.agentId)
-        seats -= 1
-        grants.push(candidate)
-      }
-
-      for (const agentId of input.mentioned) {
-        take({ agentId, origin: 'mention', reason: 'mention' })
-      }
-      for (const hand of orderCollabHands(input.hands)) {
-        take({
-          agentId: hand.agentId,
-          origin: hand.origin,
-          reason: hand.reason,
-          ...(hand.sourceMessageId ? { sourceMessageId: hand.sourceMessageId } : {}),
-        })
-      }
-
-      return { grants }
+    grants,
+    seatsLeft: () => seats,
+    take(candidate: CollabFloorGrantCandidate): boolean {
+      if (seats <= 0) return false
+      if (holders.has(candidate.agentId)) return false
+      if (members && !members.has(candidate.agentId)) return false
+      holders.add(candidate.agentId)
+      seats -= 1
+      grants.push(candidate)
+      return true
     },
   }
 }
 
 /**
- * 按名字取策略。D1 只有 `free`;其余三档还没实现,**回落到 `free` 而不是抛** ——
- * 一间配了 `ring` 的房在 D3 落地之前应该照常能说话,而不是整间房打不开。
+ * 第一步,四条策略都一样:**@ 提及直通授牌**(§8 保留的已拍板决策)。
+ *
+ * 抽成一个共用函数不是为了省几行 —— 是为了让"@ 在某个策略下不灵"成为一件**不可能**
+ * 的事。写四遍的话,它就只是"我们记得每处都写了"。
+ */
+function takeMentioned(
+  input: CollabFloorDecisionInput,
+  seats: ReturnType<typeof createSeatTaker>,
+): void {
+  for (const agentId of input.mentioned) {
+    seats.take({
+      agentId,
+      origin: 'mention',
+      reason: 'mention',
+      ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
+    })
+  }
+}
+
+function candidateOf(hand: CollabRaisedHand): CollabFloorGrantCandidate {
+  return {
+    agentId: hand.agentId,
+    origin: hand.origin,
+    reason: hand.reason,
+    ...(hand.sourceMessageId ? { sourceMessageId: hand.sourceMessageId } : {}),
+  }
+}
+
+/** 举手 FIFO —— `free` 的降级路径,也是 D1 的全部行为。 */
+function takeHandsFifo(
+  input: CollabFloorDecisionInput,
+  seats: ReturnType<typeof createSeatTaker>,
+): void {
+  for (const hand of orderCollabHands(input.hands)) seats.take(candidateOf(hand))
+}
+
+/**
+ * 这一刻**有由头开口**吗 —— 有人被点名、有人举着手、或者有一条消息触发了这次决策。
+ *
+ * `ring` 与 `waves` 起步前问它一次,原因是一条很实际的:换档(`set-floor-policy`)
+ * 之后房间会立刻重排一次,而一间**空着的**房不该因为"用户在设置里把模式改成接力"
+ * 就自己开始说话。那不是换了个排法,那是凭空起了一场对话 —— 而且它烧的是真钱。
+ *
+ * 起步之后就不再问:接力的下一棒、编排的下一批都是由**让位**触发的,而让位没有
+ * 消息 id 也可能没有举手(接力免举手)。把这条门加在起步处而不是每一次决策,
+ * 「起步要有由头」与「起来了就自己往下走」这两件事才不会互相咬。
+ */
+function hasTrigger(input: CollabFloorDecisionInput): boolean {
+  return input.mentioned.length > 0
+    || input.hands.length > 0
+    || input.sourceMessageId !== undefined
+}
+
+/* ── free:批量举手裁决(默认档) ─────────────────────────────────────────── */
+
+/**
+ * 自由发言 + **批量举手裁决**(qm P0-2,O(N)→O(1))。
+ *
+ * D1 的 `free` 是「@ 直通 + 举手 FIFO」。D3 在中间插进一步:举手不再直接排队,而是
+ * 攒进**裁决窗**,由裁判对这个触发事件的全部候选**一次**模型调用,输出排序 + 授牌
+ * 名单。v2 那侧是每人一次「你要不要说」,八个人的房间买八次调用、八份上下文,而且
+ * 每个人只看得见自己那一半 —— 「谁该先说」这个问题在那个形状里根本没人回答。
+ *
+ * 四条支路,`judgment` 那一格全说了:
+ *  1. **没挂裁判 / 私聊房 / 没人举手** → 原地 FIFO。`free` 因此永远是那条不花钱的
+ *     路径(§7 风险 3 要的「对照与降级」),而不是"降级模式";
+ *  2. **该开窗** → 只放 @ 直通的,手一只不发,请房间开窗(`openJudgment`);
+ *  3. **窗开着(`pending`)** → 手继续挂着。**这一条就是 O(1)**:窗开着的时候再来
+ *     十只手,也还是那一次调用;
+ *  4. **答案回来了(`resolved`)** → 按裁决的次序发牌;`degraded` → 回落第 1 条。
+ *
+ * `urgency` 与 `why` 在这一档终于有了消费者:它们进裁决的候选行,由裁判在**一次**
+ * 判断里统一定夺 —— 而不是每个 agent 自己说了算(那等于给每人一个自评优先级的旋钮)。
+ */
+export function createCollabFreeFloorPolicy(): CollabFloorPolicy {
+  return {
+    name: 'free',
+    decide(input: CollabFloorDecisionInput): CollabFloorDecision {
+      const seats = createSeatTaker(input)
+      takeMentioned(input, seats)
+
+      const judgment = input.judgment
+      if (judgment?.state === 'pending') {
+        // 挂起:手留在队里(房间的队列结算只摘"真发出去了"的那些)。
+        return { grants: seats.grants }
+      }
+      if (judgment?.state === 'resolved') {
+        // 裁决的次序是**授牌次序**,不是候选池 —— 没被排上的手继续留在队里等下一次
+        // 触发。丢掉它们等于把「这轮你先别说」读成「你以后也别说了」。
+        const queued = new Map(input.hands.map(hand => [hand.agentId, hand]))
+        for (const agentId of judgment.grants ?? []) {
+          const hand = queued.get(agentId)
+          if (hand) seats.take(candidateOf(hand))
+          // 队里没有这只手 = 它在裁决往返期间已经拿到牌了(比如被 @ 直通)。跳过。
+        }
+        return { grants: seats.grants }
+      }
+
+      const wantsReferee = input.params?.referee === true
+        && input.pairDm !== true
+        && input.hands.length > 0
+      if (wantsReferee && judgment === undefined && seats.seatsLeft() > 0) {
+        return { grants: seats.grants, openJudgment: true }
+      }
+
+      // 裁判缺席、私聊房、或裁决答不上来 —— D1 的行为,一字不差。
+      takeHandsFifo(input, seats)
+      return { grants: seats.grants }
+    },
+  }
+}
+
+/* ── ring:接力 ──────────────────────────────────────────────────────────── */
+
+/** 环的构造:名册序 + `order` 的相对次序(`speaking-order.ts` 的既有语义)。 */
+function ringOf(input: CollabFloorDecisionInput): string[] {
+  const roster: CollabAgentLike[] = input.roster
+    ? [...input.roster]
+    : (input.members ?? []).map(id => ({ id, name: id }))
+  return buildCollabRelayRing({
+    ...(input.params?.order ? { speakOrder: input.params.order } : {}),
+    members: roster,
+  })
+}
+
+/** 收棒圈数。0 / 未配 = 不限(与 `maxChain` / `dailyCostUSD` 同一套约定)。 */
+function relayLoopsOf(params: CollabFloorPolicyParams | undefined): number {
+  const configured = params?.relayLoops
+  if (typeof configured !== 'number' || !Number.isFinite(configured) || configured < 0) return 0
+  return Math.floor(configured)
+}
+
+/**
+ * 接力:一个**确定性的环**,棒子依次传(v2 `speaking-order.ts` 的语义在策略接口下重生)。
+ *
+ * 它存在的理由是一个验收用例:四人房里说一句「按顺序从 1 数到 10」。判定形态下这件事
+ * 的成败取决于连续约 30 次独立 yes/no 全部答对,任何一个 no 都让计数静默停住;接力
+ * 把它变成确定性的环 —— **一次模型调用都不买**。
+ *
+ * 四条:
+ *  - **@ 定起棒人**:环上最靠前的那位被点名者接棒(次序由房间配置决定,不由用户
+ *    敲字的顺序决定 —— 后者正是 `order` 这张表要消除的东西);
+ *  - **一次只发一张**:接力就是一根棒子。座位再多也不并发发环上的下一位 —— 那会
+ *    让"依次"变成"一起",而选接力的动机恰恰是不要一起;
+ *  - **收棒在配置**(`relayLoops`,§8 保留的已拍板决策),不在模型;
+ *  - **人类消息重置环**(在 `room-rules.ts` 的清链那一步一起做:清链与重置环是
+ *    同一件事的两面 —— 讨论重新开始了)。
+ */
+export function createCollabRingFloorPolicy(): CollabFloorPolicy {
+  return {
+    name: 'ring',
+    decide(input: CollabFloorDecisionInput): CollabFloorDecision {
+      const seats = createSeatTaker(input)
+      takeMentioned(input, seats)
+
+      const ring = ringOf(input)
+      if (ring.length === 0) return { grants: seats.grants }
+
+      let cursor = input.state?.ringCursor
+      let laps = input.state?.ringLaps ?? 0
+      // 起棒要有由头:光把模式切成接力,不该让一间空房自己数起数来。
+      if (cursor === undefined && !hasTrigger(input)) return { grants: seats.grants }
+      // 起棒:@ 到的人里环上最靠前的那位。没 @ 且没走过 → 环首。
+      if (cursor === undefined) {
+        const starter = pickCollabRelayStarter(ring, input.mentioned)
+        cursor = starter ? Math.max(0, ring.indexOf(starter)) : 0
+      }
+
+      // 直通拿牌的人如果在环上,**棒子跳到他之后**:他已经在说话了,把棒子再递给
+      // 他等于让环卡在原地(下一次决策看到"轮到的人正拿着牌",什么都发不出去)。
+      //
+      // 跳过不计圈:一次点名不是接力走了一圈,把它算进 `relayLoops` 会让「@ 一下」
+      // 白白吃掉用户配的圈数。
+      if (seats.grants.length > 0) {
+        let furthest = -1
+        for (const grant of seats.grants) {
+          const index = ring.indexOf(grant.agentId)
+          if (index < 0) continue
+          furthest = Math.max(furthest, (index - cursor + ring.length) % ring.length)
+        }
+        if (furthest >= 0) cursor = (cursor + furthest + 1) % ring.length
+        // 这一轮已经有人被点名开口了 —— 棒子等他们说完再传(一根棒子)。
+        return { grants: seats.grants, state: { ringCursor: cursor, ringLaps: laps } }
+      }
+
+      const loops = relayLoopsOf(input.params)
+      // 收棒:圈数到顶就不再发牌(§8「接力收棒权在配置,不在模型」)。
+      if (loops > 0 && laps >= loops) {
+        return { grants: seats.grants, state: { ringCursor: cursor, ringLaps: laps } }
+      }
+
+      // 一根棒子:环上找下一个能接的人,最多找一圈(全员都在说话就这轮不发)。
+      for (let step = 0; step < ring.length; step += 1) {
+        const index = (cursor + step) % ring.length
+        const agentId = ring[index]
+        const hand = input.hands.find(entry => entry.agentId === agentId)
+        // 接力**不要求先举手**:轮到谁谁说,这正是"免判定"的含义。手在队里就带上
+        // 它的理由(排障读得出这一棒是怎么来的),不在就记 `relay`。
+        const taken = seats.take(hand ? candidateOf(hand) : {
+          agentId,
+          origin: 'hand',
+          reason: 'relay',
+          ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
+        })
+        if (!taken) continue
+        const next = index + 1
+        if (next >= ring.length) laps += 1
+        cursor = next % ring.length
+        break
+      }
+
+      return { grants: seats.grants, state: { ringCursor: cursor, ringLaps: laps } }
+    },
+  }
+}
+
+/* ── waves:编排 ─────────────────────────────────────────────────────────── */
+
+/**
+ * 编排:**批内并行、批间串行**(v2 `plan.ts` 的 waves 语义)。
+ *
+ * 「模式」这个概念在这里消失 —— 并行是"一个 wave",顺序是"N 个单人 wave",
+ * 而 `[[a],[b,c]]`(A 先说,B 和 C 补充)是两种模式都表达不了的东西。
+ *
+ * 批边界怎么推进:**当前批的人全部交牌了,就发下一批**。判据是租约而不是"说没说
+ * 话" —— 一个拿了牌却选择沉默的人同样占着这一批,而 v2 数"说了几句"要认 harvest /
+ * thinking / pass 三种标记(那正是链账双实现的病根)。
+ *
+ * 终止:非循环编排走完最后一批就停;`cycle` 的从头再来,由 `relayLoops × 批数`
+ * 封顶(与接力共用同一个旋钮 —— 用户面上它就是"一趟最多几圈")。
+ *
+ * **编排答空 → 回落 `free` 批量裁决**:一份空编排不是"这轮没人说",它是"裁判这次
+ * 没给出编排"。让房间就此哑掉的话,一条用户消息会被静默吞掉;交给 `free`,至少
+ * 还有裁决 + FIFO 两层接得住。
+ */
+export function createCollabWavesFloorPolicy(): CollabFloorPolicy {
+  const free = createCollabFreeFloorPolicy()
+  return {
+    name: 'waves',
+    decide(input: CollabFloorDecisionInput): CollabFloorDecision {
+      const waves = (input.params?.waves ?? []).filter(wave => Array.isArray(wave) && wave.length > 0)
+      if (waves.length === 0) return free.decide(input)
+
+      const seats = createSeatTaker(input)
+      // @ 机械插批:被点名的人在编排之外直通,不等他那一批(§8「@ = 直通授牌」在
+      // 编排下同样成立 —— 一份编排不该让点名落空)。
+      takeMentioned(input, seats)
+
+      let waveIndex = input.state?.waveIndex ?? 0
+      let waveIssued = input.state?.waveIssued === true
+      let waveCount = input.state?.waveCount ?? 0
+      const maxWaves = relayLoopsOf(input.params) * waves.length
+
+      // 第一批同样要有由头(见 `hasTrigger`)。生产里这一条从不挡路:裁判下发编排
+      // 的那一刻,队里正举着手(那就是裁决窗开着的原因)。它挡的是"没人在等的房
+      // 收到一份编排就自己开演"。
+      if (!waveIssued && waveCount === 0 && !hasTrigger(input)) {
+        return { grants: seats.grants }
+      }
+
+      const batchBusy = (index: number): boolean =>
+        (waves[index] ?? []).some(agentId => input.holders.has(agentId))
+
+      // 当前批还有人在说 → 什么都不发(批间串行的全部含义)。
+      if (waveIssued && batchBusy(waveIndex)) {
+        return { grants: seats.grants, state: { waveIndex, waveIssued, waveCount } }
+      }
+      // 当前批发过牌、人也散了 → 推进到下一批。
+      if (waveIssued) {
+        const next = waveIndex + 1
+        if (next < waves.length) {
+          waveIndex = next
+        } else if (input.params?.cycle === true) {
+          waveIndex = 0
+        } else {
+          // 编排跑完了。要不要续排是裁判的事(再下发一份新的),不是这里的事。
+          return { grants: seats.grants, state: { waveIndex, waveIssued, waveCount } }
+        }
+        waveIssued = false
+      }
+      if (maxWaves > 0 && waveCount >= maxWaves) {
+        return { grants: seats.grants, state: { waveIndex, waveIssued, waveCount } }
+      }
+
+      const queued = new Map(input.hands.map(hand => [hand.agentId, hand]))
+      let issued = false
+      for (const agentId of waves[waveIndex]) {
+        const hand = queued.get(agentId)
+        // 编排同样**不要求先举手** —— 编排就是"我安排你说",与接力同一条纪律。
+        const taken = seats.take(hand ? candidateOf(hand) : {
+          agentId,
+          origin: 'hand',
+          reason: 'relay',
+          ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
+        })
+        issued = issued || taken
+      }
+      if (issued) {
+        waveIssued = true
+        waveCount += 1
+      }
+
+      return { grants: seats.grants, state: { waveIndex, waveIssued, waveCount } }
+    },
+  }
+}
+
+/* ── phase:换相 ─────────────────────────────────────────────────────────── */
+
+/**
+ * 相位控制 —— 狼人杀这类回合制的裁判第一次有了一等表达(§1.5)。
+ *
+ * 语义只有一句:**当前相位只有 `activeRooms` 里的房能发牌**。夜相激活狼房,群房
+ * 的手全部挂起;昼相反转。挂起而不是丢弃 —— 换相后那些手重新参与裁决,否则一个
+ * 在夜里举了手的村民,天亮时得再被戳一次才说得上话。
+ *
+ * 两层门,由粗到细:
+ *  1. **房**:`activeRooms` 没列到我 → 一张牌都不发(@ 也不发 —— 相位是硬门,
+ *     它管的是"这间房此刻存不存在",而不是"谁优先"。夜里 @ 一个村民,他应该
+ *     天亮再说话,不是立刻开口把狼的行动暴露给全场);
+ *  2. **人**:`activeMembers` 限定这一相位里谁能开口(狼房里只有狼)。
+ *
+ * 免裁决:相位表本身就是裁判已经做过的判断,再买一次调用是重复付费。
+ */
+export function createCollabPhaseFloorPolicy(): CollabFloorPolicy {
+  return {
+    name: 'phase',
+    decide(input: CollabFloorDecisionInput): CollabFloorDecision {
+      const activeRooms = input.params?.activeRooms
+      // 未配活跃表 = 所有房都活跃(一间没配相位的房不该因为别人换了相位而哑掉)。
+      if (activeRooms && input.roomId !== undefined && !activeRooms.includes(input.roomId)) {
+        return { grants: [] }
+      }
+
+      const active = input.params?.activeMembers
+      const allowed = active ? new Set(active) : null
+      const scoped: CollabFloorDecisionInput = allowed
+        ? {
+            ...input,
+            mentioned: input.mentioned.filter(agentId => allowed.has(agentId)),
+            hands: input.hands.filter(hand => allowed.has(hand.agentId)),
+          }
+        : input
+
+      const seats = createSeatTaker(scoped)
+      takeMentioned(scoped, seats)
+      takeHandsFifo(scoped, seats)
+      return { grants: seats.grants }
+    },
+  }
+}
+
+/**
+ * 按名字取策略。四档齐了 —— 认不出的名字回落 `free` 而不是抛:一间账被写坏成
+ * `policy: "rong"` 的房应该照常能说话,而不是整间房打不开。
  */
 export function resolveCollabFloorPolicy(name: CollabFloorPolicyName | undefined): CollabFloorPolicy {
-  // D3 在这里长出 ring/waves/phase 三个分支。
-  void name
-  return createCollabFreeFloorPolicy()
+  switch (name) {
+    case 'ring':
+      return createCollabRingFloorPolicy()
+    case 'waves':
+      return createCollabWavesFloorPolicy()
+    case 'phase':
+      return createCollabPhaseFloorPolicy()
+    case 'free':
+    default:
+      return createCollabFreeFloorPolicy()
+  }
 }
