@@ -1,34 +1,34 @@
 /**
- * RoomCoordinator — docs/design/multi-agent-collab.md D4/§6.
+ * 房间的**配置门** —— 用户(以及 daemon)能拨动的每一个开关。
  *
- * The ONLY driver of room-session streams. User messages land via the ingress
- * gate (persist-only, message:user-created on the bus); this module owns the
- * wiring and the room's configuration doors, while the work itself lives in the
- * three modules it composes (R2):
+ * 这些函数原本住在 `coordinator.ts` 的尾巴上,和 v2 调度链的进程生命周期挤在
+ * 一个文件里。D6-b 删掉那条链时它们必须先搬出来:它们与调度**无关** —— 冻结、
+ * 预算、名册、看板动作、清空历史,每一件都是"用户改了这间房的某个字段,然后
+ * 让运行时知道"。留在原地就意味着为了保住五扇门而保住一个已经没人跑的协调器。
  *
- *   room-runtime.ts  runtime state, the durable state file, room primitives
- *   budget.ts        the 费用闸 over the room's session set
- *   turn.ts          one turn end to end: drive, wait, abort, harvest
- *   queue.ts         who speaks and in what order: willingness, queue, reconcile
+ * 三条纪律,与 v2 那一版逐条相同(搬家不是改写):
  *
- * What is left here: process lifecycle (init / shutdown / boot reconciliation),
- * the event subscriptions, and the four settings doors the UI and the CLI call
- * (freeze, budgets, team config, board actions).
+ *  1. **校验在这里,不在壳层**。IPC handler 与 daemon 方法整体透传形状,一条
+ *     业务规则都不留 —— 界面上的只读不算防线,程序化调用直接落到这个文件上。
+ *  2. **落盘之后再播**。快照现读 store,提前播就是播一条假消息。
+ *  3. **停在删之前**。清空历史那条路上,任何一步的次序错了都会让一个在飞回合
+ *     的收尾写进一间刚被清空的房。
+ *
+ * 与 v2 的**唯一**行为差别:"停下这间房"和"停掉在飞的活"两件事换了执行方 ——
+ * 从 v2 的 `activeTurns` / `activeByTask` 两张进程内表,换成 v3 的租约换代与
+ * 各位同事账里的子清单。语义一格没变,账本换了住处。
  */
 import {
   COLLAB_SYSTEM_SOURCE_MEMBERSHIP,
   buildCollabMembershipLines,
   collabAgentSessionId,
   isAgentPairDmRoom,
-  isCollabDriveMessage,
   isUserDmRoom,
   type CollabBoard,
   type CollabBoardAction,
 } from '@onething/runtime/collab'
-import { randomUUID } from 'node:crypto'
 import {
   isActiveAgent,
-  type ChatMessage,
   type CollabRoomBudgetsPatch,
   type CollabRoomUpdatePatch,
   type PermissionMode,
@@ -36,76 +36,32 @@ import {
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
-import {
-  applyBoardAction,
-  clearCollabBoard,
-  forgetCollabBoardRoom,
-  shutdownCollabBoardBroadcasts,
-} from './board-store.js'
+import { applyBoardAction, clearCollabBoard } from './board-store.js'
 import { emitCollabTyping } from './typing-observer.js'
-import { isRoomOverBudget } from './budget.js'
 import {
   broadcastCollabCoordinator,
   buildCollabCoordinatorState,
   forgetCollabInspector,
-  shutdownCollabInspector,
 } from './inspector.js'
-import { configureCollabDriveGuard } from './drive-guard.js'
-import { resetCollabV3RoomAccount } from './actors/turn-context.js'
-import { resetCollabSeenCursor } from './agent-session.js'
 import { forgetCollabDigests } from './digest-store.js'
-import { clearCollabWakeFollowups } from './wake-followup.js'
+import { resetCollabSeenCursor } from './agent-session.js'
+import { emitCollabRoomUpdated, postSystemLine } from './room-runtime.js'
+import { forgetCollabRoomBudgetCache } from './budget.js'
+import { abortCollabRoomTurnForStop } from './actors/stop-door.js'
 import {
-  bumpFloorEpoch,
-  clearRoomRuntimes,
-  clearRoomTimers,
-  currentFloorEpoch,
-  deleteRoomRuntime,
-  emitCollabRoomUpdated,
-  isRoom,
-  removeCollabRoomDirectory,
-  isAgentSpeaking,
-  peekRoomRuntime,
-  persistRoomState,
-  postSystemLine,
-  postTaskSystemLine,
-  roomChannel,
-  roomRuntime,
-  type RoomRuntime,
-} from './room-runtime.js'
-import {
-  abortRoomTurn,
-  clearAgentSessionLocks,
-  setCollabTurnsShuttingDown,
-  waitForEngineBound,
-  waitForRoomTurn,
-} from './turn.js'
-import {
-  enqueue,
-  handleRoomUserMessage,
-  processQueue,
-  reconcileRoom,
-} from './queue.js'
-import {
-  forgetCollabRoomWork,
-  freezeRoomWork,
-  initializeCollabWorkers,
-  reconcileRoomBoard,
-  resumeRoomWork,
-  shutdownCollabWorkers,
-} from './worker.js'
+  forgetCollabV3RoomBudget,
+  freezeCollabV3RoomWork,
+  postCollabV3MembershipChanged,
+  resumeCollabV3RoomWork,
+} from './actors/runtime.js'
+import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from './actors/turn-context.js'
 
-/**
- * Re-exported so the app's public collab surface (and the say executor, the
- * settings panel, the room IPC handlers) keeps one import site even though the
- * implementations moved out (R2).
- */
+/** 预算/费用的读口从这里转发一次,调用方(say 执行器、设置面板、IPC)只认一个入口。 */
 export {
   getCollabRoomSpend,
   isRoomOverBudget,
   readCollabRoomSpentTodayUSD,
 } from './budget.js'
-export { abortRoomTurn } from './turn.js'
 
 /**
  * 协调器状态条的冷启动读取(docs/design/collab-coordinator-inspector.md §5)。
@@ -114,116 +70,6 @@ export { abortRoomTurn } from './turn.js'
  */
 export function getCollabCoordinatorState(roomSessionId: string) {
   return buildCollabCoordinatorState(roomSessionId)
-}
-
-let initialized = false
-let disposers: Array<() => void> = []
-
-export function initializeCollabCoordinator(): void {
-  if (initialized) return
-  initialized = true
-  setCollabTurnsShuttingDown(false)
-  // P2-8: one token per process, minted before anything can drive. It is what
-  // turns 'collab' from a claim into a credential (see drive-guard.ts).
-  configureCollabDriveGuard(randomUUID())
-
-  initializeCollabWorkers({
-    postSystemLine,
-    postTaskSystemLine,
-    enqueueRoomActivation(roomSessionId, agentId, reason, driveLabel) {
-      const runtime = roomRuntime(roomSessionId)
-      // conversational: false —— 工作流的汇报不盖 floor 世代号。用户喊停停的是
-      // 对话,不是在飞的卡:一张交付了的卡仍然要有人验收。
-      enqueue(roomSessionId, runtime, [{ agentId, reason, driveLabel }], undefined, {
-        conversational: false,
-      })
-    },
-    waitForEngineBound,
-    waitForTurn: waitForRoomTurn,
-    roomChannel,
-    isRoomOverBudget,
-  })
-
-  const bus = getEventBus()
-  disposers.push(
-    bus.onAnySession('message:user-created', envelope => {
-      const sessionId = envelope.sessionId
-      const message = (envelope.event as { message?: ChatMessage }).message
-      if (!message || message.role !== 'user') return
-      if (isCollabDriveMessage(message)) return
-      if (!isRoom(sessionId)) return
-      void handleRoomUserMessage(sessionId, message)
-    }, 'collab-coordinator'),
-    // 这里曾经还有第二个订阅:`steering:consumed` → 链闸清零。它从 W18 起就是
-    // 死的 —— 回合搬进执行会话之后,那个事件发在 kind='agent' 的会话上,而订阅
-    // 第一行就是 `if (!isRoom(sessionId)) return`。房间从来没有收到过它。
-    //
-    // 没有把它接对,而是删掉:接对之后它做的每一件事,`handleRoomUserMessage`
-    // 在收到那条用户消息的第一时间就已经做完了(链闸清零 + 踢队列),包括 steer
-    // 注入的那一条 —— 注入的正是它正在处理的这条消息。留着就是两处做同一件事,
-    // 而这类重复的下场在这个仓库里已经有过案底(R3 的六份 source 判定)。
-  )
-
-  // A deleted room takes its runtime, its board machinery and its directory
-  // with it (P2-10). The store notifies; it does not know what collab is.
-  disposers.push(store.onSessionsDeleted(sessionIds => {
-    for (const sessionId of sessionIds) disposeCollabRoom(sessionId)
-  }))
-
-  // Boot reconciliation over every known room (transcript watermark + board).
-  try {
-    for (const meta of store.getSessionsList() as Array<{ id: string; kind?: string }>) {
-      if (meta.kind !== 'room') continue
-      const session = store.getSession(meta.id)
-      if (session?.kind === 'room') {
-        reconcileRoom(session)
-        reconcileRoomBoard(session.id)
-      }
-    }
-  } catch (error) {
-    console.error('[collab] boot reconciliation failed:', error)
-  }
-}
-
-export function shutdownCollabCoordinator(): void {
-  // Latch first: an engine-bind wait can be five minutes into its poll loop,
-  // and it must not outlive the subscriptions it was going to drive into.
-  setCollabTurnsShuttingDown(true)
-  // Nothing may drive a room once there is no coordinator to have sent it.
-  configureCollabDriveGuard(null)
-  shutdownCollabWorkers()
-  shutdownCollabBoardBroadcasts()
-  shutdownCollabInspector()
-  for (const dispose of disposers) {
-    try { dispose() } catch { /* noop */ }
-  }
-  disposers = []
-  clearRoomTimers()
-  // 还在等对方读完的跨房唤醒(collab-send-channel-and-wake.md §3.2):订阅与
-  // 120s 定时器都得跟着收摊,否则它会在协调器已经不存在之后往房间里发一条 poke。
-  clearCollabWakeFollowups()
-  clearRoomRuntimes()
-  clearAgentSessionLocks()
-  initialized = false
-}
-
-/**
- * Everything a room owned outside its session file (P2-10).
- *
- * Runs AFTER the delete, so the session is already gone and its kind cannot be
- * checked — which is fine and deliberate: every step is a no-op for an id that
- * never had collab state, and guessing from a name would be worse than doing
- * nothing four times. The three Maps that leaked (`rooms`, the board write
- * queue, the worker's pending list) and the `<store>/collab/<roomId>/`
- * directory all go here.
- */
-function disposeCollabRoom(roomSessionId: string): void {
-  abortRoomTurn(roomSessionId)
-  forgetCollabRoomWork(roomSessionId)
-  forgetCollabBoardRoom(roomSessionId)
-  forgetCollabInspector(roomSessionId)
-  deleteRoomRuntime(roomSessionId)
-  removeCollabRoomDirectory(roomSessionId)
 }
 
 export interface CollabRoomClearHistoryResult {
@@ -239,42 +85,24 @@ export interface CollabRoomClearHistoryResult {
   clearedTaskCount?: number
 }
 
-/**
- * 清场:与「喊停」同款,只是这一趟要清得更干净(队列整个丢掉,而不是让它自然
- * 过期)。**幂等**——清空的等待循环每一圈都跑一遍它,好把等待期间新冒出来的
- * 回合和激活一并按住。
- */
-function stopRoomFloor(roomSessionId: string, runtime: RoomRuntime): void {
-  for (const round of runtime.judgements) round.controller.abort()
-  runtime.judgements.clear()
-  runtime.planAbort?.abort()
-  abortRoomTurn(roomSessionId)
-  for (const record of runtime.queue) record.stage = 'superseded'
-  runtime.queue.length = 0
-  // 看板执行也是"在跑的东西"(2026-08-02):卡片这一趟要被清掉,留一条还在跑的
-  // 工作台会话等于让一个没有卡的执行接着往下做,收尾时还会往刚清空的房里贴行。
-  forgetCollabRoomWork(roomSessionId)
-  // **不清 inFlight**(四审 A-2):它是静默等待的眼睛 —— 这里清掉它,下面那个
-  // "inFlight 空了没"的判据就被自己清成永真,所有已出队、还卡在预算读取/引擎
-  // 绑定/agent 锁上的激活对清空隐形。这些记录由各自泵任务的 finally 摘除;
-  // 世代号已换,它们走到 emitDrive 前的最后一道门会自行退场(turn.ts)。
-  delete runtime.state.plan
-}
+/** 清场后最多等多久(次数 × 间隔)让在飞回合落地。 */
+const QUIESCE_ATTEMPTS = 60
+const QUIESCE_INTERVAL_MS = 50
 
 /**
  * 清空这间房的对话记忆(docs/design/collab-room-clear-and-mention-all.md B)。
  *
- * 「对话记忆」散在七处,漏一处就留一个幽灵:房间转录、每位成员执行会话的转录
- * 与已读游标、`state.json`、`digests.json`、`board.json` + `activity.jsonl`、
- * 进程内运行时、渲染层。**次序是强制的**:先停(否则在飞回合的收尾会往刚清空
- * 的会话里写 harvest)、后删、再播。
+ * 「对话记忆」散在六处,漏一处就留一个幽灵:房间转录、每位成员执行会话的转录
+ * 与已读游标、`digests.json`、`board.json` + `activity.jsonl`、v3 房账(水位/
+ * 链数/举手/租约/发言策略)、渲染层。**次序是强制的**:先停(否则在飞回合的
+ * 收尾会往刚清空的会话里写)、后删、再播。
  *
  * 看板一并清(2026-08-02 真机:清完消息,卡片还挂在那儿)。留着它不是"保守",
  * 是自相矛盾 —— `getCollabSelfTaskFacts` 会把 doing/blocked 卡片当既成事实注入
  * 提示词,于是清空后的第一个回合里,同事张口就在谈一段谁都读不到的工作。
  *
- * 刻意不动:房间配置、成员本体、`budgetSpentUSD` / `budgetNoticeDay`
- * (钱花了就是花了,预算闸照常),以及成员之间的私聊房。
+ * 刻意不动:房间配置、成员本体、`budgetSpentUSD` / `budgetNoticeDay`(钱花了
+ * 就是花了,预算闸照常),以及成员之间的私聊房。
  */
 export async function clearCollabRoomHistory(
   roomSessionId: string,
@@ -285,19 +113,19 @@ export async function clearCollabRoomHistory(
     return { success: false, error: 'Not a room session' }
   }
 
-  // ① 先停。世代号只 +1 一次(它是"用户喊停了这一段"的记号,不是计数器);
-  //    清场本身要反复跑,因为等待期间可能还有回合从 agent 锁上醒过来。
-  const runtime = roomRuntime(roomSessionId)
-  bumpFloorEpoch(runtime)
+  // ① 先停。**幂等**地反复停:等待期间还可能有回合从别的路醒过来(一条刚投进
+  //    房间信箱的 posted 会在这几十毫秒里被处理成一次授牌)。喊停走的就是停止
+  //    按钮那扇门 —— 换代 + 撤牌 + 掐流,「喊停清三样」一件不少。
   for (let attempt = 0; attempt < QUIESCE_ATTEMPTS; attempt++) {
-    stopRoomFloor(roomSessionId, runtime)
-    if (runtime.activeTurns.size === 0 && runtime.inFlight.size === 0) break
+    abortCollabRoomTurnForStop(roomSessionId)
+    freezeCollabV3RoomWork(roomSessionId)
+    if (collabV3TurnsInRoom(roomSessionId).length === 0) break
     await new Promise(resolve => setTimeout(resolve, QUIESCE_INTERVAL_MS))
   }
   // 等待耗尽不再无声放行(四审 A-3):一个长工具回合能活过 3s,放行的下场是
   // "清空成功"之后房间又冒出消息。此刻**什么都还没删**,失败是干净的 —— 用户
   // 稍后重试即可,比一半旧一半新的房间体面得多。
-  if (runtime.activeTurns.size > 0 || runtime.inFlight.size > 0) {
+  if (collabV3TurnsInRoom(roomSessionId).length > 0) {
     return { success: false, error: '仍有回合在收尾,请稍后重试' }
   }
 
@@ -307,8 +135,8 @@ export async function clearCollabRoomHistory(
     ...(session.room.memberAgentIds ?? []),
     ...(session.room.formerMembers ?? []).map(entry => entry.agentId),
   ])]
-  // 看板与它的审计轨**排在转录前面**:上面 abort 掉的执行会走一趟收尾,而收尾
-  // 的第一句是「这张卡还在不在」——卡先没了,它就一行都贴不出来;反过来先清转录,
+  // 看板与它的审计轨**排在转录前面**:上面停掉的执行会走一趟收尾,而收尾的第一
+  // 句是「这张卡还在不在」——卡先没了,它就一行都贴不出来;反过来先清转录,
   // 那行说明会落进一间已经清空的房。
   const { clearedTaskCount } = await clearCollabBoard(roomSessionId)
   const room = await store.clearSessionMessages(roomSessionId)
@@ -328,23 +156,13 @@ export async function clearCollabRoomHistory(
     broadcastClearedTranscript(execSessionId)
   }
 
-  // state 回到默认形状,**唯独 floorEpoch 留着刚 bump 出来的那一代**:归零的话,
-  // 一条在飞回合收尾时级联出来的激活会盖上 0 号世代、被判成"当前的",于是它开口
-  // 说的第一句话落进一间刚被清空的房 —— 这正是上面 bump 要阻止的事。
-  runtime.state = {
-    version: 1,
-    chainCount: 0,
-    activations: [],
-    floorEpoch: currentFloorEpoch(runtime),
-  }
-  runtime.chainNoticePosted = false
-  persistRoomState(roomSessionId, runtime)
   /**
-   * v3 的那本账一起清(D6-a 接线)。
+   * v3 的那本账整个换新。
    *
-   * 「对话记忆」在 v2 散在七处;v3 里房间那一份**全在账里**(水位、链数、举手、
-   * 租约、发言策略),所以这里只多一行 —— 但少这一行,清空之后的第一个回合会
-   * 带着旧水位跑:模型读到的"未读"是空的,而房间以为讨论已经进行到第 6 轮。
+   * 「对话记忆」在 v2 散在七处(其中三处是协调器的进程内表);v3 里房间那一份
+   * **全在账里**(水位、链数、举手、租约、发言策略),所以这里只剩一行 —— 但
+   * 少这一行,清空之后的第一个回合会带着旧水位跑:模型读到的"未读"是空的,
+   * 而房间以为讨论已经进行到第 6 轮。
    *
    * 运行时没起(或这不是一间 v3 房)时它是空操作。
    */
@@ -388,10 +206,6 @@ export async function clearCollabRoomHistory(
   }
 }
 
-/** 清场后最多等多久(次数 × 间隔)让在飞回合落地。 */
-const QUIESCE_ATTEMPTS = 60
-const QUIESCE_INTERVAL_MS = 50
-
 /**
  * 让渲染层把这条会话的消息列表整体换成空的。
  *
@@ -415,25 +229,16 @@ export function setCollabRoomFrozen(roomSessionId: string, frozen: boolean): boo
   })
   if (!updated) return updated
   if (frozen) {
-    const runtime = roomRuntime(roomSessionId)
-    for (const record of runtime.queue) {
-      // Everyone who was waiting to speak stops "typing" (§2.4).
-      emitCollabTyping(roomSessionId, record.agentId, false)
-      // …and is retired in the durable record too. The queue entries ARE the
-      // state records (same objects), so a discarded activation that stays
-      // 'queued' is one boot reconciliation away from coming back to life —
-      // the room would resume a conversation the user explicitly stopped.
-      record.stage = 'failed'
-    }
-    runtime.queue.length = 0
-    persistRoomState(roomSessionId, runtime)
-    abortRoomTurn(roomSessionId)
-    freezeRoomWork(roomSessionId)
+    // 冻结门本身是房间**现读** `session.room.frozen`(v3 的 gates),所以落盘那一行
+    // 已经把闸关上了。这里要做的只剩"把已经在跑的停下来":在外的牌与在飞的流走
+    // 停止按钮那扇门,在飞的活走子清单。
+    abortCollabRoomTurnForStop(roomSessionId)
+    freezeCollabV3RoomWork(roomSessionId)
     postSystemLine(roomSessionId, '房间已全部暂停:进行中的执行已中止,恢复后可重新指派')
   } else {
-    // A new pause gets to say its piece again (P2-17).
-    roomRuntime(roomSessionId).frozenNoticePosted = false
-    resumeRoomWork(roomSessionId)
+    void resumeCollabV3RoomWork(roomSessionId).catch((error: unknown) => {
+      console.error('[collab] 恢复工作失败:', error)
+    })
   }
   // 暂停/恢复是状态条上最显眼的一格(常驻条直接换成「已暂停 · 恢复」),不推的话
   // 面板要等下一次调度才追上一个用户刚刚亲手拨过的开关。
@@ -498,9 +303,9 @@ export interface CollabRoomConfigResult {
  *
  * Membership semantics (§3.5 C): a removed member keeps its in-flight work
  * session — the task is still harvested — but stops taking the floor. Nothing
- * caches the roster: willingness (roomMembers), mention decisions and the
- * drive-time guard all read store.getSession() fresh, so the next round after
- * this write already excludes them.
+ * caches the roster: the room's gates, mention decisions and the drive-time
+ * guard all read store.getSession() fresh, so the next round after this write
+ * already excludes them.
  */
 export function setCollabRoomConfig(
   roomSessionId: string,
@@ -649,22 +454,6 @@ export function setCollabRoomConfig(
     }
   }
 
-  // 换了模式就是换了一趟:旧编排对新模式毫无意义(审查 #20)。不清的话,模式
-  // 一旦切成 'parallel',`discardCollabPlan` 的唯一调用点(编排分支)就再也
-  // 进不去,残留的 `state.plan` 会让 `turn.ts` 的级联门永久判成"有编排在飞",
-  // 于是这间房的 @ 级联与意愿判定被静默关死。
-  if (nextResponseMode !== previousResponseMode) {
-    const runtime = roomRuntime(roomSessionId)
-    delete runtime.state.plan
-    // 队里那批还没起跑的旧编排激活一并清掉(2026-08-02 三审):plan 没了之后
-    // 它们会以普通回合的语义跑掉 —— 一批"轮到发言"的人在用户刚切走顺序模式的
-    // 那一刻开口,读起来就像设置没生效。已起跑的照常跑完,与喊停同一口径。
-    for (const record of runtime.queue) {
-      if (record.reason === 'relay') record.stage = 'superseded'
-    }
-    runtime.queue = runtime.queue.filter(entry => entry.reason !== 'relay')
-    persistRoomState(roomSessionId, runtime)
-  }
   if (patch.permissionMode !== undefined && patch.permissionMode !== session.permissionMode) {
     store.updateSessionPermissionMode(roomSessionId, patch.permissionMode)
   }
@@ -688,6 +477,25 @@ export function setCollabRoomConfig(
     }
     if (membersChanged) clearTypingForNonMembers(roomSessionId, nextMembers)
   }
+
+  /**
+   * 名册变了,**同事那侧**也要知道(D6-b 收口)。
+   *
+   * 上面那几行群公告是给人看的 —— 它落在房间转录里,而同事读的是自己的折叠信封。
+   * 少了这一投,一位同事会在名册已经变了之后继续 @ 一个上周就离开的人:那件事
+   * 从来没有出现在它的上下文里。协议动词与折叠都早就有了,缺的一直是生产者。
+   *
+   * 排在群公告之后:两条路最终都进模型的下一轮,而"先看到转录里那一行"与真机
+   * 的观感一致。空变更(只改了房名/预算)不投信。
+   */
+  if (membersChanged) {
+    const joined = nextMembers.filter(id => !previousMembers.includes(id))
+    const left = previousMembers.filter(id => !nextMembers.includes(id))
+    void postCollabV3MembershipChanged(roomSessionId, joined, left).catch((error: unknown) => {
+      console.error('[collab] 成员变更投递失败:', error)
+    })
+  }
+
   // 模式、次序表、名册都改状态条的样子(接力那一段整段出现或消失)。
   broadcastCollabCoordinator(roomSessionId)
   // 会话列表那一侧(成员条、房名、设置面板)从此吃这条推送,而不是每个写入方
@@ -696,18 +504,12 @@ export function setCollabRoomConfig(
   return { success: true }
 }
 
-/** A queued-but-removed member stops "typing" immediately; the record itself is
- *  dropped by the drive-time roster guard when the queue reaches it. The head
- *  of a running queue is skipped — it is mid-stream and may be mid-`say`.
- *  Since W19 a merely-queued member has no light to clear (nothing lights until
- *  its `say` streams), so this is 兜底 for stale trues, not the mechanism. */
+/** A queued-but-removed member stops "typing" immediately. Since W19 a merely
+ *  -queued member has no light to clear (nothing lights until its `say`
+ *  streams), so this is 兜底 for stale trues, not the mechanism. */
 function clearTypingForNonMembers(roomSessionId: string, members: readonly string[]): void {
-  const runtime = peekRoomRuntime(roomSessionId)
-  if (!runtime) return
-  // 并行之后"正在说话的"是一组,判据因此从"队首"换成 activeTurns。
-  for (const record of runtime.queue) {
-    if (isAgentSpeaking(runtime, record.agentId)) continue
-    if (!members.includes(record.agentId)) emitCollabTyping(roomSessionId, record.agentId, false)
+  for (const turn of collabV3TurnsInRoom(roomSessionId)) {
+    if (!members.includes(turn.agentId)) emitCollabTyping(roomSessionId, turn.agentId, false)
   }
 }
 
@@ -766,12 +568,10 @@ export function setCollabRoomBudgets(
     room: { ...session.room, budgets: next },
   })
   if (updated) {
-    const runtime = roomRuntime(roomSessionId)
-    runtime.budgetCheckedAt = 0
-    runtime.budgetNoticeDay = ''
-    runtime.chainNoticePosted = false
-    // 新额度可能解除封锁 — 立刻重试排队中的激活与任务。
-    if (runtime.queue.length > 0) void processQueue(roomSessionId)
+    // 新额度立刻生效:两处 60s 缓存(费用闸的读数、v3 房账那侧的判据)都失效,
+    // 否则一个刚被抬高的上限还要等最多一分钟才拦不住人。
+    forgetCollabRoomBudgetCache(roomSessionId)
+    forgetCollabV3RoomBudget(roomSessionId)
     broadcastCollabCoordinator(roomSessionId)
     // 预算同样是会话列表读的房间字段(看板面板的预算格)(C4 §3)。
     emitCollabRoomUpdated(roomSessionId)

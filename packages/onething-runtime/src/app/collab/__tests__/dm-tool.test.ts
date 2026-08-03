@@ -3,13 +3,14 @@
  * collab-send-channel-and-wake.md §2.2 合并进统一发送面之后,`dm` 不再是工具)。
  *
  * 纯规则测不到、只有在 store 边界上才成立的四件事:
- *  1. 成功路径的三步是**既有链路**:建房(ensureAgentDmRoom)→ 用 say 的执行器
- *     落库(显式指定房间,于是转义/白名单/幂等窗全继承)→ 入队激活对方;
+ *  1. 成功路径的两步都是**既有链路**:建房(ensureAgentDmRoom)→ 用 say 的执行器
+ *     落库(显式指定房间,于是转义/白名单/幂等窗全继承)。第三步「激活对方」
+ *     自 D6-b 起归房间:执行器只负责给注入盖 `chainReset` 标记;
  *  2. 每一种拒绝都说清是哪一种(退休 ≠ service ≠ 查无此人 ≠ 自己),因为模型
  *     要据此改做别的事;
- *  3. 拒绝时**不建房**、不落消息、不入队 —— 一次失败的 dm 不该在侧栏留下一间
+ *  3. 拒绝时**不建房**、不落消息 —— 一次失败的 dm 不该在侧栏留下一间
  *     空房;
- *  4. say 侧的拒绝(冻结/超预算)原样透传,而且透传时不会去激活任何人。
+ *  4. say 侧的拒绝(冻结/超预算)原样透传,措辞一个字不改写。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { COLLAB_SAY_REFUSED_EMPTY } from '@onething/runtime/collab'
@@ -40,10 +41,7 @@ const mocks = vi.hoisted(() => ({
   currentSessionId: 'chat-user-was-here',
   said: [] as Array<{ sessionId: string; content: string; room?: string }>,
   sayResult: { ok: true, messageId: 'msg-1' } as { ok: boolean; messageId?: string; error?: string },
-  enqueued: [] as Array<{ roomSessionId: string; activations: unknown; sourceMessageId?: string }>,
   /** 房间 runtime(链闸状态)—— 跨房 dm 注入要把它清零。 */
-  runtimes: new Map<string, { roomSessionId: string; state: { chainCount: number }; chainNoticePosted: boolean }>(),
-  persisted: [] as string[],
   /** 登记下来的跨房唤醒(设计 §3.2)。 */
   wakes: [] as Array<Record<string, string>>,
 }))
@@ -100,17 +98,6 @@ vi.mock('../say-tool.js', () => ({
   },
 }))
 
-vi.mock('../queue.js', () => ({
-  enqueue: (
-    roomSessionId: string,
-    _runtime: unknown,
-    activations: unknown,
-    sourceMessageId?: string,
-  ) => {
-    mocks.enqueued.push({ roomSessionId, activations, sourceMessageId })
-  },
-}))
-
 vi.mock('../wake-followup.js', () => ({
   registerCollabWakeFollowup: (input: Record<string, string>) => {
     mocks.wakes.push(input)
@@ -118,16 +105,6 @@ vi.mock('../wake-followup.js', () => ({
 }))
 
 vi.mock('../room-runtime.js', () => ({
-  roomRuntime: (roomSessionId: string) => {
-    const existing = mocks.runtimes.get(roomSessionId)
-    if (existing) return existing
-    const runtime = { roomSessionId, state: { chainCount: 3 }, chainNoticePosted: true }
-    mocks.runtimes.set(roomSessionId, runtime)
-    return runtime
-  },
-  persistRoomState: (roomSessionId: string) => {
-    mocks.persisted.push(roomSessionId)
-  },
   // 私聊房的形状修复分支会播一条 `session:collab-updated`(架构收敛 C4 §3)。
   // 这一面钉的是"发不发得出去",不是那条推送 —— 收进空实现即可。
   emitCollabRoomUpdated: () => {},
@@ -168,9 +145,6 @@ beforeEach(() => {
   mocks.sessions.clear()
   mocks.created.length = 0
   mocks.said.length = 0
-  mocks.enqueued.length = 0
-  mocks.runtimes.clear()
-  mocks.persisted.length = 0
   mocks.wakes.length = 0
   mocks.currentSessionId = 'chat-user-was-here'
   mocks.settings = { general: {} }
@@ -185,7 +159,7 @@ beforeEach(() => {
 })
 
 describe('成功路径', () => {
-  it('建房 → 用 say 的执行器落进那间房 → 激活对方', async () => {
+  it('建房 → 用 say 的执行器落进那间房(带清零标记)', async () => {
     const result = await sendCollabDm({ sessionId: EXEC, to: 'pm', message: '接口这块想跟你对一下' })
 
     expect(result).toEqual({
@@ -198,17 +172,11 @@ describe('成功路径', () => {
     })
     expect(mocks.created).toEqual([PAIR_ROOM])
     // 房间是**显式**指定的:发言落在哪间房不靠会话指针猜。
-    // `chainReset` 让这条注入**自己**带着清零标记落库(A2):live 侧那次清零
-    // 只活在内存里,标记是它可重放的那一半。
+    // `chainReset` 让这条注入**自己**带着清零标记落库 —— 房间认这个标记来清链
+    // (D6-b 之前执行器还会再手工清一遍内存账,那本重复的账已经删了)。
     expect(mocks.said).toEqual([
       { sessionId: EXEC, content: '接口这块想跟你对一下', room: PAIR_ROOM, chainReset: true },
     ])
-    // 激活理由是 'mention' —— dm 就是点名,该走满格链长闸、该被去重。
-    expect(mocks.enqueued).toEqual([{
-      roomSessionId: PAIR_ROOM,
-      activations: [{ agentId: 'pm', reason: 'mention' }],
-      sourceMessageId: 'msg-1',
-    }])
   })
 
   /**
@@ -216,22 +184,27 @@ describe('成功路径', () => {
    * (collab-turn-protocol-and-identity.md C)。
    *
    * 链闸解冻此前只认一条**人类**消息,而 agent ⇄ agent 的房里没有人类:狼人杀
-   * 夜间流程冻在上限上,谁都解不开。房内回合的乒乓不走这条路(那是 turn.ts 的
-   * 级联),6 条闸照拦。
+   * 夜间流程冻在上限上,谁都解不开。
+   *
+   * **D6-b 起这件事整个归房间**:执行器唯一的动作就是给这条注入盖上
+   * `chainReset` 标记,RoomActor 收到带标记的 posted 之后自己清链、按 @ 发牌、
+   * 给对端投信。此前执行器还手工改一遍内存里的 `chainCount` 并显式入队 ——
+   * 两本账写同一间房的链数,那正是 v3 要终结的病,随 v2 调度链一起删了。
+   * 这里因此只钉**标记**:它是执行器这一侧唯一还负责的那一半。
    */
-  it('跨房注入解冻链闸:pair 房的链长与冻结闩锁一起清零', async () => {
+  it('跨房注入盖清零标记,清链与激活都交给房间', async () => {
     await sendCollabDm({ sessionId: EXEC, to: 'pm', message: '换个话题' })
 
-    const runtime = mocks.runtimes.get(PAIR_ROOM)
-    expect(runtime).toMatchObject({ state: { chainCount: 0 }, chainNoticePosted: false })
-    expect(mocks.persisted).toContain(PAIR_ROOM)
+    expect(mocks.said).toEqual([
+      { sessionId: EXEC, content: '换个话题', room: PAIR_ROOM, chainReset: true },
+    ])
   })
 
   it('第二次 dm 同一个人复用同一间房(幂等由 id 构造保证)', async () => {
     await sendCollabDm({ sessionId: EXEC, to: 'pm', message: '第一句' })
     await sendCollabDm({ sessionId: EXEC, to: 'pm', message: '第二句' })
     expect(mocks.created).toEqual([PAIR_ROOM])
-    expect(mocks.enqueued).toHaveLength(2)
+    expect(mocks.said).toHaveLength(2)
   })
 
   it('工具回执点名对方,并说明用户也看得见(D4 透明制)', async () => {
@@ -245,11 +218,12 @@ describe('成功路径', () => {
 /**
  * 发给用户本人(docs/design/agent-dm-user.md §3.2)。
  *
- * 与 agent 分支共用每一道门与同一条落库路径,结构上只差一件事 —— **不 enqueue**。
- * 那一条是这组测试的重点:对端是人,没有模型可拉,入队等于凭空驱一轮。
+ * 与 agent 分支共用每一道门与同一条落库路径。结构上的差别在**房间**那一侧
+ * (对端是人,没有模型可拉,所以没有牌可发);执行器这一侧两条分支同形,
+ * 这组测试钉的就是"同形" —— 收件人解析出用户之后照样建房、照样落库。
  */
 describe('dm 给用户本人', () => {
-  it('开托管私聊房 → 落库 → 不入队(对端是人,没有模型可拉)', async () => {
+  it('开托管私聊房 → 落库(对端是人,没有模型可拉)', async () => {
     const result = await sendCollabDm({ sessionId: EXEC, to: '用户', message: '登录页那个配色你定一下' })
 
     expect(result).toEqual({
@@ -262,16 +236,12 @@ describe('dm 给用户本人', () => {
     expect(mocks.created).toEqual([USER_ROOM])
     expect(mocks.said).toEqual([
       { sessionId: EXEC, content: '登录页那个配色你定一下', room: USER_ROOM },
-    ])
-    expect(mocks.enqueued).toEqual([])
-  })
+    ])  })
 
   it('没配资料时 user / 用户 都可达', async () => {
     await sendCollabDm({ sessionId: EXEC, to: 'user', message: '一' })
     await sendCollabDm({ sessionId: EXEC, to: 'USER', message: '二' })
-    expect(mocks.said.map(said => said.room)).toEqual([USER_ROOM, USER_ROOM])
-    expect(mocks.enqueued).toEqual([])
-  })
+    expect(mocks.said.map(said => said.room)).toEqual([USER_ROOM, USER_ROOM])  })
 
   it('配了资料后,名字与 名字#句柄 同样可达', async () => {
     mocks.settings = { general: { userProfile: { name: '一天', handle: 'yitian' } } }
@@ -281,9 +251,7 @@ describe('dm 给用户本人', () => {
     const result = await sendCollabDm({ sessionId: EXEC, to: '#yitian', message: '三' })
 
     expect(mocks.said).toHaveLength(3)
-    expect(result.peerName).toBe('一天')
-    expect(mocks.enqueued).toEqual([])
-  })
+    expect(result.peerName).toBe('一天')  })
 
   it('回执告诉 agent 不用等回复(防止发完就停轮空等)', async () => {
     const result = await SendMessageTool.execute({ to: '用户', content: '在吗' }, ctx(EXEC))
@@ -292,11 +260,10 @@ describe('dm 给用户本人', () => {
     expect(result.metadata).toMatchObject({ ok: true, roomSessionId: USER_ROOM })
   })
 
-  it('say 侧拒绝原样透传(冻结房),而且照样不入队', async () => {
+  it('say 侧拒绝原样透传(冻结房)', async () => {
     mocks.sayResult = { ok: false, error: '房间已暂停,你的发言没有送达。' }
     const result = await sendCollabDm({ sessionId: EXEC, to: '用户', message: '在吗' })
     expect(result).toEqual({ ok: false, error: '房间已暂停,你的发言没有送达。' })
-    expect(mocks.enqueued).toEqual([])
   })
 
   it('service agent 发不出去 —— 发起人门在 ensureUserDmRoom 里', async () => {
@@ -324,13 +291,12 @@ describe('拒绝路径:说清是哪一种,而且什么都不留下', () => {
   ]
 
   for (const testCase of cases) {
-    it(`${testCase.name}:拒绝有话说,不建房、不落消息、不入队`, async () => {
+    it(`${testCase.name}:拒绝有话说,不建房、不落消息`, async () => {
       const result = await sendCollabDm({ sessionId: EXEC, to: testCase.to, message: '在吗' })
       expect(result.ok).toBe(false)
       expect(result.error).toContain(testCase.contains)
       expect(mocks.created).toEqual([])
       expect(mocks.said).toEqual([])
-      expect(mocks.enqueued).toEqual([])
     })
   }
 
@@ -350,9 +316,7 @@ describe('拒绝路径:说清是哪一种,而且什么都不留下', () => {
 
     expect(result).toEqual({ ok: false, error: COLLAB_SAY_REFUSED_EMPTY })
     expect(mocks.created).toEqual([])
-    expect(mocks.said).toEqual([])
-    expect(mocks.enqueued).toEqual([])
-  })
+    expect(mocks.said).toEqual([])  })
 
   it('普通 chat 会话不给 dm:直播式对话里没有"私下问问"这件事', async () => {
     mocks.sessions.set('chat-1', {
@@ -434,12 +398,12 @@ describe('拒绝路径:说清是哪一种,而且什么都不留下', () => {
 })
 
 describe('say 侧的拒绝原样透传', () => {
-  it('冻结/超预算:错误话术不改写,而且不激活任何人', async () => {
+  it('冻结/超预算:错误话术不改写', async () => {
     mocks.sayResult = { ok: false, error: '房间已暂停,你的发言没有送达。' }
     const result = await sendCollabDm({ sessionId: EXEC, to: 'pm', message: '在吗' })
     expect(result).toEqual({ ok: false, error: '房间已暂停,你的发言没有送达。' })
-    // 房已经建出来了(校验都过了),但没有人被拉起来 —— 送不达就没有对话。
-    expect(mocks.enqueued).toEqual([])
+    // 房已经建出来了(校验都过了),但消息没落库 —— 送不达就没有对话。
+    // 「谁被拉起来」自 D6-b 起归房间,而房间根本没收到这条 posted。
   })
 })
 
@@ -574,7 +538,6 @@ describe('wake:调用时 fail fast', () => {
       // 一次注定唤不醒的私聊不该在侧栏留下一间新房。
       expect(mocks.created.filter(id => id.startsWith('agent-dm'))).toEqual([])
       expect(mocks.said).toEqual([])
-      expect(mocks.enqueued).toEqual([])
       expect(mocks.wakes).toEqual([])
     })
   }

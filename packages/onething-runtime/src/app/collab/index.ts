@@ -3,26 +3,25 @@ export {
   isCollabRoomSession,
   type CollabRoomInboundCommand,
 } from './ingress.js'
+/**
+ * 房间的配置门(D6-b:从已删除的 `coordinator.ts` 搬进 `room-config.ts`)。
+ * 名字一个都没改 —— 壳层与 daemon 的调用点因此一行不用动。
+ */
 export {
   applyUserCollabBoardAction,
   clearCollabRoomHistory,
   getCollabCoordinatorState,
   getCollabRoomSpend,
-  initializeCollabCoordinator,
   readCollabRoomSpentTodayUSD,
   setCollabRoomBudgets,
   setCollabRoomConfig,
   setCollabRoomFrozen,
-  shutdownCollabCoordinator,
   type CollabBoardActResult,
   type CollabRoomClearHistoryResult,
   type CollabRoomConfigPatch,
   type CollabRoomConfigResult,
-} from './coordinator.js'
-/**
- * 停止按钮那扇门走 v3 优先的路由(D6-a)。v2 的 `turn.ts` 那份仍在,由这扇门在
- * 「这不是一间 v3 房」时回落 —— 见 `actors/stop-door.ts`。
- */
+} from './room-config.js'
+/** 停止按钮那扇门(D6-b 起只有 v3 一条实现)—— 见 `actors/stop-door.ts`。 */
 export { abortCollabRoomTurnForStop } from './actors/stop-door.js'
 /** Collab v3 运行时(D6-a):`createOnethingBackend` 的协作装配点。 */
 export {
@@ -48,7 +47,16 @@ export {
 export { ensureUserDmRoom } from './user-dm-room.js'
 /** agent ↔ agent 私聊房的 get-or-create(agent-im-dm.md D3;`dm` 工具的建房口)。 */
 export { ensureAgentDmRoom } from './agent-dm-room.js'
-export { hasActiveCollabWork, stopCollabTaskWork } from './worker.js'
+/**
+ * 卡级停止的读口与停口(D6-b:v2 `worker.ts` 删除后改由 v3 运行时供数)。
+ *
+ * 对外的名字保持不变 —— `apps/electron/src/main/ipc/collab.ts` 的
+ * `COLLAB_TASK_STOP` 通道与「停止执行」菜单项的显示条件都吃这两个名字。
+ */
+export {
+  hasActiveCollabV3Work as hasActiveCollabWork,
+  stopCollabV3TaskWork as stopCollabTaskWork,
+} from './actors/runtime.js'
 export { attachCollabMentions } from './mentions.js'
 export { attachCollabReplyTo } from './reply-quote.js'
 export {

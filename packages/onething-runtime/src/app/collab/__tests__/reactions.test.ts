@@ -42,7 +42,6 @@ const mocks = vi.hoisted(() => ({
   anyListeners: [] as Array<{ sessionId: string; handler: (envelope: unknown) => void }>,
   typeListeners: [] as Array<{ type: string; handler: (envelope: unknown) => void }>,
   updateMessageReactions: vi.fn(),
-  judgeWillingness: vi.fn(async () => [] as Array<Record<string, unknown>>),
 }))
 
 vi.mock('@onething/core/storage', () => ({
@@ -58,7 +57,7 @@ vi.mock('../../usage/index.js', () => ({
 
 vi.mock('../../store.js', () => ({
   updateSessionWorkingDirectory: vi.fn(),
-  // P2-10: the coordinator registers a room-disposal listener at startup.
+  // P2-10: the v3 runtime registers a room-disposal listener at startup.
   onSessionsDeleted: () => () => {},
   getSession: (id: string) => mocks.sessions.get(id),
   getSessionsList: () => [...mocks.sessions.values()],
@@ -127,21 +126,7 @@ vi.mock('../board-store.js', () => ({
   shutdownCollabBoardBroadcasts: () => {},
 }))
 
-vi.mock('../willingness-runner.js', () => ({
-  judgeWillingness: () => mocks.judgeWillingness(),
-}))
-
-vi.mock('../worker.js', () => ({
-  forgetCollabRoomWork: () => {},
-  initializeCollabWorkers: () => {},
-  shutdownCollabWorkers: () => {},
-  freezeRoomWork: () => {},
-  resumeRoomWork: () => {},
-  reconcileRoomBoard: () => {},
-}))
-
 const { reactToCollabMessage } = await import('../reactions.js')
-const coordinator = await import('../coordinator.js')
 
 const ROOM = 'room-1'
 
@@ -174,14 +159,11 @@ async function flush(): Promise<void> {
 }
 
 beforeEach(() => {
-  coordinator.shutdownCollabCoordinator()
   mocks.sessions.clear()
   mocks.emitted.length = 0
   mocks.anyListeners = []
   mocks.typeListeners = []
   mocks.updateMessageReactions.mockClear()
-  mocks.judgeWillingness.mockReset()
-  mocks.judgeWillingness.mockResolvedValue([])
 })
 
 describe('reactToCollabMessage', () => {
@@ -239,80 +221,5 @@ describe('reactToCollabMessage', () => {
     expect(reactToCollabMessage(ROOM, 'nope', '👍', { type: 'user' }).success).toBe(false)
     expect(reactToCollabMessage(ROOM, 'm1', '👍', { type: 'agent' }).success).toBe(false)
     expect(mocks.updateMessageReactions).not.toHaveBeenCalled()
-  })
-})
-
-describe('reactions never drive the room', () => {
-  it('does not open a willingness round (the coordinator ignores message:updated)', async () => {
-    seedRoom([userMessage('m1', '上线了')])
-    coordinator.initializeCollabCoordinator()
-    // Boot reconciliation re-decides the newest unprocessed message; let that
-    // settle first so what follows can only be attributed to the reaction.
-    await flush()
-    mocks.judgeWillingness.mockClear()
-    mocks.emitted.length = 0
-
-    reactToCollabMessage(ROOM, 'm1', '👍', { type: 'user' })
-    await flush()
-
-    expect(updatedEvents()).toHaveLength(1)
-    expect(mocks.judgeWillingness).not.toHaveBeenCalled()
-    expect(driveCommands()).toHaveLength(0)
-  })
-
-  it('positive control: a real user message DOES open one', async () => {
-    const session = seedRoom()
-    coordinator.initializeCollabCoordinator()
-    const message = userMessage('m9', '大家看看这个方案')
-    session.messages.push(message)
-
-    await mocks.typeListeners
-      .filter(entry => entry.type === 'message:user-created')
-      .map(entry => entry.handler({ sessionId: ROOM, event: { type: 'message:user-created', message } }))
-      .at(0)
-    await flush()
-
-    expect(mocks.judgeWillingness).toHaveBeenCalled()
-  })
-})
-
-describe('agent judgement reactions (§3.5 B point-of-light)', () => {
-  it('lands a silent member’s emoji on the message that prompted the round', async () => {
-    const session = seedRoom()
-    mocks.judgeWillingness.mockResolvedValue([
-      { agentId: 'fe', respond: false, react: '👍' },
-      { agentId: 'pm', respond: false, react: null },
-    ])
-    coordinator.initializeCollabCoordinator()
-
-    const message = userMessage('m9', '方案定了,周五上线')
-    session.messages.push(message)
-    for (const entry of mocks.typeListeners.filter(e => e.type === 'message:user-created')) {
-      entry.handler({ sessionId: ROOM, event: { type: 'message:user-created', message } })
-    }
-    await flush()
-
-    expect(session.messages[0].reactions).toEqual([
-      { emoji: '👍', by: [{ type: 'agent', agentId: 'fe' }] },
-    ])
-    // Reacting is not speaking: nobody was driven.
-    expect(driveCommands()).toHaveLength(0)
-  })
-
-  it('ignores the react of a member that is about to speak', async () => {
-    const session = seedRoom()
-    mocks.judgeWillingness.mockResolvedValue([
-      { agentId: 'fe', respond: true, react: '👍' },
-    ])
-    coordinator.initializeCollabCoordinator()
-
-    const message = userMessage('m9', '谁来做登录页?')
-    session.messages.push(message)
-    for (const entry of mocks.typeListeners.filter(e => e.type === 'message:user-created')) {
-      entry.handler({ sessionId: ROOM, event: { type: 'message:user-created', message } })
-    }
-    await flush()
-
-    expect(session.messages[0].reactions).toBeUndefined()
   })
 })

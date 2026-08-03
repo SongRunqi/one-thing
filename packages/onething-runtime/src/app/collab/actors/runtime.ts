@@ -41,6 +41,7 @@ import {
   COLLAB_DEFAULT_DAILY_COST_USD,
   buildCollabDriveRoomContext,
   buildCollabReplyToSnapshot,
+  buildCollabTaskInterruptedLine,
   collectCollabFoldedFacts,
   formatCollabAdoptedEcho,
   formatCollabUserLabel,
@@ -57,12 +58,15 @@ import {
   collabActorRef,
   collabAgentSpawnWorker,
   collabRoomCardEvent,
+  collabRoomMembershipChanged,
   collabRoomPosted,
   collabAgentSpeak,
   collabRoomActiveLeases,
+  collabWorkerRunningForCard,
   createCollabHeuristicHandEvaluator,
   createCollabRoomAccount,
   type CollabActorVerb,
+  type CollabAgentWorkerRecord,
   type CollabCardEventKind,
   type CollabHandEvaluator,
   type CollabRaisedHand,
@@ -76,6 +80,8 @@ import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../store.js'
 import { advanceSeenCursor, ensureCollabAgentSession } from '../agent-session.js'
 import {
+  forgetCollabBoardRoom,
+  getCollabTask,
   loadCollabBoard,
   onCollabBoardEvent,
   patchCollabTask,
@@ -88,14 +94,17 @@ import { buildCollabIdentityDirectory } from '../identity-directory.js'
 import {
   broadcastCollabCoordinator,
   configureCollabRoomSnapshotSource,
+  forgetCollabInspector,
   shutdownCollabInspector,
 } from '../inspector.js'
 import { collabRoomMembers } from '../members.js'
 import {
+  deleteRoomRuntime,
   maxChainFor,
   maxConcurrentTurnsFor,
   postSystemLine,
   postTaskSystemLine,
+  removeCollabRoomDirectory,
 } from '../room-runtime.js'
 import { collabUserPromptFields, resolveUserIdentity } from '../user-identity.js'
 import { clearCollabWakeFollowups } from '../wake-followup.js'
@@ -364,15 +373,36 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
   state = null
 }
 
-/** 一间房没了:停循环、忘掉它。磁盘那一半由 `removeCollabRoomDirectory` 带走。 */
+/**
+ * 一间房没了 —— 它在会话文件之外拥有的每一样东西(D6-b 从 v2 协调器接手)。
+ *
+ * 跑在**删除之后**,所以会话已经不在了、`kind` 查不到 —— 这是刻意的:每一步对
+ * 一个从没有过协作状态的 id 都是空操作,而"从名字猜它是不是房"比白跑四次更糟。
+ *
+ * 顺序有讲究:内存里的循环先停(它还可能往目录里写账),再删目录。反过来的话
+ * 一次收尾写入会把刚删掉的目录重新造出来,留下一个只有半个文件的孤儿房。
+ */
 async function disposeRoom(roomId: string): Promise<void> {
   const runtime = state
   const entry = runtime?.rooms.get(roomId)
-  if (!runtime || !entry) return
-  runtime.rooms.delete(roomId)
-  runtime.roomPending.delete(roomId)
-  runtime.budget.delete(roomId)
-  try { await entry.actor.stop() } catch { /* 房已经没了,停不动也不必再管 */ }
+  if (runtime && entry) {
+    runtime.rooms.delete(roomId)
+    runtime.roomPending.delete(roomId)
+    runtime.budget.delete(roomId)
+    const judgment = runtime.judgments.get(roomId)
+    if (judgment) {
+      clearTimeout(judgment.timer)
+      runtime.judgments.delete(roomId)
+    }
+    try { await entry.actor.stop() } catch { /* 房已经没了,停不动也不必再管 */ }
+  }
+  // 三张进程内的表 + 磁盘上那个目录(state.json / board.json / activity.jsonl /
+  // actors/)。它们此前挂在 v2 协调器的 `disposeCollabRoom` 上,而那个文件在
+  // D6-b 被删掉了 —— 少接这一段,删房会在内存与磁盘上各留一份永远查不到的残骸。
+  forgetCollabBoardRoom(roomId)
+  forgetCollabInspector(roomId)
+  deleteRoomRuntime(roomId)
+  removeCollabRoomDirectory(roomId)
 }
 
 /* ── actor 开箱 ───────────────────────────────────────────────────────── */
@@ -683,6 +713,172 @@ export function stopCollabV3RoomFloor(sessionId: string): boolean | null {
 /** 这间房此刻的 C4 快照(状态条冷启动读它)。不是 v3 房就是 null。 */
 export function peekCollabV3RoomSnapshot(roomSessionId: string): CollabCoordinatorState | null {
   return state?.rooms.get(roomSessionId)?.actor.snapshot() ?? null
+}
+
+/**
+ * 房账那侧的预算读数立刻过期(改预算、清历史时调)。
+ *
+ * v3 房间的闸判定必须是同步的,所以它读的是一份 60s 缓存 —— 与 `budget.ts` 那
+ * 一份是**两本**(一本给同步决策,一本给异步问询)。用户拨完开关要立刻生效,
+ * 于是两本都得作废;只作废一本,就会出现"设置面板说没超,房间却还在拦"。
+ */
+export function forgetCollabV3RoomBudget(roomSessionId: string): void {
+  state?.budget.delete(roomSessionId)
+}
+
+/* ── 卡级停止(D6-b 收口) ─────────────────────────────────────────────── */
+
+/**
+ * 这张卡此刻有没有手在做 —— 「停止执行」菜单项的显示条件。
+ *
+ * 账在**每位同事自己的子清单**里(`account.workers`),没有第二本:v2 那侧是
+ * 协调器进程内的一张 `activeByTask` 表,而 v3 把它落进了 agent 账(崩溃之后父
+ * 能发现孤儿,靠的就是这张表能活过重启)。所以这里扫的是账,不是内存索引 ——
+ * 一只在飞的手无论派生自哪一条命,都数得着。
+ */
+export function hasActiveCollabV3Work(taskId: string): boolean {
+  return findCollabV3Worker(taskId) !== null
+}
+
+function findCollabV3Worker(
+  taskId: string,
+  roomSessionId?: string,
+): { agentId: string; record: CollabAgentWorkerRecord } | null {
+  const runtime = state
+  if (!runtime) return null
+  for (const [agentId, entry] of runtime.agents) {
+    const record = collabWorkerRunningForCard(entry.actor.account.workers, taskId)
+    if (!record) continue
+    // 指定了房就按房认:同一张卡 id 不会跨房,但「停这间房的这张卡」是调用方
+    // 的原话,把它当成判据而不是注释,是 v2 那侧就有的纪律。
+    if (roomSessionId !== undefined && record.roomId !== roomSessionId) continue
+    return { agentId, record }
+  }
+  return null
+}
+
+/**
+ * 卡级停止(collab-team-v2 §5.1 入口②)在 v3 的落点。
+ *
+ * 与 v2 逐条对齐,三件事一件不少:掐流、把卡放回可续做的 `todo`、在群里留一行
+ * 说明。差别只在**账在哪儿** —— v2 读协调器的 `activeByTask`,v3 读派这只手的
+ * 那位同事的子清单。
+ *
+ * 返回 false = 这张卡此刻没有在跑的执行,按钮不该出现在那儿。
+ *
+ * **不等这只手收工**:abort 之后子 actor 会自己走完 `interrupted` 那条收尾路
+ * (回投结果 → 记账 → 放槽位),而按钮要的是"按下去立刻有反应"。等它等于把一次
+ * UI 交互挂在一条正在拆的模型流上。
+ */
+export async function stopCollabV3TaskWork(
+  roomSessionId: string,
+  taskId: string,
+): Promise<boolean> {
+  if (!state) return false
+  const found = findCollabV3Worker(taskId, roomSessionId)
+  if (!found) return false
+  const task = getCollabTask(roomSessionId, taskId)
+
+  await patchCollabTask(roomSessionId, taskId, { status: 'todo' })
+  // 掐的是**工作会话**那条流,不是房间流:停一张卡不该让同房其他人的对话跟着断。
+  if (found.record.workSessionId) getStreamEngineSafe()?.abort(found.record.workSessionId)
+  if (task) {
+    postTaskSystemLine(roomSessionId, buildCollabTaskInterruptedLine({
+      title: task.title,
+      ...(task.assigneeAgentId
+        ? { assigneeName: findAgent(task.assigneeAgentId)?.name ?? task.assigneeAgentId }
+        : {}),
+      cause: '执行已被停止',
+      hasWorkSession: task.workSessionIds.length > 0,
+    }))
+  }
+  return true
+}
+
+/**
+ * 总闸落下:这间房在飞的每一只手都停掉(v2 `freezeRoomWork` 的 v3 落点)。
+ *
+ * **卡的状态刻意不动**(与 v2 逐字一致):冻结中止的是执行,不是这张卡的归属。
+ * 卡留在 `doing` 上,恢复时由下面那个函数原地续做 —— 中断说明也因此被抑制,
+ * 因为「暂停」本身已经在群里说过一次了。
+ */
+export function freezeCollabV3RoomWork(roomSessionId: string): void {
+  const runtime = state
+  if (!runtime) return
+  const engine = getStreamEngineSafe()
+  for (const entry of runtime.agents.values()) {
+    for (const record of entry.actor.account.workers) {
+      if (record.status !== 'running' || record.roomId !== roomSessionId) continue
+      if (record.workSessionId) engine?.abort(record.workSessionId)
+    }
+  }
+}
+
+/**
+ * 总闸抬起:把冻结搁浅的卡重新派出去。
+ *
+ * `doing` 一并算进来是刻意的(v2 同注释):总闸掐掉了流却把卡留在 `doing`,
+ * 只扫 `todo` 会让它们一直搁浅到下一次重启才被对账认领。已经有手在做的卡跳过。
+ *
+ * 走的是与 `task-started` 完全同一条派生路 —— 续做接着原来那条工作会话往下做。
+ */
+export async function resumeCollabV3RoomWork(roomSessionId: string): Promise<void> {
+  const runtime = state
+  if (!runtime) return
+  let board: ReturnType<typeof loadCollabBoard>
+  try {
+    board = loadCollabBoard(roomSessionId)
+  } catch (error) {
+    console.error('[collab-v3] 恢复看板读取失败:', error)
+    return
+  }
+  for (const task of board.tasks) {
+    if (task.status !== 'todo' && task.status !== 'doing') continue
+    const assignee = task.assigneeAgentId
+    if (!assignee) continue
+    if (findCollabV3Worker(task.id, roomSessionId)) continue
+    const previous = task.workSessionIds[task.workSessionIds.length - 1]
+    await postToAgent(assignee, collabAgentSpawnWorker({
+      agentId: assignee,
+      workerId: randomUUID(),
+      cardId: task.id,
+      roomId: roomSessionId,
+      title: task.title,
+      ...(task.description ? { description: task.description } : {}),
+      ...(previous ? { workSessionId: previous } : {}),
+    }), collabActorRef('room', roomSessionId))
+  }
+}
+
+/* ── 成员变更(D6-b 收口) ─────────────────────────────────────────────── */
+
+/**
+ * 名册变了,告诉房间一声(`room:membership-changed`)。
+ *
+ * 协议里这个动词早就有,消费端也早就接好了 —— 房间落账后原样播给在册成员,
+ * 每位同事把它折进下一轮的信封(`envelope-fold.ts`:「谁来了谁走了」)。缺的
+ * 一直是**生产者**:改名册的那扇门还在 v2 协调器里,它只会贴一条群公告系统行。
+ *
+ * 群公告是给**人**看的(转录里那一行),折叠信封是给**模型**看的。两者不是同一
+ * 件事,少了后者的结果是:同事在名册已经变了之后,还会 @ 一个上周就离开的人 ——
+ * 它的上下文里从来没出现过那件事。
+ *
+ * 空变更不投信:一次只改了房名的保存不该在每个人的信封里留一条噪声。
+ */
+export async function postCollabV3MembershipChanged(
+  roomSessionId: string,
+  joined: readonly string[],
+  left: readonly string[],
+): Promise<boolean> {
+  if (!state) return false
+  if (joined.length === 0 && left.length === 0) return false
+  if (!state.rooms.has(roomSessionId) && store.getSession(roomSessionId)?.kind !== 'room') return false
+  await postToRoom(
+    roomSessionId,
+    collabRoomMembershipChanged({ roomId: roomSessionId, joined: [...joined], left: [...left] }),
+    collabActorRef('room', roomSessionId),
+  )
+  return true
 }
 
 /* ── 闸的读口 ─────────────────────────────────────────────────────────── */

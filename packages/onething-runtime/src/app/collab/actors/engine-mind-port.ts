@@ -293,6 +293,23 @@ export function createCollabEngineMindPort(
         detachTyping()
         emitCollabTurnActive(request.roomSessionId, request.agentId, false)
         endCollabV3Turn(request.execSessionId, request.lease.leaseId)
+        /**
+         * 每日摘要的触发点(D6-b:从删掉的 `turn.ts` 回合尾原样接过来)。
+         *
+         * 回合的首字延迟押在一个后台任务上;晚一轮拿到摘要是可接受的代价,而
+         * `<Folded count>` 在此期间照旧诚实地说少了多少条。开关见
+         * `room.context.dailyDigest`。
+         *
+         * **动态 import 是刻意的**:摘要跑模型,所以它的静态图里挂着整个 provider
+         * 栈(settings 仓库 → stores/paths)。静态引它,这个文件就把那条依赖带给
+         * 每一个 import 它的装配测试 —— 那些测试 partial-mock `stores/paths`,
+         * 于是会在收集阶段就炸。这是一个真正的后台子系统,按需加载正合适。
+         */
+        void import('../digest-runner.js')
+          .then(module => module.ensureCollabDigestsForRoom(request.roomSessionId))
+          .catch((error: unknown) => {
+            console.error('[collab] daily digest trigger failed:', error)
+          })
       }
     },
 

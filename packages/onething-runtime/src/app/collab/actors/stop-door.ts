@@ -1,25 +1,22 @@
 /**
- * 停止按钮的那扇门,两代共用一个名字(D6-a 接线)。
+ * 停止按钮的那扇门。
  *
  * `apps/electron/src/main/ipc/chat.ts` 注入的是 `abortCollabRoomTurnForStop` ——
- * 一个字都不改,门后面换了实现:v3 起来时按住的是租约(换代 + 撤牌 + 掐流),
- * 没起来(或这间房还没有 v3 actor)时回落 v2 那条按 `activeTurns` 逐条 abort 的
- * 老路。
+ * 从 D6-a 到 D6-b 这个名字一个字都没改,变的只是门后面:v2 那条按 `activeTurns`
+ * 逐条 abort 的老路随调度链一起删了,现在只剩租约那一条(换代 + 撤牌 + 掐流)。
  *
- * 为什么是独立一个文件而不是改 `turn.ts`:那是 v2 调度链的一部分,D6-b 整层删掉。
- * 在它身上加一个 v3 分支,等于在一份即将消失的代码里留下唯一的路由逻辑。
+ * 为什么仍然是独立一个文件而不是直接导出 `runtime.ts` 里那个:名字的**语义**
+ * 归界面(「停下这间房」),`stopCollabV3RoomFloor` 的语义归运行时(「这间房的
+ * 租约换一代」)。中间这一层还负责把「这不是一间 v3 房」翻译成 `false` —— 一间
+ * 从没被驱动过的房按下停止,答案是"没停下任何东西",而不是一个 null 漏到界面上。
  */
-import { abortCollabRoomTurnForStop as abortCollabRoomTurnForStopV2 } from '../turn.js'
 import { stopCollabV3RoomFloor } from './runtime.js'
 
 /**
  * 停下这间房的对话。返回 true = 真的停下了什么(渲染层据此决定要不要提示)。
  *
  * **工作会话刻意不碰**:停对话不是停干活 —— 那是冻结开关的语义,它有自己的按钮。
- * 两代在这一条上完全一致。
  */
 export function abortCollabRoomTurnForStop(sessionId: string): boolean {
-  const stopped = stopCollabV3RoomFloor(sessionId)
-  if (stopped !== null) return stopped
-  return abortCollabRoomTurnForStopV2(sessionId)
+  return stopCollabV3RoomFloor(sessionId) ?? false
 }

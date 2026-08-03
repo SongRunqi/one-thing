@@ -18,9 +18,6 @@ const mocks = vi.hoisted(() => ({
   handlers: new Map<string, Set<BusHandler>>(),
   said: [] as Array<{ sessionId: string; content: string; room?: string }>,
   sayResult: { ok: true, messageId: 'poke-1' } as { ok: boolean; messageId?: string; error?: string },
-  enqueued: [] as Array<{ roomSessionId: string; activations: unknown; sourceMessageId?: string }>,
-  runtimes: new Map<string, { state: { chainCount: number }; chainNoticePosted: boolean }>(),
-  persisted: [] as string[],
   notes: [] as Array<{ roomSessionId: string; entry: Record<string, unknown> }>,
 }))
 
@@ -46,33 +43,9 @@ vi.mock('../say-tool.js', () => ({
   },
 }))
 
-vi.mock('../queue.js', () => ({
-  enqueue: (
-    roomSessionId: string,
-    _runtime: unknown,
-    activations: unknown,
-    sourceMessageId?: string,
-  ) => {
-    mocks.enqueued.push({ roomSessionId, activations, sourceMessageId })
-  },
-}))
-
 vi.mock('../inspector.js', () => ({
   noteCollabSchedule: (roomSessionId: string, entry: Record<string, unknown>) => {
     mocks.notes.push({ roomSessionId, entry })
-  },
-}))
-
-vi.mock('../room-runtime.js', () => ({
-  roomRuntime: (roomSessionId: string) => {
-    const existing = mocks.runtimes.get(roomSessionId)
-    if (existing) return existing
-    const runtime = { state: { chainCount: 5 }, chainNoticePosted: true }
-    mocks.runtimes.set(roomSessionId, runtime)
-    return runtime
-  },
-  persistRoomState: (roomSessionId: string) => {
-    mocks.persisted.push(roomSessionId)
   },
 }))
 
@@ -115,9 +88,6 @@ beforeEach(() => {
   vi.useFakeTimers()
   mocks.handlers.clear()
   mocks.said.length = 0
-  mocks.enqueued.length = 0
-  mocks.runtimes.clear()
-  mocks.persisted.length = 0
   mocks.notes.length = 0
   mocks.sayResult = { ok: true, messageId: 'poke-1' }
 })
@@ -128,7 +98,7 @@ afterEach(() => {
 })
 
 describe('兑现时机', () => {
-  it('对方回合 settle → poke 落群 + 链闸清零 + 显式入队', async () => {
+  it('对方回合 settle → poke 落群(带清零标记)', async () => {
     register()
     expect(pendingCollabWakeCount()).toBe(1)
 
@@ -149,16 +119,10 @@ describe('兑现时机', () => {
       chainReset: true,
     }])
     // 由头来自别处的一个回合 = 新的外部输入(collab-turn-protocol-and-identity.md C)。
-    expect(mocks.runtimes.get(GAME_ROOM)).toMatchObject({
-      state: { chainCount: 0 },
-      chainNoticePosted: false,
-    })
-    expect(mocks.persisted).toContain(GAME_ROOM)
-    expect(mocks.enqueued).toEqual([{
-      roomSessionId: GAME_ROOM,
-      activations: [{ agentId: 'pm', reason: 'mention' }],
-      sourceMessageId: 'poke-1',
-    }])
+    // **清链与激活都归房间**(D6-b):poke 是一条普通的 say,RoomActor 收到带
+    // `chainReset` 的 posted 之后自己清链、按 @ 直通授牌。此前这里还手工改一遍
+    // 内存 `chainCount` 并显式 enqueue —— 两段随 v2 调度链一起删了,所以这一面
+    // 只剩「poke 有没有带着标记落进那间群」这一个断言。
     expect(pendingCollabWakeCount()).toBe(0)
   })
 
@@ -178,7 +142,6 @@ describe('兑现时机', () => {
     await vi.advanceTimersByTimeAsync(2)
     await settleMicrotasks()
     expect(mocks.said).toHaveLength(1)
-    expect(mocks.enqueued).toHaveLength(1)
   })
 
   it('只发一次:settle 之后超时不再补一条', async () => {
@@ -201,13 +164,12 @@ describe('兑现时机', () => {
 })
 
 describe('兑现时失败:只留痕,不回执', () => {
-  it('冻结/超预算 → poke 不落、不入队,inspector 里有一条', async () => {
+  it('冻结/超预算 → poke 不落,inspector 里有一条', async () => {
     mocks.sayResult = { ok: false, error: '消息未送达:这个群聊已被暂停(总闸)。' }
     register()
     turnActive('pm', false)
     await settleMicrotasks()
 
-    expect(mocks.enqueued).toEqual([])
     expect(mocks.notes).toHaveLength(1)
     expect(mocks.notes[0]).toMatchObject({
       roomSessionId: GAME_ROOM,

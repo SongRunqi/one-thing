@@ -46,9 +46,6 @@ import { resolveUserIdentity } from './user-identity.js'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { collabLinkedRoomSessionId, collabToolAllowedInSession } from './venue.js'
 import { registerCollabWakeFollowup } from './wake-followup.js'
-import { enqueue } from './queue.js'
-import { persistRoomState, roomRuntime } from './room-runtime.js'
-import { isCollabV3Wired } from './actors/turn-context.js'
 
 /** 拒绝文案。每一条都说清"是哪一种拒绝",因为模型能据此改做别的事。 */
 const DM_REFUSED_NO_SELF = '这一轮没有可用的发言身份,私聊发不出去。'
@@ -213,14 +210,14 @@ export async function sendCollabDm(input: {
   }
 
   /**
-   * v3:清零与送达激活都归房间(D6-a)。
+   * 清零与送达激活都归房间(D6-a 接线,D6-b 删掉对照面)。
    *
    * 上面那次落库已经把消息投进了 RoomActor(`say-tool.ts` 的跨房分支),而房间
    * 收到一条带 `collabChainReset` 的 posted 之后自己就会清链、按 @ 发牌、给对端
-   * 投信 —— 下面那两段是 v2 用两处内存账手工凑出来的同一件事。**不并存**:两本
-   * 账同时在写同一间房的链数,漂的那一天没人知道该信哪一本。
+   * 投信。这里从前还留着一份 v2 的手工版(两处内存账凑出同一件事),作为 D6-b
+   * 的行为对照 —— 它现在没有到达路径了(`isCollabV3Wired()` 恒真),跟着 v2
+   * 调度链一起删。留着两本账写同一间房的链数,漂的那一天没人知道该信哪一本。
    */
-  if (!isCollabV3Wired()) applyV2DmDelivery(roomSessionId, targetId, said.messageId)
 
   // 唤醒登记(设计 §3.2)。**送达之后**才登记:门都过了、消息真的在那间房里,
   // 才有"读完之后"这个时刻可以等。
@@ -243,50 +240,6 @@ export async function sendCollabDm(input: {
     peerName: target.name,
     ...(wake?.ok ? { wakeRoomName: wake.roomName } : {}),
   }
-}
-
-/**
- * v2 的清零 + 送达激活(D6-b 随 queue/room-runtime 一起删)。
- *
- * 原样搬进一个函数,一行没改 —— 它是 D6-b 的对照面:v3 那条路要在真机上跑出
- * 与它逐条等价的行为,才谈得上把它删掉。
- */
-function applyV2DmDelivery(
-  roomSessionId: string,
-  targetId: string,
-  sourceMessageId: string,
-): void {
-  const runtime = roomRuntime(roomSessionId)
-  /**
-   * 跨房 dm 注入 = 外部输入,于是这间 pair 房的链长清零
-   * (collab-turn-protocol-and-identity.md C)。
-   *
-   * 链闸解冻此前**只**认一条人类消息(queue.ts 的 ingress 那一处),而 agent ⇄
-   * agent 的房里没有人类:狼人杀夜间流程冻在上限上,谁都解不开。这条消息的
-   * 由头来自**另一间房**的一个回合 —— 与人类插话同语义:一个新的外部事件把
-   * 讨论推到了新的地方。
-   *
-   * 边界:房内回合的乒乓**不**经过这条路(那是 turn.ts 的级联),6 条闸照拦。
-   * 能走到这里的只有"别处的某个回合决定来这间房说句话",而那本来就是新输入。
-   *
-   * 这里清的是 **live 那一半**。可重放的那一半在上面那次落库上:消息带着
-   * `collabChainReset`,boot 重算(collab/chain.ts)认它作清零边界。两半都要
-   * 有 —— 只清内存的话,没有人类在场的 pair 房重启一次,重算值必然 ≥ live 值,
-   * 顶格冻死,只能等下一次跨房注入(架构审查 A2)。
-   */
-  runtime.state.chainCount = 0
-  runtime.chainNoticePosted = false
-  persistRoomState(roomSessionId, runtime)
-
-  // 送达即激活对方(D5)。dm 房里 agent 的发言本来就免判(D6),这一步与那条
-  // 免判分支等价 —— 差别只是这次的发言不是在这间房的回合里说出来的,没有
-  // 级联可以搭,所以由工具自己把人拉起来。
-  enqueue(
-    roomSessionId,
-    runtime,
-    [{ agentId: targetId, reason: 'mention' }],
-    sourceMessageId,
-  )
 }
 
 /**

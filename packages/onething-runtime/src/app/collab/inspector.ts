@@ -19,23 +19,15 @@
  */
 import {
   COLLAB_DEFAULT_DAILY_COST_USD,
-  collabRelayLoopsFor,
   isCollabPlanRoom,
 } from '@onething/runtime/collab'
 import type {
   CollabCoordinatorLogEntry,
   CollabCoordinatorState,
-  ChatSession,
 } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { getEventBus } from '../events/index.js'
-import {
-  maxChainFor,
-  maxConcurrentTurnsFor,
-  peekRoomRuntime,
-  roomOccupancy,
-  type RoomRuntime,
-} from './room-runtime.js'
+import { maxChainFor, maxConcurrentTurnsFor } from './room-runtime.js'
 
 /** 「刚才」最多留几条。定长环形缓冲 —— 一间房不会因为聊得久而涨内存。 */
 export const COLLAB_LOG_LIMIT = 32
@@ -153,15 +145,16 @@ function finiteMax(value: number): number {
 export function buildCollabCoordinatorState(roomSessionId: string): CollabCoordinatorState | null {
   const session = store.getSession(roomSessionId)
   if (session?.kind !== 'room') return null
-  const runtime = peekRoomRuntime(roomSessionId)
   const inspector = rooms.get(roomSessionId)
-  const planRoom = isCollabPlanRoom(session.room)
 
-  // v3 接线之后调度那几格来自房账;seq / typing / 「刚才」仍归这里(见上)。
+  // 调度那几格来自房账(D6-a 接线);seq / typing / 「刚才」仍归这里(见上)。
   const v3 = v3SnapshotSource?.(roomSessionId) ?? null
   if (v3) {
     return {
       ...v3,
+      // 每次 build 都现取一个新号是错的:冷启动 GET 是**读**,它不该显得比刚发
+      // 出去的那一帧更新。带上"上一次广播的号",于是一发新广播总能顶掉一条迟到
+      // 的回包,而一条比屏幕更旧的回包会被渲染层丢掉。
       seq: inspector?.seq ?? 0,
       at: Date.now(),
       typing: [...(inspector?.typing ?? [])],
@@ -169,79 +162,39 @@ export function buildCollabCoordinatorState(roomSessionId: string): CollabCoordi
     }
   }
 
+  /**
+   * 供数口还没装上,或者这间房还没有 v3 actor —— 给一份**空闲**快照。
+   *
+   * D6-b 之前这里是 v2 运行时的读法(`roomOccupancy` / `activeTurns` / `queue` /
+   * `judgements` / `state.plan`),随调度链一起删了。留一份空闲而不是 null,是
+   * 文件头那条老纪律:「读不到」和「空闲」在界面上必须是同一个样子,否则冷启动
+   * 会闪一下空白。闸的**上限**照读(它们是房间配置,不是运行时状态),读数为 0
+   * —— 这间房此刻确实一格都没占。
+   */
   return {
     roomSessionId,
-    // 每次 build 都现取一个新号是错的:冷启动 GET 是**读**,它不该显得比刚发出去
-    // 的那一帧更新。带上"上一次广播的号",于是一发新广播总能顶掉一条迟到的回包,
-    // 而一条比屏幕更旧的回包会被渲染层丢掉。
     seq: inspector?.seq ?? 0,
     at: Date.now(),
     mode: session.room?.responseMode === 'serial'
       ? 'serial'
-      : planRoom ? 'auto' : 'parallel',
+      : isCollabPlanRoom(session.room) ? 'auto' : 'parallel',
     frozen: session.room?.frozen === true,
-    // 占用视图(C1)—— 与链闸、调度泵读的是同一张表,不是"为了显示"另算一遍。
-    speaking: runtime ? [...roomOccupancy(runtime)] : [],
+    speaking: [],
     typing: [...(inspector?.typing ?? [])],
-    turns: [...(runtime?.activeTurns.values() ?? [])].map(turn => ({
-      agentId: turn.agentId,
-      reason: turn.reason ?? '',
-      startedAt: turn.startedAt,
-      agentSessionId: turn.agentSessionId,
-    })),
-    queue: (runtime?.queue ?? []).map(record => ({
-      id: record.id,
-      agentId: record.agentId,
-      reason: record.reason,
-    })),
-    judging: runtime?.judgements.size ?? 0,
-    // 在飞的各轮问的是谁,并起来去重(同一个人不会同时进两轮,但形状上不禁止)。
-    judgingAgentIds: [
-      ...new Set([...(runtime?.judgements ?? [])].flatMap(round => round.agentIds)),
-    ],
+    turns: [],
+    queue: [],
+    judging: 0,
+    judgingAgentIds: [],
     gates: {
-      chain: {
-        value: runtime?.state.chainCount ?? 0,
-        max: finiteMax(maxChainFor(session)),
-      },
-      concurrency: {
-        value: runtime?.activeTurns.size ?? 0,
-        max: finiteMax(maxConcurrentTurnsFor(session)),
-      },
+      chain: { value: 0, max: finiteMax(maxChainFor(session)) },
+      concurrency: { value: 0, max: finiteMax(maxConcurrentTurnsFor(session)) },
       budget: {
-        // 协调器自己的 60s 缓存 —— 与预算闸比对的是同一个数。这里刻意不去读
-        // 账本:快照是同步的,而账本读取是一次磁盘往返。
-        value: runtime?.budgetSpentUSD ?? 0,
+        value: 0,
         max: session.room?.budgets?.dailyCostUSD ?? COLLAB_DEFAULT_DAILY_COST_USD,
       },
     },
-    plan: buildPlanView(session, runtime),
+    plan: null,
     log: [...(inspector?.log ?? [])],
-  }
-}
-
-/**
- * 编排视图 —— 状态条画的就是这一份(collab-coordinator-plan.md §7)。
- *
- * 读的是**正在执行的那份编排**,不是从名册现算一个环:环是 waves 的特例,
- * 而现算的环画不出「阿般 · 小李 一起说,然后 Iris 总结」这种批次。
- *
- * 没有编排在飞(并行模式、或者这一趟已经跑完)时给 null —— 与"读不到"和"空闲"
- * 在界面上必须是同一个样子这条同源:没有编排不是异常。
- */
-function buildPlanView(
-  session: ChatSession,
-  runtime: RoomRuntime | undefined,
-): CollabCoordinatorState['plan'] {
-  const plan = runtime?.state.plan
-  if (!plan || plan.waves.length === 0) return null
-  return {
-    waves: plan.waves.map(wave => [...wave]),
-    waveIndex: plan.waveIndex,
-    waveCount: plan.waveCount,
-    cycle: plan.cycle,
-    why: plan.why,
-    loops: collabRelayLoopsFor(session.room),
   }
 }
 

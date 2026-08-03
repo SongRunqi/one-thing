@@ -67,9 +67,48 @@ const {
   noteCollabSchedule,
   setCollabTypingState,
   shutdownCollabInspector,
+  configureCollabRoomSnapshotSource,
   COLLAB_LOG_LIMIT,
 } = await import('../inspector.js')
-const { emitCollabRoomUpdated, roomRuntime, clearRoomRuntimes } = await import('../room-runtime.js')
+const { emitCollabRoomUpdated } = await import('../room-runtime.js')
+
+/**
+ * 房账的**替身**(D6-b)。
+ *
+ * 调度那几格从 D6-a 起就来自 RoomActor 的账,而这个文件测的从来不是账怎么算 ——
+ * 它测的是「拿到一份账之后,seq / typing / 「刚才」怎么盖上去、什么时候播」。
+ * 所以这里给一个可以随手摆布的供数口,而不是起一整个 v3 运行时。
+ *
+ * D6-b 之前这些用例摆布的是 v2 的 `roomRuntime`(`activeTurns` / `queue` /
+ * `judgements` / `state.chainCount`)—— 那张表随调度链一起删了,断言的**语义**
+ * 一条没变,换的只是同一份数据从哪儿来。
+ */
+let v3Snapshot: Record<string, unknown> | null = null
+function serveSnapshot(patch: Record<string, unknown> | null): void {
+  v3Snapshot = patch === null ? null : { ...idleSnapshot(), ...patch }
+}
+function idleSnapshot(): Record<string, unknown> {
+  return {
+    roomSessionId: ROOM,
+    seq: 0,
+    at: 0,
+    mode: 'parallel',
+    frozen: false,
+    speaking: [],
+    typing: [],
+    turns: [],
+    queue: [],
+    judging: 0,
+    judgingAgentIds: [],
+    gates: {
+      chain: { value: 0, max: 32 },
+      concurrency: { value: 0, max: 6 },
+      budget: { value: 0, max: 5 },
+    },
+    plan: null,
+    log: [],
+  }
+}
 
 const ROOM = 'room-1'
 
@@ -92,7 +131,8 @@ function events(): Array<Record<string, unknown>> {
 beforeEach(() => {
   vi.useRealTimers()
   shutdownCollabInspector()
-  clearRoomRuntimes()
+  v3Snapshot = null
+  configureCollabRoomSnapshotSource(roomId => (roomId === ROOM ? v3Snapshot : null) as never)
   mocks.sessions.clear()
   mocks.emitted.length = 0
   seed()
@@ -105,7 +145,7 @@ describe('快照', () => {
     expect(buildCollabCoordinatorState('nope')).toBeNull()
   })
 
-  it('运行时还没建起来时也给完整快照 —— "读不到"和"空闲"在界面上必须一模一样', () => {
+  it('房账还没建起来时也给完整快照 —— "读不到"和"空闲"在界面上必须一模一样', () => {
     const snapshot = buildCollabCoordinatorState(ROOM)
     expect(snapshot).toMatchObject({
       mode: 'parallel',
@@ -118,17 +158,20 @@ describe('快照', () => {
     expect(snapshot?.gates.chain.max).toBe(32)
   })
 
-  it('读的是运行时本身:在跑 / 排队 / 判定在飞 / 链长', () => {
-    const runtime = roomRuntime(ROOM)
-    runtime.activeTurns.set('agent-exec-a-room-1', {
-      agentSessionId: 'agent-exec-a-room-1',
-      agentId: 'a',
-      reason: 'mention',
-      startedAt: 4_242,
+  it('调度那几格原样透传房账:在跑 / 排队 / 判定在飞 / 链长', () => {
+    serveSnapshot({
+      turns: [
+        { agentId: 'a', reason: 'mention', startedAt: 4_242, agentSessionId: 'agent-exec-a-room-1' },
+      ],
+      queue: [{ id: 'q1', agentId: 'b', reason: 'self-elected' }],
+      judging: 1,
+      judgingAgentIds: ['b', 'c'],
+      gates: {
+        chain: { value: 7, max: 32 },
+        concurrency: { value: 1, max: 6 },
+        budget: { value: 0, max: 5 },
+      },
     })
-    runtime.queue.push({ id: 'q1', agentId: 'b', reason: 'self-elected', stage: 'queued' })
-    runtime.judgements.add({ controller: new AbortController(), agentIds: ['b', 'c'] })
-    runtime.state.chainCount = 7
 
     const snapshot = buildCollabCoordinatorState(ROOM)
     expect(snapshot?.turns).toEqual([
@@ -151,25 +194,29 @@ describe('快照', () => {
     expect(JSON.parse(JSON.stringify(snapshot)).gates.chain.max).toBe(0)
   })
 
-  it('预算读的是协调器自己的缓存 —— 与预算闸比对的是同一个数,而且不碰磁盘', () => {
-    roomRuntime(ROOM).budgetSpentUSD = 4.21
+  it('预算读的是房账里那份同步缓存 —— 与预算闸比对的是同一个数,而且不碰磁盘', () => {
+    serveSnapshot({
+      gates: {
+        chain: { value: 0, max: 32 },
+        concurrency: { value: 0, max: 6 },
+        budget: { value: 4.21, max: 5 },
+      },
+    })
     expect(buildCollabCoordinatorState(ROOM)?.gates.budget).toEqual({ value: 4.21, max: 5 })
   })
 
   it('编排在飞时给出 waves / 进度 / 理由;没有编排时是 null', () => {
     seed({ responseMode: 'auto' })
-    const runtime = roomRuntime(ROOM)
-    runtime.state.plan = {
-      id: 'plan-1',
-      waves: [['a'], ['b', 'c']],
-      cycle: true,
-      why: '先让阿般定调',
-      waveIndex: 1,
-      waveCount: 3,
-      passStreak: 0,
-      waveSpoke: false,
-      epoch: 0,
-    }
+    serveSnapshot({
+      plan: {
+        waves: [['a'], ['b', 'c']],
+        waveIndex: 1,
+        waveCount: 3,
+        cycle: true,
+        why: '先让阿般定调',
+        loops: 0,
+      },
+    })
     expect(buildCollabCoordinatorState(ROOM)?.plan).toEqual({
       waves: [['a'], ['b', 'c']],
       waveIndex: 1,
@@ -181,7 +228,7 @@ describe('快照', () => {
 
     // 画的是**正在执行的那份编排**,不是从名册现算一个环 —— 现算的环画不出
     // 「b 和 c 一起说」这种批次。
-    delete runtime.state.plan
+    serveSnapshot({ plan: null })
     expect(buildCollabCoordinatorState(ROOM)?.plan).toBeNull()
   })
 
@@ -241,9 +288,10 @@ describe('广播节流', () => {
     broadcastCollabCoordinator(ROOM)          // 立即发一次(距上次已久)
     expect(events()).toHaveLength(1)
 
-    roomRuntime(ROOM).state.chainCount = 1
+    serveSnapshot({ gates: { chain: { value: 1, max: 32 }, concurrency: { value: 0, max: 6 }, budget: { value: 0, max: 5 } } })
     broadcastCollabCoordinator(ROOM)          // 落进节流窗口
-    roomRuntime(ROOM).state.chainCount = 9    // 窗口里状态又变了
+    // 窗口里状态又变了
+    serveSnapshot({ gates: { chain: { value: 9, max: 32 }, concurrency: { value: 0, max: 6 }, budget: { value: 0, max: 5 } } })
     broadcastCollabCoordinator(ROOM)
     expect(events()).toHaveLength(1)
 
@@ -286,24 +334,21 @@ describe('广播节流', () => {
 })
 
 describe('活动快照(C4 §1/§2)', () => {
-  it('speaking 读的是占用视图 —— inFlight ∪ activeTurns,是 turns 的超集', () => {
-    const runtime = roomRuntime(ROOM)
-    runtime.activeTurns.set('agent-exec-a-room-1', {
-      agentSessionId: 'agent-exec-a-room-1',
-      agentId: 'a',
-      reason: 'mention',
-      startedAt: 1,
+  it('speaking 是 turns 的超集 —— 举着手/拿着牌还没开口的人也占着位子', () => {
+    // 房账里 speaking 是**占用视图**(在外的租约 ∪ 在跑的回合),而 turns 只有
+    // 真的在流的那些。喊停对两者同样有效 —— 停止按钮的可见性因此与"停得掉的
+    // 东西"同宽,这条不变量在 v2 是 `inFlight ∪ activeTurns`,在 v3 是租约账。
+    serveSnapshot({
+      turns: [{ agentId: 'a', reason: 'mention', startedAt: 1, agentSessionId: 'agent-exec-a-room-1' }],
+      speaking: ['a', 'b'],
     })
-    // 刚出队、还卡在闸上/锁上的那一条同样属于"这间房有东西在跑",而喊停对它
-    // 同样有效 —— 停止按钮的可见性因此与"停得掉的东西"同宽。
-    runtime.inFlight.set('r2', { id: 'r2', agentId: 'b', reason: 'self-elected', stage: 'queued' })
 
     const snapshot = buildCollabCoordinatorState(ROOM)
     expect(snapshot?.turns.map(turn => turn.agentId)).toEqual(['a'])
     expect(new Set(snapshot?.speaking)).toEqual(new Set(['a', 'b']))
   })
 
-  it('运行时不存在时 speaking 是空的,而不是读不到', () => {
+  it('房账不存在时 speaking 是空的,而不是读不到', () => {
     expect(buildCollabCoordinatorState(ROOM)?.speaking).toEqual([])
     expect(buildCollabCoordinatorState(ROOM)?.typing).toEqual([])
   })

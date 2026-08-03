@@ -84,7 +84,8 @@ vi.mock('../../agents/index.js', () => ({
   listAgents: () => Object.values(AGENTS),
 }))
 
-vi.mock('../coordinator.js', () => ({
+// 费用闸的读口(D6-b:协调器删除后 say 直接从 budget.ts 取,不再中转一次)。
+vi.mock('../budget.js', () => ({
   isRoomOverBudget: async () => mocks.overBudget,
 }))
 

@@ -14,7 +14,7 @@ import {
 import * as store from '../store.js'
 import { getUsageLedger } from '../usage/index.js'
 import { loadCollabBoard } from './board-store.js'
-import { postSystemLine, roomRuntime } from './room-runtime.js'
+import { postSystemLine } from './room-runtime.js'
 
 /** 费用闸(§6.2 第三道闸): 房间日预算,按会话集合(房间+其 work 会话)从
  *  usage 账本累计 costUSD。60s 缓存,超限时激活与新 worker 都被拒。
@@ -23,6 +23,43 @@ import { postSystemLine, roomRuntime } from './room-runtime.js'
  *  已有的导入点不必跟着搬家,而"闸的默认额度"读起来仍然在闸这个文件里。 */
 export { COLLAB_DEFAULT_DAILY_COST_USD } from '@onething/runtime/collab'
 const BUDGET_CACHE_MS = 60_000
+
+/**
+ * 这道闸自己的缓存(D6-b:从 v2 的 `RoomRuntime` 字段搬进来)。
+ *
+ * 从前这四格挂在房间运行时上,理由是"协调器已经握着一张按房的表,不必再开一张"。
+ * v2 调度链删掉之后那张表只剩这四格还有人读 —— 让一道闸把自己的缓存寄存在一个
+ * 为别的目的存在的对象上,是那种一删就断的耦合。**行为一格没改**:同一个 60s
+ * 窗口、同一份在飞读取去重、同一条"今天只说一遍"的日闩。
+ */
+interface BudgetCell {
+  checkedAt: number
+  spentUSD: number
+  /** 正在进行的账本读取(并行去重,见下面 `isRoomOverBudget` 里那段注释)。 */
+  read?: Promise<number>
+  noticeDay: string
+}
+
+const cells = new Map<string, BudgetCell>()
+
+function cell(roomSessionId: string): BudgetCell {
+  let entry = cells.get(roomSessionId)
+  if (!entry) {
+    entry = { checkedAt: 0, spentUSD: 0, noticeDay: '' }
+    cells.set(roomSessionId, entry)
+  }
+  return entry
+}
+
+/**
+ * 让这间房的读数立刻过期 —— 改预算、清历史、删房都调它。
+ *
+ * 不调的话一个刚被抬高的上限还要等最多 60s 才拦不住人,而那正是用户拨完开关
+ * 之后立刻要验证的那一分钟。
+ */
+export function forgetCollabRoomBudgetCache(roomSessionId: string): void {
+  cells.delete(roomSessionId)
+}
 
 /**
  * Which day the budget is counting, in the USER's timezone (R7 / P3).
@@ -135,8 +172,8 @@ export async function isRoomOverBudget(roomSessionId: string): Promise<boolean> 
   if (session?.kind !== 'room') return false
   const limit = session.room?.budgets?.dailyCostUSD ?? COLLAB_DEFAULT_DAILY_COST_USD
   if (limit <= 0) return false
-  const runtime = roomRuntime(roomSessionId)
-  if (Date.now() - runtime.budgetCheckedAt > BUDGET_CACHE_MS) {
+  const entry = cell(roomSessionId)
+  if (Date.now() - entry.checkedAt > BUDGET_CACHE_MS) {
     // 缓存的是**这次读取本身**,不是一个先落下的时间戳(并行化 2026-08-01)。
     //
     // 原先第一行就把 `budgetCheckedAt` 写成 now,然后才 await 账本 —— 串行时代
@@ -146,30 +183,30 @@ export async function isRoomOverBudget(roomSessionId: string): Promise<boolean> 
     //
     // 现在同一时刻只有一次真实读取,后到的等同一个 promise;时间戳在读**成功之后**
     // 才落,所以一次失败的读取不会顺手把接下来 30 秒也变成"查过了"。
-    if (!runtime.budgetRead) {
-      runtime.budgetRead = readCollabRoomSpentTodayUSD(roomSessionId)
+    if (!entry.read) {
+      entry.read = readCollabRoomSpentTodayUSD(roomSessionId)
         .then(value => {
-          runtime.budgetSpentUSD = value
-          runtime.budgetCheckedAt = Date.now()
+          entry.spentUSD = value
+          entry.checkedAt = Date.now()
           return value
         })
         .finally(() => {
-          runtime.budgetRead = undefined
+          entry.read = undefined
         })
     }
     try {
-      await runtime.budgetRead
+      await entry.read
     } catch (error) {
       console.error('[collab] budget read failed:', error)
       return false // 账本读不了不误杀
     }
   }
-  const over = runtime.budgetSpentUSD >= limit
-  if (over && runtime.budgetNoticeDay !== budgetDayKey()) {
-    runtime.budgetNoticeDay = budgetDayKey()
+  const over = entry.spentUSD >= limit
+  if (over && entry.noticeDay !== budgetDayKey()) {
+    entry.noticeDay = budgetDayKey()
     postSystemLine(
       roomSessionId,
-      `今天这个房间已花费 $${runtime.budgetSpentUSD.toFixed(2)},达到日预算 $${limit}——明天自动恢复,或调整房间预算`,
+      `今天这个房间已花费 $${entry.spentUSD.toFixed(2)},达到日预算 $${limit}——明天自动恢复,或调整房间预算`,
     )
   }
   return over

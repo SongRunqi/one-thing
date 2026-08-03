@@ -31,9 +31,7 @@ import {
 import { getEventBus } from '../events/index.js'
 import { findAgent } from '../agents/index.js'
 import { speakIntoCollabRoom } from './say-tool.js'
-import { enqueue } from './queue.js'
 import { noteCollabSchedule } from './inspector.js'
-import { persistRoomState, roomRuntime } from './room-runtime.js'
 
 /**
  * 等一个回合最多等这么久。与权限降级同一个数字(120s)不是巧合:两处问的是
@@ -152,30 +150,18 @@ async function fulfill(key: string, why: 'settled' | 'timeout'): Promise<void> {
     return
   }
 
-  const runtime = roomRuntime(entry.wakeRoomSessionId)
   /**
-   * 链闸清零,与跨房 dm 注入同规则同理由
-   * (collab-turn-protocol-and-identity.md C / dm-tool.ts 里那段注释)。
+   * 清零与激活都归房间(D6-b)。
    *
-   * 由头来自**别处的一个回合**(那间私聊房里刚跑完的那一轮),对这个群而言
-   * 就是一次新的外部输入 —— 与人类插话同语义。房内乒乓不走这条路,6 条闸照拦;
-   * 预算闸照常兜底,是 poke 风暴的最后一道防线(§3.3)。
+   * 这里从前还有两段 v2 的手工版:直接改 `runtime.state.chainCount` 清链闸,
+   * 再 `enqueue` 把对方拉起来。两段现在都没有了 —— 上面那条 poke 是一次**普通
+   * 的 say**,它带着 `collabChainReset` 落库,而 RoomActor 收到这条 posted 之后
+   * 自己就会清链、按 @ 直通授牌(§2「@=直通授牌」)。
    *
-   * 这里清的是 **live 那一半**;可重放的那一半是上面那条 poke 上的
-   * `collabChainReset` 标记(架构审查 A2)。
+   * 当初写"显式入队而不是靠 @ 短路"的理由是"句柄若因改名而失配,唤醒就静默地
+   * 没发生"——那条顾虑在 v3 里由 `formatCollabAgentHandle` 现取名字消掉了:
+   * poke 的 @ 是**此刻**渲染出来的,与房间解析它时读的是同一份花名册。
    */
-  runtime.state.chainCount = 0
-  runtime.chainNoticePosted = false
-  persistRoomState(entry.wakeRoomSessionId, runtime)
-
-  // 显式入队而不是靠 @ 短路:两条路的结果一样,而显式那条不依赖"这一句话里
-  // 的 @ 一定解析得到人"——句柄若因改名而失配,唤醒就静默地没发生。
-  enqueue(
-    entry.wakeRoomSessionId,
-    runtime,
-    [{ agentId: entry.targetAgentId, reason: 'mention' }],
-    said.messageId,
-  )
 }
 
 /** 测试/收摊用:忘掉所有还在等的 wake(定时器与订阅一起拆)。 */

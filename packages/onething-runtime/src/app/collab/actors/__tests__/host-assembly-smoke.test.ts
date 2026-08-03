@@ -28,16 +28,31 @@ describe('D6-a 三宿主装配冒烟', () => {
     expect(typeof headless.HeadlessBackend).toBe('function')
   })
 
-  it('collab 装配面同时导出 v3 运行时与仍在的 v2 协调器', { timeout: 60_000 }, async () => {
+  /**
+   * 装配面上**只剩一代**(D6-b)。
+   *
+   * D6-a 时这一条断言的是"两代并存、v2 仍导出";现在断言的是反面 —— 旧协调器
+   * 的生命周期口在装配面上**不存在**。写成显式的 `toBeUndefined` 而不是删掉这
+   * 一条:壳层(electron IPC / daemon)吃的是这个桶,一个悄悄复活的 v2 入口正是
+   * 本期要防的事,而只测"新的在"证明不了"旧的不在"。
+   */
+  it('collab 装配面只导出 v3 运行时,v2 协调器的生命周期口已不存在', { timeout: 60_000 }, async () => {
     const collab = await import('../../index.js')
-    // 新的生产路径。
+    // 新的(也是唯一的)生产路径。
     expect(typeof collab.initializeCollabV3Runtime).toBe('function')
     expect(typeof collab.shutdownCollabV3Runtime).toBe('function')
-    // 旧的那条**仍然导出**:D6-a 只是不再初始化它,删除是 D6-b。它的单元测试
-    // 直接吃这两个名字,所以这一条同时是「本期没动 v2」的结构性证据。
-    expect(typeof collab.initializeCollabCoordinator).toBe('function')
-    expect(typeof collab.shutdownCollabCoordinator).toBe('function')
+    expect((collab as Record<string, unknown>).initializeCollabCoordinator).toBeUndefined()
+    expect((collab as Record<string, unknown>).shutdownCollabCoordinator).toBeUndefined()
     // 停止按钮那扇门换了实现,名字一个字没改(apps 侧零改动的判据)。
     expect(typeof collab.abortCollabRoomTurnForStop).toBe('function')
+    // 配置门搬了家(coordinator.ts → room-config.ts),对外的名字同样零改动。
+    expect(typeof collab.setCollabRoomConfig).toBe('function')
+    expect(typeof collab.setCollabRoomFrozen).toBe('function')
+    expect(typeof collab.setCollabRoomBudgets).toBe('function')
+    expect(typeof collab.clearCollabRoomHistory).toBe('function')
+    expect(typeof collab.getCollabCoordinatorState).toBe('function')
+    // 卡级停止改由 v3 供数,IPC 通道吃的仍是这两个名字。
+    expect(typeof collab.hasActiveCollabWork).toBe('function')
+    expect(typeof collab.stopCollabTaskWork).toBe('function')
   })
 })
