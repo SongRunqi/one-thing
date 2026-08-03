@@ -1,0 +1,8 @@
+agent:note agentId="replay-observer" note="saw user:user wn-1" roomId="werewolf-night"
+agent:note agentId="replay-observer" note="saw agent:judge wn-2" roomId="werewolf-night"
+agent:note agentId="replay-observer" note="saw agent:wolf-a wn-3" roomId="werewolf-night"
+agent:note agentId="replay-observer" note="saw agent:wolf-b wn-4" roomId="werewolf-night"
+agent:note agentId="replay-observer" note="saw agent:wolf-a wn-5" roomId="werewolf-night"
+agent:note agentId="replay-observer" note="saw agent:judge wn-6" roomId="werewolf-night"
+agent:note agentId="replay-observer" note="saw agent:seer wn-7" roomId="werewolf-night"
+agent:note agentId="replay-observer" note="saw room:werewolf-night wn-8" roomId="werewolf-night"

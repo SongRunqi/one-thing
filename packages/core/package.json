@@ -5,6 +5,7 @@
   "private": true,
   "exports": {
     ".": "./index.ts",
+    "./actors": "./actors/index.ts",
     "./agent": "./agent/index.ts",
     "./agent-loop": "./agent-loop/index.ts",
     "./context": "./context/index.ts",

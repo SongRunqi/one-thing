@@ -1,0 +1,10 @@
+{"id":"pr-1","role":"user","content":"早，今天先把发布清单过一遍。","timestamp":2000}
+{"id":"pr-2","role":"assistant","agentId":"pm","content":"我列一下：打包、签名、灰度、公告。","timestamp":2100}
+{"id":"pr-3","role":"assistant","agentId":"dev","content":"打包昨晚跑通了，产物在 out/。","timestamp":2200}
+{"id":"pr-4","role":"user","content":"签名那步谁盯？","timestamp":2300,"mentions":[{"agentId":"dev","label":"阿丁"}]}
+{"id":"pr-5","role":"assistant","agentId":"dev","content":"我盯。证书今早续过了。","timestamp":2400}
+{"id":"pr-6","role":"assistant","agentId":"qa","content":"灰度名单准备好了，20 台。","timestamp":2500}
+{"id":"pr-7","role":"assistant","agentId":"pm","content":"公告文案我写，中午前给。","timestamp":2600}
+{"id":"pr-8","role":"system","content":"看板：卡片 #12 已认领。","timestamp":2700}
+{"id":"pr-9","role":"user","content":"好，那就这样推进。","timestamp":2800}
+{"id":"pr-10","role":"assistant","agentId":"pm","content":"收到，我去开卡。","timestamp":2900}

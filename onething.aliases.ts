@@ -23,6 +23,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   // Product assembly tree (the former apps/electron/src/main). One prefix
   // entry covers every subpath — do NOT add per-file entries for it.
   { find: '@onething/app', replacement: resolve(projectRoot, 'packages/onething-runtime/src/app') },
+  { find: '@onething/core/actors', replacement: resolve(projectRoot, 'packages/core/actors/index.ts') },
   { find: '@onething/core/agent-loop', replacement: resolve(projectRoot, 'packages/core/agent-loop/index.ts') },
   // Browser-safe leaf module (no node deps) — must be registered BEFORE the
   // engine barrel so the renderer never drags node:crypto into the bundle.
@@ -156,6 +157,11 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   // 进不了浏览器包。
   { find: '@onething/runtime/agents/model', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/model.ts') },
   { find: '@onething/runtime/agents', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/index.ts') },
+  // Collab v3 的 actor 协议与金重放架。**必须站在 `collab` 之上**:find 是前缀
+  // 匹配,先命中者赢 —— 落在下面的话 `…/collab/actors` 会被 `…/collab` 吃掉,
+  // 解析成 `collab/index.ts/actors`,而这种错只在 build/run 时才炸(typecheck
+  // 的通配符照单全收)。
+  { find: '@onething/runtime/collab/actors', replacement: resolve(projectRoot, 'packages/onething-runtime/src/collab/actors/index.ts') },
   { find: '@onething/runtime/collab', replacement: resolve(projectRoot, 'packages/onething-runtime/src/collab/index.ts') },
   { find: '@onething/runtime/files/ripgrep', replacement: resolve(projectRoot, 'packages/onething-runtime/src/files/ripgrep.ts') },
   { find: '@onething/runtime/files', replacement: resolve(projectRoot, 'packages/onething-runtime/src/files/index.ts') },

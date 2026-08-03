@@ -1,0 +1,8 @@
+{"id":"wn-1","role":"user","content":"开局，天黑请闭眼。","timestamp":1000}
+{"id":"wn-2","role":"assistant","agentId":"judge","content":"夜晚降临。狼人请睁眼，互相确认身份。","timestamp":1100}
+{"id":"wn-3","role":"assistant","agentId":"wolf-a","content":"我在。今晚刀谁？","timestamp":1200}
+{"id":"wn-4","role":"assistant","agentId":"wolf-b","content":"先刀 4 号，他发言太稳。","timestamp":1300,"mentions":[{"agentId":"wolf-a","label":"狼A"}]}
+{"id":"wn-5","role":"assistant","agentId":"wolf-a","content":"同意，刀 4 号。","timestamp":1400}
+{"id":"wn-6","role":"assistant","agentId":"judge","content":"狼人请闭眼。预言家请睁眼。","timestamp":1500}
+{"id":"wn-7","role":"assistant","agentId":"seer","content":"查验 2 号。","timestamp":1600}
+{"id":"wn-8","role":"system","content":"天亮了。昨夜 4 号出局。","timestamp":1700}
