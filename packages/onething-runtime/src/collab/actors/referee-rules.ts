@@ -96,6 +96,15 @@ export interface CollabRefereeVerdict {
    * 「都没接话」这个答不出所以然的说法(v2 `willingness-runner` 的同一条教训)。
    */
   degraded?: boolean
+  /**
+   * 买这次调用用的模型(D8 观测体系 §3.3)。
+   *
+   * **纯观测,不进动词**:`collabRefereeVerdictVerb` 一个字都不带上它,所以房账、
+   * 广播、金重放快照全都看不见这一格 —— 换裁判模型不该让同一份剧本跑出不同的账。
+   * 它的唯一去处是调度时间轴上那一行 `judge-verdict`,而「上周那批判决是哪个模型
+   * 给的」在换算法时是唯一能对照的东西。
+   */
+  model?: string
 }
 
 /** 裁决窗的 token。确定性派生:哪间房、第几次。 */

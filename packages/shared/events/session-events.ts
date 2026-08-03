@@ -9,7 +9,11 @@
  */
 
 import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ChatSession, ContextVariable, SessionGoal, ThinkingEffort } from '../ipc.js'
-import type { CollabBoard, CollabCoordinatorState } from '../ipc/collab.js'
+import type {
+  CollabAgentActivitySnapshot,
+  CollabBoard,
+  CollabCoordinatorState,
+} from '../ipc/collab.js'
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
 
@@ -445,6 +449,25 @@ export interface CollabCoordinatorChangedEvent {
   state: CollabCoordinatorState
 }
 
+/**
+ * 一位同事的活动状态变了(D8 观测体系 §3.1)。
+ *
+ * 与 `collab:coordinator-changed` 是**两本互不派生的账**,这是刻意的:房间那本按房
+ * 广播,而大脑、信箱、工作卡是跨房的 —— 一个人在 A 房思考这件事,B 房那本账里没有
+ * 任何字段说得出来。硬要从 N 份房间快照里拼一个人的状态,拼出来的是 N 份各自过期
+ * 的碎片。
+ *
+ * 沿用同一条快照哲学(全量小快照 + `seq` 去序)与同一档节流,但**按 agent 独立
+ * 节流槽** —— 一个话痨不该拖累别人那一格的刷新。
+ *
+ * 挂在**哪条会话**上:发给房间会话(这位同事此刻牵涉到的那几间),渲染层按 agentId
+ * 归档。私聊房与群房因此都能收到,而没开着的房自然不占带宽。
+ */
+export interface CollabAgentChangedEvent {
+  type: 'collab:agent-changed'
+  activity: CollabAgentActivitySnapshot
+}
+
 // ── Union ───────────────────────────────────────
 
 export type SessionEvent =
@@ -491,4 +514,5 @@ export type SessionEvent =
   | CollabTypingEvent
   | CollabTurnActiveEvent
   | CollabCoordinatorChangedEvent
+  | CollabAgentChangedEvent
   | SessionCommand

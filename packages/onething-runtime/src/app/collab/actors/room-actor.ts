@@ -47,9 +47,11 @@ import {
   collabRoomActiveLeases,
   collabRoomEventId,
   collabRoomHolders,
+  deriveCollabSchedulerLogRows,
   isSameCollabRoomFloorPolicy,
   openCollabRoomBroadcast,
   pruneCollabRoomFloor,
+  resolveCollabRoomHandBlock,
   settleCollabRoomBroadcast,
   type CollabActorVerb,
   type CollabFloorRevokeReason,
@@ -61,10 +63,13 @@ import {
   type CollabRoomJudgmentRequest,
   type CollabRoomPendingBroadcast,
   type CollabRoomTranscriptMessage,
+  type CollabSchedulerBlockLatch,
+  type CollabSchedulerLogSink,
 } from '@onething/runtime/collab/actors'
-import type { CollabCoordinatorState } from '@shared/ipc.js'
+import type { CollabCoordinatorJudgment, CollabCoordinatorState } from '@shared/ipc.js'
 
 import { createCollabRoomAccountFileStore, type CollabRoomAccountStore } from './room-account.js'
+import { collabV3TurnsInRoom } from './turn-context.js'
 
 /** 一个成员的信箱。真身是 `DurableMailbox`,测试与重放用内存版。 */
 export interface CollabRoomMemberMailbox {
@@ -142,6 +147,8 @@ export interface CollabRoomActorOptions extends Omit<ActorBaseOptions<ActorEvent
   /** 账的存取面。缺省落盘(`actors/room.json`)。 */
   store?: CollabRoomAccountStore
   mailbox: ActorMailboxSource<ActorEvent<CollabActorVerb>>
+  /** 调度时间轴(D8 §3.3)。缺省不记 —— 金重放与纯测试跑的就是那一档。 */
+  schedulerLog?: CollabSchedulerLogSink
 }
 
 /**
@@ -167,6 +174,9 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
   private state: CollabRoomAccount
   /** 广播序号 —— 只给没有天然身份的动词派生事件 id 用(见 `collabRoomEventId`)。 */
   private broadcastOrdinal = 0
+  private readonly schedulerLog: CollabSchedulerLogSink | undefined
+  /** 撞闸闩锁:同一只手同一道闸只记一行(见 `deriveCollabSchedulerLogRows`)。 */
+  private readonly blockLatch: CollabSchedulerBlockLatch = new Map()
 
   constructor(options: CollabRoomActorOptions) {
     super({ ...options, id: `room:${options.roomId}` })
@@ -175,6 +185,7 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     this.accountStore = options.store ?? createCollabRoomAccountFileStore()
     this.state = this.accountStore.load(options.roomId)
     this.ids = { newMessageId: seed => this.host.newMessageId(seed) }
+    this.schedulerLog = options.schedulerLog
   }
 
   /** 当前的账。只读快照 —— 外面改它不会改到房间。 */
@@ -209,10 +220,14 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
    * 因为它们是副作用而重放不要副作用;返回的 effects 就是那张待执行清单。
    */
   decide(verb: CollabActorVerb): CollabRoomEffects {
+    const before = this.state
     const step = this.route(verb)
     this.state = step.account
     // 账先于一切。这一行之后,即使进程当场没了,重启也知道牌发过、链走到哪。
     this.accountStore.save(this.state)
+    // 记账排在落账**之后**:时间轴是诊断,不该跑在真账前面(那样一次崩溃会留下
+    // 「账上没发牌,时间轴上发了」这种自相矛盾的现场)。
+    this.recordSchedulerStep(before, step.effects, verb)
     return step.effects
   }
 
@@ -282,23 +297,65 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
 
   /** 换代:代数 +1,在外的牌全部作废。用户喊停 / 房间被冻住走这条。 */
   async bumpEpoch(reason: CollabFloorRevokeReason): Promise<void> {
+    const before = this.state
     const step = bumpCollabRoomEpoch(this.state, reason, this.host.now())
     this.state = step.account
     this.accountStore.save(this.state)
+    this.recordSchedulerStep(before, step.effects)
     await this.commit(step.effects)
   }
 
   /** 过期回收 + 立刻补发。宿主定期调(牌带 ttl 时才有事做)。 */
   async sweepExpiredLeases(): Promise<void> {
+    const before = this.state
     const step = pruneCollabRoomFloor(this.state, this.gates(), this.ids)
     this.state = step.account
     this.accountStore.save(this.state)
+    this.recordSchedulerStep(before, step.effects)
     await this.commit(step.effects)
   }
 
   /** C4 快照协议的供数面(§5「renderer 几乎不改」)。 */
   snapshot(): CollabCoordinatorState {
-    return buildCollabRoomActorSnapshot({ account: this.state, gates: this.gates() })
+    return buildCollabRoomActorSnapshot({
+      account: this.state,
+      gates: this.gates(),
+      // 「持牌等大脑」与「生成中」的分界:登记簿是唯一说得出后者的地方(D8 §1)。
+      executingLeaseIds: new Set(collabV3TurnsInRoom(this.roomId).map(turn => turn.leaseId)),
+      deadLetterCount: this.deadLetterCount,
+    })
+  }
+
+  /**
+   * 一次房间转换 → 时间轴上的几行。**账本在房间这侧的唯一写入点**。
+   *
+   * 三个调用点(`decide` / `bumpEpoch` / `sweepExpiredLeases`)是三种不同的状态转换,
+   * 不是同一类行的三个产生者 —— 派生规则只有一条,在纯层的
+   * `deriveCollabSchedulerLogRows` 里,「一类一点」的纪律落在那儿。
+   *
+   * 全程吞错:观测不能变成第二个故障源。
+   */
+  private recordSchedulerStep(
+    before: CollabRoomAccount,
+    effects: CollabRoomEffects,
+    verb?: CollabActorVerb,
+  ): void {
+    const sink = this.schedulerLog
+    if (!sink) return
+    try {
+      const rows = deriveCollabSchedulerLogRows({
+        ...(verb ? { verb } : {}),
+        before,
+        after: this.state,
+        effects,
+        gates: this.gates(),
+        at: this.host.now(),
+        latch: this.blockLatch,
+      })
+      for (const row of rows) sink.append(this.roomId, row)
+    } catch (error) {
+      console.warn(`[collab-v3] 房间 ${this.roomId} 的调度记账失败(调度照跑):`, error)
+    }
   }
 
   /**
@@ -455,10 +512,24 @@ export function buildCollabRoomActorSnapshot(options: {
   account: CollabRoomAccount
   gates: CollabRoomGates
   at?: number
+  /**
+   * 此刻真在生成的那几张牌(turn-context 登记簿)。
+   *
+   * 缺席 = 一张都不在生成 —— 对没接登记簿的调用方(重放、纯测试)这是**真的**:
+   * 那些环境里根本没有引擎在跑。
+   */
+  executingLeaseIds?: ReadonlySet<string>
+  /** 这间房的 actor 处理事件失败了几次。缺席 = 0。 */
+  deadLetterCount?: number
 }): CollabCoordinatorState {
   const { account, gates } = options
   const leases = collabRoomActiveLeases(account, gates.now)
   const holders = collabRoomHolders(account, gates.now)
+  const executing = options.executingLeaseIds
+  // 举手全体同闸:闸是房间级的,而队里每一只手此刻卡的是同一道(见
+  // `resolveCollabRoomHandBlock` 的次序说明)。现算一次,逐行抄。
+  const blockedBy = account.hands.length > 0 ? resolveCollabRoomHandBlock(account, gates) : 'seats'
+  const phase = buildCollabRoomActorPhaseView(account)
 
   return {
     roomSessionId: account.roomId,
@@ -477,11 +548,13 @@ export function buildCollabRoomActorSnapshot(options: {
       reason: account.leaseReasons[lease.leaseId] ?? '',
       startedAt: lease.issuedAt,
       agentSessionId: lease.leaseId,
+      executing: executing?.has(lease.leaseId) === true,
     })),
     queue: account.hands.map(hand => ({
       id: `hand:${hand.agentId}`,
       agentId: hand.agentId,
       reason: hand.reason,
+      blockedBy,
     })),
     // 一扇窗 = 一次调用,所以这一格只会是 0 或 1(v2 那侧是 N)。
     judging: account.judgment?.state === 'pending' ? 1 : 0,
@@ -498,6 +571,53 @@ export function buildCollabRoomActorSnapshot(options: {
     },
     plan: buildCollabRoomActorPlanView(account),
     log: [],
+    judgment: buildCollabRoomActorJudgmentView(account),
+    ...(phase ? { phase } : {}),
+    deadLetterCount: options.deadLetterCount ?? 0,
+  }
+}
+
+/**
+ * 裁决窗 → C4 的四态视图(D8 §3.2)。
+ *
+ * `resolved` 映到 `idle` 是对的:答案已经兑现成牌了,窗对用户而言就是关着的。
+ * `degraded` **必须单独一格** —— 它在旧的 `judging: 0` 里与「没有裁决在跑」长得
+ * 一模一样,而那是一次必须修的链断。
+ *
+ * `debouncing` 在 v3 没有产生点(房间是事件驱动开窗,不防抖),所以这里给不出它 ——
+ * 这不是遗漏,是 v3 的事实。
+ */
+function buildCollabRoomActorJudgmentView(account: CollabRoomAccount): CollabCoordinatorJudgment {
+  const judgment = account.judgment
+  if (!judgment) return { state: 'idle' }
+  if (judgment.state === 'pending') {
+    return {
+      state: 'inflight',
+      candidates: account.hands.map(hand => hand.agentId),
+      since: judgment.openedAt,
+    }
+  }
+  if (judgment.state === 'degraded') {
+    // 降级的成因(超时/读不懂/端口炸)在裁判那侧,账里只留下「降级了」。
+    // 给一句诚实的占位而不是编一个原因 —— 完整成因在时间轴的 judge-degraded 行上。
+    return { state: 'degraded', reason: judgment.why ?? 'unspecified', at: judgment.openedAt }
+  }
+  return { state: 'idle' }
+}
+
+/** 相位 → C4 视图。`phase` 策略之外没有相位。 */
+function buildCollabRoomActorPhaseView(
+  account: CollabRoomAccount,
+): CollabCoordinatorState['phase'] {
+  if (!account.phase && account.policy.name !== 'phase') return undefined
+  const activeRooms = account.policy.params?.activeRooms
+  const suspended = activeRooms && activeRooms.length > 0 && !activeRooms.includes(account.roomId)
+    ? account.hands.length
+    : 0
+  return {
+    name: account.phase ?? '',
+    ...(activeRooms ? { activeRooms: [...activeRooms] } : {}),
+    suspendedHands: suspended,
   }
 }
 

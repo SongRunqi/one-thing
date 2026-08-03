@@ -126,6 +126,13 @@ export interface CollabRefereeActorOptions {
   timeoutMs?: number
   /** 裁决出错时的观测口。不给就往 console 记一行。 */
   onError?(error: unknown, request: CollabRoomJudgmentRequest): void
+  /**
+   * 判完一次的观测口(D8 §3.3 的 `judge-verdict` / `judge-degraded` **唯一产生点**)。
+   *
+   * 挂在这里而不是 `judge` 端口上:端口是可替换的(脚本化的那个也要能被观测到),
+   * 而「这间房刚判了一次」这件事的属主只有 actor 一个。
+   */
+  onJudged?(trace: CollabRefereeTrace): void
 }
 
 /** 一次裁决的账 —— 测试与排障读它(判了几次、降级过几次)。 */
@@ -139,6 +146,16 @@ export interface CollabRefereeTrace {
   /** 没买模型调用(没人举手 / 端口都不用问)。 */
   skipped?: boolean
   reason?: 'no-candidates' | 'timeout' | 'error' | 'unreadable'
+  /**
+   * 这一次判决花了多久(ms),以及裁判给的一句话理由、买调用用的模型。
+   *
+   * 三格在 D8 之前都是**用完即弃**:`why` 只进了房账的一格(还会被下一次覆盖),
+   * `elapsedMs` 与 `model` 根本没人接。「刚才为什么没人理我」从猜变成查,靠的就是
+   * 它们落进时间轴(蓝图 §3.3)。
+   */
+  elapsedMs: number
+  why?: string
+  model?: string
 }
 
 /* ── actor ───────────────────────────────────────────────────────────────── */
@@ -150,6 +167,7 @@ export class CollabRefereeActor {
   private readonly judge: CollabRefereeJudgePort
   private readonly timeoutMs: number
   private readonly onError: CollabRefereeActorOptions['onError']
+  private readonly onJudged: CollabRefereeActorOptions['onJudged']
   /**
    * 每间房在飞的那一次裁决。
    *
@@ -167,6 +185,7 @@ export class CollabRefereeActor {
     this.judge = options.judge
     this.timeoutMs = options.timeoutMs ?? COLLAB_REFEREE_TIMEOUT_MS
     this.onError = options.onError
+    this.onJudged = options.onJudged
   }
 
   /** 判过的每一次。O(1) 的测试数它的长度。 */
@@ -242,11 +261,14 @@ export class CollabRefereeActor {
   /* ── 内部 ──────────────────────────────────────────────────────────────── */
 
   private async run(request: CollabRoomJudgmentRequest): Promise<CollabRefereeVerdict> {
+    // 计时从**接住这扇窗**起算,不是从发出请求起算:候选现取、材料拼装、provider
+    // 解析都在这条路上,而「判一次要多久」问的是用户等了多久,不是网络往返多久。
+    const startedAt = this.host.now()
     const candidates = this.host.candidates(request.roomId)
     if (candidates.length === 0) {
       // 没人举手 = 没什么可排的。**不买调用** —— 这是一个答案(空裁决),不是失败:
       // 房间据此关窗,而不是回落 FIFO 去发一个空队列。
-      this.traces.push({
+      this.record({
         roomId: request.roomId,
         token: request.token,
         candidateCount: 0,
@@ -254,6 +276,7 @@ export class CollabRefereeActor {
         degraded: false,
         skipped: true,
         reason: 'no-candidates',
+        elapsedMs: this.host.now() - startedAt,
       })
       return { token: request.token, grants: [] }
     }
@@ -287,13 +310,16 @@ export class CollabRefereeActor {
         this.timeoutMs,
         { token: request.token, grants: [], degraded: true },
       )
-      this.traces.push({
+      this.record({
         roomId: request.roomId,
         token: request.token,
         candidateCount: candidates.length,
         grants: [...verdict.grants],
         degraded: verdict.degraded === true,
         ...(verdict.degraded ? { reason: 'unreadable' as const } : {}),
+        elapsedMs: this.host.now() - startedAt,
+        ...(verdict.why ? { why: verdict.why } : {}),
+        ...(verdict.model ? { model: verdict.model } : {}),
       })
       // token 对不上的答案当降级处理:端口答的是另一扇窗,拿它去发牌是错的,而
       // 沉默会把房间挂住。
@@ -304,15 +330,31 @@ export class CollabRefereeActor {
     } catch (error) {
       if (this.onError) this.onError(error, request)
       else console.error('[collab-referee] 裁决失败,回落举手 FIFO:', error)
-      this.traces.push({
+      this.record({
         roomId: request.roomId,
         token: request.token,
         candidateCount: candidates.length,
         grants: [],
         degraded: true,
         reason: 'error',
+        elapsedMs: this.host.now() - startedAt,
       })
       return { token: request.token, grants: [], degraded: true }
+    }
+  }
+
+  /**
+   * 记一次裁决 + 喊一次观测口。**判决账的唯一产生点**。
+   *
+   * 观测口自己炸了不能反过来打断裁决(与 ActorBase 的 dead-letter 钩子同一条纪律:
+   * 观测是旁路,旁路不许改主路的结果)。
+   */
+  private record(trace: CollabRefereeTrace): void {
+    this.traces.push(trace)
+    try {
+      this.onJudged?.(trace)
+    } catch (error) {
+      console.warn('[collab-referee] 裁决记账失败(裁决照走):', error)
     }
   }
 
@@ -364,6 +406,8 @@ export interface CollabScriptedJudgement {
   /** 授牌次序(agentId)。省略 = 空裁决(这轮谁都不该说)。 */
   grants?: string[]
   why?: string
+  /** 这一次是哪个模型答的(D8 观测:时间轴上 `judge-verdict` 的 `model` 那一格)。 */
+  model?: string
   /** 这一次答不上来 —— 降级链的测试造它。 */
   degraded?: boolean
   /** 这一次直接抛(端口崩溃的测试造它)。 */
@@ -410,6 +454,7 @@ export function createCollabScriptedRefereeJudgePort(
         token: request.token,
         grants: [...(next?.grants ?? [])],
         ...(next?.why ? { why: next.why } : {}),
+        ...(next?.model ? { model: next.model } : {}),
         ...(next?.degraded ? { degraded: true } : {}),
       })
     },

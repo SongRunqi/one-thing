@@ -155,13 +155,71 @@ export interface CollabCoordinatorTurn {
   startedAt: number
   /** 停它要打的那条执行会话 —— 「停」按钮的靶子,也是下钻的靶子。 */
   agentSessionId: string
+  /**
+   * 这张牌此刻**真在生成**吗(D8 观测体系 §1「词汇表修正」)。
+   *
+   * v3 特有的第三种状态:持牌 ≠ 在说话。牌发出去之后要先躺进那个 agent 的信箱,
+   * 等它的心智循环取到这一批才起跑 —— 而那颗大脑此刻可能正在**别的房**里思考。
+   * 「持牌等大脑」在 v2 的词汇表里根本没有对应词,于是状态条把它画成「发言中」,
+   * 用户看见的是一个在说话、实则一个字都还没写的人。
+   *
+   * 判据是 turn-context 登记簿(engine-mind-port 登记的在飞回合),不是租约表 ——
+   * 租约只证明「轮到它了」。
+   */
+  executing: boolean
 }
+
+/**
+ * 一只举着的手卡在哪道闸上(D8 §3.2)。
+ *
+ * 「排队中」在 v2 是一个笼统词,而它底下是六件成因完全不同的事:等裁决(正常,
+ * 几秒后自解)、等座位(并发满,自解)、链闸(要人说句话才解)、相位挂起(要换相)、
+ * 冻结(要用户解冻)、预算(要等明天或改配额)。前两个不用管,后四个必须有人动手,
+ * 而在这一格之前它们在界面上长得一模一样。
+ *
+ * 这是**快照组装时现算的判据,不落账** —— 它是解释不是状态。
+ */
+export type CollabCoordinatorBlockedBy =
+  | 'judging'
+  | 'seats'
+  | 'chain'
+  | 'phase'
+  | 'frozen'
+  | 'budget'
 
 /** 一条排队等发言的激活。 */
 export interface CollabCoordinatorQueued {
   id: string
   agentId: string
   reason: string
+  /** 卡在哪道闸上(见 `CollabCoordinatorBlockedBy`)。 */
+  blockedBy: CollabCoordinatorBlockedBy
+}
+
+/**
+ * 裁决窗的四态(D8 §3.2)。
+ *
+ * 判别联合而不是几个平行布尔:`degraded` 必须带 `reason`、`inflight` 必须带候选,
+ * 而平行布尔允许「降级了但没有理由」这种组装不出来的状态存在于类型里。
+ *
+ * `debouncing` 今天在 v3 里没有产生点(房间是事件驱动开窗,没有防抖窗口),
+ * 留在联合里是因为它是**状态条要画的一格**(蓝图 §4.1 的虚点倒计时):裁决改算法
+ * 时加防抖不该再动一次 wire 契约。读者按「还没开始问」处理。
+ */
+export type CollabCoordinatorJudgment =
+  | { state: 'idle' }
+  | { state: 'debouncing'; opensAt: number }
+  | { state: 'inflight'; candidates: string[]; since: number }
+  /** 降级要**亮牌**:回落 FIFO 是一次失败,不是一个答案(referee-rules 的同一条教训)。 */
+  | { state: 'degraded'; reason: string; at: number }
+
+/** 相位(`phase` 策略)。没有相位的房间这一格缺席。 */
+export interface CollabCoordinatorPhase {
+  name: string
+  /** 这一相里能发牌的房。 */
+  activeRooms?: string[]
+  /** 因为不在活跃相而挂起的手数 —— 「没人理我」的第四种成因。 */
+  suspendedHands: number
 }
 
 /** 一道闸的读数。`max` 为 0 表示这道闸关着(不限)。 */
@@ -288,6 +346,25 @@ export interface CollabCoordinatorState {
   } | null
   /** 最近的调度事件,**旧在前**。 */
   log: CollabCoordinatorLogEntry[]
+  /**
+   * 裁决窗此刻的状态(D8 §3.2)。
+   *
+   * 与上面 `judging` / `judgingAgentIds` 两格并存而不是替换它们:那两格是 C4 立下的
+   * 形状,状态条今天读的就是它们。这一格说的是**同一件事的四态**,多出来的是
+   * 「降级」——一次回落 FIFO 在旧两格里表现为 `judging: 0`,与「没有裁决在跑」
+   * 一模一样,而它恰恰是必须修的那一类。
+   */
+  judgment: CollabCoordinatorJudgment
+  /** 相位(`phase` 策略);其余三档没有相位。 */
+  phase?: CollabCoordinatorPhase
+  /**
+   * 这间房的 actor 处理事件失败了几次(只增计数;详情走调度时间轴)。
+   *
+   * 死信在 D8 之前是一个**没有消费者**的内存环:一封信炸了,循环继续跑,而系统
+   * 静默地变哑 —— 「它没回应」与「它试过但炸了」在界面上完全无法区分。这个数字
+   * 是那两者之间的第一条分界线。
+   */
+  deadLetterCount: number
 }
 
 export interface CollabCoordinatorGetRequest {
@@ -298,6 +375,67 @@ export interface CollabCoordinatorGetResponse {
   success: boolean
   error?: string
   state?: CollabCoordinatorState
+}
+
+// ── Agent 视角(D8 观测体系 §3.1)────────────────────────────────────────────
+//
+// 房间视角回答「这间房怎么了」,而 v3 把世界改成了 **agent 中心**:一个大脑、跨房
+// 的租约、一条持久信箱、一把工作卡。「这个人现在在干嘛」在房间那本账里根本问不出来
+// —— 它只看得见自己这间房里的那一格。这一族类型就是另一本账。
+//
+// 形态逐字照抄协调器那条已经跑通的链路(C4):一次 GET 冷启动 + 带**完整小快照**的
+// 会话事件(`collab:agent-changed`)。快照很小,而全量广播省掉了增量合并那一整类 bug。
+
+/** 一张在手的牌。 */
+export interface CollabAgentHeldLease {
+  roomSessionId: string
+  leaseId: string
+  since: number
+  /**
+   * 真在生成吗 —— 与 `CollabCoordinatorTurn.executing` 同一个判据、同一个理由。
+   * 一个人可以同时持三张牌而只在其中一间房里真的动着笔。
+   */
+  executing: boolean
+}
+
+/** 手上的一张工作卡(D4 子 actor)。 */
+export interface CollabAgentWorkerCard {
+  cardId: string
+  roomSessionId: string
+  status: 'running' | 'done' | 'interrupted'
+  since: number
+}
+
+/**
+ * 大脑此刻在哪。
+ *
+ * 「一个大脑」这条宪法的可观测形态:同一时刻至多在**一间**房里思考,所以这是一个
+ * 判别联合而不是一张房间表 —— 类型本身就说得出那条约束。
+ */
+export type CollabAgentMind =
+  | { state: 'idle' }
+  | { state: 'thinking'; roomSessionId: string; since: number }
+
+/**
+ * 一位同事此刻的活动快照。
+ *
+ * **永不携带消息正文**(保密纪律,蓝图 §7):信箱只给深度与最旧时刻,工作卡只给
+ * 卡号与状态。正文只在房间转录里,按成员表的可见性走。
+ */
+export interface CollabAgentActivitySnapshot {
+  agentId: string
+  /** 每 agent 单调,发射时 +1(C4 纪律:渲染层据此丢弃比屏幕更旧的包)。 */
+  seq: number
+  /** 快照生成时刻(ms)。陈旧兜底挂在它上面。 */
+  at: number
+  mind: CollabAgentMind
+  heldLeases: CollabAgentHeldLease[]
+  /** 信箱积压。深度用游标差现算(O(1)),不数文件行。 */
+  inbox: { depth: number; oldestAt?: number }
+  workers: CollabAgentWorkerCard[]
+  lastSpokeAt?: number
+  /** 只增计数;详情走调度时间轴(与房间快照同一条纪律)。 */
+  deadLetterCount: number
 }
 
 /** Update room budgets. Only provided fields change; 0 disables that gate. */

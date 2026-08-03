@@ -195,6 +195,10 @@ export function buildCollabCoordinatorState(roomSessionId: string): CollabCoordi
     },
     plan: null,
     log: [...(inspector?.log ?? [])],
+    // D8 的三格在这条空闲路径上同样是**真值**:没有 actor 就没有裁决窗、没有相位、
+    // 没有死信。给 0 与 idle 不是占位,是这间房此刻的实况。
+    judgment: { state: 'idle' },
+    deadLetterCount: 0,
   }
 }
 

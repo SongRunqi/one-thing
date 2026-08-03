@@ -214,17 +214,19 @@ export function createCollabEngineRefereeJudgePort(
           timeoutMs,
           '',
         )
-        if (timedOut) return degraded(request.token, 'timeout')
-        if (request.signal?.aborted) return degraded(request.token, 'aborted')
+        if (timedOut) return { ...degraded(request.token, 'timeout'), model }
+        if (request.signal?.aborted) return { ...degraded(request.token, 'aborted'), model }
         // 解析在纯层 —— 读不懂同样回 `degraded`,四条兜底见 `parseCollabRefereeVerdict`。
-        return parseCollabRefereeVerdict(reply, {
+        const verdict = parseCollabRefereeVerdict(reply, {
           token: request.token,
           candidates: request.candidates.map(hand => hand.agentId),
           members: request.members,
         })
+        // 用完即弃的那一格接住了(D8 §3.3):模型名只进时间轴,不进动词。
+        return { ...verdict, model }
       } catch (error) {
         console.error('[collab-referee] 裁决调用失败:', error)
-        return degraded(request.token, timedOut ? 'timeout' : 'error')
+        return { ...degraded(request.token, timedOut ? 'timeout' : 'error'), model }
       } finally {
         clearTimeout(timer)
         request.signal?.removeEventListener('abort', cancelExternally)

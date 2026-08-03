@@ -39,15 +39,28 @@ function state(patch: Partial<CollabCoordinatorState> = {}): CollabCoordinatorSt
     },
     plan: null,
     log: [],
+    // D8 的三格:这一层的读数逻辑还没用到它们(UI 在 O2),但契约是必填的 ——
+    // 缺省给的是「空闲、没有相位、没有死信」,而那正是这些用例的前提。
+    judgment: { state: 'idle' },
+    deadLetterCount: 0,
     ...patch,
   }
 }
 
-const turn = (agentId: string, reason = 'relay') => ({
+const turn = (agentId: string, reason = 'relay', executing = false) => ({
   agentId,
   reason,
   startedAt: 1_000,
   agentSessionId: `agent-exec-${agentId}-room-1`,
+  executing,
+})
+
+/** 一条排队的手。`blockedBy` 缺省「等座位」—— 六道闸里最无害的那一格。 */
+const queued = (id: string, agentId: string, reason: string) => ({
+  id,
+  agentId,
+  reason,
+  blockedBy: 'seats' as const,
 })
 
 describe('常驻条', () => {
@@ -107,7 +120,7 @@ describe('常驻条', () => {
 
   it('只有队列时报排队人数', () => {
     const bar = buildCoordinatorBar(
-      state({ queue: [{ id: 'q1', agentId: 'b', reason: 'mention' }] }),
+      state({ queue: [queued('q1', 'b', 'mention')] }),
       name,
     )
     expect(bar.text).toBe('1 人排队中')
@@ -119,7 +132,7 @@ describe('现在', () => {
     const rows = buildCoordinatorNowRows(
       state({
         turns: [turn('a', 'relay')],
-        queue: [{ id: 'q1', agentId: 'b', reason: 'mention' }],
+        queue: [queued('q1', 'b', 'mention')],
         judging: 1,
       }),
       name,

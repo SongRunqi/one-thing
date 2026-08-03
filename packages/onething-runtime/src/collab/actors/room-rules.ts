@@ -415,6 +415,54 @@ export function collabRoomActiveLeases(account: CollabRoomAccount, now: number):
   return activeFloorLeases(account.floor, now)
 }
 
+/**
+ * 一只举着的手卡在哪道闸上(D8 观测体系 §1「词汇表修正」)。
+ *
+ * 「排队中」在 v2 是一个笼统词,而它底下是六件成因完全不同的事 —— 前两个几秒后自解
+ * (等裁决、等座位),后四个**必须有人动手**(链闸要人说句话、相位要换相、冻结要
+ * 解冻、预算要改配额)。在这个函数之前它们在界面上长得一模一样,于是「怎么没人理我」
+ * 这个问题只能靠猜。
+ *
+ * **现算,不落账** —— 它是解释不是状态:账里已经有全部素材(手、牌、闸、窗、相),
+ * 再存一份就是第二本会漂的账。
+ *
+ * 次序照 `grantFloor` 里那几道闸的真实先后:冻结 → 预算 → 裁决窗 → 相位 → 座位 →
+ * 链。读错次序的症状是"显示卡在链闸,实际是房间冻着",而那两句话要用户做的事完全
+ * 不同。
+ *
+ * 与 wire 侧的 `CollabCoordinatorBlockedBy` 是同一套六个值,两份而不是一份:纯层
+ * 不许引 shared 的 IPC 契约(边界检查器钉着),而这个判据的家在房账这边。装配层
+ * 把它抄进快照时两边逐值对齐,app 层有测试钉住。
+ */
+export type CollabRoomHandBlock =
+  | 'frozen'
+  | 'budget'
+  | 'judging'
+  | 'phase'
+  | 'seats'
+  | 'chain'
+
+export function resolveCollabRoomHandBlock(
+  account: CollabRoomAccount,
+  gates: CollabRoomGates,
+): CollabRoomHandBlock {
+  if (gates.frozen) return 'frozen'
+  if (gates.overBudget) return 'budget'
+  // 窗开着 = 手全部挂起等一个答案(那正是 O(1) 的定义)。
+  if (account.judgment?.state === 'pending') return 'judging'
+  if (account.policy.name === 'phase') {
+    const activeRooms = account.policy.params?.activeRooms
+    // `activeRooms` 缺席 = 这一相没划活跃房(全房都活跃),不算挂起。
+    if (activeRooms && activeRooms.length > 0 && !activeRooms.includes(account.roomId)) return 'phase'
+  }
+  const seats = gates.maxConcurrent
+  if (seats > 0 && collabRoomActiveLeases(account, gates.now).length >= seats) return 'seats'
+  if (Number.isFinite(gates.maxChain) && account.chainCount >= gates.maxChain) return 'chain'
+  // 六道闸都开着还举着手 = 这一批刚判完、牌马上就到。归到「等座位」是最不误导的
+  // 一格:它说的是"轮到你了,再等一下",而不是"有人拦着你"。
+  return 'seats'
+}
+
 /* ── 链账:唯一的一条公式 ────────────────────────────────────────────────── */
 
 /** 链账认得的两种事件。其余动词与链无关。 */

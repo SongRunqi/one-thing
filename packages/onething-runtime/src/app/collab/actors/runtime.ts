@@ -63,6 +63,8 @@ import {
   collabAgentSpeak,
   collabRoomActiveLeases,
   collabWorkerRunningForCard,
+  collabSchedulerJudgeDegraded,
+  collabSchedulerJudgeVerdict,
   createCollabHeuristicHandEvaluator,
   createCollabRoomAccount,
   resolveCollabRoomFloorPolicy,
@@ -127,6 +129,12 @@ import { createCollabEngineRefereeJudgePort } from './referee-judge.js'
 import { collabRoomActorsDir, createCollabRoomAccountFileStore } from './room-account.js'
 import { CollabRoomActor, type CollabRoomActorHost } from './room-actor.js'
 import {
+  createCollabDeadLetterSink,
+  createCollabSchedulerLogFileStore,
+  sweepCollabSchedulerLogs,
+  type CollabSchedulerLogStore,
+} from './scheduler-log.js'
+import {
   clearCollabV3Turns,
   collabV3TurnsInRoom,
   configureCollabV3RoomPostPort,
@@ -178,6 +186,8 @@ interface RuntimeState {
   judgments: Map<string, { timer: ReturnType<typeof setTimeout>; request: CollabRoomJudgmentRequest }>
   slots: CollabWorkerSlotLedger
   referee: CollabRefereeActor
+  /** 调度时间轴的落盘面(D8 §3.3)。三个产生点共用同一个实例。 */
+  schedulerLog: CollabSchedulerLogStore
   disposers: Array<() => void>
   /** 收摊闩:置位之后不再开新 actor,在飞的收尾照常跑完。 */
   stopping: boolean
@@ -254,6 +264,7 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
     mind: options.ports?.mind ?? createCollabEngineMindPort(),
     worker: options.ports?.worker ?? createCollabEngineWorkerPort(),
   }
+  const schedulerLog = createCollabSchedulerLogFileStore()
   const runtime: RuntimeState = {
     rooms: new Map(),
     agents: new Map(),
@@ -266,12 +277,42 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
       refereeId: 'referee',
       host: refereeHost(),
       judge: options.ports?.judge ?? createCollabEngineRefereeJudgePort(),
+      // 裁决的三格(why / elapsedMs / model)在这里被接住 —— 时间轴上
+      // `judge-verdict` / `judge-degraded` 两类行的唯一产生点(D8 §3.3)。
+      onJudged: trace => {
+        schedulerLog.append(trace.roomId, trace.degraded
+          ? collabSchedulerJudgeDegraded({
+              at: Date.now(),
+              token: trace.token,
+              reason: trace.reason ?? 'unreadable',
+              elapsedMs: trace.elapsedMs,
+              triggeredBy: trace.token,
+            })
+          : collabSchedulerJudgeVerdict({
+              at: Date.now(),
+              token: trace.token,
+              order: [...trace.grants],
+              elapsedMs: trace.elapsedMs,
+              ...(trace.why ? { why: trace.why } : {}),
+              ...(trace.model ? { model: trace.model } : {}),
+              triggeredBy: trace.token,
+            }))
+      },
     }),
     disposers: [],
     stopping: false,
     ports,
+    schedulerLog,
   }
   state = runtime
+
+  // 清老:14 天前的时间轴文件。**在开箱之前**跑一次 —— 一间房刚被开箱就往
+  // 今天的文件里追加,而清老扫的是整个 collab 目录,顺序反了会多扫一遍新写的文件。
+  try {
+    sweepCollabSchedulerLogs()
+  } catch (error) {
+    console.warn('[collab-v3] 调度时间轴清老失败(不阻断启动):', error)
+  }
 
   // ② 令牌:与 v2 同一把锁、同一个门面(`drive-guard.ts`)。引擎的房/exec 两道
   //    门认的是"这一条命令带的令牌等于本进程当前发出去的那一个",而令牌的
@@ -422,7 +463,13 @@ async function ensureRoom(roomId: string): Promise<RoomEntry | undefined> {
       dir: collabRoomActorsDir(roomId),
       ownerId: roomId,
     })
-    const actor = new WiredRoomActor({ roomId, host: roomHost(), mailbox })
+    const actor = new WiredRoomActor({
+      roomId,
+      host: roomHost(),
+      mailbox,
+      schedulerLog: runtime.schedulerLog,
+      onDeadLetter: deadLetterSink(`room:${roomId}`, roomId),
+    })
     const entry: RoomEntry = { roomId, actor, mailbox }
     runtime.rooms.set(roomId, entry)
     // 续播在起循环**之前**:账里那几条在飞广播是上一条命留下的,先补完再收新信,
@@ -478,6 +525,8 @@ async function ensureAgent(agentId: string): Promise<AgentEntry | undefined> {
       onWorkerFailure: failure => {
         console.error(`[collab-v3] ${agentId} 的手 ${failure.workerId} 失败:`, failure.error)
       },
+      schedulerLog: runtime.schedulerLog,
+      onDeadLetter: deadLetterSink(`agent:${agentId}`),
     })
     const entry: AgentEntry = { agentId, actor, mailbox }
     runtime.agents.set(agentId, entry)
@@ -536,6 +585,23 @@ class WiredRoomActor extends CollabRoomActor {
     broadcastCollabCoordinator(this.roomId)
     return effects
   }
+}
+
+/**
+ * 死信的三路出口(D8 §3.4)。实现在 `scheduler-log.ts` 的
+ * `createCollabDeadLetterSink` —— 这里只是把它接到两类 actor 上。
+ */
+function deadLetterSink(
+  actorId: string,
+  fallbackRoomId?: string,
+): ReturnType<typeof createCollabDeadLetterSink> {
+  return createCollabDeadLetterSink({
+    actorId,
+    ...(fallbackRoomId ? { roomId: fallbackRoomId } : {}),
+    // 装配时运行时一定在(两个调用点都在 `ensureRoom` / `ensureAgent` 里),
+    // 但闭包活得比它长 —— 收摊之后的迟到死信写进一份孤儿 store 好过 NPE。
+    log: { append: (roomId, row) => state?.schedulerLog.append(roomId, row) },
+  })
 }
 
 /* ── 投递 ─────────────────────────────────────────────────────────────── */

@@ -60,6 +60,8 @@ function snapshot(patch: Partial<CollabCoordinatorState> = {}): CollabCoordinato
     },
     plan: null,
     log: [],
+    judgment: { state: 'idle' },
+    deadLetterCount: 0,
     ...patch,
   }
 }

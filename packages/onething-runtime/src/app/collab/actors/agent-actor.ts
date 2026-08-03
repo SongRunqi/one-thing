@@ -59,6 +59,8 @@ import {
   buildCollabFoldedEnvelope,
   buildCollabMindDrive,
   buildCollabWorkerFoldEntry,
+  collabSchedulerWorkerResult,
+  collabSchedulerWorkerSpawn,
   clearCollabAgentHand,
   collabAgentSpawnWorker,
   collabWorkerRunning,
@@ -95,6 +97,8 @@ import {
   type CollabRoomMembershipChangedVerb,
   type CollabRoomPhaseChangedVerb,
   type CollabRoomPostedVerb,
+  type CollabSchedulerLogRow,
+  type CollabSchedulerLogSink,
 } from '@onething/runtime/collab/actors'
 
 import {
@@ -256,6 +260,14 @@ export interface CollabAgentActorOptions
   worker?: CollabAgentWorkerOptions
   /** 一只手炸了的观测钩子。 */
   onWorkerFailure?: (failure: CollabAgentWorkerFailure) => void
+  /**
+   * 调度时间轴(D8 §3.3)。缺省不记。
+   *
+   * 这里记的只有两类:`worker-spawn` 与 `worker-result` —— 它们是**这个 actor**
+   * 转换的状态(工作卡的子清单在 agent 账里)。发言、举手、让位那几类归房间记,
+   * 因为改的是房账;两边各记各的,一件事永远只有一个产生点。
+   */
+  schedulerLog?: CollabSchedulerLogSink
 }
 
 interface InFlightTurn {
@@ -294,6 +306,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
   private readonly worker: CollabAgentWorkerOptions | undefined
   private readonly workerSlots: CollabWorkerSlotLedger
   private readonly onWorkerFailure: ((failure: CollabAgentWorkerFailure) => void) | undefined
+  private readonly schedulerLog: CollabSchedulerLogSink | undefined
   private readonly workerFailures: CollabAgentWorkerFailure[] = []
   /** 在外的手,按 workerId。**内存态** —— 跨重启的那一面在账的子清单里。 */
   private readonly children = new Map<string, CollabWorkerChildActor>()
@@ -326,6 +339,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     this.worker = options.worker
     this.workerSlots = options.worker?.slots ?? createCollabWorkerSlotLedger()
     this.onWorkerFailure = options.onWorkerFailure
+    this.schedulerLog = options.schedulerLog
     // 别人放开一个槽位,轮到我排队的那张卡走了 —— 不订这一条,全局闸会把跨
     // agent 的队列饿死(见 `CollabWorkerSlotLedger.onRelease`)。
     this.unsubscribeSlots = options.worker
@@ -753,6 +767,14 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       startedAt: at,
       ...(verb.workSessionId ? { workSessionId: verb.workSessionId } : {}),
     })))
+    // 派手记账 —— 排在落账之后、派生之前:时间轴不该跑在真账前面(D8 §3.3)。
+    this.recordSchedulerRow(verb.roomId, collabSchedulerWorkerSpawn({
+      at,
+      agentId: this.agentId,
+      workerId: verb.workerId,
+      cardId: verb.cardId,
+      triggeredBy: verb.cardId,
+    }))
     this.workerSlots.acquire()
 
     const child = new CollabWorkerChildActor({
@@ -813,7 +835,32 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       outcome: verb.outcome,
       at,
     }))
+    // 交活记账。**只带终局枚举,不带 summary** —— 那句话是模型写的正文,归工作会话
+    // 与看板的报告字段,不进这本谁都能 `cat` 的诊断账(保密纪律,蓝图 §7)。
+    this.recordSchedulerRow(verb.roomId, collabSchedulerWorkerResult({
+      at,
+      agentId: this.agentId,
+      workerId: verb.workerId,
+      cardId: verb.cardId,
+      outcome: verb.outcome,
+      triggeredBy: verb.workerId,
+    }))
     await this.pumpWorkerQueue()
+  }
+
+  /**
+   * 往调度时间轴记一行。**工作卡两类行在这个 actor 里的唯一出口**。
+   *
+   * 按 `roomId` 归档:时间轴是按房落盘的(一间房的调度史读一个文件就够),而一只手
+   * 永远属于某一间房的某张卡。全程吞错 —— 观测不能变成第二个故障源。
+   */
+  private recordSchedulerRow(roomId: string, row: CollabSchedulerLogRow): void {
+    if (!this.schedulerLog) return
+    try {
+      this.schedulerLog.append(roomId, row)
+    } catch (error) {
+      console.warn(`[collab-v3] ${this.agentId} 的调度记账失败(照跑):`, error)
+    }
   }
 
   /**

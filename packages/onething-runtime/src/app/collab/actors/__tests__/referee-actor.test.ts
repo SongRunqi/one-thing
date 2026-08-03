@@ -26,6 +26,7 @@ import {
   CollabRefereeActor,
   createCollabScriptedRefereeJudgePort,
   type CollabRefereeActorHost,
+  type CollabRefereeTrace,
   type CollabScriptedJudgement,
 } from '../referee-actor.js'
 import { createCollabRoomAccountMemoryStore } from '../room-account.js'
@@ -56,6 +57,8 @@ function harness(options: {
   maxConcurrent?: number
   timeoutMs?: number
   referee?: boolean
+  /** D8 观测口:判完一次喊一声(时间轴上 judge-verdict / judge-degraded 的产生点)。 */
+  onJudged?: (trace: CollabRefereeTrace) => void
 } = {}): Harness {
   const roomId = 'room-1'
   let clock = 1_000
@@ -108,6 +111,7 @@ function harness(options: {
     host: refereeHost,
     judge: judgePort,
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+    ...(options.onJudged ? { onJudged: options.onJudged } : {}),
     onError: () => {},
   })
 
@@ -392,5 +396,91 @@ describe('换档', () => {
     expect(h.room.account.policyState?.ringCursor).toBe(1)
     await h.referee.setFloorPolicy('room-1', 'waves', { waves: [['cy']] })
     expect(h.room.account.policyState?.ringCursor).toBeUndefined()
+  })
+})
+
+/* ── D8 观测:判决账 ─────────────────────────────────────────────────────── */
+
+describe('判决账(D8 §3.3)', () => {
+  it('判完一次喊一声,而且**why / elapsedMs / model 三格都在**', async () => {
+    const seen: CollabRefereeTrace[] = []
+    const h = harness({
+      script: [{ roomId: 'room-1', grants: ['bo'], why: '阿波手上正好有那张卡', model: 'gpt-5-mini' }],
+      onJudged: trace => { seen.push(trace) },
+    })
+    await h.post('这版排期谁来看看?', 'm1')
+    await h.raise('ana', 'm1')
+    await h.raise('bo', 'm1')
+    await h.settle()
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({
+      roomId: 'room-1',
+      degraded: false,
+      grants: ['bo'],
+      why: '阿波手上正好有那张卡',
+      model: 'gpt-5-mini',
+      candidateCount: 2,
+    })
+    // 三格在 D8 之前用完即弃 —— 这一条钉的就是「接住了」。
+    expect(typeof seen[0]?.elapsedMs).toBe('number')
+    expect(seen[0]?.elapsedMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('降级与空裁决在账上分得开 —— 前者是链断了,后者是读懂了的沉默', async () => {
+    const broken: CollabRefereeTrace[] = []
+    const silent: CollabRefereeTrace[] = []
+    const a = harness({
+      script: [{ roomId: 'room-1', degraded: true }],
+      onJudged: trace => { broken.push(trace) },
+    })
+    await a.post('第一次', 'm1')
+    await a.raise('ana', 'm1')
+    await a.settle()
+
+    const b = harness({
+      script: [{ roomId: 'room-1', grants: [] }],
+      onJudged: trace => { silent.push(trace) },
+    })
+    await b.post('第二次', 'm2')
+    await b.raise('bo', 'm2')
+    await b.settle()
+
+    // 同样是「没人被授牌」,账上一个是 `degraded`(必须修),一个不是(不用管)。
+    expect(broken[0]).toMatchObject({ degraded: true, reason: 'unreadable' })
+    expect(silent[0]).toMatchObject({ degraded: false, grants: [] })
+    expect(silent[0]?.reason).toBeUndefined()
+  })
+
+  it('没人举手 = 不买调用,但账上仍然有一行(「这一轮什么都没发生」也要说得出来)', async () => {
+    const seen: CollabRefereeTrace[] = []
+    // 不挂裁判:举手直接授牌,队里因此是空的 —— 这正是「没什么可排的」那个场景。
+    const h = harness({ referee: false, onJudged: trace => { seen.push(trace) } })
+    await h.post('随口一句', 'm1')
+    await h.raise('ana', 'm1')
+    await h.referee.adjudicate({
+      roomId: 'room-1',
+      token: 'room-1#J99',
+      openedAt: 1,
+      candidates: [],
+    })
+
+    expect(h.judgePort.calls).toHaveLength(0)
+    const skipped = seen.filter(trace => trace.skipped)
+    expect(skipped).toHaveLength(1)
+    expect(skipped[0]).toMatchObject({ reason: 'no-candidates', candidateCount: 0, degraded: false })
+  })
+
+  it('观测口自己炸了不打断裁决(旁路不许改主路)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const h = harness({
+      script: [{ roomId: 'room-1', grants: ['ana'] }],
+      onJudged: () => { throw new Error('观测口崩了') },
+    })
+    await h.post('谁来', 'm1')
+    await h.raise('ana', 'm1')
+    await expect(h.settle()).resolves.toBeUndefined()
+    expect(h.referee.judgements).toHaveLength(1)
+    warn.mockRestore()
   })
 })

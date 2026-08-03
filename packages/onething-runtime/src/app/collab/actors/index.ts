@@ -177,3 +177,28 @@ export type {
   CollabDuetReplayResult,
   CollabDuetRoomSpec,
 } from './agent-replay.js'
+
+/* ── D8:调度时间轴的落盘面 ─────────────────────────────────────────────── */
+
+/**
+ * 纯规则(行类型、构造、渲染/解析、按日切、房间转换 → 行)在
+ * `@onething/runtime/collab/actors` 的 `scheduler-log-rules.ts`。这边只有 fs。
+ */
+export {
+  COLLAB_SCHEDULER_LOG_TAIL_DEFAULT,
+  collabDeadLetterRoomId,
+  collabSchedulerLogPath,
+  createCollabDeadLetterSink,
+  createCollabSchedulerLogFileStore,
+  createCollabSchedulerLogMemoryStore,
+  listCollabSchedulerLogFiles,
+  readCollabSchedulerLogTail,
+  resetCollabSchedulerLogWarnings,
+  sweepCollabSchedulerLogs,
+} from './scheduler-log.js'
+export type {
+  CollabDeadLetterSinkOptions,
+  CollabSchedulerLogMemoryStore,
+  CollabSchedulerLogStore,
+  CollabSchedulerLogTailOptions,
+} from './scheduler-log.js'
