@@ -274,3 +274,32 @@ export type {
   CollabHandEvaluationInput,
   CollabHandEvaluator,
 } from './mind-rules.js'
+
+/* ── D5:v2 → v3 迁移的纯规则 ───────────────────────────────────────────── */
+
+export {
+  COLLAB_MIGRATION_BACKFILL_MAX,
+  COLLAB_V2_BACKUP_DIR_PREFIX,
+  COLLAB_V3_MIGRATION_MARKER_FILE,
+  COLLAB_V3_MIGRATION_VERSION,
+  formatCollabMigrationReport,
+  planCollabAgentRoomMigration,
+  planCollabRoomAccountMigration,
+  readCollabV2RoomState,
+  summarizeCollabMigration,
+} from './migrate-rules.js'
+export type {
+  CollabAgentRoomMigrationPlan,
+  CollabAgentRoomMigrationSummary,
+  CollabMigrationCheck,
+  CollabMigrationCheckStatus,
+  CollabMigrationRecipients,
+  CollabMigrationTotals,
+  CollabRoomMigrationEntry,
+  CollabRoomMigrationPlan,
+  CollabRoomMigrationStatus,
+  CollabRoomMigrationSummary,
+  CollabV2RoomStateView,
+  CollabV3MigrationMarker,
+  CollabV3MigrationReport,
+} from './migrate-rules.js'

@@ -155,6 +155,22 @@ export type {
   CollabScriptedRefereeJudgePort,
 } from './referee-actor.js'
 
+/* ── D5:迁移器 ─────────────────────────────────────────────────────────── */
+
+/**
+ * **不接宿主** —— 它没有 boot 触发点,只能被显式调用(`scripts/collab-v3-migrate.mjs`
+ * 与测试)。接进启动序列是 D6 的事:一趟单向门在切换之前不该有任何自动触发的机会。
+ */
+export {
+  collabStoreDir,
+  collabV2BackupDir,
+  collabV3AgentAccountExists,
+  collabV3MigrationMarkerPath,
+  migrateCollabToV3,
+  readCollabV3MigrationMarker,
+} from './migrate.js'
+export type { CollabV3MigrationOptions } from './migrate.js'
+
 export { collabDuetMembersOf, replayCollabDuet } from './agent-replay.js'
 export type {
   CollabDuetReplayOptions,
