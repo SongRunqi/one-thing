@@ -27,6 +27,7 @@ export * from "./builtin/variable.js";
 export * from "./builtin/goal.js";
 export * from "./builtin/board.js";
 export * from "./builtin/history.js";
+export * from "./builtin/notebook.js";
 export * from "./builtin/say.js";
 export * from "./builtin/radio.js";
 export * from "./builtin/practice.js";

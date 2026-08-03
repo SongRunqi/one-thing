@@ -95,8 +95,19 @@ export function collabVenueLinksRoom(venue: CollabVenue): boolean {
   return venue === 'work' || venue === 'agent'
 }
 
+/**
+ * 跨房笔记的工具面(Collab v3 D2,docs/design/collab-actor-v3.md §1.2)。
+ *
+ * **单独一格,不并进 `COLLAB_ROOM_TOOLS`**:那张表是 v2 房回合的地板,而 v2 的
+ * 调度链到 D6 才退役 —— 把 notebook 并进去,今天每一个 v2 房回合的请求里都会多
+ * 一个工具,而写下的笔记要等到 v3 接线才有人读。「只加不改」这条纪律在这里的
+ * 形态就是:表加一格,但先不挂到任何一个 session kind 上(见 `agents/profile.ts`
+ * 的 `collab-notebook` 那一行)。
+ */
+export const COLLAB_NOTEBOOK_TOOLS: readonly string[] = ['notebook']
+
 /** 有场子门的协作工具。用工具**注册名**,与模型看到的那个名字逐字一致。 */
-export type CollabVenueTool = 'send_message' | 'board' | 'history'
+export type CollabVenueTool = 'send_message' | 'board' | 'history' | 'notebook'
 
 /**
  * **一览表**:每个协作工具在哪些场子里成立。
@@ -118,6 +129,12 @@ export const COLLAB_TOOL_VENUES: Readonly<Record<CollabVenueTool, readonly Colla
   send_message: ['room', 'agent', 'work'],
   board: ['room', 'agent', 'work'],
   history: ['room', 'agent', 'work'],
+  // notebook 少一格 `room`,而这**不是**手滑:W18 之后房回合跑在执行会话里
+  // (`agent` 场子),`room` 场子的会话本身早就不承载回合了。给它开一格没有回合
+  // 的场子,等于给一条谁都不会走的路留一道门 —— 而每一道多余的门都是下一次
+  // 授权审计要重新论证的东西。普通对话(`chat`)同理不给:那里没有「别的房」,
+  // 一本跨房笔记在那个语境里只会是一个多出来的旋钮。
+  notebook: ['agent', 'work'],
 }
 
 /** 门本身。拒绝**文案**不在这里 —— 每个工具的那句话是它自己的资产(见各执行器)。 */

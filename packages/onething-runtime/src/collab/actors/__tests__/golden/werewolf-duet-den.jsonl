@@ -1,0 +1,2 @@
+{"id":"wd-1","role":"user","content":"@wolf-a 今晚刀谁?","timestamp":1200,"mentions":[{"agentId":"wolf-a","label":"wolf-a"}]}
+{"id":"wd-2","role":"assistant","agentId":"wolf-a","content":"刀四号,他发言太稳。","timestamp":1300}

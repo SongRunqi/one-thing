@@ -17,6 +17,7 @@
 
 import type { OnethingAgentDefinition, OnethingAgentModelBinding } from './store.js'
 import {
+  COLLAB_NOTEBOOK_TOOLS,
   COLLAB_ROOM_TOOLS,
   COLLAB_WORK_REQUIRED_TOOLS,
 } from '../collab/tool-surface.js'
@@ -52,6 +53,16 @@ export const AGENT_TOOL_GRANTS: readonly AgentToolGrant[] = [
   // 将来若再次收紧成 replace,私聊不会被连带收窄(托管私聊的本义就是替你干活)。
   { id: 'collab-dm', tools: COLLAB_ROOM_TOOLS, mode: 'union' },
   { id: 'collab-work', tools: COLLAB_WORK_REQUIRED_TOOLS, mode: 'union' },
+  /**
+   * Collab v3 D2 的跨房笔记(docs/design/collab-actor-v3.md §1.2)。
+   *
+   * **登记了,但暂时不由任何 session kind 隐含** —— `GRANTS_BY_SESSION_KIND` 里
+   * 没有指向它的那一行,要它的会话得在 agent 的 `toolGrants` 里显式点名。这不是
+   * 遗漏:v2 的调度链到 D6 才退役,今天把 notebook 挂进房/工作台的地板,等于让
+   * 每一个 v2 回合都多带一个工具,而写下的笔记要到 v3 接线才有人读。D6 接线时
+   * 这里改的是**一行**(把 `collab-notebook` 加进那两张 kind 表),不是一次重构。
+   */
+  { id: 'collab-notebook', tools: COLLAB_NOTEBOOK_TOOLS, mode: 'union' },
 ]
 
 /**

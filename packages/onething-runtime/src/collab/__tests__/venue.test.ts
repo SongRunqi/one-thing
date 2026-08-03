@@ -47,13 +47,26 @@ describe('collabVenueLinksRoom —— 谁的 collab.roomSessionId 作数', () =>
 describe('COLLAB_TOOL_VENUES —— 声明式一览', () => {
   const tools = Object.keys(COLLAB_TOOL_VENUES) as CollabVenueTool[]
 
-  it('三个协作工具在三个协作场子里成立,普通对话里一个都不成立', () => {
+  it('每个协作工具都在 agent / work 里成立,普通对话里一个都不成立', () => {
     for (const tool of tools) {
-      expect(isCollabToolAllowedInVenue(tool, 'room')).toBe(true)
       expect(isCollabToolAllowedInVenue(tool, 'agent')).toBe(true)
       expect(isCollabToolAllowedInVenue(tool, 'work')).toBe(true)
       expect(isCollabToolAllowedInVenue(tool, 'chat')).toBe(false)
     }
+  })
+
+  /**
+   * 发送/看板/历史三件都开着 `room` 那一格,notebook 没有。
+   *
+   * 一工具一行、而不是一句「协作工具都是这三格」,理由正在这里:W18 之后房回合
+   * 跑在执行会话(`agent` 场子)里,`room` 场子的会话不承载回合,所以 Collab v3
+   * 的 notebook 从一开始就不需要那一格。合并写法会让这次「单独收紧」无处落笔。
+   */
+  it('房场子那一格不是所有工具都开:notebook 只在 agent / work', () => {
+    for (const tool of ['send_message', 'board', 'history'] as CollabVenueTool[]) {
+      expect(isCollabToolAllowedInVenue(tool, 'room')).toBe(true)
+    }
+    expect(isCollabToolAllowedInVenue('notebook', 'room')).toBe(false)
   })
 
   /**

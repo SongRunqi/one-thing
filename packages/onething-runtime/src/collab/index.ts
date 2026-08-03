@@ -87,6 +87,7 @@ export {
 } from './agent-rules.js'
 export {
   COLLAB_CARD_SHORT_ID_CHARS,
+  escapeCollabPromptText,
   formatCollabCardShortId,
   matchCollabInlineTagAt,
   parseCollabInlineSegments,
@@ -343,6 +344,7 @@ export {
   type CollabWillingnessVerdict,
 } from './willingness.js'
 export {
+  COLLAB_NOTEBOOK_TOOLS,
   COLLAB_ROOM_TOOLS,
   COLLAB_WORK_REQUIRED_TOOLS,
   COLLAB_TOOL_VENUES,

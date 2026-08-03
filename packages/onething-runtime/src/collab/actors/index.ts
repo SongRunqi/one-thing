@@ -2,7 +2,9 @@
  * Collab v3 的 actor 面(`@onething/runtime/collab/actors`)。
  *
  * 这里是**协议**、**验收架**与**纯规则**:动词表(D0)、金重放架(D0)、
- * 房间的账与三道闸(D1 `room-rules.ts`)、发言策略族(D1 `floor-policy.ts`)。
+ * 房间的账与三道闸(D1 `room-rules.ts`)、发言策略族(D1 `floor-policy.ts`)、
+ * agent 的账与举手/drive 组装(D2 `mind-rules.ts`)、mailbox 折叠信封(D2
+ * `envelope-fold.ts`)、跨房笔记(D2 `notebook-rules.ts`)。
  * 带 IO 的那一半(落盘、mailbox、宿主端口)在 `@onething/app` 的
  * `collab/actors/`。设计:docs/design/collab-actor-v3.md。
  */
@@ -132,3 +134,72 @@ export type {
   CollabRoomStep,
   CollabRoomTranscriptMessage,
 } from './room-rules.js'
+
+export {
+  buildCollabFoldedEnvelope,
+  COLLAB_FOLD_ROOM_FALLBACK_LABEL,
+  COLLAB_FOLD_SELF_BUCKET,
+  COLLAB_FOLD_SPEAKER_FALLBACK_LABEL,
+  COLLAB_FOLD_USER_LABEL,
+  mergeCollabFoldEntries,
+} from './envelope-fold.js'
+export type {
+  BuildCollabFoldedEnvelopeOptions,
+  CollabFoldCardEntry,
+  CollabFoldEntry,
+  CollabFoldGotEntry,
+  CollabFoldMembersEntry,
+  CollabFoldPhaseEntry,
+  CollabFoldWorkerEntry,
+} from './envelope-fold.js'
+
+export {
+  buildCollabNotebookBlock,
+  clipCollabNotebookTail,
+  COLLAB_NOTEBOOK_ENTRY_CLIPPED_SUFFIX,
+  COLLAB_NOTEBOOK_ENTRY_MAX_CHARS,
+  COLLAB_NOTEBOOK_INJECT_MAX_CHARS,
+  COLLAB_NOTEBOOK_TAG,
+  COLLAB_NOTEBOOK_TRUNCATED_LINE,
+  formatCollabNotebookEntry,
+  formatCollabNotebookTime,
+} from './notebook-rules.js'
+export type {
+  BuildCollabNotebookBlockOptions,
+  CollabNotebookTail,
+  FormatCollabNotebookEntryOptions,
+} from './notebook-rules.js'
+
+export {
+  advanceCollabAgentDelivered,
+  advanceCollabAgentRead,
+  buildCollabMindDrive,
+  clearCollabAgentHand,
+  COLLAB_AGENT_ACCOUNT_VERSION,
+  COLLAB_AGENT_FOLD_BUFFER_MAX,
+  COLLAB_AGENT_FOLD_SEEN_MAX,
+  COLLAB_HAND_NOT_RAISED,
+  collabAgentLeaseOf,
+  collabAgentRoomAccount,
+  collabPostedSpeakerId,
+  createCollabAgentAccount,
+  createCollabHeuristicHandEvaluator,
+  dropCollabAgentLease,
+  normalizeCollabAgentAccount,
+  pushCollabAgentFold,
+  raiseCollabAgentHand,
+  recordCollabAgentLease,
+  recordCollabAgentTurn,
+  recordCollabAgentWorkerResult,
+  takeCollabAgentFold,
+} from './mind-rules.js'
+export type {
+  BuildCollabMindDriveOptions,
+  CollabAgentAccount,
+  CollabAgentFoldTake,
+  CollabAgentLeaseRecord,
+  CollabAgentRoomAccount,
+  CollabHandEvaluation,
+  CollabHandEvaluationInput,
+  CollabHandEvaluator,
+} from './mind-rules.js'

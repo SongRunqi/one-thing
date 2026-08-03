@@ -19,6 +19,7 @@ import { VariableTool } from './variable.js'
 import { GoalTool } from './goal.js'
 import { BoardTool } from '../../collab/board-tool.js'
 import { HistoryTool } from '../../collab/history-tool.js'
+import { NotebookTool } from '../../collab/actors/notebook-tool.js'
 import { SayTool, registerCollabSendMessageLegacyAlias } from '../../collab/say-tool.js'
 import { RadioTool } from './radio.js'
 import { PracticeTool } from './practice.js'
@@ -42,6 +43,9 @@ const builtinTools = [
   GoalTool,
   BoardTool,
   HistoryTool,
+  // Collab v3 D2:跨房私人笔记。场子门(agent/work)在 collab/tool-surface.ts,
+  // 所以普通对话看不到它 —— 注册是全局的,可见性不是。
+  NotebookTool,
   SayTool,
   RadioTool,
   PracticeTool,

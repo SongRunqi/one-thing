@@ -1,0 +1,4 @@
+{"id":"wv-1","role":"user","content":"开局。@judge 主持一下。","timestamp":1000,"mentions":[{"agentId":"judge","label":"judge"}]}
+{"id":"wv-2","role":"assistant","agentId":"judge","content":"天黑请闭眼,狼人请睁眼。","timestamp":1100}
+{"id":"wv-3","role":"user","content":"天亮了。@wolf-b 说说昨晚。","timestamp":1400,"mentions":[{"agentId":"wolf-b","label":"wolf-b"}]}
+{"id":"wv-4","role":"assistant","agentId":"wolf-b","content":"我昨晚睡得很沉,没听见动静。","timestamp":1500}

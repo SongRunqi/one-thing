@@ -45,10 +45,15 @@ RefereeActor（可选,每房或每局:相位控制/发言策略——它只是�
 agents-v3/<agentId>/
   inbox.jsonl          # 持久 mailbox:全部寻址到我的事件(任何房)
   inbox.cursor         # 消费游标(账,同步原子写)
-  rooms/<roomId>.jsonl # 分区经历流:我在这间房的 drive+回合转录(前缀稳定→provider 缓存)
   notebook.md          # 跨房私人笔记:仅 notebook 工具显式写入,注入有预算上限
-  state.json           # 举手中/租约/子 actor 清单(账)
+  state.json           # 账:两水位/折叠缓冲/举手/租约(不存转录)
 ```
+
+> **实施勘误（D2，2026-08-03）**：分区经历流不再另建 `rooms/<roomId>.jsonl`——
+> **经历流 = 既有的 per-(agent×房) ChatSession**（`agent-exec-<agentId>-<roomId>`，
+> id 与格式不变），AgentActor 经 MindPort 只认它的 id。理由：引擎（流式/工具/权限/
+> 履历页）全按 ChatSession 工作，保留它 = 引擎零改造 + 经历零迁移；§4 第 2 条随之
+> 作废，D5 迁移面缩小为 mailbox 初始化 + 游标映射 + 房间账。
 
 - **单心智循环**：`for await (batch of mailbox)`，严格串行——同一时刻全局至多一路对话性 LLM 调用代表这个 agent。跨房自相矛盾从结构上消失。
 - **一次回合的上下文组装**：persona + notebook + 当前房经历流（全量/窗口）+ **mailbox 折叠信封**（其他房在窗口期发生的事，只有信封没有正文——v2 的 elsewhere 块在 v3 是 mailbox 的自然折叠，不再需要独立扫描器）。
