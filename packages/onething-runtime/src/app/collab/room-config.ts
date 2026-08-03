@@ -53,6 +53,7 @@ import {
   freezeCollabV3RoomWork,
   postCollabV3MembershipChanged,
   resumeCollabV3RoomWork,
+  syncCollabV3RoomFloorPolicy,
 } from './actors/runtime.js'
 import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from './actors/turn-context.js'
 
@@ -493,6 +494,25 @@ export function setCollabRoomConfig(
     const left = previousMembers.filter(id => !nextMembers.includes(id))
     void postCollabV3MembershipChanged(roomSessionId, joined, left).catch((error: unknown) => {
       console.error('[collab] 成员变更投递失败:', error)
+    })
+  }
+
+  /**
+   * 响应模式三件套改了 → **立刻换档**(D6 接线遗漏的补口)。
+   *
+   * 上面那几行只把字段写进了会话;发言策略住在 v3 房账里(`ring` 的环位、`waves`
+   * 的批位是账的一部分,不能每次决策现读设置),所以要显式推一次 —— 少这一推,
+   * 一个刚拨到"接力"的开关要等到下次重启才有反应,而那正是 D6 漏掉的那一格。
+   *
+   * 名册变化不必推:环是每次决策按当时的在职名册现构的(`buildCollabRelayRing`),
+   * `speakOrder` 定的只是**已列出者的相对次序**。
+   *
+   * 不 await:换档要写账、要广播,而这扇门对调用方(IPC / daemon)是同步的。失败
+   * 只影响这一次即时生效,下一次开箱的 `syncFloorPolicy()` 仍会补上。
+   */
+  if (relayChanged) {
+    void syncCollabV3RoomFloorPolicy(roomSessionId).catch((error: unknown) => {
+      console.error('[collab] 发言策略换档失败:', error)
     })
   }
 

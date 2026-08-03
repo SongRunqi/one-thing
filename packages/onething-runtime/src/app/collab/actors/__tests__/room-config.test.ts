@@ -7,12 +7,13 @@
  * 那本 v2 内存账整个换成了房账。所以这份测试问的不是「函数还在不在」,而是
  * **「同一个用户动作,在新执行方上还落到同样的结果吗」**。
  *
- * 四组,对应 D6-b 交付面:
+ * 五组,对应 D6-b 交付面 + D6 补口:
  *
  *  1. **清空历史全链** —— 六处一起归零,先停后删,不是房就拒;
  *  2. **卡级停止的读口与停口**(缺口①)—— 账在子清单里,停口掐的是工作会话;
  *  3. **成员变更投 `room:membership-changed`**(缺口②)—— 折叠信封里看得见;
- *  4. **冻结/恢复与预算缓存** —— 总闸掐活、抬闸续做、改额度立刻生效。
+ *  4. **冻结/恢复与预算缓存** —— 总闸掐活、抬闸续做、改额度立刻生效;
+ *  5. **响应模式 → 发言策略**(缺口③)—— 改设置当场换档,关着应用改的开箱补上。
  *
  * 假件与 `runtime-wiring.test.ts` 同一套(真磁盘 + 真规则 + 剧本化端口),理由
  * 见那份的文件头:要测的正是接线,把结构替掉就什么都没测。
@@ -36,6 +37,9 @@ interface FakeSession {
     dm?: boolean
     formerMembers?: Array<{ agentId: string; removedAt: number }>
     budgets?: Record<string, number>
+    responseMode?: 'auto' | 'parallel' | 'serial'
+    speakOrder?: string[]
+    relayLoops?: number
   }
   messages: Array<Record<string, unknown>>
 }
@@ -587,5 +591,68 @@ describe('总闸与预算', () => {
       success: false,
       error: 'Not a room session',
     })
+  })
+})
+
+/* ── ⑤ 响应模式 → 发言策略(D6 接线遗漏的补口) ───────────────────────── */
+
+/**
+ * `responseMode` 三件套在 D6 之后一度**没有消费者**:房账新建一律 `free`,换档的
+ * 唯一动词零发出口,于是「接力」这个开关在 v3 是死的
+ * (docs/audit/collab-v3-walkthrough-2026-08-03 §1.4)。这一组钉的是两个生效点在
+ * **装配级**上真的接上了:改设置立刻换档,以及关着应用改的设置在开箱时补上。
+ */
+describe('响应模式 → 发言策略(D6 接线)', () => {
+  it('改成 serial:房账当场换到接力档,speakOrder 进环序', async () => {
+    seedRoom(['fe', 'pm', 'qa'])
+    await bootRuntime()
+
+    expect(peekCollabV3Room(ROOM)?.account.policy.name).toBe('free')
+
+    expect(setCollabRoomConfig(ROOM, {
+      responseMode: 'serial',
+      speakOrder: ['qa', 'fe', 'pm'],
+      relayLoops: 2,
+    })).toEqual({ success: true })
+
+    // 换档是 `void` 出去的(设置保存对调用方是同步的),所以轮询到它落地。
+    await waitFor(() => peekCollabV3Room(ROOM)?.account.policy.name === 'ring')
+    expect(peekCollabV3Room(ROOM)?.account.policy.params).toEqual({
+      order: ['qa', 'fe', 'pm'],
+      relayLoops: 2,
+    })
+  })
+
+  it('改回 parallel:退回 free 档', async () => {
+    const room = seedRoom(['fe', 'pm'])
+    room.room!.responseMode = 'serial'
+    await bootRuntime()
+    await waitFor(() => peekCollabV3Room(ROOM)?.account.policy.name === 'ring')
+
+    setCollabRoomConfig(ROOM, { responseMode: 'parallel' })
+    await waitFor(() => peekCollabV3Room(ROOM)?.account.policy.name === 'free')
+  })
+
+  it('开箱时补:应用关着的时候改的设置,在房间开箱那一刻进账', async () => {
+    const room = seedRoom(['fe', 'pm'])
+    room.room!.responseMode = 'auto'
+    await bootRuntime()
+    // 没有任何一次 `setCollabRoomConfig` —— 这一档只可能来自开箱那一步。
+    await waitFor(() => peekCollabV3Room(ROOM)?.account.policy.name === 'waves')
+  })
+
+  it('只改房名不动响应模式:一次换档都不发生(游标不该被无关的设置清掉)', async () => {
+    const room = seedRoom(['fe', 'pm'])
+    room.room!.responseMode = 'serial'
+    await bootRuntime()
+    await waitFor(() => peekCollabV3Room(ROOM)?.account.policy.name === 'ring')
+    const seq = peekCollabV3Room(ROOM)!.account.seq
+
+    setCollabRoomConfig(ROOM, { name: '新名字' })
+    await drainCollabV3Runtime()
+    await new Promise(resolve => setTimeout(resolve, 5))
+
+    expect(peekCollabV3Room(ROOM)?.account.policy.name).toBe('ring')
+    expect(peekCollabV3Room(ROOM)?.account.seq).toBe(seq)
   })
 })

@@ -43,14 +43,17 @@ import {
   applyCollabRoomYield,
   bumpCollabRoomEpoch,
   collabActorRef,
+  collabRefereeSetFloorPolicy,
   collabRoomActiveLeases,
   collabRoomEventId,
   collabRoomHolders,
+  isSameCollabRoomFloorPolicy,
   openCollabRoomBroadcast,
   pruneCollabRoomFloor,
   settleCollabRoomBroadcast,
   type CollabActorVerb,
   type CollabFloorRevokeReason,
+  type CollabResolvedFloorPolicy,
   type CollabRoomAccount,
   type CollabRoomEffects,
   type CollabRoomGates,
@@ -99,6 +102,15 @@ export interface CollabRoomActorHost {
    */
   referee?(roomId: string): boolean
   /**
+   * 房间**设置**此刻要求哪一档发言策略(D6 接线,`resolveCollabRoomFloorPolicy`)。
+   *
+   * 与上面那一族闸的区别是它**不是**每次决策现读的:发言策略住在房账里(`ring`
+   * 的环位、`waves` 的批位是账的一部分),现读会让每一次决策都可能悄悄换档,而
+   * 换档要清游标 —— 那等于让环永远走不完第二步。所以它只在两个时刻被问:装配
+   * (`syncFloorPolicy()`)与用户改完设置。不实现 = 这间房的策略只由裁判说了算。
+   */
+  floorPolicy?(roomId: string): CollabResolvedFloorPolicy | undefined
+  /**
    * 房间开了一扇裁决窗 —— 拿去买那一次模型调用(`CollabRefereeActor.adjudicate`)。
    *
    * **通知,不是调用**:房间的决策必须同步,而裁决是一次网络往返。房间把窗记进账、
@@ -115,6 +127,14 @@ export interface CollabRoomActorHost {
   newMessageId(seed: string): string
   now(): number
 }
+
+/**
+ * 房间设置换档时,`referee:set-floor-policy` 的署名。
+ *
+ * 不冒用某个真裁判的 id:排障时「这一档是谁定的」要分得开"用户在设置里选的"与
+ * "裁判在某一轮判的",而动词表里只有 `refereeId` 这一格能回答它。
+ */
+export const COLLAB_ROOM_CONFIG_REFEREE_ID = 'room-config'
 
 export interface CollabRoomActorOptions extends Omit<ActorBaseOptions<ActorEvent<CollabActorVerb>>, 'id'> {
   roomId: string
@@ -221,6 +241,43 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     for (const record of [...this.state.broadcasts]) {
       await this.deliver(record)
     }
+  }
+
+  /**
+   * 把房间**设置**里的响应模式打进房账(D6 接线的生效点)。
+   *
+   * 两个调用时刻,一个都不能少:
+   *  1. **装配**(`ensureRoom`,续播之后起循环之前)—— 冷启动、以及"用户在应用
+   *     关着的时候改了设置"这两条路都只有这一次机会;
+   *  2. **改完设置**(`setCollabRoomConfig` → `syncCollabV3RoomFloorPolicy`)——
+   *     没有它,一个刚拨到"接力"的开关要等到下次重启才有反应。
+   *
+   * 走的是**换档那条既有的路**(`referee:set-floor-policy`,不带 verdictToken):
+   * 清游标、作废在飞的裁决窗、按新策略立刻重排一次。没有新开一个"配置换档"动词,
+   * 因为换档就是换档 —— 两个动词意味着 `policyState` 的清理规则要写两遍,而半份
+   * 旧游标(`ring` 的环位喂给 `waves` 的批位)是一个查不出来的错。房间设置在这条
+   * 路上就是**一位不说话的裁判**,`refereeId` 如实写成它自己。
+   *
+   * 两道守门:
+   *  - **没变就不动**(`isSameCollabRoomFloorPolicy`)。每次装配都换一次档,等于
+   *    每次重启都把环拨回起点、把在飞的编排打回原形;
+   *  - **`phase` 不碰**。相位是裁判专属的一等表达(跨房),而房间设置是单房的 ——
+   *    一间跑在相位上的房不该因为它的 `responseMode` 没配就被打回 `free`。
+   *
+   * 换档之后那次重排不会让一间空房自己开口:`ring` / `waves` 的起步要有由头
+   * (`hasTrigger`),这正是那道门站着的位置。
+   */
+  async syncFloorPolicy(): Promise<void> {
+    const desired = this.host.floorPolicy?.(this.roomId)
+    if (!desired) return
+    if (this.state.policy.name === 'phase') return
+    if (isSameCollabRoomFloorPolicy(this.state.policy, desired)) return
+    await this.commit(this.decide(collabRefereeSetFloorPolicy({
+      roomId: this.roomId,
+      refereeId: COLLAB_ROOM_CONFIG_REFEREE_ID,
+      policy: desired.name,
+      ...(desired.params ? { params: desired.params } : {}),
+    })))
   }
 
   /** 换代:代数 +1,在外的牌全部作废。用户喊停 / 房间被冻住走这条。 */

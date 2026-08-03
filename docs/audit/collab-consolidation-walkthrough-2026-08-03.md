@@ -4,6 +4,8 @@
 范围：`experiment/castlabs-electron` 的 `2bb5dfe2..6605e94c`（C0–C4 六个提交）。
 方案：`docs/design/collab-architecture-consolidation-2026-08.md`（§4 各期细节、§6 实施勘误）。
 
+> **⚠️ 部分条目已过期（2026-08-03，Collab v3 落地后）**：C1–C4 里**调度面**的条目（W1 接力 / W2 状态条 / W3 waves / W7 steer / W8 喊停三样 / W9 链闸 / W10 pair 房重启 / W15 三面一致）已被 v3 的 actor 运行时取代——v2 调度链在 `652c0a15` 整层删除，那几条描述的代码路径不复存在，**以 `docs/audit/collab-v3-walkthrough-2026-08-03.md` 为准**（对照表在该文 §4.3）。renderer / 审批 / 转义 / 建房校验类条目（W5 W6 W11 W12 W13 W14 W16 W17 W18）**仍然有效**，照走。
+
 ---
 
 ## 0. 为什么需要这份清单

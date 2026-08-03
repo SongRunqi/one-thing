@@ -202,6 +202,68 @@ describe('金重放:ring 接力', () => {
   })
 })
 
+/* ── 配置驱动:responseMode → 策略档(D6 接线) ─────────────────────────── */
+
+/**
+ * 同一份接力剧本,这次**不显式换档** —— 只给一间 `responseMode: 'serial'` 的房间
+ * 设置,由 `resolveCollabRoomFloorPolicy` 翻成 `ring`。
+ *
+ * 它答的问题与上面那组不同:上面问"跑在 ring 上会怎样",这里问"用户在设置里
+ * 选了接力会怎样"—— 而 D6 漏掉的恰恰是这两者之间那一步(房账新建一律 `free`,
+ * `roomHost()` 里没有 `responseMode`,于是接力房在 v3 一律跑成自由发言)。
+ */
+function replayRingFromRoomConfig(room: Parameters<typeof createCollabRoomActorReplayPipeline>[0]['room']) {
+  const roomId = 'relay-count'
+  const transcript = loadGolden('relay-count', roomId)
+  const pipeline = createCollabRoomActorReplayPipeline({
+    roomId,
+    members: [
+      { id: 'ana', name: '阿般' },
+      { id: 'bo', name: '小博' },
+      { id: 'cy', name: 'Iris' },
+    ],
+    ...(room ? { room } : {}),
+  })
+  return { transcript, pipeline, result: replayRoomTranscript({ transcript, pipeline }) }
+}
+
+describe('配置驱动:responseMode → 发言策略', () => {
+  const SERIAL_ROOM = { responseMode: 'serial' as const, speakOrder: ['ana', 'bo', 'cy'], relayLoops: 2 }
+
+  it("serial 房 = 接力环:与显式 set-floor-policy 的快照逐字节相同", () => {
+    const configured = replayRingFromRoomConfig(SERIAL_ROOM)
+    // 同一份剧本、同一份快照 —— 两种给法之间没有第二套语义。
+    expect(formatCollabActorReplay(configured.result)).toBe(expectedSnapshot('relay-count.room-actor'))
+    expect(formatCollabActorReplay(configured.result)).toBe(formatCollabActorReplay(replayRing().result))
+  })
+
+  it('serial 房免判定:一次裁决都没买', () => {
+    expect(replayRingFromRoomConfig(SERIAL_ROOM).pipeline.judgeCalls()).toBe(0)
+  })
+
+  it('serial 房的 relayLoops 照旧收棒 —— 收棒权在**设置**,不在模型', () => {
+    const { pipeline, result } = replayRingFromRoomConfig(SERIAL_ROOM)
+    expect(result.verbs.filter(verb => verb.type === 'agent:speak')).toHaveLength(5)
+    expect(pipeline.account().policyState?.ringLaps).toBe(2)
+  })
+
+  it('auto 房 → waves 档(编排等裁判下发,房间先站到编排位上)', () => {
+    const { pipeline } = replayRingFromRoomConfig({ responseMode: 'auto' })
+    expect(pipeline.account().policy.name).toBe('waves')
+    // 编排那一格空着 —— 站到编排位上不等于已经有编排(空编排回落 free 的批量裁决)。
+    expect(pipeline.account().policy.params?.waves).toBeUndefined()
+  })
+
+  it('缺省 / parallel → free:一条也不接力,行为与不给任何配置的那条基线相同', () => {
+    for (const room of [{}, { responseMode: 'parallel' as const }]) {
+      const configured = replayRingFromRoomConfig(room)
+      expect(configured.pipeline.account().policy.name).toBe('free')
+      expect(formatCollabActorReplay(configured.result))
+        .toBe(formatCollabActorReplay(replayRingFromRoomConfig(undefined).result))
+    }
+  })
+})
+
 /* ── waves:编排 ─────────────────────────────────────────────────────────── */
 
 function replayWaves() {

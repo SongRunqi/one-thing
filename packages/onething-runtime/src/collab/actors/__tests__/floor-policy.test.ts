@@ -12,7 +12,9 @@ import {
   createCollabPhaseFloorPolicy,
   createCollabRingFloorPolicy,
   createCollabWavesFloorPolicy,
+  isSameCollabRoomFloorPolicy,
   resolveCollabFloorPolicy,
+  resolveCollabRoomFloorPolicy,
   type CollabFloorDecisionInput,
   type CollabFloorPolicyName,
   type CollabRaisedHand,
@@ -384,5 +386,76 @@ describe('resolveCollabFloorPolicy', () => {
   it('认不出的名字回落 free,不抛 —— 一间账写坏的房应该照常能说话', () => {
     expect(resolveCollabFloorPolicy(undefined).name).toBe('free')
     expect(resolveCollabFloorPolicy('rong' as CollabFloorPolicyName).name).toBe('free')
+  })
+})
+
+/* ── 房间设置 → 策略档(D6 接线) ────────────────────────────────────────── */
+
+describe('resolveCollabRoomFloorPolicy:响应模式三件套 → 一档发言策略', () => {
+  it("serial → ring:speakOrder 进环序,relayLoops 进收棒圈数", () => {
+    expect(resolveCollabRoomFloorPolicy({
+      responseMode: 'serial',
+      speakOrder: ['cy', 'ana'],
+      relayLoops: 2,
+    })).toEqual({ name: 'ring', params: { order: ['cy', 'ana'], relayLoops: 2 } })
+  })
+
+  it('serial 不配次序表也能用:环退回名册序,params 里干脆没有那一格', () => {
+    expect(resolveCollabRoomFloorPolicy({ responseMode: 'serial' })).toEqual({ name: 'ring' })
+  })
+
+  it('relayLoops 0 / 负数 = 不限,不进 params(账与快照少一处噪声)', () => {
+    expect(resolveCollabRoomFloorPolicy({ responseMode: 'serial', relayLoops: 0 })).toEqual({ name: 'ring' })
+    expect(resolveCollabRoomFloorPolicy({ responseMode: 'serial', relayLoops: -1 })).toEqual({ name: 'ring' })
+  })
+
+  it('auto → waves:编排由裁判下发,这里只把房间放到编排档上', () => {
+    expect(resolveCollabRoomFloorPolicy({ responseMode: 'auto' })).toEqual({ name: 'waves' })
+    expect(resolveCollabRoomFloorPolicy({ responseMode: 'auto', relayLoops: 3 }))
+      .toEqual({ name: 'waves', params: { relayLoops: 3 } })
+  })
+
+  it('parallel / 未配 / 认不出 → free。**未配走 free 不走 auto**:翻默认是另一件事', () => {
+    expect(resolveCollabRoomFloorPolicy({ responseMode: 'parallel' })).toEqual({ name: 'free' })
+    expect(resolveCollabRoomFloorPolicy({})).toEqual({ name: 'free' })
+    expect(resolveCollabRoomFloorPolicy(undefined)).toEqual({ name: 'free' })
+    expect(resolveCollabRoomFloorPolicy({ responseMode: 'rong' as 'auto' })).toEqual({ name: 'free' })
+  })
+
+  it('私聊房一律 free:两个人本来就是"依次",再套一个环只会把人类排进去', () => {
+    expect(resolveCollabRoomFloorPolicy({ responseMode: 'serial', dm: true })).toEqual({ name: 'free' })
+    expect(resolveCollabRoomFloorPolicy({ responseMode: 'auto', dm: true })).toEqual({ name: 'free' })
+  })
+
+  it('phase 永远映射不出来 —— 它是裁判专属的一等表达,没有 v2 对应物', () => {
+    const modes = ['auto', 'parallel', 'serial', undefined] as const
+    for (const responseMode of modes) {
+      expect(resolveCollabRoomFloorPolicy({ ...(responseMode ? { responseMode } : {}) }).name)
+        .not.toBe('phase')
+    }
+  })
+})
+
+describe('isSameCollabRoomFloorPolicy:换没换档', () => {
+  it('档名不同 = 换了', () => {
+    expect(isSameCollabRoomFloorPolicy({ name: 'free' }, { name: 'ring' })).toBe(false)
+  })
+
+  it('undefined 与 0 圈是同一件事(不限),不该被读成一次换档', () => {
+    expect(isSameCollabRoomFloorPolicy({ name: 'ring' }, { name: 'ring', params: { relayLoops: 0 } }))
+      .toBe(true)
+  })
+
+  it('环序是**序列**相等:换个顺序就是换了档', () => {
+    const before = { name: 'ring' as const, params: { order: ['ana', 'bo'] } }
+    expect(isSameCollabRoomFloorPolicy(before, { name: 'ring', params: { order: ['ana', 'bo'] } })).toBe(true)
+    expect(isSameCollabRoomFloorPolicy(before, { name: 'ring', params: { order: ['bo', 'ana'] } })).toBe(false)
+  })
+
+  it('裁判现场下发的那几格不参与比较 —— 否则每次装配都把在跑的编排打回原形', () => {
+    expect(isSameCollabRoomFloorPolicy(
+      { name: 'waves', params: { waves: [['ana'], ['bo', 'cy']], why: '先出稿再评审' } },
+      { name: 'waves' },
+    )).toBe(true)
   })
 })

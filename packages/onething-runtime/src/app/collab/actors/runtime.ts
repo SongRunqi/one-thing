@@ -65,6 +65,7 @@ import {
   collabWorkerRunningForCard,
   createCollabHeuristicHandEvaluator,
   createCollabRoomAccount,
+  resolveCollabRoomFloorPolicy,
   type CollabActorVerb,
   type CollabAgentWorkerRecord,
   type CollabCardEventKind,
@@ -427,6 +428,10 @@ async function ensureRoom(roomId: string): Promise<RoomEntry | undefined> {
     // 续播在起循环**之前**:账里那几条在飞广播是上一条命留下的,先补完再收新信,
     // 成员看到的次序才与崩溃前一致。
     await actor.resumeBroadcasts()
+    // 再把设置里的响应模式打进账(D6 接线)。排在续播**之后**:那几条广播是上
+    // 一档留下的事实,先补完再换档;排在起循环**之前**:第一条新消息就该按新档走。
+    // 设置没变(绝大多数情况)时它是一次纯比较,连账都不写。
+    await actor.syncFloorPolicy()
     actor.start()
     return entry
   })()
@@ -726,6 +731,24 @@ export function forgetCollabV3RoomBudget(roomSessionId: string): void {
   state?.budget.delete(roomSessionId)
 }
 
+/**
+ * 房间的响应模式改了 —— 把新档立刻打进房账(D6 接线的第二个生效点)。
+ *
+ * 只推**已经开着的**房:一间还没开箱的房,它的账在磁盘上仍是旧档,而下一次
+ * `ensureRoom` 的 `syncFloorPolicy()` 会补上 —— 为了改一个开关去开一间没人在用的
+ * 房(一次 mailbox 扫描)不划算,而且那扇门本来就守着这件事。
+ *
+ * 换档走的是 `set-floor-policy` 那条既有的路,所以 D3 的顶掉语义原样成立:游标
+ * 清空(环从起棒人重来)、还没答的裁决窗作废(它判的是上一档该谁说)、在飞的
+ * 编排批位归零。**在外的牌不收**:一位同事正在说的那句话与"下一句该谁说"是两件
+ * 事,把它掐掉只会让房间里多一条说了一半的话。
+ */
+export async function syncCollabV3RoomFloorPolicy(roomSessionId: string): Promise<void> {
+  const entry = state?.rooms.get(roomSessionId)
+  if (!entry) return
+  await entry.actor.syncFloorPolicy()
+}
+
 /* ── 卡级停止(D6-b 收口) ─────────────────────────────────────────────── */
 
 /**
@@ -1022,6 +1045,9 @@ function roomHost(): CollabRoomActorHost {
     pairDm: roomId => isAgentPairDmRoom(store.getSession(roomId)?.room),
     budget: roomId => ({ spentUSD: budgetCell(roomId).spentUSD, limitUSD: budgetLimitOf(roomId) }),
     referee: roomHasReferee,
+    // 设置里的「响应模式三件套」→ 发言策略档。这一口只在装配与改设置时被问
+    // (`syncFloorPolicy()`),不是每次决策现读 —— 理由见端口自己的注释。
+    floorPolicy: roomId => resolveCollabRoomFloorPolicy(store.getSession(roomId)?.room),
     openJudgment: scheduleJudgment,
     appendMessage: (roomId, message) => {
       const chat = message as ChatMessage

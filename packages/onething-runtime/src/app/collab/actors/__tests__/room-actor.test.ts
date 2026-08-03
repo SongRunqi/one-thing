@@ -15,9 +15,12 @@ import {
   collabAgentRaiseHand,
   collabAgentSpeak,
   collabAgentYield,
+  collabRefereeVerdictVerb,
   collabRoomPosted,
   createCollabRoomAccount,
+  resolveCollabRoomFloorPolicy,
   type CollabActorVerb,
+  type CollabResolvedFloorPolicy,
   type CollabRoomTranscriptMessage,
 } from '@onething/runtime/collab/actors'
 
@@ -62,6 +65,9 @@ function harness(options: {
   maxChain?: number
   maxConcurrent?: number
   frozen?: boolean
+  referee?: boolean
+  /** 房间设置那一口(D6 接线)。给了才有 `syncFloorPolicy()` 可换的档。 */
+  floorPolicy?: () => CollabResolvedFloorPolicy | undefined
 } = {}): Harness {
   const messages: CollabRoomTranscriptMessage[] = []
   const inbox = new Map<string, ActorEvent<CollabActorVerb>[]>()
@@ -75,6 +81,8 @@ function harness(options: {
     overBudget: () => false,
     maxChain: () => options.maxChain ?? Number.POSITIVE_INFINITY,
     maxConcurrent: () => options.maxConcurrent ?? 0,
+    referee: () => options.referee === true,
+    ...(options.floorPolicy ? { floorPolicy: options.floorPolicy } : {}),
     appendMessage: (_roomId, message) => {
       messages.push(message)
     },
@@ -362,5 +370,102 @@ describe('转录零迁移', () => {
     expect(classifyCollabRoomMessage(line)).toBe('operational-line')
     expect(isCollabRoomFact(line)).toBe(false)
     expect(computeCollabChainCount([line])).toBe(0)
+  })
+})
+
+/* ── 房间设置 → 发言策略(D6 接线) ──────────────────────────────────────── */
+
+/**
+ * `responseMode` 三件套在 v3 一度**没有消费者**:房账新建一律 `free`,换档的唯一
+ * 动词零发出口,于是用户在设置里选的"接力"根本不生效
+ * (docs/audit/collab-v3-walkthrough-2026-08-03 §1.4)。这一组钉的就是补上的那两个
+ * 生效点:**装配时**(下面第一条)与**改完设置**(最后一条)。
+ */
+describe('syncFloorPolicy:房间设置换档', () => {
+  type RoomConfig = Parameters<typeof resolveCollabRoomFloorPolicy>[0]
+
+  function configured(room: { value: RoomConfig }, options: {
+    referee?: boolean
+    maxConcurrent?: number
+  } = {}): Harness {
+    return harness({
+      store: createCollabRoomAccountMemoryStore(),
+      floorPolicy: () => resolveCollabRoomFloorPolicy(room.value),
+      ...options,
+    })
+  }
+
+  it('装配时把设置里的接力打进房账', async () => {
+    const room = { value: { responseMode: 'serial', speakOrder: ['cy', 'ana'] } as RoomConfig }
+    const h = configured(room)
+    await h.actor.syncFloorPolicy()
+    expect(h.actor.account.policy).toEqual({ name: 'ring', params: { order: ['cy', 'ana'] } })
+  })
+
+  it('换档不会让一间空房自己开口 —— 起步要有由头,不是"用户拨了个开关"', async () => {
+    const room = { value: { responseMode: 'serial' } as RoomConfig }
+    const h = configured(room)
+    await h.actor.syncFloorPolicy()
+    expect(h.actor.account.floor.active).toEqual([])
+    expect(h.messages).toEqual([])
+  })
+
+  it('没变就不动账:同一份设置连调两次,第二次连 seq 都不涨', async () => {
+    const room = { value: { responseMode: 'serial' } as RoomConfig }
+    const h = configured(room)
+    await h.actor.syncFloorPolicy()
+    const seq = h.actor.account.seq
+    await h.actor.syncFloorPolicy()
+    expect(h.actor.account.seq).toBe(seq)
+  })
+
+  it('phase 不碰:相位是裁判专属的一等表达,不该被一份没配响应模式的设置打回 free', async () => {
+    const room = { value: {} as RoomConfig }
+    const h = configured(room)
+    await h.actor.commit(h.actor.decide({
+      type: 'referee:set-floor-policy',
+      roomId: ROOM,
+      refereeId: 'judge',
+      policy: 'phase',
+      params: { activeMembers: ['ana'] },
+    }))
+    await h.actor.syncFloorPolicy()
+    expect(h.actor.account.policy.name).toBe('phase')
+  })
+
+  it('运行中改档下一轮生效:游标清零、在飞裁决窗作废、下一张牌按新环序发', async () => {
+    // 开局是「自由发言 + 挂了裁判」:两只手攒进同一扇裁决窗,一张牌都不发。
+    const room = { value: { responseMode: 'parallel' } as RoomConfig }
+    const h = configured(room, { referee: true, maxConcurrent: 1 })
+
+    h.clock.now = 1_000
+    const opened = h.actor.decide(collabAgentRaiseHand({ roomId: ROOM, agentId: 'cy' }))
+    const token = opened.judgment?.token
+    expect(token).toBeDefined()
+    h.clock.now = 1_100
+    h.actor.decide(collabAgentRaiseHand({ roomId: ROOM, agentId: 'ana' }))
+    expect(h.actor.account.floor.active).toEqual([])
+    expect(h.actor.account.judgment?.state).toBe('pending')
+
+    // 用户在设置里改成接力(环序与举手次序**相反** —— 这条断言才分得开两档)。
+    room.value = { responseMode: 'serial', speakOrder: ['ana', 'bo', 'cy'] }
+    await h.actor.syncFloorPolicy()
+
+    expect(h.actor.account.policy).toEqual({ name: 'ring', params: { order: ['ana', 'bo', 'cy'] } })
+    // 上一档的裁决窗当场作废:它判的是"自由发言时该谁先说",而那个问题已经不存在了。
+    expect(h.actor.account.judgment).toBeUndefined()
+    // 牌发给环首 ana,不是举手更早的 cy —— 换档立刻生效,不必等下一条消息。
+    expect(h.actor.account.floor.active.map(lease => lease.agentId)).toEqual(['ana'])
+
+    // 迟到的旧裁决顶不动新档(D3 的 supersede 语义):token 认不领,原样丢弃。
+    const seq = h.actor.account.seq
+    const late = h.actor.decide(collabRefereeVerdictVerb({
+      roomId: ROOM,
+      refereeId: 'judge',
+      verdict: { token: token!, grants: ['cy'] },
+    }))
+    expect(late.granted).toEqual([])
+    expect(h.actor.account.seq).toBe(seq)
+    expect(h.actor.account.policy.name).toBe('ring')
   })
 })

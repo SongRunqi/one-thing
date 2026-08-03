@@ -1,6 +1,6 @@
 # Collab v3：Actor 运行时（大版本 break）
 
-日期：2026-08-03。状态：**设计定稿，未实施**。
+日期：2026-08-03。状态：**D0-D7 已实施（D7 真机走查待用户执行）**。实施勘误见 §9；走查清单见 `docs/audit/collab-v3-walkthrough-2026-08-03.md`。
 决策来源：用户拍板三项——①彻底 Actor 运行时（连调度一起重造，无中心 coordinator）②现有数据完整迁移③直接替换（不留双轨）。
 前置：C0-C5 收敛已落地（`2bb5dfe2..78882a9e`）——本方案大量消费收敛出来的单点，见 §5。
 
@@ -170,3 +170,52 @@ Agent → self   : note(notebook 增量) | spawn-worker(card) | worker-result
 
 persona 原文即 system；说话即行动（speak 唯一发送面）；房间消息整条落地不流式；typing=参数流物理信号；结构对抗优于措辞；@=直通授牌；接力收棒权在配置；assign=通知≠开工；用户消息默认 steer；evidence 代码采集。
 **有意推翻的**：中心 coordinator（→actor 协议）；per-(agent×房) 执行线程（→单心智循环+分区经历）；O(N) 意愿判定默认（→批量裁决）；reconcile 全局对账（→per-actor 自愈）。
+
+## 9. 实施勘误（2026-08-03）
+
+D0-D6 全部实施完毕，v3 是唯一运行时。逐期一行 + 与本文偏离的地方。**D7 的文档部分（走查清单 + 本节）已交付，真机走查待用户执行**。
+
+### 9.1 逐期落地
+
+| 期 | sha | 落地摘要 |
+| --- | --- | --- |
+| D0 | `1d8b1749` | Actor 内核：`DurableMailbox`（jsonl 复用会话 codec + 游标原子写，at-least-once，仅 ACK 入去重窗，seq 在写链内分配防空洞，单消费者强制）/ `FloorLease` 纯函数账本 / `ActorBase` 串行循环 + dead-letter 环；15 动词 discriminated union（穷尽性三重保险：双向类型表 + never switch + 运行时清单）；金重放架（合成 fixture 两份，严禁真实数据入库）+ `scripts/collab-v3-replay.mjs` |
+| D1 | `34bd57f5` | RoomActor：纯层 `room-rules.ts`（1050 行全纯）+ 装配 `room-account.ts` 原子写 `collab/<roomId>/actors/room.json`（与 v2 `state.json` 隔离）；租约账 / 链账 / 水位 / 相位 / 举手队列 / 广播检查点；C4 快照协议接上 |
+| D2 | `2c347844` | AgentActor：心智循环（起了就放手 + `awaitTurnSlot` 串行）/ 双水位（delivered、read）/ mailbox 折叠信封 / notebook 工具 / MindPort 端口 + 生产适配器（零调用点，待 D6） |
+| D3+D4 | `b8eecf40` | Referee 四策略（free / ring / waves / phase）+ 降级链；WorkerChild 每卡一个短命 actor、三端口注入、结果回投父 mailbox |
+| D5 | `5a1d1063` | 迁移器：房间账映射 / agent 水位 / 未读回填 / 备份 / marker / `--dry-run` 默认档；真机 CLI 已验（dry-run 零写盘、execute 落账、重跑跳过） |
+| D6-a | `fd483d1f` | 生产接线：`initializeCollabV3Runtime`（迁移 marker 门控 → Room/Agent 懒建 + 续播 → 跨房 Referee → 四生产适配器）；v2 coordinator 不再初始化（代码留作 D6-b 对照） |
+| D6-b | `652c0a15` | 旧调度链整层删除，**净删 14575 行**，`BREAKING: v2 协作调度 API 不复存在` |
+
+### 9.2 与本文的偏离
+
+1. **D2 · 经历流不另建文件**（§1.2 已回写勘误，此处只作索引）：分区经历流 = 既有的 `agent-exec-<agentId>-<roomId>` ChatSession，id 与格式不变；引擎零改造、经历零迁移；**§4 第 2 条作废**，`agents-v3/` 只放 inbox / 账 / notebook。
+2. **D1 · 链闸口径变了**：链数 = 上一清零事件以来**发出的租约数**，计在**发牌时刻**（v2 是按 say 计）。收益是一举消掉 v2 的两个病——不再需要 `floorHolds` 预占、live 与重放共用同一个 fold 公式（清零判据直接复用 C1 的 `collabMessageResetsChain`）。**代价是 `maxChain` 的旧配置在 v3 下明显更宽松**（一个回合里说三句，v2 记 3、v3 记 1）。走查 V19 专门量这个比值。
+3. **D3 · 裁决结果骑既有动词**：不新增「裁决结果」动词，结果以 `referee:set-floor-policy` 落地——免动 `agent-actor` 的穷尽 switch。`policy: 'free'` 是刻意的：裁决只是 free 这一档里「这一轮怎么排」的答案，它不改档。
+4. **D3 · Referee 不是 `ActorBase`**：`RoomActor.decide()` 必须保持**同步**（金重放与真机走同一行代码是 D1 立下的规矩），而模型调用不可能同步。裁判因此是独立 actor 但不继承 `ActorBase`——它的输入是裁决窗（一张待办）不是信封。保留的 actor 纪律只有一条：同一间房同时至多一次裁决在飞。
+5. **D3 · 金重放抓到两个设计 bug**（不是实现 bug）：① 单座位下裁决结果不渐进消费会退化回 `O(1)/句`，白改；② 裸切策略会引发空聊，补 `hasTrigger` 门。
+6. **D4 · 限额重基准 2/房 → 2/人**：§1.6 原写「每房 2 只手」，但 **v3 的房间不再是执行边界**（执行边界归 AgentActor），按房限额在 v3 里没有意义。改为 2/人 + 4/全局；全局闸补 `onRelease` 唤醒——测试实锤了一个跨 agent 饿死洞。
+7. **D6-a · 举手判据换了**：从「每个 agent 自己启发式判断要不要举手」换成**人人举手交裁判**。原判据在群里**无 `@` 时全员静默**（D2 的启发式在这个场景下集体选择不说话）。
+8. **D6-a · 裁决窗 150ms 防抖**：一条消息会引发 N 位成员各举一次手，不防抖则 N 次举手扇出 N 扇裁决窗 = N 次模型调用，批量裁决的收益当场归零。150ms 的选法：比一次 mailbox 往返长一个量级，比人眼的「它怎么不说话」短一个量级（`runtime.ts` 的 `JUDGMENT_DEBOUNCE_MS`）。
+9. **D6-a · 拆环靠零 import 端口模块**：`turn-context.ts` / `stop-door.ts`（与 D2 的 `mind-port.ts` 同款纪律）——ingress 直引 runtime 会成 stream-engine 的环，而直连实测会打穿 19 个文件的 mock。
+10. **D6-b · 控制面搬家，对外名字零改动**：冻结 / 清史 / 删房 / 成员 / 卡级停止这些**与调度无关**的七个函数搬到 `app/collab/room-config.ts`，`app/collab/index.ts` 用 `as` 保名转发，**IPC 零改动**。删除时交叉核对：无 v3 等价的先补再删（`room-config.test` 13 条）；v2-only 概念随删列名（`floorHolds` / per-agent 判定默认 / 全局 reconcile / judgement 表情）。
+11. **D6-b · 两个差点漏掉的静默失效**：删房清理与每日摘要触发点原本挂在 v2 协调器的 `disposeCollabRoom` 上，随它一起删会造成目录泄漏与摘要停摆——已由 v3 接管。另补 `membership-changed` 的**生产者**（D6-a 只有消费侧，同事会继续 @ 已离开的人）与 `hasActiveCollabV3Work`（扫磁盘 workers 账，可跨重启，优于 v2 的进程内表）。
+
+### 9.3 已知缺口（D7 走查的头号待办）
+
+**原记（D6 收官时）**：`ring` / `waves` / `phase` 三档策略在生产上没有设置口——房账新建默认 `free`；换档的唯一动词 `referee:set-floor-policy` 的唯一发出口是 `RefereeActor.setFloorPolicy()` / `.changePhase()`，而这两个方法**在生产代码里零调用点**；`roomHost()` 注入给 RoomActor 的字段里没有 `responseMode`。后果：`responseMode: 'serial'` 的接力房与狼人杀的相位门在 v3 下**不生效**，房间一律跑 `free`。策略规则本身（`floor-policy.ts` 四档 + 单测 + 金重放）是齐的，缺的是**谁来点它**。
+
+**`responseMode` 那一半：已修（本提交）**，真机仍需 V9 确认。补的是**一条纯映射 + 两个生效点**，规则一行没改：
+
+- **映射单点**：`resolveCollabRoomFloorPolicy(room)`（`collab/actors/floor-policy.ts`）。`serial` → `ring`（`speakOrder` 进环序、`relayLoops` 进收棒圈数，两个旋钮的 v2 语义原样沿用）；`auto` → `waves`（编排仍由裁判下发，空编排自己回落 `free` 的批量裁决）；`parallel` / 未配 / 认不出 / 私聊房 → `free`。**未配走 `free` 不走 `auto`**——翻默认是一次独立的产品决定，不由一次接线顺手做掉。
+- **生效点①（装配）**：`ensureRoom()` 续播之后、起循环之前调 `CollabRoomActor.syncFloorPolicy()`——冷启动，以及「用户在应用关着的时候改了设置」这条路只有这一次机会。
+- **生效点②（改设置）**：`setCollabRoomConfig` 的 `relayChanged` 分支 → `syncCollabV3RoomFloorPolicy(roomId)`。只推已经开着的房，冷房由生效点①补。
+- 两处都走 `referee:set-floor-policy` 那条**既有**的换档路（署名 `room-config`），所以 D3 的顶掉语义原样成立：游标清零、还没答的裁决窗作废、按新档立刻重排一次（空房不会因此自己开口——`hasTrigger` 那道门就站在这里）。两道守门：**没变就不动账**（`isSameCollabRoomFloorPolicy`，只比档名 + 环序 + 圈数，裁判现场下发的 `waves` / `activeMembers` 不参与）、**`phase` 不碰**。
+
+**`phase` 那一半仍是缺口**：相位是跨房的（`activeRooms` 一张表下发给多间房），而房间设置是单房的——它没有 v2 对应物，保持裁判专属，`changePhase()` 依旧零生产调用点。走查条目 V13 照原样跑。
+
+### 9.4 测试账本
+
+`6525`（D0 前）→ `6591`（D0，+66）→ `6648`（D1，+57）→ `6749`（D2，+101）→ `6874`（D3+D4，+125）→ `6915`（D5，+41）→ `6925`（D6-a，+10）→ **`6712`（D6-b）**。
+
+末期减少 213 条不是回退：D6-b 删掉 18 个 v2 测试文件（零 v3、零生产引用，反向依赖图实证），删之前先按「无 v3 等价的先补」补齐了 v3 侧的等价覆盖。全程 typecheck 干净、boundary 27 已知红 0 新增；D6 两步各自验过三端构建与 `server:build` 求值无死锁。

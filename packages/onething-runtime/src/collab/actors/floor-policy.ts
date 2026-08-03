@@ -35,7 +35,12 @@
  * 策略从入参读它,把新值放进 `decision.state`,房间原样落账。策略仍是纯函数。
  */
 import type { CollabActivationReason } from '../activation.js'
-import { buildCollabRelayRing, pickCollabRelayStarter } from '../speaking-order.js'
+import {
+  buildCollabRelayRing,
+  collabRelayLoopsFor,
+  pickCollabRelayStarter,
+  type CollabRelayRoomLike,
+} from '../speaking-order.js'
 import type { CollabAgentLike } from '../types.js'
 import type { CollabRoomJudgment } from './referee-rules.js'
 import type { CollabFloorPolicyName, CollabFloorPolicyParams, CollabHandUrgency } from './protocol.js'
@@ -574,4 +579,89 @@ export function resolveCollabFloorPolicy(name: CollabFloorPolicyName | undefined
     default:
       return createCollabFreeFloorPolicy()
   }
+}
+
+/* ── 房间设置 → 策略档 ───────────────────────────────────────────────────── */
+
+/** 房账 `policy` 那一格的形状 —— 映射的产物,也是「换没换档」的比较单位。 */
+export interface CollabResolvedFloorPolicy {
+  name: CollabFloorPolicyName
+  params?: CollabFloorPolicyParams
+}
+
+/**
+ * 「响应模式三件套」→ 一档发言策略 —— **映射规则的单点**(D6 接线遗漏的补口)。
+ *
+ * v2 的 `responseMode` 有自己的一条消费链(`isCollabPlanRoom` → planner →
+ * plan-runner);D6-b 把那条链整层删掉之后,这三个字段在 v3 一度**没有消费者** ——
+ * 房账新建一律 `free`,而换档的唯一动词 `referee:set-floor-policy` 在生产里零发出口。
+ * 后果是用户在设置里选的"接力"根本不生效(docs/audit/collab-v3-walkthrough-2026-08-03
+ * §1.4)。这个函数就是那条链在 v3 的全部残留:**一次纯翻译**,没有控制流。
+ *
+ * 三条映射:
+ *  - `serial` → `ring`。`speakOrder` 就是环的相对次序(`buildCollabRelayRing` 的
+ *    既有语义),`relayLoops` 就是收棒圈数 —— 两个旋钮在 v2 面板上已经是这个意思,
+ *    换一套参数名只会让同一个开关在两代之间对不上号;
+ *  - `auto` → `waves`。编排本身由裁判下发(`params.waves`),这里只把房间**放到**
+ *    编排档上:没有编排时 `waves` 自己回落 `free` 的批量裁决,所以"裁判还没说话"
+ *    与"没挂裁判"在行为上是同一件事,不需要第三种状态;
+ *  - 其余(`parallel` / 未配 / 认不出)→ `free`。**未配走 free 不走 auto**:
+ *    翻默认是一次独立的产品决定,不能由一次接线顺手做掉。
+ *
+ * `phase` **不在这张表里**:它没有 v2 对应物,是裁判专属的一等表达(相位是跨房的,
+ * 而房间设置是单房的)。同样地,一间已经跑在 `phase` 上的房不该被这张表打回 `free`
+ * —— 那一侧的守门在 `CollabRoomActor.syncFloorPolicy()`。
+ *
+ * 私聊房一律 `free`:单成员房用户开口即免判激活唯一那位,双成员房 agent 开口即
+ * 激活对面 —— 两种形态本来就是"依次",再套一个环只会把人类也排进去(v2
+ * `isCollabPlanRoom` 排除私聊,同一条理由)。
+ */
+export function resolveCollabRoomFloorPolicy(
+  room: CollabRelayRoomLike | null | undefined,
+): CollabResolvedFloorPolicy {
+  if (!room || room.dm === true) return { name: 'free' }
+  // 0 = 不限(与 `maxChain` / `dailyCostUSD` 同一套约定),所以 0 就是"没配",
+  // 不必进 params —— 少一个字段,账与快照都少一处噪声。
+  const loops = collabRelayLoopsFor(room)
+  if (room.responseMode === 'serial') {
+    const order = (room.speakOrder ?? []).filter(agentId => typeof agentId === 'string' && agentId.length > 0)
+    return withParams('ring', {
+      ...(order.length > 0 ? { order: [...order] } : {}),
+      ...(loops > 0 ? { relayLoops: loops } : {}),
+    })
+  }
+  if (room.responseMode === 'auto') {
+    return withParams('waves', loops > 0 ? { relayLoops: loops } : {})
+  }
+  return { name: 'free' }
+}
+
+/** 空参数袋不进账:`{ name: 'free' }` 与 `{ name: 'free', params: {} }` 是同一件事。 */
+function withParams(
+  name: CollabFloorPolicyName,
+  params: CollabFloorPolicyParams,
+): CollabResolvedFloorPolicy {
+  return Object.keys(params).length > 0 ? { name, params } : { name }
+}
+
+/**
+ * 账上这一档,与设置要求的那一档,是同一档吗。
+ *
+ * 只比**设置管得着**的那几格(档名 + 环序 + 圈数):`waves` 的批次表、`phase` 的
+ * 活跃房表都是裁判现场下发的,把它们算进比较,等于让"裁判刚排的编排"每次都被读成
+ * 「设置变了」,于是每一次装配都把一份在跑的编排打回原形。
+ *
+ * `relayLoops` 走 `relayLoopsOf` 而不是直接比字段:`undefined` 与 `0` 在这一族
+ * 旋钮里是同一个意思(不限),按字段比会让它们看起来不同。
+ */
+export function isSameCollabRoomFloorPolicy(
+  current: CollabResolvedFloorPolicy,
+  desired: CollabResolvedFloorPolicy,
+): boolean {
+  if (current.name !== desired.name) return false
+  if (relayLoopsOf(current.params) !== relayLoopsOf(desired.params)) return false
+  const currentOrder = current.params?.order ?? []
+  const desiredOrder = desired.params?.order ?? []
+  return currentOrder.length === desiredOrder.length
+    && currentOrder.every((agentId, index) => desiredOrder[index] === agentId)
 }

@@ -24,7 +24,7 @@
  * 数据纪律沿用 D0:fixture 全部合成,真实用户转录只用同目录外的只读脚本手工对照。
  */
 import { InMemoryMailbox, type ActorEvent } from '@onething/core/actors'
-import type { CollabAgentLike } from '@onething/runtime/collab'
+import type { CollabAgentLike, CollabRelayRoomLike } from '@onething/runtime/collab'
 import {
   collabAgentRaiseHand,
   collabAgentSpeak,
@@ -33,6 +33,7 @@ import {
   collabRefereeVerdictVerb,
   collabRoomActiveLeases,
   collabRoomHolders,
+  resolveCollabRoomFloorPolicy,
   type CollabActorReplayContext,
   type CollabActorReplayPipeline,
   type CollabActorReplayTranscript,
@@ -66,6 +67,15 @@ export interface CollabRoomReplayOptions {
   policy?: CollabFloorPolicyName
   /** 策略参数(`ring` 的 `order`、`waves` 的批次表、`phase` 的活跃房表)。 */
   policyParams?: CollabFloorPolicyParams
+  /**
+   * **房间设置**(响应模式三件套)—— 走 `resolveCollabRoomFloorPolicy` 映射成上面
+   * 那两格(D6 接线)。
+   *
+   * 与直接给 `policy` / `policyParams` 的区别不是写法,是**问的问题不同**:后者
+   * 问"跑在 ring 上会怎样",前者问"用户在设置里选了接力会怎样"—— 而 D6 漏掉的
+   * 恰恰是这两者之间那一步。给了它就不必再给 `policy`(显式给的优先,便于对照)。
+   */
+  room?: CollabRelayRoomLike
   /** 开局相位(`phase` 剧本)。 */
   phase?: string
   /** 这间房挂了裁判吗 —— 挂了,`free` 的举手先进裁决窗。 */
@@ -221,14 +231,22 @@ export function createCollabRoomActorReplayPipeline(
     }
   }
 
-  /** 开局下发一次策略 —— 剧本从第一条消息起就跑在那一档上。 */
+  /**
+   * 开局下发一次策略 —— 剧本从第一条消息起就跑在那一档上。
+   *
+   * 给了 `room` 就先把它映射一遍(真机装配那一步的同一个函数),显式的
+   * `policy` / `policyParams` 仍然压过映射结果:一份剧本因此可以两种给法各跑一遍,
+   * 「配置驱动」与「显式换档」的行为是否逐字节相同,成了一条可断言的事。
+   */
   function primePolicy(): void {
-    if (!options.policy && !options.policyParams && !options.phase) return
+    if (!options.policy && !options.policyParams && !options.phase && !options.room) return
+    const mapped = options.room ? resolveCollabRoomFloorPolicy(options.room) : undefined
     run(collabRefereeSetFloorPolicy({
       roomId: options.roomId,
       refereeId: 'replay-referee',
-      policy: options.policy ?? 'free',
+      policy: options.policy ?? mapped?.name ?? 'free',
       params: {
+        ...mapped?.params,
         ...options.policyParams,
         ...(options.phase ? { phase: options.phase } : {}),
       },

@@ -88,8 +88,10 @@ export {
   createCollabPhaseFloorPolicy,
   createCollabRingFloorPolicy,
   createCollabWavesFloorPolicy,
+  isSameCollabRoomFloorPolicy,
   orderCollabHands,
   resolveCollabFloorPolicy,
+  resolveCollabRoomFloorPolicy,
 } from './floor-policy.js'
 export type {
   CollabFloorDecision,
@@ -98,6 +100,7 @@ export type {
   CollabFloorPolicy,
   CollabFloorPolicyState,
   CollabRaisedHand,
+  CollabResolvedFloorPolicy,
 } from './floor-policy.js'
 
 /* ── D3:Referee ────────────────────────────────────────────────────────── */
