@@ -68,6 +68,25 @@ export interface CollabRoomJudgment {
   state: CollabRoomJudgmentState
   /** 裁决给出的授牌次序(`resolved` 时有值)。 */
   grants?: string[]
+  /**
+   * 这一次裁决**管得着的人** —— 开窗那一刻队里那几只手的 id。
+   *
+   * 为什么账里非留这一格不可:裁决是对**这一批候选**的终审,「没被点到」在语义上
+   * 就是「这轮你不说」,手要当场放下。而"没被点到"这个判断需要一个候选集当分母
+   * ——只看 `grants` 分不出「判过、没排上」与「窗在飞的时候刚举的、还没被判过」,
+   * 而后者连坐放手是错的(它一次都没被裁过)。`grants` 是答案,这一格是问题。
+   *
+   * 两个写点,后写的赢:开窗那一刻先按队列现状打底(一个保守的下限),裁决回来时
+   * 由裁判报回的 `verdictCandidates` 覆盖 —— 后者才是真正送进模型的那一份。窗是
+   * 第一只手开的、其余的手随后异步到,只认打底那份的话,四只手的房只放得下一只。
+   *
+   * 永远不取"答案回来那一刻队里的手":那一份里混着裁判读完之后才举的手,把它们
+   * 一起按下去等于替裁判否掉一个它没看过的人。
+   *
+   * 旧账没有这一格(`undefined`):按「全放下」处理 —— 存量账里挂着的正是这个缺陷
+   * 造出来的僵尸手,放掉它们就是修复本身。
+   */
+  candidates?: string[]
   /** 裁判的一句话理由。 */
   why?: string
 }
@@ -87,6 +106,14 @@ export interface CollabRefereeVerdict {
   token: string
   /** 授牌次序。空数组是一个**有效**答案。 */
   grants: string[]
+  /**
+   * 这一次**判的是哪几只手** —— 裁判现取的候选集(`grants` 的分母)。
+   *
+   * 有了它,「这轮你不说」才落得下去:房间把判过而没被点名的手当场放下,把窗在飞
+   * 期间才举的手留到下一扇窗。缺席(脚本化裁决、外部注入)时房间回落到开窗那一刻
+   * 的快照,那是一个保守的下限。
+   */
+  candidates?: string[]
   why?: string
   /**
    * 这不是一个答案,是一次失败(超时 / 读不懂 / 端口炸了)。
@@ -140,6 +167,9 @@ export function collabRefereeVerdictVerb(input: {
     params: {
       verdictToken: verdict.token,
       verdict: [...verdict.grants],
+      // 判过谁要跟着答案一起走(见 `CollabFloorPolicyParams.verdictCandidates`)。
+      // 降级的裁决不带:那不是一个答案,房间回落 FIFO,没有"判过"这回事。
+      ...(verdict.candidates && !verdict.degraded ? { verdictCandidates: [...verdict.candidates] } : {}),
       ...(verdict.degraded ? { verdictDegraded: true } : {}),
       ...(verdict.why ? { why: verdict.why } : {}),
     },

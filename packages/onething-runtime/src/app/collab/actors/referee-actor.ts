@@ -278,7 +278,8 @@ export class CollabRefereeActor {
         reason: 'no-candidates',
         elapsedMs: this.host.now() - startedAt,
       })
-      return { token: request.token, grants: [] }
+      // 空候选集:这次谁都没被判过,房间因此一只手都不放(队里那些是窗开之后才到的)。
+      return { token: request.token, grants: [], candidates: [] }
     }
 
     const members = this.host.members(request.roomId)
@@ -326,7 +327,9 @@ export class CollabRefereeActor {
       if (verdict.token !== request.token) {
         return { token: request.token, grants: [], degraded: true }
       }
-      return verdict
+      // 判过谁由**这里**说了算,不由端口说了算:候选是这个方法现取的,而
+      // 「没被点名的手当场放下」这条规则的分母必须与真正送进模型的那一份一致。
+      return { ...verdict, candidates: candidates.map(hand => hand.agentId) }
     } catch (error) {
       if (this.onError) this.onError(error, request)
       else console.error('[collab-referee] 裁决失败,回落举手 FIFO:', error)

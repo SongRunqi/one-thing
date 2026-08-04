@@ -219,7 +219,8 @@ describe('summarizeCollabInspectRoom', () => {
     })
 
     // 重算的判据(缺预算闸那一格)与账上的原话并存 —— 这正是预算闸 caveat 的用处。
-    expect(summary.hands[0]?.blockedBy).toBe('seats')
+    // 群房挂裁判、座位全空还举着手 = 等下一扇窗,不是等座位(真机走查那句假话)。
+    expect(summary.hands[0]?.blockedBy).toBe('judging')
     expect(summary.hands[0]?.loggedGate).toBe('budget')
     expect(summary.judgment.lastVerdict).toEqual({
       at: NOW - 2_000,

@@ -700,3 +700,196 @@ describe('裁决降级的痕', () => {
     expect(broken.lastDegraded).toBeUndefined()
   })
 })
+
+/* ── 裁后放手(真机走查:幽灵排队)──────────────────────────────────────── */
+
+/**
+ * 裁决是对**这一批候选**的终审 —— 没被点名的手当场放下。
+ *
+ * 走查现场:4 人举手、裁判答空,四只手原地留队,状态条永远写着「4 人排队中」而
+ * 座位 0/6 全空。旧行为的前提是「一只手代表一个还没兑现的意愿」,D6-a 把举手判据
+ * 换成"每条房间事实人人机械举手"之后那个前提就没了 —— 下一条消息全员重新举手,
+ * 留旧手防不住任何东西,只留下幽灵队列与掺进新话题的旧手。
+ */
+describe('裁决之后手的去留', () => {
+  const refereeGates = (overrides: Partial<CollabRoomGates> = {}): CollabRoomGates =>
+    gates({ referee: true, ...overrides })
+
+  /** 一条消息 + 若干只手 → 一扇开着的窗。 */
+  function openWindow(
+    agentIds: readonly string[],
+    options: { maxConcurrent?: number; now?: number } = {},
+  ): { account: CollabRoomAccount; token: string } {
+    const now = options.now ?? 1_000
+    const g = refereeGates({ now, ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }) })
+    let account = applyCollabRoomPosted(
+      createCollabRoomAccount(ROOM),
+      collabRoomPosted({
+        roomId: ROOM,
+        author: collabActorRef('user', 'user'),
+        message: userSays('大家看看', [], 'm1'),
+      }),
+      g,
+      IDS,
+    ).account
+    for (const agentId of agentIds) {
+      account = applyCollabRoomRaiseHand(
+        account,
+        collabAgentRaiseHand({ roomId: ROOM, agentId, sourceMessageId: 'm1' }),
+        g,
+        IDS,
+      ).account
+    }
+    const token = account.judgment?.token
+    expect(token).toBeDefined()
+    return { account, token: token! }
+  }
+
+  /** 投一份裁决。`candidates` = 裁判现取的那批(缺省 = 队里此刻全部)。 */
+  function verdict(
+    account: CollabRoomAccount,
+    input: {
+      token: string
+      grants?: string[]
+      candidates?: string[]
+      degraded?: boolean
+      maxConcurrent?: number
+      now?: number
+    },
+  ): CollabRoomStep {
+    return applyCollabRoomSetPolicy(
+      account,
+      collabRefereeVerdictVerb({
+        roomId: ROOM,
+        refereeId: 'referee',
+        verdict: {
+          token: input.token,
+          grants: input.grants ?? [],
+          candidates: input.candidates ?? account.hands.map(hand => hand.agentId),
+          ...(input.degraded ? { degraded: true } : {}),
+        },
+      }),
+      refereeGates({
+        now: input.now ?? 2_000,
+        ...(input.maxConcurrent === undefined ? {} : { maxConcurrent: input.maxConcurrent }),
+      }),
+      IDS,
+    )
+  }
+
+  it('空裁决 = 全放下:四只手一只不剩,队列当场清零', () => {
+    const opened = openWindow(['ana', 'bo', 'cy', 'dan'])
+    expect(opened.account.hands).toHaveLength(4)
+
+    const stepped = verdict(opened.account, { token: opened.token, grants: [] })
+
+    // 「这轮无人发言」是一个合法答案,手随消息走 —— 不留幽灵队列。
+    expect(stepped.account.hands).toEqual([])
+    expect(stepped.effects.granted).toEqual([])
+    expect(stepped.account.judgment).toBeUndefined()
+  })
+
+  it('点名的留、没点名的放下:单座位下点名者渐进兑现', () => {
+    const opened = openWindow(['ana', 'bo', 'cy'], { maxConcurrent: 1 })
+    const stepped = verdict(opened.account, {
+      token: opened.token,
+      grants: ['bo', 'ana'],
+      maxConcurrent: 1,
+    })
+
+    // bo 拿牌;ana 被点名了,留在队里等 bo 让位(D3 的分批兑现,别破坏);
+    // cy 判过没点名 —— 放下。
+    expect(stepped.effects.granted.map(lease => lease.agentId)).toEqual(['bo'])
+    expect(stepped.account.hands.map(hand => hand.agentId)).toEqual(['ana'])
+    // 那半份裁决留在窗里 —— 让位时直接上场,不必再买一次调用。
+    expect(stepped.account.judgment?.state).toBe('resolved')
+    expect(stepped.account.judgment?.grants).toEqual(['ana'])
+  })
+
+  it('残余的半份裁决不再放手:被放下的人重新举手不会被旧答案再放一次', () => {
+    const opened = openWindow(['ana', 'bo', 'cy'], { maxConcurrent: 1 })
+    const stepped = verdict(opened.account, {
+      token: opened.token,
+      grants: ['bo', 'ana'],
+      maxConcurrent: 1,
+    })
+    // 窗还开着(ana 那半份没兑现),但它的候选集已经清空 —— 放手是一次性的。
+    expect(stepped.account.judgment?.candidates).toEqual([])
+
+    // cy 为下一条消息重新举手:它必须活着,而不是被上一份答案再放一次。
+    const again = applyCollabRoomRaiseHand(
+      stepped.account,
+      collabAgentRaiseHand({ roomId: ROOM, agentId: 'cy', sourceMessageId: 'm2' }),
+      refereeGates({ now: 3_000, maxConcurrent: 1 }),
+      IDS,
+    )
+    expect(again.account.hands.map(hand => hand.agentId)).toEqual(['ana', 'cy'])
+  })
+
+  it('窗在飞期间才举的手不连坐:空裁决之后它活着,并开出下一扇窗', () => {
+    const opened = openWindow(['ana', 'bo'])
+    // 裁判现取候选之后 dan 才举手 —— 它一次都没被判过。
+    const late = applyCollabRoomRaiseHand(
+      opened.account,
+      collabAgentRaiseHand({ roomId: ROOM, agentId: 'dan', sourceMessageId: 'm1' }),
+      refereeGates({ now: 1_500 }),
+      IDS,
+    ).account
+
+    const stepped = verdict(late, { token: opened.token, grants: [], candidates: ['ana', 'bo'] })
+    expect(stepped.account.hands.map(hand => hand.agentId)).toEqual(['dan'])
+
+    // 下一条房间事实来了 —— 它进新一扇窗,而不是永远挂着。
+    const next = applyCollabRoomPosted(
+      stepped.account,
+      collabRoomPosted({
+        roomId: ROOM,
+        author: collabActorRef('user', 'user'),
+        message: userSays('再看一眼', [], 'm2'),
+      }),
+      refereeGates({ now: 3_000 }),
+      IDS,
+    )
+    expect(next.account.judgment?.state).toBe('pending')
+    expect(next.account.judgment?.candidates).toEqual(['dan'])
+  })
+
+  it('降级不放手:回落 FIFO,手被消费成授牌(D1 的行为一字不差)', () => {
+    const opened = openWindow(['ana', 'bo', 'cy'], { maxConcurrent: 2 })
+    const stepped = verdict(opened.account, {
+      token: opened.token,
+      degraded: true,
+      maxConcurrent: 2,
+    })
+
+    // 两个座位:前两只手成了牌,第三只等座位 —— 一只都不是被"裁后放手"放掉的。
+    expect(stepped.effects.granted.map(lease => lease.agentId)).toEqual(['ana', 'bo'])
+    expect(stepped.account.hands.map(hand => hand.agentId)).toEqual(['cy'])
+  })
+
+  it('旧账缺候选集:按「这一批就是全部」处理 —— 存量僵尸手自愈,不炸', () => {
+    const opened = openWindow(['ana', 'bo'])
+    // 模拟一份修复之前落盘的账:窗上没有 `candidates` 那一格。
+    const legacy = normalizeCollabRoomAccount(
+      {
+        ...JSON.parse(JSON.stringify(opened.account)),
+        judgment: { token: opened.token, openedAt: 1_000, state: 'pending' },
+      },
+      ROOM,
+    )
+    expect(legacy.judgment?.candidates).toBeUndefined()
+
+    // 裁决也不带候选集(老裁判进程投回来的那种)。
+    const stepped = applyCollabRoomSetPolicy(
+      legacy,
+      collabRefereeVerdictVerb({
+        roomId: ROOM,
+        refereeId: 'referee',
+        verdict: { token: opened.token, grants: [] },
+      }),
+      refereeGates({ now: 2_000 }),
+      IDS,
+    )
+    expect(stepped.account.hands).toEqual([])
+  })
+})

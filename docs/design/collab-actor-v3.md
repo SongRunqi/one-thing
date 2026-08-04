@@ -199,7 +199,8 @@ D0-D6 全部实施完毕，v3 是唯一运行时。逐期一行 + 与本文偏�
 8. **D6-a · 裁决窗 150ms 防抖**：一条消息会引发 N 位成员各举一次手，不防抖则 N 次举手扇出 N 扇裁决窗 = N 次模型调用，批量裁决的收益当场归零。150ms 的选法：比一次 mailbox 往返长一个量级，比人眼的「它怎么不说话」短一个量级（`runtime.ts` 的 `JUDGMENT_DEBOUNCE_MS`）。
 9. **D6-a · 拆环靠零 import 端口模块**：`turn-context.ts` / `stop-door.ts`（与 D2 的 `mind-port.ts` 同款纪律）——ingress 直引 runtime 会成 stream-engine 的环，而直连实测会打穿 19 个文件的 mock。
 10. **D6-b · 控制面搬家，对外名字零改动**：冻结 / 清史 / 删房 / 成员 / 卡级停止这些**与调度无关**的七个函数搬到 `app/collab/room-config.ts`，`app/collab/index.ts` 用 `as` 保名转发，**IPC 零改动**。删除时交叉核对：无 v3 等价的先补再删（`room-config.test` 13 条）；v2-only 概念随删列名（`floorHolds` / per-agent 判定默认 / 全局 reconcile / judgement 表情）。
-11. **D6-b · 两个差点漏掉的静默失效**：删房清理与每日摘要触发点原本挂在 v2 协调器的 `disposeCollabRoom` 上，随它一起删会造成目录泄漏与摘要停摆——已由 v3 接管。另补 `membership-changed` 的**生产者**（D6-a 只有消费侧，同事会继续 @ 已离开的人）与 `hasActiveCollabV3Work`（扫磁盘 workers 账，可跨重启，优于 v2 的进程内表）。
+11. **D3 · 「裁后留手」被真机推翻（走查 F1）**：`free` 的 `resolved` 分支原本刻意让**没被点名的手继续留在队里**（理由：丢掉它们等于把「这轮你先别说」读成「你以后也别说了」）。这个前提在 D6-a 换掉举手判据（人人机械举手，见第 7 条）之后就不成立了——下一条消息全员会重新举手，留旧手防不住任何东西，只留下**永不清零的排队数**与**掺进新话题裁决窗的旧手**。现语义：裁决是对**这一批候选**的终审，判过而没被点名的手当场放下（空裁决 = 全放下），点名但没座位的照旧渐进兑现，**候选集之外的手不连坐**（窗在飞时才举的手没被判过）。判据由裁判报回（`verdictCandidates`），放手写在账转换层（`room-rules.ts` 的队列结算）而不是 `decide()` 里——`decide` 是纯决策。顺带把这种状态的 `blockedBy` 从兜底的 `seats` 改成 `judging`（座位全空时说「等人让位」是假话）。详见 `docs/audit/collab-v3-walkthrough-2026-08-03.md` §4.4 F1。
+12. **D6-b · 两个差点漏掉的静默失效**：删房清理与每日摘要触发点原本挂在 v2 协调器的 `disposeCollabRoom` 上，随它一起删会造成目录泄漏与摘要停摆——已由 v3 接管。另补 `membership-changed` 的**生产者**（D6-a 只有消费侧，同事会继续 @ 已离开的人）与 `hasActiveCollabV3Work`（扫磁盘 workers 账，可跨重启，优于 v2 的进程内表）。
 
 ### 9.3 已知缺口（D7 走查的头号待办）
 

@@ -298,8 +298,11 @@ export function createCollabFreeFloorPolicy(): CollabFloorPolicy {
         return { grants: seats.grants }
       }
       if (judgment?.state === 'resolved') {
-        // 裁决的次序是**授牌次序**,不是候选池 —— 没被排上的手继续留在队里等下一次
-        // 触发。丢掉它们等于把「这轮你先别说」读成「你以后也别说了」。
+        // 裁决的次序是**授牌次序**,不是候选池:只有被点名的人这一轮上场。
+        //
+        // 没被点名的那几只手**当场放下** —— 但那一步不在这里:decide 是纯决策,
+        // 手的增删是账的事(`room-rules.ts` 的队列结算)。这里少发一张牌,那里
+        // 少留一只手,同一个决定的两半刻意分在两层,免得策略与账各存一份队列。
         const queued = new Map(input.hands.map(hand => [hand.agentId, hand]))
         for (const agentId of judgment.grants ?? []) {
           const hand = queued.get(agentId)

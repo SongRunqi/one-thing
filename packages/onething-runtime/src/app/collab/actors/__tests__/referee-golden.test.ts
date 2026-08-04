@@ -60,8 +60,14 @@ function expectedSnapshot(name: string): string {
 /**
  * 脚本化的裁判。
  *
- * 第一扇窗**故意答空**:它把「攒手」这件事变成可见的 —— ana 没被排上,手留在队里,
- * 于是下一扇窗有两个候选而调用数仍然只加一。快照里那一段就是 O(1) 的形状。
+ * 第一扇窗**故意答空**:它把「裁后放手」这件事变成可见的 —— ana 被判过、没被点名,
+ * 手当场放下,于是下一扇窗只有 bo 一个候选,ana 那句 rf-2 就此说不出口。它要到
+ * rf-6 才重新举手、重新被判(手随消息走,这一轮的沉默是终审)。
+ *
+ * 旧快照在这里是反的:ana 的手留着,跟着 bo 那扇窗一起被判、一起拿牌 —— 一只
+ * 属于上一条消息的手混进了下一条消息的裁决窗。真机上这个形状的另一半是永不清零
+ * 的「N 人排队中」(走查发现 1)。
+ *
  * 其余每一扇窗都按队列原序把候选放出去。
  */
 function freeJudgeScript(): (
@@ -106,7 +112,7 @@ describe('金重放:free 批量举手裁决', () => {
     expect(formatCollabActorReplay(second.result)).toBe(formatCollabActorReplay(first.result))
   })
 
-  it('一个触发事件一次裁决 —— 候选攒到两个,调用数还是一次一次加', () => {
+  it('一扇窗一次裁决 —— 判了几次 = 开了几扇窗,没有窗判两遍', () => {
     const { pipeline, result } = replayFree()
     const windows = result.verbs.filter(
       verb => verb.type === 'referee:set-floor-policy'
@@ -114,19 +120,27 @@ describe('金重放:free 批量举手裁决', () => {
     )
     // 判了几次 = 开了几扇窗 = 下发了几份裁决。三个数必须相等,不然就有窗没关。
     expect(pipeline.judgeCalls()).toBe(windows.length)
-    // ana 第一次没被排上,手留在队里;第二扇窗因此有两个候选,而调用只多了一次。
-    expect(pipeline.judgeCalls()).toBeLessThan(
-      result.verbs.filter(verb => verb.type === 'agent:raise-hand').length + 1,
+    // 一只手至多进一扇窗:剧本里每次举手各开一扇,调用数因此不超过举手数。
+    // 「N 个候选一次调用」那一面在 referee-actor.test.ts 里钉(三只手、一扇窗)——
+    // 这份剧本一次只来一只手,量不出 O(1),但量得出「没有哪只手被判两遍」。
+    expect(pipeline.judgeCalls()).toBeLessThanOrEqual(
+      result.verbs.filter(verb => verb.type === 'agent:raise-hand').length,
     )
   })
 
-  it('裁决答空 = 这轮没人说:ana 第一次开不了口,手留在队里', () => {
-    const { result } = replayFree()
+  it('裁决答空 = 这轮没人说:ana 的手当场放下,rf-2 那句话说不出口', () => {
+    const { pipeline, result } = replayFree()
     const spoke = result.verbs
       .filter(verb => verb.type === 'agent:speak')
       .map(verb => (verb as { agentId: string }).agentId)
-    // rf-2 的 ana 被裁决按下;它到 rf-6 才说上话(人类那句话重开了裁决)。
+    // rf-2 的 ana 被裁决按下,手随着这份终审放掉;它到 rf-6 重新举手才说上话。
     expect(spoke).toEqual(['bo', 'cy', 'ana'])
+    const raised = result.verbs
+      .filter(verb => verb.type === 'agent:raise-hand')
+      .map(verb => (verb as { agentId: string }).agentId)
+    expect(raised).toEqual(['ana', 'bo', 'cy', 'ana'])
+    // 跑完之后队列是干净的 —— 幽灵排队的反面。
+    expect(pipeline.account().hands).toEqual([])
   })
 
   it('降级链:裁判答不上来 → 行为退回 D1 的举手 FIFO', () => {

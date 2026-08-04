@@ -484,7 +484,16 @@ export function resolveCollabRoomHandBlock(
   const seats = gates.maxConcurrent
   if (seats > 0 && collabRoomActiveLeases(account, gates.now).length >= seats) return 'seats'
   if (Number.isFinite(gates.maxChain) && account.chainCount >= gates.maxChain) return 'chain'
-  // 六道闸都开着还举着手 = 这一批刚判完、牌马上就到。归到「等座位」是最不误导的
+  // 闸全开着还举着手,在挂了裁判的自由发言房里意思是**等下一扇窗**(刚举的手赶不上
+  // 这一扇,或者上一扇刚关)。归到「等座位」会当着一排空座位说"等人让位",而那正是
+  // 真机走查抓到的那句假话。「裁决中」在这里是实话:它等的就是一次裁决。
+  //
+  // 判据与 `grantFloor` 里那一处求或同源:裁判可以自己接管这间房(params),
+  // 宿主也可以按房间设置挂(gates)。
+  if (account.policy.name === 'free' && (gates.referee === true || account.policy.params?.referee === true)) {
+    return 'judging'
+  }
+  // 其余档(接力/编排/相位):这一批刚判完、牌马上就到。归到「等座位」是最不误导的
   // 一格:它说的是"轮到你了,再等一下",而不是"有人拦着你"。
   return 'seats'
 }
@@ -678,6 +687,8 @@ function grantFloor(
         ...(input.sourceMessageId ? { sourceMessageId: input.sourceMessageId } : {}),
         openedAt: gates.now,
         state: 'pending',
+        // 这一批候选是谁 —— 答案回来时「谁该放手」按它分(见 `CollabRoomJudgment.candidates`)。
+        candidates: account.hands.map(hand => hand.agentId),
       }
       judgmentRequest = {
         roomId: account.roomId,
@@ -741,17 +752,41 @@ function grantFloor(
   // @ 是直通授牌,座位满不该把它降级成一次普通举手。
   let hands = account.hands.filter(hand => !issuedAgentIds.has(hand.agentId))
 
-  // 裁决**分批兑现**:一份「bo 然后 ana」的裁决在只有一个座位时先发 bo,剩下的
-  // 那半份留在窗里 —— 等 bo 让位,ana 直接按这份裁决上场。
-  //
-  // 不留的话,每一次让位都会重开一扇窗、再买一次调用,而那正是 O(1) 要消灭的东西
-  // (「一个触发事件一次调用」会退化成「一次发言一次调用」)。裁决排的是这一轮的
-  // 次序,一轮里有几次让位不该改变它的价钱。
   if (account.judgment?.state === 'resolved') {
+    // 裁决是对**这一批候选**的终审:被裁过、没被点名的手**当场放下**(空裁决 =
+    // 全放下)。
+    //
+    // 这里曾经是反过来的("留着等下一次触发"),前提是「一只手代表一个还没兑现的
+    // 意愿」。D6-a 之后那个前提没了:举手判据变成"每条房间事实人人机械举手",下
+    // 一条消息全员都会重新举一次,留旧手防不住任何东西 —— 它只造出两样坏东西,
+    // 一是 UI 上永不清零的「N 人排队中」(座位全空却显示等座位),二是旧话题的手
+    // 混进新话题的裁决窗。手随消息走,这一轮的沉默是合法答案。
+    //
+    // 三类手在这一步各走各的路:
+    //  1. 被点名了 —— 留(下面那段的**渐进兑现**要它);
+    //  2. 被裁过、没点名 —— 放下;
+    //  3. **不在候选集里** —— 留。窗在飞的时候才举的手一次都没被裁过,连坐放下
+    //     等于替裁判否掉一个它没看过的人。它们进下一扇窗。
+    const named = new Set(account.judgment.grants ?? [])
+    // 形状不对(读坏的账)与缺席同义 —— 落到"全放下",而不是让一次结算炸掉。
+    const judged = Array.isArray(account.judgment.candidates) ? account.judgment.candidates : undefined
+    hands = hands.filter(hand => named.has(hand.agentId)
+      // 旧账没有候选集:按"这一批就是全部"处理 —— 存量僵尸手本来就该放。
+      || (judged !== undefined && !judged.includes(hand.agentId)))
+
+    // 裁决**分批兑现**:一份「bo 然后 ana」的裁决在只有一个座位时先发 bo,剩下的
+    // 那半份留在窗里 —— 等 bo 让位,ana 直接按这份裁决上场。
+    //
+    // 不留的话,每一次让位都会重开一扇窗、再买一次调用,而那正是 O(1) 要消灭的东西
+    // (「一个触发事件一次调用」会退化成「一次发言一次调用」)。裁决排的是这一轮的
+    // 次序,一轮里有几次让位不该改变它的价钱。
     const remaining = (account.judgment.grants ?? []).filter(
       agentId => !issuedAgentIds.has(agentId) && hands.some(hand => hand.agentId === agentId),
     )
-    if (remaining.length > 0) judgment = { ...account.judgment, grants: remaining }
+    // 残余那半份**不再管放手**:候选集清空(`[]` = 这扇窗管不着任何人)。放手是
+    // 一次性的,上面那一步已经落定;留着旧候选集的话,同一个人为**下一条消息**重新
+    // 举的手会被这份旧答案再放一次 —— 一只刚举起来的手凭空消失,比幽灵排队更难查。
+    if (remaining.length > 0) judgment = { ...account.judgment, grants: remaining, candidates: [] }
   }
   for (const agentId of mentioned) {
     if (issuedAgentIds.has(agentId)) continue
@@ -1174,7 +1209,17 @@ export function applyCollabRoomSetPolicy(
       judgment: {
         ...account.judgment,
         state: degraded ? 'degraded' : 'resolved',
-        ...(degraded ? {} : { grants: [...(verb.params?.verdict ?? [])] }),
+        ...(degraded
+          ? {}
+          : {
+              grants: [...(verb.params?.verdict ?? [])],
+              // 裁判现取的候选集**压过**开窗那一刻的快照:窗是第一只手开的,其余的
+              // 手随后异步到,真正被判过的是裁判读到的那一份。带不带这一格的差别
+              // 就是「4 只手放下 1 只」与「4 只手全放下」(见 `candidates` 的注释)。
+              ...(verb.params?.verdictCandidates
+                ? { candidates: [...verb.params.verdictCandidates] }
+                : {}),
+            }),
         ...(verb.params?.why ? { why: verb.params.why } : {}),
       },
       // 降级要**留痕**:下面那一步 `grantFloor` 会把这扇答完的窗当场关掉,于是

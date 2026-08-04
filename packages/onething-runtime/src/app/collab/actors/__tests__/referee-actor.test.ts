@@ -187,20 +187,41 @@ describe('批量举手裁决是 O(1)', () => {
 
     const order = h.room.account.floor.active.map(lease => lease.agentId)
     expect(order).toEqual(['cy', 'ana'])
-    // 没排上的 bo **留在队里**等下一次触发 —— 「这轮你先别说」不是「你以后也别说」。
-    expect(h.room.account.hands.map(hand => hand.agentId)).toEqual(['bo'])
+    // 判过、没被点名的 bo **当场放下**:裁决是对这一批候选的终审,「这轮你不说」
+    // 就是答案本身。留着它只会让下一条消息的裁决窗里混进一只旧话题的手 ——
+    // 而下一条消息 bo 本来就会重新举手(D6-a:每条房间事实人人机械举手)。
+    expect(h.room.account.hands).toEqual([])
   })
 
-  it('裁决答空 = 这轮谁都不该说:没人拿牌,手继续挂着', async () => {
+  it('裁决答空 = 这轮谁都不该说:没人拿牌,手当场放下', async () => {
     const h = harness({ script: [{ roomId: 'room-1', grants: [] }] })
     await h.post('随便聊聊。', 'm1')
     await h.raise('ana', 'm1')
     await h.settle()
 
     expect(h.holders()).toEqual([])
-    expect(h.room.account.hands.map(hand => hand.agentId)).toEqual(['ana'])
+    // 真机走查抓到的那条:空裁决之后队列必须清零,否则状态条永远写着「N 人排队中」
+    // 而座位全空(docs/audit/collab-v3-walkthrough-2026-08-03.md 走查发现 1)。
+    expect(h.room.account.hands).toEqual([])
     // 窗关了 —— 「谁都不该说」是裁决意见,落地就是没人授牌,不需要一个 stay_silent 动词。
     expect(h.room.account.judgment).toBeUndefined()
+  })
+
+  it('窗在飞期间才举的手不连坐 —— 它没被判过,留着进下一扇窗', async () => {
+    const h = harness({ script: [{ roomId: 'room-1', grants: [] }] })
+    await h.post('随便聊聊。', 'm1')
+    await h.raise('ana', 'm1')
+    await h.raise('bo', 'm1')
+
+    // 不 await:候选在 `adjudicate` 的同步段就现取完了(ana + bo),模型那一步还在飞。
+    const flying = h.referee.adjudicate(h.windows.splice(0, h.windows.length)[0])
+    // 就在这时 cy 举手 —— 它的手一次都没被送进模型。
+    await h.raise('cy', 'm1')
+    await flying
+
+    // 空裁决放掉被判过的两只,cy 活着(它等的是下一扇窗,不是这一份答案)。
+    expect(h.room.account.hands.map(hand => hand.agentId)).toEqual(['cy'])
+    expect(h.judgePort.calls[0].candidates.map(hand => hand.agentId)).toEqual(['ana', 'bo'])
   })
 
   it('没人举手不买调用 —— 空名单不值一次模型往返', async () => {
