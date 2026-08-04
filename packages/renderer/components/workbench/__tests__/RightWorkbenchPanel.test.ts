@@ -275,7 +275,7 @@ describe('RightWorkbenchPanel', () => {
     it('线程不进 picker / 空态清单 —— 可选 tab 集合只多了「调度」', () => {
       const wrapper = mountPanel()
       const labels = wrapper.findAll('.empty-action').map(button => button.text())
-      expect(labels).toEqual(['Files', 'Terminal', 'Browser', '看板', '调度'])
+      expect(labels).toEqual(['Files', 'Terminal', 'Browser', '看板', '调度总览'])
       expect(wrapper.text()).not.toContain('线程')
     })
 

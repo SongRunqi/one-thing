@@ -128,6 +128,13 @@ ActorBase 死信环 → 三路出口：①计数进两级快照（agent + 房间
 
 ### 4.2 房间后台面板（RoomBackstagePanel）——新增「调度」页
 
+> **勘误（2026-08-04，用户拍板，走查 F2c）**：`RoomBackstagePanel`（右栏背台的四段分段器）**已整体退役**，
+> 右栏只维护一套面板系统——工作台页签（`RightWorkbenchPanel`）。本节这一页原样搬成房的固定页签
+> 「调度」（`RoomSchedulePanel`，与跨房的「调度总览」`SchedulingOverviewWorkbench` 分开命名），
+> 内容与落点一字未改；四颗状态点搬到页签标签上。判定见 `packages/renderer/components/workbench/room-tabs.ts`。
+> 退役原因：两套面板并存时背台**盖住**页签那一层，任何往页签里加的内容在房里都够不着
+> （群 folder → files 页签就是这么丢的，见 `docs/audit/collab-v3-walkthrough-2026-08-03.md` F2c）。
+
 - 租约表：持有人/授牌原因/持有时长/executing 状态/epoch；每行可操作「撤牌」（走既有 revoke）。
 - 举手队列：人/原因/卡在哪道闸/举手时长。
 - 裁决卡片：当前窗状态 + **最近一次裁决的完整回放**（候选、排序、why、耗时、用的模型）——直接读时间轴尾部的 judge-verdict 行。

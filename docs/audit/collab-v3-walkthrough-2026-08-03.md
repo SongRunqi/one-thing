@@ -664,6 +664,50 @@ bo 那扇为 rf-3 开的窗一起被判、一起拿牌)。
 **已经产出过东西**的房 —— 那种房在 worker 拿 cwd 时已由 `ensureCollabRoomFolder` 把
 folder 落到 `workingDirectory` 上了。
 
+#### F2c · 终局:右栏收敛成一套面板,folder 链路这才真的可达(2026-08-04,用户拍板)
+
+上面那一修**修在了一张够不着的界面上**。右栏当时有**两套面板系统并存**:
+
+| | 组件 | 何时画 |
+| --- | --- | --- |
+| 工作台页签 | `RightWorkbenchPanel` 的 `panelForm.form === 'tools'` | 直聊 / 工程面 / classic 外壳 |
+| 房间背台 | `RoomBackstagePanel`(四段分段器) | **房里的默认形态**,真机用户实际所见 |
+
+`openFolder` 开的 files 页签属于**页签那一路**,而房里画的是背台 —— 那一路整棵树被
+`v-show` 关成 `display: none`。所以「群 folder」按钮点下去:事件派了、页签开了、根也换了,
+用户什么也看不见。F2 的复验步骤(「点它,右侧 files 页签的根换过去」)在房里从来走不通。
+
+**拍板**:右栏只维护一套面板系统 —— **保留工作台页签,`RoomBackstagePanel` 整体退役**,
+四段内容原样搬进页签。背台挣来的两条纪律照搬(它们与"分段器还是页签"无关):
+
+1. **格数只由房的形态决定,与内容无关** —— 进房自动备齐固定页签组,治「按需才开 →
+   看不到线程」;
+2. **固定短标签 + 单例** —— 换房是换靶子不是再开一页,治「换房攒页签」与「成..」截断。
+
+**落点**
+
+- 删:`RoomBackstagePanel.vue` / `room-backstage.ts` / `RoomBoardWorkbench.vue`
+  (窄栏行式看板只有背台一个消费者,随壳退役;看板那一页画的是 `CollabBoardPanel` ——
+  **预算 / 冻结 / 群 folder 都在它身上**,F2 的按钮正是它的);
+- 新:`room-tabs.ts`(固定页签组的纯判定,前身即 `room-backstage.ts`);
+- 改:`RightWorkbenchPanel.vue` —— 双态 `panelForm` 与 `backstageLanding` 落座机制一并
+  收掉,新增按房的 `schedule` 页签(`RoomSchedulePanel`,与跨房的「调度总览」分开命名),
+  四颗状态点搬到页签标签上,`OPEN_ROOM_SCHEDULE_EVENT` 的监听改挂在这一层。
+
+**怎么复验**(替代上面那三条,在**房里**走)
+
+1. 进任意群房 → 右栏就是四条页签「线程 / 成员 / 看板 / 调度」,落在线程的列表层;
+2. 点「看板」页 → 头部有「群 folder」按钮 → 点它 → **多出一条 Files 页签并且当场看得见**,
+   根是 `…/.onething/rooms/<roomId>`(这一条是 F2 的最终验收);
+3. 进用户私聊房 → 只有三条「线程 / 空间 / 调度」,**没有看板**;房头 ⋯ 菜单点「看板」
+   原地不动;
+4. ⋯ 菜单「成员」→ 成员页;左栏活卡片 / 中栏「展开执行 →」→ 线程页并下钻;
+   协调器状态条那颗死信红点 → 调度页且时间轴停在 dead-letter 档,再点一次能重放;
+5. 换房 → 页签不累积(仍是四条),线程回列表层。
+
+**测试** `room-tabs.test.ts`(纯判定)+ `RightWorkbenchPanel.room.test.ts`(壳:备齐 /
+私聊无看板 / 四入口 / **群 folder → files 页签可见** / 状态点 / 换房不攒页签)。
+
 ---
 
 ## 5. 结果记录

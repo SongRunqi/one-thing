@@ -4,6 +4,9 @@
 范围：`experiment/castlabs-electron` 的 D8 O0–O3（`a27fb2a7` 契约与账本 / `c16f1e44` 发射与补水 / O2 UI 四面 / O3 CLI 与本清单）。
 方案：`docs/design/collab-v3-observability.md`（§0 四个必答问题 = 本清单的验收主线，§5 诊断 CLI）。
 姊妹清单：`docs/audit/collab-v3-walkthrough-2026-08-03.md`（v3 行为本身，V1–V23）——交叉引用见 §6。
+勘误（2026-08-04，用户拍板）：右栏的**背台分段器已退役**，收敛成唯一一套工作台页签。本清单里
+「`RoomBackstagePanel` 的调度页」一律改读作**右栏的「调度」页签**（内容同一个 `RoomSchedulePanel`，
+只是入口从分段器的一格变成固定页签的一条）。见姊妹清单的 F2c。
 
 ---
 
@@ -163,7 +166,7 @@ bun scripts/collab-v3-inspect.mjs --room <房>
 2. 不插话，让同事们自己连着说到顶（或直接发一条会引起接龙的话）；
 3. 看状态条的链闸读数与排队徽标。
 
-**在哪看** 状态条的三闸读数 + 排队徽标 + `RoomBackstagePanel` 的「调度」页。
+**在哪看** 状态条的三闸读数 + 排队徽标 + 右栏的「调度」页签。
 
 **预期**
 1. 链闸读数走到 `3/3`；
@@ -299,7 +302,7 @@ bun scripts/collab-v3-inspect.mjs --json | jq '.totals'
 
 **操作**
 1. 在 R3 里发一条不 @ 人的问题，等一轮跑完；
-2. 打开 `RoomBackstagePanel` →「调度」页 → 时间轴视图；
+2. 打开右栏的「调度」页签 → 时间轴视图；
 3. 同时跑 CLI 对照：
 ```bash
 bun scripts/collab-v3-inspect.mjs --room <房>          # 尾 20 条

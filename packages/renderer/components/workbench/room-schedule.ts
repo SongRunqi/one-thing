@@ -6,7 +6,7 @@
  * 一小条已经答了前半句(它挂在线程格顶上,宽度只够一行),这一格是它的展开面 ——
  * 一张租约表、一列举手队列、一张裁决卡片、一条时间轴。
  *
- * 纪律(与 `room-backstage.ts` / `room-members.ts` / `coordinator-status.ts` 同一条):
+ * 纪律(与 `room-tabs.ts` / `room-members.ts` / `coordinator-status.ts` 同一条):
  *  - **一份账都不新增**。租约与举手读协调器快照,大脑在哪读 collabBoard 的 agents
  *    账,「刚才」读盘上的调度时间轴;这个文件连状态都不存;
  *  - **不碰 DOM**。措辞、次序、着色分档、因果引用怎么读成人话,全在这里,所以

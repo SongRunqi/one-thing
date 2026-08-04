@@ -10,268 +10,278 @@
     main-overflow="hidden"
     @keydown.esc="pickerOpen = false"
   >
-    <!-- 形态一:**房间背台**(房/私聊)。分段器固定三格,不是页签。 -->
-    <RoomBackstagePanel
-      v-if="panelForm.form === 'backstage'"
-      class="workbench-backstage"
-      :room-session-id="panelForm.roomSessionId"
-      :is-dm="panelForm.isDm"
-      :dm-agent-id="panelForm.dmAgentId"
-      :landing="backstageLanding"
-      @open-session="openSessionTab"
-      @open-file="openFile"
-    />
-
-    <!-- 形态二:**既有工具页签**(直聊/工程面)。
-         `display: contents` + `v-show`:切到房面时它整棵树留在原地(终端 PTY、
-         浏览器视图、编辑器缓冲全都活着),切回来一个字节不丢 —— 不是销毁重建。
-         包一层壳而不是给每个孩子各挂一个 v-show,是为了不改这一路的布局:
-         `display: contents` 让这个 div 在排版上不存在。 -->
     <div
-      v-show="panelForm.form === 'tools'"
-      class="workbench-tools-form"
+      v-if="pickerOpen && openTabs.length"
+      class="workbench-tab-picker"
+      @mousedown.stop
     >
-      <div
-        v-if="pickerOpen && openTabs.length"
-        class="workbench-tab-picker"
-        @mousedown.stop
-      >
-        <Button
-          v-for="option in availableTabOptions"
-          :key="option.type"
-          unstyled
-          class="picker-option"
-          :style="workbenchToolStyle(option.categorySlot)"
-          @click="addWorkbenchTab(option.type)"
-        >
-          <component
-            :is="option.icon"
-            :size="15"
-            :stroke-width="2"
-            aria-hidden="true"
-          />
-          <span>{{ option.title }}</span>
-        </Button>
-      </div>
-
       <Button
-        v-if="!openTabs.length"
+        v-for="option in availableTabOptions"
+        :key="option.type"
         unstyled
-        class="workbench-close is-floating"
-        title="Close workbench"
-        aria-label="Close workbench"
-        @click="$emit('close')"
+        class="picker-option"
+        :style="workbenchToolStyle(option.categorySlot)"
+        @click="addWorkbenchTab(option.type)"
       >
-        <X
-          :size="14"
+        <component
+          :is="option.icon"
+          :size="15"
           :stroke-width="2"
           aria-hidden="true"
         />
+        <span>{{ option.title }}</span>
       </Button>
+    </div>
 
-      <Tabs
-        v-if="openTabs.length"
-        v-model="activeTabId"
-        class="right-workbench-tabs"
-        addable
-        closable
-        @tab-add="togglePicker"
-        @tab-remove="closeWorkbenchTab"
+    <Button
+      v-if="!openTabs.length"
+      unstyled
+      class="workbench-close is-floating"
+      title="Close workbench"
+      aria-label="Close workbench"
+      @click="$emit('close')"
+    >
+      <X
+        :size="14"
+        :stroke-width="2"
+        aria-hidden="true"
+      />
+    </Button>
+
+    <Tabs
+      v-if="openTabs.length"
+      v-model="activeTabId"
+      class="right-workbench-tabs"
+      addable
+      closable
+      @tab-add="togglePicker"
+      @tab-remove="closeWorkbenchTab"
+    >
+      <template #actions>
+        <Button
+          unstyled
+          class="workbench-close"
+          title="Close workbench"
+          aria-label="Close workbench"
+          @click="$emit('close')"
+        >
+          <X
+            :size="14"
+            :stroke-width="2"
+            aria-hidden="true"
+          />
+        </Button>
+      </template>
+
+      <TabPane
+        v-for="tab in openTabs"
+        :key="tab.id"
+        :name="tab.id"
+        :label="tab.title"
+        lazy
       >
-        <template #actions>
-          <Button
-            unstyled
-            class="workbench-close"
-            title="Close workbench"
-            aria-label="Close workbench"
-            @click="$emit('close')"
+        <template #label>
+          <span
+            class="workbench-tab-label"
+            :class="{ 'has-fixed-label': FIXED_LABEL_TABS.has(tab.type) }"
+            :style="workbenchToolStyle(tabCategorySlot(tab.type))"
           >
-            <X
+            <component
+              :is="tabIcon(tab.type)"
               :size="14"
               :stroke-width="2"
               aria-hidden="true"
             />
-          </Button>
+            <span>{{ tabDisplayTitle(tab) }}</span>
+            <!-- 状态点:有没有,不是几个(计数一律不显示)。只有这间房的固定
+                 页签才画 —— 它说的是"这间房现在有事",别的页签没有这回事。 -->
+            <i
+              v-if="tabDot(tab)"
+              class="workbench-tab-dot"
+              :class="`is-${tabDot(tab)}`"
+              aria-hidden="true"
+            />
+          </span>
         </template>
 
-        <TabPane
-          v-for="tab in openTabs"
-          :key="tab.id"
-          :name="tab.id"
-          :label="tab.title"
-          lazy
+        <EditorWorkbench
+          v-if="tab.type === 'files' || tab.type === 'file'"
+          :workspace-root="tab.workspaceRoot || workspaceRoot"
+          :initial-file-path="tab.filePath"
+          :active="activeTabId === tab.id"
+          @open-file="openFile"
+        />
+
+        <GoalReviewWorkbench
+          v-else-if="tab.type === 'review'"
+          :key="`${tab.id}-${tab.reviewNonce ?? 0}`"
+          :session-id="tab.sessionId || sessionId"
+          @open-file="openFile"
+          @objective-resolved="(objective) => renameReviewTab(tab.id, objective)"
+        />
+
+        <TerminalView
+          v-else-if="tab.type === 'terminal' && tab.terminalId"
+          class="workbench-terminal"
+          :terminal-id="tab.terminalId"
+          @restarted="(newId) => handleTerminalRestarted(tab.id, newId)"
+        />
+
+        <!-- WebContentsView 是**原生层**:DOM 被 display:none 藏起来它照样画在
+             最上面,所以收不收由右栏自己的展开态说了算(页签之间的切换由
+             `active` 管)。 -->
+        <BrowserPanel
+          v-else-if="tab.type === 'browser' && canUseEmbeddedBrowser"
+          :active="activeTabId === tab.id"
+          :revealed="props.revealed"
+        />
+
+        <!-- 看板 = 既有的 `CollabBoardPanel`:预算 / 冻结 / **群 folder** 都在它
+             身上,而群 folder 那颗按钮正是 `collab-open-folder` 的发端(走查 F2)。
+             它自己顺着当前会话解析房间,所以不吃 prop。 -->
+        <CollabBoardPanel v-else-if="tab.type === 'board'" />
+
+        <!-- 这间房的调度页(D8 §4.2):租约 / 举手 / 裁决 / 时间轴。 -->
+        <RoomSchedulePanel
+          v-else-if="tab.type === 'schedule'"
+          :key="`schedule-${tab.sessionId || ''}`"
+          :room-session-id="tab.sessionId || ''"
+          :initial-filter="tab.scheduleFilter || ''"
+          :landing-nonce="tab.scheduleNonce ?? 0"
+        />
+
+        <!-- 调度**总览**(D8 §4.5):四个必答问题里的第三个 ——「整个系统在忙
+             什么」。它不属于任何一间房,所以是 picker 里可加的一条,与上面那条
+             按房的「调度」各是各的。 -->
+        <SchedulingOverviewWorkbench
+          v-else-if="tab.type === 'scheduling'"
+          @open-session="openSessionTab"
+          @open-agent="(agentId: string) => openAgentTab(agentId)"
+        />
+
+        <!-- 线程是**两层**:这间房的执行会话列表 → 选中 → 该会话详情
+           (详情是 `ThreadChatDetail` = 既有聊天 UI,由这层壳就地渲染,不新开页签)。
+
+           **不挂 `:key`**:这一格的房 id 会被子组件的 `focus` 回填(只带一条执行
+           会话进来时由 `collab.roomSessionId` 现查),挂 key 就会在回填的那一拍
+           把自己重建掉。里面两层的落座本来就是 watch 出来的,不需要重建。
+
+           `grouped` 跟着"知不知道房"走:知道房才画协调器状态条与分段(那两样
+           都以房为单位),而状态条正是「去看这间房的调度页」那颗红点的发端。 -->
+        <RoomThreadsWorkbench
+          v-else-if="tab.type === 'thread'"
+          :room-session-id="tab.sessionId || ''"
+          :focus-session-id="tab.threadSessionId || ''"
+          :grouped="!!tab.sessionId"
+          :back-to="tab.sessionId ? '线程' : undefined"
+          @focus="(payload) => setThreadFocus(tab.id, payload)"
+          @open-file="openFile"
+          @title-resolved="(title) => renameThreadTab(tab.id, title)"
+        />
+
+        <MembersWorkbench
+          v-else-if="tab.type === 'members'"
+          :key="`members-${tab.sessionId || ''}`"
+          :session-id="tab.sessionId || ''"
+          :focus-agent-id="tab.memberAgentId || ''"
+          :focus-tab="tab.detailTab || null"
+          @focus="(agentId) => setMembersFocus(tab.id, agentId)"
+          @open-session="openSessionTab"
+          @open-file="openFile"
+          @open-thread="openThread"
+        />
+
+        <!-- 「这个人」的页签:房外的人(直聊助理 / 已退休同事)落在这里。 -->
+        <AgentSpace
+          v-else-if="tab.type === 'agent'"
+          :agent-id="tab.agentId || ''"
+          :initial-tab="tab.detailTab || null"
+          @open-session="openSessionTab"
+          @open-file="openFile"
+          @open-thread="openThread"
+        />
+
+        <!-- iframe fallback: apps/web host has no WebContentsView -->
+        <section
+          v-else-if="tab.type === 'browser'"
+          class="workbench-browser"
         >
-          <template #label>
-            <span
-              class="workbench-tab-label"
-              :class="{ 'has-fixed-label': FIXED_LABEL_TABS.has(tab.type) }"
-              :style="workbenchToolStyle(tabCategorySlot(tab.type))"
-            >
-              <component
-                :is="tabIcon(tab.type)"
-                :size="14"
-                :stroke-width="2"
-                aria-hidden="true"
-              />
-              <span>{{ tabDisplayTitle(tab) }}</span>
-            </span>
-          </template>
-
-          <EditorWorkbench
-            v-if="tab.type === 'files' || tab.type === 'file'"
-            :workspace-root="tab.workspaceRoot || workspaceRoot"
-            :initial-file-path="tab.filePath"
-            :active="activeTabId === tab.id"
-            @open-file="openFile"
-          />
-
-          <GoalReviewWorkbench
-            v-else-if="tab.type === 'review'"
-            :key="`${tab.id}-${tab.reviewNonce ?? 0}`"
-            :session-id="tab.sessionId || sessionId"
-            @open-file="openFile"
-            @objective-resolved="(objective) => renameReviewTab(tab.id, objective)"
-          />
-
-          <TerminalView
-            v-else-if="tab.type === 'terminal' && tab.terminalId"
-            class="workbench-terminal"
-            :terminal-id="tab.terminalId"
-            @restarted="(newId) => handleTerminalRestarted(tab.id, newId)"
-          />
-
-          <!-- `revealed` 还要 AND 上"此刻是工具形态":WebContentsView 是**原生层**,
-             DOM 被 display:none 藏起来它照样画在最上面 —— 房面下必须显式收起。 -->
-          <BrowserPanel
-            v-else-if="tab.type === 'browser' && canUseEmbeddedBrowser"
-            :active="activeTabId === tab.id"
-            :revealed="props.revealed && panelForm.form === 'tools'"
-          />
-
-          <CollabBoardPanel v-else-if="tab.type === 'board'" />
-
-          <!-- 调度总览(D8 §4.5):四个必答问题里的第三个 ——「整个系统在忙什么」。
-               它**不属于任何一间房**,所以落点是工具页签而不是房间背台的一格。 -->
-          <SchedulingOverviewWorkbench
-            v-else-if="tab.type === 'scheduling'"
-            @open-session="openSessionTab"
-            @open-agent="(agentId: string) => openAgentTab(agentId)"
-          />
-
-          <!-- 线程是**两层**:这间房的执行会话列表 → 选中 → 该会话详情
-             (详情是 `ThreadChatDetail` = 既有聊天 UI,由这层壳就地渲染,不新开页签)。 -->
-          <RoomThreadsWorkbench
-            v-else-if="tab.type === 'thread'"
-            :room-session-id="tab.sessionId || ''"
-            :focus-session-id="tab.threadSessionId || ''"
-            @focus="(payload) => setThreadFocus(tab.id, payload)"
-            @open-file="openFile"
-            @title-resolved="(title) => renameThreadTab(tab.id, title)"
-          />
-
-          <MembersWorkbench
-            v-else-if="tab.type === 'members'"
-            :session-id="tab.sessionId || ''"
-            :focus-agent-id="tab.memberAgentId || ''"
-            :focus-tab="tab.detailTab || null"
-            @focus="(agentId) => setMembersFocus(tab.id, agentId)"
-            @open-session="openSessionTab"
-            @open-file="openFile"
-            @open-thread="openThread"
-          />
-
-          <!-- 「这个人」的页签:房外的人(直聊助理 / 已退休同事)落在这里。 -->
-          <AgentSpace
-            v-else-if="tab.type === 'agent'"
-            :agent-id="tab.agentId || ''"
-            :initial-tab="tab.detailTab || null"
-            @open-session="openSessionTab"
-            @open-file="openFile"
-            @open-thread="openThread"
-          />
-
-          <!-- iframe fallback: apps/web host has no WebContentsView -->
-          <section
-            v-else-if="tab.type === 'browser'"
-            class="workbench-browser"
+          <form
+            class="browser-toolbar"
+            @submit.prevent="navigateBrowser"
           >
-            <form
-              class="browser-toolbar"
-              @submit.prevent="navigateBrowser"
+            <Globe2
+              :size="14"
+              :stroke-width="2"
+              aria-hidden="true"
+            />
+            <input
+              v-model="browserInput"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="localhost:3000"
             >
-              <Globe2
+            <Button
+              unstyled
+              class="browser-go"
+              native-type="submit"
+              :disabled="!browserInput.trim()"
+            >
+              <ArrowRight
                 :size="14"
                 :stroke-width="2"
                 aria-hidden="true"
               />
-              <input
-                v-model="browserInput"
-                type="text"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="localhost:3000"
-              >
-              <Button
-                unstyled
-                class="browser-go"
-                native-type="submit"
-                :disabled="!browserInput.trim()"
-              >
-                <ArrowRight
-                  :size="14"
-                  :stroke-width="2"
-                  aria-hidden="true"
-                />
-              </Button>
-            </form>
-            <iframe
-              v-if="browserUrl"
-              class="browser-frame"
-              :src="browserUrl"
-              title="Workbench browser"
-            />
-            <div
-              v-else
-              class="workbench-empty-state compact"
-            >
-              Open a local page
-            </div>
-          </section>
-        </TabPane>
-      </Tabs>
-
-      <div
-        v-else
-        class="workbench-empty-state empty-root"
-      >
-        <div class="workbench-empty-copy">
-          <span class="workbench-empty-title">Workbench</span>
-          <span class="workbench-empty-hint">Open a tool alongside the chat.</span>
-        </div>
-        <Button
-          v-for="option in availableTabOptions"
-          :key="option.type"
-          unstyled
-          class="empty-action"
-          :style="workbenchToolStyle(option.categorySlot)"
-          :title="option.title"
-          @click="addWorkbenchTab(option.type)"
-        >
-          <component
-            :is="option.icon"
-            :size="15"
-            :stroke-width="2"
-            aria-hidden="true"
+            </Button>
+          </form>
+          <iframe
+            v-if="browserUrl"
+            class="browser-frame"
+            :src="browserUrl"
+            title="Workbench browser"
           />
-          <span>{{ option.title }}</span>
-        </Button>
+          <div
+            v-else
+            class="workbench-empty-state compact"
+          >
+            Open a local page
+          </div>
+        </section>
+      </TabPane>
+    </Tabs>
+
+    <div
+      v-else
+      class="workbench-empty-state empty-root"
+    >
+      <div class="workbench-empty-copy">
+        <span class="workbench-empty-title">Workbench</span>
+        <span class="workbench-empty-hint">Open a tool alongside the chat.</span>
       </div>
+      <Button
+        v-for="option in availableTabOptions"
+        :key="option.type"
+        unstyled
+        class="empty-action"
+        :style="workbenchToolStyle(option.categorySlot)"
+        :title="option.title"
+        @click="addWorkbenchTab(option.type)"
+      >
+        <component
+          :is="option.icon"
+          :size="15"
+          :stroke-width="2"
+          aria-hidden="true"
+        />
+        <span>{{ option.title }}</span>
+      </Button>
     </div>
   </Container>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Radar, Terminal, UserRound, Users, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
@@ -286,23 +296,33 @@ import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
 import MembersWorkbench from './MembersWorkbench.vue'
 import AgentSpace from '@/components/agents/AgentSpace.vue'
 import RoomThreadsWorkbench from './RoomThreadsWorkbench.vue'
-import RoomBackstagePanel from './RoomBackstagePanel.vue'
+import RoomSchedulePanel from './RoomSchedulePanel.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import { useTerminalsStore } from '@/stores/terminals'
 import { useAgentsStore, type AgentDetailTab } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useChatStore } from '@/stores/chat'
+import { useCollabBoardStore } from '@/stores/collabBoard'
 import { isUserDmRoom } from '@onething/runtime/collab'
+import { hasRunningRoomThread } from './room-threads'
+import { hasRoomBoardAwaiting } from './room-board'
+import { OPEN_ROOM_SCHEDULE_EVENT, type OpenRoomScheduleDetail } from './room-schedule'
 import {
-  resolveRightPanelForm,
-  type RoomBackstageLanding,
-  type RoomBackstageSegmentKey,
-} from './room-backstage'
+  buildRoomFixedTabs,
+  pickRoomFixedTab,
+  resolveRoomPanelTarget,
+  ROOM_TAB_LABELS,
+  type RoomFixedTab,
+  type RoomFixedTabType,
+  type RoomPanelTarget,
+  type RoomTabDot,
+} from './room-tabs'
 import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable, ShellMode } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'scheduling'
+type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling'
 
 interface WorkbenchTab {
   id: string
@@ -328,6 +348,10 @@ interface WorkbenchTab {
   reviewNonce?: number
   /** terminal tabs only: the PTY instance rendered by this tab. */
   terminalId?: string
+  /** schedule tabs only: 时间轴过滤('' = 全部;死信红点跳过来时是 'dead-letter')。 */
+  scheduleFilter?: string
+  /** schedule tabs only: 每收到一次落座指令 +1 —— 同一个过滤器也要能重放。 */
+  scheduleNonce?: number
 }
 
 const props = withDefaults(defineProps<{
@@ -337,8 +361,8 @@ const props = withDefaults(defineProps<{
   /** Whether the workbench panel is expanded — drives embedded-browser view visibility. */
   revealed?: boolean
   /**
-   * 外壳形态。classic 是逐像素回滚闸 —— 那一档下右栏恒是既有的工具页签,
-   * 房间背台只在 workbench 外壳里出现。
+   * 外壳形态。classic 是逐像素回滚闸 —— 那一档下右栏不备房的固定页签组,
+   * 只有 Files/Terminal/Browser 那一路。
    */
   shellMode?: ShellMode
 }>(), {
@@ -350,15 +374,20 @@ defineEmits<{
   close: []
 }>()
 
-// ── 右栏的两形态 ──────────────────────────────────────────────────────────
+// ── 这一面对着哪一间房 ────────────────────────────────────────────────────
 //
-// 房/私聊 → 房间背台(分段器);直聊/工程面 → 既有工具页签。判定是一个纯函数
-// (`resolveRightPanelForm`),这里只把当前会话喂给它。
+// 右栏只有**一套**面板系统:工作台页签。进房时它多备一组固定页签(线程 / 成员 /
+// 看板 / 调度),其余照旧按需加(Files/Terminal/Browser/文件/评审/空间…)。
+// 判定是一个纯函数(`resolveRoomPanelTarget`),这里只把当前会话喂给它。
+//
+// 勘误(2026-08-04):这里从前是"两形态"分岔 —— 房里画 `RoomBackstagePanel`,
+// 其余画页签。两套并存的代价是房里**够不着页签那一层**,往页签里加的东西在房里
+// 永远看不见(走查 F2 的群 folder 就是这么丢的)。背台已整体退役。
 const sessionsStore = useSessionsStore()
 const currentSession = computed(() =>
   sessionsStore.sessions.find(session => session.id === props.sessionId))
 
-const panelForm = computed(() => resolveRightPanelForm({
+const roomTarget = computed<RoomPanelTarget>(() => resolveRoomPanelTarget({
   shellMode: props.shellMode,
   session: currentSession.value,
   // 形态判定单一收口:`isUserDmRoom` 是产品层纯规则(人数即形态),不自写第二份。
@@ -366,25 +395,61 @@ const panelForm = computed(() => resolveRightPanelForm({
 }))
 
 /**
- * 背台的落座指令。四个外部入口(线程 / 成员 / 看板 / 进房)都翻译成它,
- * 页签那一路的 `openThread` / `openMembers` / `openBoard` 因此对外形状不变 ——
- * 派事件的地方不需要知道右栏此刻是哪一种形态。
+ * 四枚状态点(有没有,不是几个)。
+ *
+ * store 是**在这里现取**的:没有房时整块 computed 根本不求值,于是直聊/工程面
+ * 下这个面板照旧不碰 chat / collabBoard 两个 store(它们各自拖着一棵大树)。
  */
-const backstageLanding = ref<RoomBackstageLanding>({ nonce: 0 })
+const roomSignals = computed(() => {
+  const roomSessionId = roomTarget.value.roomSessionId
+  if (!roomSessionId) return {}
 
-function landBackstage(patch: Omit<RoomBackstageLanding, 'nonce'>): void {
-  backstageLanding.value = { ...patch, nonce: backstageLanding.value.nonce + 1 }
+  const chatStore = useChatStore()
+  const collabBoardStore = useCollabBoardStore()
+  const room = sessionsStore.sessions.find(item => item.id === roomSessionId)?.room
+
+  return {
+    threadsRunning: hasRunningRoomThread({
+      roomSessionId,
+      sessions: sessionsStore.sessions,
+      isRunning: sessionId => chatStore.isSessionGenerating(sessionId),
+    }),
+    boardAwaiting: hasRoomBoardAwaiting({
+      tasks: collabBoardStore.boardFor(roomSessionId)?.tasks ?? [],
+      awaitingPermission: workSessionId => collabBoardStore.hasPendingAsk(workSessionId),
+    }),
+    // 成员点 = 有成员的私聊未读。翻译只有一步(agent → TA 的私聊房),未读判定
+    // 仍是 store 那一处 `isUnreadSession` —— 与侧栏联系人行同一条链路。
+    membersUnread: (room?.memberAgentIds ?? []).some(agentId => {
+      const dmRoom = sessionsStore.findUserDmRoom(agentId)
+      return !!dmRoom && sessionsStore.isUnreadSession(dmRoom.id)
+    }),
+    scheduleFaulted: (collabBoardStore.coordinatorFor(roomSessionId)?.deadLetterCount ?? 0) > 0,
+  }
+})
+
+/** 这间房该有哪几条固定页签(格数只由形态决定,与内容无关)。 */
+const roomFixedTabs = computed<RoomFixedTab[]>(() => (
+  roomTarget.value.roomSessionId
+    ? buildRoomFixedTabs({ isDm: roomTarget.value.isDm, signals: roomSignals.value })
+    : []
+))
+
+/**
+ * 页签上那颗点。只有**绑着当前这间房**的固定页签才画 —— 一条绑着别的房的
+ * 线程页签(从直聊里点活卡片进来的)不该替这间房报信号。
+ */
+function tabDot(tab: WorkbenchTab): RoomTabDot | null {
+  const roomSessionId = roomTarget.value.roomSessionId
+  if (!roomSessionId || tab.sessionId !== roomSessionId) return null
+  return roomFixedTabs.value.find(fixed => fixed.type === tab.type)?.dot ?? null
 }
 
-function landBackstageSegment(
-  segment: RoomBackstageSegmentKey,
-  patch: Omit<RoomBackstageLanding, 'nonce' | 'segment'> = {},
-): void {
-  landBackstage({ segment, ...patch })
-}
+/** 房的固定页签组(单例、固定短标签、不可从 picker 加)。 */
+const ROOM_FIXED_TAB_TYPES = new Set<WorkbenchTabType>(['thread', 'members', 'board', 'schedule'])
 
-/** 固定短标签(不参与截断):样板右栏的常驻三条。 */
-const FIXED_LABEL_TABS = new Set<WorkbenchTabType>(['thread', 'members', 'board', 'scheduling'])
+/** 固定短标签(不参与截断):房的四条 + 调度总览。 */
+const FIXED_LABEL_TABS = new Set<WorkbenchTabType>(['thread', 'members', 'board', 'schedule', 'scheduling'])
 
 const tabOptions: Array<{
   type: WorkbenchTabType
@@ -397,7 +462,9 @@ const tabOptions: Array<{
   { type: 'browser', title: 'Browser', icon: Globe2, categorySlot: 7 },
   { type: 'board', title: '看板', icon: ClipboardList, categorySlot: 8 },
   // 调度总览与看板同一条能力闸(collabRooms):没有房间就没有调度可看。
-  { type: 'scheduling', title: '调度', icon: Radar, categorySlot: 8 },
+  // 叫「调度总览」而不是「调度」:房的固定组里已经有一条按房的「调度」,两条
+  // 同名页签并排时用户分不出哪条是哪条 —— 总览是跨房的那一本。
+  { type: 'scheduling', title: '调度总览', icon: Radar, categorySlot: 8 },
 ]
 
 const pickerOpen = ref(false)
@@ -429,6 +496,122 @@ const configuredWorkspaceRoots = computed(() => uniquePaths([
   props.workspaceRoot,
 ]))
 const workspaceRoot = computed(() => filesWorkspaceRoot.value || configuredWorkspaceRoots.value[0] || '')
+
+// ── 房的固定页签组:备齐 / 落座 ────────────────────────────────────────────
+
+/**
+ * 这间房该有哪几条页签 —— **只问形态,不读信号**。
+ *
+ * 与 `roomFixedTabs`(带状态点的那份)刻意分开:备齐与落座是结构问题,不该
+ * 顺手把 chat / collabBoard 两个 store 拖进来(它们只为那四颗点服务)。
+ */
+const roomTabShape = computed<RoomFixedTab[]>(() => (
+  roomTarget.value.roomSessionId ? buildRoomFixedTabs({ isDm: roomTarget.value.isDm }) : []
+))
+
+/**
+ * 进房 = 把这间房的固定页签备齐,并让它们排在最前面。
+ *
+ * **格数只由房的形态决定,与内容无关**:一条线程都没有的房照样有「线程」页签
+ * —— 从前"按需才开"的代价是真机上根本看不到线程(空的是内容,不是入口)。
+ *
+ * 每一条都是**单例**:换房是换靶子(重绑房 id、回列表层),不是再开一页 ——
+ * 逛三间房不该攒出三条「线程」。私聊房没有看板,从群房切进去时那一条随之撤掉,
+ * 不留一条对不上号的。
+ */
+function ensureRoomTabs(target: RoomPanelTarget): void {
+  if (!target.roomSessionId) return
+
+  const fixed = buildRoomFixedTabs({ isDm: target.isDm })
+  const wanted = new Set<WorkbenchTabType>(fixed.map(item => item.type))
+
+  // 这间房的形态里没有的那条(私聊房的看板)撤掉,不留一条对不上号的。
+  const dropped = openTabs.value.filter(
+    tab => ROOM_FIXED_TAB_TYPES.has(tab.type) && !wanted.has(tab.type),
+  )
+  const next = openTabs.value.filter(tab => !dropped.includes(tab))
+
+  // 缺的按固定次序补在末尾。**不重排已有页签** —— 页签条的次序是注册次序
+  // (`Tabs.vue` 的 pane 注册表),重排数组也搬不动它,只会让两处次序对不上。
+  for (const spec of fixed) {
+    let tab = next.find(item => item.type === spec.type)
+    if (!tab) {
+      tab = { id: spec.type, type: spec.type, title: spec.label }
+      next.push(tab)
+    }
+    tab.title = spec.label
+    tab.sessionId = target.roomSessionId
+    // 换房回**列表层**:自动备齐时系统并不知道你想看哪一次执行,替你挑一条
+    // 塞满整面等于替你做了选择。私聊房的「空间」例外 —— 那一页天然就是那个人。
+    if (spec.type === 'thread') tab.threadSessionId = ''
+    if (spec.type === 'members') tab.memberAgentId = target.isDm ? target.dmAgentId : ''
+    if (spec.type === 'schedule') tab.scheduleFilter = ''
+  }
+
+  openTabs.value = next
+
+  if (!activeTabId.value || dropped.some(tab => tab.id === activeTabId.value)) {
+    activeTabId.value = next.find(tab => tab.type === 'thread')?.id || next[0]?.id || ''
+  }
+}
+
+/**
+ * 外部入口的落座。这间房没有这一条(私聊房请求看板)就**原地不动**并回报
+ * false —— 宁可不动,也不要把人甩到一个 TA 没要的视图上。
+ */
+function focusRoomTab(type: RoomFixedTabType): boolean {
+  if (!pickRoomFixedTab(type, roomTabShape.value)) return false
+  const tab = openTabs.value.find(item => item.type === type)
+  if (!tab) return false
+  activeTabId.value = tab.id
+  return true
+}
+
+/**
+ * 进房自动备齐 —— **结构性的,不靠事件**。
+ *
+ * 从前这件事挂在 `onething:room-workbench` 上,漏派一次(或者像背台那样被另一
+ * 套面板盖住)用户就看不到线程。现在只要右栏对着一间房,那几条就在。
+ */
+watch(
+  () => {
+    const target = roomTarget.value
+    return `${target.roomSessionId}|${target.isDm ? 1 : 0}|${target.dmAgentId}`
+  },
+  () => {
+    const target = roomTarget.value
+    if (!target.roomSessionId) return
+    // 看板/调度那两颗点读的是看板镜像。房面(`RoomSurface`)本来也订,但那两颗点
+    // 不该依赖"隔壁组件恰好挂着" —— 订阅是幂等的,这里补一次说清依赖。
+    try { useCollabBoardStore().ensureSubscribed() } catch { /* 订阅失败只让点不亮 */ }
+    ensureRoomTabs(target)
+    focusRoomTab('thread')
+  },
+  { immediate: true },
+)
+
+/**
+ * 状态条那颗死信红点的落点(契约见 `room-schedule.ts`)。
+ *
+ * 走 window 事件而不是逐层 emit:派事件的 `CoordinatorStatusBar` 挂在**线程页**
+ * 里,而目标是它隔壁那一页 —— 与 `OPEN_MEMBERS_EVENT` 同一条解耦线路。
+ */
+function onOpenRoomSchedule(event: Event): void {
+  const detail = (event as CustomEvent<OpenRoomScheduleDetail>).detail
+  const roomSessionId = detail?.roomSessionId
+  if (!roomSessionId || roomSessionId !== roomTarget.value.roomSessionId) return
+
+  ensureRoomTabs(roomTarget.value)
+  const tab = openTabs.value.find(item => item.type === 'schedule')
+  if (!tab) return
+  tab.scheduleFilter = detail.filter || ''
+  // 同一个过滤器也要能重放:再点一次红点 = 再带我去一次。
+  tab.scheduleNonce = (tab.scheduleNonce ?? 0) + 1
+  activeTabId.value = tab.id
+}
+
+window.addEventListener(OPEN_ROOM_SCHEDULE_EVENT, onOpenRoomSchedule)
+onUnmounted(() => { window.removeEventListener(OPEN_ROOM_SCHEDULE_EVENT, onOpenRoomSchedule) })
 
 function togglePicker() {
   pickerOpen.value = !pickerOpen.value
@@ -549,7 +732,7 @@ function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'thread') return ListTree
   if (type === 'members') return Users
   if (type === 'agent') return UserRound
-  if (type === 'scheduling') return Radar
+  if (type === 'schedule' || type === 'scheduling') return Radar
   return Files
 }
 
@@ -561,7 +744,7 @@ function tabCategorySlot(type: WorkbenchTabType): number {
   if (type === 'thread') return 3
   if (type === 'members') return 2
   if (type === 'agent') return 2
-  if (type === 'scheduling') return 8
+  if (type === 'schedule' || type === 'scheduling') return 8
   return 5
 }
 
@@ -704,37 +887,25 @@ function openGoalReview(reviewSessionId: string) {
  * **不能**沿用上一次的房:那会把另一间房的执行会话挂在错的花名册下面。
  */
 function openThread(threadSessionId: string, title?: string, roomSessionId?: string): void {
-  // 房面下没有页签:落在**线程格**,带靶子就直接下钻到那一条。
-  if (panelForm.value.form === 'backstage') {
-    landBackstageSegment('threads', { threadSessionId: threadSessionId || '' })
-    return
-  }
-
-  const key = threadSessionId || (roomSessionId ? `room-${roomSessionId}` : '')
-  if (!key) return
-
-  // **单例**:线程只有一条常驻页签(样板 final.html 的右栏是三 tab 常驻),换房
-  // 或换一次执行都是**换靶子**,不是再开一页。
-  // 从前按 `thread-<靶子>` 各开一个 —— 逛三间房就攒三条「线程」,而样板里
-  // 只有一条(成员页签早就是这个语义,这里对齐它)。
+  // **单例**:线程只有一条页签,换房或换一次执行都是**换靶子**,不是再开一页
+  // (逛三间房不该攒三条「线程」)。页签 id 恒为 'thread' —— 从前把靶子编进 id
+  // 里,换一次靶子整条页签就重建一次,而里面那两层的落座本来就是 watch 出来的。
   const existing = openTabs.value.find(tab => tab.type === 'thread')
-  if (existing) {
-    existing.id = `thread-${key}`
-    existing.sessionId = roomSessionId || ''
-    existing.threadSessionId = threadSessionId
-    existing.title = THREAD_TAB_LABEL
-    activeTabId.value = existing.id
-    return
-  }
 
-  const tab: WorkbenchTab = {
-    id: `thread-${key}`,
-    type: 'thread',
-    title: THREAD_TAB_LABEL,
-    sessionId: roomSessionId || '',
-    threadSessionId,
-  }
-  openTabs.value = [...openTabs.value, tab]
+  // 空靶子 + 空房 + 还没有这条页签 = 开不出有意义的线程页(左栏对空串已经拦了
+  // 一道,这里是第二道)。已经有这条页签时,空靶子的意思是"回列表层"。
+  if (!existing && !threadSessionId && !roomSessionId) return
+
+  const tab: WorkbenchTab = existing
+    || { id: 'thread', type: 'thread', title: ROOM_TAB_LABELS.thread }
+  tab.title = ROOM_TAB_LABELS.thread
+  // 带着一条执行会话进来却没说房 → 把房**清空**,由 `RoomThreadsWorkbench` 顺着
+  // `collab.roomSessionId` 现查后回填。沿用上一次的房会把另一间房的执行会话挂在
+  // 错的花名册下面。空靶子(回列表层)则保留当前这间房。
+  tab.sessionId = roomSessionId || (threadSessionId ? '' : tab.sessionId || '')
+  tab.threadSessionId = threadSessionId
+
+  if (!existing) openTabs.value = [...openTabs.value, tab]
   activeTabId.value = tab.id
 }
 
@@ -751,7 +922,7 @@ function setThreadFocus(tabId: string, payload: { sessionId: string; roomSession
   if (!tab) return
   tab.threadSessionId = payload.sessionId || ''
   if (payload.roomSessionId) tab.sessionId = payload.roomSessionId
-  if (!payload.sessionId) tab.title = THREAD_TAB_LABEL
+  if (!payload.sessionId) tab.title = ROOM_TAB_LABELS.thread
 }
 
 /**
@@ -763,21 +934,14 @@ function setThreadFocus(tabId: string, payload: { sessionId: string; roomSession
  *
  * `agentId` 非空 = 直接落在那个人的**空间页**(下钻层)。空间页不占 tab 位
  * (样板注明),它是 `MembersWorkbench` 内部的一层视图,所以这里只是把落点
- * 记在 tab 上,而不是开第二个页签。私聊房没有"成员"这回事,调用方给
- * `title: '空间'` 即可 —— 判形态是房面的事,不是右栏的事。
+ * 记在 tab 上,而不是开第二个页签。私聊房那一条叫「空间」——一对一没有"成员"
+ * 这回事;标题由固定组给,调用方传的 `title` 只在房外那一路(直聊)兜底。
  *
  * 不进 `tabOptions`:成员必须绑一间房,picker 里点一下开不出有意义的空成员表
  * —— 与 `thread` / `review` 同一档,只能从外部入口带着靶子进来。
  */
 function openMembers(roomSessionId: string, agentId?: string, title?: string): void {
   if (!roomSessionId) return
-
-  // 房面下没有页签:落在**成员格**(私聊房是「空间」格,由 pick 那一处翻译)。
-  // 带 agentId 就直接下钻到 TA 的空间页。
-  if (panelForm.value.form === 'backstage') {
-    landBackstageSegment('members', { agentId: agentId || '' })
-    return
-  }
 
   const existing = openTabs.value.find(tab => tab.type === 'members')
   if (existing) {
@@ -791,7 +955,7 @@ function openMembers(roomSessionId: string, agentId?: string, title?: string): v
   const tab: WorkbenchTab = {
     id: 'members',
     type: 'members',
-    title: title || '成员',
+    title: title || ROOM_TAB_LABELS.members,
     sessionId: roomSessionId,
     memberAgentId: agentId || '',
   }
@@ -811,14 +975,20 @@ function openMembers(roomSessionId: string, agentId?: string, title?: string): v
 function openAgentTab(agentId: string, tab?: AgentDetailTab | null): void {
   if (!agentId) return
 
-  // 房面下没有页签。房外的人也照旧走「成员/空间」格的下钻层 ——
-  // `MembersWorkbench` 的下钻层就是共享的 `AgentSpace`,它不要求这个人在花名册上。
-  if (panelForm.value.form === 'backstage') {
-    landBackstageSegment('members', { agentId })
-    return
+  // 在房里就走「成员/空间」页的下钻层,不另开一条 —— `MembersWorkbench` 的下钻
+  // 层就是共享的 `AgentSpace`,它不要求这个人在花名册上(房外的人一样落得进去)。
+  const room = roomTarget.value
+  if (room.roomSessionId) {
+    const membersTab = openTabs.value.find(item => item.type === 'members')
+    if (membersTab) {
+      membersTab.memberAgentId = agentId
+      membersTab.detailTab = tab ?? null
+      activeTabId.value = membersTab.id
+      return
+    }
   }
 
-  const title = useAgentsStore().displayAgent(agentId).name || '空间'
+  const title = useAgentsStore().displayAgent(agentId).name || ROOM_TAB_LABELS.space
   const existing = openTabs.value.find(item => item.type === 'agent' && item.agentId === agentId)
   if (existing) {
     existing.title = title
@@ -852,15 +1022,6 @@ function setMembersFocus(tabId: string, agentId: string): void {
 function openSessionTab(sessionId: string): void {
   if (!sessionId) return
   useWorkspaceStore().openSession(sessionId)
-}
-
-/** 列表层的页签名(样板右栏常驻三条之一)。进详情后换成那条会话的名字。 */
-const THREAD_TAB_LABEL = '线程'
-
-function threadTabTitle(title?: string): string {
-  const trimmed = (title || '').trim().split('\n')[0] || ''
-  if (!trimmed) return ''
-  return trimmed.length > 24 ? `${trimmed.slice(0, 24)}…` : trimmed
 }
 
 /**
@@ -937,14 +1098,12 @@ function navigateBrowser() {
   browserUrl.value = normalizeBrowserUrl(browserInput.value)
 }
 
-/** 群聊头部「看板」直达入口 — 打开(或聚焦)board 页签。 */
 /**
- * 进房时把右栏备齐成样板那三条:**线程 / 成员 / 看板**(final.html 右栏)。
+ * 进房:把这间房的固定页签备齐并落在**线程**上。
  *
- * 为什么不另起一根房面自己的右栏:那会和 App 级这根并排出现两条(R1 的取舍)。
- * 但"按需才开"的代价是三 tab 一条都不常驻 —— 用户真机上就看不到线程。
- * 这里折中:复用同一根右栏,进房时把这三条备好并落在线程上,
- * Files/Terminal/Browser 仍可从 ＋ 加。
+ * 备齐这件事本身已经由 `roomTarget` 那条 watch 结构性地保证了(只要右栏对着
+ * 一间房,那几条就在);这个入口留着是因为它带着房面才知道的东西 ——
+ * 私聊房的那个人 —— 而且它同时是"再点一次带我回线程"的重放口。
  *
  * 线程**落在列表层**:自动备齐时系统并不知道你想看哪一次执行,替你挑一条塞满
  * 整面等于替你做了选择。真正"知道要看哪一条"的是中栏「展开执行 →」与左栏活
@@ -959,29 +1118,20 @@ function openRoomTabs(
 ): void {
   if (!roomSessionId) return
 
-  // 房面下三格本来就常驻(那正是分段器替掉页签的理由):进房只需要落座 ——
-  // 线程格的**列表层**。不带靶子:自动备齐时系统并不知道你想看哪一次执行。
-  if (panelForm.value.form === 'backstage') {
-    landBackstageSegment('threads', { threadSessionId: '' })
-    return
-  }
-
-  // 私聊没有"成员"这回事:那一面直接是空间页(样板 三 · 私聊)。
-  if (opts?.dmAgentId) {
-    openMembers(roomSessionId, opts.dmAgentId, '空间')
-  } else {
-    openMembers(roomSessionId)
-  }
-  addWorkbenchTab('board')
+  ensureRoomTabs({
+    roomSessionId,
+    isDm: !!opts?.dmAgentId,
+    dmAgentId: opts?.dmAgentId || '',
+  })
   openThread('', undefined, roomSessionId)
 }
 
+/** 群聊头部 / ⋯ 菜单的「看板」直达入口 — 打开(或聚焦)看板页签。 */
 function openBoard(): void {
-  // 房面下没有页签:落在**看板格**。私聊房没有这一格 —— 那时原地不动
-  // (`pickRoomBackstageSegment` 返回 null),不把人甩到 TA 没要的视图上。
-  if (panelForm.value.form === 'backstage') {
-    landBackstageSegment('board')
-    return
+  // 私聊房没有看板:**原地不动**,不把人甩到 TA 没要的视图上。
+  if (roomTarget.value.roomSessionId) {
+    if (focusRoomTab('board')) return
+    if (roomTarget.value.isDm) return
   }
   addWorkbenchTab('board')
 }
@@ -991,6 +1141,9 @@ function openBoard(): void {
  *
  * 走的是既有的 files 页签,只是把根换成这个群的 folder —— 群里放的文档因此
  * 和项目文件用同一套浏览/打开链路,不需要第二种文件浏览器。
+ *
+ * 走查 F2 的终局:这条链路从前**在房里够不着** —— files 页签画在被房间背台
+ * 盖住的那一层,按钮点了、页签开了、用户什么也看不见。背台退役之后它是可达的。
  */
 async function openFolder(root: string): Promise<void> {
   if (!root) return
@@ -1054,19 +1207,6 @@ defineExpose({
 
 :deep(.right-workbench-body),
 :deep(.right-workbench-main) {
-  min-width: 0;
-  min-height: 0;
-}
-
-/* 工具页签那一路的壳。`display: contents` = 排版上不存在,所以直聊/工程面下
-   这一路的布局与从前**逐像素相同**;`v-show` 关掉时浏览器改写成 display:none,
-   整棵树留在 DOM 里(终端/浏览器/编辑器状态不丢)。 */
-.workbench-tools-form {
-  display: contents;
-}
-
-.workbench-backstage {
-  height: 100%;
   min-width: 0;
   min-height: 0;
 }
@@ -1158,11 +1298,37 @@ defineExpose({
   flex-shrink: 0;
 }
 
-/* 固定短标签(线程/成员/看板)不参与截断 —— 文件名那类仍然可以截。 */
+/* 固定短标签(线程/成员/看板/调度)不参与截断 —— 文件名那类仍然可以截。 */
 .workbench-tab-label.has-fixed-label span {
   min-width: max-content;
   overflow: visible;
   text-overflow: clip;
+}
+
+/* 状态点(房间背台退役时一并搬过来的):定宽不缩 —— 它不该跟着标题一起被压扁。
+   四档的含义见 `room-tabs.ts`:在跑 / 待你 / 新消息 / 死信。 */
+.workbench-tab-dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.workbench-tab-dot.is-run {
+  background: var(--ui-status-success-fg, var(--color-success, #4d6108));
+}
+
+.workbench-tab-dot.is-wait {
+  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+}
+
+.workbench-tab-dot.is-new {
+  background: var(--ui-text-primary-fg, var(--text));
+}
+
+/* 死信:与 wait 分开的一档 —— 等你放行是正常流程的一步,炸了不是。 */
+.workbench-tab-dot.is-fault {
+  background: var(--ui-status-danger-fg, var(--color-danger, #a33));
 }
 
 .workbench-tab-label svg,
