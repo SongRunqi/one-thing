@@ -627,6 +627,45 @@ bo 那扇为 rf-3 开的窗一起被判、一起拿牌)。
 
 ---
 
+### F2 · 默认房的「群 folder」按钮全体隐身:工作台看不见群文件
+
+**现象** 房间工作台看板面板的头部有一枚「群 folder」按钮,点开把右侧 files 页签的根换到
+这个群的 folder。真机上它**几乎从来不出现** —— 只有手动给房间配过工作目录的房才看得见。
+可群里的文件是真实存在的:成员写进去的东西都躺在 `<store>/rooms/<roomId>/` 里,工作台却
+一个入口都不给。同一处还牵连交付物:卡上的相对路径还原不出绝对路径,点开只落一句
+「无法定位交付物」。
+
+**根因** 按钮的 `v-if` 挂在**会话的 `workingDirectory` 字段**上,而群 folder 的定义是
+`app/collab/room-folder.ts` 里的一句 `folder = workingDirectory ?? <store>/rooms/<id>`
+—— 自动分配的那一半是**现算的,刻意不落库**(不落库是对的:一个从没往里放过东西的房不该
+先在库里占一个目录名)。于是「没人手动设过工作目录」这件常态,在渲染进程眼里读成了
+「这个房没有 folder」。换句话说:渲染进程拿一个**存储字段**去回答一个**计算问题**。
+
+**修复语义** **根由后端答**,渲染进程不许自己拼 `<store>/rooms/<id>` —— 拼一次就多一处
+需要跟着 `room-folder.ts` 一起改的回退分支,而它们必然会走散。既有的
+`COLLAB_ROOM_FOLDER_LIST` 通道本来就答了 `folder`(它就是上面那句定义的结果),面板改成
+在加载/换房时问一次、拿它的 `folder` 当根:配置过工作目录的房自然也是同一个口径(后端
+本来就先看配置),不再有两套答案。按钮因此对**任何 collab 房**都在场;`openRoomFolder`
+与交付物的 `resolveDeliverablePath` 共用这一个根。
+
+问不到就隐身:web 端的 stub 与通道失败都留空根,按钮不出现、交付物退回「只认绝对路径」
+—— 与改动前的降级一致。宁可不给入口,也不给一个点开是别处的入口。
+
+**怎么复验** 建一间新群房(**不要**给它配工作目录),让成员往群里写个文件:
+
+- 工作台看板头部有「群 folder」按钮,hover 显示完整路径 `…/.onething/rooms/<roomId>`;
+- 点它,右侧 files 页签的根换过去,能看见刚写的文件;
+- 卡上的交付物文件名点得开(而不是「无法定位交付物」)。
+
+**落点** `packages/renderer/components/workbench/CollabBoardPanel.vue` 一处
+(`roomWorkingDirectory` → 通道取来的 `roomFolder`)。契约与主进程零改动 ——
+`CollabRoomFolderListResponse.folder` 本来就带着答案,只是没人用。
+`AgentFilesPane.vue` 不在此列:它列 folder 走的就是这条通道,卡上的交付物基准也只涉及
+**已经产出过东西**的房 —— 那种房在 worker 拿 cwd 时已由 `ensureCollabRoomFolder` 把
+folder 落到 `workingDirectory` 上了。
+
+---
+
 ## 5. 结果记录
 
 逐条落，**「部分」与「未走」也要落**——空着与通过分不开，是这类清单最常见的失效方式。

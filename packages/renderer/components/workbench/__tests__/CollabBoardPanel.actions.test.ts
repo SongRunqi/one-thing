@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
     onSessionEvent: vi.fn(() => () => {}),
     openPath: vi.fn(),
     getPendingPermissions: vi.fn(),
+    // 群 folder 的根由后端答(F2):面板不读会话的 workingDirectory,也不拼路径。
+    listCollabRoomFolder: vi.fn(),
   },
 }))
 
@@ -61,15 +63,25 @@ async function settle() {
   await nextTick()
 }
 
-async function mountPanel(tasks: CollabTask[], options: { workingDirectory?: string } = {}) {
+/**
+ * `roomFolder` 走通道(F2):默认给一个 `/repo`,这正是「没设过工作目录的房也
+ * 有 folder」的现场 —— 会话上**不**放 workingDirectory,面板照样拿得到根。
+ * `roomFolder: null` 模拟 web 端 stub / 通道失败(降级:入口隐身)。
+ */
+async function mountPanel(tasks: CollabTask[], options: { roomFolder?: string | null } = {}) {
   mocks.platformApi.getCollabBoard.mockResolvedValue({ success: true, board: board(tasks) })
+  const folder = options.roomFolder === undefined ? '/repo' : options.roomFolder
+  mocks.platformApi.listCollabRoomFolder.mockResolvedValue(
+    folder === null
+      ? { success: false, error: 'Platform method "listCollabRoomFolder" is not available in the web host yet.' }
+      : { success: true, folder, entries: [] },
+  )
   const sessions = useSessionsStore()
   sessions.sessions = [{
     id: 'room-1',
     name: '产品群',
     kind: 'room',
     room: { memberAgentIds: ['pm', 'fe'], pmAgentId: 'pm' },
-    ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
     messages: [],
     createdAt: 0,
     updatedAt: 0,
@@ -256,20 +268,14 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
   })
 
   it('lists the card’s files by name, full path on hover', async () => {
-    const wrapper = await mountPanel(
-      [delivered({}, ['src/app/main.ts'])],
-      { workingDirectory: '/repo' },
-    )
+    const wrapper = await mountPanel([delivered({}, ['src/app/main.ts'])])
     const file = wrapper.find('.board-card-files .deliverable-file')
     expect(file.text()).toBe('main.ts')
     expect(file.attributes('title')).toBe('/repo/src/app/main.ts')
   })
 
   it('caps the card face at three files and counts the rest', async () => {
-    const wrapper = await mountPanel(
-      [delivered({}, ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts'])],
-      { workingDirectory: '/repo' },
-    )
+    const wrapper = await mountPanel([delivered({}, ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts'])])
     expect(wrapper.findAll('.board-card-files .deliverable-file')).toHaveLength(3)
     expect(wrapper.find('.board-card-files-more').text()).toBe('+2')
   })
@@ -285,21 +291,18 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
   })
 
   it('opens the resolved absolute path from the card without opening the session', async () => {
-    const wrapper = await mountPanel(
-      [delivered({ workSessionIds: ['work-1'] }, ['src/a.ts'])],
-      { workingDirectory: '/repo' },
-    )
+    const wrapper = await mountPanel([delivered({ workSessionIds: ['work-1'] }, ['src/a.ts'])])
     await wrapper.find('.board-card-files .deliverable-file').trigger('click')
     await settle()
     expect(mocks.platformApi.openPath).toHaveBeenCalledWith('/repo/src/a.ts')
   })
 
-  it('says so instead of guessing when the room has no working directory', async () => {
-    const wrapper = await mountPanel([delivered({}, ['src/a.ts'])])
+  it('says so instead of guessing when the room folder cannot be read', async () => {
+    const wrapper = await mountPanel([delivered({}, ['src/a.ts'])], { roomFolder: null })
     await wrapper.find('.board-card-files .deliverable-file').trigger('click')
     await settle()
     expect(mocks.platformApi.openPath).not.toHaveBeenCalled()
-    expect(wrapper.find('.board-hint').text()).toContain('工作目录')
+    expect(wrapper.find('.board-hint').text()).toContain('folder')
   })
 
   it('switches to a per-task deliverables view and back', async () => {
@@ -307,7 +310,7 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
       delivered({ id: 'task-1', title: '写登录页', updatedAt: 2 }, ['src/login.ts']),
       delivered({ id: 'task-2', title: '补文档', updatedAt: 1 }, ['docs/readme.md']),
       card({ id: 'task-3', title: '没产出' }),
-    ], { workingDirectory: '/repo' })
+    ])
 
     const toggle = wrapper.find('.board-view-toggle')
     expect(toggle.text()).toContain('2')  // distinct files across the board
@@ -328,10 +331,7 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
   })
 
   it('opens a file from the aggregate view too', async () => {
-    const wrapper = await mountPanel(
-      [delivered({}, ['docs/readme.md'])],
-      { workingDirectory: '/repo' },
-    )
+    const wrapper = await mountPanel([delivered({}, ['docs/readme.md'])])
     await wrapper.find('.board-view-toggle').trigger('click')
     await settle()
     await wrapper.find('.board-deliverables .deliverable-file').trigger('click')
@@ -340,10 +340,55 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
   })
 
   it('shows a one-line empty state when nothing has been produced yet', async () => {
-    const wrapper = await mountPanel([card()], { workingDirectory: '/repo' })
+    const wrapper = await mountPanel([card()])
     await wrapper.find('.board-view-toggle').trigger('click')
     await settle()
     expect(wrapper.find('.board-deliverables').text()).toContain('还没有交付物')
+  })
+})
+
+/**
+ * F2(真机走查 §4.4)——「群 folder」入口此前 `v-if` 在会话的 workingDirectory
+ * 上,而自动分配的 folder 现算不落库,于是**默认房的按钮全体隐身**:群里明明
+ * 有文件,工作台却给不出入口。根由后端答,渲染进程不拼 `<store>/rooms/<id>`。
+ */
+describe('CollabBoardPanel 群 folder 入口 (F2)', () => {
+  /** 找出头部那枚「群 folder」按钮(它和预算共用 .board-budget 这一身皮)。 */
+  function folderButton(wrapper: Awaited<ReturnType<typeof mountPanel>>) {
+    return wrapper.findAll('.board-budget').find(button => button.text() === '群 folder')
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    document.body.innerHTML = ''
+    setActivePinia(createPinia())
+    mocks.platformApi.listAgents.mockResolvedValue({ success: true, agents: ROSTER })
+    mocks.platformApi.onSessionEvent.mockReturnValue(() => {})
+  })
+
+  it('shows the entry for a default room whose folder was never configured', async () => {
+    const wrapper = await mountPanel([card()], { roomFolder: '/store/rooms/room-1' })
+    // 会话上没有 workingDirectory —— 这正是默认房。根来自通道的回答。
+    expect(useSessionsStore().sessions[0].workingDirectory).toBeUndefined()
+    expect(mocks.platformApi.listCollabRoomFolder).toHaveBeenCalledWith('room-1')
+    const button = folderButton(wrapper)
+    expect(button).toBeTruthy()
+    expect(button?.attributes('title')).toBe('/store/rooms/room-1')
+  })
+
+  it('hands the channel’s folder to the files tab, not a renderer-built path', async () => {
+    const wrapper = await mountPanel([card()], { roomFolder: '/store/rooms/room-1' })
+    const seen: unknown[] = []
+    const listener = (event: Event) => seen.push((event as CustomEvent).detail)
+    window.addEventListener('onething:collab-open-folder', listener)
+    await folderButton(wrapper)?.trigger('click')
+    window.removeEventListener('onething:collab-open-folder', listener)
+    expect(seen).toEqual([{ root: '/store/rooms/room-1' }])
+  })
+
+  it('hides the entry when the host cannot answer (web stub)', async () => {
+    const wrapper = await mountPanel([card()], { roomFolder: null })
+    expect(folderButton(wrapper)).toBeUndefined()
   })
 })
 

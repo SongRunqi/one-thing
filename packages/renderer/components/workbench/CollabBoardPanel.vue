@@ -51,10 +51,10 @@
           @blur="commitBudget"
         >
         <button
-          v-if="roomWorkingDirectory"
+          v-if="roomFolder"
           type="button"
           class="board-budget"
-          :title="roomWorkingDirectory"
+          :title="roomFolder"
           @click="openRoomFolder"
         >
           群 folder
@@ -451,9 +451,40 @@ function evidenceLabel(task: CollabTask): string {
   return formatBoardEvidenceLabel(task)
 }
 
-// ── 交付物(W17)──────────────────────────────────────────────────────────
-const roomWorkingDirectory = computed(() =>
-  sessionsStore.sessions.find(s => s.id === selectedRoomId.value)?.workingDirectory)
+// ── 群 folder(collab-team-v2 §7)与交付物(W17)───────────────────────────
+/**
+ * 群 folder 的绝对路径**由后端答** —— 渲染进程不拼 `<store>/rooms/<id>`。
+ *
+ * 此前这里读的是房间会话的 `workingDirectory`,而自动分配的 folder 是 app 层
+ * 现算的、刻意不落库(`room-folder.ts`:folder = workingDirectory ?? <store>/
+ * rooms/<id>)。于是「没人手动设过工作目录」的房 —— 也就是绝大多数房 —— 在
+ * 工作台上既看不见「群 folder」按钮,也还原不出交付物的相对路径:群里明明有
+ * 文件,工作台却说这儿什么都没有。
+ *
+ * 改成问一次既有的列目录通道,取它答的 `folder`:那正是同一个定义,配置过
+ * 工作目录的房自然也是这个口径(后端本来就先看配置)。
+ *
+ * 问不到(通道失败 / web 端的 stub)就留空 —— 按钮隐身、交付物退回「只认绝对
+ * 路径」,与改动前的降级一致:宁可不给入口,也不给一个点开是别处的入口。
+ */
+const roomFolder = ref('')
+
+async function loadRoomFolder(roomSessionId: string): Promise<void> {
+  roomFolder.value = ''
+  if (!roomSessionId) return
+  if (typeof platformApi.listCollabRoomFolder !== 'function') return
+  try {
+    const response = await platformApi.listCollabRoomFolder(roomSessionId)
+    // 迟到的回复不许盖掉已经换过的房。
+    if (selectedRoomId.value !== roomSessionId) return
+    if (response?.success && response.folder) roomFolder.value = response.folder
+  } catch {
+    // 读不到 folder 不该让看板出错:按钮隐身就是答案。
+  }
+}
+
+// 单独一个 watch:folder 是 IO,和看板数据各走各的,一个慢不拖另一个。
+watch(selectedRoomId, id => { void loadRoomFolder(id) }, { immediate: true })
 
 const deliverableGroups = computed(() => collectBoardDeliverables(board.value?.tasks ?? []))
 const deliverableCount = computed(() => countBoardDeliverables(board.value?.tasks ?? []))
@@ -476,7 +507,7 @@ function fileParts(file: string): { name: string; dir: string } {
 
 /** Hover shows the path the shell would actually open — the stored one if we cannot resolve. */
 function fileTitle(file: string): string {
-  return resolveDeliverablePath(file, roomWorkingDirectory.value) || file
+  return resolveDeliverablePath(file, roomFolder.value) || file
 }
 
 /**
@@ -486,15 +517,15 @@ function fileTitle(file: string): string {
  * 同一个套路:往 window 上派一个事件,App 层接住并把 files 页签的根换过去。
  */
 function openRoomFolder(): void {
-  const root = roomWorkingDirectory.value
+  const root = roomFolder.value
   if (!root) return
   window.dispatchEvent(new CustomEvent('onething:collab-open-folder', { detail: { root } }))
 }
 
 async function openDeliverable(file: string): Promise<void> {
-  const absolute = resolveDeliverablePath(file, roomWorkingDirectory.value)
+  const absolute = resolveDeliverablePath(file, roomFolder.value)
   if (!absolute) {
-    hint.value = '这个房间没有设置工作目录,无法定位交付物'
+    hint.value = '还没拿到这个群的 folder,无法定位交付物'
     return
   }
   try {
