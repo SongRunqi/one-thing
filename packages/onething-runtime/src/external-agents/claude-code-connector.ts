@@ -494,6 +494,12 @@ class ClaudeCodeTurnTranslator {
   private toolCallsByIndex = new Map<number, { id: string; name: string; args: string }>()
   private toolCallsById = new Map<string, AgentToolCall>()
   private settled = new Set<string>()
+  /** 已经报过 `tool-call-start` 的调用 id(流式与回填两条出口共用一张表)。 */
+  private started = new Set<string>()
+  /** 本轮(一次模型应答)已经报出去的工具调用数。 */
+  private roundToolCalls = 0
+  /** 本轮的工具结果已经到齐,下一段助手内容属于**新的一轮**。 */
+  private roundClosePending = false
 
   constructor(private turn: number) {}
 
@@ -502,9 +508,9 @@ class ClaudeCodeTurnTranslator {
 
     switch (message.type) {
       case 'stream_event':
-        return this.translateStreamEvent(message)
+        return this.withRoundBoundary(this.translateStreamEvent(message))
       case 'assistant':
-        return this.translateAssistant(message)
+        return this.withRoundBoundary(this.translateAssistant(message))
       case 'user':
         return this.translateUser(message)
       case 'result':
@@ -512,6 +518,39 @@ class ClaudeCodeTurnTranslator {
       default:
         return []
     }
+  }
+
+  /**
+   * **回合分界**(F4)。
+   *
+   * 本地 provider 的一次 provider 请求 = 一个 turn,turn 与 turn 之间由一条
+   * `finish(tool_calls)` 分开;执行器正是在这条边界上把上一 turn 的 contentParts
+   * 落库、重开 turn 状态、并允许下一 turn 再种一个 `data-steps` 锚点(工具卡在正文
+   * 里的落点)。一个 turn 只种一次锚点是对的 —— 本地一轮里正文永远在工具调用之前。
+   *
+   * Claude Code 把「应答 → 工具 → 再应答 → 再工具 → 收尾」整段跑在**一次**
+   * `streamTurn` 里。不发分界的话,这一整段共用一个 turn:所有工具卡都塌到第一个
+   * 锚点上,而夹在两次调用之间的正文全被甩到卡片之后 —— 这就是真机上看到的乱序。
+   *
+   * 所以每当上一轮的工具结果到齐、又有新的助手内容开始时,这里补一条与本地通路
+   * **逐字相同**的 `finish(tool_calls)`。次序保证因此只有一套,而不是在 renderer
+   * 侧另写一套排序把问题藏起来。
+   */
+  private withRoundBoundary(events: AgentTurnStreamEvent[]): AgentTurnStreamEvent[] {
+    if (!this.roundClosePending || events.length === 0) return events
+    // 只有「新的助手内容」才算新的一轮开始:tool-call-delta / done / metadata 都是
+    // 上一条 start 的续集,拿它们开新轮会把一次调用劈成两轮。
+    const opensRound = events.some(event =>
+      event.type === 'text-delta'
+      || event.type === 'reasoning-delta'
+      || event.type === 'tool-call-start')
+    if (!opensRound) return events
+    this.roundClosePending = false
+    this.roundToolCalls = 0
+    return [
+      { type: 'finish', turn: this.turn, finishReason: 'tool_calls' },
+      ...events,
+    ]
   }
 
   private translateStreamEvent(message: ClaudeCodeSdkMessage): AgentTurnStreamEvent[] {
@@ -523,6 +562,7 @@ class ClaudeCodeTurnTranslator {
       const id = event.content_block.id ?? `tool-${index}`
       const name = normalizeToolName(event.content_block.name)
       this.toolCallsByIndex.set(index, { id, name, args: '' })
+      this.started.add(id)
       return [{ type: 'tool-call-start', turn: this.turn, toolCallId: id, toolName: name }]
     }
 
@@ -569,7 +609,23 @@ class ClaudeCodeTurnTranslator {
       if (block.type !== 'tool_use' || !block.id) continue
       if (this.toolCallsById.has(block.id)) continue
       const name = normalizeToolName(block.name)
-      events.push({ type: 'tool-call-start', turn: this.turn, toolCallId: block.id, toolName: name })
+      /**
+       * **报过的 start 不再报第二遍**(F4)。
+       *
+       * 判据此前只看 `toolCallsById`(它在 `content_block_stop` 才落),于是「start
+       * 流过了、stop 没到」这一支会在回填时再发一条 `tool-call-start`:下游据它
+       * 再建一个占位 toolCall 与一个 step,同一次调用在步骤面上变成两张卡,
+       * 而第二张永远停在 input-streaming。
+       */
+      if (!this.started.has(block.id)) {
+        this.started.add(block.id)
+        events.push({ type: 'tool-call-start', turn: this.turn, toolCallId: block.id, toolName: name })
+      }
+      // 还挂在 index 表上的同一次调用(stop 没到)清掉,否则迟到的 stop 会把它
+      // 再完成一遍。
+      for (const [index, pending] of this.toolCallsByIndex) {
+        if (pending.id === block.id) this.toolCallsByIndex.delete(index)
+      }
       events.push(...this.completeToolCall(block.id, name, JSON.stringify(block.input ?? {})))
     }
     return events
@@ -591,6 +647,10 @@ class ClaudeCodeTurnTranslator {
       }
       events.push({ type: 'tool-result', turn: this.turn, toolCall, result })
     }
+    // 结果到齐 = 本轮结束。分界不在这里发,而是等下一段助手内容真的开始时再发
+    // (`withRoundBoundary`):并行调用的结果可能分几条 user 消息回来,提前发会
+    // 凭空多出几个空 turn。
+    if (events.length > 0 && this.roundToolCalls > 0) this.roundClosePending = true
     return events
   }
 
@@ -624,6 +684,7 @@ class ClaudeCodeTurnTranslator {
       externallyExecuted: true,
     }
     this.toolCallsById.set(id, toolCall)
+    this.roundToolCalls += 1
     const events: AgentTurnStreamEvent[] = [
       { type: 'tool-call-done', turn: this.turn, toolCall },
     ]

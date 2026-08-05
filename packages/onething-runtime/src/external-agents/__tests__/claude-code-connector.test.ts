@@ -134,10 +134,17 @@ describe('ClaudeCodeConnector', () => {
       'tool-call-delta',
       'tool-call-done',
       'tool-result',
+      // F4:工具结果到齐、下一段正文开始 = 新的一轮。这条 finish(tool_calls) 与
+      // 本地 provider 的 turn 分界逐字相同,执行器据它给下一轮另开一个
+      // `data-steps` 锚点 —— 少了它,后面的工具卡会全部塌回第一个锚点。
+      'finish',
       'text-delta',
       'provider-data',
       'finish',
     ])
+    expect(events.filter(event => event.type === 'finish').map(event => (
+      (event as { finishReason: string }).finishReason
+    ))).toEqual(['tool_calls', 'stop'])
     const done = events.find(event => event.type === 'tool-call-done')
     expect(done).toMatchObject({
       toolCall: { id: 'toolu_1', name: 'Bash', arguments: '{"command":"ls"}', externallyExecuted: true },
