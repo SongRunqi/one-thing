@@ -114,15 +114,50 @@ P2 新增 Dialog/ConfirmHost 后它当场翻边,全局实心 `background` 赢了
 |---|---|
 | hover 背景 | `background: var(--ui-state-hover-bg)`(区域别名如 `--ui-sidebar-item-hover-bg` 由主题层派生,组件端只引用) |
 | selected 背景 | `var(--ui-state-selected-bg)` 或其区域别名。**不要**拿 `--ui-accent-primary-fg` / `--accent` 当选中底色 |
-| focus ring | `.u-focus-ring`(P4 落地于 components.css);输入框用 `.u-focus-ring-input` |
+| focus ring | `.u-focus-ring`(components.css);输入框用 `.u-focus-ring-input` |
 | focus 伪类 | 一律 `:focus-visible`。裸 `:focus` 只留给输入框 caret 场景 |
 | 过渡 | `transition: <prop> var(--duration-fast) var(--ease-default)`。**禁字面时长** |
 | 圆角 | `var(--radius-xs|sm|md|lg|full)` = 3 / 6 / 10 / 16 / 9999px |
 | 浮层阴影 | 锚定浮层 `--shadow-floating`,对话框 `--shadow-elevated`,纸墨签名影 `--shadow-paper` |
 
+**区域墨阶(P4a 起住在主题层)。** 侧栏与设置区的行状态不走通用 state ramp ——
+它们要的是**同一条墨色上的等比阶梯**(分组头全墨 > 行文 72% > 选中 14% > hover 8% >
+rail 底 2.5%),直接引通用 token 时这几档的相对关系不可控(实测:分组头与行文同色、
+hover 看不见)。配方表在 `themes/role-mapping.ts` 的 `REGION_OVERLAY_STEPS`,
+`css-mapper.ts` 按各主题的**区域底色**解析成实色发出来:
+
+| token | 是什么 |
+|---|---|
+| `--ui-sidebar-row-ink` / `--ui-sidebar-row-fg` | 侧栏行的墨 / 行文(72%) |
+| `--ui-sidebar-item-hover-bg` / `--ui-sidebar-item-active-bg` | 侧栏行 hover(8%)/ 选中(14%) |
+| `--ui-sidebar-rail-bg` / `-hover-bg` / `-active-bg` / `-muted-fg` | rail 与 ActiveWorkCard 这类嵌套面(2.5 / 4.5 / 7.5 / 47%,**叠在 rail 底上**) |
+| `--ui-settings-row-hover-bg` / `--ui-settings-row-active-bg` | 设置区行(accent 5% / 10%) |
+
+**组件端只引用,不再自造 `color-mix`。** 要加新档位就改 `REGION_OVERLAY_STEPS`,
+改完跑 `themes/__tests__/state-overlay-audit.test.ts`(16 主题 × 声明模式,断言
+"有值 / 是实色 / ΔRGB ≥ 5 / 阶梯单调")。混色一律 `in srgb` —— oklch 在近中性色上泛粉。
+
+**focus ring 的三个 shadow token**(拿不到全局工具类的 scoped 规则直接引,别手抄双环):
+`--ui-focus-ring-shadow`(双环)/ `--ui-focus-ring-input-shadow`(输入框单环 15%)/
+`--ui-focus-ring-soft-shadow`(浮面、侧栏 rail 的半透明单环 36%)。
+
+**双轨已终止(P4b)。** `--accent` / `--text` / `--muted` / `--hover` / `--border` 这一批
+**159 个 legacy 变量名,主题层不再写了**(`css-mapper.ts` 的 `UI_LEGACY_VAR_MAP` 已缩成
+`UI_ALIAS_VAR_MAP`,只剩两类真别名:`--shadow-floating`/`--shadow-elevated` 档位名,
+以及 `--ui-table-*`/`--ui-category-N-*` 这种比自动名好听的短名)。它们在
+`variables.css` 里还有静态定义,但**不再跟主题变** —— 新代码引用它们 = 拿到一个死值。
+
+**只用 `--ui-*` 正主。** 忘了对应关系就查 `UI_LEGACY_VAR_MAP` 的 git 历史,或直接看
+`css-mapper.ts` 的 `CSS_VAR_MAP`。语法高亮那套(`--text-code-*` / `--hljs-*`)不在此列,
+hljs-theme.css 与 StreamingCodeBlock 仍按那套名字消费,照旧双写。
+
 **fallback 纪律:**
 - `--ui-*` 引用**禁止 hex/rgba 字面 fallback**。`var(--ui-state-hover-bg, #f4f2ed)` 在 dark 主题下 token 一缺就爆白。
-- fallback 链最多一层 legacy 别名:`var(--ui-x, var(--legacy-x))`,不嵌三四层。
+- fallback 链最多一层别名:`var(--ui-x, var(--ui-y))`,不嵌三四层。
+- **写之前先确认 `--ui-x` 真的存在。** P4a 抓到 15 个拼错/臆造的名字(`--ui-surface-hover-bg`
+  该是 `--ui-state-hover-bg`、`--ui-border-subtle` 该是 `--ui-border-subtle-border`…),
+  其中 3 处连 fallback 都是不存在的变量 —— 整条声明在计算期作废,那块颜色一直没画出来过,
+  而且**没有任何报错**。P4b 已全部修掉;别再造新的。
 
 ---
 
@@ -215,8 +250,9 @@ bun run ui:check   # 全量清单(存量 + 新增),按规则分类计数
 bun run ui:gate    # 棘轮:只对基线之外的新增 exit 1;治愈的行会打印出来
 ```
 
-基线:`docs/audit/ui-baseline-2026-08-04.txt`(1144 条存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
-P2 结束时实测 1044 条(治愈 100 条:`native-confirm` 归零,`raw-teleport` 12→4),基线**未重录**。
+基线:`docs/audit/ui-baseline-2026-08-05.txt`(**768 条**存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
+P0 首录 1144 条 → P2 实测 1044(`native-confirm` 归零、`raw-teleport` 12→4,未重录)
+→ P4 收官 768(`ui-hex-fallback` 151→0、`focus-bare` 65→27),**此处已重录**。
 清掉一批之后重新生成基线把棘轮收紧:
 
 ```bash
