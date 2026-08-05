@@ -17,6 +17,7 @@ import { registerSkillHandlers, initializeSkills } from "./skills.js";
 import { registerShellHandlers } from "./shell.js";
 import { registerMediaHandlers } from "./media.js";
 import { registerPermissionHandlers } from "./permission.js";
+import { registerInteractionHandlers } from "./interaction.js";
 import { registerOAuthHandlers, cleanupOAuth } from "./oauth.js";
 import { registerThemeHandlers, initializeThemeSystem } from "./themes.js";
 import { registerVariableHandlers } from "./variables.js";
@@ -62,6 +63,7 @@ export function initializeIPC() {
 	registerShellHandlers();
 	registerMediaHandlers();
 	registerPermissionHandlers();
+	registerInteractionHandlers();
 	registerOAuthHandlers();
 	registerThemeHandlers();
 	registerVariableHandlers();

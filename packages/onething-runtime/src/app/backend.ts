@@ -37,6 +37,7 @@ import type { BindableStreamSender } from './engine/stream-engine.js'
 import { registerBuiltinTriggers } from './engine/triggers/index.js'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from './collab/index.js'
 import { Permission } from './permission/index.js'
+import { Interaction } from './interaction/index.js'
 import { bootstrapVariableSystem } from './variables/index.js'
 import { bootstrapGoalStreamBreakers } from './goals/runtime-hooks.js'
 import { bootstrapProjectDirs } from './project-dirs/index.js'
@@ -154,6 +155,14 @@ export async function createOnethingBackend(
     sessionId => getStreamEngine().getPermissionMode(sessionId),
   )
 
+  // 提问链与审批链是两条并列的等待链,同一个接入点、同一个通道解析器
+  // (claude-code-integration-v2 §4)。同样要求 engine 先在位——targetChannel
+  // 是 ask 当场从 engine 取的。
+  Interaction.initialize(
+    getEventBus(),
+    sessionId => getStreamEngine().getChannel(sessionId),
+  )
+
   // Variables must precede the tool registry (the variable tool reads a
   // populated registry); goal breakers and project dirs are order-free but
   // belong before the first stream.
@@ -226,6 +235,7 @@ export async function createOnethingBackend(
       killAllTerminals()
       shutdownStreamEngine()
       Permission.shutdown()
+      Interaction.shutdown()
       shutdownSessionLayer()
       shutdownEventSystem()
       try {

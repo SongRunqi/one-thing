@@ -256,6 +256,28 @@ export type {
 } from './plugins/index.js'
 
 export {
+  DEFAULT_INTERACTION_ABORTED_REASON,
+  DEFAULT_INTERACTION_DECLINED_REASON,
+  DEFAULT_INTERACTION_TIMEOUT_MS,
+  DEFAULT_INTERACTION_TIMEOUT_REASON,
+  Interaction,
+} from './interaction/index.js'
+export type {
+  InteractionAnswer,
+  InteractionAskInput,
+  InteractionBusEvent,
+  InteractionCommandEnvelope,
+  InteractionEventBusLike,
+  InteractionOption,
+  InteractionOrigin,
+  InteractionOutcome,
+  InteractionQuestion,
+  InteractionQuestionAnswer,
+  InteractionRequest,
+  InteractionRespondCommandLike,
+} from './interaction/index.js'
+
+export {
   DEFAULT_PERMISSION_REJECTED_MESSAGE,
   Permission,
   addGrant,

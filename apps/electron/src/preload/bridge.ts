@@ -44,6 +44,7 @@ import type {
 	PracticeSummaryRequest,
 	PracticeSummaryResult,
 	PermissionMode,
+	InteractionRespondRequest,
 } from "@shared/ipc.js";
 
 /**
@@ -1223,6 +1224,15 @@ const electronAPI = {
 
 	clearSessionPermissions: (sessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_CLEAR_SESSION, sessionId),
+
+	// Interaction methods (agent 提问 → 用户应答). 请求整体透传,不逐字段手抄。
+	// 提问事件从 session:event 通道以 'interaction:requested' 到达;
+	// 结算(含到点自结算)以 'interaction:settled' 到达。
+	getPendingInteractions: (sessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.INTERACTION_GET_PENDING, sessionId),
+
+	respondInteraction: (request: InteractionRespondRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.INTERACTION_RESPOND, request),
 
 	// OAuth methods
 	oauthStart: (providerId: string) =>

@@ -600,6 +600,21 @@ export type {
 	PermissionRespondRequest,
 } from "./permissions.js";
 
+// Interaction types (agent 提问 → 用户应答;与 Permission 并列的一等概念)
+export type {
+	InteractionAnswer,
+	InteractionGetPendingRequest,
+	InteractionGetPendingResponse,
+	InteractionOption,
+	InteractionOrigin,
+	InteractionOutcome,
+	InteractionQuestion,
+	InteractionQuestionAnswer,
+	InteractionRequest,
+	InteractionRespondRequest,
+	InteractionRespondResponse,
+} from "./interaction.js";
+
 // Variable types
 export type {
 	VariablesListRequest,

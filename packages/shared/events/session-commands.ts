@@ -127,6 +127,32 @@ export interface PermissionRespondCommand {
   rejectReason?: string
 }
 
+/**
+ * 回答一次 agent 的提问(claude-code-integration-v2 §4,E1)。
+ *
+ * 与 `command:permission-respond` 并列走同一条统一命令通道 —— 于是通道亲和这件事
+ * 在两条等待链上是同一套写法:ask 记下 `targetChannel`,内核校验应答方的 `channel`
+ * 与之相等。跨通道冒批在提问上同样被挡住。
+ */
+export interface InteractionRespondCommand {
+  type: 'command:interaction-respond'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
+  /** 活的请求 id(应答方接到了 interaction:requested 事件时用它)。 */
+  interactionId?: string
+  /**
+   * 持久相关键:这次提问挂在哪个工具调用上。与 permission 的 toolCallId 同一条理由——
+   * requestId 只活在两端的内存里,而 toolCallId 是随消息落盘的。
+   */
+  toolCallId?: string
+  /** 逐题答案,键是 `InteractionQuestion.id`。整体透传,内核不按题过滤。 */
+  answers?: Record<string, { selected: string[]; freeText?: string }>
+  /** 用户主动放弃回答 → declined,而不是空答案的 answered。 */
+  decline?: boolean
+  /** decline 的可读理由,进工具结果给模型看。 */
+  reason?: string
+}
+
 export interface RetryMessageCommand {
   type: 'command:retry-message'
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
@@ -181,6 +207,7 @@ export type SessionCommand =
   | ConfirmToolCommand
   | ResumeAfterConfirmCommand
   | PermissionRespondCommand
+  | InteractionRespondCommand
   | RetryMessageCommand
   | CompactContextCommand
   | InjectSteeringCommand

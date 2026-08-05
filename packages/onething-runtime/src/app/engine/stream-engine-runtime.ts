@@ -11,6 +11,7 @@ import {
 } from "@onething/runtime/product-stream-runtime";
 import { authService } from "../auth/auth-service.js";
 import { Permission } from "../permission/index.js";
+import { Interaction } from "../interaction/index.js";
 import * as store from "../store.js";
 import { getSkillsForSession } from "../skills/session-skills.js";
 import { mediaLibraryService } from "../media/media-library-service.js";
@@ -81,6 +82,10 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 		},
 		clearPermissionSession: (sessionId) => {
 			Permission.clearSession(sessionId);
+			// 提问链与审批链在会话清理上必须同进同退:少结算一条 pending interaction,
+			// 等它的那个回合就永远醒不过来,而且它的 deadline 表还挂着
+			// (claude-code-integration-v2 §4)。
+			Interaction.clearSession(sessionId);
 		},
 		getSkillsForSession,
 		resolvePromptReferences,

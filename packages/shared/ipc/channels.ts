@@ -195,6 +195,10 @@ export const IPC_CHANNELS = {
 	PERMISSION_CLEAR_SESSION_GRANTS: "permission:clear-session-grants",
 	PERMISSION_CLEAR_WORKSPACE_GRANTS: "permission:clear-workspace-grants",
 
+	// Interaction related (agent 提问 → 用户应答)
+	INTERACTION_RESPOND: "interaction:respond",
+	INTERACTION_GET_PENDING: "interaction:get-pending",
+
 	// MCP related
 	MCP_GET_SERVERS: "mcp:get-servers",
 	MCP_ADD_SERVER: "mcp:add-server",

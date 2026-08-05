@@ -455,6 +455,12 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	"ensureCollabDmRoom",
 	// 群 folder 列目录同理:folder 是主进程 store 里的路径
 	"listCollabRoomFolder",
+	// Interaction(agent 提问 → 用户应答,E1)。内核在主进程的 InteractionRegistry
+	// 里,web 侧要接得起来得先有 /api/interactions/* 两条路由 —— 那是 apps/server
+	// 的活,不在 E1 范围。**桩掉不会把提问挂住**:deadline 由内核自结算,web 端
+	// 不应答的后果是到点 timeout,而不是像 F3 那样永远等下去。
+	"getPendingInteractions",
+	"respondInteraction",
 	// Terminal (P4 web parity is frozen; capability gate hides the UI on web)
 	"createTerminal",
 	"listTerminals",

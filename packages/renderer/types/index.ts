@@ -296,6 +296,17 @@ import type {
 	// Permission types
 	PermissionInfo,
 	PermissionResponse,
+	// Interaction types (agent 提问 → 用户应答)
+	InteractionAnswer,
+	InteractionGetPendingResponse,
+	InteractionOption,
+	InteractionOrigin,
+	InteractionOutcome,
+	InteractionQuestion,
+	InteractionQuestionAnswer,
+	InteractionRequest,
+	InteractionRespondRequest,
+	InteractionRespondResponse,
 	// Theme types
 	ThemeMeta,
 	Theme,
@@ -627,6 +638,17 @@ export type {
 	// Permission types
 	PermissionInfo,
 	PermissionResponse,
+	// Interaction types (agent 提问 → 用户应答)
+	InteractionAnswer,
+	InteractionGetPendingResponse,
+	InteractionOption,
+	InteractionOrigin,
+	InteractionOutcome,
+	InteractionQuestion,
+	InteractionQuestionAnswer,
+	InteractionRequest,
+	InteractionRespondRequest,
+	InteractionRespondResponse,
 	// Theme types
 	ThemeMeta,
 	Theme,
@@ -1453,6 +1475,15 @@ export interface ElectronAPI {
 		pending?: PermissionInfo[];
 		error?: string;
 	}>;
+
+	// Interaction methods (agent 提问 → 用户应答). 提问事件走 session:event 通道
+	// ('interaction:requested' / 'interaction:settled'),这两条只管补水和写回。
+	getPendingInteractions: (
+		sessionId: string,
+	) => Promise<InteractionGetPendingResponse>;
+	respondInteraction: (
+		request: InteractionRespondRequest,
+	) => Promise<InteractionRespondResponse>;
 
 	// MCP methods
 	mcpGetServers: () => Promise<MCPGetServersResponse>;

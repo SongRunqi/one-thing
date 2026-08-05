@@ -14,6 +14,7 @@ import type {
   CollabBoard,
   CollabCoordinatorState,
 } from '../ipc/collab.js'
+import type { InteractionAnswer, InteractionRequest } from '@onething/core/interaction'
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
 
@@ -307,6 +308,37 @@ export interface PermissionSettledEvent {
   decision: 'allowed' | 'rejected'
 }
 
+// ── Interaction events ──────────────────────────
+
+/**
+ * 一个 agent 提了一个需要人回答的问题(claude-code-integration-v2 §4,E1)。
+ *
+ * 与 `permission:request` **并列**而不是它的一个 case:审批的答案是「允许/拒绝」,
+ * 提问的答案是「从 N 个选项里选,或者自己写一句」。
+ *
+ * 载**整份 request**(而不是逐字段摊平),与 `collab:board-changed` 同一条理由:
+ * 它很小,而整体透传省掉了「加了一格却忘了在事件上补一格」那一整类 bug。
+ * 请求里带 `deadlineAt` —— UI 画倒计时用它,但**结算不归 UI 管**:内核自己挂表,
+ * 到点结成 timeout(原则 4)。
+ */
+export interface InteractionRequestedEvent {
+  type: 'interaction:requested'
+  request: InteractionRequest
+}
+
+/**
+ * 一次提问结算了(用户答复 / 主动放弃 / 到点超时 / 会话清理)。
+ *
+ * 与 `permission:settled` 同一条纪律:让每一个面都能清掉卡片和等待态,**包括那些
+ * 不是结算发起方的面**(例如超时自结算时,没有任何 UI 点过东西)。
+ * `toolCallId` 是卡片的归位键。
+ */
+export interface InteractionSettledEvent {
+  type: 'interaction:settled'
+  toolCallId?: string
+  answer: InteractionAnswer
+}
+
 // ── Tool lifecycle (fine-grained) ───────────────
 
 export interface ToolExecutingEvent {
@@ -497,6 +529,8 @@ export type SessionEvent =
   | PermissionTimeoutEvent
   | PermissionQueuedEvent
   | PermissionSettledEvent
+  | InteractionRequestedEvent
+  | InteractionSettledEvent
   | ToolExecutingEvent
   | ToolMetadataEvent
   | SessionRenamedEvent
