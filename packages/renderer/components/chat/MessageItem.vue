@@ -437,6 +437,7 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount } from 'vue'
 import type { ChatMessage, ChatMessageReplyTo, MessageAttachment, ToolCall } from '@/types'
+import type { AnchorRect } from '@/composables/floating/compute-position'
 import { REPLY_USER_LABEL, buildReplyToSnapshot } from './message/reply-quote'
 import { buildReactionChips } from './message/reactions'
 import StepsPanel from './StepsPanel.vue'
@@ -542,7 +543,7 @@ const emit = defineEmits<{
   toggleGroup: [messageId: string]
   /** Walk back to a quoted message; the list owns the scroll. */
   jumpToMessage: [messageId: string]
-  textSelection: [messageId: string, text: string, position: { top: number; left: number }]
+  textSelection: [messageId: string, text: string, rect: AnchorRect]
   executeTool: [toolCall: ToolCall]
   openFile: [filePath: string]
   updateThinkingTime: [messageId: string, thinkingTime: number]
@@ -964,8 +965,8 @@ function handleGoToBranch(sessionId: string) {
 
 // Text selection: the toolbar itself is owned by MessageList (one instance
 // for the whole list); this component only reports where the selection is.
-function handleTextSelection(text: string, position: { top: number; left: number }) {
-  emit('textSelection', props.message.id, text, position)
+function handleTextSelection(text: string, rect: AnchorRect) {
+  emit('textSelection', props.message.id, text, rect)
 }
 
 // Tool handlers

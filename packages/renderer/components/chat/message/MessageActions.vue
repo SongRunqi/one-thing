@@ -61,13 +61,21 @@
           />
         </Button>
       </Tooltip>
-      <Teleport to="body">
-        <div
-          v-if="showReactPicker"
-          class="react-picker"
-          :style="reactPickerStyle"
-          @click.stop
-        >
+      <!-- 表情面板:坐标/翻转/钳制/外点/Esc 全部由浮层内核给(P6 收口),
+           这里只剩一排字形。 -->
+      <Popover
+        :open="showReactPicker"
+        :anchor="reactBtnRef"
+        placement="top-start"
+        :offset="6"
+        :margin="6"
+        :z-offset="25"
+        :surface="false"
+        transition="none"
+        :close-on="REACT_PICKER_CLOSE_ON"
+        @update:open="setReactPicker"
+      >
+        <div class="react-picker">
           <button
             v-for="emoji in REACTION_EMOJIS"
             :key="emoji"
@@ -79,7 +87,7 @@
             {{ emoji }}
           </button>
         </div>
-      </Teleport>
+      </Popover>
     </div>
 
     <!-- Edit button for user messages -->
@@ -164,14 +172,22 @@
       </Button>
     </Tooltip>
     <!-- Downvote note popover: the one-liner is the only human input the
-         eval system asks for — it becomes the incident's expectation/rubric. -->
-    <Teleport to="body">
-      <div
-        v-if="showDownvoteNote"
-        class="downvote-note-panel"
-        :style="downvoteNoteStyle"
-        @click.stop
-      >
+         eval system asks for — it becomes the incident's expectation/rubric.
+         Esc/外点关闭由内核给;`closeOn.scroll` 特意关着,滚一下就丢掉半句话
+         不是这个面板该有的行为(内核改为跟随重定位)。 -->
+    <Popover
+      :open="showDownvoteNote"
+      :anchor="downvoteBtnRef"
+      placement="bottom-start"
+      :offset="6"
+      :z-offset="25"
+      :surface="false"
+      transition="none"
+      :close-on="DOWNVOTE_NOTE_CLOSE_ON"
+      @update:open="setDownvoteNote"
+      @positioned="focusDownvoteNoteInput"
+    >
+      <div class="downvote-note-panel">
         <textarea
           ref="downvoteNoteInput"
           v-model="downvoteNote"
@@ -179,7 +195,6 @@
           rows="2"
           placeholder="哪里不对 / 应该怎么做?(可选,一句话)"
           @keydown.enter.exact.prevent="submitDownvote()"
-          @keydown.esc.prevent="cancelDownvoteNote"
         />
         <div class="downvote-note-actions">
           <Button
@@ -198,7 +213,7 @@
           </Button>
         </div>
       </div>
-    </Teleport>
+    </Popover>
 
     <!-- Branch button (for assistant messages) -->
     <Tooltip
@@ -380,8 +395,9 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onUnmounted } from 'vue'
 import Dropdown from '@/components/common/Dropdown.vue'
+import Popover from '@/components/common/Popover.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { useTTS } from '@/composables/useTTS'
 import { stripMarkdown } from '@/composables/useMarkdownRenderer'
@@ -516,15 +532,36 @@ const showDownvoteNote = ref(false)
 const downvoteNote = ref('')
 const downvoteBtnRef = ref<{ $el?: HTMLElement } | HTMLElement | null>(null)
 const downvoteNoteInput = ref<HTMLTextAreaElement | null>(null)
-const downvoteNotePosition = ref({ top: 0, left: 0 })
 
-const downvoteNoteStyle = computed(() => ({
-  position: 'fixed' as const,
-  top: `${downvoteNotePosition.value.top}px`,
-  left: `${downvoteNotePosition.value.left}px`,
-  // 内联样式里同样只走层级变量(消息级浮层档,见 docs/design/ui-system.md)。
-  zIndex: 'calc(var(--z-dropdown) + 25)',
-}))
+/** Frozen so the prop identity never changes — a fresh object every render
+ *  would re-run the kernel's `closeOn` getter for nothing. */
+const DOWNVOTE_NOTE_CLOSE_ON = { esc: true, outside: true } as const
+
+/** Single door for the panel's open state (same shape as the two menus): the
+ *  kernel's own dismissals (Esc / outside) come back through here, so the note
+ *  is cleared exactly once no matter who closed it. */
+function setDownvoteNote(open: boolean) {
+  if (showDownvoteNote.value === open) return
+  showDownvoteNote.value = open
+  if (!open) downvoteNote.value = ''
+  else awaitingNoteFocus = true
+}
+
+/**
+ * 打开后焦点落输入框(RejectReasonDialog 的同一条要求)。
+ *
+ * 挂上 `@positioned` 而不是 RejectReasonDialog 那套 `nextTick` —— 内核在量出
+ * 坐标之前会给浮层挂 `visibility: hidden`,而 `focus()` 打在 hidden 元素上是
+ * 空操作(真机实测:焦点留在 body)。`positioned` 正是"量完了、看得见了"这一刻,
+ * 每次重定位都会再发,所以要用一次性闸门,免得滚动重排把焦点抢回来。
+ */
+let awaitingNoteFocus = false
+
+function focusDownvoteNoteInput() {
+  if (!awaitingNoteFocus) return
+  awaitingNoteFocus = false
+  void nextTick(() => downvoteNoteInput.value?.focus())
+}
 
 function handleDownvote() {
   if (downvoted.value) return
@@ -532,38 +569,13 @@ function handleDownvote() {
     console.error('Downvote recording failed: no sessionId available for this message')
     return
   }
-
-  if (showDownvoteNote.value) {
-    showDownvoteNote.value = false
-    return
-  }
-
-  const el = (downvoteBtnRef.value as { $el?: HTMLElement })?.$el
-    ?? (downvoteBtnRef.value as HTMLElement | null)
-  if (el?.getBoundingClientRect) {
-    const rect = el.getBoundingClientRect()
-    const panelWidth = 320
-    const padding = 8
-    let left = rect.left
-    if (left + panelWidth > window.innerWidth - padding) {
-      left = window.innerWidth - panelWidth - padding
-    }
-    downvoteNotePosition.value = { top: rect.bottom + 6, left }
-  }
-  showDownvoteNote.value = true
-  downvoteNote.value = ''
-  void nextTick(() => downvoteNoteInput.value?.focus())
-}
-
-function cancelDownvoteNote() {
-  showDownvoteNote.value = false
-  downvoteNote.value = ''
+  setDownvoteNote(!showDownvoteNote.value)
 }
 
 async function submitDownvote(skipNote = false) {
   if (!props.sessionId) return
-  showDownvoteNote.value = false
   const note = skipNote ? undefined : downvoteNote.value.trim() || undefined
+  setDownvoteNote(false)
 
   try {
     const result = await platformApi.recordEvalsDownvote({
@@ -590,46 +602,25 @@ async function submitDownvote(skipNote = false) {
 const REACTION_EMOJIS = COLLAB_REACTION_EMOJIS
 const showReactPicker = ref(false)
 const reactBtnRef = ref<HTMLElement | null>(null)
-const reactPickerPosition = ref({ top: 0, left: 0 })
 
-const reactPickerStyle = computed(() => ({
-  position: 'fixed' as const,
-  top: `${reactPickerPosition.value.top}px`,
-  left: `${reactPickerPosition.value.left}px`,
-  zIndex: 'calc(var(--z-dropdown) + 25)',
-}))
+/** `placement="top-start"` + flip reproduces the old hand-rolled rule verbatim:
+ *  prefer above the row (the message underneath must stay readable), drop below
+ *  only when there is no room up top. Scroll dismisses — the palette hangs off a
+ *  hover-revealed button that the scroll is about to take away anyway. */
+const REACT_PICKER_CLOSE_ON = { esc: true, outside: true, scroll: true } as const
+
+function setReactPicker(open: boolean) {
+  if (showReactPicker.value === open) return
+  showReactPicker.value = open
+  emit('menuOpen', open)
+}
 
 function toggleReactPicker() {
-  if (showReactPicker.value) {
-    showReactPicker.value = false
-    emit('menuOpen', false)
-    return
-  }
-
-  if (reactBtnRef.value) {
-    const rect = reactBtnRef.value.getBoundingClientRect()
-    const panelWidth = REACTION_EMOJIS.length * 28 + 8
-    const panelHeight = 32
-    const padding = 6
-    let left = rect.left
-    if (left + panelWidth > window.innerWidth - padding) {
-      left = window.innerWidth - panelWidth - padding
-    }
-    if (left < padding) left = padding
-    // Prefer above the row (the message is below and must stay readable);
-    // flip under only when there is no room up top.
-    let top = rect.top - panelHeight - padding
-    if (top < padding) top = rect.bottom + padding
-    reactPickerPosition.value = { top, left }
-  }
-
-  showReactPicker.value = true
-  emit('menuOpen', true)
+  setReactPicker(!showReactPicker.value)
 }
 
 function pickReaction(emoji: string) {
-  showReactPicker.value = false
-  emit('menuOpen', false)
+  setReactPicker(false)
   emit('react', emoji)
 }
 
@@ -704,23 +695,8 @@ function formatNumber(num: number): string {
   return num.toLocaleString()
 }
 
-// Click outside handler. Only the reaction palette still needs one — the two
-// menus below it are Dropdowns now, and the floating kernel dismisses those.
-function handleClickOutside(event: MouseEvent) {
-  const target = event.target as HTMLElement
-  // Teleported palette: the click can land on the panel itself, so both the
-  // trigger wrapper and the panel count as "inside".
-  if (!target.closest('.react-btn-wrapper') && !target.closest('.react-picker')) {
-    if (showReactPicker.value) {
-      showReactPicker.value = false
-      emit('menuOpen', false)
-    }
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
+// P6:最后一处手写 document click 监听随表情面板一起删除 —— 这个组件里的四层
+// (branch / more / 表情 / 踩后备注)现在全部由浮层内核负责关闭。
 
 // 重新生成会丢弃已有回复,误触代价不小 —— 第一次点只把按钮"上膛",
 // 第二次点才真的重来。指针移开这一行或几秒不动都会自动撤销。
@@ -747,10 +723,7 @@ function handleRegenerateClick() {
   regenerateArmTimer = setTimeout(disarmRegenerate, REGENERATE_ARM_TIMEOUT_MS)
 }
 
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-  disarmRegenerate()
-})
+onUnmounted(disarmRegenerate)
 </script>
 
 <style scoped>
@@ -1000,6 +973,46 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
 }
 
+/* Reaction palette (§3.6): a hairline strip of glyphs. No fill, no shadow
+   stack, no bounce — hover moves the ink behind the emoji, nothing else.
+   P6:面板成了 Popover 的插槽内容,插槽内容留在调用方的 scope 里,所以这几条
+   从全局块搬回了 scoped(全局块只剩画在 Dropdown 根上的两个菜单面)。 */
+.react-picker {
+  display: flex;
+  gap: 2px;
+  padding: 3px 4px;
+  border: 1px solid var(--ui-border-strong-border);
+  border-radius: 4px;
+  background: var(--ui-surface-floating-bg);
+  animation: reactPickerIn 0.12s ease-out;
+}
+
+@keyframes reactPickerIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.react-picker-item {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-default);
+}
+
+.react-picker-item:hover {
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
+}
+
 /* Reaction palette trigger (§3.5 B) */
 .react-btn-wrapper {
   position: relative;
@@ -1049,44 +1062,6 @@ onUnmounted(() => {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* Reaction palette (§3.6): a hairline strip of glyphs. No fill, no shadow
-   stack, no bounce — hover moves the ink behind the emoji, nothing else. */
-.react-picker {
-  display: flex;
-  gap: 2px;
-  padding: 3px 4px;
-  border: 1px solid var(--ui-border-strong-border);
-  border-radius: 4px;
-  background: var(--ui-surface-floating-bg);
-  animation: reactPickerIn 0.12s ease-out;
-}
-
-@keyframes reactPickerIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.react-picker-item {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 3px;
-  background: transparent;
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-default);
-}
-
-.react-picker-item:hover {
-  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
 }
 
 .more-menu {

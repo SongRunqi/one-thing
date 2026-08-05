@@ -48,10 +48,20 @@ import {
 } from './compute-position'
 import { createFocusReturn, trapTabKey } from './useFocusTrap'
 
-/** Right-click / caret anchors: a point, not an element. */
+/**
+ * Right-click / caret / text-selection anchors: geometry, not an element.
+ *
+ * A bare `{x, y}` is the pointer case and stays zero-sized. `width`/`height`
+ * are optional because a *text selection* is a real box, and the difference is
+ * visible: flipping off a zero-height point drops the layer back onto the
+ * selection it is supposed to be pointing at, while flipping off the selection
+ * rect clears it. `SelectionToolbar` is the reason this pair exists.
+ */
 export interface VirtualAnchor {
   x: number
   y: number
+  width?: number
+  height?: number
 }
 
 export type FloatingAnchor =
@@ -183,7 +193,9 @@ export function useFloatingLayer(options: UseFloatingLayerOptions): FloatingLaye
       const rect = el.getBoundingClientRect()
       return { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
     }
-    if (isVirtualAnchor(value)) return { x: value.x, y: value.y, width: 0, height: 0 }
+    if (isVirtualAnchor(value)) {
+      return { x: value.x, y: value.y, width: value.width ?? 0, height: value.height ?? 0 }
+    }
     return null
   }
 
@@ -380,7 +392,9 @@ export function useFloatingLayer(options: UseFloatingLayerOptions): FloatingLaye
   // right-click, a trigger row re-rendering); re-place instead of stranding.
   watch(() => {
     const value = toValue(options.anchor)
-    return isVirtualAnchor(value) ? `${value.x},${value.y}` : value
+    return isVirtualAnchor(value)
+      ? `${value.x},${value.y},${value.width ?? 0},${value.height ?? 0}`
+      : value
   }, () => {
     if (open.value) void nextTick(update)
   })

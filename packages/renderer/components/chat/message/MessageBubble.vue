@@ -256,6 +256,7 @@ import MessageMarkdown from './MessageMarkdown.vue'
 import MessageInlineEdit from './MessageInlineEdit.vue'
 import ProcessRail from './ProcessRail.vue'
 import type { ToolCall, Step, ContentPart } from '@/types'
+import type { AnchorRect } from '@/composables/floating/compute-position'
 import { stepFromToolCall } from '@/stores/helpers/tool-step-view'
 import { cleanReasoningContent } from '@/composables/useMarkdownRenderer'
 import { useCollapsibleContent } from '@/composables/useCollapsibleContent'
@@ -280,7 +281,9 @@ const emit = defineEmits<{
   submitEdit: [content: string]
   cancelEdit: []
   openMedia: [payload: { src: string; alt?: string; fileName?: string; mediaId?: string }]
-  textSelection: [text: string, position: { top: number; left: number }]
+  /** The selection's own box, in viewport coordinates — where the toolbar
+   *  lands is the floating kernel's call, not this component's. */
+  textSelection: [text: string, rect: AnchorRect]
   executeTool: [toolCall: ToolCall]
   openFile: [filePath: string]
 }>()
@@ -583,23 +586,17 @@ function handleTextSelection() {
     const range = selection?.getRangeAt(0)
     if (!range) return
 
+    // Report the selection box and stop there. Centering, flipping under the
+    // selection when the top is cramped and keeping the bar inside the viewport
+    // used to be hand-rolled right here against a *guessed* 320×44 toolbar;
+    // it is now `useFloatingLayer` measuring the real one (P6).
     const rect = range.getBoundingClientRect()
-    const toolbarWidth = 320
-    const toolbarHeight = 44
-    const padding = 8
-
-    let top = rect.top - toolbarHeight - padding
-    let left = rect.left + (rect.width / 2) - (toolbarWidth / 2)
-
-    if (left < padding) left = padding
-    if (left + toolbarWidth > window.innerWidth - padding) {
-      left = window.innerWidth - toolbarWidth - padding
-    }
-    if (top < padding) {
-      top = rect.bottom + padding
-    }
-
-    emit('textSelection', text, { top, left })
+    emit('textSelection', text, {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+    })
   }, 10)
 }
 
