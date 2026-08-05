@@ -231,7 +231,7 @@ describe('SchedulerPanelContent', () => {
       expect(wrapper.text()).toContain('Morning news')
     })
 
-    await wrapper.find('button[title="Edit"]').trigger('click')
+    await wrapper.findAll('.overview-actions button').find(button => button.text().trim() === 'edit')!.trigger('click')
     await vi.waitFor(() => {
       expect(editor()).not.toBeNull()
     })

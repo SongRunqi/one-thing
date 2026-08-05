@@ -27,7 +27,6 @@
         class="event-toggle"
         native-type="button"
         :aria-expanded="isExpanded"
-        :title="isExpanded ? 'Hide summary' : 'Show summary'"
         @click="isExpanded = !isExpanded"
       >
         <span class="event-text">

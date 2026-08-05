@@ -6,7 +6,6 @@
         <button
           class="text-action"
           type="button"
-          title="Refresh"
           :disabled="loading"
           @click="() => loadAll()"
         >
@@ -15,7 +14,6 @@
         <button
           class="text-action is-primary"
           type="button"
-          title="Create a scheduled task"
           @click="startCreate"
         >
           + new task
@@ -51,10 +49,7 @@
               @keydown.space.prevent="selectTask(task.id)"
             >
               <span class="task-line">
-                <span
-                  class="task-name"
-                  :title="task.name || task.id"
-                >{{ task.name || task.id }}</span>
+                <span class="task-name">{{ task.name || task.id }}</span>
                 <span :class="['task-status', taskStatusClass(task)]">{{ taskStatusLabel(task) }}</span>
                 <span
                   class="task-toggle"
@@ -68,27 +63,17 @@
                     :class="{ 'is-on': task.enabled }"
                     :aria-checked="task.enabled"
                     :disabled="actionId === task.id || task.inFlight"
-                    :aria-label="`${task.name || task.id} ${task.enabled ? 'enabled' : 'disabled'}`"
-                    :title="task.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'"
+                    :aria-label="`${task.name || task.id} ${task.enabled ? 'enabled — click to disable' : 'disabled — click to enable'}`"
                     @click="toggleTaskEnabled(task, !task.enabled)"
                   />
                 </span>
               </span>
               <span class="task-sub">
-                <span
-                  class="task-schedule"
-                  :title="formatSchedule(task.schedule)"
-                >{{ formatSchedule(task.schedule) }}</span>
+                <span class="task-schedule">{{ formatSchedule(task.schedule) }}</span>
                 <span class="task-lastrun">{{ formatTaskLastRun(task) }}</span>
-                <span
-                  class="task-owner"
-                  :title="taskOwnerLabel(task)"
-                >{{ taskOwnerLabel(task) }}</span>
+                <span class="task-owner">{{ taskOwnerLabel(task) }}</span>
               </span>
-              <span
-                class="task-preview"
-                :title="task.promptPreview || task.pluginId || task.id"
-              >{{ task.promptPreview || task.pluginId || task.id }}</span>
+              <span class="task-preview">{{ task.promptPreview || task.pluginId || task.id }}</span>
             </div>
           </div>
           <p
@@ -114,7 +99,6 @@
           <button
             class="text-action"
             type="button"
-            title="Back to list"
             @click="taskDetailActive = false"
           >
             back
@@ -125,7 +109,7 @@
         <section class="task-detail-head">
           <div class="task-overview">
             <span class="overview-kicker">{{ selectedTask.kind === 'agent' ? 'Agent task' : 'Plugin task' }}{{ selectedTask.readonly ? ' · Read only' : '' }}</span>
-            <h3 :title="selectedTask.name || selectedTask.id">
+            <h3>
               {{ selectedTask.name || selectedTask.id }}
             </h3>
             <p
@@ -140,7 +124,6 @@
             <button
               class="text-action"
               type="button"
-              title="Run now"
               :disabled="actionId === selectedTask.id || selectedTask.inFlight"
               @click="runNow(selectedTask.id)"
             >
@@ -150,7 +133,6 @@
               v-if="!selectedTask.readonly"
               class="text-action"
               type="button"
-              title="Edit"
               @click="startEdit(selectedTask)"
             >
               edit
@@ -159,7 +141,6 @@
               v-if="!selectedTask.readonly"
               class="text-action is-danger"
               type="button"
-              title="Delete"
               @click="deleteTask(selectedTask.id)"
             >
               delete
@@ -175,10 +156,7 @@
             </div>
             <div class="meta-line">
               <span class="meta-label">Next Run</span>
-              <strong
-                class="meta-value"
-                :title="formatMaybeDate(selectedTask.nextRunAt)"
-              >{{ formatShortDate(selectedTask.nextRunAt) }}</strong>
+              <strong class="meta-value">{{ formatShortDate(selectedTask.nextRunAt) }}</strong>
             </div>
             <div class="meta-line">
               <span class="meta-label">Runs</span>
@@ -189,10 +167,7 @@
           <section class="runtime-section">
             <h4 class="group-header">
               <span>Runtime</span>
-              <span
-                class="group-value"
-                :title="formatSchedule(selectedTask.schedule)"
-              >{{ formatSchedule(selectedTask.schedule) }}</span>
+              <span class="group-value">{{ formatSchedule(selectedTask.schedule) }}</span>
             </h4>
 
             <dl class="runtime-grid">
@@ -200,10 +175,7 @@
                 <dt class="meta-label">
                   Next Run
                 </dt>
-                <dd
-                  class="meta-value"
-                  :title="formatMaybeDate(selectedTask.nextRunAt)"
-                >
+                <dd class="meta-value">
                   {{ formatShortDate(selectedTask.nextRunAt) }}
                 </dd>
               </div>
@@ -211,10 +183,7 @@
                 <dt class="meta-label">
                   Last Run
                 </dt>
-                <dd
-                  class="meta-value"
-                  :title="formatMaybeDate(selectedTask.lastRunAt)"
-                >
+                <dd class="meta-value">
                   {{ formatShortDate(selectedTask.lastRunAt) }}
                 </dd>
               </div>
@@ -230,10 +199,7 @@
                 <dt class="meta-label">
                   Owner
                 </dt>
-                <dd
-                  class="meta-value"
-                  :title="taskOwnerLabel(selectedTask)"
-                >
+                <dd class="meta-value">
                   {{ taskOwnerLabel(selectedTask) }}
                 </dd>
               </div>
@@ -291,10 +257,7 @@
                   @click="selectedRun = selectedRun?.runId === run.runId ? null : run"
                 >
                   <span :class="['run-status', run.status]">{{ run.status }}</span>
-                  <span
-                    class="run-date"
-                    :title="formatMaybeDate(run.startedAt)"
-                  >{{ formatShortDate(run.startedAt) }}</span>
+                  <span class="run-date">{{ formatShortDate(run.startedAt) }}</span>
                   <span class="run-duration">{{ formatDuration(run.durationMs) }}</span>
                 </button>
               </div>
@@ -352,7 +315,7 @@
                 class="trace-row"
               >
                 <span class="trace-title">{{ item.title }}</span>
-                <small :title="formatMaybeDate(item.timestamp)">{{ formatShortDate(item.timestamp) }}{{ item.status ? ` · ${item.status}` : '' }}</small>
+                <small>{{ formatShortDate(item.timestamp) }}{{ item.status ? ` · ${item.status}` : '' }}</small>
                 <code v-if="item.detail">{{ item.detail }}</code>
               </div>
             </div>
@@ -374,7 +337,6 @@
         <button
           class="text-action"
           type="button"
-          title="Close"
           :disabled="saving"
           @click="cancelEdit"
         >

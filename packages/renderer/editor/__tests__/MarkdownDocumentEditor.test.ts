@@ -55,7 +55,7 @@ describe('MarkdownDocumentEditor', () => {
       frontmatter: true,
     })
 
-    await wrapper.find('[title="Bold"]').trigger('click')
+    await wrapper.find('[aria-label="Bold"]').trigger('click')
     await nextTick()
 
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['**hello**'])

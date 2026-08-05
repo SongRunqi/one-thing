@@ -343,14 +343,27 @@ describe('空间页 · 文件面', () => {
   })
 
   it('交付物按卡分组:相对路径拿群工作目录还原,绝对路径原样', async () => {
-    const wrapper = await mountPanel()
-    await openTab(wrapper, '文件')
+    // 还原后的绝对路径以前挂在行的 title 上,P5 拆原生 tooltip 后只剩点击链路可观测,
+    // 于是改成逐行点、收 openFile 事件 —— 断的仍是「还原成了什么路径」。
+    const opened: string[] = []
+    const listener = (event: Event) => {
+      opened.push((event as CustomEvent<{ filePath?: string }>).detail?.filePath || '')
+    }
+    window.addEventListener('onething:collab-open-file', listener)
+    try {
+      const wrapper = await mountPanel()
+      await openTab(wrapper, '文件')
 
-    const section = column(wrapper, '交付物')!
-    expect(section.find('.history-group-title').text()).toBe('修登录')
-    const rows = section.findAll('.history-line')
-    expect(rows.map((row: any) => row.attributes('title')))
-      .toEqual(['/w/site/src/login.ts', '/abs/report.md'])
+      const section = column(wrapper, '交付物')!
+      expect(section.find('.history-group-title').text()).toBe('修登录')
+      const rows = section.findAll('.history-line')
+      expect(rows).toHaveLength(2)
+      for (const row of rows) await row.trigger('click')
+
+      expect(opened).toEqual(['/w/site/src/login.ts', '/abs/report.md'])
+    } finally {
+      window.removeEventListener('onething:collab-open-file', listener)
+    }
   })
 
   it('群没有工作目录:相对路径的那一行不给点,而不是点了打不开', async () => {

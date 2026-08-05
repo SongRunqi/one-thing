@@ -26,7 +26,7 @@
           unstyled
           class="search-clear"
           native-type="button"
-          title="Clear search"
+          aria-label="Clear search"
           @click="ledger.searchQuery.value = ''"
         >
           <X :size="12" />
@@ -83,8 +83,9 @@
             class="row-star"
             :class="{ set: row.isDefault }"
             native-type="button"
-            :title="row.isDefault ? 'Default model' : 'Set as default model'"
-            :aria-label="`Set ${row.modelId} as default model`"
+            :aria-label="row.isDefault
+              ? `${row.modelId} is the default model`
+              : `Set ${row.modelId} as default model`"
             @click.stop="ledger.setDefault(row)"
           >
             <Star
@@ -112,26 +113,30 @@
           <span class="row-ctx num">{{ row.contextLabel || '—' }}</span>
 
           <span class="row-caps">
-            <Eye
+            <Tooltip
               v-if="row.caps.vision"
-              :size="12"
-              title="Image input"
-            />
-            <Wrench
+              text="Image input"
+            >
+              <Eye :size="12" />
+            </Tooltip>
+            <Tooltip
               v-if="row.caps.tools"
-              :size="12"
-              title="Tools"
-            />
-            <Brain
+              text="Tools"
+            >
+              <Wrench :size="12" />
+            </Tooltip>
+            <Tooltip
               v-if="row.caps.reasoning"
-              :size="12"
-              title="Reasoning"
-            />
-            <Image
+              text="Reasoning"
+            >
+              <Brain :size="12" />
+            </Tooltip>
+            <Tooltip
               v-if="row.caps.image"
-              :size="12"
-              title="Image output"
-            />
+              text="Image output"
+            >
+              <Image :size="12" />
+            </Tooltip>
           </span>
 
           <span class="row-tune-hint">
@@ -158,7 +163,6 @@
                   class="seg-btn"
                   :class="{ sel: ledger.styleState(row) === 'default' }"
                   native-type="button"
-                  title="Inherit provider / global temperature"
                   @click="ledger.setStylePreset(row, null)"
                 >
                   Default
@@ -170,7 +174,6 @@
                   class="seg-btn"
                   :class="{ sel: ledger.styleState(row) === preset.value }"
                   native-type="button"
-                  :title="`temperature ${preset.temperature}`"
                   @click="ledger.setStylePreset(row, preset.value)"
                 >
                   {{ preset.label }}
@@ -198,7 +201,6 @@
                   class="seg-btn"
                   :class="{ sel: ledger.outputState(row) === preset.value }"
                   native-type="button"
-                  :title="`${ledger.outputPresetValue(row, preset.value).toLocaleString()} tokens`"
                   @click="ledger.setOutputPreset(row, preset.value)"
                 >
                   {{ preset.label }}
@@ -237,7 +239,7 @@
                     class="tristate-btn"
                     :class="{ sel: ledger.capabilityOverrideState(row, cap.key) === opt.value }"
                     native-type="button"
-                    :title="opt.title"
+                    :aria-label="`${cap.label}: ${opt.hint}`"
                     @click="ledger.setCapabilityOverride(row, cap.key, opt.value ?? null)"
                   >
                     {{ opt.label }}
@@ -301,15 +303,16 @@
               >
                 Rename
               </Button>
-              <Button
-                unstyled
-                class="tune-action danger"
-                native-type="button"
-                :title="removeTitle(row)"
-                @click="handleRemove(row)"
-              >
-                Remove from list
-              </Button>
+              <Tooltip :text="removeTitle(row)">
+                <Button
+                  unstyled
+                  class="tune-action danger"
+                  native-type="button"
+                  @click="handleRemove(row)"
+                >
+                  Remove from list
+                </Button>
+              </Tooltip>
               <ErrorNote
                 v-if="removeError === row.key"
                 class="tune-error"
@@ -342,6 +345,7 @@ import { nextTick, onMounted, ref } from 'vue'
 import { Brain, ChevronDown, Eye, Image, Search, Star, Wrench, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import ProviderIcon from '../ProviderIcon.vue'
 import type { AppSettings, ModelCapabilityOverride, ProviderInfo } from '@/types'
 import type { CapabilityFilter, LedgerRow, OutputPreset, StylePreset } from './useModelLedger'
@@ -396,11 +400,11 @@ const CAPABILITY_KEYS: Array<{
 const TRISTATE_OPTIONS: Array<{
   value: boolean | undefined
   label: string
-  title: string
+  hint: string
 }> = [
-  { value: undefined, label: 'Auto', title: 'Defer to models.dev metadata' },
-  { value: true, label: 'On', title: 'Force enabled' },
-  { value: false, label: 'Off', title: 'Force disabled' },
+  { value: undefined, label: 'Auto', hint: 'defer to models.dev metadata' },
+  { value: true, label: 'On', hint: 'force enabled' },
+  { value: false, label: 'Off', hint: 'force disabled' },
 ]
 
 const renamingRowKey = ref<string | null>(null)

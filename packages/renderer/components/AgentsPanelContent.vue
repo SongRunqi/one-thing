@@ -59,14 +59,10 @@
                 type="button"
                 @click="selectAgent(agent.id)"
               >
-                <span
-                  class="row-name"
-                  :title="agent.name"
-                >{{ agent.name }}</span>
+                <span class="row-name">{{ agent.name }}</span>
                 <span
                   v-if="agent.isDefault"
                   class="agent-chip"
-                  title="Default agent"
                 >default</span>
                 <span
                   v-else
@@ -92,14 +88,8 @@
                   type="button"
                   @click="selectAgent(agent.id)"
                 >
-                  <span
-                    class="row-name"
-                    :title="agent.name"
-                  >{{ agent.name }}</span>
-                  <span
-                    class="agent-chip"
-                    title="已退休:不进任何社交面,记录保留"
-                  >已注销</span>
+                  <span class="row-name">{{ agent.name }}</span>
+                  <span class="agent-chip">已注销</span>
                 </button>
               </li>
             </ol>
@@ -112,37 +102,42 @@
           <button
             class="text-action back-btn"
             type="button"
-            title="Back to list"
             @click="agentDetailActive = false"
           >
             ‹ back
           </button>
           <div class="editor-title">
-            <h3 :title="isCreating ? 'New Agent' : selectedAgent?.name || 'Agent'">
+            <h3>
               {{ isCreating ? 'New Agent' : selectedAgent?.name || 'Agent' }}
             </h3>
             <span>{{ editorSubtitle }}</span>
           </div>
-          <button
+          <Tooltip
             v-if="canRestore"
-            class="text-action"
-            type="button"
-            title="重新入职:回到同事名册与激活链"
-            :disabled="saving"
-            @click="restoreSelectedAgent"
+            text="重新入职:回到同事名册与激活链"
           >
-            恢复在职
-          </button>
-          <button
+            <button
+              class="text-action"
+              type="button"
+              :disabled="saving"
+              @click="restoreSelectedAgent"
+            >
+              恢复在职
+            </button>
+          </Tooltip>
+          <Tooltip
             v-if="canDelete"
-            class="text-action is-danger"
-            type="button"
-            title="退休:退出社交面与激活链,记录保留(从未被引用过的才真删)"
-            :disabled="saving"
-            @click="deleteSelectedAgent"
+            text="退休:退出社交面与激活链,记录保留(从未被引用过的才真删)"
           >
-            退休
-          </button>
+            <button
+              class="text-action is-danger"
+              type="button"
+              :disabled="saving"
+              @click="deleteSelectedAgent"
+            >
+              退休
+            </button>
+          </Tooltip>
         </div>
 
         <!-- 资料块(agent-im-chat-ui.md §3.2)。空间页 = "我与 TA"的那一页,
@@ -173,23 +168,30 @@
             >已注销 · 记录保留</span>
           </div>
           <div class="profile-actions">
-            <button
-              class="text-action"
-              type="button"
-              :title="selectedRetired ? '已退休:不再接活,也开不了新私聊' : `和${selectedAgent.name}发消息`"
-              :disabled="selectedRetired || openingDm"
-              @click="startDmChat"
+            <!-- 退休那句是**禁用理由**:按钮自己收不到 hover,浮层挂在外层
+                 wrapper 上才说得出口;没退休就没什么可说的,整层静音。 -->
+            <Tooltip
+              text="已退休:不再接活,也开不了新私聊"
+              :disabled="!selectedRetired"
             >
-              {{ openingDm ? '打开中…' : '发消息' }}
-            </button>
-            <button
-              class="text-action"
-              type="button"
-              title="TA 的心智与能力:提示词、工具、模型、边界"
-              @click="detailTab = 'config'"
-            >
-              配置
-            </button>
+              <button
+                class="text-action"
+                type="button"
+                :disabled="selectedRetired || openingDm"
+                @click="startDmChat"
+              >
+                {{ openingDm ? '打开中…' : '发消息' }}
+              </button>
+            </Tooltip>
+            <Tooltip text="TA 的心智与能力:提示词、工具、模型、边界">
+              <button
+                class="text-action"
+                type="button"
+                @click="detailTab = 'config'"
+              >
+                配置
+              </button>
+            </Tooltip>
           </div>
         </div>
         <p
@@ -304,6 +306,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { isActiveAgent, type AgentDefinition } from '@shared/ipc'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { COLLAB_TAG_OPEN_FILE_EVENT } from '@/composables/collabInlineTags'
 import AgentConfigForm from '@/components/agents/AgentConfigForm.vue'
 import AgentSessionsPane from '@/components/agents/AgentSessionsPane.vue'

@@ -30,15 +30,17 @@
       </main>
 
       <footer class="call-footer">
-        <Button
-          unstyled
-          class="call-hangup"
-          native-type="button"
-          title="Hang up (Esc)"
-          @click="hangUp"
-        >
-          <PhoneOff :size="22" />
-        </Button>
+        <Tooltip text="Hang up (Esc)">
+          <Button
+            unstyled
+            class="call-hangup"
+            aria-label="Hang up (Esc)"
+            native-type="button"
+            @click="hangUp"
+          >
+            <PhoneOff :size="22" />
+          </Button>
+        </Tooltip>
         <span class="call-hangup-hint">Hang up</span>
       </footer>
     </div>
@@ -47,6 +49,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { PhoneOff } from 'lucide-vue-next'
 import { useVoiceStore } from '@/stores/voice'

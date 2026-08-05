@@ -297,8 +297,8 @@ describe('ChannelsSettingsTab', () => {
       }),
     )
 
-    await wrapper.find('button[title="Copy login URL"]').trigger('click')
-    await wrapper.find('button[title="Open login URL"]').trigger('click')
+    await wrapper.find('button[aria-label="Copy login URL"]').trigger('click')
+    await wrapper.find('button[aria-label="Open login URL"]').trigger('click')
 
     expect(window.electronAPI.writeClipboardText).toHaveBeenCalledWith('https://liteapp.weixin.qq.com/q/mock')
     expect(window.electronAPI.openExternal).toHaveBeenCalledWith('https://liteapp.weixin.qq.com/q/mock')
@@ -328,7 +328,7 @@ describe('ChannelsSettingsTab', () => {
     expect(wrapper.text()).toContain('Could not render the login QR code')
     expect(wrapper.find('img.qr-code-image').exists()).toBe(false)
 
-    await wrapper.find('button[title="Refresh status"]').trigger('click')
+    await wrapper.find('button[aria-label="Refresh status"]').trigger('click')
     await settle()
 
     expect(mocks.toDataURL).toHaveBeenCalledTimes(2)

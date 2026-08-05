@@ -124,12 +124,12 @@ function mountSidebar(props: Record<string, unknown> = {}) {
   })
 }
 
-/** 切到某一类(rail 上的按钮按 title 找 —— 与真机点的是同一枚)。 */
+/** 切到某一类(rail 上的按钮按 aria-label 找 —— 与真机点的是同一枚)。 */
 async function selectCategory(
   wrapper: ReturnType<typeof mountSidebar>,
   label: string,
 ): Promise<void> {
-  const tab = wrapper.findAll('.sidebar-rail-tab').find(t => t.attributes('title') === label)
+  const tab = wrapper.findAll('.sidebar-rail-tab').find(t => t.attributes('aria-label') === label)
   if (!tab) throw new Error(`rail 上没有「${label}」这一类`)
   await tab.trigger('click')
 }
@@ -327,7 +327,7 @@ describe('rail 上有哪几类', () => {
     const wrapper = mountSidebar()
     const tabs = wrapper.findAll('.sidebar-rail-tab')
     // 四类 + 三颗底部(⋯ / ＋ / 设置)
-    expect(tabs.map(tab => tab.attributes('title')))
+    expect(tabs.map(tab => tab.attributes('aria-label')))
       .toEqual(['消息', '进行中', '通讯录', '会话', '工作区面板', '新会话', 'Settings'])
   })
 
@@ -337,7 +337,7 @@ describe('rail 上有哪几类', () => {
    */
   it('没有在跑的活:rail 仍是四类,面板里出现「没有在跑的活」', async () => {
     const wrapper = mountSidebar()
-    expect(wrapper.findAll('.sidebar-rail-tab').map(tab => tab.attributes('title')))
+    expect(wrapper.findAll('.sidebar-rail-tab').map(tab => tab.attributes('aria-label')))
       .toEqual(['消息', '进行中', '通讯录', '会话', '工作区面板', '新会话', 'Settings'])
 
     await selectCategory(wrapper, '进行中')
@@ -351,7 +351,7 @@ describe('rail 上有哪几类', () => {
   it('web 降级:只留会话 + 底部三颗,一枚死图标都不留', () => {
     mocks.capabilities.collabRooms = false
     const wrapper = mountSidebar()
-    expect(wrapper.findAll('.sidebar-rail-tab').map(tab => tab.attributes('title')))
+    expect(wrapper.findAll('.sidebar-rail-tab').map(tab => tab.attributes('aria-label')))
       .toEqual(['会话', '工作区面板', '新会话', 'Settings'])
     expect(wrapper.find('.sidebar-pane-title').text()).toBe('会话')
     // 看板那条线在 web 端一次都不许起。
@@ -486,7 +486,6 @@ describe('「消息」面板 —— 一条时间序的对话流', () => {
   it('私聊行的名字取名册,不是房名', () => {
     const row = mountSidebar().findAll('.sidebar-recent-item')[1]
     expect(row.find('.sidebar-room-name').text()).toBe('名-fe')
-    expect(row.attributes('title')).toBe('名-fe · 私聊')
   })
 
   it('群行给方章 + 群名首字,人行给圆章头像 —— 左缘永远对齐', () => {
@@ -527,7 +526,7 @@ describe('rail 徽标(该类有未读或在跑)', () => {
   function badgeTitles(wrapper: ReturnType<typeof mountSidebar>): string[] {
     return wrapper.findAll('.sidebar-rail-tab')
       .filter(tab => tab.find('.sidebar-rail-badge').exists())
-      .map(tab => tab.attributes('title') ?? '')
+      .map(tab => tab.attributes('aria-label') ?? '')
   }
 
   it('全读完、没活在跑时一枚都不亮', () => {
@@ -811,7 +810,7 @@ describe('工作区面板入口一个都不丢', () => {
     expect(wrapper.find('.sidebar-dock').exists()).toBe(false)
     expect(wrapper.find('.sidebar-foot').exists()).toBe(false)
     const more = wrapper.findAll('.sidebar-rail-tab')
-      .find(tab => tab.attributes('title') === '工作区面板')!
+      .find(tab => tab.attributes('aria-label') === '工作区面板')!
     await more.trigger('click')
     const menu = wrapper.findComponent({ name: 'ContextMenu' })
     expect((menu.props('items') as Array<{ id: string }>).map(item => item.id))
@@ -821,7 +820,7 @@ describe('工作区面板入口一个都不丢', () => {
   it('菜单每一项都真的把对应面板打开(没有一个面板变得进不去)', async () => {
     const wrapper = mountSidebar()
     const more = wrapper.findAll('.sidebar-rail-tab')
-      .find(tab => tab.attributes('title') === '工作区面板')!
+      .find(tab => tab.attributes('aria-label') === '工作区面板')!
     await more.trigger('click')
     const menu = wrapper.findComponent({ name: 'ContextMenu' })
     for (const id of ['memory', 'media', 'agents', 'tasks', 'music']) {
@@ -834,8 +833,8 @@ describe('工作区面板入口一个都不丢', () => {
   it('新会话与设置照旧各占一枚(不进菜单)', async () => {
     const wrapper = mountSidebar()
     const tabs = wrapper.findAll('.sidebar-rail-tab')
-    await tabs.find(tab => tab.attributes('title') === '新会话')!.trigger('click')
-    await tabs.find(tab => tab.attributes('title') === 'Settings')!.trigger('click')
+    await tabs.find(tab => tab.attributes('aria-label') === '新会话')!.trigger('click')
+    await tabs.find(tab => tab.attributes('aria-label') === 'Settings')!.trigger('click')
     expect(wrapper.emitted('create-new-chat')).toHaveLength(1)
     expect(wrapper.emitted('open-settings')).toHaveLength(1)
   })

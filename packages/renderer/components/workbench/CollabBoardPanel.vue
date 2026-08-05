@@ -15,27 +15,31 @@
         v-if="selectedRoomId"
         class="board-header-actions"
       >
-        <button
-          type="button"
-          class="board-view-toggle"
-          :class="{ 'is-active': view === 'deliverables' }"
-          :title="view === 'deliverables' ? '回到看板' : '按任务查看交付物文件'"
-          @click="toggleView"
-        >
-          交付物<span
-            v-if="deliverableCount > 0"
-            class="board-view-count"
-          >{{ deliverableCount }}</span>
-        </button>
-        <button
+        <Tooltip :text="view === 'deliverables' ? '回到看板' : '按任务查看交付物文件'">
+          <button
+            type="button"
+            class="board-view-toggle"
+            :class="{ 'is-active': view === 'deliverables' }"
+            @click="toggleView"
+          >
+            交付物<span
+              v-if="deliverableCount > 0"
+              class="board-view-count"
+            >{{ deliverableCount }}</span>
+          </button>
+        </Tooltip>
+        <Tooltip
           v-if="!editingBudget"
-          type="button"
-          class="board-budget"
-          title="点击修改日预算(0 = 不限)"
-          @click="startEditBudget"
+          text="点击修改日预算(0 = 不限)"
         >
-          预算 {{ budgetLabel }}
-        </button>
+          <button
+            type="button"
+            class="board-budget"
+            @click="startEditBudget"
+          >
+            预算 {{ budgetLabel }}
+          </button>
+        </Tooltip>
         <input
           v-else
           ref="budgetInputRef"
@@ -48,15 +52,18 @@
           @keydown.esc="editingBudget = false"
           @blur="commitBudget"
         >
-        <button
+        <Tooltip
           v-if="roomFolder"
-          type="button"
-          class="board-budget"
-          :title="roomFolder"
-          @click="openRoomFolder"
+          :text="roomFolder"
         >
-          群 folder
-        </button>
+          <button
+            type="button"
+            class="board-budget"
+            @click="openRoomFolder"
+          >
+            群 folder
+          </button>
+        </Tooltip>
         <button
           type="button"
           class="board-freeze"
@@ -105,7 +112,7 @@
           :key="file"
           type="button"
           class="deliverable-file"
-          :title="fileTitle(file)"
+          :aria-label="fileTitle(file)"
           @click="openDeliverable(file)"
         >
           <span class="deliverable-name">{{ fileParts(file).name }}</span>
@@ -141,14 +148,12 @@
           <button
             type="button"
             class="board-card"
-            :title="task.description || task.title"
             @click="openWorkSession(task)"
           >
             <span class="board-card-title">{{ task.title }}</span>
             <span
               v-if="task.status === 'blocked' && task.blockReason"
               class="board-card-note"
-              :title="task.blockReason"
             >{{ task.blockReason }}</span>
             <span
               v-if="task.status === 'done'"
@@ -189,7 +194,6 @@
           <button
             type="button"
             class="board-card-more"
-            title="卡片操作"
             aria-label="卡片操作"
             @click.stop="openMenu($event, task)"
           >
@@ -205,7 +209,7 @@
               :key="file"
               type="button"
               class="deliverable-file is-card"
-              :title="fileTitle(file)"
+              :aria-label="fileTitle(file)"
               @click.stop="openDeliverable(file)"
             >
               {{ fileParts(file).name }}
@@ -239,6 +243,7 @@ import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import { AGENT_AVATAR_FALLBACK } from '@/components/common/agent-avatar'
 import ContextMenu from '@/components/common/ContextMenu.vue'
 import Select from '@/components/common/Select.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { SelectOptionLike } from '@/components/common/select'
 import { useSessionsStore } from '@/stores/sessions'
 import { useAgentsStore } from '@/stores/agents'
@@ -787,7 +792,7 @@ async function runMenuAction(itemId: string): Promise<void> {
   -webkit-box-orient: vertical;
 }
 
-/* 受阻原因 / 执行证据:同一条墨灰小字,两行截断,全文进 title。 */
+/* 受阻原因 / 执行证据:同一条墨灰小字,两行截断。 */
 .board-card-note {
   font-size: 11px;
   color: var(--ui-text-muted-fg);

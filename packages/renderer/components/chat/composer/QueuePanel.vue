@@ -51,7 +51,6 @@
             v-if="queuedFileSummary(item)"
             class="queued-file-summary"
             :class="{ 'is-diff': hasQueuedFileChanges(item) }"
-            :title="queuedFileSummaryTitle(item)"
           >
             <span class="queued-message-separator">·</span>
             <GitCompare
@@ -75,7 +74,7 @@
             class="queued-message-action"
             native-type="button"
             :disabled="!!item.attachments?.length"
-            :title="item.attachments?.length ? 'File messages will send after the current response' : 'Steer the current agent response with this message'"
+            :aria-label="item.attachments?.length ? 'File messages will send after the current response' : 'Steer the current agent response with this message'"
             @click.stop="emit('steer', item.id)"
           >
             <template #icon>
@@ -91,7 +90,6 @@
             circle
             class="queued-message-icon-btn"
             native-type="button"
-            title="Remove from queue"
             aria-label="Remove from queue"
             :icon="Trash2"
             @click.stop="emit('remove', item.id)"
@@ -105,7 +103,6 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import { CornerDownRight, FileText, GitCompare, Trash2 } from 'lucide-vue-next'
-import { formatFileSize } from '@/utils/format'
 import {
   changedFilesLabel,
   hasQueuedFileChanges,
@@ -140,14 +137,6 @@ function queuedFileSummary(item: QueuedMessage): string {
   if (attachments.length === 0) return ''
   if (attachments.length === 1) return `1 file attached · ${attachments[0].fileName}`
   return `${attachments.length} files attached`
-}
-
-function queuedFileSummaryTitle(item: QueuedMessage): string {
-  const attachments = item.attachments ?? []
-  if (attachments.length === 0) return queuedFileSummary(item)
-  return attachments
-    .map(file => `${file.fileName} (${formatFileSize(file.size)})`)
-    .join('\n')
 }
 </script>
 

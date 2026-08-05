@@ -39,7 +39,6 @@
             <button
               class="history-line"
               type="button"
-              :title="file.path"
               @click="emit('open-file', file.path)"
             >
               <span class="history-name">{{ file.relativePath }}</span>
@@ -91,7 +90,6 @@
                 v-if="file.path"
                 class="history-line"
                 type="button"
-                :title="file.path"
                 @click="emit('open-file', file.path)"
               >
                 <span class="history-name">{{ file.label }}</span>
@@ -99,7 +97,6 @@
               <span
                 v-else
                 class="history-line is-inert"
-                title="这张卡所在的群还没有工作目录,还原不出绝对路径"
               >
                 <span class="history-name">{{ file.label }}</span>
               </span>

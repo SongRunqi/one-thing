@@ -56,24 +56,33 @@
           {{ description }}
         </p>
         <div class="space-actions">
-          <button
-            class="text-action"
-            type="button"
-            :title="retired ? '已退休:不再接活,也开不了新私聊' : `和${identity.name}发消息`"
-            :disabled="retired || openingDm"
-            @click="startDm"
+          <!-- 退休态那句是**禁用理由**,按钮本身收不到 hover,浮层挂在外层
+               wrapper 上才说得出口;没退休就没什么可说的,整层静音。 -->
+          <Tooltip
+            text="已退休:不再接活,也开不了新私聊"
+            :disabled="!retired"
           >
-            {{ openingDm ? '打开中…' : '发消息' }}
-          </button>
-          <button
+            <button
+              class="text-action"
+              type="button"
+              :disabled="retired || openingDm"
+              @click="startDm"
+            >
+              {{ openingDm ? '打开中…' : '发消息' }}
+            </button>
+          </Tooltip>
+          <Tooltip
             v-if="work?.sessionId"
-            class="text-action"
-            type="button"
-            :title="`正在干活 · ${work.title} —— 打开线程`"
-            @click="emit('open-thread', work!.sessionId, work!.title)"
+            :text="`正在干活 · ${work.title}`"
           >
-            看线程
-          </button>
+            <button
+              class="text-action"
+              type="button"
+              @click="emit('open-thread', work!.sessionId, work!.title)"
+            >
+              看线程
+            </button>
+          </Tooltip>
         </div>
         <p
           v-if="dmError"
@@ -164,6 +173,7 @@
 import { computed, ref, watch } from 'vue'
 import { ChevronLeft } from 'lucide-vue-next'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { useAgentsStore, type AgentDetailTab } from '@/stores/agents'
 import { useWorkspaceStore } from '@/stores/workspace'
 import ThreadChatDetail from '@/components/workbench/ThreadChatDetail.vue'

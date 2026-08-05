@@ -126,20 +126,24 @@
             />
             <span class="chat-side-esum-live">{{ systemSummary }}</span>
           </button>
-          <button
+          <Tooltip
             v-if="focusedSection === 'system'"
-            type="button"
-            class="chat-side-icon-button"
-            title="Refresh system prompt"
-            :disabled="systemPromptRefreshing || !props.sessionId || isDraftSession"
-            @click.stop="refreshSystemPromptPanel"
+            text="Refresh system prompt"
           >
-            <RefreshCw
-              :size="14"
-              :class="{ spinning: systemPromptRefreshing }"
-              aria-hidden="true"
-            />
-          </button>
+            <button
+              type="button"
+              class="chat-side-icon-button"
+              aria-label="Refresh system prompt"
+              :disabled="systemPromptRefreshing || !props.sessionId || isDraftSession"
+              @click.stop="refreshSystemPromptPanel"
+            >
+              <RefreshCw
+                :size="14"
+                :class="{ spinning: systemPromptRefreshing }"
+                aria-hidden="true"
+              />
+            </button>
+          </Tooltip>
         </div>
         <div class="chat-side-ebody">
           <SystemPromptPanel
@@ -236,6 +240,7 @@ import SystemPromptPanel from './SystemPromptPanel.vue'
 import TodoProgressPanel from './TodoProgressPanel.vue'
 import VariablesPanel from './VariablesPanel.vue'
 import SessionSegmentList, { type SegmentUserMessage } from '@/components/common/SessionSegmentList.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { groupMarkersBySegment } from './session-topic-grouping'
 import { platformApi } from '@/platform'
 import type { SessionSegment, UserMessageMarker } from '@/types'

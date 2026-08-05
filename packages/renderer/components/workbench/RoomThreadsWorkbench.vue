@@ -57,7 +57,6 @@
             type="button"
             class="thread-row"
             :class="{ 'is-off': row.isRetired, 'is-running': row.running }"
-            :title="`${row.name} · ${row.detail}`"
             @click="openThread(row.sessionId)"
           >
             <!-- 私下行是**两个人**的对话:画两张脸(向左叠压),只画一张就是在

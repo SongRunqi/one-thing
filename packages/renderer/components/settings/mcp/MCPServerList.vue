@@ -8,7 +8,6 @@
         <Button
           unstyled
           class="import-btn"
-          title="Import servers"
           @click="$emit('import')"
         >
           <svg

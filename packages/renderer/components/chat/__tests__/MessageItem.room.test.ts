@@ -492,7 +492,7 @@ describe('MessageItem room system notices (W15 §3.6)', () => {
     expect(line.exists()).toBe(true)
     expect(line.text()).toBe('🔧 小李 加入了群聊')
     // The full text stays reachable when the two-line clamp bites.
-    expect(line.attributes('title')).toBe('🔧 小李 加入了群聊')
+    expect(wrapper.findComponent({ name: 'Tooltip' }).props('text')).toBe('🔧 小李 加入了群聊')
     expect(wrapper.findComponent({ name: 'MessageSystem' }).exists()).toBe(false)
   })
 

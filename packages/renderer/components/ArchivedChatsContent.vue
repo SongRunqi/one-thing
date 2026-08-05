@@ -20,7 +20,6 @@
           class="text-action toggle-action"
           :class="{ 'is-active': groupingMode === 'date' }"
           :aria-pressed="groupingMode === 'date'"
-          title="Group by date"
           @click="groupingMode = 'date'"
         >
           date
@@ -34,7 +33,6 @@
           class="text-action toggle-action"
           :class="{ 'is-active': groupingMode === 'branch' }"
           :aria-pressed="groupingMode === 'branch'"
-          title="Group by branch"
           @click="groupingMode = 'branch'"
         >
           branch
@@ -76,10 +74,7 @@
               class="group-mark"
               aria-hidden="true"
             >{{ collapsedGroups.has(group.label) ? '+' : '−' }}</span>
-            <span
-              class="group-title"
-              :title="group.label"
-            >{{ group.label }}</span>
+            <span class="group-title">{{ group.label }}</span>
             <span class="group-count">{{ group.sessions.length }}</span>
           </h4>
           <div
@@ -104,16 +99,12 @@
                 class="row-index"
                 aria-hidden="true"
               />
-              <span
-                class="chat-name"
-                :title="session.name || 'Untitled Chat'"
-              >{{ session.name || 'Untitled Chat' }}</span>
+              <span class="chat-name">{{ session.name || 'Untitled Chat' }}</span>
               <span class="chat-meta">
                 <!-- Branch parent indicator -->
                 <span
                   v-if="session.parentSessionId"
                   class="chat-branch"
-                  :title="`Branched from ${getParentName(session.parentSessionId)}`"
                 >↳ {{ getParentName(session.parentSessionId) }}</span>
                 <span
                   v-else
@@ -136,7 +127,6 @@
                 <Button
                   unstyled
                   class="text-action"
-                  title="Restore"
                   @click="restoreChat(session)"
                 >
                   restore
@@ -144,7 +134,6 @@
                 <Button
                   unstyled
                   class="text-action is-danger"
-                  title="Delete permanently"
                   @click="confirmDelete(session)"
                 >
                   delete

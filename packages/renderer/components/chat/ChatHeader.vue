@@ -25,7 +25,7 @@
         v-if="isBranchSession"
         unstyled
         class="chat-header-btn back-btn"
-        title="Back to parent chat"
+        aria-label="Back to parent chat"
         @click="$emit('goToParent')"
       >
         <ArrowLeft
@@ -39,7 +39,7 @@
         v-if="showSplitButton"
         unstyled
         class="chat-header-btn"
-        title="Split view"
+        aria-label="Split view"
         @click="$emit('split')"
       >
         <Columns2
@@ -53,7 +53,7 @@
         v-if="canClose"
         unstyled
         class="chat-header-btn"
-        title="Equalize panels"
+        aria-label="Equalize panels"
         @click="$emit('equalize')"
       >
         <Equal
@@ -65,7 +65,7 @@
       <Button
         unstyled
         :class="['chat-header-btn', 'inspector-toggle', { hidden: isInspectorOpen }]"
-        title="Show workbench"
+        aria-label="Show workbench"
         @click="$emit('toggleInspector')"
       >
         <PanelRightOpen
@@ -79,7 +79,7 @@
         v-if="canClose"
         unstyled
         class="chat-header-btn close-btn"
-        title="Close panel"
+        aria-label="Close panel"
         @click="$emit('close')"
       >
         <X

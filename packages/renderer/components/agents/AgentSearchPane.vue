@@ -47,7 +47,6 @@
             <button
               class="history-line"
               type="button"
-              :title="historyRowTitle(row)"
               @click="emit('open-session', row.sessionId)"
             >
               <span class="history-name">{{ row.label }}</span>
@@ -74,7 +73,7 @@
  * 手里,不加载一条消息正文。消息全文检索是后续能力,所以这里明说,不做假全文。
  */
 import { computed, ref, toRef, watch } from 'vue'
-import { useAgentHistory, historyRowTitle, formatUpdated } from './use-agent-history'
+import { useAgentHistory, formatUpdated } from './use-agent-history'
 import '@/styles/agent-space.css'
 
 const props = defineProps<{

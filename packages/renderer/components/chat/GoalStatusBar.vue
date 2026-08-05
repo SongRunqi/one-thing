@@ -10,87 +10,102 @@
 
     <div class="goal-summary">
       <span class="status-mark" />
-      <input
-        v-if="editingObjective"
-        ref="objectiveInputRef"
-        v-model="objectiveDraft"
-        class="goal-edit goal-objective-input"
-        :data-invalid="editError ? true : undefined"
-        :title="editError || 'Enter to save · Esc to cancel'"
-        aria-label="edit goal objective"
-        @keydown.enter="onObjectiveEnter"
-        @keydown.esc.prevent="cancelEdit"
-        @blur="commitObjective"
-      >
+      <template v-if="editingObjective">
+        <input
+          ref="objectiveInputRef"
+          v-model="objectiveDraft"
+          class="goal-edit goal-objective-input"
+          :data-invalid="editError ? true : undefined"
+          aria-label="edit goal objective"
+          @keydown.enter="onObjectiveEnter"
+          @keydown.esc.prevent="cancelEdit"
+          @blur="commitObjective"
+        >
+        <!-- 托管式浮层:输入框本身是 `flex: 1`,套 tooltip-wrapper 会把它挤成
+             内容宽,所以只借 Tooltip 托浮层,触发元素还是输入框自己。 -->
+        <Tooltip
+          :trigger-el="objectiveInputRef"
+          :text="editError || 'Enter to save · Esc to cancel'"
+        />
+      </template>
       <span
         v-else
         class="goal-objective"
         role="button"
         tabindex="0"
-        :title="`${goal.objective}\n— click to edit`"
         @click="startObjectiveEdit"
         @keydown.enter.prevent="startObjectiveEdit"
       >{{ goal.objective }}</span>
     </div>
 
-    <span
-      class="goal-usage"
-      :title="usageTitle"
-    >
-      {{ statusText }}
-    </span>
+    <Tooltip :text="usageTitle">
+      <span class="goal-usage">
+        {{ statusText }}
+      </span>
+    </Tooltip>
 
-    <input
+    <Tooltip
       v-if="editingBudget"
-      ref="budgetInputRef"
-      v-model="budgetDraft"
-      class="goal-edit goal-budget-input"
-      inputmode="numeric"
-      placeholder="∞"
-      :data-invalid="editError ? true : undefined"
-      :title="editError || 'Tokens · empty = unlimited · Enter to save'"
-      aria-label="edit goal token budget"
-      @keydown.enter="onBudgetEnter"
-      @keydown.esc.prevent="cancelEdit"
-      @blur="commitBudget"
+      :text="editError || 'Tokens · empty = unlimited · Enter to save'"
     >
-    <Button
+      <input
+        ref="budgetInputRef"
+        v-model="budgetDraft"
+        class="goal-edit goal-budget-input"
+        inputmode="numeric"
+        placeholder="∞"
+        :data-invalid="editError ? true : undefined"
+        aria-label="edit goal token budget"
+        @keydown.enter="onBudgetEnter"
+        @keydown.esc.prevent="cancelEdit"
+        @blur="commitBudget"
+      >
+    </Tooltip>
+    <Tooltip
       v-else
-      unstyled
-      class="goal-btn budget"
-      native-type="button"
-      title="Token budget — click to edit (empty = unlimited)"
-      @click.stop="startBudgetEdit"
+      text="Token budget — click to edit (empty = unlimited)"
     >
-      CAP {{ budgetLabel }}
-    </Button>
+      <Button
+        unstyled
+        class="goal-btn budget"
+        native-type="button"
+        @click.stop="startBudgetEdit"
+      >
+        CAP {{ budgetLabel }}
+      </Button>
+    </Tooltip>
 
     <div class="goal-actions">
-      <Button
+      <Tooltip
         v-if="goal.status === 'active'"
-        unstyled
-        class="goal-btn"
-        native-type="button"
-        title="Pause automatic continuation"
-        @click.stop="setStatus('paused')"
+        text="Pause automatic continuation"
       >
-        Pause
-      </Button>
-      <Button
+        <Button
+          unstyled
+          class="goal-btn"
+          native-type="button"
+          @click.stop="setStatus('paused')"
+        >
+          Pause
+        </Button>
+      </Tooltip>
+      <Tooltip
         v-else
-        unstyled
-        class="goal-btn"
-        native-type="button"
-        title="Resume the goal (resets the continuation allowance)"
-        @click.stop="setStatus('active')"
+        text="Resume the goal (resets the continuation allowance)"
       >
-        Resume
-      </Button>
+        <Button
+          unstyled
+          class="goal-btn"
+          native-type="button"
+          @click.stop="setStatus('active')"
+        >
+          Resume
+        </Button>
+      </Tooltip>
       <Button
         unstyled
         class="goal-btn clear"
         native-type="button"
-        title="Clear the goal"
         @click.stop="clear"
       >
         Clear
@@ -101,6 +116,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { platformApi } from '@/platform'

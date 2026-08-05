@@ -15,7 +15,6 @@
       <span
         v-if="agentLabel"
         class="agent-chip"
-        :title="`Only loads for agent ${agentLabel}`"
       >{{ agentLabel }}</span>
       <span class="row-desc">{{ skill.description }}</span>
       <span
@@ -25,7 +24,6 @@
         <button
           class="text-action"
           type="button"
-          title="Open skill directory"
           @click="emit('open-directory')"
         >
           folder
@@ -34,7 +32,6 @@
           v-if="canDelete"
           class="text-action is-danger"
           type="button"
-          title="Delete skill"
           @click="emit('delete')"
         >
           delete
@@ -43,7 +40,7 @@
           class="enable-dot"
           type="button"
           :class="{ 'is-on': skill.enabled }"
-          :title="skill.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'"
+          :aria-label="skill.enabled ? `${skill.name} enabled — click to disable` : `${skill.name} disabled — click to enable`"
           :aria-pressed="skill.enabled"
           @click="emit('toggle-enabled', !skill.enabled)"
         />
@@ -63,7 +60,6 @@
         <button
           class="meta-path"
           type="button"
-          title="Open in file manager"
           @click="emit('open-directory')"
         >
           {{ skill.directoryPath }}

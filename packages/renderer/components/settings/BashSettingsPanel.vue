@@ -70,7 +70,7 @@
           <Button
             unstyled
             class="remove-btn"
-            title="Remove"
+            aria-label="Remove"
             @click="removeDirectory(index)"
           >
             <svg

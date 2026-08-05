@@ -90,15 +90,16 @@
         >
           <div class="prompt-header">
             <span class="field-label">Conversations</span>
-            <button
-              class="text-action"
-              type="button"
-              title="开一条只有你和 TA 的普通会话(可输入)"
-              :disabled="openingChat"
-              @click="openPrivateChat"
-            >
-              {{ openingChat ? '打开中…' : '私聊' }}
-            </button>
+            <Tooltip text="开一条只有你和 TA 的普通会话(可输入)">
+              <button
+                class="text-action"
+                type="button"
+                :disabled="openingChat"
+                @click="openPrivateChat"
+              >
+                {{ openingChat ? '打开中…' : '私聊' }}
+              </button>
+            </Tooltip>
           </div>
 
           <p
@@ -127,14 +128,12 @@
                 <button
                   class="agent-room-line"
                   type="button"
-                  :title="`打开群聊「${room.name}」`"
                   @click="emit('open-session', room.id)"
                 >
                   <span class="agent-room-name">群「{{ room.name }}」</span>
                   <span
                     v-if="room.isPm"
                     class="agent-chip"
-                    title="本群负责人"
                   >PM</span>
                 </button>
               </li>
@@ -158,7 +157,6 @@
               :key="tpl.name"
               class="text-action template-action"
               type="button"
-              :title="`Use the ${tpl.name} template`"
               @click="applyTemplate(tpl.prompt)"
             >
               {{ tpl.name }}
@@ -239,7 +237,6 @@
                 type="button"
                 role="checkbox"
                 :aria-checked="isToolOn(tool.id)"
-                :title="tool.description || tool.id"
                 @click="onToggleTool(tool.id)"
               >
                 <span class="tool-name">{{ tool.name }}</span>
@@ -264,15 +261,18 @@
               aria-label="Model provider"
               @update:model-value="formModelProvider = String($event ?? ''); onModelProviderChange()"
             />
-            <button
+            <Tooltip
               v-if="formModelProvider"
-              class="text-action"
-              type="button"
-              title="Follow the session default again"
-              @click="clearModelBinding"
+              text="Follow the session default again"
             >
-              clear
-            </button>
+              <button
+                class="text-action"
+                type="button"
+                @click="clearModelBinding"
+              >
+                clear
+              </button>
+            </Tooltip>
           </div>
 
           <div class="model-row">
@@ -388,6 +388,7 @@ import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import { AVATAR_IMAGE_MAX_PX, downscaleImageToPngDataUrl } from '@/components/common/agent-avatar'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import Select from '@/components/common/Select.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { SelectOptionLike } from '@/components/common/select'
 import {
   AGENT_PERMISSION_MODE_CHOICES,

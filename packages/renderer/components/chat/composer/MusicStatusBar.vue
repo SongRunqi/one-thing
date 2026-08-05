@@ -23,7 +23,6 @@
           <button
             type="button"
             class="music-btn"
-            title="打开设置 → 音乐,重新登录"
             @mousedown.prevent
             @click="openMusicSettings"
           >去登录</button>
@@ -38,7 +37,6 @@
       <template v-else-if="speaking">
         <span
           class="music-title music-patter"
-          :title="musicStore.djPatter"
         ><span class="music-mark">◈</span><span class="music-patter-viewport"><span
           v-if="!flash"
           :key="musicStore.djPatter"
@@ -50,14 +48,14 @@
           <button
             type="button"
             class="music-btn"
-            title="跳过口播,直接放歌"
+            aria-label="跳过口播,直接放歌"
             @mousedown.prevent
             @click="skipPatter"
           >⏭</button>
           <button
             type="button"
             class="music-btn"
-            title="停止电台:切断口播与音乐,DJ 不再续排"
+            aria-label="停止电台:切断口播与音乐,DJ 不再续排"
             :disabled="busy"
             @mousedown.prevent
             @click="stopRadio"
@@ -70,7 +68,6 @@
       <template v-else-if="transitioning">
         <span
           class="music-title"
-          :title="musicStore.radio.starting"
         ><span class="music-mark">◈</span>换歌中{{ musicStore.radio.starting ? ` · ${musicStore.radio.starting}` : '…' }}</span>
       </template>
 
@@ -90,7 +87,6 @@
           <button
             type="button"
             class="music-btn"
-            title="开台"
             :disabled="busy"
             @mousedown.prevent
             @click="submitIntent"
@@ -98,7 +94,7 @@
           <button
             type="button"
             class="music-btn"
-            title="取消"
+            aria-label="取消"
             @mousedown.prevent
             @click="composingIntent = false"
           >✕</button>
@@ -109,14 +105,12 @@
       <template v-else-if="standby">
         <span
           class="music-title"
-          :title="radioIntent"
         ><span class="music-mark">◦</span>{{ flash || `电台待命 · 剩 ${musicStore.radio.programmeLength} 首` }}</span>
 
         <span class="music-actions">
           <button
             type="button"
             class="music-btn"
-            title="从节目单继续播放"
             :disabled="busy"
             @mousedown.prevent
             @click="run('radio-resume')"
@@ -124,7 +118,6 @@
           <button
             type="button"
             class="music-btn"
-            title="换个方向,重新编排"
             :disabled="busy"
             @mousedown.prevent
             @click="startComposingIntent(true)"
@@ -140,7 +133,6 @@
           <button
             type="button"
             class="music-btn"
-            title="开一台私人电台"
             :disabled="busy"
             @mousedown.prevent
             @click="startComposingIntent(false)"
@@ -151,7 +143,6 @@
       <template v-else>
         <span
           class="music-title"
-          :title="nowPlaying?.title"
         ><span class="music-mark">{{ nowPlaying?.status === 'paused' ? '‖' : '▸' }}</span>{{ flash || nowPlaying?.title || '未知曲目' }}</span>
 
         <span
@@ -161,7 +152,6 @@
           :aria-valuenow="Math.round(progressRatio * 100)"
           aria-valuemin="0"
           aria-valuemax="100"
-          :title="canSeek ? '点击跳转' : undefined"
           @mousedown.prevent
           @click="onSeek"
         ><i class="music-track-line" /><i
@@ -175,7 +165,7 @@
           <button
             type="button"
             class="music-btn"
-            title="红心这首歌(写入你的网易云账号)"
+            aria-label="红心这首歌(写入你的网易云账号)"
             :disabled="busy"
             @mousedown.prevent
             @click="like"
@@ -183,7 +173,7 @@
           <button
             type="button"
             class="music-btn"
-            title="上一首"
+            aria-label="上一首"
             :disabled="busy"
             @mousedown.prevent
             @click="run('prev')"
@@ -191,7 +181,7 @@
           <button
             type="button"
             class="music-btn"
-            :title="isPaused ? '继续' : '暂停'"
+            :aria-label="isPaused ? '继续' : '暂停'"
             :disabled="busy"
             @mousedown.prevent
             @click="toggle"
@@ -199,7 +189,7 @@
           <button
             type="button"
             class="music-btn"
-            title="下一首"
+            aria-label="下一首"
             :disabled="busy"
             @mousedown.prevent
             @click="run('next')"
@@ -208,7 +198,7 @@
             v-if="musicStore.radio.active"
             type="button"
             class="music-btn"
-            title="换台:说个新方向,DJ 重新编排;新歌备好后自动切过去"
+            aria-label="换台:说个新方向,DJ 重新编排;新歌备好后自动切过去"
             :disabled="busy"
             @mousedown.prevent
             @click="startComposingIntent(true)"
@@ -217,7 +207,7 @@
             v-if="musicStore.radio.active"
             type="button"
             class="music-btn"
-            title="停止电台:停下音乐,DJ 不再续排(节目单保留)"
+            aria-label="停止电台:停下音乐,DJ 不再续排(节目单保留)"
             :disabled="busy"
             @mousedown.prevent
             @click="stopRadio"
@@ -227,7 +217,8 @@
         <span
           v-if="volume !== undefined"
           class="music-vol"
-          title="音量"
+          role="group"
+          aria-label="音量"
         >
           <button
             type="button"
@@ -246,21 +237,21 @@
           >+</button>
         </span>
 
-        <button
-          type="button"
-          class="music-mode"
-          :title="modeTitle"
-          :disabled="busy"
-          @mousedown.prevent
-          @click="toggleBackend"
-        >
-          {{ backendLabel }}
-        </button>
+        <Tooltip :text="modeTitle">
+          <button
+            type="button"
+            class="music-mode"
+            :disabled="busy"
+            @mousedown.prevent
+            @click="toggleBackend"
+          >
+            {{ backendLabel }}
+          </button>
+        </Tooltip>
 
         <span
           v-if="upNext"
           class="music-next"
-          :title="upNext"
         >↳ 接下来 · {{ upNext }}</span>
       </template>
     </div>
@@ -281,6 +272,7 @@
  * `queue add` simply wins.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { platformApi } from '@/platform'
 import { useMusicStore } from '@/stores/music'
 import { useSettingsStore } from '@/stores/settings'
@@ -431,8 +423,6 @@ async function submitIntent() {
 const patterScrollSeconds = computed(() =>
   Math.max(3, musicStore.djPatter.length / 4.2),
 )
-
-const radioIntent = computed(() => musicStore.radio.intent || '电台')
 
 /**
  * Hover-to-summon (field-requested revert): the bar stays hidden — even while

@@ -5,7 +5,6 @@
     <button
       type="button"
       class="reply-cancel"
-      title="取消引用"
       aria-label="取消引用"
       @click="emit('cancel')"
     >

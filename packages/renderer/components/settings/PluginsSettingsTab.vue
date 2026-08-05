@@ -120,10 +120,7 @@
                   {{ plugin.commands.length }} command{{ plugin.commands.length > 1 ? 's' : '' }}
                   <span class="cmd-list">({{ plugin.commands.join(', ') }})</span>
                 </span>
-                <span
-                  class="meta-tag path"
-                  :title="plugin.dirPath"
-                >{{ plugin.id }}</span>
+                <span class="meta-tag path">{{ plugin.id }}</span>
               </div>
             </div>
           </div>

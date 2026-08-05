@@ -22,7 +22,7 @@
       v-if="hasShortcut && !isRecording"
       unstyled
       class="clear-btn"
-      title="Clear shortcut"
+      aria-label="Clear shortcut"
       @click.stop="clearShortcut"
     >
       <svg

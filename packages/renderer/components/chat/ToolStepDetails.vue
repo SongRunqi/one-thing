@@ -34,10 +34,7 @@
         <dt class="detail-arg-key">
           {{ entry.key }}
         </dt>
-        <dd
-          class="detail-arg-value"
-          :title="entry.value"
-        >
+        <dd class="detail-arg-value">
           {{ entry.value }}
         </dd>
       </template>

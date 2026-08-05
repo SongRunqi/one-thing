@@ -8,19 +8,19 @@
         <span class="memory-title">Memory</span>
       </div>
       <div class="memory-actions">
+        <Tooltip text="Reveal memory directory">
+          <button
+            class="text-action"
+            type="button"
+            :disabled="!overview"
+            @click="revealMemoryRoot"
+          >
+            folder
+          </button>
+        </Tooltip>
         <button
           class="text-action"
           type="button"
-          title="Reveal memory directory"
-          :disabled="!overview"
-          @click="revealMemoryRoot"
-        >
-          folder
-        </button>
-        <button
-          class="text-action"
-          type="button"
-          title="Refresh memory"
           :disabled="loading"
           @click="loadOverview()"
         >
@@ -101,7 +101,6 @@
               <button
                 class="text-action notes-file-action"
                 type="button"
-                title="Save note"
                 :disabled="!selectedFile || savingFile || !selectedFileIsDirty"
                 @click="saveSelectedFile"
               >
@@ -110,7 +109,6 @@
               <button
                 class="text-action notes-file-action"
                 type="button"
-                title="Reload note from disk"
                 :disabled="!selectedFile"
                 @click="readSelectedFile(undefined, true)"
               >
@@ -119,7 +117,6 @@
               <button
                 class="text-action notes-file-action"
                 type="button"
-                title="Open in default editor"
                 :disabled="!selectedFile"
                 @click="openSelectedPath"
               >
@@ -149,7 +146,6 @@
                     :key="file.relativePath"
                     type="button"
                     :class="['file-row', { active: selectedPath === file.relativePath }]"
-                    :title="file.relativePath"
                     @click="selectFile(file)"
                   >
                     <component
@@ -164,10 +160,7 @@
                           :label="kindLabel(file.kind)"
                           :tone="kindBadgeTone(file.kind)"
                         />
-                        <span
-                          class="file-name"
-                          :title="memoryFileDisplayName(file)"
-                        >{{ memoryFileDisplayName(file) }}</span>
+                        <span class="file-name">{{ memoryFileDisplayName(file) }}</span>
                         <span class="file-date">{{ memoryFileDateLabel(file) }}</span>
                       </span>
                       <span class="file-preview">{{ cleanMemoryPreview(file.preview, 120) }}</span>
@@ -184,14 +177,13 @@
                   <button
                     class="text-action back-btn"
                     type="button"
-                    title="Back to list"
                     @click="notesDetailActive = false"
                   >
                     back
                   </button>
                   <span class="viewer-title">
-                    <strong :title="selectedFileDisplayTitle">{{ selectedFileDisplayTitle }}</strong>
-                    <small :title="selectedFile.relativePath">{{ selectedFile.relativePath }}:{{ selectedFile.startLine }}-{{ selectedFile.endLine }}</small>
+                    <strong>{{ selectedFileDisplayTitle }}</strong>
+                    <small>{{ selectedFile.relativePath }}:{{ selectedFile.startLine }}-{{ selectedFile.endLine }}</small>
                   </span>
                 </div>
 
@@ -230,6 +222,7 @@
 import { useConfirm } from '@/composables/useConfirm'
 import PageShell from '../common/PageShell.vue'
 import Badge from '../common/Badge.vue'
+import Tooltip from '../common/Tooltip.vue'
 import LayoutGrid from '../common/LayoutGrid.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import Select from '@/components/common/Select.vue'

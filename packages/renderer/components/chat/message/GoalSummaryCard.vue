@@ -33,7 +33,6 @@
           <Button
             unstyled
             class="review-btn"
-            title="Review these diffs in the workbench"
             @click="emit('review')"
           >
             <GitCompare
@@ -50,10 +49,7 @@
         :key="change.path"
         class="change-row"
       >
-        <span
-          class="change-path"
-          :title="change.path"
-        >{{ change.path }}</span>
+        <span class="change-path">{{ change.path }}</span>
         <span class="counts"><span class="plus">+{{ change.added }}</span> <span class="minus">−{{ change.removed }}</span></span>
       </div>
       <div

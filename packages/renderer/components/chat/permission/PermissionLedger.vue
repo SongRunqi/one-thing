@@ -29,7 +29,6 @@
           class="permission-scope-btn"
           native-type="button"
           :aria-pressed="permissionScope === option.value"
-          :title="option.hint"
           @click="permissionScope = option.value"
         >
           {{ option.label }}
@@ -69,26 +68,26 @@
           unstyled
           class="permission-btn reject"
           native-type="button"
-          title="Reject this call"
           @click="emit('reject', toolCall)"
         >
           REJECT
         </Button>
-        <Button
-          unstyled
-          class="permission-btn instruct"
-          native-type="button"
-          title="Reject and tell the assistant what to do instead"
-          @click="showRejectInstruction = true"
-        >
-          REJECT…
-        </Button>
+        <Tooltip text="Reject and tell the assistant what to do instead">
+          <Button
+            unstyled
+            class="permission-btn instruct"
+            native-type="button"
+            @click="showRejectInstruction = true"
+          >
+            REJECT…
+          </Button>
+        </Tooltip>
       </template>
       <Button
         unstyled
         class="permission-btn allow"
         native-type="button"
-        :title="`Allow (${permissionScopeLabel})`"
+        :aria-label="`Allow (${permissionScopeLabel})`"
         @click="emit('allow', toolCall, permissionScope)"
       >
         ALLOW
@@ -111,6 +110,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { ToolCall } from '@/types'
 import {
   buildScopeOptions,

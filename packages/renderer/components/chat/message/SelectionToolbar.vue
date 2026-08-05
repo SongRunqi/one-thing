@@ -7,7 +7,6 @@
     <Button
       unstyled
       class="toolbar-btn"
-      title="Copy selected text"
       @click="handleCopy"
     >
       <svg
@@ -34,7 +33,6 @@
     <Button
       unstyled
       class="toolbar-btn"
-      title="Quote in current chat"
       @click="handleQuote"
     >
       <svg
@@ -54,7 +52,6 @@
     <Button
       unstyled
       class="toolbar-btn"
-      title="Create branch with this text"
       @click="handleBranch"
     >
       <svg

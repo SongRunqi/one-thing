@@ -54,12 +54,12 @@
           <button
             v-for="category in railCategories"
             :key="category.id"
+            :ref="(el) => setRailTabEl(category.id, el)"
             type="button"
             class="sidebar-rail-tab"
             :class="{ 'is-on': category.id === railCategory }"
             role="tab"
             :aria-selected="category.id === railCategory"
-            :title="category.label"
             :aria-label="category.label"
             @click="selectRailCategory(category.id)"
           >
@@ -113,10 +113,10 @@
           <!-- 「⋯」= 五个工作区面板(Memory/Media/Agents/Tasks/Music)的家。
                平铺那一排 dock 在 workbench 下撤掉了,入口一个不少。 -->
           <button
+            ref="railMoreEl"
             type="button"
             class="sidebar-rail-tab"
             :class="{ 'is-on': activeWorkspacePanel !== null }"
-            title="工作区面板"
             aria-label="工作区面板"
             :aria-expanded="workspaceMenu !== null"
             @click="openWorkspaceMenu"
@@ -127,9 +127,9 @@
             />
           </button>
           <button
+            ref="railNewChatEl"
             type="button"
             class="sidebar-rail-tab"
-            title="新会话"
             aria-label="新会话"
             @click="$emit('create-new-chat')"
           >
@@ -139,9 +139,9 @@
             />
           </button>
           <button
+            ref="railSettingsEl"
             type="button"
             class="sidebar-rail-tab"
-            title="Settings"
             aria-label="Settings"
             @click="$emit('open-settings')"
           >
@@ -151,6 +151,35 @@
             />
           </button>
         </div>
+
+        <!-- rail 是**纯图标**:名字只能靠浮层说出口。浮层不能包在按钮外面 ——
+             `role="tab"` 与 `role="tablist"` 之间夹一层 div 会切断从属关系,
+             30px 方钮外面多一个盒子也会把这一竖条撑歪。`trigger-el` 让 Tooltip
+             自己 `display:none`,只托管浮层,rail 的 DOM 一个节点都不动。 -->
+        <template v-if="isWorkbenchShell">
+          <Tooltip
+            v-for="category in railCategories"
+            :key="`rail-tip-${category.id}`"
+            :trigger-el="railTabEls[category.id] ?? null"
+            :text="category.label"
+            position="right"
+          />
+          <Tooltip
+            :trigger-el="railMoreEl"
+            text="工作区面板"
+            position="right"
+          />
+          <Tooltip
+            :trigger-el="railNewChatEl"
+            text="新会话"
+            position="right"
+          />
+          <Tooltip
+            :trigger-el="railSettingsEl"
+            text="Settings"
+            position="right"
+          />
+        </template>
 
         <div class="sidebar-pane">
           <!-- 样板 `.ph`:40px 面板头 = 类别名 + 右对齐计数。分区头即折叠钮那一套
@@ -164,16 +193,19 @@
             <!-- 新建群聊:样板没画这枚(它只画了「进行中」那一格),但撤掉就等于
                  把建群这件事弄没,所以它跟着「通讯录」这一类走 —— 建群是**发起**
                  一段对话,和"找谁"在同一面上。 -->
-            <button
+            <Tooltip
               v-if="railCategory === 'contacts' && roomsEnabled"
-              type="button"
-              class="sidebar-rooms-add"
-              title="新建群聊"
-              aria-label="新建群聊"
-              @click="showRoomDialog = true"
+              text="新建群聊"
             >
-              ＋
-            </button>
+              <button
+                type="button"
+                class="sidebar-rooms-add"
+                aria-label="新建群聊"
+                @click="showRoomDialog = true"
+              >
+                ＋
+              </button>
+            </Tooltip>
           </div>
 
           <!-- 唯一的滚动体。classic 下这一层是 `display: contents`(不生成盒子,
@@ -201,7 +233,6 @@
                   'is-active': sessionsStore.currentSessionId === entry.id,
                   'has-unread': sessionsStore.isUnreadSession(entry.id),
                 }"
-                :title="recentTitle(entry)"
                 @click="openRoom(entry.id)"
                 @contextmenu.prevent="openRecentContextMenu($event, entry)"
               >
@@ -288,7 +319,6 @@
                 type="button"
                 class="sidebar-room-item sidebar-agent-item sidebar-contact-item"
                 :class="{ 'is-active': isContactActive(contact), 'has-unread': isContactUnread(contact) }"
-                :title="contactTitle(contact)"
                 @click="openContact(contact)"
                 @contextmenu.prevent="openContactMenu($event, contact)"
               >
@@ -318,7 +348,6 @@
               <span
                 v-if="contactError"
                 class="sidebar-contacts-error"
-                :title="contactError"
               >{{ contactError }}</span>
             </div>
 
@@ -336,16 +365,19 @@
                 class="sidebar-rooms-header"
               >
                 <span class="sidebar-rooms-label">群聊</span>
-                <button
+                <Tooltip
                   v-if="roomsEnabled"
-                  type="button"
-                  class="sidebar-rooms-add"
-                  title="新建群聊"
-                  aria-label="新建群聊"
-                  @click="showRoomDialog = true"
+                  text="新建群聊"
                 >
-                  ＋
-                </button>
+                  <button
+                    type="button"
+                    class="sidebar-rooms-add"
+                    aria-label="新建群聊"
+                    @click="showRoomDialog = true"
+                  >
+                    ＋
+                  </button>
+                </Tooltip>
               </div>
               <div
                 v-else
@@ -503,7 +535,6 @@
             type="button"
             class="sidebar-dock-icon"
             :class="{ 'is-active': activeWorkspacePanel === action.id }"
-            :title="action.label"
             :aria-label="action.label"
             @click="$emit('open-workspace-panel', action.id)"
           >
@@ -520,7 +551,6 @@
           <button
             type="button"
             class="sidebar-dock-icon"
-            title="Settings"
             aria-label="Settings"
             @click="$emit('open-settings')"
           >
@@ -586,6 +616,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import ContextMenu from '@/components/common/ContextMenu.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
@@ -736,6 +767,19 @@ const railCategoryLabel = computed(
   () => railCategories.value.find(category => category.id === railCategory.value)?.label ?? '',
 )
 
+/**
+ * rail 每一枚图标的宿主元素。浮层用 `trigger-el` 认它们 —— 包一层 wrapper 会
+ * 切断 `tablist ↔ tab` 的从属,也会把 46px 那一竖条撑歪(见模板里的注释)。
+ */
+const railTabEls = ref<Record<string, HTMLElement | null>>({})
+const railMoreEl = ref<HTMLElement | null>(null)
+const railNewChatEl = ref<HTMLElement | null>(null)
+const railSettingsEl = ref<HTMLElement | null>(null)
+
+function setRailTabEl(id: string, el: unknown): void {
+  railTabEls.value[id] = (el as HTMLElement | null) ?? null
+}
+
 /** 面板头右上那个数 = 这一类此刻装着几行。 */
 const railCategoryCount = computed(() => {
   switch (railCategory.value) {
@@ -830,10 +874,6 @@ function recentFace(entry: SidebarRecentEntry): { avatar?: string; avatarImage?:
   if (!entry.agentId) return {}
   const identity = agentsStore.displayAgent(entry.agentId)
   return { avatar: identity.avatar, avatarImage: identity.avatarImage }
-}
-
-function recentTitle(entry: SidebarRecentEntry): string {
-  return `${recentName(entry)} · ${entry.kind === 'dm' ? '私聊' : '群聊'}`
 }
 
 /** 消息流的行全是会话 —— 右键复用同一张会话菜单(改名/置顶/删除)。 */
@@ -971,10 +1011,6 @@ function isContactActive(contact: SidebarContact): boolean {
 function isContactUnread(contact: SidebarContact): boolean {
   const room = sessionsStore.findUserDmRoom(contact.id)
   return !!room && sessionsStore.isUnreadSession(room.id)
-}
-
-function contactTitle(contact: SidebarContact): string {
-  return contact.title ? `${contact.name} · ${contact.title}` : contact.name
 }
 
 /**

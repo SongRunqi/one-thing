@@ -43,7 +43,6 @@
               <span
                 class="variables-value"
                 :class="{ 'is-empty': !variable.value }"
-                :title="variable.value || undefined"
               >{{ compactValue(variable.value) }}</span>
             </button>
             <div

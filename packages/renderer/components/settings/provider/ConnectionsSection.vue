@@ -76,7 +76,6 @@
             unstyled
             class="conn-action"
             native-type="button"
-            title="Edit provider"
             @click.stop="$emit('edit-custom-provider', card.members[0].id)"
           >
             Edit

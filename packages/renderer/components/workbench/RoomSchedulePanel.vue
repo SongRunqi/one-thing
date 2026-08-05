@@ -23,10 +23,7 @@
         <span class="rs-meta">{{ lease.reason }}</span>
         <span class="rs-at">{{ formatCoordinatorElapsed(lease.since, now) }}</span>
         <!-- 「撤牌」在这一版是**只读**的:见 <script> 里那段留待说明。 -->
-        <span
-          class="rs-lease-id"
-          :title="`牌号 ${lease.leaseId} —— 单张撤牌还没有通道,只能整间房喊停`"
-        >{{ shortLeaseId(lease.leaseId) }}</span>
+        <span class="rs-lease-id">{{ shortLeaseId(lease.leaseId) }}</span>
       </div>
 
       <!-- ② 举手队列:人 / 原因 / 卡在哪道闸 / 举了多久。 -->
@@ -44,13 +41,14 @@
         v-for="hand in hands"
         :key="hand.key"
         class="rs-hand"
-        :title="hand.gateHint"
       >
         <span class="rs-name">{{ hand.name }}</span>
-        <span
-          class="rs-gate"
-          :class="{ 'is-actionable': hand.actionable }"
-        >{{ hand.gateLabel }}</span>
+        <Tooltip :text="hand.gateHint">
+          <span
+            class="rs-gate"
+            :class="{ 'is-actionable': hand.actionable }"
+          >{{ hand.gateLabel }}</span>
+        </Tooltip>
         <span class="rs-meta">{{ hand.reason }}</span>
         <span class="rs-at">{{ hand.raisedAt ? formatCoordinatorElapsed(hand.raisedAt, now) : '' }}</span>
       </div>
@@ -194,6 +192,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useSessionsStore } from '@/stores/sessions'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { platformApi } from '@/platform'
 import type { CollabSchedulerLogEntry } from '@shared/ipc'
 import {
@@ -455,7 +454,6 @@ defineExpose({ reload })
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
-  cursor: help;
 }
 
 /* 闸:要人动手的四道加重(与状态条的排队徽标同一句法)。 */

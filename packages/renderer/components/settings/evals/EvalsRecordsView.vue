@@ -24,7 +24,7 @@
           v-model="localFilter.sinceDate"
           type="date"
           class="evals-form-input evals-date-input"
-          title="Show records since this date"
+          aria-label="Show records since this date"
           @change="applyFilters"
         >
 
@@ -107,31 +107,36 @@
             <span class="evals-record-provider">{{ record.provider }}/{{ record.model }}</span>
           </div>
           <div class="evals-record-signals">
-            <span
+            <Tooltip
               v-if="record.signals.retried"
-              class="evals-signal-badge bad"
-              title="Retried"
-            >&#x1F504;</span>
-            <span
+              text="Retried"
+            >
+              <span class="evals-signal-badge bad">&#x1F504;</span>
+            </Tooltip>
+            <Tooltip
               v-if="record.signals.editResent"
-              class="evals-signal-badge bad"
-              title="Edit &amp; Resent"
-            >&#x270F;&#xFE0F;</span>
-            <span
+              text="Edit &amp; Resent"
+            >
+              <span class="evals-signal-badge bad">&#x270F;&#xFE0F;</span>
+            </Tooltip>
+            <Tooltip
               v-if="record.signals.toolErrors > 0"
-              class="evals-signal-badge bad"
-              title="Tool Errors"
-            >&#x26A0;&#xFE0F;{{ record.signals.toolErrors }}</span>
-            <span
+              text="Tool Errors"
+            >
+              <span class="evals-signal-badge bad">&#x26A0;&#xFE0F;{{ record.signals.toolErrors }}</span>
+            </Tooltip>
+            <Tooltip
               v-if="record.signals.streamAborted"
-              class="evals-signal-badge bad"
-              title="Aborted"
-            >&#x1F6D1;</span>
-            <span
+              text="Aborted"
+            >
+              <span class="evals-signal-badge bad">&#x1F6D1;</span>
+            </Tooltip>
+            <Tooltip
               v-if="record.explicit === 'down'"
-              class="evals-signal-badge bad"
-              title="Downvoted"
-            >&#x1F44E;</span>
+              text="Downvoted"
+            >
+              <span class="evals-signal-badge bad">&#x1F44E;</span>
+            </Tooltip>
             <span
               v-if="!hasNegativeSignals(record)"
               class="evals-signal-badge good"
@@ -193,6 +198,7 @@ import { ref, computed } from "vue";
 import Checkbox from "@/components/common/Checkbox.vue";
 import ErrorNote from "@/components/common/ErrorNote.vue";
 import Select from "@/components/common/Select.vue";
+import Tooltip from "@/components/common/Tooltip.vue";
 import type { SelectOptionLike } from "@/components/common/select";
 import { useEvalsStore } from "@/stores/evals";
 import type { EvalRecordView } from "@/stores/evals";

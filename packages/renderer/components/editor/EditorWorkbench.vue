@@ -33,7 +33,6 @@
         <Button
           unstyled
           class="explorer-toggle"
-          :title="explorerCollapsed ? 'Show explorer' : 'Hide explorer'"
           :aria-label="explorerCollapsed ? 'Show explorer' : 'Hide explorer'"
           @click="explorerCollapsed = !explorerCollapsed"
         >

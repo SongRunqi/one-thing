@@ -452,7 +452,6 @@ watch(
         class="bp-iconbtn"
         type="button"
         aria-label="新建标签"
-        title="新建标签"
         @click="newTab"
       >
         <Plus
@@ -566,8 +565,7 @@ watch(
         class="bp-iconbtn bp-pick"
         :class="{ active: store.picking }"
         type="button"
-        :aria-label="store.picking ? '取消拾取' : '拾取元素带入对话'"
-        :title="store.picking ? '取消拾取（Esc）' : '拾取页面元素带入对话'"
+        :aria-label="store.picking ? '取消拾取（Esc）' : '拾取页面元素带入对话'"
         :disabled="!activeTab || onStartPage"
         @click="togglePick"
       >
@@ -582,7 +580,6 @@ watch(
         class="bp-iconbtn bp-close"
         type="button"
         aria-label="关闭当前标签"
-        title="关闭当前标签"
         :disabled="!activeTab"
         @click="closeActiveTab"
       >

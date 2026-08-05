@@ -114,7 +114,6 @@
         <button
           type="button"
           class="dm-identity-open"
-          :title="`${dmRoomAgent.title ? `${dmRoomAgent.name} · ${dmRoomAgent.title}` : dmRoomAgent.name} · 打开空间`"
           @click="openDmAgentSpace"
         >
           <AgentAvatar
@@ -136,7 +135,6 @@
           v-if="dmWorkBadge"
           type="button"
           class="dm-work-badge"
-          :title="`正在干活 · ${dmWorkBadge.title} —— 点开工作过程(只读)`"
           @click="openDmWorkSession"
         >
           正在干活 · {{ dmWorkBadge.shortId }}
@@ -157,7 +155,6 @@
         v-if="isRoomSession && !isPairDmSession && activeTab?.type === 'chat'"
         unstyled
         class="header-btn board-btn"
-        title="打开看板"
         @click="openBoardPanel"
       >
         <ClipboardList
@@ -167,18 +164,22 @@
         <span class="board-btn-label">看板</span>
       </Button>
 
-      <Button
+      <Tooltip
         v-if="isRoomSession && activeTab?.type === 'chat'"
-        unstyled
-        class="header-btn"
-        title="房间设置"
-        @click="roomSettingsOpen = true"
+        text="房间设置"
       >
-        <Settings
-          :size="15"
-          :stroke-width="1.7"
-        />
-      </Button>
+        <Button
+          unstyled
+          class="header-btn room-settings-btn"
+          aria-label="房间设置"
+          @click="roomSettingsOpen = true"
+        >
+          <Settings
+            :size="15"
+            :stroke-width="1.7"
+          />
+        </Button>
+      </Tooltip>
 
       <AgentSelector
         v-if="showAgentSelector && activeTab?.type === 'chat' && sessionId"
@@ -190,87 +191,109 @@
         aria-hidden="true"
       />
 
-      <Button
+      <Tooltip
         v-if="showActionButtons && isBranchSession"
-        unstyled
-        class="header-btn back-btn"
-        title="Back to parent chat"
-        @click="$emit('goToParent')"
+        text="Back to parent chat"
       >
-        <ArrowLeft
-          :size="14"
-          :stroke-width="2"
-        />
-      </Button>
+        <Button
+          unstyled
+          class="header-btn back-btn"
+          aria-label="Back to parent chat"
+          @click="$emit('goToParent')"
+        >
+          <ArrowLeft
+            :size="14"
+            :stroke-width="2"
+          />
+        </Button>
+      </Tooltip>
 
-      <Button
+      <Tooltip
         v-if="showActionButtons && showSplitButton"
-        unstyled
-        class="header-btn"
-        title="Split view"
-        @click="$emit('split')"
+        text="Split view"
       >
-        <Columns2
-          :size="14"
-          :stroke-width="2"
-        />
-      </Button>
+        <Button
+          unstyled
+          class="header-btn split-btn"
+          aria-label="Split view"
+          @click="$emit('split')"
+        >
+          <Columns2
+            :size="14"
+            :stroke-width="2"
+          />
+        </Button>
+      </Tooltip>
 
-      <Button
+      <Tooltip
         v-if="showActionButtons && canClose"
-        unstyled
-        class="header-btn"
-        title="Equalize panels"
-        @click="$emit('equalize')"
+        text="Equalize panels"
       >
-        <Equal
-          :size="14"
-          :stroke-width="2"
-        />
-      </Button>
+        <Button
+          unstyled
+          class="header-btn equalize-btn"
+          aria-label="Equalize panels"
+          @click="$emit('equalize')"
+        >
+          <Equal
+            :size="14"
+            :stroke-width="2"
+          />
+        </Button>
+      </Tooltip>
 
-      <Button
+      <Tooltip
         v-if="showActionButtons"
-        unstyled
-        class="header-btn side-panel-toggle"
-        :title="sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel'"
-        @click="$emit('toggleSidePanel')"
+        :text="sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel'"
       >
-        <ListTree
-          :size="14"
-          :stroke-width="2"
-        />
-      </Button>
+        <Button
+          unstyled
+          class="header-btn side-panel-toggle"
+          :aria-label="sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel'"
+          @click="$emit('toggleSidePanel')"
+        >
+          <ListTree
+            :size="14"
+            :stroke-width="2"
+          />
+        </Button>
+      </Tooltip>
 
-      <Button
+      <Tooltip
         v-if="showActionButtons"
-        unstyled
-        :class="['header-btn', 'inspector-toggle', { hidden: isInspectorOpen }]"
-        title="Show workbench"
-        @click="$emit('toggleInspector')"
+        text="Show workbench"
       >
-        <PanelRightOpen
-          :size="14"
-          :stroke-width="2"
-        />
-      </Button>
+        <Button
+          unstyled
+          :class="['header-btn', 'inspector-toggle', { hidden: isInspectorOpen }]"
+          aria-label="Show workbench"
+          @click="$emit('toggleInspector')"
+        >
+          <PanelRightOpen
+            :size="14"
+            :stroke-width="2"
+          />
+        </Button>
+      </Tooltip>
 
       <div
         v-if="showOverflowMenu"
         ref="moreRef"
         class="header-more"
       >
-        <Button
-          unstyled
-          class="header-btn"
-          title="More actions"
-          @click="toggleMoreMenu"
-        >
-          <Ellipsis
-            :size="14"
-            :stroke-width="2"
-          />
-        </Button>
+        <Tooltip text="More actions">
+          <Button
+            unstyled
+            class="header-btn"
+            aria-label="More actions"
+            @click="toggleMoreMenu"
+          >
+            <Ellipsis
+              :size="14"
+              :stroke-width="2"
+            />
+          </Button>
+        </Tooltip>
       </div>
     </div>
 
@@ -306,6 +329,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import {
   ArrowLeft,

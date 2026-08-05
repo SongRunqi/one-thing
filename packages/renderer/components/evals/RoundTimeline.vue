@@ -34,11 +34,12 @@
           v-if="round.purpose && round.purpose !== 'chat'"
           class="rt-badge"
         >{{ round.purpose }}</span>
-        <span
+        <Tooltip
           v-if="round.incomplete"
-          class="rt-badge warn"
-          title="增量链不完整,请求视图为尽力恢复"
-        >链不完整</span>
+          text="增量链不完整,请求视图为尽力恢复"
+        >
+          <span class="rt-badge warn">链不完整</span>
+        </Tooltip>
         <span class="rt-meta">{{ round.requestMessages.length }} 条消息</span>
         <span class="rt-decision">
           <template v-if="round.responseToolCalls.length">
@@ -138,18 +139,21 @@
               @update:model-value="resendRuns = Number($event)"
             />
           </span>
-          <button
-            class="rt-btn primary"
-            :disabled="store.roundReplaying !== null"
-            :title="editedIndex !== null
+          <Tooltip
+            :text="editedIndex !== null
               ? '带上你编辑后的消息重发,对比决策是否改变(归因验证)'
               : '把这一轮的请求原样重发给模型,看决策是否稳定复现'"
-            @click="handleResend(round)"
           >
-            {{ store.roundReplaying === round.round
-              ? '重发中…'
-              : editedIndex !== null ? '重发(已编辑)' : '原样重发' }}
-          </button>
+            <button
+              class="rt-btn primary"
+              :disabled="store.roundReplaying !== null"
+              @click="handleResend(round)"
+            >
+              {{ store.roundReplaying === round.round
+                ? '重发中…'
+                : editedIndex !== null ? '重发(已编辑)' : '原样重发' }}
+            </button>
+          </Tooltip>
           <button
             v-if="editedIndex !== null"
             class="rt-btn"
@@ -204,6 +208,7 @@
 import { ref, onMounted } from 'vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import Select from '@/components/common/Select.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { SelectOptionLike } from '@/components/common/select'
 import { useEvalsWorkbenchStore, type RoundView, type RoundReplayAttempt } from '@/stores/evalsWorkbench'
 

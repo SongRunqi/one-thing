@@ -383,7 +383,7 @@ describe("InputBox 停止态开关(allowStopAction)", () => {
 		const send = wrapper.find(".send-btn");
 
 		expect(send.classes()).toContain("stop-btn");
-		expect(send.attributes("title")).toBe("Stop generation");
+		expect(send.attributes("aria-label")).toBe("Stop generation");
 		expect(send.attributes("disabled")).toBeUndefined();
 		expect(wrapper.find(".send-label").exists()).toBe(false);
 	});

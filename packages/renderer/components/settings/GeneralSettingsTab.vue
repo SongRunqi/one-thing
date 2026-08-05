@@ -152,15 +152,17 @@
           <template #label>
             <span class="setting-title-row">
               <span>Font Size</span>
-              <Button
-                unstyled
-                class="reset-inline"
-                native-type="button"
-                title="Reset font size"
-                @click="updateFontSize(defaultFontSize)"
-              >
-                <RotateCcw :size="14" />
-              </Button>
+              <Tooltip text="Reset font size">
+                <Button
+                  unstyled
+                  class="reset-inline"
+                  native-type="button"
+                  aria-label="Reset font size"
+                  @click="updateFontSize(defaultFontSize)"
+                >
+                  <RotateCcw :size="14" />
+                </Button>
+              </Tooltip>
             </span>
           </template>
           <InputNumber
@@ -423,6 +425,7 @@
 import Button from '@/components/common/Button.vue'
 import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed, ref } from 'vue'
 import { RotateCcw } from 'lucide-vue-next'
 import type { SelectOptionLike } from '@/components/common/select'

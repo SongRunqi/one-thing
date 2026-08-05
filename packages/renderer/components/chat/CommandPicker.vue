@@ -28,7 +28,6 @@
         :aria-setsize="items.length"
         :data-kind="item.kind"
         :data-command-kind="item.kind"
-        :title="getItemTooltip(item)"
         @mousedown.prevent
         @click="selectItem(item)"
         @mouseenter="highlightItem(index)"
@@ -165,11 +164,6 @@ function titleSegments(title: string): TitleSegment[] {
     { text: title.slice(start, end), hit: true },
     { text: title.slice(end), hit: false },
   ].filter(segment => segment.text)
-}
-
-function getItemTooltip(item: ComposerExtensionItem) {
-  const meta = item.meta ? `\n${item.meta}` : ''
-  return `${item.title}\n${item.description || ''}${meta}`
 }
 
 function getOptionId(item: ComposerExtensionItem, index: number) {

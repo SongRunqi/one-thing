@@ -10,6 +10,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CollabBoard, CollabTask } from '@shared/ipc.js'
 import CollabBoardPanel from '../CollabBoardPanel.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useAgentsStore } from '@/stores/agents'
 import { useCollabBoardStore } from '@/stores/collabBoard'
@@ -225,8 +226,6 @@ describe('CollabBoardPanel card face (W9b fields)', () => {
     })])
     const note = wrapper.find('.board-card-note')
     expect(note.text()).toBe('write/bash/edit 均返回 Tool not available')
-    // Full text stays reachable when the two-line clamp bites.
-    expect(note.attributes('title')).toBe('write/bash/edit 均返回 Tool not available')
     expect(wrapper.text()).toContain('受阻×2')
   })
 
@@ -267,11 +266,11 @@ describe('CollabBoardPanel 交付物 (W17)', () => {
     mocks.platformApi.openPath.mockResolvedValue('')
   })
 
-  it('lists the card’s files by name, full path on hover', async () => {
+  it('lists the card’s files by name, full path as the accessible name', async () => {
     const wrapper = await mountPanel([delivered({}, ['src/app/main.ts'])])
     const file = wrapper.find('.board-card-files .deliverable-file')
     expect(file.text()).toBe('main.ts')
-    expect(file.attributes('title')).toBe('/repo/src/app/main.ts')
+    expect(file.attributes('aria-label')).toBe('/repo/src/app/main.ts')
   })
 
   it('caps the card face at three files and counts the rest', async () => {
@@ -358,6 +357,11 @@ describe('CollabBoardPanel 群 folder 入口 (F2)', () => {
     return wrapper.findAll('.board-budget').find(button => button.text() === '群 folder')
   }
 
+  /** 那枚按钮外面的 Tooltip —— 群 folder 的路径挂在它身上。 */
+  function folderTooltip(wrapper: Awaited<ReturnType<typeof mountPanel>>) {
+    return wrapper.findAllComponents(Tooltip).find(tip => tip.text() === '群 folder')
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
@@ -373,7 +377,8 @@ describe('CollabBoardPanel 群 folder 入口 (F2)', () => {
     expect(mocks.platformApi.listCollabRoomFolder).toHaveBeenCalledWith('room-1')
     const button = folderButton(wrapper)
     expect(button).toBeTruthy()
-    expect(button?.attributes('title')).toBe('/store/rooms/room-1')
+    // 路径写在按钮的 Tooltip 上(P5:原生 title 已下线)。
+    expect(folderTooltip(wrapper)?.props('text')).toBe('/store/rooms/room-1')
   })
 
   it('hands the channel’s folder to the files tab, not a renderer-built path', async () => {

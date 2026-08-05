@@ -54,7 +54,6 @@
             <span
               v-if="pomodoroConfig.categories.length > 1"
               class="cat-remove"
-              title="删除分类"
               @click="removeCategory(cat)"
             >×</span>
           </span>

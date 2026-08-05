@@ -57,16 +57,18 @@
                   <Power class="action-icon" />
                   <span>Stop all</span>
                 </Button>
-                <Button
-                  unstyled
-                  class="icon-action"
-                  native-type="button"
-                  :disabled="isBusy"
-                  title="Refresh status"
-                  @click="loadStatus"
-                >
-                  <RefreshCw class="action-icon" />
-                </Button>
+                <Tooltip text="Refresh status">
+                  <Button
+                    unstyled
+                    class="icon-action"
+                    native-type="button"
+                    :disabled="isBusy"
+                    aria-label="Refresh status"
+                    @click="loadStatus"
+                  >
+                    <RefreshCw class="action-icon" />
+                  </Button>
+                </Tooltip>
               </div>
 
               <p
@@ -134,17 +136,21 @@
                       <LogOut class="action-icon" />
                       <span>Re-scan</span>
                     </Button>
-                    <Button
+                    <Tooltip
                       v-if="account.id !== defaultWechatAccountId"
-                      unstyled
-                      class="icon-action danger"
-                      native-type="button"
-                      :disabled="isBusy"
-                      title="Remove account"
-                      @click="removeWechatAccount(account.id)"
+                      text="Remove account"
                     >
-                      <Trash2 class="action-icon" />
-                    </Button>
+                      <Button
+                        unstyled
+                        class="icon-action danger"
+                        native-type="button"
+                        :disabled="isBusy"
+                        aria-label="Remove account"
+                        @click="removeWechatAccount(account.id)"
+                      >
+                        <Trash2 class="action-icon" />
+                      </Button>
+                    </Tooltip>
                   </div>
                 </div>
 
@@ -178,24 +184,28 @@
                       readonly
                       :value="account.qrUrl"
                     >
-                    <Button
-                      unstyled
-                      class="icon-action"
-                      native-type="button"
-                      title="Copy login URL"
-                      @click="copyQrUrl(account)"
-                    >
-                      <Copy class="action-icon" />
-                    </Button>
-                    <Button
-                      unstyled
-                      class="icon-action"
-                      native-type="button"
-                      title="Open login URL"
-                      @click="openQrUrl(account)"
-                    >
-                      <ExternalLink class="action-icon" />
-                    </Button>
+                    <Tooltip text="Copy login URL">
+                      <Button
+                        unstyled
+                        class="icon-action"
+                        native-type="button"
+                        aria-label="Copy login URL"
+                        @click="copyQrUrl(account)"
+                      >
+                        <Copy class="action-icon" />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip text="Open login URL">
+                      <Button
+                        unstyled
+                        class="icon-action"
+                        native-type="button"
+                        aria-label="Open login URL"
+                        @click="openQrUrl(account)"
+                      >
+                        <ExternalLink class="action-icon" />
+                      </Button>
+                    </Tooltip>
                   </div>
                 </div>
               </div>
@@ -239,7 +249,7 @@
                 class="icon-action"
                 native-type="button"
                 :disabled="profileBusy"
-                title="Refresh profiles"
+                aria-label="Refresh profiles"
                 @click="loadProfiles"
               >
                 <RefreshCw class="action-icon" />
@@ -267,16 +277,18 @@
                     <span>{{ formatLastSent(profile.lastSentAt) }}</span>
                   </div>
                 </div>
-                <Button
-                  unstyled
-                  class="icon-action"
-                  native-type="button"
-                  :disabled="profileBusy || profile.isMain"
-                  title="Set as main profile"
-                  @click="setMainProfile(profile.id)"
-                >
-                  <Star class="action-icon" />
-                </Button>
+                <Tooltip text="Set as main profile">
+                  <Button
+                    unstyled
+                    class="icon-action"
+                    native-type="button"
+                    :disabled="profileBusy || profile.isMain"
+                    aria-label="Set as main profile"
+                    @click="setMainProfile(profile.id)"
+                  >
+                    <Star class="action-icon" />
+                  </Button>
+                </Tooltip>
               </div>
             </div>
           </div>
@@ -348,16 +360,18 @@
                     {{ link.connector }} / {{ link.workspaceId || 'default' }} / <span class="mono">{{ link.externalUserId }}</span>
                   </span>
                 </div>
-                <Button
-                  unstyled
-                  class="icon-action"
-                  native-type="button"
-                  :disabled="profileBusy"
-                  title="Remove binding"
-                  @click="deleteBinding(link.id)"
-                >
-                  <Trash2 class="action-icon" />
-                </Button>
+                <Tooltip text="Remove binding">
+                  <Button
+                    unstyled
+                    class="icon-action"
+                    native-type="button"
+                    :disabled="profileBusy"
+                    aria-label="Remove binding"
+                    @click="deleteBinding(link.id)"
+                  >
+                    <Trash2 class="action-icon" />
+                  </Button>
+                </Tooltip>
               </div>
               <p
                 v-if="!links.length"
@@ -398,6 +412,7 @@
 import Button from '@/components/common/Button.vue'
 import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { SelectOptionLike } from '@/components/common/select'
 import {

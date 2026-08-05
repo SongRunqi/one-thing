@@ -12,10 +12,7 @@
         class="station-row"
       >
         <span class="station-key">本台</span>
-        <span
-          class="station-value"
-          :title="radio.intent"
-        >{{ radio.intent }}</span>
+        <span class="station-value">{{ radio.intent }}</span>
       </div>
       <div class="station-row">
         <span class="station-key">节目单</span>
@@ -68,7 +65,6 @@
             class="request-result"
             :class="{ 'is-grey': record.playFlag === false }"
             :disabled="record.playFlag === false || requesting"
-            :title="record.playFlag === false ? '无播放版权' : '插队为下一首'"
             @click="pick(record)"
           >
             <span class="request-result-title">{{ record.title }}<template v-if="record.artist"> - {{ record.artist }}</template></span>
@@ -100,10 +96,7 @@
       >
         <span class="programme-index">{{ index + 1 }}</span>
         <span class="programme-main">
-          <span
-            class="programme-title"
-            :title="entry.title"
-          >{{ entry.title }}<span
+          <span class="programme-title">{{ entry.title }}<span
             v-if="entry.note"
             class="programme-note"
           > · {{ entry.note }}</span><span
@@ -113,21 +106,20 @@
           <span
             v-if="entry.say"
             class="programme-say"
-            :title="entry.say"
           >◈ {{ entry.say }}</span>
         </span>
         <span class="programme-actions">
           <button
             type="button"
             class="programme-btn"
-            title="下一首就放"
+            aria-label="下一首就放"
             :disabled="index === 0"
             @click="act({ kind: 'promote', encryptedId: entry.encryptedId })"
           >⏫</button>
           <button
             type="button"
             class="programme-btn"
-            title="不想听(DJ 会避开这类)"
+            aria-label="不想听(DJ 会避开这类)"
             @click="act({ kind: 'remove', encryptedId: entry.encryptedId })"
           >✕</button>
         </span>

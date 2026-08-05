@@ -70,7 +70,6 @@
             :key="emoji"
             type="button"
             class="react-picker-item"
-            :title="emoji"
             @click="pickReaction(emoji)"
           >
             {{ emoji }}

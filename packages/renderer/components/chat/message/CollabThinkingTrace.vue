@@ -4,7 +4,6 @@
       type="button"
       class="trace-line"
       :aria-expanded="expanded"
-      :title="expanded ? '收起思考过程' : '展开思考过程'"
       @click="expanded = !expanded"
     >
       <span

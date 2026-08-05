@@ -78,14 +78,12 @@
           <ToolIcon
             :tool-name="getTimelineItemActivity(item).toolName"
             :status="getTimelineItemActivity(item).status"
-            :label="getTimelineItemActivity(item).statusLabel"
           />
 
           <div class="operation-copy tree-node-content">
             <div class="operation-primary">
               <span
                 class="node-target operation-target"
-                :title="getTimelineItemActivity(item).filePath || getTimelineItemActivity(item).target"
                 :aria-label="getSingleActivityText(getTimelineItemActivity(item))"
               >
                 <span
@@ -110,7 +108,6 @@
               <span
                 v-if="getTimelineItemActivity(item).errorSummary"
                 class="node-error-summary"
-                :title="getTimelineItemActivity(item).errorSummary"
               >{{ getTimelineItemActivity(item).errorSummary }}</span>
             </div>
             <div

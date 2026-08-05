@@ -45,7 +45,6 @@
         type="button"
         class="so-room"
         :class="{ 'is-degraded': card.degraded, 'is-frozen': card.frozen }"
-        :title="`去「${card.name}」`"
         @click="emit('open-session', card.roomSessionId)"
       >
         <div class="so-room-head">
@@ -75,7 +74,6 @@
             :key="gate.key"
             class="so-gate"
             :class="{ 'is-warn': gate.warn }"
-            :title="gate.label"
           ><i :style="{ width: `${gate.percent}%` }" /></span>
         </div>
       </button>
@@ -104,7 +102,6 @@
         :key="row.key"
         type="button"
         class="so-agent"
-        :title="`打开 ${row.name} 的空间`"
         @click="emit('open-agent', row.agentId)"
       >
         <span class="so-cell-name">

@@ -78,7 +78,7 @@
       text
       size="small"
       class="branch-badge"
-      :title="session.isCollapsed ? `展开 ${session.branchCount} 个分支` : `收起 ${session.branchCount} 个分支`"
+      :aria-label="session.isCollapsed ? `展开 ${session.branchCount} 个分支` : `收起 ${session.branchCount} 个分支`"
       @click.stop="$emit('toggle-collapse')"
     >
       {{ session.branchCount }}
@@ -95,7 +95,6 @@
       text
       circle
       class="more-btn"
-      title="More"
       aria-label="More"
       :icon="MoreHorizontal"
       @click.stop="$emit('context-menu', $event)"

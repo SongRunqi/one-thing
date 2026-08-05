@@ -49,7 +49,6 @@
     <div
       v-else-if="isCollabInjected"
       class="collab-drive-line"
-      :title="message.content"
     >
       {{ collabDriveLabel }}
     </div>
@@ -99,7 +98,6 @@
           type="button"
           class="room-avatar-btn"
           :aria-label="`${collabSenderName} 的空间`"
-          :title="`${collabSenderName} · 打开空间`"
           @click="openAgentSpace"
         >
           <AgentAvatar
@@ -143,7 +141,7 @@
               v-if="canOpenAgentSpace"
               type="button"
               class="collab-sender-name is-contact"
-              :title="`${collabSender.name} · 打开空间`"
+              :aria-label="`${collabSender.name} · 打开空间`"
               @click="openAgentSpace"
             >
               {{ collabSender.name }}
@@ -172,7 +170,7 @@
             type="button"
             class="room-group-toggle"
             :aria-expanded="!groupCollapsed"
-            :title="groupCollapsed ? '展开这段发言' : '收起这段发言'"
+            :aria-label="groupCollapsed ? '展开这段发言' : '收起这段发言'"
             @click="emit('toggleGroup', message.id)"
           >
             <span
@@ -253,7 +251,6 @@
           v-if="replyQuote"
           type="button"
           class="reply-quote"
-          :title="`${replyQuote.authorLabel}: ${replyQuote.excerpt}`"
           @click.stop="handleJumpToReplyTarget"
         >
           <span class="reply-quote-author">{{ replyQuote.authorLabel }}</span>

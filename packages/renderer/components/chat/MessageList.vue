@@ -154,7 +154,6 @@
         unstyled
         class="scroll-to-bottom-btn"
         native-type="button"
-        title="Scroll to bottom"
         aria-label="Scroll to bottom"
         @click="scrollToBottomFromButton"
       >

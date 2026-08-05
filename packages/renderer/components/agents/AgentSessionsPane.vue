@@ -40,7 +40,7 @@
             <button
               class="history-line"
               type="button"
-              :title="historyRowTitle(row)"
+              :aria-label="row.readOnly ? historyRowTitle(row) : undefined"
               @click="emit('open-session', row.sessionId)"
             >
               <span class="history-name">{{ row.label }}</span>
@@ -92,7 +92,7 @@
                 <button
                   class="history-line"
                   type="button"
-                  :title="historyRowTitle(row)"
+                  :aria-label="row.readOnly ? historyRowTitle(row) : undefined"
                   @click="emit('open-session', row.sessionId)"
                 >
                   <span class="history-name">{{ row.label }}</span>

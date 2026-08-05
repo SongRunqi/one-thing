@@ -38,7 +38,7 @@
           ]"
           native-type="button"
           :aria-pressed="activeTab === tab.id"
-          :title="`${tab.label} · ⌘${index + 1}`"
+          :aria-keyshortcuts="`Meta+${index + 1}`"
           @click="activeTab = tab.id"
         >
           <span>{{ tab.label }}</span>

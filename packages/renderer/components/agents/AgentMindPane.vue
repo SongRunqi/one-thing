@@ -42,7 +42,6 @@
       type="button"
       class="am-row"
       :class="{ 'is-run': lease.executing }"
-      :title="`去「${lease.roomName}」`"
       @click="emit('open-session', lease.roomSessionId)"
     >
       <span class="am-row-name">{{ lease.roomName }}</span>
@@ -82,7 +81,6 @@
       type="button"
       class="am-row"
       :class="{ 'is-run': worker.status === 'running' }"
-      :title="`卡 ${worker.cardId} · ${worker.roomName}`"
       @click="emit('open-card', worker.cardId)"
     >
       <span class="am-row-name">{{ worker.shortId }}</span>

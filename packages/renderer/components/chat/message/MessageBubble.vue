@@ -121,7 +121,6 @@
                         <span
                           v-if="getInlineReasoningSummary(part)"
                           class="inline-reasoning-summary"
-                          :title="getInlineReasoningSummary(part)"
                         >
                           <span
                             class="inline-reasoning-summary-separator"
@@ -173,7 +172,6 @@
                     class="image-generation-skeleton"
                     role="status"
                     :aria-label="part.label || 'Generating image'"
-                    :title="part.label || 'Generating image'"
                   />
                   <PromptReferenceCard
                     v-else-if="part.type === 'prompt-ref'"

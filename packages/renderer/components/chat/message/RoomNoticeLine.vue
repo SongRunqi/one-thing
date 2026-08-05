@@ -1,13 +1,17 @@
 <template>
-  <div
-    class="room-notice-line"
-    :title="content"
+  <Tooltip
+    class="room-notice-tooltip"
+    :text="content"
   >
-    {{ content }}
-  </div>
+    <div class="room-notice-line">
+      {{ content }}
+    </div>
+  </Tooltip>
 </template>
 
 <script setup lang="ts">
+import Tooltip from '@/components/common/Tooltip.vue'
+
 /**
  * Room system notice (docs/design/multi-agent-collab-im.md §3.6, W15).
  *
@@ -26,6 +30,13 @@ defineProps<{ content: string }>()
 </script>
 
 <style scoped>
+/* Tooltip's wrapper is `inline-flex` by default, which would shrink the line to
+   its text and defeat the centring the parents rely on. The trace still owns a
+   full row; the wrapper is only there to host the floating panel. */
+.room-notice-tooltip {
+  display: block;
+}
+
 .room-notice-line {
   /* Spacing is the room's, not this component's: every vertical gap in the
      room stream comes from MessageList's gap table (W15). A margin here would

@@ -17,7 +17,6 @@
         v-for="(item, index) in items"
         :key="item.id"
         :class="['composer-extension-row', { selected: index === selectedIndex }]"
-        :title="item.value"
         @click="selectFile(item)"
         @mouseenter="highlightItem(index)"
       >

@@ -3,27 +3,33 @@
     <div class="explorer-header">
       <span>Explorer</span>
       <div class="explorer-actions">
-        <Button
-          unstyled
-          title="New file"
-          @click="openNameDialog('create-file', root)"
-        >
-          <FilePlus :size="13" />
-        </Button>
-        <Button
-          unstyled
-          title="New folder"
-          @click="openNameDialog('create-directory', root)"
-        >
-          <FolderPlus :size="13" />
-        </Button>
-        <Button
-          unstyled
-          title="Refresh"
-          @click="loadDirectory(root)"
-        >
-          <RefreshCw :size="13" />
-        </Button>
+        <Tooltip text="New file">
+          <Button
+            unstyled
+            aria-label="New file"
+            @click="openNameDialog('create-file', root)"
+          >
+            <FilePlus :size="13" />
+          </Button>
+        </Tooltip>
+        <Tooltip text="New folder">
+          <Button
+            unstyled
+            aria-label="New folder"
+            @click="openNameDialog('create-directory', root)"
+          >
+            <FolderPlus :size="13" />
+          </Button>
+        </Tooltip>
+        <Tooltip text="Refresh">
+          <Button
+            unstyled
+            aria-label="Refresh"
+            @click="loadDirectory(root)"
+          >
+            <RefreshCw :size="13" />
+          </Button>
+        </Tooltip>
       </div>
     </div>
     <div
@@ -147,6 +153,7 @@ import Button from '@/components/common/Button.vue'
 import ContextMenu from '@/components/common/ContextMenu.vue'
 import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed, nextTick, reactive, ref, type CSSProperties } from 'vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 import { ExternalLink, FilePlus, FolderPlus, Pencil, RefreshCw, Trash2 } from 'lucide-vue-next'

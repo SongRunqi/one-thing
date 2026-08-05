@@ -3,23 +3,22 @@
     <header class="review-head">
       <div class="head-line">
         <span class="head-tag">REVIEW</span>
-        <span
-          class="head-objective"
-          :title="objective"
-        >{{ objective }}</span>
-        <Button
-          unstyled
-          class="head-refresh"
-          title="Rescan the audit trail"
-          :disabled="loading"
-          @click="load"
-        >
-          <RefreshCw
-            :size="13"
-            :stroke-width="2"
-            aria-hidden="true"
-          />
-        </Button>
+        <span class="head-objective">{{ objective }}</span>
+        <Tooltip text="Rescan the audit trail">
+          <Button
+            unstyled
+            class="head-refresh"
+            aria-label="Rescan the audit trail"
+            :disabled="loading"
+            @click="load"
+          >
+            <RefreshCw
+              :size="13"
+              :stroke-width="2"
+              aria-hidden="true"
+            />
+          </Button>
+        </Tooltip>
       </div>
       <div
         v-if="diffs.length"
@@ -82,10 +81,7 @@
               :stroke-width="2.5"
               aria-hidden="true"
             />
-            <span
-              class="file-path"
-              :title="file.absolutePath"
-            >{{ file.path }}</span>
+            <span class="file-path">{{ file.path }}</span>
           </Button>
           <span
             v-if="file.created"
@@ -99,18 +95,20 @@
             <span class="plus">+{{ file.added }}</span>
             <span class="minus">−{{ file.removed }}</span>
           </span>
-          <Button
-            unstyled
-            class="file-open"
-            title="Open file in the editor"
-            @click="emit('openFile', file.absolutePath)"
-          >
-            <FileText
-              :size="13"
-              :stroke-width="2"
-              aria-hidden="true"
-            />
-          </Button>
+          <Tooltip text="Open file in the editor">
+            <Button
+              unstyled
+              class="file-open"
+              aria-label="Open file in the editor"
+              @click="emit('openFile', file.absolutePath)"
+            >
+              <FileText
+                :size="13"
+                :stroke-width="2"
+                aria-hidden="true"
+              />
+            </Button>
+          </Tooltip>
         </header>
 
         <DiffView
@@ -133,6 +131,7 @@
 import { computed, ref, watch } from 'vue'
 import { ChevronRight, FileText, RefreshCw } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import DiffView from '@/components/chat/message/DiffView.vue'
 import { platformApi } from '@/platform'
 import type { GoalFileDiff } from '@/types'

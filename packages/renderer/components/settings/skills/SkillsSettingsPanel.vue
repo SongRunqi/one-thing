@@ -19,7 +19,6 @@
         <button
           class="text-action"
           type="button"
-          title="Open the user skills folder"
           @click="store.openSkillDirectory()"
         >
           user folder
@@ -34,7 +33,7 @@
         type="button"
         :class="{ 'is-on': skillsEnabled }"
         :aria-pressed="skillsEnabled"
-        :title="skillsEnabled ? 'Skills enabled — click to disable' : 'Skills disabled — click to enable'"
+        :aria-label="skillsEnabled ? 'Skills enabled — click to disable' : 'Skills disabled — click to enable'"
         @click="toggleSkillsEnabled"
       />
       <span
@@ -80,14 +79,8 @@
             class="dir-row"
             :class="{ 'is-off': !dir.enabled }"
           >
-            <span
-              class="dir-name"
-              :title="dir.path"
-            >{{ dir.label || basename(dir.path) }}</span>
-            <span
-              class="dir-path"
-              :title="dir.path"
-            >{{ dir.path }}</span>
+            <span class="dir-name">{{ dir.label || basename(dir.path) }}</span>
+            <span class="dir-path">{{ dir.path }}</span>
             <Select
               v-bind="ROW_SELECT"
               class="agent-select"
@@ -100,7 +93,6 @@
               <button
                 class="text-action"
                 type="button"
-                title="Open in file manager"
                 @click="store.openPath(dir.path)"
               >
                 folder
@@ -108,7 +100,6 @@
               <button
                 class="text-action is-danger"
                 type="button"
-                title="Remove directory (files stay on disk)"
                 @click="confirmRemoveDirectory(dir)"
               >
                 remove
@@ -118,7 +109,7 @@
                 type="button"
                 :class="{ 'is-on': dir.enabled }"
                 :aria-pressed="dir.enabled"
-                :title="dir.enabled ? 'Directory enabled — click to disable' : 'Directory disabled — click to enable'"
+                :aria-label="dir.enabled ? 'Directory enabled — click to disable' : 'Directory disabled — click to enable'"
                 @click="store.updateDirectory({ id: dir.id, enabled: !dir.enabled })"
               />
             </span>

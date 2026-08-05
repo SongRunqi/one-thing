@@ -150,10 +150,7 @@
                   :key="row.label"
                 >
                   <dt>{{ row.label }}</dt>
-                  <dd
-                    :class="{ mono: row.mono }"
-                    :title="row.title || row.value"
-                  >
+                  <dd :class="{ mono: row.mono }">
                     {{ row.value }}
                   </dd>
                 </div>
@@ -290,10 +287,7 @@
                   :key="row.label"
                 >
                   <dt>{{ row.label }}</dt>
-                  <dd
-                    :class="{ mono: row.mono }"
-                    :title="row.title || row.value"
-                  >
+                  <dd :class="{ mono: row.mono }">
                     {{ row.value }}
                   </dd>
                 </div>
@@ -310,7 +304,6 @@
                   <li
                     v-for="file in skill.files"
                     :key="file.path || file.name"
-                    :title="file.path || file.name"
                   >
                     <span class="system-prompt-file-name">{{ file.name }}</span>
                     <span class="system-prompt-file-type">{{ file.type }}</span>
@@ -354,25 +347,27 @@
       >
         <div class="system-prompt-group-head">
           <span>Prompt</span>
-          <button
-            type="button"
-            class="system-prompt-copy-button"
-            :class="{ copied }"
-            title="Copy system prompt"
-            :disabled="!snapshot.systemPrompt"
-            @click="copyPrompt"
-          >
-            <Check
-              v-if="copied"
-              :size="14"
-              aria-hidden="true"
-            />
-            <Copy
-              v-else
-              :size="14"
-              aria-hidden="true"
-            />
-          </button>
+          <Tooltip text="Copy system prompt">
+            <button
+              type="button"
+              class="system-prompt-copy-button"
+              :class="{ copied }"
+              aria-label="Copy system prompt"
+              :disabled="!snapshot.systemPrompt"
+              @click="copyPrompt"
+            >
+              <Check
+                v-if="copied"
+                :size="14"
+                aria-hidden="true"
+              />
+              <Copy
+                v-else
+                :size="14"
+                aria-hidden="true"
+              />
+            </button>
+          </Tooltip>
         </div>
         <pre class="system-prompt-text">{{ snapshot.systemPrompt }}</pre>
       </section>
@@ -393,6 +388,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import CollapsePanel from '@/components/common/CollapsePanel.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { platformApi } from '@/platform'
 
 const props = defineProps<{
@@ -484,7 +480,6 @@ const providerWarning = computed(() => {
 type DetailRow = {
   label: string
   value: string
-  title?: string
   mono?: boolean
 }
 
@@ -560,7 +555,7 @@ function toToolPanelItem(
 function detailRow(
   label: string,
   value: string | number | boolean | null | undefined,
-  options: Pick<DetailRow, 'mono' | 'title'> = {},
+  options: Pick<DetailRow, 'mono'> = {},
 ): DetailRow | null {
   if (value === null || value === undefined || value === '') return null
   return { label, value: String(value), ...options }
@@ -646,10 +641,10 @@ function getSkillDetailRows(skill: SystemPromptSkillSnapshot): DetailRow[] {
     detailRow('Source', formatSource(skill.source)),
     detailRow('Category', formatToken(skill.category)),
     detailRow('Enabled', formatBoolean(skill.enabled)),
-    detailRow('Path', skill.path, { mono: true, title: skill.path }),
-    detailRow('Directory', skill.directoryPath, { mono: true, title: skill.directoryPath }),
+    detailRow('Path', skill.path, { mono: true }),
+    detailRow('Directory', skill.directoryPath, { mono: true }),
     detailRow('Relative path', skill.relativePath, { mono: true }),
-    detailRow('Root', skill.rootPath, { mono: true, title: skill.rootPath }),
+    detailRow('Root', skill.rootPath, { mono: true }),
     detailRow('Allowed tools', compactList(skill.allowedTools)),
     detailRow('Related skills', compactList(skill.relatedSkills)),
     detailRow('Platforms', compactList(skill.platforms)),

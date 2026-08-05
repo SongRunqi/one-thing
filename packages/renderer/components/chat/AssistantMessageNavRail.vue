@@ -32,7 +32,6 @@
           native-type="button"
           class="assistant-nav-mode-tab"
           aria-label="Show message nav trail"
-          title="Message nav trail"
           @click.stop="emit('switchMode')"
         >
           Trail
@@ -45,7 +44,6 @@
         class="assistant-nav-close"
         :class="{ 'can-pin': isAutoPanelDismissed }"
         :aria-label="isAutoPanelDismissed ? 'Pin navigation panel' : 'Close navigation panel'"
-        :title="isAutoPanelDismissed ? 'Pin panel' : 'Close panel'"
         @click.stop="toggleAutoPanelPin"
       >
         <Pin
@@ -147,7 +145,6 @@
         native-type="button"
         class="assistant-nav-page-cue assistant-nav-page-cue-top"
         aria-label="Previous outline page"
-        title="Previous page"
         @click.stop="goToPreviousPage"
       >
         <span class="assistant-nav-page-cue-icon" />
@@ -158,7 +155,6 @@
         native-type="button"
         class="assistant-nav-page-cue assistant-nav-page-cue-bottom"
         aria-label="Next outline page"
-        title="Next page"
         @click.stop="goToNextPage"
       >
         <span class="assistant-nav-page-cue-icon" />

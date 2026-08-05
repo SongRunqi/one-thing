@@ -22,20 +22,23 @@
       <span class="cd-who">{{ bar.text }}</span>
       <!-- 死信红点:一封信炸了,循环继续跑而系统静默变哑 —— 这颗点是「它没回应」
            与「它试过但炸了」之间的第一条分界线。点它跳后台的调度时间轴。 -->
-      <button
+      <Tooltip
         v-if="bar.deadLetters > 0"
-        type="button"
-        class="cd-dead"
-        :title="`${bar.deadLetters} 封事件处理失败 —— 去看时间轴`"
-        :aria-label="`${bar.deadLetters} 封事件处理失败`"
-        @click.stop="openDeadLetters"
+        :text="`${bar.deadLetters} 封事件处理失败 —— 去看时间轴`"
       >
-        <i
-          class="cd-dead-dot"
-          aria-hidden="true"
-        />
-        {{ bar.deadLetters }}
-      </button>
+        <button
+          type="button"
+          class="cd-dead"
+          :aria-label="`${bar.deadLetters} 封事件处理失败`"
+          @click.stop="openDeadLetters"
+        >
+          <i
+            class="cd-dead-dot"
+            aria-hidden="true"
+          />
+          {{ bar.deadLetters }}
+        </button>
+      </Tooltip>
       <span class="cd-tail">
         <button
           v-if="bar.action === 'resume'"
@@ -95,13 +98,16 @@
           排队
         </div>
         <div class="cd-badges">
-          <span
+          <Tooltip
             v-for="badge in queueBadges"
             :key="badge.key"
-            class="cd-badge"
-            :class="{ 'is-actionable': badge.actionable }"
-            :title="badge.hint"
-          >{{ badge.label }} {{ badge.count }}</span>
+            :text="badge.hint"
+          >
+            <span
+              class="cd-badge"
+              :class="{ 'is-actionable': badge.actionable }"
+            >{{ badge.label }} {{ badge.count }}</span>
+          </Tooltip>
         </div>
       </template>
 
@@ -110,10 +116,17 @@
         <div class="cd-sec">
           裁决
         </div>
+        <!-- 降级成因挂在整行上,但行是 flex 容器(子项吃 flex:1),不能被
+             tooltip-wrapper 包住 —— 用 trigger-el 只借浮层、不进 DOM 结构。 -->
+        <Tooltip
+          v-if="judgment.state === 'degraded'"
+          :trigger-el="judgeRowRef"
+          :text="`降级成因:${judgment.reason}`"
+        />
         <div
+          ref="judgeRowRef"
           class="cd-judge"
           :class="`is-${judgment.state}`"
-          :title="judgment.state === 'degraded' ? `降级成因:${judgment.reason}` : ''"
         >
           <i
             class="cd-judge-mark"
@@ -223,6 +236,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useSessionsStore } from '@/stores/sessions'
+import Tooltip from '@/components/common/Tooltip.vue'
 import {
   buildCoordinatorBar,
   buildCoordinatorGateRows,
@@ -248,6 +262,9 @@ const emit = defineEmits<{
 const agentsStore = useAgentsStore()
 const collabBoardStore = useCollabBoardStore()
 const sessionsStore = useSessionsStore()
+
+/** 裁决行本体:降级成因的 tooltip 借它当触发区(见模板里的注释)。 */
+const judgeRowRef = ref<HTMLElement | null>(null)
 
 /**
  * 展开状态**存在组件里而不是 localStorage**:它是一次会话内的注意力,不是偏好。

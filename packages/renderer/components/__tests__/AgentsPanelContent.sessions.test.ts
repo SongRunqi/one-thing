@@ -211,7 +211,7 @@ describe('会话面 · 四栏归类', () => {
     const rows = column(wrapper, '群聊')!.findAll('.history-line')
     expect(rows).toHaveLength(1)
     expect(rows[0].find('.history-name').text()).toBe('群「官网改版组」')
-    expect(rows[0].attributes('title')).toContain('只读转录')
+    expect(rows[0].attributes('aria-label')).toContain('只读转录')
   })
 
   it('私下:P3 前恒空,空态文案照常渲染', async () => {

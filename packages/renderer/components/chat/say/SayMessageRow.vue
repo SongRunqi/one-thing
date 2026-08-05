@@ -27,7 +27,6 @@
         :key="emoji"
         type="button"
         class="say-hoverbar-btn"
-        :title="emoji"
         @click.stop="applyReaction(emoji)"
       >
         {{ emoji }}
@@ -36,7 +35,7 @@
         ref="emojiButtonRef"
         type="button"
         class="say-hoverbar-btn"
-        title="更多表情"
+        aria-label="更多表情"
         @click.stop="toggleEmojiPanel"
       >
         <Smile
@@ -51,7 +50,7 @@
       <button
         type="button"
         class="say-hoverbar-btn"
-        title="引用回复"
+        aria-label="引用回复"
         @click.stop="handleReply"
       >
         <Reply
@@ -63,7 +62,7 @@
         ref="moreButtonRef"
         type="button"
         class="say-hoverbar-btn"
-        title="更多"
+        aria-label="更多"
         @click.stop="openMoreMenu"
       >
         ⋯
@@ -92,7 +91,6 @@
             v-for="emoji in panelRecentEmojis"
             :key="`recent-${emoji}`"
             type="button"
-            :title="emoji"
             @click.stop="applyReaction(emoji)"
           >
             {{ emoji }}
@@ -106,7 +104,6 @@
             v-for="emoji in SAY_COMMON_EMOJIS"
             :key="`common-${emoji}`"
             type="button"
-            :title="emoji"
             @click.stop="applyReaction(emoji)"
           >
             {{ emoji }}
@@ -136,7 +133,6 @@
       :class="{ 'is-gone': quoteMissing }"
       :style="quoteColorStyle"
       :disabled="quoteMissing"
-      :title="quoteTitle"
       @click.stop="quoteMissing ? undefined : emit('jumpToMessage', replyQuote.messageId)"
     >
       <AgentAvatar
@@ -169,7 +165,6 @@
         type="button"
         class="say-avatar-btn"
         :aria-label="`${senderName} 的空间`"
-        :title="`${senderName} · 打开空间`"
         @click="openAgentSpace"
       >
         <AgentAvatar
@@ -209,7 +204,7 @@
           type="button"
           class="say-sig-name is-contact"
           :style="senderColorStyle"
-          :title="`${senderName} · 打开空间`"
+          :aria-label="`${senderName} 的空间`"
           @click="openAgentSpace"
         >
           {{ senderName }}
@@ -304,7 +299,7 @@
         v-if="threadEntry"
         type="button"
         class="say-thread-entry"
-        :title="`${threadEntry.title} · 在右栏线程里看这次执行`"
+        :aria-label="`${threadEntry.title} · 在右栏线程里看这次执行`"
         @click.stop="openThread"
       >
         <span class="say-thread-entry-label">展开执行</span>
@@ -325,7 +320,7 @@
           type="button"
           class="say-reaction-chip"
           :class="{ mine: chip.mine }"
-          :title="chip.reactors.map(reactor => reactor.label).join('、')"
+          :aria-label="`${chip.emoji} · ${chip.reactors.map(reactor => reactor.label).join('、')}`"
           @click.stop="emit('react', message.id, chip.emoji)"
         >
           <span class="say-reaction-emoji">{{ chip.emoji }}</span>
@@ -553,9 +548,6 @@ const quoteExcerptText = computed(() => {
   const excerpt = replyQuote.value?.excerpt ?? ''
   return props.quoteMissing ? `原消息已删除 · 快照:${excerpt}` : excerpt
 })
-
-const quoteTitle = computed(() =>
-  replyQuote.value ? `${replyQuote.value.authorLabel}: ${quoteExcerptText.value}` : '')
 
 /** 旁观插话:只有 agent↔agent 房里用户说的话才是"旁观"。 */
 const showBystanderTag = computed(() => Boolean(props.pairDmMode) && isUser.value)

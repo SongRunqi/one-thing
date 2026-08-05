@@ -37,7 +37,6 @@
       v-if="!openTabs.length"
       unstyled
       class="workbench-close is-floating"
-      title="Close workbench"
       aria-label="Close workbench"
       @click="$emit('close')"
     >
@@ -61,7 +60,6 @@
         <Button
           unstyled
           class="workbench-close"
-          title="Close workbench"
           aria-label="Close workbench"
           @click="$emit('close')"
         >
@@ -265,7 +263,6 @@
         unstyled
         class="empty-action"
         :style="workbenchToolStyle(option.categorySlot)"
-        :title="option.title"
         @click="addWorkbenchTab(option.type)"
       >
         <component

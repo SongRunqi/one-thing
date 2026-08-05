@@ -1,19 +1,23 @@
 <template>
   <header class="room-header">
     <!-- 侧栏藏起来时,换房的唯一入口就是它 —— 房面没有 TabBar,这颗不能丢。 -->
-    <button
+    <Tooltip
       v-if="showSidebarToggle"
-      type="button"
-      class="room-head-icon room-head-sidebar"
-      title="显示侧栏"
-      aria-label="显示侧栏"
-      @click="emit('toggleSidebar')"
+      text="显示侧栏"
+      position="bottom"
     >
-      <PanelLeft
-        :size="15"
-        :stroke-width="1.7"
-      />
-    </button>
+      <button
+        type="button"
+        class="room-head-icon room-head-sidebar"
+        aria-label="显示侧栏"
+        @click="emit('toggleSidebar')"
+      >
+        <PanelLeft
+          :size="15"
+          :stroke-width="1.7"
+        />
+      </button>
+    </Tooltip>
 
     <!-- 私聊态:头像 + 名字 + 「在忙 · 正在做什么」(样板 三 · 私聊)。 -->
     <div
@@ -23,7 +27,7 @@
       <button
         type="button"
         class="room-solo-open"
-        :title="`${head.agent?.title ? `${head.name} · ${head.agent.title}` : head.name} · 打开空间`"
+        :aria-label="`${head.agent?.title ? `${head.name} · ${head.agent.title}` : head.name} · 打开空间`"
         @click="openAgentSpace"
       >
         <!-- 环画在外层 span 上,不画在头像本身:图片头像是 <img>,
@@ -46,28 +50,28 @@
         </span>
       </button>
       <!-- 在忙时点一下 = 打开这条线程(右栏),不再另开一个页签。 -->
-      <button
+      <Tooltip
         v-if="head.work"
-        type="button"
-        class="room-head-work"
-        :title="`正在干活 · ${head.work.title} —— 打开线程`"
-        @click="openWorkThread"
+        :text="`正在干活 · ${head.work.title} —— 打开线程`"
+        position="bottom"
       >
-        {{ head.work.shortId }}
-      </button>
+        <button
+          type="button"
+          class="room-head-work"
+          @click="openWorkThread"
+        >
+          {{ head.work.shortId }}
+        </button>
+      </Tooltip>
     </div>
 
     <!-- 群聊态:`# 房名` + 主题(样板 一 · 群聊)。 -->
     <template v-else>
       <span class="room-hash">#</span>
-      <b
-        class="room-name"
-        :title="head.name"
-      >{{ head.name }}</b>
+      <b class="room-name">{{ head.name }}</b>
       <span
         v-if="head.subtitle"
         class="room-topic"
-        :title="head.subtitle"
       >{{ head.subtitle }}</span>
     </template>
 
@@ -80,47 +84,59 @@
         open-space-on-click
       />
 
-      <button
-        type="button"
-        class="room-head-icon"
-        title="搜索"
-        aria-label="搜索"
-        @click="emit('openSearch')"
+      <Tooltip
+        text="搜索"
+        position="bottom"
       >
-        <Search
-          :size="16"
-          :stroke-width="1.7"
-        />
-      </button>
+        <button
+          type="button"
+          class="room-head-icon"
+          aria-label="搜索"
+          @click="emit('openSearch')"
+        >
+          <Search
+            :size="16"
+            :stroke-width="1.7"
+          />
+        </button>
+      </Tooltip>
 
-      <button
-        type="button"
-        class="room-head-icon"
-        :class="{ 'is-on': isInspectorOpen }"
-        :title="isInspectorOpen ? '收起线程栏' : '打开线程栏'"
-        :aria-pressed="isInspectorOpen"
-        aria-label="线程栏"
-        @click="emit('toggleInspector')"
+      <Tooltip
+        :text="isInspectorOpen ? '收起线程栏' : '打开线程栏'"
+        position="bottom"
       >
-        <PanelRight
-          :size="16"
-          :stroke-width="1.7"
-        />
-      </button>
+        <button
+          type="button"
+          class="room-head-icon"
+          :class="{ 'is-on': isInspectorOpen }"
+          :aria-pressed="isInspectorOpen"
+          aria-label="线程栏"
+          @click="emit('toggleInspector')"
+        >
+          <PanelRight
+            :size="16"
+            :stroke-width="1.7"
+          />
+        </button>
+      </Tooltip>
 
-      <button
-        ref="moreButtonRef"
-        type="button"
-        class="room-head-icon"
-        title="更多"
-        aria-label="更多"
-        @click="openMoreMenu"
+      <Tooltip
+        text="更多"
+        position="bottom"
       >
-        <MoreVertical
-          :size="16"
-          :stroke-width="1.7"
-        />
-      </button>
+        <button
+          ref="moreButtonRef"
+          type="button"
+          class="room-head-icon"
+          aria-label="更多"
+          @click="openMoreMenu"
+        >
+          <MoreVertical
+            :size="16"
+            :stroke-width="1.7"
+          />
+        </button>
+      </Tooltip>
     </div>
 
     <ContextMenu
@@ -157,6 +173,7 @@ import { computed, ref } from 'vue'
 import { ClipboardList, MoreVertical, PanelLeft, PanelRight, Search, Settings, Users } from 'lucide-vue-next'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import ContextMenu from '@/components/common/ContextMenu.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 import RoomMemberStrip from '../RoomMemberStrip.vue'
 import RoomSettingsDialog from '../RoomSettingsDialog.vue'
@@ -317,7 +334,11 @@ function handleMoreSelect(id: string): void {
   -webkit-app-region: drag;
 }
 
+/* 房头整条是拖拽区,里面每一颗可点的东西都得自己退出去。Tooltip 会在按钮外面
+   再包一层 `div.tooltip-wrapper` —— 那层若留在拖拽区里,hover 事件会被窗口拖拽
+   吞掉,提示就永远不弹。 */
 .room-header button,
+.room-header :deep(.tooltip-wrapper),
 .room-header :deep(.room-members) {
   -webkit-app-region: no-drag;
 }

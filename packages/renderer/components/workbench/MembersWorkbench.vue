@@ -35,7 +35,7 @@
           type="button"
           class="member-row"
           :class="{ 'is-off': member.isRetired }"
-          :title="`${member.name} · 打开空间`"
+          :aria-label="`${member.name} 的空间`"
           @click="openSpace(member.id)"
         >
           <span class="member-mark-wrap agent-open-target">

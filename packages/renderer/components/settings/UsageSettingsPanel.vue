@@ -76,7 +76,7 @@
               class="day-cell"
               :class="[`l${cell.level}`, { future: cell.future, selected: cell.key === selectedKey }]"
               :disabled="cell.future"
-              :title="cell.tooltip"
+              :aria-label="cell.tooltip"
               @click="selectedKey = cell.key"
             >
               <em>{{ cell.dayOfMonth }}</em>

@@ -12,7 +12,6 @@
       </button>
       <button
         class="evals-view-btn evals-workbench-entry"
-        title="事故工作台:现场还原 / mock 重放 / 自动诊断"
         @click="workbench.openWorkbench()"
       >
         🔎 事故工作台

@@ -3,10 +3,7 @@
     <header class="thread-head">
       <div class="head-line">
         <span class="head-tag">{{ tag }}</span>
-        <span
-          class="head-title"
-          :title="headTitle"
-        >{{ headTitle }}</span>
+        <span class="head-title">{{ headTitle }}</span>
         <span
           v-if="isGenerating"
           class="head-live"

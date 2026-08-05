@@ -226,20 +226,20 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		expect(wrapper.find('[title="Keep window on top"]').exists()).toBe(false);
-		expect(wrapper.find('[title="Command Panel"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="Keep window on top"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Command Panel"]').exists()).toBe(true);
 		expect(
-			wrapper.find(".panel-actions .icon-button").attributes("title"),
+			wrapper.find(".panel-actions .icon-button").attributes("aria-label"),
 		).toBe("Command Panel");
-		expect(wrapper.find('[title="Browse notes"]').exists()).toBe(true);
-		expect(wrapper.find('[title="New note"]').exists()).toBe(true);
-		expect(wrapper.find('[title="Unpin Todo"]').exists()).toBe(true);
-		expect(wrapper.find('[title="Find in note"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Browse notes"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="New note"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="Unpin Todo"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="Find in note"]').exists()).toBe(false);
 		expect(wrapper.find(".window-traffic-spacer").exists()).toBe(true);
 		expect(wrapper.find(".window-title").exists()).toBe(true);
-		expect(wrapper.find('[title="Open in window"]').exists()).toBe(false);
-		expect(wrapper.find('[title="Dock card"]').exists()).toBe(false);
-		expect(wrapper.find('[title="Resize card"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Open in window"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Dock card"]').exists()).toBe(false);
+		expect(wrapper.find(".resize-handle").exists()).toBe(false);
 	});
 
 	it("shows chat card controls in chat mode", async () => {
@@ -249,15 +249,15 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		expect(wrapper.find('[title="Command Panel"]').exists()).toBe(true);
-		expect(wrapper.find('[title="Browse notes"]').exists()).toBe(true);
-		expect(wrapper.find('[title="New note"]').exists()).toBe(true);
-		expect(wrapper.find('[title="Find in note"]').exists()).toBe(false);
-		expect(wrapper.find('[title="Pin Todo"]').exists()).toBe(true);
-		expect(wrapper.find('[title="Keep card open"]').exists()).toBe(false);
-		expect(wrapper.find('[title="Dock card"]').exists()).toBe(false);
-		expect(wrapper.find('[title="Open in window"]').exists()).toBe(false);
-		expect(wrapper.find('[title="Keep window on top"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Command Panel"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="Browse notes"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="New note"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="Find in note"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Pin Todo"]').exists()).toBe(true);
+		expect(wrapper.find('[aria-label="Keep card open"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Dock card"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Open in window"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Keep window on top"]').exists()).toBe(false);
 	});
 
 	it("uses a shorter default floating card height", async () => {
@@ -324,7 +324,7 @@ describe("TodoPlanPanel", () => {
 		await settle();
 		expect(wrapper.find(".note-switcher").exists()).toBe(false);
 
-		await wrapper.find('[title="Browse notes"]').trigger("click");
+		await wrapper.find('[aria-label="Browse notes"]').trigger("click");
 		await settle();
 		expect(wrapper.find(".note-switcher").exists()).toBe(true);
 	});
@@ -542,12 +542,12 @@ describe("TodoPlanPanel", () => {
 		});
 		await settle();
 
-		await wrapper.find('[title="Command Panel"]').trigger("click");
+		await wrapper.find('[aria-label="Command Panel"]').trigger("click");
 		await settle();
 
 		expect(wrapper.find(".todo-notes-action-panel").exists()).toBe(true);
 		expect(
-			wrapper.find(".panel-actions .icon-button").attributes("title"),
+			wrapper.find(".panel-actions .icon-button").attributes("aria-label"),
 		).toBe("Command Panel");
 		wrapper.unmount();
 	});
@@ -560,20 +560,20 @@ describe("TodoPlanPanel", () => {
 		await settle();
 
 		expect(wrapper.find(".format-buffer").exists()).toBe(false);
-		await wrapper.find('[title="Show formatting bar"]').trigger("click");
+		await wrapper.find('[aria-label="Show formatting bar"]').trigger("click");
 		await settle();
 
 		expect(wrapper.find(".format-buffer").exists()).toBe(true);
-		await wrapper.find('.format-buffer [title="Bold"]').trigger("click");
+		await wrapper.find('.format-buffer [aria-label="Bold"]').trigger("click");
 		expect(mocks.editorApplyCommand).toHaveBeenCalledWith("bold");
 		await wrapper
-			.find('.format-buffer [title="Strikethrough"]')
+			.find('.format-buffer [aria-label="Strikethrough"]')
 			.trigger("click");
 		expect(mocks.editorApplyCommand).toHaveBeenCalledWith("strikethrough");
-		await wrapper.find('.format-buffer [title="Underline"]').trigger("click");
+		await wrapper.find('.format-buffer [aria-label="Underline"]').trigger("click");
 		expect(mocks.editorApplyCommand).toHaveBeenCalledWith("underline");
 
-		await wrapper.find('[title="Hide formatting bar"]').trigger("click");
+		await wrapper.find('[aria-label="Hide formatting bar"]').trigger("click");
 		await settle();
 		expect(wrapper.find(".format-buffer").exists()).toBe(false);
 	});
@@ -640,8 +640,8 @@ describe("TodoPlanPanel", () => {
 			math: true,
 		});
 		expect(editor.props("sourceToggle")).toBe(false);
-		expect(wrapper.find('[title="Preview markdown"]').exists()).toBe(false);
-		expect(wrapper.find('[title="Edit markdown"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Preview markdown"]').exists()).toBe(false);
+		expect(wrapper.find('[aria-label="Edit markdown"]').exists()).toBe(false);
 		expect(wrapper.find(".markdown-preview").exists()).toBe(false);
 	});
 

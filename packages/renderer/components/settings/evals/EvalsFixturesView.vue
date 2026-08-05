@@ -52,7 +52,6 @@
           <div class="evals-fixture-actions">
             <button
               class="evals-small-btn"
-              title="Promote to test case"
               @click.stop="promoteFixture(fixture)"
             >
               ⬆️ Promote

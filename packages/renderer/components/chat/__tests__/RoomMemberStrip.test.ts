@@ -61,7 +61,7 @@ describe('RoomMemberStrip', () => {
     expect(chips.map(chip => chip.text())).toEqual(['📋', '🔧'])
     expect(chips[0].classes()).toContain('is-pm')
     expect(chips[1].classes()).not.toContain('is-pm')
-    expect(chips[0].attributes('title')).toBe('阿明 · 产品经理 · 负责人')
+    expect(chips[0].attributes('aria-label')).toBe('阿明 · 产品经理 · 负责人')
     expect(wrapper.find('.member-add').exists()).toBe(true)
     wrapper.unmount()
   })

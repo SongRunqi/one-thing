@@ -2,7 +2,6 @@
   <span
     class="tool-icon"
     :class="`icon-${status}`"
-    :title="label"
     aria-hidden="true"
   >
     <component
@@ -21,7 +20,6 @@ import { getToolIcon } from '@/stores/helpers/tool-ui-registry'
 const props = defineProps<{
   toolName: string
   status: ToolRenderStatus
-  label?: string
 }>()
 
 const icon = computed(() => getToolIcon(props.toolName))

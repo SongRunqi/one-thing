@@ -10,7 +10,6 @@
       type="button"
       class="member-chip"
       :class="{ 'is-pm': entry.isPm, 'is-retired': entry.isRetired }"
-      :title="tooltip(entry)"
       :aria-label="tooltip(entry)"
       @click.stop="handleChipClick(entry, $event)"
       @contextmenu.prevent.stop="openMemberMenu(entry, $event)"
@@ -38,7 +37,6 @@
       v-if="addableAgents.length > 0 && !isPairDm"
       type="button"
       class="member-chip member-add"
-      title="拉人进群"
       aria-label="拉人进群"
       @click.stop="openAddMenu"
     >
@@ -48,7 +46,6 @@
     <span
       v-if="error"
       class="member-error"
-      :title="error"
     >{{ error }}</span>
 
     <ContextMenu

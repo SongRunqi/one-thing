@@ -105,38 +105,39 @@
                 :size="15"
                 :stroke-width="2.2"
               />
-              <span
-                class="page-title"
-                :title="selectedPage?.title || selectedResult.title"
-              >
+              <span class="page-title">
                 {{ selectedPage?.title || selectedResult.title }}
               </span>
             </div>
             <div class="header-actions">
-              <a
-                class="page-link"
-                :href="selectedPage?.finalUrl || selectedResult.url"
-                target="_blank"
-                rel="noreferrer"
-                title="Open original page"
-              >
-                <ExternalLink
-                  :size="14"
-                  :stroke-width="2.2"
-                />
-              </a>
-              <Button
-                unstyled
-                class="close-reader-btn"
-                native-type="button"
-                title="Close reader"
-                @click="isReaderOpen = false"
-              >
-                <X
-                  :size="14"
-                  :stroke-width="2.2"
-                />
-              </Button>
+              <Tooltip text="Open original page">
+                <a
+                  class="page-link"
+                  :href="selectedPage?.finalUrl || selectedResult.url"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open original page"
+                >
+                  <ExternalLink
+                    :size="14"
+                    :stroke-width="2.2"
+                  />
+                </a>
+              </Tooltip>
+              <Tooltip text="Close reader">
+                <Button
+                  unstyled
+                  class="close-reader-btn"
+                  native-type="button"
+                  aria-label="Close reader"
+                  @click="isReaderOpen = false"
+                >
+                  <X
+                    :size="14"
+                    :stroke-width="2.2"
+                  />
+                </Button>
+              </Tooltip>
             </div>
           </div>
 
@@ -223,6 +224,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed, ref, watch } from 'vue'
 import { AlertCircle, ExternalLink, FileText, Loader2, Search, X } from 'lucide-vue-next'
 import type { ToolPartialResult } from '@/types'

@@ -50,11 +50,12 @@
       >
         <div class="transcript-tool-result-header">
           <span class="transcript-tool-name">{{ item.name }}</span>
-          <span
-            class="transcript-source-badge"
-            :class="`source-${item.source}`"
-            :title="sourceTitle(item.source)"
-          >{{ sourceLabel(item.source) }}</span>
+          <Tooltip :text="sourceTitle(item.source)">
+            <span
+              class="transcript-source-badge"
+              :class="`source-${item.source}`"
+            >{{ sourceLabel(item.source) }}</span>
+          </Tooltip>
         </div>
         <pre class="transcript-tool-result-body">{{ item.text }}</pre>
       </div>
@@ -90,6 +91,7 @@
 import { computed } from 'vue'
 import StaticMarkdown from '@/components/chat/message/StaticMarkdown.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 
 /**
  * Chat-style renderer shared by the scene view (turn-trace) and the

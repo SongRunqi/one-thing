@@ -13,7 +13,6 @@
       :aria-expanded="open"
       aria-haspopup="listbox"
       :aria-label="displayName || 'Select model'"
-      :title="displayName || 'Select model'"
       @click="toggleFlyout"
     >
       <ProviderIcon

@@ -38,7 +38,6 @@
         <Button
           unstyled
           class="text-action nav-close"
-          title="Close panel"
           @click="$emit('close')"
         >
           close
@@ -76,7 +75,6 @@
           unstyled
           class="text-action main-panel-close"
           native-type="button"
-          title="Close"
           @click="$emit('close')"
         >
           close
@@ -182,7 +180,6 @@
                   <button
                     type="button"
                     class="delete-btn"
-                    title="Remove from library"
                     @click.stop="removeAsset(asset.id)"
                   >
                     remove
@@ -207,10 +204,7 @@
                     class="row-index"
                     aria-hidden="true"
                   />
-                  <span
-                    class="asset-row-title"
-                    :title="assetTitle(asset)"
-                  >{{ assetTitle(asset) }}</span>
+                  <span class="asset-row-title">{{ assetTitle(asset) }}</span>
                   <span class="asset-row-meta">{{ assetSubtitle(asset) }}</span>
                   <span class="asset-source">{{ sourceLabel(asset.source) }}</span>
                   <span
@@ -220,7 +214,6 @@
                     <Button
                       unstyled
                       class="text-action is-danger"
-                      title="Remove from library"
                       @click="removeAsset(asset.id)"
                     >
                       remove
@@ -255,7 +248,6 @@
                   unstyled
                   class="text-action"
                   native-type="button"
-                  title="Close details"
                   @click="selectedAsset = null"
                 >
                   close
@@ -269,7 +261,6 @@
                     :src="mediaStore.getImageUrl(selectedAsset)"
                     :alt="selectedAsset.fileName"
                     class="drawer-preview-img"
-                    title="Click to view full image"
                     @click="launchGallery(selectedAsset)"
                   >
                   <div
@@ -291,17 +282,11 @@
                     <div class="specs-list">
                       <div class="spec-row">
                         <span class="spec-label">Name</span>
-                        <span
-                          class="spec-val"
-                          :title="selectedAsset.fileName"
-                        >{{ selectedAsset.fileName }}</span>
+                        <span class="spec-val">{{ selectedAsset.fileName }}</span>
                       </div>
                       <div class="spec-row">
                         <span class="spec-label">Format</span>
-                        <span
-                          class="spec-val"
-                          :title="selectedAsset.mimeType"
-                        >{{ selectedAsset.mimeType }}</span>
+                        <span class="spec-val">{{ selectedAsset.mimeType }}</span>
                       </div>
                       <div
                         v-if="selectedAsset.width && selectedAsset.height"
@@ -334,7 +319,6 @@
                         unstyled
                         class="text-action"
                         native-type="button"
-                        title="Copy prompt"
                         @click="copyPromptText(selectedAsset.metadata.prompt)"
                       >
                         {{ copiedPrompt ? 'copied' : 'copy' }}
@@ -357,7 +341,6 @@
                         unstyled
                         class="text-action"
                         native-type="button"
-                        title="Copy revised prompt"
                         @click="copyRevisedPromptText(selectedAsset.metadata.revisedPrompt)"
                       >
                         {{ copiedRevisedPrompt ? 'copied' : 'copy' }}
@@ -377,7 +360,6 @@
                   unstyled
                   class="text-action"
                   native-type="button"
-                  title="Open in the default application"
                   @click="openFileExternally(selectedAsset)"
                 >
                   open externally
@@ -387,7 +369,6 @@
                   unstyled
                   class="text-action"
                   native-type="button"
-                  title="Copy file path"
                   @click="copyFilePath(selectedAsset.filePath)"
                 >
                   {{ copiedPath ? 'copied' : 'copy path' }}
@@ -396,7 +377,6 @@
                   unstyled
                   class="text-action is-danger"
                   native-type="button"
-                  title="Remove from library"
                   @click="deleteAssetFromDrawer(selectedAsset)"
                 >
                   delete

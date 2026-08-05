@@ -193,7 +193,7 @@ describe('ChatSidePanel', () => {
     expect(wrapper.find('.mock-variables-panel').exists()).toBe(false)
     expect(wrapper.findAll('.chat-side-esec')).toHaveLength(2)
     expect(wrapper.find('.chat-side-draft-state').text()).toBe('System prompt will appear after the chat starts.')
-    expect(wrapper.find('[title="Refresh system prompt"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.chat-side-icon-button').attributes('disabled')).toBeDefined()
   })
 
   it('shows the todo live summary from panel progress events', async () => {

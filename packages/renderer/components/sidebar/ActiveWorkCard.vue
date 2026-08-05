@@ -6,7 +6,6 @@
     type="button"
     class="work-card"
     :class="[`tone-${card.tag.tone}`, { 'is-active': active, 'is-live': live }]"
-    :title="hoverTitle"
     @click="$emit('open', card)"
   >
     <!-- `.st`:样板里**唯一**的颜色。绿 = 在跑,琥珀 = 待你,其余一律灰。 -->
@@ -77,12 +76,6 @@ const typingAgents = (() => {
 const live = computed(() =>
   (!!props.card.assigneeAgentId && typingAgents.value.includes(props.card.assigneeAgentId))
   || (props.busy === true && props.card.isAssigneeCurrent))
-
-const hoverTitle = computed(() => {
-  const parts = [props.card.title, props.card.assigneeName, props.card.tag.label]
-  if (props.card.tag.hint) parts.push(props.card.tag.hint)
-  return parts.filter(Boolean).join(' · ')
-})
 </script>
 
 <style scoped>

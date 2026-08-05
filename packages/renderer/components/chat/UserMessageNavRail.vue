@@ -26,7 +26,6 @@
           native-type="button"
           class="user-nav-mode-tab"
           aria-label="Show AI outline"
-          title="AI outline"
           @click.stop="emit('switchMode')"
         >
           Outline
@@ -44,7 +43,6 @@
         native-type="button"
         class="user-nav-close"
         aria-label="Close navigation panel"
-        title="Close panel"
         @click.stop="closePanel"
       >
         <X
@@ -100,7 +98,6 @@
         native-type="button"
         class="user-nav-page-cue user-nav-page-cue-top"
         aria-label="Previous navigation page"
-        title="Previous page"
         @click.stop="goToPreviousPage"
       >
         <span class="user-nav-page-cue-icon" />
@@ -111,7 +108,6 @@
         native-type="button"
         class="user-nav-page-cue user-nav-page-cue-bottom"
         aria-label="Next navigation page"
-        title="Next page"
         @click.stop="goToNextPage"
       >
         <span class="user-nav-page-cue-icon" />

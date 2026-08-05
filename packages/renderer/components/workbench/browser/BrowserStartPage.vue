@@ -97,7 +97,6 @@ onMounted(async () => {
         :class="{ hot: ringOpen }"
         type="button"
         :aria-label="`搜索引擎：${engine.name}（Tab 切换）`"
-        :title="`${engine.name} · Tab 切换`"
         @click="ringOpen = !ringOpen"
       >
         {{ engine.token }}

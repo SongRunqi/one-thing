@@ -6,55 +6,57 @@
       class="diff-toolbar"
     >
       <div class="toolbar-left">
-        <Button
+        <Tooltip
           v-if="allowStyleToggle"
-          unstyled
-          class="toolbar-btn"
-          :title="currentDiffStyle === 'split' ? 'Switch to unified view' : 'Switch to split view'"
-          @click="toggleDiffStyle"
+          :text="currentDiffStyle === 'split' ? 'Switch to unified view' : 'Switch to split view'"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
+          <Button
+            unstyled
+            class="toolbar-btn"
+            @click="toggleDiffStyle"
           >
-            <rect
-              v-if="currentDiffStyle === 'split'"
-              x="3"
-              y="3"
-              width="7"
-              height="18"
-              rx="2"
-            />
-            <rect
-              v-if="currentDiffStyle === 'split'"
-              x="14"
-              y="3"
-              width="7"
-              height="18"
-              rx="2"
-            />
-            <rect
-              v-if="currentDiffStyle === 'unified'"
-              x="3"
-              y="3"
-              width="18"
-              height="18"
-              rx="2"
-            />
-          </svg>
-          <span>{{ currentDiffStyle === 'split' ? 'Split' : 'Unified' }}</span>
-        </Button>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect
+                v-if="currentDiffStyle === 'split'"
+                x="3"
+                y="3"
+                width="7"
+                height="18"
+                rx="2"
+              />
+              <rect
+                v-if="currentDiffStyle === 'split'"
+                x="14"
+                y="3"
+                width="7"
+                height="18"
+                rx="2"
+              />
+              <rect
+                v-if="currentDiffStyle === 'unified'"
+                x="3"
+                y="3"
+                width="18"
+                height="18"
+                rx="2"
+              />
+            </svg>
+            <span>{{ currentDiffStyle === 'split' ? 'Split' : 'Unified' }}</span>
+          </Button>
+        </Tooltip>
       </div>
       <div class="toolbar-right">
         <Button
           v-if="allowCopy"
           unstyled
           class="toolbar-btn"
-          :title="copied ? 'Copied!' : 'Copy diff'"
           @click="copyDiffContent"
         >
           <svg
@@ -122,6 +124,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { FileDiff } from '@pierre/diffs'
 import { DIFF_THEME_NAME, registerDiffTheme } from './diff-theme'

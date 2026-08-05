@@ -5,17 +5,18 @@
       @click="$emit('toggle-expand')"
     >
       <div class="server-info">
-        <div
-          class="server-status"
-          :class="server.status"
-          :title="statusText"
-        >
-          <div class="status-indicator">
-            <div class="status-dot" />
-            <div class="status-ring" />
-            <div class="status-pulse" />
+        <Tooltip :text="statusText">
+          <div
+            class="server-status"
+            :class="server.status"
+          >
+            <div class="status-indicator">
+              <div class="status-dot" />
+              <div class="status-ring" />
+              <div class="status-pulse" />
+            </div>
           </div>
-        </div>
+        </Tooltip>
         <div class="server-details">
           <div class="server-name">
             {{ server.config.name }}

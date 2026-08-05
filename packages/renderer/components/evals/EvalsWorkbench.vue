@@ -13,13 +13,18 @@
           事故工作台
           <span class="wb-count">{{ store.incidents.length }} 个事故</span>
         </div>
-        <button
-          class="wb-close"
-          title="关闭 (Esc)"
-          @click.stop="store.close()"
+        <Tooltip
+          text="关闭 (Esc)"
+          position="bottom"
         >
-          ✕
-        </button>
+          <button
+            class="wb-close"
+            aria-label="关闭"
+            @click.stop="store.close()"
+          >
+            ✕
+          </button>
+        </Tooltip>
       </header>
 
       <div class="wb-body">
@@ -77,22 +82,24 @@
         >
           <!-- Actions -->
           <div class="wb-actions">
-            <button
-              class="wb-btn"
-              :disabled="store.analyzing"
-              title="AI 生成标题/摘要/判定 rubric"
-              @click="store.analyze()"
-            >
-              {{ store.analyzing ? '分析中…' : 'AI 分析' }}
-            </button>
-            <button
-              class="wb-btn"
-              :disabled="store.diagnoseRunning"
-              title="复现 + 消融矩阵 + 归因报告(快速模式)"
-              @click="store.startDiagnose(true)"
-            >
-              {{ store.diagnoseRunning ? '诊断中…' : '快速诊断' }}
-            </button>
+            <Tooltip text="AI 生成标题/摘要/判定 rubric">
+              <button
+                class="wb-btn"
+                :disabled="store.analyzing"
+                @click="store.analyze()"
+              >
+                {{ store.analyzing ? '分析中…' : 'AI 分析' }}
+              </button>
+            </Tooltip>
+            <Tooltip text="复现 + 消融矩阵 + 归因报告(快速模式)">
+              <button
+                class="wb-btn"
+                :disabled="store.diagnoseRunning"
+                @click="store.startDiagnose(true)"
+              >
+                {{ store.diagnoseRunning ? '诊断中…' : '快速诊断' }}
+              </button>
+            </Tooltip>
             <button
               class="wb-btn"
               :disabled="store.diagnoseRunning"
@@ -139,12 +146,15 @@
 
             <h4 class="wb-section-title">
               原始对话(工具结果为真实执行)
-              <span
+              <Tooltip
                 v-if="contextFidelity"
-                class="wb-badge"
-                :class="`fidelity-${store.detail.incident.contextOrigin || 'none'}`"
-                :title="contextFidelity.title"
-              >{{ contextFidelity.label }}</span>
+                :text="contextFidelity.title"
+              >
+                <span
+                  class="wb-badge"
+                  :class="`fidelity-${store.detail.incident.contextOrigin || 'none'}`"
+                >{{ contextFidelity.label }}</span>
+              </Tooltip>
             </h4>
             <IncidentTranscript :items="sceneItems" />
 
@@ -209,18 +219,21 @@
               >
                 judge 判定{{ rubricHint }}
               </Checkbox>
-              <Checkbox
-                v-model="replayCapturedPrompt"
-                class="wb-check"
-                size="small"
-                aria-label="用当时的提示词"
-                :disabled="!store.detail.incident.scene?.prompt || !!replayAblate"
-                :title="store.detail.incident.scene?.prompt
+              <Tooltip
+                :text="store.detail.incident.scene?.prompt
                   ? '用失败时刻捕获的原始提示词逐字重放;默认用当前 builder 重建(检验今天的提示词能否救回)'
                   : '该事故未捕获到提示词快照(超出捕获窗口)'"
               >
-                用当时的提示词
-              </Checkbox>
+                <Checkbox
+                  v-model="replayCapturedPrompt"
+                  class="wb-check"
+                  size="small"
+                  aria-label="用当时的提示词"
+                  :disabled="!store.detail.incident.scene?.prompt || !!replayAblate"
+                >
+                  用当时的提示词
+                </Checkbox>
+              </Tooltip>
               <span class="wb-field">消融
                 <Select
                   v-bind="PANEL_SELECT"
@@ -250,13 +263,16 @@
               v-if="store.replayVerdicts.length"
               class="wb-verdicts"
             >
-              <span
+              <Tooltip
                 v-for="(v, i) in store.replayVerdicts"
                 :key="i"
-                class="wb-verdict"
-                :class="v.pass === true ? 'pass' : v.pass === false ? 'fail' : 'na'"
-                :title="v.reason"
-              >{{ v.pass === true ? '✓' : v.pass === false ? '✗' : '—' }}</span>
+                :text="v.reason"
+              >
+                <span
+                  class="wb-verdict"
+                  :class="v.pass === true ? 'pass' : v.pass === false ? 'fail' : 'na'"
+                >{{ v.pass === true ? '✓' : v.pass === false ? '✗' : '—' }}</span>
+              </Tooltip>
             </div>
 
             <!-- Live transcript -->
@@ -372,6 +388,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import Checkbox from '@/components/common/Checkbox.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import Select from '@/components/common/Select.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { SelectOptionLike } from '@/components/common/select'
 import StaticMarkdown from '@/components/chat/message/StaticMarkdown.vue'
 import IncidentTranscript, { type TranscriptItem } from './IncidentTranscript.vue'

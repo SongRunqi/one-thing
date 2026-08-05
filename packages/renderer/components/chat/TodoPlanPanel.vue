@@ -22,7 +22,6 @@
       text
       class="wake-button"
       native-type="button"
-      title="Todo / Notes"
       aria-label="Show Todo / Notes"
       @mousedown.prevent
       @click.stop="collapsed = false"
@@ -43,52 +42,56 @@
         </div>
 
         <div class="panel-actions">
-          <Button
-            text
-            class="icon-button"
-            native-type="button"
-            title="Command Panel"
-            aria-label="Command Panel"
-            @mousedown.prevent
-            @click.stop="openActionPanel"
-          >
-            <Command :size="14" />
-          </Button>
-          <Button
-            ref="titleButtonRef"
-            text
-            class="icon-button"
-            native-type="button"
-            title="Browse notes"
-            aria-label="Browse notes"
-            @mousedown.prevent
-            @click.stop="openSwitcher"
-          >
-            <FileText :size="14" />
-          </Button>
-          <Button
-            text
-            class="icon-button"
-            native-type="button"
-            title="New note"
-            aria-label="New note"
-            @mousedown.prevent
-            @click.stop="createNote"
-          >
-            <Plus :size="14" />
-          </Button>
-          <Button
-            text
-            class="icon-button"
-            :class="{ active: pinned }"
-            native-type="button"
-            :title="pinControlLabel"
-            :aria-label="pinControlLabel"
-            @mousedown.prevent
-            @click.stop="togglePinned"
-          >
-            <Pin :size="14" />
-          </Button>
+          <Tooltip text="Command Panel">
+            <Button
+              text
+              class="icon-button"
+              native-type="button"
+              aria-label="Command Panel"
+              @mousedown.prevent
+              @click.stop="openActionPanel"
+            >
+              <Command :size="14" />
+            </Button>
+          </Tooltip>
+          <Tooltip text="Browse notes">
+            <Button
+              ref="titleButtonRef"
+              text
+              class="icon-button"
+              native-type="button"
+              aria-label="Browse notes"
+              @mousedown.prevent
+              @click.stop="openSwitcher"
+            >
+              <FileText :size="14" />
+            </Button>
+          </Tooltip>
+          <Tooltip text="New note">
+            <Button
+              text
+              class="icon-button"
+              native-type="button"
+              aria-label="New note"
+              @mousedown.prevent
+              @click.stop="createNote"
+            >
+              <Plus :size="14" />
+            </Button>
+          </Tooltip>
+          <Tooltip :text="pinControlLabel">
+            <Button
+              text
+              class="icon-button"
+              :class="{ active: pinned }"
+              native-type="button"
+              :aria-label="pinControlLabel"
+              @mousedown.prevent
+              @click.stop="togglePinned"
+            >
+              <Pin :size="14" />
+            </Button>
+          </Tooltip>
         </div>
       </header>
 
@@ -152,7 +155,6 @@
                 text
                 :class="{ active: isNotePinned(doc.id) }"
                 native-type="button"
-                :title="isNotePinned(doc.id) ? 'Unpin note' : 'Pin note'"
                 :aria-label="isNotePinned(doc.id) ? 'Unpin note' : 'Pin note'"
                 @mousedown.prevent
                 @click.stop="toggleNotePinned(doc.id)"
@@ -162,7 +164,6 @@
               <Button
                 text
                 native-type="button"
-                title="Delete note"
                 aria-label="Delete note"
                 @mousedown.prevent
                 @click.stop="deleteUserNote(doc.id)"
@@ -225,7 +226,6 @@
           text
           class="mini-button"
           native-type="button"
-          title="Previous match"
           aria-label="Previous match"
           @mousedown.prevent
           @click.stop="moveFind(-1)"
@@ -236,7 +236,6 @@
           text
           class="mini-button"
           native-type="button"
-          title="Next match"
           aria-label="Next match"
           @mousedown.prevent
           @click.stop="moveFind(1)"
@@ -247,7 +246,6 @@
           text
           class="mini-button"
           native-type="button"
-          title="Close find"
           aria-label="Close find"
           @mousedown.prevent
           @click.stop="closeFind"
@@ -297,7 +295,6 @@
             text
             class="format-command heading-command"
             native-type="button"
-            title="Heading 1"
             aria-label="Heading 1"
             @mousedown.prevent
             @click.stop="runFormatCommand('heading-1')"
@@ -309,7 +306,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Bold"
             aria-label="Bold"
             @mousedown.prevent
             @click.stop="runFormatCommand('bold')"
@@ -320,7 +316,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Italic"
             aria-label="Italic"
             @mousedown.prevent
             @click.stop="runFormatCommand('italic')"
@@ -331,7 +326,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Strikethrough"
             aria-label="Strikethrough"
             @mousedown.prevent
             @click.stop="runFormatCommand('strikethrough')"
@@ -342,7 +336,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Underline"
             aria-label="Underline"
             @mousedown.prevent
             @click.stop="runFormatCommand('underline')"
@@ -353,7 +346,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Inline code"
             aria-label="Inline code"
             @mousedown.prevent
             @click.stop="runFormatCommand('inline-code')"
@@ -364,7 +356,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Link"
             aria-label="Link"
             @mousedown.prevent
             @click.stop="runFormatCommand('link')"
@@ -375,7 +366,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Code block"
             aria-label="Code block"
             @mousedown.prevent
             @click.stop="runFormatCommand('code-block')"
@@ -386,7 +376,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Quote"
             aria-label="Quote"
             @mousedown.prevent
             @click.stop="runFormatCommand('blockquote')"
@@ -397,7 +386,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Bulleted list"
             aria-label="Bulleted list"
             @mousedown.prevent
             @click.stop="runFormatCommand('bullet-list')"
@@ -408,7 +396,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Numbered list"
             aria-label="Numbered list"
             @mousedown.prevent
             @click.stop="runFormatCommand('ordered-list')"
@@ -419,7 +406,6 @@
             text
             class="format-command"
             native-type="button"
-            title="Task list"
             aria-label="Task list"
             @mousedown.prevent
             @click.stop="runFormatCommand('task-list')"
@@ -431,7 +417,6 @@
             text
             class="format-command close-format"
             native-type="button"
-            title="Hide formatting bar"
             aria-label="Hide formatting bar"
             @mousedown.prevent
             @click.stop="formatBufferOpen = false"
@@ -441,24 +426,24 @@
         </div>
         <template v-else>
           <span>{{ characterCountLabel }}</span>
-          <Button
-            text
-            class="format-toggle"
-            native-type="button"
-            title="Show formatting bar"
-            aria-label="Show formatting bar"
-            @mousedown.prevent
-            @click.stop="toggleFormatBuffer"
-          >
-            <Type :size="21" />
-          </Button>
+          <Tooltip text="Show formatting bar">
+            <Button
+              text
+              class="format-toggle"
+              native-type="button"
+              aria-label="Show formatting bar"
+              @mousedown.prevent
+              @click.stop="toggleFormatBuffer"
+            >
+              <Type :size="21" />
+            </Button>
+          </Tooltip>
         </template>
       </footer>
 
       <div
         v-if="!isStandalone"
         class="resize-handle"
-        title="Resize card"
         @pointerdown="startResize"
       />
     </template>
@@ -468,6 +453,7 @@
 <script setup lang="ts">
 import { useConfirm } from '@/composables/useConfirm'
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   Bot,

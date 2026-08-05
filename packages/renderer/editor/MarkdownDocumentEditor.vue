@@ -10,22 +10,25 @@
       class="markdown-document-toolbar"
       aria-label="Markdown formatting"
     >
-      <Button
+      <Tooltip
         v-for="item in toolbarItems"
         :key="item.command"
-        text
-        class="markdown-command-button"
-        native-type="button"
-        :title="item.title"
-        :aria-label="item.title"
-        @mousedown.prevent
-        @click.stop="runCommand(item.command)"
+        :text="item.title"
       >
-        <component
-          :is="item.icon"
-          :size="15"
-        />
-      </Button>
+        <Button
+          text
+          class="markdown-command-button"
+          native-type="button"
+          :aria-label="item.title"
+          @mousedown.prevent
+          @click.stop="runCommand(item.command)"
+        >
+          <component
+            :is="item.icon"
+            :size="15"
+          />
+        </Button>
+      </Tooltip>
     </div>
 
     <Button
@@ -33,7 +36,6 @@
       text
       class="markdown-source-toggle"
       native-type="button"
-      :title="sourceMode ? 'Show live preview' : 'Show Markdown source'"
       :aria-label="sourceMode ? 'Show live preview' : 'Show Markdown source'"
       :aria-pressed="sourceMode ? 'true' : 'false'"
       @mousedown.prevent
@@ -73,6 +75,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   Bold,

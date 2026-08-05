@@ -4,41 +4,47 @@
     data-sidebar-action-group="true"
     :data-sidebar-action-group-location="variant"
   >
-    <Button
-      text
-      circle
-      class="sidebar-action-btn"
-      :title="sidebarVisible ? 'Collapse sidebar' : 'Open sidebar'"
-      :aria-label="sidebarVisible ? 'Collapse sidebar' : 'Open sidebar'"
-      :icon="sidebarToggleIcon"
-      @click="$emit('toggle-sidebar')"
-    />
+    <Tooltip :text="sidebarVisible ? 'Collapse sidebar' : 'Open sidebar'">
+      <Button
+        text
+        circle
+        class="sidebar-action-btn"
+        :aria-label="sidebarVisible ? 'Collapse sidebar' : 'Open sidebar'"
+        :icon="sidebarToggleIcon"
+        @click="$emit('toggle-sidebar')"
+      />
+    </Tooltip>
     <!-- Search Everywhere opens a desktop window; hosts without desktop
          windows (web) must not render a button that would silently no-op. -->
-    <Button
+    <Tooltip
       v-if="searchAvailable"
-      text
-      circle
-      class="sidebar-action-btn"
-      title="Search"
-      aria-label="Search"
-      :icon="Search"
-      @click="$emit('open-search')"
-    />
-    <Button
-      text
-      circle
-      class="sidebar-action-btn"
-      title="New chat"
-      aria-label="New chat"
-      :icon="SquarePen"
-      @click="$emit('create-new-chat')"
-    />
+      text="Search"
+    >
+      <Button
+        text
+        circle
+        class="sidebar-action-btn"
+        aria-label="Search"
+        :icon="Search"
+        @click="$emit('open-search')"
+      />
+    </Tooltip>
+    <Tooltip text="New chat">
+      <Button
+        text
+        circle
+        class="sidebar-action-btn"
+        aria-label="New chat"
+        :icon="SquarePen"
+        @click="$emit('create-new-chat')"
+      />
+    </Tooltip>
   </div>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed } from 'vue'
 import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
@@ -77,6 +83,12 @@ defineEmits<{
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+/* Tooltip 在按钮外多包了一层 wrapper。app-region 虽然继承,但这一带是 titlebar
+   拖拽区,显式挖洞比赌继承稳妥(见 drag-region 走查笔记)。 */
+.sidebar-action-group :deep(.tooltip-wrapper) {
   -webkit-app-region: no-drag;
 }
 

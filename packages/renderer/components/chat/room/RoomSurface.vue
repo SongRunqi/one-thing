@@ -51,7 +51,6 @@
         unstyled
         class="room-scroll-bottom"
         native-type="button"
-        title="回到底部"
         aria-label="回到底部"
         @click="scrollToBottomFromButton"
       >

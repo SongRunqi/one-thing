@@ -98,7 +98,6 @@
         unstyled
         class="action-btn"
         native-type="button"
-        title="Open themes folder"
         @click="openThemesFolder"
       >
         <FolderOpen :size="15" />

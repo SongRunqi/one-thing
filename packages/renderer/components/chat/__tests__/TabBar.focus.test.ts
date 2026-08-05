@@ -36,8 +36,8 @@ describe('TabBar split-panel focus', () => {
     const wrapper = mountTabBar(true)
 
     expect(wrapper.find('.mock-agent-selector').exists()).toBe(true)
-    expect(wrapper.find('[title="Split view"]').exists()).toBe(true)
-    expect(wrapper.find('[title="Equalize panels"]').exists()).toBe(true)
+    expect(wrapper.find('.split-btn').exists()).toBe(true)
+    expect(wrapper.find('.equalize-btn').exists()).toBe(true)
     expect(wrapper.find('.side-panel-toggle').exists()).toBe(true)
     expect(wrapper.find('.inspector-toggle').exists()).toBe(true)
   })
@@ -46,8 +46,8 @@ describe('TabBar split-panel focus', () => {
     const wrapper = mountTabBar(false)
 
     expect(wrapper.find('.mock-agent-selector').exists()).toBe(false)
-    expect(wrapper.find('[title="Split view"]').exists()).toBe(false)
-    expect(wrapper.find('[title="Equalize panels"]').exists()).toBe(false)
+    expect(wrapper.find('.split-btn').exists()).toBe(false)
+    expect(wrapper.find('.equalize-btn').exists()).toBe(false)
     expect(wrapper.find('.side-panel-toggle').exists()).toBe(false)
     expect(wrapper.find('.inspector-toggle').exists()).toBe(false)
     // Tabs (and each tab's own close button) stay visible — closing a panel
@@ -73,18 +73,18 @@ describe('TabBar split-panel focus', () => {
 
     try {
       const wrapper = mountTabBar(true)
-      expect(wrapper.find('[title="Split view"]').exists()).toBe(true)
+      expect(wrapper.find('.split-btn').exists()).toBe(true)
 
       resizeCallback!([{ contentRect: { width: 300 } }])
       await nextTick()
 
-      expect(wrapper.find('[title="Split view"]').exists()).toBe(false)
+      expect(wrapper.find('.split-btn').exists()).toBe(false)
       expect(wrapper.find('.mock-agent-selector').exists()).toBe(false)
       expect(wrapper.find('.tab-item').exists()).toBe(true)
 
       resizeCallback!([{ contentRect: { width: 700 } }])
       await nextTick()
-      expect(wrapper.find('[title="Split view"]').exists()).toBe(true)
+      expect(wrapper.find('.split-btn').exists()).toBe(true)
     } finally {
       globalThis.ResizeObserver = RealResizeObserver
     }

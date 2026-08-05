@@ -1,7 +1,6 @@
 <template>
   <div
     :class="['tab-item', { active, closable, cold: isCold, dirty: tab.type !== 'chat' && tab.dirty, first: isFirst, 'hide-divider': hideTrailingDivider, 'drag-over': dragOver }]"
-    :title="isRenaming ? undefined : tooltip"
     :draggable="!isRenaming"
     role="tab"
     :aria-selected="active"
@@ -67,7 +66,6 @@
         v-if="closable && !isRenaming"
         unstyled
         class="tab-close"
-        title="Close tab"
         aria-label="Close tab"
         @click.stop="$emit('close')"
         @keydown.enter.stop
@@ -127,14 +125,6 @@ const displayTitle = computed(() => {
   if (props.tab.type === 'workbench') return props.tab.title
   if (props.tab.type === 'file') return props.tab.title
   return ''
-})
-
-const tooltip = computed(() => {
-  if (props.tab.type === 'workbench') {
-    return `${props.tab.workspaceRoot}\nActive: ${props.tab.activeFilePath || props.tab.initialFilePath}`
-  }
-  if (props.tab.type === 'file') return props.tab.filePath
-  return props.sessionName || ''
 })
 
 // —— 页签内联重命名（仅 chat 页签，由页签菜单的 Rename 触发）——

@@ -68,7 +68,7 @@
           :aria-hidden="showsMusicTag ? undefined : 'true'"
           :tabindex="showsMusicTag ? 0 : undefined"
           :role="showsMusicTag ? 'button' : undefined"
-          :title="showsMusicTag ? musicNowPlayingTitle : undefined"
+          :aria-label="showsMusicTag ? musicNowPlayingTitle : undefined"
           @mouseenter="onMusicLabelEnter"
           @mouseleave="onMusicLabelLeave"
           @focus="onMusicLabelEnter"
@@ -88,7 +88,6 @@
           v-if="isVoiceRecordingActive"
           class="composer-voice-cancel"
           type="button"
-          title="Discard this recording"
           @mousedown.prevent
           @click.stop="cancelVoiceRecording"
         >
@@ -98,7 +97,6 @@
           v-else-if="commandModeActive"
           class="composer-voice-cancel composer-command-exit"
           type="button"
-          :title="`Leave /${activeCommand?.id} and keep the text`"
           @mousedown.prevent
           @click.stop="clearActiveCommand"
         >
@@ -249,7 +247,6 @@
                     class="context-meter"
                     :class="contextMeterTone"
                     :style="contextMeterStyle"
-                    :title="contextTooltipText"
                     :aria-label="contextAriaLabel"
                     @mousedown.prevent
                     @click.stop
@@ -275,8 +272,7 @@
                   :model-value="permissionMode"
                   :options="PERMISSION_MODE_OPTIONS"
                   :popper-style="permissionDropdownStyle"
-                  aria-label="Permission mode"
-                  :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
+                  :aria-label="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
                   @click.stop
                   @change="handlePermissionModeChange"
                 >
@@ -295,8 +291,7 @@
                 size="small"
                 class="voice-aux-btn attach-btn"
                 native-type="button"
-                title="Attach files — or drop them on the composer"
-                aria-label="Attach files"
+                aria-label="Attach files — or drop them on the composer"
                 @mousedown.prevent
                 @click.stop="openFilePicker"
               >
@@ -315,7 +310,7 @@
                 class="voice-aux-btn tts-toggle-btn"
                 :class="{ 'tts-off': !replySpeechEnabled }"
                 native-type="button"
-                :title="replySpeechEnabled ? 'Voice replies on — click to mute' : 'Voice replies off — click to speak replies'"
+                :aria-label="replySpeechEnabled ? 'Voice replies on — click to mute' : 'Voice replies off — click to speak replies'"
                 @mousedown.prevent
                 @click.stop="toggleReplySpeech"
               >
@@ -338,7 +333,7 @@
                 class="voice-aux-btn call-btn"
                 :class="{ 'call-active': voiceStore.callActive }"
                 native-type="button"
-                :title="voiceCallButtonTitle"
+                :aria-label="voiceCallButtonTitle"
                 @mousedown.prevent
                 @click.stop="handleCallButton"
               >
@@ -364,7 +359,7 @@
                   'needs-setup': !!voiceConfigurationError && !voiceStore.isRecording,
                 }"
                 native-type="button"
-                :title="voiceButtonTitle"
+                :aria-label="voiceButtonTitle"
                 @mousedown.prevent
                 @click.stop="handleVoiceButton"
               >
@@ -395,7 +390,7 @@
                 class="send-btn"
                 :class="{ 'stop-btn': shouldShowStopAction }"
                 :disabled="isPrimaryActionDisabled"
-                :title="primaryActionTitle"
+                :aria-label="primaryActionTitle"
                 @mousedown.prevent
                 @click.stop="handlePrimaryAction"
               >

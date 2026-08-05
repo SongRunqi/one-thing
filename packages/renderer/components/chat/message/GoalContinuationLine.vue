@@ -3,7 +3,7 @@
     <button
       type="button"
       class="cont-rule"
-      :title="tooltip"
+      :aria-label="tooltip"
       :aria-expanded="expanded"
       @click="expanded = !expanded"
     >

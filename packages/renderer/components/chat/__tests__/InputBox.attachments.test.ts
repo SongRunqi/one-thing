@@ -3,6 +3,7 @@ import { mount, type VueWrapper } from "@vue/test-utils";
 import { nextTick, reactive } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import InputBox from "../InputBox.vue";
+import Tooltip from "@/components/common/Tooltip.vue";
 import { createDefaultSettings } from "@shared/defaults/settings";
 import { executeCommand, findCommand } from "@/services/commands";
 import { createFileToken } from "@shared/prompt-references";
@@ -370,10 +371,14 @@ describe("InputBox paste attachments", () => {
 		const meter = wrapper.find(".context-meter");
 		expect(meter.exists()).toBe(true);
 		expect(meter.text()).toContain("75%");
-		expect(meter.attributes("title")).toContain(
-			"Context: 24,000 / 32,000 tokens (75%)",
-		);
-		expect(meter.attributes("title")).toContain("Total output: 3,000 tokens");
+		// The breakdown lives on the wrapping <Tooltip> (no native title=).
+		const meterTooltip = wrapper
+			.findAllComponents(Tooltip)
+			.find((tip) => tip.find(".context-meter").exists());
+		expect(meterTooltip).toBeDefined();
+		const tooltipText = meterTooltip?.props("text") as string;
+		expect(tooltipText).toContain("Context: 24,000 / 32,000 tokens (75%)");
+		expect(tooltipText).toContain("Total output: 3,000 tokens");
 	});
 
 	it("restores composer text when switching back to a draft session", async () => {

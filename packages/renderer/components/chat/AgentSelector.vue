@@ -3,29 +3,30 @@
     ref="rootRef"
     class="agent-selector"
   >
-    <Button
-      ref="chipRef"
-      unstyled
-      class="agent-chip"
-      :class="{ open }"
-      native-type="button"
-      :disabled="isDisabled"
-      aria-haspopup="listbox"
-      :aria-expanded="open"
-      :title="isDisabled ? 'Agent can be changed after the current response finishes' : 'Change agent for this chat'"
-      @click.stop="toggleOpen"
-    >
-      <Bot
-        class="agent-chip-icon"
-        :size="14"
-        :stroke-width="2"
-      />
-      <span>{{ currentAgent?.name || 'Default Agent' }}</span>
-      <ChevronDown
-        class="agent-chip-chevron"
-        :size="13"
-      />
-    </Button>
+    <Tooltip :text="isDisabled ? 'Agent can be changed after the current response finishes' : 'Change agent for this chat'">
+      <Button
+        ref="chipRef"
+        unstyled
+        class="agent-chip"
+        :class="{ open }"
+        native-type="button"
+        :disabled="isDisabled"
+        aria-haspopup="listbox"
+        :aria-expanded="open"
+        @click.stop="toggleOpen"
+      >
+        <Bot
+          class="agent-chip-icon"
+          :size="14"
+          :stroke-width="2"
+        />
+        <span>{{ currentAgent?.name || 'Default Agent' }}</span>
+        <ChevronDown
+          class="agent-chip-chevron"
+          :size="13"
+        />
+      </Button>
+    </Tooltip>
 
     <!-- The kernel only *asks* to close (outside click); this component owns the
          flag. Without the handler the flyout would hide while `open` stayed
@@ -61,7 +62,6 @@
             :data-agent-index="index"
             role="option"
             :aria-selected="agent.id === currentAgentId"
-            :title="getAgentTooltip(agent)"
             @mousedown.prevent
             @click="selectAgent(agent.id)"
             @mouseenter="highlightedIndex = index"
@@ -113,6 +113,7 @@ import Button from '@/components/common/Button.vue'
 import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import Popover from '@/components/common/Popover.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { ComputedPosition } from '@/composables/floating/compute-position'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Bot, ChevronDown } from 'lucide-vue-next'
@@ -203,11 +204,6 @@ function describeAgent(agent: { systemPrompt?: string, isDefault?: boolean }) {
   const prompt = agent.systemPrompt?.trim()
   if (!prompt) return agent.isDefault ? 'No extra system prompt' : ''
   return prompt.split('\n').find(line => line.trim())?.trim() || ''
-}
-
-function getAgentTooltip(agent: { name: string, systemPrompt?: string }) {
-  const prompt = agent.systemPrompt?.trim()
-  return prompt ? `${agent.name}\n${prompt}` : agent.name
 }
 
 function close() {

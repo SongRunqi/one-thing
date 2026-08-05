@@ -50,7 +50,6 @@
       <Button
         unstyled
         class="arcade-btn btn-start"
-        :title="isPlaying ? 'Playing…' : 'START / Replay'"
         :disabled="isPlaying || frames.length === 0"
         @click="play"
       >
@@ -59,7 +58,6 @@
       <Button
         unstyled
         class="arcade-btn btn-sound"
-        :title="muted ? 'Sound OFF' : 'Sound ON'"
         @click="muted = !muted"
       >
         <span class="btn-label">{{ muted ? 'SND OFF' : 'SND ON' }}</span>

@@ -17,28 +17,34 @@
           class="voice-error"
         >{{ voice.lastError }}</span>
       </div>
-      <Button
-        unstyled
-        class="voice-stop"
-        native-type="button"
-        :title="overlayActionTitle"
-        @click="handleOverlayAction"
+      <Tooltip
+        :text="overlayActionTitle"
+        position="left"
       >
-        <X
-          v-if="voice.lastError || isCapturing"
-          :size="14"
-        />
-        <Volume2
-          v-else
-          :size="14"
-        />
-      </Button>
+        <Button
+          unstyled
+          class="voice-stop"
+          native-type="button"
+          :aria-label="overlayActionTitle"
+          @click="handleOverlayAction"
+        >
+          <X
+            v-if="voice.lastError || isCapturing"
+            :size="14"
+          />
+          <Volume2
+            v-else
+            :size="14"
+          />
+        </Button>
+      </Tooltip>
     </div>
   </Transition>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed } from 'vue'
 import { Volume2, X } from 'lucide-vue-next'
 import { useVoiceStore } from '@/stores/voice'

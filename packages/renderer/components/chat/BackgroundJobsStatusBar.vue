@@ -16,7 +16,6 @@
         v-for="job in runningJobs"
         :key="job.id"
         class="job-chip"
-        :title="jobTitle(job)"
       >
         <span class="job-command">{{ compactCommand(job.command) }}</span>
         <span
@@ -29,7 +28,6 @@
           unstyled
           class="job-stop"
           native-type="button"
-          title="Stop background service"
           @click.stop="stopJob(job.id)"
         >
           Stop
@@ -41,7 +39,6 @@
       unstyled
       class="refresh-btn"
       native-type="button"
-      title="Refresh background services"
       :disabled="loading"
       @click.stop="loadJobs"
     >
@@ -74,17 +71,6 @@ const runningJobs = computed(() => jobs.value.filter(job => job.status === 'runn
 function compactCommand(command: string): string {
   const normalized = command.replace(/\s+/g, ' ').trim()
   return normalized.length > 36 ? `${normalized.slice(0, 33)}…` : normalized
-}
-
-function jobTitle(job: BackgroundJobView): string {
-  const parts = [
-    job.command,
-    `cwd: ${job.cwd}`,
-    job.ports?.length ? `ports: ${job.ports.join(', ')}` : '',
-    job.childPids?.length ? `pids: ${job.childPids.join(', ')}` : '',
-    job.logPath ? `log: ${job.logPath}` : '',
-  ].filter(Boolean)
-  return parts.join('\n')
 }
 
 async function loadJobs() {

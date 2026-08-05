@@ -11,7 +11,7 @@
     <button
       type="button"
       class="quoted-text"
-      :title="expanded ? 'Collapse quote' : 'Expand quote'"
+      :aria-expanded="expanded"
       @click="expanded = !expanded"
     >
       {{ text }}
@@ -19,7 +19,7 @@
     <Button
       unstyled
       class="remove-quote-btn"
-      title="Remove"
+      aria-label="Remove"
       @click="emit('clear')"
     >
       <X

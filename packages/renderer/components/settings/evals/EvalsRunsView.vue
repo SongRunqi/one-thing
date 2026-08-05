@@ -301,11 +301,12 @@
           >
             <td>
               {{ comp.id }}
-              <span
+              <Tooltip
                 v-if="isRetireCandidate(comp.id, store.compareIdxB)"
-                class="evals-retire-icon"
-                title="Last 3 runs all 1.0"
-              >&#x1F3C1;</span>
+                text="Last 3 runs all 1.0"
+              >
+                <span class="evals-retire-icon">&#x1F3C1;</span>
+              </Tooltip>
             </td>
             <td class="evals-num-col">
               {{ formatPct(comp.scoreA) }}
@@ -336,6 +337,7 @@ import { ref, computed, onMounted } from "vue";
 import Checkbox from "@/components/common/Checkbox.vue";
 import ErrorNote from "@/components/common/ErrorNote.vue";
 import Select from "@/components/common/Select.vue";
+import Tooltip from "@/components/common/Tooltip.vue";
 import type { SelectOptionLike } from "@/components/common/select";
 import { useEvalsStore } from "@/stores/evals";
 import { platformApi } from "@/platform";

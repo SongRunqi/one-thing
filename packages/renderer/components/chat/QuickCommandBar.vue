@@ -3,21 +3,25 @@
     v-if="enabledCommands.length > 0"
     class="quick-command-bar"
   >
-    <Button
+    <Tooltip
       v-for="cmd in enabledCommands"
       :key="cmd.id"
-      unstyled
-      class="quick-cmd-btn"
-      :title="cmd.description"
-      @click="executeQuickCommand(cmd.id)"
+      :text="cmd.description"
     >
-      <span class="cmd-name">{{ cmd.id }}</span>
-    </Button>
+      <Button
+        unstyled
+        class="quick-cmd-btn"
+        @click="executeQuickCommand(cmd.id)"
+      >
+        <span class="cmd-name">{{ cmd.id }}</span>
+      </Button>
+    </Tooltip>
   </div>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { getCommands, executeCommand } from '@/services/commands'

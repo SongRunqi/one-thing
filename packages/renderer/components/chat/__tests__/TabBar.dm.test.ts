@@ -206,7 +206,7 @@ describe('TabBar 私聊房房头', () => {
     }]
     const wrapper = mountTabBar()
     expect(wrapper.find('.board-btn').exists()).toBe(false)
-    expect(wrapper.find('[title="房间设置"]').exists()).toBe(true)
+    expect(wrapper.find('.room-settings-btn').exists()).toBe(true)
   })
 
   it('群房与单成员私聊的看板入口零变化(正控)', () => {

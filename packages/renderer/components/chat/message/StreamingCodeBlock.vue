@@ -8,7 +8,7 @@
         unstyled
         class="code-block-copy"
         :class="{ copied }"
-        :title="complete ? 'Copy' : 'Copy (streaming)'"
+        :aria-label="complete ? 'Copy' : 'Copy (streaming)'"
         native-type="button"
         @click="handleCopy"
       >
