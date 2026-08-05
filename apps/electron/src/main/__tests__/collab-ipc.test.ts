@@ -13,6 +13,8 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import type {
   CollabAgentActivityGetRequest,
   CollabRoomBudgetsPatch,
+  CollabRoomRevokeLeaseRequest,
+  CollabRoomRevokeLeaseResult,
   CollabRoomUpdatePatch,
 } from '@shared/ipc.js'
 
@@ -25,6 +27,11 @@ const mocks = vi.hoisted(() => ({
   reactToCollabMessage: vi.fn(() => ({ success: true, reactions: [] })),
   applyUserCollabBoardAction: vi.fn(async () => ({ success: true, board: { version: 1, tasks: [] } })),
   clearCollabRoomHistory: vi.fn(async () => ({ success: true, clearedMessageCount: 3 })),
+  // 显式标注返回类型:成功与三条失败原因是**同一个**联合类型,让 vi.fn 从初值
+  // 推断的话它只会认得成功那一半,后面 mock 一条 `epoch-stale` 就编译不过。
+  revokeCollabRoomLease: vi.fn(
+    async (_request: unknown): Promise<CollabRoomRevokeLeaseResult> => ({ ok: true, revoked: true }),
+  ),
 }))
 
 vi.mock('electron', () => ({
@@ -47,6 +54,7 @@ vi.mock('@onething/app/collab/index.js', () => ({
   clearCollabRoomHistory: (...args: unknown[]) => mocks.clearCollabRoomHistory(...(args as [])),
   getCollabAgentActivity: (...args: unknown[]) =>
     mocks.getCollabAgentActivity(...(args as [readonly string[] | undefined])),
+  revokeCollabRoomLease: (...args: unknown[]) => mocks.revokeCollabRoomLease(...(args as [unknown])),
 }))
 
 const { registerCollabHandlers } = await import('../ipc/collab.js')
@@ -79,6 +87,10 @@ function invokeAgentActivity(request?: unknown): unknown {
   return mocks.handlers.get(IPC_CHANNELS.COLLAB_AGENT_ACTIVITY_GET)?.({}, request)
 }
 
+function invokeRevokeLease(request?: unknown): unknown {
+  return mocks.handlers.get(IPC_CHANNELS.COLLAB_ROOM_REVOKE_LEASE)?.({}, request)
+}
+
 const EMPTY_BOARD = { version: 1, tasks: [] }
 
 beforeEach(() => {
@@ -97,6 +109,8 @@ beforeEach(() => {
   mocks.clearCollabRoomHistory.mockResolvedValue({ success: true, clearedMessageCount: 3 })
   mocks.getCollabAgentActivity.mockClear()
   mocks.getCollabAgentActivity.mockReturnValue([])
+  mocks.revokeCollabRoomLease.mockClear()
+  mocks.revokeCollabRoomLease.mockResolvedValue({ ok: true, revoked: true })
   registerCollabHandlers()
 })
 
@@ -382,5 +396,53 @@ describe('COLLAB_AGENT_ACTIVITY_GET (D8 O1)', () => {
     }
     invokeAgentActivity(request)
     expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(['iris', 'bram'])
+  })
+})
+
+/**
+ * 人级停止(E5)—— 三级停止的第三级。
+ *
+ * 这扇门的三格全是**地址**(哪间房、哪张牌、界面看见它时是第几代),而
+ * `expectedEpoch` 那道乐观并发前置属于 app 层。所以这里钉两件事:整体透传
+ * (handler 一个字段都不该拆开或抢先判)、以及失败原因**不被翻译成 error**
+ * —— `epoch-stale` / `not-found` / `not-a-room` 三条都是可操作的结果,把它们
+ * 塞进 `error` 就等于让界面对着一句人话去做分支。
+ */
+describe('COLLAB_ROOM_REVOKE_LEASE (E5 人级停止)', () => {
+  it('请求原样过河,结果原样回来', async () => {
+    const result = await invokeRevokeLease({
+      roomSessionId: 'room-1',
+      leaseId: 'room-1#L2',
+      expectedEpoch: 7,
+    })
+    expect(result).toEqual({ success: true, result: { ok: true, revoked: true } })
+    expect(mocks.revokeCollabRoomLease).toHaveBeenCalledWith({
+      roomSessionId: 'room-1',
+      leaseId: 'room-1#L2',
+      expectedEpoch: 7,
+    })
+  })
+
+  it('可操作的失败原因原样回给界面,不被翻译成 error', async () => {
+    mocks.revokeCollabRoomLease.mockResolvedValue({ ok: false, reason: 'epoch-stale', epoch: 9 })
+    expect(await invokeRevokeLease({ roomSessionId: 'room-1', leaseId: 'L1', expectedEpoch: 7 }))
+      .toEqual({ success: true, result: { ok: false, reason: 'epoch-stale', epoch: 9 } })
+  })
+
+  it('真异常才走 error(运行时炸了,不是一次可操作的拒绝)', async () => {
+    mocks.revokeCollabRoomLease.mockRejectedValue(new Error('runtime exploded'))
+    expect(await invokeRevokeLease({ roomSessionId: 'room-1', leaseId: 'L1', expectedEpoch: 7 }))
+      .toEqual({ success: false, error: 'runtime exploded' })
+  })
+
+  /** 同一条 keyof 穷尽纪律:请求类型的每一格都到得了 app 层。 */
+  it('shared 请求的每个键都到得了 app 层(keyof 穷尽)', async () => {
+    const request: Record<keyof CollabRoomRevokeLeaseRequest, unknown> = {
+      roomSessionId: 'room-1',
+      leaseId: 'room-1#L4',
+      expectedEpoch: 3,
+    }
+    await invokeRevokeLease(request)
+    expect(mocks.revokeCollabRoomLease).toHaveBeenCalledWith(request)
   })
 })

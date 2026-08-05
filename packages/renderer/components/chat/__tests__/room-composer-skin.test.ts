@@ -91,12 +91,16 @@ describe('房面 composer 皮相', () => {
   })
 
   /**
-   * 停止态开关(真机走查):房里那颗停止钮停不掉任何东西(回合跑在成员的执行
-   * 会话上),所以房面整档关掉。行为断言在 `InputBox.messenger.test.ts`;这里
-   * 钉的是**只有房面传它**这条结构性证据 —— 旧壳的挂点一个字都没加。
+   * 停止态开关。v2 时代房面整档关着(那颗停止钮停不掉任何东西 —— 回合跑在成员的
+   * 执行会话上),**E5 起翻成 true**:停止链已全程可达(`abortStream` →
+   * `abortCollabRoomTurnForStop` → `stopCollabV3RoomFloor`,含 E4 的外部
+   * `interrupt`)。行为断言在 `InputBox.messenger.test.ts`;这里钉的是**只有房面
+   * 传它**这条结构性证据 —— 旧壳的挂点一个字都没加。
    */
-  it('allowStopAction 只有房面传:旧壳的 InputBox 挂点上没有这个绑定', () => {
-    expect(ROOM_SURFACE).toContain(':allow-stop-action="false"')
+  it('allowStopAction 只有房面传,且 E5 后是 true', () => {
+    expect(ROOM_SURFACE).toContain(':allow-stop-action="true"')
+    // 回归闸:翻回 false 就是把 E5 这一级停止从界面上摘掉。
+    expect(ROOM_SURFACE).not.toContain(':allow-stop-action="false"')
 
     const chatPanel = readFileSync(
       fileURLToPath(new URL('../ChatPanel.vue', import.meta.url)),

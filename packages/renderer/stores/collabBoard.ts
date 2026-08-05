@@ -6,6 +6,7 @@ import type {
   CollabBoardAction,
   CollabBoardActResponse,
   CollabCoordinatorState,
+  CollabRoomRevokeLeaseResult,
   CollabTask,
   CollabTaskStopResponse,
   PermissionInfo,
@@ -529,6 +530,37 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
   }
 
   /**
+   * 人级停止(E5):点名收回某一张在外的牌。
+   *
+   * `expectedEpoch` **由 store 现取**而不是让调用方传:代数是屏幕上这份快照的
+   * 属性,不是按钮的参数 —— 让每个入口自己去翻快照,就是给它们各自翻错的机会
+   * (而翻错的后果是撤到上一轮那位无辜的人)。
+   *
+   * 撤成之后**不本地改快照**:牌撤掉之后房间会立刻补发下一张,那份新账只有运行
+   * 时算得出,`collab:coordinator-changed` 会把它播回来。这里抢先删一行的话,补
+   * 发出去的那张牌会在界面上凭空少半秒。
+   *
+   * `epoch-stale` 时**顺手重取一次快照**:那正是"你这一屏过时了"的定义,而让用户
+   * 对着一颗永远失败的按钮再点一次不是答案。不吞错:提示语归 UI。
+   */
+  async function revokeLease(
+    roomSessionId: string,
+    leaseId: string,
+  ): Promise<CollabRoomRevokeLeaseResult> {
+    if (!platformApi.revokeCollabRoomLease) {
+      return { ok: false, reason: 'not-a-room' }
+    }
+    const epoch = coordinatorFor(roomSessionId)?.floorEpoch
+    if (epoch === undefined) return { ok: false, reason: 'not-a-room' }
+    const response = await platformApi.revokeCollabRoomLease(roomSessionId, leaseId, epoch)
+    if (!response?.success || !response.result) {
+      return { ok: false, reason: 'not-a-room' }
+    }
+    if (response.result.reason === 'epoch-stale') void loadCoordinator(roomSessionId)
+    return response.result
+  }
+
+  /**
    * Members currently typing in a room, oldest first(名单顺序由后端的 Set
    * 插入序给出:先开口的在前)。
    *
@@ -571,6 +603,7 @@ export const useCollabBoardStore = defineStore('collabBoard', () => {
     ensureCoordinator,
     loadCoordinator,
     coordinatorFor,
+    revokeLease,
     agents,
     applyAgentActivitySnapshot,
     ensureAgentActivity,

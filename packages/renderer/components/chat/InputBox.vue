@@ -495,12 +495,14 @@ interface Props {
    * `hasActiveGeneration` 的注释),`command:abort` 打到房 id 上停不掉任何东西 ——
    * 于是那颗深色圆钮变成一个"按了没反应"的死控件。
    *
-   * 所以房面传 `false`:发完消息回到发送态(草稿为空时按既有规则 disabled),
-   * 不画一个骗人的停止钮。
+   * 所以房面一度传 `false`:发完消息回到发送态(草稿为空时按既有规则 disabled),
+   * 不画一个骗人的停止钮。上一段是 **v2 时代的结论**。
    *
-   * **能停**是引擎侧的事(collab turn 的中断 / 各执行会话的 abort,
-   * `docs/design/collab-team-v2.md` §5 的停止语义)。等那条链路真的接通了,把这个
-   * 开关翻回 `true`(或改成"停这一轮")即可,UI 侧不需要再动结构。
+   * **E5 之后房面传 `true`**:那条链路已经接通且实测全程可达 —— 停止 →
+   * `abortStream` → 装配层注入的 `abortCollabRoomTurnForStop` →
+   * `stopCollabV3RoomFloor`,按回合登记簿逐条 abort 执行会话 + 换代作废在外的牌,
+   * 外部执行体再补一次 `interrupt`(E4)。这个开关本身**一个字节都不用改** ——
+   * 它守的是"停得掉吗",而不是"停什么",所以链路一通,翻回 true 就完事了。
    *
    * **缺省 `true` = 与从前逐字节相同**,直聊 / 旧壳一个字节不变。
    */
@@ -952,8 +954,9 @@ const canSend = computed(() => {
 })
 
 const shouldShowStopAction = computed(() => {
-  // 宿主可以整档关掉停止态(房面就关着:那里的"生成中"跑在别的会话上,
-  // 停不掉 —— 见 props.allowStopAction 的注释)。缺省开着 = 直聊零变化。
+  // 宿主可以整档关掉停止态。房面在 v2 时代关着(那里的"生成中"跑在别的会话上,
+  // 当时停不掉),E5 起链路可达已翻回 true —— 见 props.allowStopAction 的注释。
+  // 缺省开着 = 直聊零变化。
   if (!props.allowStopAction) return false
   return hasActiveGeneration.value && !hasMessageContent.value && !hasAttachments.value
 })

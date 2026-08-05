@@ -116,6 +116,8 @@ const COORDINATOR_FIELDS = [
   'judgment',
   'phase',
   'deadLetterCount',
+  // E5:撤牌那颗按钮的乐观并发前置条件(界面看见这张牌时房间是第几代)。
+  'floorEpoch',
 ] as const satisfies readonly (keyof CollabCoordinatorState)[]
 
 type CoordinatorMissing = Exclude<keyof CollabCoordinatorState, (typeof COORDINATOR_FIELDS)[number]>

@@ -1267,6 +1267,57 @@ export function applyCollabRoomSetPolicy(
 }
 
 /**
+ * 点名收一张牌(E5 人级停止的账面动作)。
+ *
+ * 与换代(`bumpCollabRoomEpoch`)的分别是**范围**:那一条把在外的牌一起作废,
+ * 这一条只动被点名的那张,同房其他人手里的牌一个都不碰。人级停止要的正是后者
+ * —— 用房级喊停冒充「停下 TA」,是 O2 当初宁可把撤牌做成只读也不肯犯的错。
+ *
+ * 与让位(`applyCollabRoomYield`)在**账上是同一个事实**(牌没了),差别只在理由:
+ * 那边写 `yield`(它自己交的),这边写 `revoked`(被收的)。所以这里不复用那条
+ * 路 —— 复用就得把 reason 掰成参数,而一个「让位」函数带一个「被强收」的理由,
+ * 读的人两边都要猜。
+ *
+ * 收完立刻重新发牌:空出来的座位就是给队里下一个人的(与过期回收同一条)。
+ * 账上没这张在外的牌 = 原样返回,**不报错**:UI 那一侧的乐观并发前置在调用方,
+ * 纯层这里重投一次是无害的。
+ */
+export function revokeCollabRoomLease(
+  account: CollabRoomAccount,
+  leaseId: string,
+  gates: CollabRoomGates,
+  ids: CollabRoomIdSource,
+): CollabRoomStep {
+  const lease = account.floor.active.find(entry => entry.leaseId === leaseId)
+  if (!lease) return { account, effects: emptyEffects() }
+
+  const effects = emptyEffects()
+  effects.broadcast.push(collabRoomFloorRevoked({
+    roomId: account.roomId,
+    agentId: lease.agentId,
+    leaseId: lease.leaseId,
+    reason: 'revoked',
+  }))
+
+  const outcome = grantFloor(
+    {
+      ...account,
+      floor: revokeFloorLease(account.floor, lease.leaseId),
+      leaseReasons: forgetLeaseReasons(account.leaseReasons, [lease.leaseId]),
+    },
+    gates,
+    ids,
+    {},
+  )
+  effects.broadcast.push(...outcome.broadcast)
+  effects.messages.push(...outcome.messages)
+  effects.granted.push(...outcome.granted)
+  if (outcome.judgment) effects.judgment = outcome.judgment
+
+  return { account: { ...outcome.account, seq: account.seq + 1 }, effects }
+}
+
+/**
  * 过期回收。牌带 ttl 时由宿主定期调 —— 一个跑飞的回合不该永远占着座位。
  *
  * 回收之后立刻重新发牌:空出来的座位就是给队里下一个人的。

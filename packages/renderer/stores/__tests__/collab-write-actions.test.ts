@@ -28,6 +28,8 @@ const api = vi.hoisted(() => ({
   createSession: vi.fn(),
   getSessionsList: vi.fn(),
   reactToCollabMessage: vi.fn(),
+  revokeCollabRoomLease: vi.fn(),
+  getCollabCoordinator: vi.fn(),
 }))
 
 vi.mock('@/platform', () => ({ platformApi: api }))
@@ -114,6 +116,68 @@ describe('collabBoard 写 action:回填约定 = 回复带的那份快照', () =>
 
     expect(api.stopCollabTask).toHaveBeenCalledWith('room-1', 'task-1')
     expect(response.stopped).toBe(true)
+  })
+})
+
+/**
+ * 人级停止(E5)的 store action。
+ *
+ * 这一条的回填约定与看板那几条**刻意不同**:撤成之后一个字都不本地改 —— 牌撤掉
+ * 房间会立刻补发下一张,那份新账只有运行时算得出,`collab:coordinator-changed`
+ * 会把它播回来。抢先删一行的话,补发出去的那张牌会在界面上凭空少半秒。
+ *
+ * `expectedEpoch` 由 store 现取而不是让调用方传:代数是屏幕上那份快照的属性,
+ * 不是按钮的参数 —— 让每个入口自己去翻,就是给它们各自翻错的机会。
+ */
+describe('collabBoard 人级停止(E5):epoch 由 store 现取', () => {
+  function seedCoordinator(store: ReturnType<typeof useCollabBoardStore>, floorEpoch: number) {
+    store.applyCoordinatorSnapshot('room-1', {
+      roomSessionId: 'room-1',
+      floorEpoch,
+      turns: [],
+      queue: [],
+      speaking: [],
+      typing: [],
+      seq: 1,
+      at: Date.now(),
+    } as never)
+  }
+
+  it('撤牌带上快照里的代数,结果原样回给 UI', async () => {
+    const store = useCollabBoardStore()
+    seedCoordinator(store, 5)
+    api.revokeCollabRoomLease.mockResolvedValue({
+      success: true,
+      result: { ok: true, revoked: true, agentId: 'fe', epoch: 5 },
+    })
+
+    const result = await store.revokeLease('room-1', 'room-1#L2')
+
+    expect(api.revokeCollabRoomLease).toHaveBeenCalledWith('room-1', 'room-1#L2', 5)
+    expect(result).toMatchObject({ ok: true, revoked: true, agentId: 'fe' })
+  })
+
+  it('epoch-stale 时顺手重取一次快照 —— 那正是「你这一屏过时了」的定义', async () => {
+    const store = useCollabBoardStore()
+    seedCoordinator(store, 5)
+    api.revokeCollabRoomLease.mockResolvedValue({
+      success: true,
+      result: { ok: false, reason: 'epoch-stale', epoch: 6 },
+    })
+    api.getCollabCoordinator.mockResolvedValue({ success: true, state: null })
+
+    const result = await store.revokeLease('room-1', 'room-1#L2')
+
+    expect(result.reason).toBe('epoch-stale')
+    await vi.waitFor(() => {
+      expect(api.getCollabCoordinator).toHaveBeenCalledWith('room-1')
+    })
+  })
+
+  it('快照上没有代数(读不到这间房)就不发请求 —— 不拿一个猜的数去撤牌', async () => {
+    const store = useCollabBoardStore()
+    expect(await store.revokeLease('room-1', 'room-1#L2')).toEqual({ ok: false, reason: 'not-a-room' })
+    expect(api.revokeCollabRoomLease).not.toHaveBeenCalled()
   })
 })
 

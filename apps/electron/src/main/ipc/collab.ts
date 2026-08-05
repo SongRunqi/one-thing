@@ -11,6 +11,7 @@ import type {
   CollabRoomClearHistoryRequest,
   CollabRoomFolderListRequest,
   CollabRoomFrozenRequest,
+  CollabRoomRevokeLeaseRequest,
   CollabRoomSpendRequest,
   CollabRoomUpdateRequest,
   CollabSchedulerLogTailRequest,
@@ -27,6 +28,7 @@ import {
   listCollabRoomFolder,
   reactToCollabMessage,
   readCollabSchedulerLogTail,
+  revokeCollabRoomLease,
   setCollabRoomBudgets,
   setCollabRoomConfig,
   setCollabRoomFrozen,
@@ -67,6 +69,25 @@ export function registerCollabHandlers(): void {
     try {
       const stopped = await stopCollabTaskWork(request.roomSessionId, request.taskId)
       return { success: true, stopped }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  /**
+   * 人级停止(E5)。三级停止里唯一此前不可达的一级 —— 房级换代把在外的牌一起
+   * 作废,卡级停一只手,而「停下 TA」在这条通道之前只能拿房级喊停冒充。
+   *
+   * **整体透传**(与 COLLAB_BOARD_ACT / COLLAB_AGENT_ACTIVITY_GET 同一条纪律):
+   * 请求原样递下去,一个字段名都不在中转里出现。`expectedEpoch` 这道乐观并发的
+   * 前置条件属于 app 层 —— handler 在这儿抢先判一次,就是第二本会漂的规则。
+   *
+   * 失败原因不翻译成 `error`:`epoch-stale` / `not-found` / `not-a-room` 三条都是
+   * **可操作的**结果,不是异常。真异常(运行时炸了)才走下面那条。
+   */
+  ipcMain.handle(IPC_CHANNELS.COLLAB_ROOM_REVOKE_LEASE, async (_event, request: CollabRoomRevokeLeaseRequest) => {
+    try {
+      return { success: true, result: await revokeCollabRoomLease(request) }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }

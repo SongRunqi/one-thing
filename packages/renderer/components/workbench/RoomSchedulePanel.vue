@@ -22,9 +22,28 @@
         <span class="rs-state">{{ lease.stateText }}</span>
         <span class="rs-meta">{{ lease.reason }}</span>
         <span class="rs-at">{{ formatCoordinatorElapsed(lease.since, now) }}</span>
-        <!-- 「撤牌」在这一版是**只读**的:见 <script> 里那段留待说明。 -->
         <span class="rs-lease-id">{{ shortLeaseId(lease.leaseId) }}</span>
+        <!--
+          「撤牌」= 人级停止(E5)。只动这一张牌,同房其他人不受影响 —— 这与
+          状态条那颗房级的「停」是两个动作,见 <script> 里那段说明。
+        -->
+        <Tooltip :text="`收回 ${lease.name} 手里的这张牌,并停掉它此刻在飞的那一轮`">
+          <button
+            type="button"
+            class="rs-revoke"
+            :disabled="revoking === lease.leaseId"
+            @click="revoke(lease)"
+          >
+            {{ revoking === lease.leaseId ? '收牌中' : '撤牌' }}
+          </button>
+        </Tooltip>
       </div>
+      <p
+        v-if="revokeError"
+        class="rs-empty is-warn"
+      >
+        {{ revokeError }}
+      </p>
 
       <!-- ② 举手队列:人 / 原因 / 卡在哪道闸 / 举了多久。 -->
       <div class="rs-sec">
@@ -176,17 +195,20 @@
  *
  * 这一层只画像素。措辞、闸的次序、着色分档、因果引用怎么读,全在 `room-schedule.ts`。
  *
- * ## 「撤牌」为什么是只读的
+ * ## 「撤牌」这颗按钮(E5 人级停止)
  *
- * 蓝图 §4.2 写的是「每行可操作『撤牌』(走既有 revoke)」。走查下来:**既有的
- * revoke 没有面向渲染层的通道**。运行时那侧只有 `stopCollabV3RoomFloor`
- * (换代 = 把**全部**牌一起作废),它已经挂在状态条那颗「停」上了;单张牌的
- * `revokeFloorLease` 只在房账内部被让位/过期/换代调用,没有 IPC 口。
+ * 蓝图 §4.2 写的是「每行可操作『撤牌』(走既有 revoke)」。O2 那一版把它做成了
+ * **只读**,理由是当时**既有的 revoke 没有面向渲染层的通道**:运行时那侧只有
+ * `stopCollabV3RoomFloor`(换代 = 把全部牌一起作废),而一颗写着「撤牌」、按下去
+ * 却把整间房清场的按钮,比没有这颗按钮糟得多。那一版同时点名了要真做该怎么做 ——
+ * 「在 O0 那一层加一条 `collab:room-revoke-lease`,带 leaseId + epoch 前置条件」。
  *
- * 所以这一版**只读**,并且刻意不拿房级喊停冒充行级撤牌 —— 一颗写着「撤牌」、按下去
- * 却把整间房清场的按钮,比没有这颗按钮糟得多。留待:要真做,该在 O0 那一层加一条
- * `collab:room-revoke-lease`(带 leaseId + epoch 前置条件,像看板的 `expectedRev`
- * 那样防误撤一张已经换过代的牌),而不是在这一层拼一个近似动作。
+ * E5 就是照那句话做的:通道有了(`revokeCollabRoomLease` → app 层
+ * `revokeCollabV3RoomLease`),按钮因此从只读翻成可操作,而且它撤的**就是这一行
+ * 那张牌** —— 撤牌 + 掐这条执行会话的流 + 停外部执行体,同房其他人一个字不受影响。
+ *
+ * epoch 前置条件由 store 现取(见 `collabBoard.revokeLease`):代数是屏幕上这份
+ * 快照的属性,不是按钮的参数。
  */
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
@@ -275,6 +297,36 @@ const logRows = computed(() => buildRoomScheduleLogRows({
   filter: filter.value,
   limit: ROOM_SCHEDULE_LOG_ROWS,
 }))
+
+/**
+ * 撤牌(E5 人级停止)。
+ *
+ * 三条失败原因各自有话可说,一条都不许退化成「操作失败」:`epoch-stale` 是"你这
+ * 一屏过时了"(store 已经顺手重取快照)、`not-found` 是"这张牌本来就已经不在了"、
+ * `not-a-room` 是"这个宿主/这间房够不着运行时"。原因说不清的按钮会让人反复点,
+ * 而每一次点都是一次真的停止尝试。
+ */
+const revoking = ref('')
+const revokeError = ref('')
+
+async function revoke(lease: { leaseId: string; name: string }): Promise<void> {
+  if (!props.roomSessionId || revoking.value) return
+  revoking.value = lease.leaseId
+  revokeError.value = ''
+  try {
+    const result = await collabBoardStore.revokeLease(props.roomSessionId, lease.leaseId)
+    if (result.ok) return
+    revokeError.value = result.reason === 'epoch-stale'
+      ? '这一屏已经是上一轮的事了(房间换过代),刚给你重取了一份。'
+      : result.reason === 'not-found'
+        ? `${lease.name} 手里这张牌已经不在了 —— 它刚让位、过期或被换代作废。`
+        : '够不着这间房的运行时(桌面端专属)。'
+  } catch (error) {
+    revokeError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    revoking.value = ''
+  }
+}
 
 function shortLeaseId(leaseId: string): string {
   const hash = leaseId.indexOf('#')
@@ -454,6 +506,29 @@ defineExpose({ reload })
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
+}
+
+/* 撤牌:与刷新那颗同一句法(裸字、悬停才亮)。停止是个重动作,但它不该在
+   一张诊断表上一直嚷嚷 —— 扎眼的位置留给要人动手的闸。 */
+.rs-revoke {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+}
+.rs-revoke:hover:not(:disabled) {
+  color: var(--ui-status-danger-fg, var(--color-danger));
+}
+.rs-revoke:disabled {
+  cursor: default;
+}
+
+.rs-empty.is-warn {
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 /* 闸:要人动手的四道加重(与状态条的排队徽标同一句法)。 */

@@ -80,11 +80,17 @@
             v-if="row.running"
             class="cd-elapsed"
           >{{ formatCoordinatorElapsed(row.startedAt, now) }}</span>
+          <!--
+            「停」在 E5 之前 emit 的是房级 `stopTurn`(换代 = 把在外的牌一起作废),
+            而它画在**某一行人**旁边 —— 语义与位置对不上:点小李那一行,阿般和
+            Iris 一起被打断。现在这一行有牌号(v3 快照里 `agentSessionId` 就是
+            leaseId)就走人级,只收这一张;没有牌号的行(v2 旧快照)才回落房级。
+          -->
           <button
             v-if="row.running"
             type="button"
             class="cd-act"
-            @click.stop="emit('stopTurn')"
+            @click.stop="row.agentSessionId ? emit('stopLease', row.agentSessionId) : emit('stopTurn')"
           >
             停
           </button>
@@ -255,8 +261,20 @@ const props = defineProps<{ roomSessionId: string }>()
 const emit = defineEmits<{
   /** 点「现在」里正在说的那一行 → 下钻到它的执行会话(与线程列表同一个靶子)。 */
   openThread: [sessionId: string]
-  /** 悬停出现的「停」—— 复用房头那个停止入口,不另开一条中止路径。 */
+  /**
+   * 房级喊停 —— 复用房头那个停止入口,不另开一条中止路径。
+   *
+   * E5 之后它只是**回落**:「现在」那几行只要有牌号就走下面那条人级的。
+   */
   stopTurn: []
+  /**
+   * 人级停止(E5):点名收回这一张牌。
+   *
+   * 与 `stopTurn` 分成两个事件而不是一个带可选参数的:两者的**影响面**差一个
+   * 数量级(一个人 vs 整间房),而一个"参数缺席就升级成全场清空"的事件,是那种
+   * 出事之后没人说得清为什么的接口。
+   */
+  stopLease: [leaseId: string]
 }>()
 
 const agentsStore = useAgentsStore()

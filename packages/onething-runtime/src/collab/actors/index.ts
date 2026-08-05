@@ -155,6 +155,7 @@ export {
   openCollabRoomBroadcast,
   pruneCollabRoomFloor,
   resolveCollabRoomHandBlock,
+  revokeCollabRoomLease,
   settleCollabRoomBroadcast,
 } from './room-rules.js'
 export type {

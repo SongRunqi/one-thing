@@ -35,6 +35,7 @@
         :room-session-id="roomId"
         @open-thread="openThread"
         @stop-turn="stopRoomTurn"
+        @stop-lease="stopRoomLease"
       />
 
       <div
@@ -315,6 +316,19 @@ function closeThread(): void {
 function stopRoomTurn(): void {
   if (!roomId.value) return
   void chatStore.stopGeneration(roomId.value)
+}
+
+/**
+ * 人级停止(E5):状态条上那颗「停」画在**某一行人**旁边,收的就该是那个人的牌。
+ *
+ * 与上面那条同样是「不另开一条中止路径」—— 走的是调度页那颗「撤牌」的同一个
+ * store 动作(epoch 前置条件在里面现取)。失败**静默**:这一颗是悬停才出现的
+ * 微动作,没有放提示条的地方;三条失败原因(过时/牌已不在/够不着运行时)在这里
+ * 的用户可见后果是一样的——那一行还在,再点一次即可。要看原因去调度页那一面。
+ */
+function stopRoomLease(leaseId: string): void {
+  if (!roomId.value || !leaseId) return
+  void collabBoardStore.revokeLease(roomId.value, leaseId)
 }
 </script>
 

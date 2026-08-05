@@ -75,6 +75,14 @@ export {
   hasActiveCollabV3Work as hasActiveCollabWork,
   stopCollabV3TaskWork as stopCollabTaskWork,
 } from './actors/runtime.js'
+/**
+ * 人级停止(E5)—— 三级停止的第三级,`COLLAB_ROOM_REVOKE_LEASE` 通道吃这个名字。
+ *
+ * 房级在 `stop-door.ts`(界面语义与运行时语义分家的那一层),卡级在上面那条,
+ * 这一条直接对外:它没有"不是 v3 房就回落 v2"的第二条路可走 —— v2 从来没有过
+ * 人级停止,回落的目的地是空的。
+ */
+export { revokeCollabV3RoomLease as revokeCollabRoomLease } from './actors/runtime.js'
 export { attachCollabMentions } from './mentions.js'
 export { attachCollabReplyTo } from './reply-quote.js'
 export {

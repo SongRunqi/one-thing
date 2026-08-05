@@ -365,10 +365,63 @@ export interface CollabCoordinatorState {
    * 是那两者之间的第一条分界线。
    */
   deadLetterCount: number
+  /**
+   * 这间房此刻的发言权代数(E5 人级停止)。
+   *
+   * 撤牌那颗按钮拿它当**乐观并发的前置条件**——与看板的 `expectedRev` 同一个
+   * 形状。牌号本身已经是唯一的,代数管的是另一件事:界面上这一屏描述的是哪一轮。
+   * 代数变过就说明这一屏说的已经是上一轮的事,此时撤牌撤到的很可能是无辜的人。
+   *
+   * 可选:v2 那侧的协调器快照没有代数这个概念,缺席读作「不做前置校验」。
+   */
+  floorEpoch?: number
 }
 
 export interface CollabCoordinatorGetRequest {
   roomSessionId: string
+}
+
+/**
+ * 人级停止(E5):点名把某一张在外的牌收回来。
+ *
+ * 三级停止的第三级。房级是 `stopRoomFloor`(换代,全场清空)、卡级是
+ * `COLLAB_TASK_STOP`(停一张卡上的那只手),而「停下 TA」在此之前**不可达** ——
+ * 界面上只能拿房级喊停冒充,而那会把同房其他人一起打断。
+ */
+export interface CollabRoomRevokeLeaseRequest {
+  roomSessionId: string
+  /** 要收的那张牌。v3 快照里它就是 `CollabCoordinatorTurn.agentSessionId`。 */
+  leaseId: string
+  /** 界面看见这张牌时房间的代数。与运行时对不上就拒绝(见 `floorEpoch`)。 */
+  expectedEpoch: number
+}
+
+/** 撤牌为什么没做成 —— 每一条都是**可操作的**,不留 null 漏到界面。 */
+export type CollabRoomRevokeLeaseFailure =
+  /** 代数对不上:界面上那一屏说的已经是上一轮的事,刷新再看。 */
+  | 'epoch-stale'
+  /** 账上没这张在外的牌:它已经让位/过期/被换代作废了,这一停无事可做。 */
+  | 'not-found'
+  /** 这不是一间(跑着 v3 运行时的)房。 */
+  | 'not-a-room'
+
+export interface CollabRoomRevokeLeaseResult {
+  ok: boolean
+  revoked?: true
+  reason?: CollabRoomRevokeLeaseFailure
+  /**
+   * 运行时此刻的代数。`epoch-stale` 时**必带** —— 界面据它自愈(重取快照),
+   * 而不是让用户对着一颗永远失败的按钮猜为什么。
+   */
+  epoch?: number
+  /** 被收牌的那位。成功时带上,供界面给出「已让 X 停下」这类确证文案。 */
+  agentId?: string
+}
+
+export interface CollabRoomRevokeLeaseResponse {
+  success: boolean
+  error?: string
+  result?: CollabRoomRevokeLeaseResult
 }
 
 export interface CollabCoordinatorGetResponse {

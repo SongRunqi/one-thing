@@ -88,17 +88,23 @@
         @cancel="pendingReplyTo = null"
       />
 
-      <!-- `allow-stop-action="false"`:房面不出现停止态。房里的"在跑"指的是各
-           成员的**执行会话**,房会话自己从来没有流 —— 那颗停止钮按下去停不掉
-           任何东西(真机走查)。发完就回到发送态,草稿为空时按既有规则 disabled。
-           真正"能停"是引擎侧的事(collab turn 中断 / 执行会话 abort),接通后把
-           这个开关翻回来即可。 -->
+      <!-- `allow-stop-action="true"`:房面**有**停止态(E5)。
+           这个开关当初是 `false`,理由是真机走查的结论——「那颗停止钮按下去停不掉
+           任何东西」:房会话自己从来没有流,回合跑在各成员的执行会话上,而当时
+           那条链只掐得到房会话。
+           v3 之后那条链全程可达:停止 → `abortStream` → 装配层注入的
+           `abortCollabRoomTurnForStop` → `stopCollabV3RoomFloor`,它按回合登记簿
+           找到这间房在飞的每一条执行会话逐条 abort、换代作废在外的牌,并对外部
+           执行体再调一次 `interrupt`(E4;abort 掐不到别的进程里那颗大脑)。
+           显示条件不在这里 —— `InputBox` 的 `hasActiveGeneration` 早就读
+           `collabBoardStore.isRoomTurnActive`,房间的"在跑"一直都答得出,只是被
+           这个开关整档挡住了。 -->
       <InputBox
         ref="inputBoxRef"
         :is-loading="isGenerating"
         :session-id="effectiveSessionId"
         :placeholder="composerPlaceholder"
-        :allow-stop-action="false"
+        :allow-stop-action="true"
         @send-message="handleSendMessage"
         @stop-generation="handleStopGeneration"
         @switch-session="(sessionId) => emit('switchSession', sessionId)"

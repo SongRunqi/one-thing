@@ -76,7 +76,13 @@ import {
   type CollabRoomAccount,
   type CollabRoomJudgmentRequest,
 } from '@onething/runtime/collab/actors'
-import { isActiveAgent, type ChatMessage, type CollabCoordinatorState } from '@shared/ipc.js'
+import {
+  isActiveAgent,
+  type ChatMessage,
+  type CollabCoordinatorState,
+  type CollabRoomRevokeLeaseRequest,
+  type CollabRoomRevokeLeaseResult,
+} from '@shared/ipc.js'
 
 import {
   broadcastCollabAgentActivity,
@@ -935,6 +941,88 @@ export function stopCollabV3RoomFloor(sessionId: string): boolean | null {
     console.error('[collab-v3] 换代失败:', error)
   })
   return hadFloor || turns.length > 0
+}
+
+/**
+ * 人级停止(E5):点名把某一张在外的牌收回来。
+ *
+ * ## 为什么这一级此前不可达
+ *
+ * 三级停止里房级(上面那个)与卡级(`stopCollabV3TaskWork`)都有对外的口,唯独
+ * 「停下 TA」没有:`revokeFloorLease` 只在房账内部被让位/过期/换代调用。界面上
+ * 能做的只有拿房级喊停冒充,而那会把同房其他人一起打断 —— O2 因此宁可把调度页
+ * 那颗「撤牌」做成只读(`RoomSchedulePanel.vue` 里那段说明),也不肯装一个名不
+ * 副实的按钮。这个函数就是那段说明里点名要的东西。
+ *
+ * ## 四件事,一件不少(与房级同构,只是范围收到一张牌)
+ *
+ *  1. **撤这张牌** —— `actor.revokeLease`(账 + 广播 floor-revoked + 立刻补发);
+ *  2. **掐我们这侧的流** —— `engine.abort(execSessionId)`;
+ *  3. **掐外部执行体** —— `interruptExternalAgentSessions`,能力位说了算(E4/G10);
+ *  4. **结算 pending 审批/提问** —— **不在这里做**,见下。
+ *
+ * ## 谁已经做了什么:abort 与 settle 的职责划分
+ *
+ * `engine.abort` 的最后一行是 `onSessionCleared(sessionId)`(core
+ * `headless-stream-engine.ts`),它在装配层落到 `clearPermissionSession` ——
+ * 那一个回调里 `Permission.clearSession` 与 `Interaction.clearSession` 同进同退
+ * (`app/engine/stream-engine-runtime.ts`)。两者都是**逐条 settle 再删表**。
+ * 所以这里再补一次结算是**重复**的:重复 settle 一条已经结算过的 pending 不会
+ * 更干净,只会多一处将来会与内核漂移的账。这一段写下来是因为「abort 到底带不
+ * 带走审批」是本期唯一一个必须查证才敢不做的问题。
+ *
+ * ## epoch 前置条件
+ *
+ * 仿看板的 `expectedRev`:界面看见这张牌时房间是第几代,撤的时候就得还是第几代。
+ * 牌号本身已经唯一,代数管的是**这一屏描述的是哪一轮** —— 中间换过代(用户刚
+ * 喊过停、换过相、有人插过话),这一屏说的就已经是上一轮的事,此时撤牌撤到的
+ * 很可能是刚被发到牌的下一位无辜者。对不上就拒绝,并把当前代数回给界面自愈。
+ */
+export async function revokeCollabV3RoomLease(
+  request: CollabRoomRevokeLeaseRequest,
+): Promise<CollabRoomRevokeLeaseResult> {
+  const runtime = state
+  if (!runtime) return { ok: false, reason: 'not-a-room' }
+  const entry = runtime.rooms.get(request.roomSessionId)
+  if (!entry) return { ok: false, reason: 'not-a-room' }
+
+  const epoch = entry.actor.account.floor.epoch
+  if (request.expectedEpoch !== epoch) return { ok: false, reason: 'epoch-stale', epoch }
+
+  const lease = entry.actor.account.floor.active.find(item => item.leaseId === request.leaseId)
+  if (!lease) return { ok: false, reason: 'not-found', epoch }
+  const agentId = lease.agentId
+
+  /**
+   * **先掐流,后撤牌**。反过来的话补发出去的下一张牌可能在同一个 tick 里就把新的
+   * 一轮起跑了,而我们随后那次 abort 打的是刚出生的那条流(靶子按 execSessionId
+   * 取,而登记簿此刻已经换了人)。房级那侧没有这个次序问题 —— 换代之后没有人会
+   * 被补发。
+   */
+  const turns = collabV3TurnsInRoom(request.roomSessionId)
+    .filter(turn => turn.leaseId === request.leaseId)
+  const engine = getStreamEngineSafe()
+  // abort 顺带结算这条会话的 pending 审批/提问(见上「职责划分」)。
+  for (const turn of turns) engine?.abort(turn.execSessionId)
+
+  // 外部执行体要再停一次:我们的 abort 掐不到别的进程里的那颗大脑(E4/G10)。
+  // 动态 import 与房级喊停同一个理由 —— 静态引会把连接器注册表拖进每一个 import
+  // 这个文件的协作测试的收集阶段。
+  if (turns.length > 0) {
+    void import('../../external-agents/index.js')
+      .then(async module => {
+        for (const turn of turns) {
+          await module.interruptExternalAgentSessions(turn.execSessionId)
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('[collab-v3] 外部执行体中断失败:', error)
+      })
+  }
+
+  const revoked = await entry.actor.revokeLease(request.leaseId)
+  if (!revoked) return { ok: false, reason: 'not-found', epoch }
+  return { ok: true, revoked: true, agentId, epoch: entry.actor.account.floor.epoch }
 }
 
 /**

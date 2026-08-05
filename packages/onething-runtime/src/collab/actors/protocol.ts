@@ -67,6 +67,14 @@ export type CollabFloorRevokeReason =
   | 'frozen'
   /** 裁判换了发言策略。 */
   | 'policy-changed'
+  /**
+   * 用户点名把这一张牌收回来(E5 人级停止)。
+   *
+   * 与 `epoch-bumped` 的分别是**范围**,不是力度:换代把在外的牌一起作废(「停下
+   * 这间房」),这一条只动被点名的那一张,同房其他人一个字都不受影响。时间轴上
+   * 两者必须分得开 —— 一行写着「换代」的记录会让人以为整间房停过。
+   */
+  | 'revoked'
 
 export interface CollabRoomFloorRevokedVerb {
   type: 'room:floor-revoked'

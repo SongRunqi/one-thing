@@ -249,6 +249,13 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SET_BUDGETS, { roomSessionId, ...budgets }),
 	getCollabRoomSpend: (roomSessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SPEND_GET, { roomSessionId }),
+		// 人级停止(E5)。三个字段都是**地址**:哪间房、哪张牌、界面看见它时是第几代。
+		revokeCollabRoomLease: (roomSessionId: string, leaseId: string, expectedEpoch: number) =>
+			ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_REVOKE_LEASE, {
+				roomSessionId,
+				leaseId,
+				expectedEpoch,
+			}),
 	getCollabCoordinator: (roomSessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_COORDINATOR_GET, { roomSessionId }),
 	// Agent 活动快照的冷启动补水(D8 §3.1)。不带 agentIds = 此刻开着心智循环的

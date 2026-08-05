@@ -52,6 +52,7 @@ import {
   openCollabRoomBroadcast,
   pruneCollabRoomFloor,
   resolveCollabRoomHandBlock,
+  revokeCollabRoomLease,
   settleCollabRoomBroadcast,
   type CollabActorVerb,
   type CollabFloorRevokeReason,
@@ -303,6 +304,27 @@ export class CollabRoomActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     this.accountStore.save(this.state)
     this.recordSchedulerStep(before, step.effects)
     await this.commit(step.effects)
+  }
+
+  /**
+   * 点名收一张牌 + 立刻补发(E5 人级停止的账面动作)。
+   *
+   * 返回 false = 账上没这张在外的牌(已经让位/过期/换代作废了),什么都没发生。
+   * 调用方据此回一句可操作的 `not-found`,而不是让界面收到一个说不清的 null。
+   *
+   * 形状与 `bumpEpoch` / `sweepExpiredLeases` 逐行一致(纯层算 → 落账 → 记时间轴
+   * → commit),而不是走 `decide(verb)`:那条路是**动词**的入口,而「用户收牌」
+   * 不是任何一位 actor 说出来的话 —— 它是宿主对房间的一次外科操作,与换代同类。
+   */
+  async revokeLease(leaseId: string): Promise<boolean> {
+    const before = this.state
+    const step = revokeCollabRoomLease(this.state, leaseId, this.gates(), this.ids)
+    if (step.account === before) return false
+    this.state = step.account
+    this.accountStore.save(this.state)
+    this.recordSchedulerStep(before, step.effects)
+    await this.commit(step.effects)
+    return true
   }
 
   /** 过期回收 + 立刻补发。宿主定期调(牌带 ttl 时才有事做)。 */
@@ -570,6 +592,9 @@ export function buildCollabRoomActorSnapshot(options: {
       },
     },
     plan: buildCollabRoomActorPlanView(account),
+    // 这间房此刻的代数(E5)。租约行上的「撤牌」拿它当乐观并发的前置条件 ——
+    // 界面上那张牌与运行时手里那张必须是同一代,否则撤的是上一轮的人。
+    floorEpoch: account.floor.epoch,
     log: [],
     judgment: buildCollabRoomActorJudgmentView(account),
     ...(phase ? { phase } : {}),

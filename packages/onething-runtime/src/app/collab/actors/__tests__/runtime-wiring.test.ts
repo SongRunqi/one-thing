@@ -174,6 +174,7 @@ const {
   peekCollabV3Agent,
   peekCollabV3Room,
   peekCollabV3RoomSnapshot,
+  revokeCollabV3RoomLease,
   shutdownCollabV3Runtime,
   stopCollabV3RoomFloor,
   warmCollabV3Agents,
@@ -213,6 +214,9 @@ beforeEach(() => {
   mocks.emitted.length = 0
   mocks.deleteListeners.length = 0
   mocks.aborted.length = 0
+  // 与 `aborted` 同进同退。房级那条用例只 `toContain`,所以这一格漏了重置也没
+  // 现形;人级停止要断言的恰恰是"**没有**碰到旁人",跨用例串味会让它假绿。
+  mocks.externallyInterrupted.length = 0
 })
 
 afterEach(async () => {
@@ -366,6 +370,214 @@ describe('D6-a 装配:喊停清三样', () => {
 
   it('不是 v3 房时返回 null,让调用方回落 v2', () => {
     expect(stopCollabV3RoomFloor('chat-1')).toBeNull()
+  })
+})
+
+/**
+ * E5 人级停止 —— 三级停止里唯一此前不可达的一级。
+ *
+ * 与上面那一档(房级)是**同一组机械动作、不同的范围**,所以这里问的全是范围:
+ * 撤的是不是只有那一张、别人的牌动没动、代数对不上时会不会撤错一轮。
+ *
+ * 两位同事的房是**必需**的(与房级那条用最小房刚好相反):人级停止的全部意义在于
+ * 「同房其他人不受影响」,一个人的房根本证不出这件事。
+ */
+describe('E5:人级停止(撤一张牌)', () => {
+  /**
+   * 起两轮并行的回合,返回两张牌各自的语境。
+   *
+   * 走 `free` 档(缺省)+ 两个 @:两位同事同时拿到牌,于是「撤一张、另一张不动」
+   * 这件事才有可观测的现场。
+   */
+  async function seedTwoHolders() {
+    seedRoom(['fe', 'pm'])
+    const mind = createCollabScriptedMindPort([
+      { agentId: 'fe', roomId: ROOM, says: ['小李在想'] },
+      { agentId: 'pm', roomId: ROOM, says: ['阿明在想'] },
+    ])
+    mind.hold()
+    await initializeCollabV3Runtime({ ports: { mind } })
+    await warmCollabV3Agents()
+
+    await handleCollabRoomSendMessage(ROOM, {
+      content: '@小李 @阿明 都说说',
+      mentions: [
+        { agentId: 'fe', label: '小李' },
+        { agentId: 'pm', label: '阿明' },
+      ],
+    })
+    await vi.waitFor(() => {
+      expect(mind.calls.length).toBe(2)
+    })
+    // 登记簿由生产的 engine-mind-port 落下;剧本化端口不驱动引擎,手工补两条
+    // (与房级那条用例同一个理由)。
+    const epoch = peekCollabV3Room(ROOM)!.account.floor.epoch
+    for (const call of mind.calls) {
+      beginCollabV3Turn({
+        agentId: call.agentId,
+        roomSessionId: ROOM,
+        execSessionId: call.execSessionId,
+        leaseId: call.leaseId,
+        epoch,
+        startedAt: Date.now(),
+      })
+    }
+    const target = mind.calls.find(call => call.agentId === 'fe')!
+    const bystander = mind.calls.find(call => call.agentId === 'pm')!
+    return { mind, epoch, target, bystander }
+  }
+
+  it('撤这一张:牌没了、流掐了、外部执行体被 interrupt,别人的牌不动', async () => {
+    const { mind, epoch, target, bystander } = await seedTwoHolders()
+    try {
+      const result = await revokeCollabV3RoomLease({
+        roomSessionId: ROOM,
+        leaseId: target.leaseId,
+        expectedEpoch: epoch,
+      })
+      expect(result).toMatchObject({ ok: true, revoked: true, agentId: 'fe' })
+
+      const after = peekCollabV3Room(ROOM)!.account
+      // ① 只有被点名的那张牌没了 —— **代数没涨**,这是与房级喊停最关键的分别。
+      expect(after.floor.epoch).toBe(epoch)
+      expect(after.floor.revoked).toContain(target.leaseId)
+      expect(after.floor.active.map(lease => lease.leaseId)).not.toContain(target.leaseId)
+      // ② 旁观者手里那张牌一个字都没动。
+      expect(after.floor.active.map(lease => lease.leaseId)).toContain(bystander.leaseId)
+
+      // ③ 掐的是被点名那条执行会话,旁观者那条没被碰。
+      expect(mocks.aborted).toContain(target.execSessionId)
+      expect(mocks.aborted).not.toContain(bystander.execSessionId)
+
+      // ④ 外部执行体再停一次(E4/G10)。异步的(动态 import),等一下。
+      await vi.waitFor(() => {
+        expect(mocks.externallyInterrupted).toContain(target.execSessionId)
+      })
+      expect(mocks.externallyInterrupted).not.toContain(bystander.execSessionId)
+    } finally {
+      mind.release()
+    }
+    await drainCollabV3Runtime()
+  })
+
+  /**
+   * 代数前置条件 —— 仿看板的 `expectedRev`。
+   *
+   * 中间有人喊过停(换代)之后,界面上那一屏说的已经是上一轮的事;此时按下撤牌
+   * 撤到的很可能是刚被补发到牌的下一位。所以拒绝,并**回报当前代数**让界面自愈。
+   */
+  it('代数换过就拒绝,并回报当前代数(不撤错一轮)', async () => {
+    const { mind, epoch, target } = await seedTwoHolders()
+    try {
+      /**
+       * 直接让房间换代,而不是走 `stopCollabV3RoomFloor` —— 这条用例问的是
+       * 「代数变过了会怎样」,与代数**为什么**变无关;而房级喊停会顺带掐流、
+       * 调 interrupt,把下面那条「拒绝就是什么都没做」的现场整个污染掉。
+       */
+      await peekCollabV3Room(ROOM)!.bumpEpoch('epoch-bumped')
+      expect(peekCollabV3Room(ROOM)!.account.floor.epoch).toBe(epoch + 1)
+
+      const result = await revokeCollabV3RoomLease({
+        roomSessionId: ROOM,
+        leaseId: target.leaseId,
+        expectedEpoch: epoch,
+      })
+      expect(result).toEqual({ ok: false, reason: 'epoch-stale', epoch: epoch + 1 })
+      // 拒绝就是**什么都没做**:不能顺手把流也掐了(那正是"撤错一轮"的形状)。
+      expect(mocks.aborted).not.toContain(target.execSessionId)
+      expect(mocks.externallyInterrupted).not.toContain(target.execSessionId)
+    } finally {
+      mind.release()
+    }
+    await drainCollabV3Runtime()
+  })
+
+  it('账上没这张在外的牌 = not-found(带当前代数),不是一次静默的空操作', async () => {
+    const { mind, epoch } = await seedTwoHolders()
+    try {
+      expect(await revokeCollabV3RoomLease({
+        roomSessionId: ROOM,
+        leaseId: 'lease-does-not-exist',
+        expectedEpoch: epoch,
+      })).toEqual({ ok: false, reason: 'not-found', epoch })
+    } finally {
+      mind.release()
+    }
+    await drainCollabV3Runtime()
+  })
+
+  it('不是一间 v3 房 = not-a-room,不漏 null 到界面', async () => {
+    seedRoom(['fe'])
+    await initializeCollabV3Runtime({ ports: { mind: createCollabScriptedMindPort([]) } })
+    expect(await revokeCollabV3RoomLease({
+      roomSessionId: 'chat-1',
+      leaseId: 'lease-x',
+      expectedEpoch: 1,
+    })).toEqual({ ok: false, reason: 'not-a-room' })
+    await drainCollabV3Runtime()
+  })
+
+  /**
+   * 能力位为假就**不调** interrupt(E0 能力表,原则 5)。
+   *
+   * 这条钉的是「门在不在」而不是「表里今天写的是什么」:`interruptExternalAgentSessions`
+   * 自己按 `capabilities.interrupt` 逐个连接器门控(它有自己的单测),而人级停止这
+   * 条路必须**经过**那道门 —— 绕过去自己拼一次 interrupt,就是第二本会漂的能力表。
+   * 没有在飞的回合时一次都不该调:没有靶子的 interrupt 是纯噪声。
+   */
+  it('没有在飞的回合就不碰外部执行体(能力门与靶子都不在)', async () => {
+    seedRoom(['fe'])
+    const mind = createCollabScriptedMindPort([{ agentId: 'fe', roomId: ROOM, says: [] }])
+    mind.hold()
+    await initializeCollabV3Runtime({ ports: { mind } })
+    await warmCollabV3Agents()
+    await handleCollabRoomSendMessage(ROOM, {
+      content: '@小李 在吗',
+      mentions: [{ agentId: 'fe', label: '小李' }],
+    })
+    try {
+      await vi.waitFor(() => {
+        expect(peekCollabV3Room(ROOM)!.account.floor.active.length).toBe(1)
+      })
+      const account = peekCollabV3Room(ROOM)!.account
+      const lease = account.floor.active[0]!
+      // 登记簿刻意**不补**:牌在外面,但没有一轮在飞(「持牌等大脑」)。
+      const result = await revokeCollabV3RoomLease({
+        roomSessionId: ROOM,
+        leaseId: lease.leaseId,
+        expectedEpoch: account.floor.epoch,
+      })
+      expect(result.ok).toBe(true)
+      expect(mocks.externallyInterrupted).toHaveLength(0)
+      expect(mocks.aborted).toHaveLength(0)
+    } finally {
+      mind.release()
+    }
+    await drainCollabV3Runtime()
+  })
+
+  /**
+   * pending 审批 / 提问由谁结算 —— 本期唯一一个必须查证才敢**不做**的问题。
+   *
+   * `engine.abort` 的最后一行是 `onSessionCleared`,它在装配层落到
+   * `clearPermissionSession`,那一个回调里 `Permission.clearSession` 与
+   * `Interaction.clearSession` 同进同退。所以人级停止不再补一次结算 —— 这条用例
+   * 钉的就是**那条路真的被走到了**:撤牌打到 abort 上,而 abort 带着结算。
+   * 哪天有人把撤牌改成"只撤账不掐流",这里当场红。
+   */
+  it('结算走 abort 那条既有的路 —— 撤牌必须打到 engine.abort 上', async () => {
+    const { mind, epoch, target } = await seedTwoHolders()
+    try {
+      await revokeCollabV3RoomLease({
+        roomSessionId: ROOM,
+        leaseId: target.leaseId,
+        expectedEpoch: epoch,
+      })
+      expect(mocks.aborted).toContain(target.execSessionId)
+    } finally {
+      mind.release()
+    }
+    await drainCollabV3Runtime()
   })
 })
 

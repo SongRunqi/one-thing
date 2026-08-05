@@ -497,6 +497,10 @@ export const IPC_CHANNELS = {
 	// 状态/摘要/运行时)。看板、房间设置、已花预算一概不动。
 	COLLAB_ROOM_CLEAR_HISTORY: "collab:room-clear-history",
 	COLLAB_ROOM_SPEND_GET: "collab:room-spend-get",
+	// 人级停止(E5):点名收回某一张在外的牌 —— 三级停止里唯一此前不可达的一级。
+	// 带 leaseId + expectedEpoch(乐观并发,仿看板的 expectedRev):代数换过就拒绝
+	// 并回报当前代数,免得撤到上一轮那位无辜的人。
+	COLLAB_ROOM_REVOKE_LEASE: "collab:room-revoke-lease",
 	// 协调器状态条的冷启动读取;实时更新走 'collab:coordinator-changed' 会话事件
 	// (与看板同一条链路)。
 	COLLAB_COORDINATOR_GET: "collab:coordinator-get",
