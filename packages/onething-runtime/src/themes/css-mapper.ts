@@ -11,7 +11,7 @@ import {
   THEME_NEUTRAL_COLOR_TOKENS,
 } from './resolver.js'
 import type { ResolvedHighlightStyle, ResolvedUIStyle, ThemeNeutralColorToken } from './resolver.js'
-import { guaranteeMinMixOpacity } from './role-mapping.js'
+import { deriveRegionOverlay, guaranteeMinMixOpacity } from './role-mapping.js'
 
 /**
  * Maps theme property paths to CSS variable names
@@ -311,114 +311,33 @@ const HIGHLIGHT_LEGACY_FG_VAR_MAP: Partial<Record<SemanticHighlightToken, string
 
 type UIStyleField = keyof ResolvedUIStyle
 
-const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleField, string[]>>>> = {
-  'ui.accent.primary': {
-    fg: ['--accent', '--accent-main'],
-  },
-  'ui.accent.subtle': {
-    fg: ['--accent-sub'],
-  },
-  'ui.surface.app': {
-    bg: ['--bg-app', '--bg'],
-  },
-  'ui.surface.sidebar': {
-    bg: ['--bg-sidebar', '--panel-2'],
-  },
-  'ui.surface.chat': {
-    bg: ['--bg-chat', '--chat-canvas'],
-  },
-  'ui.surface.panel': {
-    bg: ['--bg-panel', '--panel'],
-  },
+/**
+ * 语义 UI token 的**别名**输出(P4b 前叫 UI_LEGACY_VAR_MAP,曾双写 159 个 legacy 变量名)。
+ *
+ * P4a/P4b 把 renderer 里对那 159 个名字的全部引用换成了 `--ui-*` 正主
+ * (2949 处替换 + 2663 处自指 fallback 折叠),双轨到此终止 —— 现在这里只剩两类
+ * **仍有消费者**的别名,逐条 grep 过:
+ *
+ * 1. `--shadow-floating` / `--shadow-elevated` —— 不是 legacy,是 ui-system.md §2
+ *    写进规则卡的浮层阴影档位,renderer 里 11 处按档位名引用。
+ * 2. `--ui-table-*` / `--ui-category-N-*` —— 也不是 legacy,而是**比自动生成名更好听的
+ *    正式名**(自动名会是 `--ui-table-border-border` / `--ui-category-1-icon-fg`)。
+ *    Badge / Table / RightWorkbenchPanel 用的都是这一组短名。
+ *
+ * 停掉的那 159 个名字(`--accent` / `--text` / `--hover` / `--border` …)仍由
+ * `variables.css` 静态定义着,只是**不再被主题覆写** —— 换句话说它们从"跟着主题变的
+ * 第二套真相"退化成"没人该用的静态兜底"。新代码引用它们等于拿到不跟主题的死值。
+ *
+ * 注:`HIGHLIGHT_LEGACY_FG_VAR_MAP`(`--text-code-*` / `--hljs-*`)不在此列 ——
+ * hljs-theme.css、diff-theme.ts、StreamingCodeBlock 仍在按那套名字消费,照旧双写。
+ */
+const UI_ALIAS_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleField, string[]>>>> = {
   'ui.surface.elevated': {
-    bg: ['--bg-elevated'],
     shadow: ['--shadow-elevated'],
   },
   'ui.surface.floating': {
-    bg: ['--bg-floating'],
     shadow: ['--shadow-floating'],
   },
-  'ui.surface.overlay': {
-    bg: ['--bg-modal-overlay'],
-  },
-  'ui.surface.menu': {
-    bg: ['--bg-menu'],
-  },
-  'ui.surface.menuHover': {
-    bg: ['--bg-menu-item-hover'],
-  },
-  'ui.surface.input': {
-    bg: ['--bg-input'],
-    border: ['--border-input'],
-  },
-  'ui.surface.inputFocus': {
-    bg: ['--bg-input-focus'],
-    border: ['--border-input-focus'],
-  },
-  'ui.surface.codeInline': {
-    bg: ['--bg-code-inline'],
-  },
-  'ui.surface.codeBlock': {
-    bg: ['--bg-code-block'],
-    border: ['--border-code'],
-  },
-  'ui.surface.codeHeader': {
-    bg: ['--bg-code-header'],
-  },
-  'ui.surface.tooltip': {
-    bg: ['--bg-tooltip'],
-    fg: ['--text-tooltip'],
-  },
-  'ui.surface.modal': {
-    bg: ['--bg-modal'],
-    fg: ['--text-modal-body'],
-  },
-  'ui.surface.note': {
-    bg: ['--bg-note'],
-    fg: ['--text-note'],
-    border: ['--border-note'],
-  },
-  'ui.text.primary': {
-    fg: ['--text-primary', '--text'],
-  },
-  'ui.text.secondary': {
-    fg: ['--text-secondary'],
-  },
-  'ui.text.muted': {
-    fg: ['--text-muted', '--muted'],
-  },
-  'ui.text.faint': {
-    fg: ['--text-faint'],
-  },
-  // ui.text.placeholder intentionally has no legacy alias: ui.editor.placeholder
-  // owns --text-input-placeholder because its value is contrast-repaired
-  // against the composer input surface, which is where the var is consumed.
-  'ui.text.disabled': {
-    fg: ['--text-input-disabled', '--text-btn-disabled'],
-  },
-  'ui.text.link': {
-    fg: ['--text-link'],
-  },
-  'ui.text.linkHover': {
-    fg: ['--text-link-hover'],
-  },
-  'ui.border.default': {
-    border: ['--border-default', '--border'],
-  },
-  'ui.border.subtle': {
-    border: ['--border-subtle'],
-  },
-  'ui.border.strong': {
-    border: ['--border-strong'],
-  },
-  'ui.border.divider': {
-    border: ['--border-divider'],
-  },
-  'ui.border.focus': {
-    border: ['--border-input-focus'],
-  },
-  // ui.border.selected intentionally has no legacy alias: --border-accent is
-  // owned by ui.action.primary (the plain accent border consumers expect).
   'ui.table.headerBg': {
     bg: ['--ui-table-header-bg'],
   },
@@ -427,90 +346,6 @@ const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleF
   },
   'ui.table.border': {
     border: ['--ui-table-border'],
-  },
-  'ui.action.primary': {
-    bg: ['--bg-btn-primary'],
-    fg: ['--text-btn-primary'],
-    border: ['--border-accent'],
-  },
-  'ui.action.primaryHover': {
-    bg: ['--bg-btn-primary-hover'],
-  },
-  'ui.action.secondary': {
-    bg: ['--bg-btn-secondary'],
-    fg: ['--text-btn-secondary'],
-  },
-  'ui.action.secondaryHover': {
-    bg: ['--bg-btn-secondary-hover'],
-  },
-  'ui.action.ghost': {
-    bg: ['--bg-btn-ghost'],
-    fg: ['--text-btn-ghost'],
-  },
-  'ui.action.ghostHover': {
-    bg: ['--bg-btn-ghost-hover'],
-  },
-  'ui.action.danger': {
-    bg: ['--bg-btn-danger'],
-    fg: ['--text-btn-danger'],
-    border: ['--border-error'],
-  },
-  'ui.action.dangerHover': {
-    bg: ['--bg-btn-danger-hover'],
-  },
-  'ui.action.disabled': {
-    bg: ['--bg-input-disabled'],
-    fg: ['--text-btn-disabled', '--text-input-disabled'],
-  },
-  'ui.state.hover': {
-    bg: ['--bg-hover', '--hover', '--overlay-hover'],
-  },
-  'ui.state.active': {
-    bg: ['--bg-active', '--active', '--overlay-active'],
-  },
-  'ui.state.selected': {
-    // --session-highlight is owned by ui.sidebar.itemActive (its only consumer
-    // is the sidebar active session fallback chain).
-    bg: ['--bg-selected'],
-  },
-  'ui.state.selectedHover': {
-    bg: ['--bg-selected-hover'],
-  },
-  'ui.state.highlight': {
-    bg: ['--bg-highlight'],
-  },
-  'ui.state.disabled': {
-    bg: ['--bg-input-disabled', '--overlay-disabled'],
-    fg: ['--text-input-disabled', '--text-btn-disabled'],
-  },
-  'ui.sidebar.surface': {
-    bg: ['--sidebar-bg'],
-  },
-  'ui.sidebar.item': {
-    fg: ['--text-sidebar-item'],
-  },
-  'ui.sidebar.itemHover': {
-    fg: ['--text-sidebar-item-hover'],
-  },
-  'ui.sidebar.itemActive': {
-    fg: ['--text-sidebar-item-active'],
-    bg: ['--session-highlight'],
-  },
-  'ui.sidebar.itemMuted': {
-    fg: ['--text-sidebar-muted', '--text-sidebar-count'],
-  },
-  'ui.sidebar.header': {
-    fg: ['--text-sidebar-title'],
-  },
-  'ui.sidebar.action': {
-    fg: ['--sidebar-action-fg'],
-  },
-  'ui.sidebar.actionHover': {
-    fg: ['--sidebar-action-hover-fg'],
-    bg: ['--sidebar-action-hover-bg'],
-  },
-  'ui.sidebar.border': {
-    border: ['--border-sidebar'],
   },
   'ui.category.1.icon': {
     fg: ['--ui-category-1-icon'],
@@ -575,139 +410,6 @@ const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleF
   'ui.category.7.badgeText': {
     fg: ['--ui-category-7-badge-text'],
   },
-  'ui.tabBar.surface': {
-    bg: ['--tab-bar-bg'],
-  },
-  'ui.tabBar.divider': {
-    border: ['--tab-bar-divider'],
-  },
-  'ui.tabBar.item': {
-    fg: ['--tab-item-fg'],
-  },
-  'ui.tabBar.itemHover': {
-    fg: ['--tab-item-hover-fg'],
-    bg: ['--tab-item-hover-bg'],
-  },
-  'ui.tabBar.itemActive': {
-    fg: ['--tab-item-active-fg'],
-    bg: ['--tab-item-active-bg'],
-  },
-  'ui.tabBar.action': {
-    fg: ['--tab-action-fg'],
-  },
-  'ui.tabBar.actionHover': {
-    fg: ['--tab-action-hover-fg'],
-    bg: ['--tab-action-hover-bg'],
-    border: ['--tab-action-hover-border'],
-  },
-  'ui.tabBar.danger': {
-    fg: ['--tab-danger-fg'],
-    bg: ['--tab-danger-bg'],
-  },
-  'ui.status.danger': {
-    fg: ['--text-error'],
-    bg: ['--color-danger-light'],
-    border: ['--border-error'],
-  },
-  'ui.status.warning': {
-    fg: ['--text-warning'],
-    bg: ['--color-warning-light'],
-    border: ['--border-warning'],
-  },
-  'ui.status.success': {
-    fg: ['--text-success'],
-    bg: ['--color-success-light'],
-    border: ['--border-success'],
-  },
-  'ui.status.info': {
-    fg: ['--text-info'],
-    bg: ['--color-info-light'],
-    border: ['--border-info'],
-  },
-  'ui.message.user': {
-    bg: ['--bg-message-user', '--user-bubble', '--gradient-user-bubble'],
-    fg: ['--text-user-primary'],
-    border: ['--border-message-user', '--user-bubble-border'],
-  },
-  'ui.message.userSolid': {
-    bg: ['--bg-message-user-solid'],
-  },
-  'ui.message.assistant': {
-    bg: ['--bg-message-ai'],
-    fg: ['--text-ai-primary', '--ai-text'],
-    border: ['--border-message'],
-  },
-  'ui.message.system': {
-    bg: ['--bg-message-system'],
-    fg: ['--text-system'],
-  },
-  'ui.message.error': {
-    bg: ['--bg-message-error'],
-    fg: ['--text-error'],
-    border: ['--border-error'],
-  },
-  'ui.message.hover': {
-    bg: ['--bg-message-hover'],
-  },
-  'ui.message.thinking': {
-    fg: ['--text-ai-thinking'],
-  },
-  'ui.tool.surface': {
-    bg: ['--bg-tool-call', '--tool-surface'],
-    border: ['--tool-border'],
-  },
-  'ui.tool.surfaceHover': {
-    bg: ['--bg-tool-call-hover'],
-  },
-  'ui.tool.surfaceSubtle': {
-    bg: ['--tool-surface-sub'],
-  },
-  'ui.tool.result': {
-    bg: ['--bg-tool-result'],
-    fg: ['--text-tool-result'],
-  },
-  'ui.tool.error': {
-    bg: ['--bg-tool-error'],
-    fg: ['--text-tool-error'],
-  },
-  'ui.tool.success': {
-    bg: ['--bg-tool-success'],
-  },
-  'ui.tool.text': {
-    fg: ['--tool-ink', '--text-tool-name'],
-  },
-  'ui.tool.textMuted': {
-    fg: ['--tool-soft', '--text-tool-args'],
-  },
-  'ui.tool.textFaint': {
-    fg: ['--tool-faint', '--text-tool-label'],
-  },
-  'ui.tool.accent': {
-    fg: ['--tool-accent'],
-  },
-  'ui.tool.accentOn': {
-    fg: ['--tool-accent-on'],
-  },
-  'ui.tool.successText': {
-    fg: ['--tool-ok', '--tool-add-bar'],
-  },
-  'ui.tool.dangerText': {
-    fg: ['--tool-del-bar'],
-  },
-  'ui.tool.border': {
-    border: ['--tool-border'],
-  },
-  'ui.editor.text': {
-    fg: ['--text-input'],
-    bg: ['--bg-input'],
-    border: ['--border-input'],
-  },
-  'ui.editor.placeholder': {
-    fg: ['--text-input-placeholder'],
-  },
-  'ui.editor.caret': {
-    fg: ['--editor-caret'],
-  },
 }
 
 function highlightVarName(token: SemanticHighlightToken, suffix: string): string {
@@ -768,7 +470,7 @@ function addUICSSVariables(
   // Two UI tokens writing different values to the same legacy variable means
   // last-writer-wins by iteration order — the class of bug where --bg-input
   // silently diverged from ui.surface.input. Surface it instead of hiding it.
-  const legacyWriters = new Map<string, { token: SemanticUIToken; value: string }>()
+  const aliasWriters = new Map<string, { token: SemanticUIToken; value: string }>()
 
   for (const [token, style] of Object.entries(resolvedUI) as Array<[SemanticUIToken, ResolvedUIStyle]>) {
     for (const field of ['fg', 'bg', 'border', 'ring', 'shadow'] as UIStyleField[]) {
@@ -777,16 +479,16 @@ function addUICSSVariables(
 
       result[uiVarName(token, field)] = value
 
-      const legacyVars = UI_LEGACY_VAR_MAP[token]?.[field] || []
-      for (const cssVar of legacyVars) {
-        const previous = legacyWriters.get(cssVar)
+      const aliasVars = UI_ALIAS_VAR_MAP[token]?.[field] || []
+      for (const cssVar of aliasVars) {
+        const previous = aliasWriters.get(cssVar)
         if (previous && previous.value !== value) {
           console.warn(
-            `[ThemeManager] Conflicting legacy CSS variable ${cssVar}: ` +
+            `[ThemeManager] Conflicting alias CSS variable ${cssVar}: ` +
             `${previous.token} wrote ${previous.value}, ${token} overwrites with ${value}`
           )
         }
-        legacyWriters.set(cssVar, { token, value })
+        aliasWriters.set(cssVar, { token, value })
         result[cssVar] = value
       }
     }
@@ -816,6 +518,65 @@ function addTableMixCSSVariables(result: Record<string, string>): void {
     result['--app-table-stripe-mix-percent'] = formatPercent(
       guaranteeMinMixOpacity(mutedText, tableBg, 5, 0.014)
     )
+  }
+}
+
+/**
+ * 区域交互态墨阶下沉(UI 系统收敛 P4)。
+ *
+ * 在这里而不是 resolver 里,理由与 `addTableMixCSSVariables` 相同:它是**已解析
+ * 变量之上的派生**,不参与 resolver 的对比度修复回路 —— 把 color-mix 表达式塞回
+ * `resolveThemeUI` 会让 `readableAgainst` 拿不到可解析的底色。
+ *
+ * sidebar 的 item hover/active 底**刻意盖掉** resolver 的通用 state ramp:
+ * 通用 ramp 是 OKLCH 亮度偏移(实测 ΔRGB 6~17),而列表行要的是同一条墨色上的
+ * 等比阶梯(ΔRGB 40~83),两者相差近一倍。盖的是 renderer 里已经跑了很久的那条
+ * 派生链的**原值**,不是新设计。fg 侧不动(resolver 的对比度修复照旧)。
+ */
+export const REGION_OVERLAY_VAR_NAMES = [
+  '--ui-sidebar-row-ink',
+  '--ui-sidebar-row-fg',
+  '--ui-sidebar-rail-bg',
+  '--ui-sidebar-rail-hover-bg',
+  '--ui-sidebar-rail-active-bg',
+  '--ui-sidebar-rail-muted-fg',
+  '--ui-settings-row-hover-bg',
+  '--ui-settings-row-active-bg',
+] as const
+
+function addRegionOverlayCSSVariables(result: Record<string, string>): void {
+  const ink = result['--ui-text-primary-fg'] || result['--text-primary'] || result['--text']
+  const sidebarBg = result['--ui-sidebar-surface-bg']
+    || result['--ui-surface-sidebar-bg']
+    || result['--ui-surface-app-bg']
+    || result['--bg-app']
+  const accent = result['--ui-accent-primary-fg'] || result['--color-primary'] || result['--accent']
+  // 设置区的行底画在 `--settings-paper-3`(= panel 面)上。
+  const settingsSurface = result['--ui-surface-panel-bg'] || result['--bg-panel'] || result['--ui-surface-elevated-bg']
+
+  const assign = (name: string, value: string | undefined): void => {
+    if (value) result[name] = value
+  }
+
+  if (ink && sidebarBg) {
+    result['--ui-sidebar-row-ink'] = ink
+    assign('--ui-sidebar-row-fg', deriveRegionOverlay(ink, sidebarBg, 'sidebarRowFg'))
+    assign('--ui-sidebar-item-hover-bg', deriveRegionOverlay(ink, sidebarBg, 'sidebarRowHover'))
+    assign('--ui-sidebar-item-active-bg', deriveRegionOverlay(ink, sidebarBg, 'sidebarRowActive'))
+    // rail 自己是一层 2.5% 的墨底,它上面的行状态原本是**半透明叠加**,合成后
+    // 等于"叠在 rail 底上"而不是"叠在侧栏底上"。解析成实色时必须以 rail 底为基,
+    // 否则 hover/当前项会整体淡掉一档(实测差 ~2.4% 墨)。
+    const railBg = deriveRegionOverlay(ink, sidebarBg, 'sidebarRailBg')
+    assign('--ui-sidebar-rail-bg', railBg)
+    const railBase = railBg || sidebarBg
+    assign('--ui-sidebar-rail-hover-bg', deriveRegionOverlay(ink, railBase, 'sidebarRailHover'))
+    assign('--ui-sidebar-rail-active-bg', deriveRegionOverlay(ink, railBase, 'sidebarRailActive'))
+    assign('--ui-sidebar-rail-muted-fg', deriveRegionOverlay(ink, railBase, 'sidebarRailMuted'))
+  }
+
+  if (accent && settingsSurface) {
+    assign('--ui-settings-row-hover-bg', deriveRegionOverlay(accent, settingsSurface, 'settingsRowHover'))
+    assign('--ui-settings-row-active-bg', deriveRegionOverlay(accent, settingsSurface, 'settingsRowActive'))
   }
 }
 
@@ -867,6 +628,7 @@ export function generateCSSVariables(
   }
 
   addTableMixCSSVariables(result)
+  addRegionOverlayCSSVariables(result)
 
   // Generate RGB triplet variables for transparency patterns
   // These are used in rgba(var(--bg-rgb), opacity) patterns
@@ -963,11 +725,14 @@ export function getAllCSSVariableNames(): string[] {
     for (const field of ['fg', 'bg', 'border', 'ring', 'shadow'] as UIStyleField[]) {
       allVars.add(uiVarName(token, field))
     }
-    for (const varsByField of Object.values(UI_LEGACY_VAR_MAP[token] || {})) {
+    for (const varsByField of Object.values(UI_ALIAS_VAR_MAP[token] || {})) {
       for (const varName of varsByField || []) {
         allVars.add(varName)
       }
     }
+  }
+  for (const varName of REGION_OVERLAY_VAR_NAMES) {
+    allVars.add(varName)
   }
   allVars.add('--color-primary-rgb')
   allVars.add('--primary-rgb')

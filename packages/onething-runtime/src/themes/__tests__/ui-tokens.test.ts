@@ -362,7 +362,10 @@ describe('theme UI semantic tokens', () => {
     expect(cssVariables['--color-primary-100-rgb']).toBeUndefined()
     expect(cssVariables['--primary']).toBe('#3388dd')
     expect(cssVariables['--ui-text-primary-fg']).toBe(expectedNeutralText.primaryText)
-    expect(cssVariables['--text-primary']).toBe(expectedNeutralText.primaryText)
+    // P4b 停双写:`--text-primary` 不再被 UI 中性字阶覆写,只剩 CSS_VAR_MAP 直写的
+    // 主题原值。两者本来就不同 —— 双写正是把这个分歧盖住的那层。
+    expect(cssVariables['--text-primary']).toBe(resolvedTheme['text.primary'])
+    expect(cssVariables['--text-primary']).not.toBe(expectedNeutralText.primaryText)
     expect(cssVariables['--color-neutral-primary-text']).toBe(expectedNeutralText.primaryText)
     expect(cssVariables['--text-color-primary']).toBe(expectedNeutralText.primaryText)
     expect(cssVariables['--color-neutral-regular-text']).toBe(expectedNeutralText.regularText)
@@ -377,19 +380,23 @@ describe('theme UI semantic tokens', () => {
     expect(cssVariables['--ui-action-primary-bg']).toBe('#3388dd')
     expect(cssVariables['--bg-btn-primary']).toBe('#3388dd')
     expect(cssVariables['--ui-tool-surface-bg']).toBe('#282828')
-    expect(cssVariables['--tool-surface']).toBe('#282828')
+    // P4b 停双写:`--tool-surface` 只由 UI 别名表发出过,现在不再发。
+    expect(cssVariables['--tool-surface']).toBeUndefined()
     expect(cssVariables['--ui-surface-app-bg']).toBe('#101010')
     expect(cssVariables['--bg-app']).toBe('#101010')
     expect(cssVariables['--ui-sidebar-surface-bg']).toBe('#101010')
-    expect(cssVariables['--bg-sidebar']).toBe('#101010')
+    // P4b 停双写:`--bg-sidebar` 回到 CSS_VAR_MAP 直写的主题原值,不再被
+    // `ui.sidebar.surface` 派生出来的面覆写。
+    expect(cssVariables['--bg-sidebar']).toBe(resolvedTheme['bg.sidebar'])
     expect(cssVariables['--ui-surface-note-bg']).toBe(resolvedTheme['color.warningBg'])
-    expect(cssVariables['--bg-note']).toBe(resolvedTheme['color.warningBg'])
+    // P4b 停双写:以下三个 legacy 名只由 UI 别名表发出过,现在不再发。
+    expect(cssVariables['--bg-note']).toBeUndefined()
     expect(cssVariables['--ui-surface-preview-light-bg']).toBe('#ffffff')
     expect(cssVariables['--ui-surface-preview-dark-bg']).toBe('#0f1117')
     expect(cssVariables['--ui-sidebar-item-active-fg']).toBe(expectedNeutralText.primaryText)
-    expect(cssVariables['--text-sidebar-item-active']).toBe(expectedNeutralText.primaryText)
+    expect(cssVariables['--text-sidebar-item-active']).toBeUndefined()
     expect(cssVariables['--ui-tab-bar-item-active-fg']).toBe(expectedNeutralText.primaryText)
-    expect(cssVariables['--tab-item-active-fg']).toBe(expectedNeutralText.primaryText)
+    expect(cssVariables['--tab-item-active-fg']).toBeUndefined()
     expect(cssVariables['--ui-status-danger-fg']).toBe('#dd3333')
     expect(cssVariables['--color-danger']).toBe('#dd3333')
     expect(cssVariables['--color-danger-bg']).toBe('rgba(221, 51, 51, 0.14)')
@@ -900,7 +907,8 @@ describe('theme UI semantic tokens', () => {
     expect(cssVariables['--ui-action-primary-bg']).toBe('#3388dd')
     expect(cssVariables['--bg-btn-primary']).toBe('#3388dd')
     expect(cssVariables['--ui-tool-surface-bg']).toBe('#282828')
-    expect(cssVariables['--tool-surface']).toBe('#282828')
+    // P4b 停双写:`--tool-surface` 只由 UI 别名表发出过,现在不再发。
+    expect(cssVariables['--tool-surface']).toBeUndefined()
   })
 
   it('repairs flattened legacy surfaces into distinct app roles', () => {

@@ -55,6 +55,54 @@ export interface StateOverlayRamp {
   selectedHover: string
 }
 
+/**
+ * 区域交互态「墨阶」配方 —— 唯一出处(UI 系统收敛 P4)。
+ *
+ * `deriveStateOverlays()` 的 OKLCH 亮度偏移适合"面"级状态(chat/panel/tabbar),
+ * 但列表行需要**同一条墨色**上的等比阶梯:分组头(全墨)> 行文(72%)>
+ * active(14%)> hover(8%)> 底(2.5%)。直接引各主题的 state token 时这几档的
+ * 相对关系不可控(实测:分组头与行文同色、hover 看不见),所以 sidebar 从一开始
+ * 就在 renderer 里手写了这条派生链。P4 把它原值搬到主题层,组件端只引用 token。
+ *
+ * 百分比即 renderer 侧 `color-mix(in srgb, <ink> P%, transparent)` 的 P ——
+ * 行画在自己的区域底色上,所以"P% 墨 + 透明"合成后等于"P% 墨混区域底色",
+ * 主题层直接算成实色,像素不变而 token 可解析(gallery 回归要求实色)。
+ */
+export const REGION_OVERLAY_STEPS = {
+  /** sidebar 列表行:静息文字 */
+  sidebarRowFg: 72,
+  /** sidebar 列表行:hover 底 */
+  sidebarRowHover: 8,
+  /** sidebar 列表行:选中底 */
+  sidebarRowActive: 14,
+  /** rail / ActiveWorkCard 这类嵌套面:自身底 */
+  sidebarRailBg: 2.5,
+  /** rail / ActiveWorkCard:hover 底 */
+  sidebarRailHover: 4.5,
+  /** rail / ActiveWorkCard:当前项底 */
+  sidebarRailActive: 7.5,
+  /** rail / ActiveWorkCard:次要文字 */
+  sidebarRailMuted: 47,
+  /** 设置区行:hover 底(accent 墨) */
+  settingsRowHover: 5,
+  /** 设置区行:选中底(accent 墨) */
+  settingsRowActive: 10,
+} as const
+
+export type RegionOverlayStep = keyof typeof REGION_OVERLAY_STEPS
+
+/**
+ * 把一档墨阶解析成实色:`percent%` 的 ink 压在 `surface` 上。
+ * 任一端解析不出来就返回 undefined —— 调用方保留原有回退链。
+ */
+export function deriveRegionOverlay(
+  ink: string | undefined,
+  surface: string | undefined,
+  step: RegionOverlayStep
+): string | undefined {
+  return mixCssColors(ink, surface, REGION_OVERLAY_STEPS[step] / 100)
+}
+
 export interface CategoryColor {
   icon: string
   badgeBg: string
@@ -618,6 +666,35 @@ export function deriveCategoryColors(
   return finalIcons.map(icon => completeCategoryColor(icon, mode))
 }
 
+/**
+ * 状态叠加可用的亮度区间。端点附近 oklch→sRGB 会被裁,三档全挤成同一个颜色
+ * (P4a 审计实测:把浅色主题按 dark 模式解析时 hover 与底只差 ΔRGB 1,
+ * 且 hover 与 selected 完全同色)。留出余量,没余量就整组反向走。
+ */
+const STATE_LIGHTNESS_BOUNDS = { min: 0.03, max: 0.97 } as const
+
+/**
+ * 决定这一组状态往哪边走(+1 变亮 / -1 变暗)。
+ *
+ * **整组同向**是关键:逐档各自判断会出现"hover 变亮、active 变暗",阶梯当场断掉。
+ * 所以拿最大的一档(active)探路 —— 正向撞端点就整组反向,两边都没余量就往
+ * 区间中间走。默认方向下有余量时返回的就是原来的符号,既有 16 主题逐位不变。
+ */
+function stateOverlayDirection(
+  baseLightness: number,
+  offsets: { hover: number; active: number; selected: number }
+): number {
+  const maxStep = Math.max(Math.abs(offsets.hover), Math.abs(offsets.active), Math.abs(offsets.selected))
+  const sign = offsets.active >= 0 ? 1 : -1
+  const inBounds = (value: number): boolean => (
+    value >= STATE_LIGHTNESS_BOUNDS.min && value <= STATE_LIGHTNESS_BOUNDS.max
+  )
+
+  if (inBounds(baseLightness + (sign * maxStep))) return sign
+  if (inBounds(baseLightness - (sign * maxStep))) return -sign
+  return baseLightness > 0.5 ? -1 : 1
+}
+
 export function deriveStateOverlays(
   surfaceColor: string | undefined,
   primaryColor: string | undefined,
@@ -630,10 +707,13 @@ export function deriveStateOverlays(
 
   const hue = isFiniteNumber(surfaceOklch.h) ? surfaceOklch.h : undefined
   const chroma = isFiniteNumber(surfaceOklch.c) ? surfaceOklch.c : 0
+  const baseLightness = surfaceOklch.l
   const offsets = STATE_LIGHTNESS_OFFSETS[mode]
-  const hover = oklchColor(surfaceOklch.l + offsets.hover, chroma, hue)
-  const active = oklchColor(surfaceOklch.l + offsets.active, chroma, hue)
-  const selectedBg = oklchColor(surfaceOklch.l + offsets.selected, chroma, hue)
+  const direction = stateOverlayDirection(baseLightness, offsets)
+  const step = (offset: number): number => baseLightness + (direction * Math.abs(offset))
+  const hover = oklchColor(step(offsets.hover), chroma, hue)
+  const active = oklchColor(step(offsets.active), chroma, hue)
+  const selectedBg = oklchColor(step(offsets.selected), chroma, hue)
 
   if (!hover || !active || !selectedBg) return undefined
 

@@ -392,16 +392,19 @@ describe('built-in theme text contrast', () => {
     }
   })
 
-  it('routes legacy surface CSS variables through semantic role mapping for every built-in theme', () => {
+  // P4b 停双写之后,`--bg-*` 这些 legacy 名不再由 UI 语义角色覆写(它们只剩
+  // variables.css 的静态兜底 + CSS_VAR_MAP 的主题路径直写)。这条断言的本意是
+  // "应用真正上色的那几个面来自语义角色映射",所以改断 `--ui-*` 正主。
+  it('routes surface CSS variables through semantic role mapping for every built-in theme', () => {
     const roleBackedVariables = [
-      ['--bg-app', 'ui.surface.app', 'bg'],
-      ['--bg-sidebar', 'ui.surface.sidebar', 'bg'],
-      ['--bg-chat', 'ui.surface.chat', 'bg'],
-      ['--bg-panel', 'ui.surface.panel', 'bg'],
-      ['--bg-elevated', 'ui.surface.elevated', 'bg'],
-      ['--bg-floating', 'ui.surface.floating', 'bg'],
-      ['--tab-bar-bg', 'ui.tabBar.surface', 'bg'],
-      ['--bg-input', 'ui.surface.input', 'bg'],
+      ['--ui-surface-app-bg', 'ui.surface.app', 'bg'],
+      ['--ui-surface-sidebar-bg', 'ui.surface.sidebar', 'bg'],
+      ['--ui-surface-chat-bg', 'ui.surface.chat', 'bg'],
+      ['--ui-surface-panel-bg', 'ui.surface.panel', 'bg'],
+      ['--ui-surface-elevated-bg', 'ui.surface.elevated', 'bg'],
+      ['--ui-surface-floating-bg', 'ui.surface.floating', 'bg'],
+      ['--ui-tab-bar-surface-bg', 'ui.tabBar.surface', 'bg'],
+      ['--ui-surface-input-bg', 'ui.surface.input', 'bg'],
     ] as const
 
     for (const fileName of builtinThemeFiles) {
