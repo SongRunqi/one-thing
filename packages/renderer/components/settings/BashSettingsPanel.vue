@@ -8,14 +8,12 @@
     <div class="form-group">
       <div class="toggle-row">
         <label class="form-label">Enable Directory Sandbox</label>
-        <label class="toggle">
-          <input
-            type="checkbox"
-            :checked="bashSettings.enableSandbox"
-            @change="updateSetting('enableSandbox', ($event.target as HTMLInputElement).checked)"
-          >
-          <span class="toggle-slider" />
-        </label>
+        <Switch
+          variant="ledger"
+          :model-value="bashSettings.enableSandbox"
+          aria-label="Enable Directory Sandbox"
+          @update:model-value="updateSetting('enableSandbox', Boolean($event))"
+        />
       </div>
       <p class="form-hint">
         Restrict command execution to allowed directories only
@@ -140,14 +138,12 @@
     <div class="form-group">
       <div class="toggle-row">
         <label class="form-label">Confirm Dangerous Commands</label>
-        <label class="toggle">
-          <input
-            type="checkbox"
-            :checked="bashSettings.confirmDangerousCommands"
-            @change="updateSetting('confirmDangerousCommands', ($event.target as HTMLInputElement).checked)"
-          >
-          <span class="toggle-slider" />
-        </label>
+        <Switch
+          variant="ledger"
+          :model-value="bashSettings.confirmDangerousCommands"
+          aria-label="Confirm Dangerous Commands"
+          @update:model-value="updateSetting('confirmDangerousCommands', Boolean($event))"
+        />
       </div>
       <p class="form-hint">
         Require confirmation before executing rm, mv, git push, etc.
@@ -176,6 +172,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Switch from '@/components/common/Switch.vue'
 import { computed } from 'vue'
 import type { AppSettings, BashToolSettings } from '@/types'
 import { platformApi } from '@/platform'
@@ -254,8 +251,8 @@ function removeDirectory(index: number) {
 <style scoped>
 /*
  * Bash settings — 画线风.
- * Toggle visuals (.toggle > input + .toggle-slider) and .section-title
- * chrome are drawn by the SettingsPage :deep() layer; nothing local.
+ * The two toggles are `<Switch variant="ledger">` and draw themselves;
+ * .section-title chrome is drawn by the SettingsPage :deep() layer.
  */
 .settings-section {
   margin-top: 24px;

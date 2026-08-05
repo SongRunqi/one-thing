@@ -51,11 +51,34 @@ function makeAgent(overrides: Record<string, unknown> = {}) {
 }
 
 async function mountPanel() {
-  const wrapper = mount(AgentsPanelContent)
+  // attachTo: the ledger dropdowns are teleported `<Select>`s (P3) — their
+  // panels render into document.body and the combobox has to be in the
+  // document for the pointer plumbing to reach it.
+  const wrapper = mount(AgentsPanelContent, { attachTo: document.body })
   await nextTick()
   await nextTick()
   await nextTick()
   return wrapper
+}
+
+/** Opens the `<Select>` with this aria-label and clicks the option by text. */
+async function pickOption(wrapper: any, ariaLabel: string, optionText: string) {
+  const combobox = document.querySelector<HTMLElement>(`[role="combobox"][aria-label="${ariaLabel}"]`)
+  if (!combobox) throw new Error(`no Select labelled "${ariaLabel}"`)
+  combobox.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await nextTick()
+
+  const option = [...document.querySelectorAll<HTMLElement>('.app-select-dropdown .app-select-option')]
+    .find(node => node.textContent?.includes(optionText))
+  if (!option) throw new Error(`no option "${optionText}" in "${ariaLabel}"`)
+  option.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await nextTick()
+  await nextTick()
+}
+
+/** Current display text of the `<Select>` with this aria-label. */
+function selectText(ariaLabel: string) {
+  return document.querySelector(`[role="combobox"][aria-label="${ariaLabel}"]`)?.textContent?.trim()
 }
 
 /** Clicks the "allowlist" / "follow global" mode buttons. */
@@ -273,8 +296,7 @@ describe('AgentsPanelContent tool + model configuration', () => {
   it('auto-completes the pair when a provider is picked, then saves it', async () => {
     const wrapper = await mountPanel()
 
-    await wrapper.findAll('select')[0].setValue('claude')
-    await nextTick()
+    await pickOption(wrapper, 'Model provider', 'Claude')
 
     await saveButton(wrapper)!.trigger('click')
     await nextTick()
@@ -290,7 +312,7 @@ describe('AgentsPanelContent tool + model configuration', () => {
     mocks.agentsStore.defaultAgent = mocks.agentsStore.agents[0]
 
     const wrapper = await mountPanel()
-    expect((wrapper.findAll('select')[1].element as HTMLSelectElement).value).toBe('opus')
+    expect(selectText('Model')).toBe('opus')
 
     const clear = wrapper
       .findAll('.text-action')
@@ -310,8 +332,7 @@ describe('AgentsPanelContent tool + model configuration', () => {
     mocks.agentsStore.defaultAgent = mocks.agentsStore.agents[0]
 
     const wrapper = await mountPanel()
-    await wrapper.findAll('select')[0].setValue('deepseek')
-    await nextTick()
+    await pickOption(wrapper, 'Model provider', 'DeepSeek')
 
     await saveButton(wrapper)!.trigger('click')
     await nextTick()
@@ -325,8 +346,7 @@ describe('AgentsPanelContent tool + model configuration', () => {
   it('warns without blocking when the bound provider has no key', async () => {
     const wrapper = await mountPanel()
 
-    await wrapper.findAll('select')[0].setValue('deepseek')
-    await nextTick()
+    await pickOption(wrapper, 'Model provider', 'DeepSeek')
     expect(wrapper.text()).toContain('no API key')
 
     await saveButton(wrapper)!.trigger('click')
@@ -334,7 +354,8 @@ describe('AgentsPanelContent tool + model configuration', () => {
     expect(mocks.agentsStore.updateAgent).toHaveBeenCalled()
   })
 
-  /* selects: 0 = model provider, 1 = model id, 2 = approvals, 3 = turns */
+  /* Selects are addressed by aria-label: Model provider / Model / Approvals /
+     Turn budget (see pickOption). */
   describe('boundaries', () => {
     it('sends null for both when the agent inherits', async () => {
       const wrapper = await mountPanel()
@@ -351,9 +372,8 @@ describe('AgentsPanelContent tool + model configuration', () => {
     it('sends the picked approval mode and turn budget', async () => {
       const wrapper = await mountPanel()
 
-      await wrapper.findAll('select')[2].setValue('normal')
-      await wrapper.findAll('select')[3].setValue('long')
-      await nextTick()
+      await pickOption(wrapper, 'Approvals', 'ask every time')
+      await pickOption(wrapper, 'Turn budget', 'long task (300)')
 
       await saveButton(wrapper)!.trigger('click')
       await nextTick()

@@ -1,18 +1,16 @@
 <template>
   <section class="board-panel">
     <header class="board-header">
-      <select
-        v-model="selectedRoomId"
+      <Select
         class="board-room-select"
-      >
-        <option
-          v-for="room in rooms"
-          :key="room.id"
-          :value="room.id"
-        >
-          {{ room.name }}
-        </option>
-      </select>
+        size="small"
+        teleported
+        fit-input-width
+        :model-value="selectedRoomId"
+        :options="roomOptions"
+        aria-label="选择群聊房间"
+        @update:model-value="selectedRoomId = String($event ?? '')"
+      />
       <div
         v-if="selectedRoomId"
         class="board-header-actions"
@@ -240,6 +238,8 @@ import { isActiveAgent } from '@shared/ipc'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import { AGENT_AVATAR_FALLBACK } from '@/components/common/agent-avatar'
 import ContextMenu from '@/components/common/ContextMenu.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import { useSessionsStore } from '@/stores/sessions'
 import { useAgentsStore } from '@/stores/agents'
 import { useCollabBoardStore } from '@/stores/collabBoard'
@@ -289,6 +289,10 @@ function closeMenu(): void {
 // (agent-im-dm.md §2.2),它有板就该能被选到 —— 这里是「哪些板可看」,
 // 不是侧栏那份「群聊列表」。
 const rooms = computed(() => sessionsStore.roomSessions)
+
+const roomOptions = computed<SelectOptionLike[]>(() =>
+  rooms.value.map(room => ({ value: room.id, label: room.name })),
+)
 
 function defaultRoomId(): string {
   const current = sessionsStore.sessions.find(s => s.id === sessionsStore.currentSessionId)
@@ -595,14 +599,15 @@ async function runMenuAction(itemId: string): Promise<void> {
   border-bottom: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
 }
 
-.board-room-select {
-  font: inherit;
-  font-size: 12px;
-  padding: 3px 6px;
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  border-radius: 5px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  color: var(--ui-text-primary-fg, var(--text));
+/* P3: the room picker is `<Select>` — the component owns the frame, the fill
+   and the caret. Footprint only here.
+   `.app-select` qualifies the selector because the component's own rule is
+   `width: 100%` at (0,1,0): a bare `.board-room-select` would tie with it and
+   the header would hand the picker 60% of the bar no matter how short the room
+   name is. `width: auto` restores the native select's shrink-to-fit. */
+.app-select.board-room-select {
+  width: auto;
+  min-width: 120px;
   max-width: 60%;
 }
 

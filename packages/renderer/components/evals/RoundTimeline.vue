@@ -127,13 +127,17 @@
 
         <!-- Resend controls -->
         <div class="rt-resend">
-          <label>次数
-            <select v-model.number="resendRuns">
-              <option :value="1">1</option>
-              <option :value="3">3</option>
-              <option :value="5">5</option>
-            </select>
-          </label>
+          <span class="rt-field">次数
+            <Select
+              size="small"
+              teleported
+              z-layer="modal"
+              :model-value="resendRuns"
+              :options="RUN_COUNT_OPTIONS"
+              aria-label="重发次数"
+              @update:model-value="resendRuns = Number($event)"
+            />
+          </span>
           <button
             class="rt-btn primary"
             :disabled="store.roundReplaying !== null"
@@ -199,6 +203,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import { useEvalsWorkbenchStore, type RoundView, type RoundReplayAttempt } from '@/stores/evalsWorkbench'
 
 interface RequestMessage {
@@ -218,6 +224,14 @@ const expanded = ref<number | null>(null)
 const editedIndex = ref<number | null>(null)
 const editedContent = ref('')
 const resendRuns = ref(1)
+
+/** `z-layer="modal"` because this timeline renders inside EvalsWorkbench, whose
+ *  overlay sits at `--z-modal + 10`; a default-stop dropdown opens behind it. */
+const RUN_COUNT_OPTIONS: SelectOptionLike[] = [
+  { value: 1, label: '1' },
+  { value: 3, label: '3' },
+  { value: 5, label: '5' },
+]
 
 function toggleRound(round: number) {
   expanded.value = expanded.value === round ? null : round
@@ -451,6 +465,20 @@ function shorten(text: string, max: number): string {
   gap: 10px;
   font-size: 12px;
   flex-wrap: wrap;
+}
+
+/* Seats the `<Select>` next to its caption — layout only, no paint. */
+.rt-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* `.app-select` is `width: 100%` by default (it is built for form fields), so
+   an inline control row has to pin it or it eats the whole line. */
+.rt-field :deep(.app-select) {
+  width: 80px;
+  flex: 0 0 auto;
 }
 
 .rt-badge {

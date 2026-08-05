@@ -162,9 +162,10 @@
         <div
           v-if="isOpen"
           :id="listboxId"
-          ref="dropdownRef"
+          :ref="setDropdownEl"
           class="app-select-dropdown"
-          :class="popperClass"
+          :class="[popperClass, `app-select-dropdown--${componentProps.variant}`]"
+          :data-placement="componentProps.teleported ? (layer.placement.value ?? undefined) : undefined"
           :style="dropdownStyle"
           role="listbox"
           :aria-multiselectable="multiple ? 'true' : undefined"
@@ -276,8 +277,15 @@ import {
   ref,
   toRefs,
   watch,
+  type CSSProperties,
   type StyleValue,
 } from 'vue'
+import type { ComputedPosition, FloatingPlacement } from '@/composables/floating/compute-position'
+import { popEscLayer, pushEscLayer } from '@/composables/floating/esc-stack'
+import {
+  useFloatingLayer,
+  type FloatingZLayer,
+} from '@/composables/floating/useFloatingLayer'
 import type {
   SelectFilterMethod,
   SelectModelValue,
@@ -327,8 +335,45 @@ interface SelectProps {
   popperStyle?: StyleValue
   fitInputWidth?: boolean
   offset?: number
-  placement?: 'top' | 'bottom'
+  /**
+   * Bare `'top'` / `'bottom'` keep their historical meaning — the panel's start
+   * edge lines up with the control's, so they normalise to `top-start` /
+   * `bottom-start`. Pass an explicit `-end` when the panel is wider than a
+   * right-aligned trigger.
+   */
+  placement?: FloatingPlacement
+  /** Flip to the opposite side when the requested one has no room (teleported only). */
+  flip?: boolean
+  /** Keep the panel inside the viewport (teleported only). */
+  clamp?: boolean
+  /**
+   * Which stop of the z ladder the panel sits on (docs/design/ui-system.md §3).
+   * The default `dropdown` + `zOffset: 20` reproduces the historical
+   * `calc(var(--z-dropdown) + 20)`. **Inside a Dialog pass `z-layer="modal"`** —
+   * dropdown+20 (=120) cannot beat `--z-modal` (600).
+   */
+  zLayer?: FloatingZLayer
+  /** Relative order inside the stop: `calc(var(--z-x) + n)`, n ≤ 30. */
+  zOffset?: number
+  /** Full z-index expression; the escape hatch out of the ladder. */
+  baseZ?: string
   teleported?: boolean
+  /**
+   * The three registers this app actually draws form controls in:
+   *  - `box`       the rounded input surface (chat, panels) — the default.
+   *  - `ledger`    the settings-area drafting box: square hairline frame, no
+   *                fill. Reproduces what `SettingsPage`'s `:deep(select)` +
+   *                `:deep(.form-input)` rules draw today, so a migrated tab is
+   *                visually unchanged.
+   *  - `underline` the line IS the control (paper dialogs, room sheets):
+   *                no frame, one hairline underneath that inks up on focus.
+   *
+   * Consumers must NOT reproduce these with their own scoped rule on the root:
+   * `.app-select[data-v-select]` and `.theirs[data-v-consumer]` are both
+   * (0,2,0), and the tie is settled by stylesheet injection order — which
+   * reshuffles whenever a component is added (ui-system.md §1).
+   */
+  variant?: 'box' | 'ledger' | 'underline'
 }
 
 type RenderItem =
@@ -386,7 +431,13 @@ const componentProps = withDefaults(defineProps<SelectProps>(), {
   fitInputWidth: false,
   offset: 6,
   placement: 'bottom',
+  flip: true,
+  clamp: true,
+  zLayer: 'dropdown',
+  zOffset: 20,
+  baseZ: undefined,
   teleported: false,
+  variant: 'box',
 })
 
 const emit = defineEmits<{
@@ -409,8 +460,67 @@ const isOpen = ref(false)
 const searchQuery = ref('')
 const highlightedKey = ref<string | null>(null)
 const listboxId = `app-select-listbox-${++selectIdCounter}`
-const teleportedRect = ref<{ left: number; top: number; bottom: number; width: number } | null>(null)
+/** Measured from the control on every (re)placement — see `handlePositioned`. */
+const anchorWidth = ref(0)
+const availableHeight = ref(0)
 let remoteTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Teleported mode is driven by the one positioning kernel
+ * (`composables/floating/useFloatingLayer`) — flip, viewport clamping and
+ * scroll/resize tracking come from there instead of the hand-rolled
+ * `getBoundingClientRect()` + `top/left` arithmetic this component used to own.
+ *
+ * Two deliberate splits of responsibility:
+ *  - `closeOn.outside` stays OFF: `handlePointerDown` below also has to spare
+ *    the filter input and the tags, and two owners for one decision is how
+ *    dismissal bugs are born. `closeOn.esc` is ON, because the kernel's
+ *    capture-phase listener is the only thing that can beat an enclosing
+ *    Dialog to the key (see `escToken` below).
+ *  - In-flow mode (`teleported: false`, still the default) needs no kernel
+ *    positioning at all: the panel is `position: absolute` inside the control's
+ *    own box, so it tracks the anchor for free. It also keeps the panel inside
+ *    the caller's DOM, which is what `MediaPanel`'s
+ *    `:deep(.app-select-dropdown)` relies on.
+ */
+const layer = useFloatingLayer({
+  open: isOpen,
+  anchor: () => (componentProps.teleported ? controlRef.value : null),
+  placement: () => normalizedPlacement.value,
+  offset: () => componentProps.offset,
+  flip: () => componentProps.flip,
+  clamp: () => componentProps.clamp,
+  zLayer: () => componentProps.zLayer,
+  zOffset: () => componentProps.zOffset,
+  baseZ: () => componentProps.baseZ,
+  width: () => (componentProps.fitInputWidth ? 'anchor' : undefined),
+  closeOn: () => ({ esc: true }),
+  onPositioned: handlePositioned,
+})
+
+/**
+ * An open panel is a layer above whatever opened it, so it — not the enclosing
+ * Dialog — owns Escape while it is up. Registration order cannot express that:
+ * both listeners are `window` + capture and the Dialog always registers first,
+ * so it would close the whole sheet out from under the dropdown (real
+ * regression, caught in `RoomSettingsDialog`; the native `<select>` never had
+ * it because the OS popup ate the key). The shared stack is the arbiter.
+ */
+const escToken = Symbol('select')
+
+watch(isOpen, (open) => {
+  if (open) pushEscLayer(escToken)
+  else popEscLayer(escToken)
+})
+
+// A panel torn down while open (route change, v-if on an ancestor) must not
+// leave its token wedged on top of the stack — Escape would go dead app-wide.
+onUnmounted(() => popEscLayer(escToken))
+
+function setDropdownEl(el: unknown) {
+  dropdownRef.value = el instanceof HTMLElement ? el : null
+  layer.setFloatingEl(el)
+}
 
 const {
   multiple,
@@ -437,6 +547,7 @@ const optionKeys = computed(() => ({
 
 const selectClasses = computed(() => [
   `app-select--${componentProps.size}`,
+  `app-select--${componentProps.variant}`,
   {
     'is-open': isOpen.value,
     'is-disabled': componentProps.disabled,
@@ -632,27 +743,47 @@ const emptyText = computed(() => {
   return componentProps.noMatchText
 })
 
+/**
+ * Bare `top`/`bottom` historically meant "aligned with the control's left
+ * edge", which in the kernel's vocabulary is `-start`. Normalising here keeps
+ * the three existing call sites pixel-identical while opening the full
+ * placement grammar to new ones.
+ */
+const normalizedPlacement = computed<FloatingPlacement>(() => {
+  if (componentProps.placement === 'top') return 'top-start'
+  if (componentProps.placement === 'bottom') return 'bottom-start'
+  return componentProps.placement
+})
+
+/**
+ * The one thing the kernel deliberately does not do: shrink the layer to the
+ * space that is actually left. Clamping only slides a box back inside the
+ * viewport; a 30-option list still has to be told it may only be 200px tall.
+ * Measured off the resolved side (post-flip) and written through a
+ * change-threshold so the ResizeObserver → update → resize ring cannot spin.
+ */
+function handlePositioned(position: ComputedPosition) {
+  const rect = controlRef.value?.getBoundingClientRect()
+  if (!rect) return
+
+  const width = Math.round(rect.width)
+  if (width !== anchorWidth.value) anchorWidth.value = width
+
+  const gap = componentProps.offset + 8
+  const space = position.placement.startsWith('top')
+    ? rect.top - gap
+    : window.innerHeight - rect.bottom - gap
+  const next = Math.round(Math.min(268, Math.max(96, space)))
+  if (Math.abs(next - availableHeight.value) > 1) availableHeight.value = next
+}
+
 const dropdownStyle = computed<StyleValue>(() => {
-  const style: Record<string, string> = {}
+  const style: CSSProperties = {}
 
   if (componentProps.teleported) {
-    const rect = teleportedRect.value
-    style.position = 'fixed'
-    if (rect) {
-      style.left = `${Math.round(rect.left)}px`
-      style.minWidth = `${Math.round(rect.width)}px`
-      if (componentProps.fitInputWidth) {
-        style.width = `${Math.round(rect.width)}px`
-      }
-
-      if (componentProps.placement === 'top') {
-        style.bottom = `${Math.round(Math.max(8, window.innerHeight - rect.top + componentProps.offset))}px`
-        style.maxHeight = `${Math.round(Math.min(268, Math.max(96, rect.top - componentProps.offset - 8)))}px`
-      } else {
-        style.top = `${Math.round(rect.bottom + componentProps.offset)}px`
-        style.maxHeight = `${Math.round(Math.min(268, Math.max(96, window.innerHeight - rect.bottom - componentProps.offset - 8)))}px`
-      }
-    }
+    Object.assign(style, layer.floatingStyle.value)
+    if (anchorWidth.value > 0) style.minWidth = `${anchorWidth.value}px`
+    if (availableHeight.value > 0) style.maxHeight = `${availableHeight.value}px`
   } else if (componentProps.placement === 'top') {
     style.top = 'auto'
     style.bottom = `calc(100% + ${componentProps.offset}px)`
@@ -682,8 +813,13 @@ watch(isOpen, visible => {
   emit('visible-change', visible)
 
   if (visible) {
+    // Seeded before the panel renders: the kernel measures it on the very next
+    // tick, and a panel that has not yet been told its minimum width would be
+    // measured at its content width and then jump when the width lands.
+    if (componentProps.teleported) {
+      anchorWidth.value = Math.round(controlRef.value?.getBoundingClientRect().width ?? 0)
+    }
     nextTick(() => {
-      updateDropdownPosition()
       ensureHighlightedOption()
       if (componentProps.filterable) inputRef.value?.focus()
     })
@@ -895,7 +1031,6 @@ const highlightedOption = computed(() =>
 
 function openDropdown() {
   if (componentProps.disabled || isOpen.value) return
-  updateDropdownPosition()
   isOpen.value = true
 }
 
@@ -994,18 +1129,6 @@ function handlePointerDown(event: PointerEvent) {
   closeDropdown()
 }
 
-function updateDropdownPosition() {
-  if (!componentProps.teleported) return
-  const rect = controlRef.value?.getBoundingClientRect()
-  if (!rect) return
-  teleportedRect.value = {
-    left: rect.left,
-    top: rect.top,
-    bottom: rect.bottom,
-    width: rect.width,
-  }
-}
-
 function focus() {
   if (componentProps.disabled) return
   if (componentProps.filterable) inputRef.value?.focus()
@@ -1054,15 +1177,13 @@ function isNormalizedOption(value: unknown): value is SelectNormalizedOption {
 }
 
 onMounted(() => {
+  // Scroll/resize tracking is the kernel's (bound only while open); this
+  // listener is the dismissal half, which Select still arbitrates itself.
   document.addEventListener('pointerdown', handlePointerDown)
-  window.addEventListener('resize', updateDropdownPosition)
-  window.addEventListener('scroll', updateDropdownPosition, true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', handlePointerDown)
-  window.removeEventListener('resize', updateDropdownPosition)
-  window.removeEventListener('scroll', updateDropdownPosition, true)
   if (remoteTimer) clearTimeout(remoteTimer)
 })
 
@@ -1118,16 +1239,171 @@ defineExpose({
   padding: 5px 10px;
 }
 
-.app-select-control:hover,
-.app-select.is-open .app-select-control,
-.app-select-control:focus {
+/* The control is a `role="combobox"` div with its own paint, so the UA outline
+   is replaced, never merely removed: `box` draws a ring, `ledger`/`underline`
+   ink their frame/rule. Scoped per variant because the box's fill would
+   repaint a control whose whole point is that it has none. */
+.app-select-control {
+  outline: none;
+}
+
+.app-select--box .app-select-control:hover,
+.app-select--box.is-open .app-select-control,
+.app-select--box .app-select-control:focus-visible {
   border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
   background: var(--ui-surface-input-focus-bg, var(--bg-elevated, var(--bg)));
 }
 
-.app-select-control:focus {
-  outline: none;
+.app-select--box .app-select-control:focus-visible {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 24%, transparent);
+}
+
+/* ————— ledger variant (设置区制图盒) —————
+   The settings page draws every native select as a square hairline box with no
+   fill; this is that box, owned by the component instead of by a `:deep(select)`
+   rule the migrated markup would no longer match. The `--settings-*` reads are
+   deliberate: inside SettingsPage they pick up the page's ink scale, outside it
+   they fall through to the app tokens. */
+.app-select--ledger .app-select-control {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  font-size: 13px;
+}
+
+.app-select--ledger .app-select-control:hover {
+  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 40%, transparent);
+  background: transparent;
+}
+
+.app-select--ledger.is-open .app-select-control,
+.app-select--ledger .app-select-control:focus-visible {
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-select--ledger .app-select-single-value,
+.app-select--ledger .app-select-placeholder {
+  color: inherit;
+}
+
+/* Square panel to match the square control. Scoped styles reach teleported
+   nodes because Vue stamps this component's scope id on them. */
+.app-select-dropdown--ledger {
+  padding: 2px 4px;
+  border-radius: var(--radius-xs);
+}
+
+.app-select-dropdown--ledger .app-select-option {
+  min-height: 28px;
+  font-size: 13px;
+}
+
+/* ————— 画线 rows (ledger + underline) —————
+ * The seam above keeps two filled rows apart; here the two states stop being
+ * the same kind of mark at all. `selected` is PERSISTENT and `hover` is
+ * TRANSIENT, and in the 画线 registers a persistent state is a LINE, not a
+ * slab — the settings page already says so everywhere else (`.member-line.is-on`
+ * thickens a rule, `sidebar-entry.is-active` is `inset 2px 0 0 accent` over a
+ * transparent fill). `Dropdown.vue` reached the same conclusion in P1 for the
+ * opposite reason: "单靠 menu-hover token 在有些主题下与菜单底色几乎同色".
+ *
+ * So: hover keeps the faint fill, selected takes the left rule + accent ink and
+ * gives up its fill. The two channels are orthogonal, which is what lets the
+ * rows survive being adjacent — and lets one row show both (hovering the
+ * selected item) without the states cancelling.
+ *
+ * `box` deliberately keeps its tinted fill: it is a 面 register, its panel and
+ * rows are rounded, and it already carries the ✓ as a second channel. Shared
+ * across all three: the 2px rhythm, the panel-padding inset, and the ✓.
+ */
+.app-select-dropdown--ledger .app-select-option,
+.app-select-dropdown--underline .app-select-option {
+  position: relative;
+  padding-left: 12px;
+  border-radius: var(--radius-xs);
+}
+
+.app-select-dropdown--ledger .app-select-option::before,
+.app-select-dropdown--underline .app-select-option::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease-default);
+}
+
+/* Two classes deeper than the base `.app-select-option.selected` on purpose —
+   equal specificity would hand the decision to injection order (the tie that
+   shipped a solid-pill ledger Switch earlier in this same pass). */
+.app-select-dropdown--ledger .app-select-option.selected,
+.app-select-dropdown--underline .app-select-option.selected {
+  background: transparent;
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.app-select-dropdown--ledger .app-select-option.selected::before,
+.app-select-dropdown--underline .app-select-option.selected::before {
+  background: var(--ui-accent-primary-fg, var(--accent));
+}
+
+/* Hovering the selected row: the fill returns UNDER the rule, so the row reads
+   as "the current one, under the cursor" rather than losing either state.
+   A selected row is never allowed to stop answering the pointer (ui-system.md §1).
+ *
+ * Deepened by the same notch `box` takes below, and for a measured reason: the
+ * bare hover token clears the panel by ~11 RGB levels on the light themes but
+ * only ~5 on One Dark (`--ui-state-hover-bg` against the panel mix, measured),
+ * and 5 levels under a row that ALREADY carries a rule and accent ink reads as
+ * nothing moving. Mixing the opposite tone in — `--ui-text-primary-fg`, light on
+ * dark themes and dark on light ones — buys the step back on both sides without
+ * a per-theme constant. Still a fill, still under the rule: the two channels
+ * stay orthogonal. */
+.app-select-dropdown--ledger .app-select-option.selected:hover,
+.app-select-dropdown--ledger .app-select-option.selected.highlighted,
+.app-select-dropdown--underline .app-select-option.selected:hover,
+.app-select-dropdown--underline .app-select-option.selected.highlighted {
+  background: color-mix(
+    in srgb,
+    var(--ui-state-hover-bg, var(--hover)) 94%,
+    var(--ui-text-primary-fg, var(--text))
+  );
+}
+
+/* ————— underline variant (设置区画线风) —————
+   The line IS the control: no frame, no fill, one hairline that inks up on
+   focus/open. Published as a variant rather than left to consumers because a
+   consumer class on `.app-select` ties with the component's own rule at
+   (0,2,0) and the winner is whatever stylesheet was injected last. */
+.app-select--underline .app-select-control {
+  min-height: 0;
+  padding: 4px 0 5px;
+  border: none;
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-radius: 0;
+  background: transparent;
+}
+
+.app-select--underline .app-select-control:hover,
+.app-select--underline.is-open .app-select-control,
+.app-select--underline .app-select-control:focus-visible {
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-select--underline.app-select--small .app-select-control {
+  min-height: 0;
+  padding: 3px 0 4px;
+  border-radius: 0;
 }
 
 .app-select.is-disabled {
@@ -1253,24 +1529,52 @@ button.app-select-tag {
 
 .app-select-dropdown {
   position: absolute;
-  z-index: calc(var(--z-dropdown, 100) + 20);
+  z-index: calc(var(--z-dropdown) + 20);
   left: 0;
   min-width: 100%;
   max-width: min(360px, calc(100vw - 24px));
   max-height: 268px;
   overflow: auto;
-  padding: 5px;
+  /* 3px block / 5px inline: the rows below carry 2px of their own vertical
+     margin, so the panel gives that back and the outer inset is unchanged.
+     (Padding also stops the first row's margin collapsing into the panel.) */
+  padding: 3px 5px;
   border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
   background: color-mix(in oklch, var(--ui-surface-panel-bg, var(--bg)) 70%, var(--ui-surface-elevated-bg, var(--bg-elevated)) 30%);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
 }
 
+/*
+ * Rows are SEPARATED, not merely rounded.
+ *
+ * A rounded block only reads as a block while something un-filled sits next to
+ * it: give a `hover` row and a `selected` row a shared edge and each one's
+ * radius is filled in by the neighbour's straight edge, so the pair renders as
+ * one continuous slab and the boundary disappears (real report — the composer's
+ * permission picker, where the two states also resolve to near-identical greys
+ * in the light themes). `margin-block` is the seam that keeps them two rows.
+ *
+ * 2px, not 1px each: the panel is a plain block container, so adjacent rows'
+ * vertical margins COLLAPSE to the larger of the two. `1px` reads as 1px
+ * between rows, not 2 — measured, not assumed. The panel's block padding gives
+ * the 2px back so the outer inset is unchanged.
+ *
+ * Select is the only member of the picker family that needs this: `Dropdown`
+ * (ContextMenuItem has no `selected`) and `Mention` carry a single TRANSIENT
+ * state, so no two adjacent rows can ever both be filled. Adding a seam there
+ * would be churn against the tight-row convention menus are read with.
+ */
 .app-select-option {
+  /* One definition of "the selected slab", so the deepened hover below cannot
+     drift away from the resting state it is supposed to be one notch above. */
+  --select-option-selected-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 11%, transparent);
+
   display: flex;
   align-items: center;
   width: 100%;
   min-height: 31px;
+  margin-block: 2px;
   gap: 8px;
   padding: 0 8px;
   border: 0;
@@ -1289,7 +1593,38 @@ button.app-select-tag {
 
 .app-select-option.selected {
   color: var(--ui-accent-primary-fg, var(--accent));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 11%, transparent);
+  background: var(--select-option-selected-bg);
+}
+
+/* Hovering the row that is ALREADY selected.
+ *
+ * Without this rule `box` is a dead zone: `.app-select-option.selected` (0,2,0)
+ * is authored after `.app-select-option:hover` (0,2,0), so the tinted slab
+ * simply swallows the hover fill and the cursor changes nothing (real report).
+ * A selected row is still a row you can point at, and every other register in
+ * the app answers the pointer.
+ *
+ * `box` keeps its slab — it is the 面 register — so the only channel left is to
+ * DEEPEN it. The admixture is `--ui-text-primary-fg`, the same "mix the opposite
+ * tone in" move the global `.btn.primary:hover` and `RoomSurface`'s send disc
+ * make: that token is dark on light themes and light on dark ones, so "one notch
+ * deeper" holds in both without a hard-coded alpha or hex. Raising the accent's
+ * own alpha instead would fail on dark themes, where more accent over a dark
+ * panel is a smaller step than the eye needs.
+ *
+ * Prefixed with `--box` on purpose: (0,4,0) beats `.selected` (0,2,0) outright
+ * instead of tying at (0,3,0)-vs-(0,2,0)… and, more importantly, keeps this out
+ * of the 画线 panels, whose own (0,5,0) refill below is a different recipe.
+ * Same selector serves `:hover` and keyboard `.highlighted` — one channel, one
+ * geometry (ui-system.md §1).
+ */
+.app-select-dropdown--box .app-select-option.selected:hover,
+.app-select-dropdown--box .app-select-option.selected.highlighted {
+  background: color-mix(
+    in srgb,
+    var(--select-option-selected-bg) 92%,
+    var(--ui-text-primary-fg, var(--text))
+  );
 }
 
 .app-select-option:disabled,

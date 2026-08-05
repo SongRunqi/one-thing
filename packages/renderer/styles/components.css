@@ -3,8 +3,9 @@
  *
  * This file contains reusable styles for common UI components:
  * - Buttons (.btn)
- * - Dialogs (.dialog-overlay, .dialog)
  * - Form elements (.form-group, .form-input, etc.)
+ *
+ * Dialogs are NOT here: `components/common/Dialog.vue` owns that shell.
  *
  * Import this file in main.css to make these styles available globally.
  */
@@ -101,75 +102,21 @@
 }
 
 /* =============================================================================
-   DIALOG / MODAL
+   DIALOG / MODAL  —  REMOVED (P2/P3)
+   -----------------------------------------------------------------------------
+   The pre-P2 `.dialog-overlay` / `.dialog` / `.dialog-header` / `.dialog-body` /
+   `.dialog-message` / `.dialog-actions` / `.dialog-actions-right` block used to
+   live here. Every dialog is `components/common/Dialog.vue` now
+   (docs/design/ui-system.md §1), which owns the overlay, `--z-modal`, the
+   hairlines, Esc and focus; the footer button recipe ships with it as
+   `.app-dialog-text-btn`. `ModelConfigDialog.vue` was the last caller and moved
+   over with this deletion.
+
+   Do not reintroduce these names: a global `.dialog-*` class ties at (0,2,0)
+   with any caller's scoped rule of the same name, and the winner is stylesheet
+   injection order — the exact failure that flipped the paper dialogs' footer
+   buttons in P2.
    ============================================================================= */
-
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-modal);
-  backdrop-filter: blur(4px);
-}
-
-.dialog {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  width: 90%;
-  max-width: 400px;
-  box-shadow: var(--ui-surface-elevated-shadow, var(--shadow));
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.dialog-header svg {
-  flex-shrink: 0;
-}
-
-.dialog-header h3 {
-  font-family: var(--type-headline-font);
-  font-size: var(--type-headline-size);
-  font-weight: var(--type-headline-weight);
-  line-height: var(--type-headline-line-height);
-  margin: 0;
-}
-
-.dialog-body {
-  padding: 20px 24px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.dialog-message {
-  padding: 20px 24px;
-  font-size: var(--type-body-size);
-  color: var(--ui-text-muted-fg, var(--muted));
-  margin: 0;
-  line-height: var(--type-body-line-height);
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.dialog-actions-right {
-  display: flex;
-  gap: 10px;
-}
 
 /* =============================================================================
    FORM ELEMENTS
@@ -321,70 +268,15 @@
 }
 
 /* =============================================================================
-   TOGGLE SWITCH
+   TOGGLE SWITCH — removed in P3.
+   `.toggle-switch` (44×24) and `.mini-toggle-switch` (32×18) were one of the
+   three switch dialects the P3 audit set out to merge. They turned out to have
+   ZERO consumers repo-wide — a div-with-.active rail that nothing had rendered
+   for some time, kept alive only by its own definition. The remaining two are
+   `common/Switch.vue` (now the only sanctioned one) and the settings-area ink
+   toggle, which Switch absorbed as `variant="ledger"`; the 32×18 metrics live
+   on as `size="mini"`.
    ============================================================================= */
-
-.toggle-switch {
-  position: relative;
-  width: 44px;
-  height: 24px;
-  background: var(--ui-border-default-border, var(--border));
-  border-radius: 12px;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.toggle-switch::after {
-  content: '';
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  background: white;
-  border-radius: 50%;
-  top: 2px;
-  left: 2px;
-  transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.toggle-switch.active {
-  background: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.toggle-switch.active::after {
-  transform: translateX(20px);
-}
-
-/* Mini toggle (for compact areas) */
-.mini-toggle-switch {
-  width: 32px;
-  height: 18px;
-  background: var(--ui-border-default-border, var(--border));
-  border-radius: 9px;
-  position: relative;
-  transition: background 0.2s ease;
-}
-
-.mini-toggle-switch::after {
-  content: '';
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  background: white;
-  border-radius: 50%;
-  top: 2px;
-  left: 2px;
-  transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.mini-toggle-switch.active {
-  background: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.mini-toggle-switch.active::after {
-  transform: translateX(14px);
-}
 
 /* =============================================================================
    TOAST NOTIFICATIONS

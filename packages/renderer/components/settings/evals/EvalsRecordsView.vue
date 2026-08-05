@@ -3,48 +3,22 @@
     <!-- Filter bar -->
     <div class="evals-filter-bar">
       <div class="evals-filter-row">
-        <label class="evals-filter-toggle">
-          <input
-            type="checkbox"
-            :checked="store.recordsFilter.negativeOnly"
-            @change="toggleNegativeOnly"
-          >
-          <span>Only negative signals</span>
-        </label>
-
-        <select
-          v-model="localFilter.category"
-          class="evals-form-select"
-          @change="applyFilters"
+        <Checkbox
+          class="evals-filter-toggle"
+          :model-value="store.recordsFilter.negativeOnly"
+          aria-label="Only negative signals"
+          @update:model-value="toggleNegativeOnly(Boolean($event))"
         >
-          <option value="">
-            All categories
-          </option>
-          <option value="missed-directory-switch">
-            Missed Directory Switch
-          </option>
-          <option value="ignored-skill-instructions">
-            Ignored Skills
-          </option>
-          <option value="voice-mode-violation">
-            Voice Mode Violation
-          </option>
-          <option value="ignored-known-projects">
-            Ignored Known Projects
-          </option>
-          <option value="wrong-platform-behavior">
-            Wrong Platform
-          </option>
-          <option value="ignored-agent-instructions">
-            Ignored Agent
-          </option>
-          <option value="general-poor-response">
-            General Poor Response
-          </option>
-          <option value="not-prompt-fault">
-            Not Prompt Fault
-          </option>
-        </select>
+          Only negative signals
+        </Checkbox>
+
+        <Select
+          v-bind="LEDGER_SELECT"
+          :model-value="localFilter.category"
+          :options="CATEGORY_OPTIONS"
+          aria-label="Filter by category"
+          @update:model-value="localFilter.category = String($event ?? ''); applyFilters()"
+        />
 
         <input
           v-model="localFilter.sinceDate"
@@ -54,22 +28,13 @@
           @change="applyFilters"
         >
 
-        <select
-          v-model="localFilter.provider"
-          class="evals-form-select"
-          @change="applyFilters"
-        >
-          <option value="">
-            All providers
-          </option>
-          <option
-            v-for="p in uniqueProviders"
-            :key="p"
-            :value="p"
-          >
-            {{ p }}
-          </option>
-        </select>
+        <Select
+          v-bind="LEDGER_SELECT"
+          :model-value="localFilter.provider"
+          :options="providerOptions"
+          aria-label="Filter by provider"
+          @update:model-value="localFilter.provider = String($event ?? ''); applyFilters()"
+        />
       </div>
 
       <button
@@ -225,7 +190,10 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import Checkbox from "@/components/common/Checkbox.vue";
 import ErrorNote from "@/components/common/ErrorNote.vue";
+import Select from "@/components/common/Select.vue";
+import type { SelectOptionLike } from "@/components/common/select";
 import { useEvalsStore } from "@/stores/evals";
 import type { EvalRecordView } from "@/stores/evals";
 
@@ -244,6 +212,39 @@ const uniqueProviders = computed(() => {
   return [...set].sort();
 });
 
+/**
+ * One spelling of "a filter-bar dropdown" — the `.evals-form-select` box this
+ * sheet used to hand-draw is exactly `variant: 'ledger'`. `teleported` keeps
+ * the panel out of the settings scroll container.
+ *
+ * No `fitInputWidth` here on purpose: these sit in an inline filter row and are
+ * pinned narrow by `.evals-filter-select` below, while option labels run long
+ * ("Ignored Known Projects") — a panel matched to the control would clip them.
+ */
+const LEDGER_SELECT = {
+  class: "evals-filter-select",
+  variant: "ledger",
+  size: "small",
+  teleported: true,
+} as const;
+
+const CATEGORY_OPTIONS: SelectOptionLike[] = [
+  { value: "", label: "All categories" },
+  { value: "missed-directory-switch", label: "Missed Directory Switch" },
+  { value: "ignored-skill-instructions", label: "Ignored Skills" },
+  { value: "voice-mode-violation", label: "Voice Mode Violation" },
+  { value: "ignored-known-projects", label: "Ignored Known Projects" },
+  { value: "wrong-platform-behavior", label: "Wrong Platform" },
+  { value: "ignored-agent-instructions", label: "Ignored Agent" },
+  { value: "general-poor-response", label: "General Poor Response" },
+  { value: "not-prompt-fault", label: "Not Prompt Fault" },
+];
+
+const providerOptions = computed<SelectOptionLike[]>(() => [
+  { value: "", label: "All providers" },
+  ...uniqueProviders.value.map((p) => ({ value: p, label: p })),
+]);
+
 function recordKey(r: EvalRecordView) {
   return `${r.sessionId}::${r.turnId}`;
 }
@@ -253,8 +254,8 @@ function toggleRecord(r: EvalRecordView) {
   expandedRecord.value = expandedRecord.value === key ? null : key;
 }
 
-function toggleNegativeOnly(e: Event) {
-  store.recordsFilter.negativeOnly = (e.target as HTMLInputElement).checked;
+function toggleNegativeOnly(checked: boolean) {
+  store.recordsFilter.negativeOnly = checked;
   applyFilters();
 }
 
@@ -329,19 +330,21 @@ async function handleGenerateTriage() {
   flex-wrap: wrap;
 }
 
-.evals-filter-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--settings-ink-2);
-  cursor: pointer;
-  white-space: nowrap;
+/* `.app-select` is `width: 100%` by default (it is built for form fields), so
+   an inline filter row has to pin it or it eats the whole line. */
+.app-select.evals-filter-select {
+  width: 190px;
+  flex: 0 0 auto;
 }
 
-.evals-filter-toggle input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
+/* P3: `<Checkbox>` draws the mark; this only seats it in the filter row.
+   `.app-checkbox` qualifies the selector so it outranks the component's own
+   (0,1,0) rule instead of tying with it (ui-system.md §1). */
+.app-checkbox.evals-filter-toggle {
+  align-items: center;
+  gap: 6px;
+  color: var(--settings-ink-2);
+  white-space: nowrap;
 }
 
 .evals-date-input {
@@ -349,7 +352,6 @@ async function handleGenerateTriage() {
   font-variant-numeric: tabular-nums;
 }
 
-.evals-form-select,
 .evals-form-input {
   padding: 5px 8px;
   border: 1px solid var(--settings-rule);
@@ -361,7 +363,6 @@ async function handleGenerateTriage() {
   min-width: 0;
 }
 
-.evals-form-select:focus,
 .evals-form-input:focus {
   outline: none;
   border-color: var(--settings-accent);

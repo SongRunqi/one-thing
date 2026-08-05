@@ -9,13 +9,12 @@
           label="Enable Memory"
           description="Use saved notes and daily captures during conversations."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="memory.enabled !== false"
-              @change="updateMemory({ enabled: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="memory.enabled !== false"
+            aria-label="Enable Memory"
+            @update:model-value="updateMemory({ enabled: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -90,22 +89,15 @@
           label="Mode"
           description="Auto captures daily notes after replies. Explicit only waits for clear remember intent."
         >
-          <select
-            class="form-select"
-            :value="captureMode"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="ledger-select"
+            :model-value="captureMode"
+            :options="CAPTURE_MODE_OPTIONS"
             :disabled="memoryDisabled"
-            @change="updateCaptureMode(($event.target as HTMLSelectElement).value)"
-          >
-            <option value="auto">
-              Auto
-            </option>
-            <option value="explicit-only">
-              Explicit only
-            </option>
-            <option value="off">
-              Off
-            </option>
-          </select>
+            aria-label="Capture mode"
+            @update:model-value="updateCaptureMode(String($event))"
+          />
         </SettingRow>
 
         <div class="settings-grid-row">
@@ -151,14 +143,13 @@
           label="Enable review"
           description="Runs after a conversation goes idle once enough new user messages accumulated."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="memory.review.enabled !== false"
-              :disabled="memoryDisabled"
-              @change="updateReview({ enabled: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="memory.review.enabled !== false"
+            :disabled="memoryDisabled"
+            aria-label="Enable review"
+            @update:model-value="updateReview({ enabled: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -186,39 +177,28 @@
           label="Enable diagnostics"
           description="Record memory operation diagnostics on disk."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="memory.logging.enabled !== false"
-              :disabled="memoryDisabled"
-              @change="updateLogging({ enabled: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="memory.logging.enabled !== false"
+            :disabled="memoryDisabled"
+            aria-label="Enable diagnostics"
+            @update:model-value="updateLogging({ enabled: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
           label="Level"
           description="Minimum diagnostic detail recorded."
         >
-          <select
-            class="form-select"
-            :value="memory.logging.level"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="ledger-select"
+            :model-value="memory.logging.level"
+            :options="LOG_LEVEL_OPTIONS"
             :disabled="memoryDisabled || memory.logging.enabled === false"
-            @change="updateLogging({ level: ($event.target as HTMLSelectElement).value as SoulMemoryLoggingSettings['level'] })"
-          >
-            <option value="debug">
-              Debug
-            </option>
-            <option value="info">
-              Info
-            </option>
-            <option value="warn">
-              Warn
-            </option>
-            <option value="error">
-              Error
-            </option>
-          </select>
+            aria-label="Diagnostics level"
+            @update:model-value="updateLogging({ level: String($event) as SoulMemoryLoggingSettings['level'] })"
+          />
         </SettingRow>
 
         <div class="settings-grid-row">
@@ -256,14 +236,13 @@
           label="Include HTTP error body"
           description="Store provider error body previews when memory calls fail."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="memory.logging.includeHttpErrorBody !== false"
-              :disabled="memoryDisabled || memory.logging.enabled === false"
-              @change="updateLogging({ includeHttpErrorBody: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="memory.logging.includeHttpErrorBody !== false"
+            :disabled="memoryDisabled || memory.logging.enabled === false"
+            aria-label="Include HTTP error body"
+            @update:model-value="updateLogging({ includeHttpErrorBody: Boolean($event) })"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -272,7 +251,10 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Select from '@/components/common/Select.vue'
+import Switch from '@/components/common/Switch.vue'
 import { computed } from 'vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import type { AppSettings } from '@/types'
 import type {
   SoulMemoryCaptureSettings,
@@ -296,6 +278,27 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:settings': [settings: AppSettings]
 }>()
+
+/** Settings-area dropdown spelling; teleported because the tab body scrolls. */
+const LEDGER_SELECT = {
+  variant: 'ledger',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+} as const
+
+const CAPTURE_MODE_OPTIONS: SelectOptionLike[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'explicit-only', label: 'Explicit only' },
+  { value: 'off', label: 'Off' },
+]
+
+const LOG_LEVEL_OPTIONS: SelectOptionLike[] = [
+  { value: 'debug', label: 'Debug' },
+  { value: 'info', label: 'Info' },
+  { value: 'warn', label: 'Warn' },
+  { value: 'error', label: 'Error' },
+]
 
 type NormalizedSoulMemorySettings = Omit<
   Required<SoulMemorySettings>,
@@ -373,6 +376,14 @@ async function chooseMemoryDirectory(): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+/* P3: the two dropdowns are `<Select variant="ledger">`. This class rides the
+   component root and carries layout only — the paint belongs to the variant. */
+.ledger-select {
+  width: 100%;
+  max-width: 176px;
+  min-width: 0;
 }
 
 .memory-directory-control {

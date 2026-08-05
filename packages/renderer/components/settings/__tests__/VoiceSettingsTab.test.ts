@@ -1,17 +1,32 @@
 // @vitest-environment happy-dom
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import VoiceSettingsTab from '../VoiceSettingsTab.vue'
 import { createDefaultSettings } from '@shared/defaults/settings'
+
+/**
+ * P3 moved this tab from native `<select>` to `common/Select.vue`. A native
+ * select puts every `<option>` in the DOM whether or not it is open; the custom
+ * one renders the panel on demand and teleports it to `body`. So "this picker
+ * offers X" is now asked by opening the picker and reading the teleported
+ * panel — which is also what a user has to do.
+ */
+async function optionsOf(wrapper: VueWrapper, ariaLabel: string): Promise<string> {
+  await wrapper.find(`[role="combobox"][aria-label="${ariaLabel}"]`).trigger('click')
+  await nextTick()
+  return document.body.textContent ?? ''
+}
 
 describe('VoiceSettingsTab', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     delete (window as any).electronAPI
+    document.body.innerHTML = ''
   })
 
-  it('keeps the default voice setup focused on conversation input', () => {
+  it('keeps the default voice setup focused on conversation input', async () => {
     const wrapper = mount(VoiceSettingsTab, {
       props: {
         settings: createDefaultSettings(),
@@ -25,12 +40,13 @@ describe('VoiceSettingsTab', () => {
     expect(text).toContain('FunASR WebSocket URL')
     expect(text).toContain('TTS provider')
     expect(text).toContain('System voice (no key)')
-    expect(text).toContain('OpenRouter TTS')
     expect(text).toContain('No cloud TTS setup needed')
     expect(text).toContain('Test in chat')
     expect(text).not.toContain('Porcupine')
     expect(text).not.toContain('AccessKey')
     expect(text).not.toContain('Wake phrase')
+
+    expect(await optionsOf(wrapper, 'TTS provider')).toContain('OpenRouter TTS')
   })
 
   it('shows that OpenRouter TTS can reuse the speech-to-text OpenRouter key', () => {
@@ -83,8 +99,9 @@ describe('VoiceSettingsTab', () => {
     expect(voiceGetTTSModels).toHaveBeenCalledWith({ force: false })
     expect(wrapper.text()).toContain('OpenAI GPT-4o Mini TTS')
     expect(wrapper.text()).toContain('alloy')
-    expect(wrapper.text()).toContain('nova')
     expect(wrapper.text()).toContain('Loaded 1 TTS models.')
+    // The model's other voice is in the picker, not on the closed control.
+    expect(await optionsOf(wrapper, 'OpenRouter TTS voice')).toContain('nova')
   })
 
   it('makes an incomplete cloud TTS choice visible and explains the system fallback', () => {

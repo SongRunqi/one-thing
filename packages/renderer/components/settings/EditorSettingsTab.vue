@@ -25,14 +25,12 @@
           label="Notes Engine"
           description="Rendering engine for Todo / Notes. Render-first is Typora-style (experimental); source-first keeps raw markdown editable inline."
         >
-          <label class="toggle-row">
-            <input
-              type="checkbox"
-              :checked="currentEditor.noteEngine === 'prosemirror'"
-              aria-label="use render-first notes engine"
-              @change="updateEditor({ noteEngine: ($event.target as HTMLInputElement).checked ? 'prosemirror' : 'codemirror' })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="currentEditor.noteEngine === 'prosemirror'"
+            aria-label="use render-first notes engine"
+            @update:model-value="updateEditor({ noteEngine: $event ? 'prosemirror' : 'codemirror' })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -49,13 +47,12 @@
         </SettingRow>
 
         <SettingRow label="Line Wrapping">
-          <label class="toggle-row">
-            <input
-              type="checkbox"
-              :checked="currentEditor.lineWrapping"
-              @change="updateEditor({ lineWrapping: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="currentEditor.lineWrapping"
+            aria-label="Line Wrapping"
+            @update:model-value="updateEditor({ lineWrapping: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -72,23 +69,21 @@
         </SettingRow>
 
         <SettingRow label="Syntax Highlighting">
-          <label class="toggle-row">
-            <input
-              type="checkbox"
-              :checked="currentEditor.syntaxHighlighting"
-              @change="updateEditor({ syntaxHighlighting: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="currentEditor.syntaxHighlighting"
+            aria-label="Syntax Highlighting"
+            @update:model-value="updateEditor({ syntaxHighlighting: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow label="Completions">
-          <label class="toggle-row">
-            <input
-              type="checkbox"
-              :checked="currentEditor.completionEnabled"
-              @change="updateEditor({ completionEnabled: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="currentEditor.completionEnabled"
+            aria-label="Completions"
+            @update:model-value="updateEditor({ completionEnabled: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -153,6 +148,7 @@
 </template>
 
 <script setup lang="ts">
+import Switch from '@/components/common/Switch.vue'
 import { computed } from 'vue'
 import type { AppSettings, EditorSettings } from '@/types'
 import {
@@ -229,8 +225,8 @@ function updateEditor(patch: EditorSettings) {
 <style scoped>
 /*
  * Editor tab — ledger 画线风.
- * Row/input/toggle visuals come from the SettingsPage :deep() layer;
- * only layout lives here.
+ * Row/input visuals come from the SettingsPage :deep() layer; the four toggles
+ * are `<Switch variant="ledger">` and draw themselves. Only layout lives here.
  */
 .tab-content {
   animation: fadeIn 0.15s ease;
@@ -249,14 +245,6 @@ function updateEditor(patch: EditorSettings) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  cursor: pointer;
 }
 
 .app-input-number {

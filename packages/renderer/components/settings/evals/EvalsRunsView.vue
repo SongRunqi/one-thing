@@ -64,19 +64,16 @@
         class="evals-run-form"
       >
         <div class="evals-run-form-row">
-          <label class="evals-form-label">
-            Provider
-            <select
-              v-model="runForm.providerId"
-              class="evals-form-select"
-            >
-              <option
-                v-for="p in providers"
-                :key="p.id"
-                :value="p.id"
-              >{{ p.name }}</option>
-            </select>
-          </label>
+          <div class="evals-form-label">
+            <span>Provider</span>
+            <Select
+              v-bind="LEDGER_SELECT"
+              :model-value="runForm.providerId"
+              :options="providerOptions"
+              aria-label="Provider"
+              @update:model-value="runForm.providerId = String($event ?? '')"
+            />
+          </div>
 
           <label class="evals-form-label">
             Model
@@ -118,18 +115,17 @@
         <div class="evals-run-form-cases">
           <span class="evals-case-select-hint">Ablation (disable prompt sections):</span>
           <div class="evals-case-checkboxes">
-            <label
+            <Checkbox
               v-for="s in ablationSections"
               :key="s.key"
               class="evals-case-checkbox"
+              size="small"
+              :model-value="runForm.disabledSections.includes(s.key)"
+              :aria-label="`Disable prompt section ${s.label}`"
+              @update:model-value="toggleInList(runForm.disabledSections, s.key, Boolean($event))"
             >
-              <input
-                v-model="runForm.disabledSections"
-                type="checkbox"
-                :value="s.key"
-              >
               {{ s.label }}
-            </label>
+            </Checkbox>
           </div>
         </div>
 
@@ -140,18 +136,17 @@
         >
           <span class="evals-case-select-hint">Select cases to run (all if none selected):</span>
           <div class="evals-case-checkboxes">
-            <label
+            <Checkbox
               v-for="c in store.cases.filter(c => !c.isSentinel)"
               :key="c.id"
               class="evals-case-checkbox"
+              size="small"
+              :model-value="runForm.caseIds.includes(c.id)"
+              :aria-label="`Run case ${c.id}`"
+              @update:model-value="toggleInList(runForm.caseIds, c.id, Boolean($event))"
             >
-              <input
-                v-model="runForm.caseIds"
-                type="checkbox"
-                :value="c.id"
-              >
               {{ c.id }}
-            </label>
+            </Checkbox>
           </div>
         </div>
       </div>
@@ -338,7 +333,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import Checkbox from "@/components/common/Checkbox.vue";
 import ErrorNote from "@/components/common/ErrorNote.vue";
+import Select from "@/components/common/Select.vue";
+import type { SelectOptionLike } from "@/components/common/select";
 import { useEvalsStore } from "@/stores/evals";
 import { platformApi } from "@/platform";
 
@@ -353,6 +351,29 @@ const runForm = ref({
 });
 
 const providers = ref<Array<{ id: string; name: string }>>([]);
+
+/** One spelling of "a settings-area dropdown" — the `.evals-form-select` box
+ *  this sheet used to hand-draw is exactly `variant: 'ledger'`. `teleported`
+ *  keeps the panel out of the settings scroll container. */
+const LEDGER_SELECT = {
+  variant: "ledger",
+  size: "small",
+  teleported: true,
+  fitInputWidth: true,
+} as const;
+
+const providerOptions = computed<SelectOptionLike[]>(() =>
+  providers.value.map(p => ({ value: p.id, label: p.name })),
+);
+
+/** Array-valued checkbox groups: `Checkbox` is a two-state control, so the
+ *  membership bookkeeping the native `v-model` + `:value` pair did for free
+ *  lives here instead. Mutates in place to keep the same ref identity. */
+function toggleInList(list: string[], value: string, on: boolean) {
+  const index = list.indexOf(value);
+  if (on && index === -1) list.push(value);
+  else if (!on && index !== -1) list.splice(index, 1);
+}
 
 // Keys must match the section names in buildRuntimeSystemPrompt
 // (packages/onething-runtime/src/prompts/builder.ts) — a mismatched key
@@ -533,11 +554,12 @@ function handleCancelRun() {
   gap: 8px;
 }
 
-.evals-case-checkbox {
-  display: flex;
+/* P3: `<Checkbox size="small">` draws the mark; this only seats it in the wrap
+   row. `.app-checkbox` qualifies the selector so it outranks the component's
+   own (0,1,0) rule instead of tying with it (ui-system.md §1). */
+.app-checkbox.evals-case-checkbox {
   align-items: center;
   gap: 4px;
-  font-size: 12px;
   color: var(--settings-ink-2);
 }
 
@@ -902,19 +924,7 @@ function handleCancelRun() {
 }
 
 .evals-form-input,
-.evals-form-select {
-  padding: 6px 8px;
-  border: 1px solid var(--settings-rule);
-  border-radius: 0;
-  background: transparent;
-  color: var(--settings-ink);
-  font-size: 13px;
-  font-family: inherit;
-  min-width: 0;
-}
-
-.evals-form-input:focus,
-.evals-form-select:focus {
+.evals-form-input:focus {
   outline: none;
   border-color: var(--settings-accent);
 }

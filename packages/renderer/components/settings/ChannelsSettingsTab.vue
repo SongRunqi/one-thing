@@ -9,13 +9,12 @@
           label="WeChat"
           description="Incoming WeChat messages are routed through the normal onething session runtime."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="wechatEnabled"
-              @change="setWechatEnabled(checked($event))"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="wechatEnabled"
+            aria-label="WeChat"
+            @update:model-value="setWechatEnabled(Boolean($event))"
+          />
         </SettingRow>
 
         <SettingRow
@@ -290,63 +289,39 @@
         >
           <div class="binding-settings-content">
             <div class="binding-form">
-              <select
-                v-model="binding.clientUserId"
-                class="form-select binding-profile-select"
-              >
-                <option
-                  v-for="profile in profiles"
-                  :key="profile.id"
-                  :value="profile.id"
-                >
-                  {{ profile.name }} ({{ profile.id }})
-                </option>
-              </select>
-              <select
-                v-model="binding.connector"
-                class="form-select connector-select"
-              >
-                <option value="wechat">
-                  WeChat
-                </option>
-                <option value="telegram">
-                  Telegram
-                </option>
-                <option value="slack">
-                  Slack
-                </option>
-              </select>
-              <select
-                v-model="binding.workspaceId"
-                class="form-select binding-small-input"
-              >
-                <option
-                  v-for="workspace in workspaceOptions"
-                  :key="workspace.value"
-                  :value="workspace.value"
-                >
-                  {{ workspace.label }}
-                </option>
-              </select>
-              <select
-                v-model="binding.externalUserId"
-                class="form-select binding-user-input"
+              <Select
+                v-bind="LEDGER_SELECT"
+                class="binding-select binding-profile-select"
+                :model-value="binding.clientUserId"
+                :options="profileOptions"
+                aria-label="Binding profile"
+                @update:model-value="binding.clientUserId = String($event)"
+              />
+              <Select
+                v-bind="LEDGER_SELECT"
+                class="binding-select connector-select"
+                :model-value="binding.connector"
+                :options="CONNECTOR_OPTIONS"
+                aria-label="Binding connector"
+                @update:model-value="binding.connector = String($event)"
+              />
+              <Select
+                v-bind="LEDGER_SELECT"
+                class="binding-select binding-small-input"
+                :model-value="binding.workspaceId"
+                :options="workspaceSelectOptions"
+                aria-label="Binding workspace"
+                @update:model-value="binding.workspaceId = String($event)"
+              />
+              <Select
+                v-bind="LEDGER_SELECT"
+                class="binding-select binding-user-input"
+                :model-value="binding.externalUserId"
+                :options="channelUserSelectOptions"
                 :disabled="!channelUserOptions.length"
-              >
-                <option
-                  v-if="!channelUserOptions.length"
-                  value=""
-                >
-                  No channel users
-                </option>
-                <option
-                  v-for="channelUser in channelUserOptions"
-                  :key="channelUser.value"
-                  :value="channelUser.value"
-                >
-                  {{ channelUser.label }}
-                </option>
-              </select>
+                aria-label="Binding channel user"
+                @update:model-value="binding.externalUserId = String($event)"
+              />
               <Button
                 unstyled
                 class="channel-action"
@@ -421,7 +396,10 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Select from '@/components/common/Select.vue'
+import Switch from '@/components/common/Switch.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import {
   Copy,
   ExternalLink,
@@ -527,6 +505,20 @@ interface SelectOption {
   label: string
 }
 
+/** Settings-area dropdown spelling; teleported because the tab body scrolls. */
+const LEDGER_SELECT = {
+  variant: 'ledger',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+} as const
+
+const CONNECTOR_OPTIONS: SelectOptionLike[] = [
+  { value: 'wechat', label: 'WeChat' },
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'slack', label: 'Slack' },
+]
+
 interface ObservedChannelUser {
   connector: string
   workspaceId: string
@@ -599,6 +591,23 @@ const channelUserOptions = computed<SelectOption[]>(() => {
     }))
     .sort((left, right) => left.label.localeCompare(right.label))
 })
+
+/* The binding form's four dropdowns are `<Select>`; `SelectOptionLike` is the
+   shape it normalizes, and the empty channel-user row stays a real option so
+   the closed control still reads "No channel users". */
+const profileOptions = computed<SelectOptionLike[]>(() => (
+  profiles.value.map(profile => ({ value: profile.id, label: `${profile.name} (${profile.id})` }))
+))
+
+const workspaceSelectOptions = computed<SelectOptionLike[]>(() => (
+  workspaceOptions.value.map(option => ({ value: option.value, label: option.label }))
+))
+
+const channelUserSelectOptions = computed<SelectOptionLike[]>(() => (
+  channelUserOptions.value.length === 0
+    ? [{ value: '', label: 'No channel users' }]
+    : channelUserOptions.value.map(option => ({ value: option.value, label: option.label }))
+))
 
 watch([workspaceOptions, channelUserOptions], () => {
   if (!workspaceOptions.value.some(option => option.value === binding.value.workspaceId)) {
@@ -785,10 +794,6 @@ onBeforeUnmount(() => {
   if (refreshTimer) clearInterval(refreshTimer)
   if (copiedMessageTimer) clearTimeout(copiedMessageTimer)
 })
-
-function checked(event: Event): boolean {
-  return (event.target as HTMLInputElement).checked
-}
 
 function setWechatEnabled(enabled: boolean): void {
   const accounts = getWechatSettingsAccounts().map(account => ({
@@ -1432,7 +1437,7 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   max-width: 100%;
 }
 
-.binding-form :is(.form-input, .form-select, .channel-action) {
+.binding-form :is(.form-input, .channel-action) {
   box-sizing: border-box;
   height: 40px;
   min-height: 40px;
@@ -1440,8 +1445,15 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   line-height: 40px;
 }
 
-.binding-form :is(.form-input, .form-select) {
+.binding-form .form-input {
   padding-inline: 12px;
+}
+
+/* The four dropdowns are `<Select variant="ledger">`. Height on the component
+   root only — the control is its single flex child and stretches to fill, so
+   the row keeps one line without reaching inside the component to repaint it. */
+.binding-select {
+  height: 40px;
 }
 
 .binding-form .channel-action {

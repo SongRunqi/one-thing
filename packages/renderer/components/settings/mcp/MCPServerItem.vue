@@ -41,17 +41,13 @@
           text="Auto-connect on startup"
           position="top"
         >
-          <label
-            class="toggle"
+          <Switch
+            variant="ledger"
+            :model-value="server.config.enabled"
+            aria-label="Auto-connect on startup"
             @click.stop
-          >
-            <input
-              type="checkbox"
-              :checked="server.config.enabled"
-              @change="$emit('toggle-enabled', ($event.target as HTMLInputElement).checked)"
-            >
-            <span class="toggle-slider" />
-          </label>
+            @update:model-value="$emit('toggle-enabled', Boolean($event))"
+          />
         </Tooltip>
         <Tooltip
           :text="server.status === 'connected' ? 'Stop' : 'Start'"
@@ -225,6 +221,7 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Switch from '@/components/common/Switch.vue'
 import { computed } from 'vue'
 import type { MCPServerState } from '@/types'
 import { Play, Pause, Loader2 } from 'lucide-vue-next'
@@ -266,8 +263,8 @@ function formatTime(timestamp: number): string {
 /*
  * MCP server item — 画线风 ledger row.
  * No box, no fill: a hairline separates rows, an ink line on the left carries
- * hover/expanded state. Toggle visuals come from the SettingsPage :deep() layer
- * (.toggle > input + .toggle-slider) — do not redraw them here.
+ * hover/expanded state. The auto-connect toggle is `<Switch variant="ledger">`
+ * (P3) and draws its own ink rule — do not redraw it here.
  */
 .server-item {
   background: transparent;

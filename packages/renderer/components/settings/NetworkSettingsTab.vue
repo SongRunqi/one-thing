@@ -9,13 +9,12 @@
           label="Enable global proxy"
           description="Route AI requests, model refresh, web search, and login token requests through one proxy."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="proxy.enabled"
-              @change="updateProxy({ enabled: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="proxy.enabled"
+            aria-label="Enable global proxy"
+            @update:model-value="updateProxy({ enabled: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -68,6 +67,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Switch from '@/components/common/Switch.vue'
 import { computed, ref, toRaw } from 'vue'
 import type { AppSettings, ProxySettings } from '@/types'
 import {
@@ -134,8 +134,9 @@ async function testProxy() {
 <style scoped>
 /*
  * Network tab — ledger 画线风.
- * Rows, inputs, the native toggle, and .test-btn are drawn by the
- * SettingsPage :deep() layer; only layout and the test-result ink live here.
+ * Rows, inputs, and .test-btn are drawn by the SettingsPage :deep() layer; the
+ * proxy toggle is a self-drawn `<Switch variant="ledger">`. Only layout and the
+ * test-result ink live here.
  */
 .tab-content {
   animation: fadeIn 0.15s ease;

@@ -88,22 +88,17 @@
 
       <div class="detail-meta">
         <span class="meta-label">agent</span>
-        <select
+        <Select
           class="agent-select"
-          :value="skill.agentId ?? ''"
-          @change="onAgentChange"
-        >
-          <option value="">
-            All agents
-          </option>
-          <option
-            v-for="agent in agents"
-            :key="agent.id"
-            :value="agent.id"
-          >
-            {{ agent.name }}
-          </option>
-        </select>
+          variant="underline"
+          size="small"
+          teleported
+          fit-input-width
+          :model-value="skill.agentId ?? ''"
+          :options="agentOptions"
+          aria-label="Bind this skill to an agent"
+          @update:model-value="onAgentChange(String($event ?? ''))"
+        />
       </div>
 
       <pre
@@ -116,6 +111,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import type { AgentDefinition, SkillDefinition } from '@/types'
 
 interface Props {
@@ -146,8 +143,12 @@ const instructionsPreview = computed(() => {
     : text
 })
 
-function onAgentChange(event: Event) {
-  const value = (event.target as HTMLSelectElement).value
+const agentOptions = computed<SelectOptionLike[]>(() => [
+  { value: '', label: 'All agents' },
+  ...props.agents.map(agent => ({ value: agent.id, label: agent.name })),
+])
+
+function onAgentChange(value: string) {
   emit('set-agent', value || null)
 }
 </script>

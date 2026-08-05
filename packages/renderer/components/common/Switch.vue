@@ -125,6 +125,7 @@ import type {
   SwitchIcon,
   SwitchSize,
   SwitchValue,
+  SwitchVariant,
 } from './switch'
 
 const props = withDefaults(defineProps<{
@@ -132,6 +133,8 @@ const props = withDefaults(defineProps<{
   disabled?: boolean
   loading?: boolean
   size?: SwitchSize
+  /** `pill` (default) or the settings-area `ledger` ink toggle. See `switch.ts`. */
+  variant?: SwitchVariant
   width?: number | string
   inlinePrompt?: boolean
   activeIcon?: SwitchIcon
@@ -157,6 +160,7 @@ const props = withDefaults(defineProps<{
   disabled: false,
   loading: false,
   size: '',
+  variant: 'pill',
   width: undefined,
   inlinePrompt: false,
   activeIcon: undefined,
@@ -224,31 +228,36 @@ const actionSlotName = computed<'active-action' | 'inactive-action' | undefined>
 const actionIcon = computed(() => isChecked.value ? resolvedActiveActionIcon.value : resolvedInactiveActionIcon.value)
 
 const defaultWidth = computed(() => {
+  // The ledger rail is 34px wide whatever the size band says: its travel
+  // (34 − 10 knob − 4) is the 20px the settings page has always drawn.
+  if (props.variant === 'ledger') return '34px'
   if (resolvedSize.value === 'large') return '50px'
   if (resolvedSize.value === 'small') return '32px'
+  if (resolvedSize.value === 'mini') return '32px'
   return '40px'
 })
 
 const labelIconSize = computed(() => {
   if (resolvedSize.value === 'large') return 16
-  if (resolvedSize.value === 'small') return 12
+  if (resolvedSize.value === 'small' || resolvedSize.value === 'mini') return 12
   return 14
 })
 
 const inlineIconSize = computed(() => {
   if (resolvedSize.value === 'large') return 14
-  if (resolvedSize.value === 'small') return 10
+  if (resolvedSize.value === 'small' || resolvedSize.value === 'mini') return 10
   return 12
 })
 
 const actionIconSize = computed(() => {
   if (resolvedSize.value === 'large') return 14
-  if (resolvedSize.value === 'small') return 10
+  if (resolvedSize.value === 'small' || resolvedSize.value === 'mini') return 10
   return 12
 })
 
 const switchClasses = computed(() => [
   `app-switch--${resolvedSize.value}`,
+  `app-switch--${props.variant}`,
   {
     'is-checked': isChecked.value,
     'is-disabled': props.disabled,
@@ -365,6 +374,86 @@ defineExpose({
   --app-switch-height: 20px;
   --app-switch-action-size: 14px;
   --app-switch-font-size: 11px;
+}
+
+/* Parity with the retired global `.mini-toggle-switch` (32×18, 14px knob). */
+.app-switch--mini {
+  --app-switch-height: 18px;
+  --app-switch-action-size: 14px;
+  --app-switch-font-size: 10px;
+}
+
+/* ————— ledger variant (设置区墨线开关) —————
+   Two-class selectors throughout: the size bands above are single-class, and a
+   tie decided by source order is the failure mode this system keeps hitting.
+   Metrics come first so the size band cannot win the custom properties. */
+.app-switch.app-switch--ledger {
+  --app-switch-height: 20px;
+  --app-switch-action-size: 10px;
+  --app-switch-rule: var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  --app-switch-ring: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
+  --app-switch-action-bg: var(--settings-paper, var(--ui-surface-elevated-bg, var(--bg-elevated)));
+  --app-switch-on-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+/* Every rule that contends with a base one carries the extra `.app-switch`.
+   `.app-switch.is-checked .app-switch-core` is (0,3,0) and lives *below* this
+   block, so the obvious `.app-switch--ledger.is-checked …` — also (0,3,0) —
+   loses the tie on source order and the rail comes out as a solid accent pill.
+   Caught on the real page, not in review (ui-system.md §1: a tie is not a
+   style, it is a coin flip). */
+.app-switch--ledger .app-switch-core {
+  border: 0;
+  background: transparent;
+}
+
+.app-switch.app-switch--ledger.is-checked .app-switch-core {
+  border: 0;
+  background: transparent;
+}
+
+/* The rail is a rule, not a fill: dashed when off, inked solid when on. */
+.app-switch--ledger .app-switch-core::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 50%;
+  height: 0;
+  border-top: 1px dashed var(--app-switch-rule);
+  transition: border-color var(--duration-fast) var(--ease-default);
+}
+
+.app-switch--ledger.is-checked .app-switch-core::after {
+  border-top-style: solid;
+  border-top-color: color-mix(in srgb, var(--app-switch-on-color) 65%, transparent);
+}
+
+.app-switch--ledger .app-switch-action {
+  left: 1px;
+  border: 1px solid var(--app-switch-ring);
+  background: var(--app-switch-action-bg);
+  box-shadow: none;
+  box-sizing: border-box;
+  z-index: 1;
+  transition:
+    transform var(--duration-fast) var(--ease-default),
+    background var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default);
+}
+
+.app-switch.app-switch--ledger.is-checked .app-switch-action {
+  border-color: var(--app-switch-on-color);
+  background: var(--app-switch-on-color);
+}
+
+.app-switch--ledger .app-switch-inner {
+  display: none;
+}
+
+.app-switch--ledger .app-switch-core:focus-visible {
+  border-radius: var(--radius-xs);
+  box-shadow: 0 0 0 2px var(--app-switch-focus-ring);
 }
 
 .app-switch-core {

@@ -9,14 +9,12 @@
           label="启用音乐电台"
           description="总开关。关闭后电台完全休眠:不自动接续、不唤醒 DJ、AI 也开不了台。"
         >
-          <label class="toggle">
-            <input
-              type="checkbox"
-              :checked="musicEnabled"
-              @change="onMusicEnabled(($event.target as HTMLInputElement).checked)"
-            >
-            <span class="toggle-slider" />
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="musicEnabled"
+            aria-label="启用音乐电台"
+            @update:model-value="onMusicEnabled(Boolean($event))"
+          />
         </SettingRow>
 
         <SettingRow
@@ -24,20 +22,15 @@
           label="音乐服务"
           description="切换后当前电台节目单会清空，需按向导重新完成配置。"
         >
-          <select
-            class="form-input model-setting-select"
-            :value="store.activeProviderId"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="model-setting-select"
+            :model-value="store.activeProviderId"
+            :options="musicProviderOptions"
             :disabled="store.busy"
-            @change="onProviderChange(($event.target as HTMLSelectElement).value)"
-          >
-            <option
-              v-for="descriptor in store.providers"
-              :key="descriptor.id"
-              :value="descriptor.id"
-            >
-              {{ descriptor.label }}
-            </option>
-          </select>
+            aria-label="音乐服务"
+            @update:model-value="onProviderChange(String($event))"
+          />
         </SettingRow>
 
         <div class="music-status">
@@ -68,32 +61,32 @@
       description="由谁真正出声。"
     >
       <SettingsGroup>
-        <label class="player-row">
-          <input
-            v-model="player"
-            type="radio"
+        <RadioGroup
+          v-model="player"
+          class="player-group"
+          :disabled="store.busy"
+          aria-label="播放器"
+          @change="store.setPlayer($event as MusicPlayerBackend)"
+        >
+          <Radio
+            class="player-row"
             value="mpv"
-            :disabled="store.busy"
-            @change="store.setPlayer('mpv')"
           >
-          <span class="player-copy">
             <strong>内置播放器（mpv）<span class="tag">推荐</span></strong>
-            <small>由应用自己播。能读到播放进度，所以 AI 知道一首歌什么时候放完，可以接着聊、接着放。全平台可用。</small>
-          </span>
-        </label>
-        <label class="player-row">
-          <input
-            v-model="player"
-            type="radio"
+            <template #description>
+              由应用自己播。能读到播放进度，所以 AI 知道一首歌什么时候放完，可以接着聊、接着放。全平台可用。
+            </template>
+          </Radio>
+          <Radio
+            class="player-row"
             value="orpheus"
-            :disabled="store.busy"
-            @change="store.setPlayer('orpheus')"
           >
-          <span class="player-copy">
             <strong>网易云音乐 App</strong>
-            <small>交给本机的云音乐 App 播放。仅 macOS。队列归 App 管，所以应用里看不到播放进度，AI 也不知道当前放到哪。</small>
-          </span>
-        </label>
+            <template #description>
+              交给本机的云音乐 App 播放。仅 macOS。队列归 App 管，所以应用里看不到播放进度，AI 也不知道当前放到哪。
+            </template>
+          </Radio>
+        </RadioGroup>
       </SettingsGroup>
     </SettingsSection>
 
@@ -103,48 +96,29 @@
     >
       <SettingsGroup>
         <SettingRow label="Provider">
-          <select
-            class="form-input model-setting-select"
-            :value="radioDjProvider"
-            @change="onRadioDjProvider(($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">
-              跟随会话默认
-            </option>
-            <option
-              v-for="provider in configuredProviders"
-              :key="provider.id"
-              :value="provider.id"
-            >
-              {{ provider.name }}
-            </option>
-          </select>
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="model-setting-select"
+            :model-value="radioDjProvider"
+            :options="radioDjProviderOptions"
+            aria-label="电台编排 Provider"
+            @update:model-value="onRadioDjProvider(String($event))"
+          />
         </SettingRow>
 
         <SettingRow
           v-if="radioDjProvider"
           label="Model"
         >
-          <select
-            class="form-input model-setting-select"
-            :value="radioDjModel"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="model-setting-select"
+            :model-value="radioDjModel"
+            :options="radioDjModelOptions"
             :disabled="radioDjModels.length === 0"
-            @change="onRadioDjModel(($event.target as HTMLSelectElement).value)"
-          >
-            <option
-              v-if="radioDjModels.length === 0"
-              value=""
-            >
-              该 Provider 没有已选模型
-            </option>
-            <option
-              v-for="model in radioDjModels"
-              :key="model"
-              :value="model"
-            >
-              {{ settingsStore.getModelDisplayName(model) || model }}
-            </option>
-          </select>
+            aria-label="电台编排 Model"
+            @update:model-value="onRadioDjModel(String($event))"
+          />
         </SettingRow>
 
         <SettingRow
@@ -152,34 +126,27 @@
           label="Think Mode"
           description="独立于对话的思考开关。编排不赶时间，开了串词通常更讲究。"
         >
-          <label class="toggle">
-            <input
-              type="checkbox"
-              :checked="radioDjThinking"
-              :disabled="!radioDjModel"
-              @change="onRadioDjThinking(($event.target as HTMLInputElement).checked)"
-            >
-            <span class="toggle-slider" />
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="radioDjThinking"
+            :disabled="!radioDjModel"
+            aria-label="电台编排 Think Mode"
+            @update:model-value="onRadioDjThinking(Boolean($event))"
+          />
         </SettingRow>
 
         <SettingRow
           v-if="radioDjProvider && radioDjThinking"
           label="Thinking Effort"
         >
-          <select
-            class="form-input model-setting-select"
-            :value="radioDjEffort"
-            @change="onRadioDjEffort(($event.target as HTMLSelectElement).value as ThinkingEffort)"
-          >
-            <option
-              v-for="option in thinkingEffortOptions"
-              :key="option.value"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </option>
-          </select>
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="model-setting-select"
+            :model-value="radioDjEffort"
+            :options="thinkingEffortSelectOptions"
+            aria-label="电台编排 Thinking Effort"
+            @update:model-value="onRadioDjEffort(String($event) as ThinkingEffort)"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -380,9 +347,15 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { toDataURL } from 'qrcode'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Radio from '@/components/common/Radio.vue'
+import RadioGroup from '@/components/common/RadioGroup.vue'
+import Select from '@/components/common/Select.vue'
+import Switch from '@/components/common/Switch.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import { SettingRow } from './settings-primitives'
+import type { SelectOptionLike } from '@/components/common/select'
+import type { MusicPlayerBackend } from '@/types'
 import type { ThinkingEffort } from '@shared/ipc/providers'
 import type { ToolCallModelSettings } from '@shared/ipc/tools'
 import { platformApi } from '@/platform'
@@ -398,6 +371,14 @@ const settingsStore = useSettingsStore()
 // provider/model/think。空 provider = 跟随会话默认。
 // ---------------------------------------------------------------------------
 
+/** Settings-area dropdown spelling; teleported because the tab body scrolls. */
+const LEDGER_SELECT = {
+  variant: 'ledger',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+} as const
+
 const thinkingEffortOptions: Array<{ value: ThinkingEffort; label: string }> = [
   { value: 'minimal', label: 'Minimal' },
   { value: 'low', label: 'Low' },
@@ -406,6 +387,8 @@ const thinkingEffortOptions: Array<{ value: ThinkingEffort; label: string }> = [
   { value: 'xhigh', label: 'X High' },
   { value: 'max', label: 'Max' },
 ]
+
+const thinkingEffortSelectOptions: SelectOptionLike[] = [...thinkingEffortOptions]
 
 const radioDj = computed(() => settingsStore.settings.music?.radioDj)
 
@@ -440,6 +423,26 @@ const radioDjProvider = computed(() => {
 })
 
 const radioDjModels = computed(() => providerModelIds(radioDjProvider.value))
+
+/* Empty-state rows stay real options (they were `<option value="">` before), so
+   the closed control keeps reading the same sentence when nothing is set up. */
+const musicProviderOptions = computed<SelectOptionLike[]>(() => (
+  store.providers.map(descriptor => ({ value: descriptor.id, label: descriptor.label }))
+))
+
+const radioDjProviderOptions = computed<SelectOptionLike[]>(() => [
+  { value: '', label: '跟随会话默认' },
+  ...configuredProviders.value.map(provider => ({ value: provider.id, label: provider.name })),
+])
+
+const radioDjModelOptions = computed<SelectOptionLike[]>(() => (
+  radioDjModels.value.length === 0
+    ? [{ value: '', label: '该 Provider 没有已选模型' }]
+    : radioDjModels.value.map(model => ({
+      value: model,
+      label: settingsStore.getModelDisplayName(model) || model,
+    }))
+))
 
 const radioDjModel = computed(() => {
   const configured = radioDj.value?.model
@@ -740,38 +743,26 @@ onBeforeUnmount(() => {
   font-size: 10px;
 }
 
+/* Layout-only class on the Select roots — the paint is the ledger variant's. */
+.model-setting-select {
+  max-width: min(360px, 100%);
+  min-width: 0;
+}
+
+/* P3: the two player choices are `<Radio>` inside a `<RadioGroup>` — the ring,
+   the description ink and the disabled state are the component's. What is left
+   here is row rhythm and the copy this file itself writes into the slots. */
+.player-group {
+  gap: 0;
+}
+
 .player-row {
-  display: flex;
-  gap: var(--space-2, 8px);
-  align-items: flex-start;
   padding: 6px 0;
-  cursor: pointer;
 }
 
-.player-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.player-copy strong {
-  font-size: 13px;
+.player-row strong {
   font-weight: 500;
   color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
-.player-copy small {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-tertiary);
-}
-
-.player-copy code {
-  padding: 0 3px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border-default)));
-  border-radius: 3px;
-  font-family: var(--font-mono);
-  font-size: 11px;
 }
 
 .tag {

@@ -712,7 +712,7 @@ function saveCustomProvider(form: CustomProviderForm) {
   }
 
   // Also write a matching entry into `ai.providers[id]` — that map is what
-  // the model picker (ModelSelectorPanel.filteredProviders) and the settings
+  // the composer's model picker and the settings
   // ProviderModels read for `selectedModels`/`enabled`. Skipping it would
   // leave the picker filtering the new provider out (modelCount === 0) and
   // the Models section blank, even after a restart.
@@ -1925,156 +1925,27 @@ onUnmounted(() => {
 }
 
 /*
- * Ink toggle, drawn once for every switch on the page.
- * Off: dashed rail + hollow ring at the left.  On: solid accent rail +
- * filled ink dot at the right.  Covers both markup dialects:
- * native checkboxes (.toggle-row / .native-toggle) and the span-based
- * `.toggle > input + .toggle-slider` used by older tabs.
+ * ── 墓碑:settings 墨线 toggle 共享皮肤(P3 收敛,已删)────────────────
+ *
+ * 这里曾有 ~150 行 `:deep()`,把「虚线轨 + 空心环 / 实线轨 + 实心墨点」的
+ * 墨线开关画给全页两种 markup 方言:原生 checkbox(`.toggle-row` /
+ * `.native-toggle`)和 span 版(`.toggle > input + .toggle-slider`)。
+ *
+ * 现在这个开关是 `<Switch variant="ledger">`(components/common/Switch.vue),
+ * 由组件自己画。settings 各 tab 的 36 + 32 处控件已全部迁完(A 路 tab 群、
+ * B 路 mcp/evals/agents/scheduler 群),此块零消费者,故整块删除。
+ *
+ * 这四个类名不许复活:`.toggle` / `.toggle-slider` / `.native-toggle`、以及
+ * 任何 `.toggle-row input[type="checkbox"]` 形状的选择器。原因不是洁癖 ——
+ * 它们是「隔着 :deep() 远程给别人的 DOM 上漆」的原型,开关的观感因此散落在
+ * 使用方与定义方之间,谁都改不动也测不到。要开关就用 `<Switch>`;要新形态就
+ * 去 Switch 里加 variant,不要在这里重开一张皮。
+ *
+ * (`.toggle-row` 作为**纯布局**类名仍在 BashSettingsPanel / MCPSettingsPanel
+ * 使用 —— 那是各自 scoped 里本地定义的一行 flex,与本块无关,不受此禁令约束。)
+ *
+ * 参见 docs/design/ui-system.md §1;删除前全库 grep 证据:除本文件外无引用。
  */
-:deep(.toggle-row input[type="checkbox"]),
-:deep(.native-toggle input[type="checkbox"]) {
-  position: relative;
-  width: 34px;
-  height: 20px;
-  flex: 0 0 auto;
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-}
-
-:deep(.toggle-row input[type="checkbox"]::after),
-:deep(.native-toggle input[type="checkbox"]::after) {
-  content: '';
-  position: absolute;
-  left: 1px;
-  right: 1px;
-  top: 50%;
-  height: 0;
-  border-top: 1px dashed var(--settings-rule);
-  transition: border-color 140ms ease;
-}
-
-:deep(.toggle-row input[type="checkbox"]::before),
-:deep(.native-toggle input[type="checkbox"]::before) {
-  content: '';
-  position: absolute;
-  top: 4px;
-  left: 1px;
-  width: 10px;
-  height: 10px;
-  border: 1px solid var(--settings-ink-4);
-  border-radius: 50%;
-  background: var(--settings-paper);
-  box-shadow: none;
-  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
-  z-index: 1;
-}
-
-:deep(.toggle-row input[type="checkbox"]:checked),
-:deep(.native-toggle input[type="checkbox"]:checked) {
-  border: 0;
-  background: transparent;
-}
-
-:deep(.toggle-row input[type="checkbox"]:checked::after),
-:deep(.native-toggle input[type="checkbox"]:checked::after) {
-  border-top-style: solid;
-  border-top-color: color-mix(in srgb, var(--settings-accent) 65%, transparent);
-}
-
-:deep(.toggle-row input[type="checkbox"]:checked::before),
-:deep(.native-toggle input[type="checkbox"]:checked::before) {
-  transform: translateX(20px);
-  border-color: var(--settings-accent);
-  background: var(--settings-accent);
-}
-
-:deep(.toggle-row input[type="checkbox"]:disabled),
-:deep(.native-toggle input[type="checkbox"]:disabled) {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-/* Span-based dialect: the slider span becomes the rail, its ::before the knob. */
-:deep(.toggle) {
-  position: relative;
-  display: inline-block;
-  width: 34px;
-  height: 20px;
-  flex: 0 0 auto;
-}
-
-:deep(.toggle input) {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-:deep(.toggle .toggle-slider) {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  cursor: pointer;
-  transition: none;
-}
-
-:deep(.toggle .toggle-slider::after) {
-  content: '';
-  position: absolute;
-  left: 1px;
-  right: 1px;
-  top: 50%;
-  height: 0;
-  border-top: 1px dashed var(--settings-rule);
-  transition: border-color 140ms ease;
-}
-
-:deep(.toggle .toggle-slider::before) {
-  content: '';
-  position: absolute;
-  top: 4px;
-  left: 1px;
-  bottom: auto;
-  width: 10px;
-  height: 10px;
-  border: 1px solid var(--settings-ink-4);
-  border-radius: 50%;
-  background: var(--settings-paper);
-  box-shadow: none;
-  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
-  z-index: 1;
-}
-
-:deep(.toggle input:checked + .toggle-slider) {
-  background: transparent;
-}
-
-:deep(.toggle input:checked + .toggle-slider::after) {
-  border-top-style: solid;
-  border-top-color: color-mix(in srgb, var(--settings-accent) 65%, transparent);
-}
-
-:deep(.toggle input:checked + .toggle-slider::before) {
-  transform: translateX(20px);
-  border-color: var(--settings-accent);
-  background: var(--settings-accent);
-}
-
-:deep(.toggle input:disabled + .toggle-slider) {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-:deep(.toggle input:focus-visible + .toggle-slider) {
-  outline: 2px solid color-mix(in srgb, var(--settings-ink) 24%, transparent);
-  outline-offset: 2px;
-}
 
 :deep(.provider-rows) {
   border: 0;

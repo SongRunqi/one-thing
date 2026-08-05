@@ -129,17 +129,12 @@
           </div>
 
           <div class="plugin-toggle">
-            <label
-              class="toggle"
-              :title="plugin.enabled ? 'Disable plugin' : 'Enable plugin'"
-            >
-              <input
-                type="checkbox"
-                :checked="plugin.enabled"
-                @change="togglePlugin(plugin)"
-              >
-              <span class="toggle-slider" />
-            </label>
+            <Switch
+              variant="ledger"
+              :model-value="plugin.enabled"
+              :aria-label="`Enable ${plugin.name}`"
+              @update:model-value="togglePlugin(plugin)"
+            />
           </div>
         </div>
       </div>
@@ -166,6 +161,7 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Switch from '@/components/common/Switch.vue'
 import { ref, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'

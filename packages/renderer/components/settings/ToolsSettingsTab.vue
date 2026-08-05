@@ -10,36 +10,27 @@
           label="Enable Tool Calls"
           description="Allow AI to use tools during conversations."
         >
-          <label class="toggle">
-            <input
-              type="checkbox"
-              :checked="settings.tools.enableToolCalls"
-              @change="updateEnableToolCalls(($event.target as HTMLInputElement).checked)"
-            >
-            <span class="toggle-slider" />
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="settings.tools.enableToolCalls"
+            aria-label="Enable Tool Calls"
+            @update:model-value="updateEnableToolCalls(Boolean($event))"
+          />
         </SettingRow>
 
         <SettingRow
           label="Permission Mode"
           description="Control when tool calls ask for confirmation. Normal asks before edits and non-read-only commands; Auto Accept Edits runs file edits automatically; Dangerously Allow All runs tools without confirmation."
         >
-          <select
-            class="form-input mode-select"
-            :value="settings.tools.permissionMode || 'normal'"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="mode-select"
+            :model-value="settings.tools.permissionMode || 'normal'"
+            :options="PERMISSION_MODE_OPTIONS"
             :disabled="!settings.tools.enableToolCalls"
-            @change="updatePermissionMode(($event.target as HTMLSelectElement).value as PermissionMode)"
-          >
-            <option value="normal">
-              Normal
-            </option>
-            <option value="auto-accept-edits">
-              Auto Accept Edits
-            </option>
-            <option value="dangerously-allow-all">
-              Dangerously Allow All
-            </option>
-          </select>
+            aria-label="Permission Mode"
+            @update:model-value="updatePermissionMode(String($event) as PermissionMode)"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -53,87 +44,58 @@
           label="Tool Call Provider"
           description="Only providers with selected models are shown."
         >
-          <select
-            class="form-input model-setting-select"
-            :value="selectedToolCallProvider"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="model-setting-select"
+            :model-value="selectedToolCallProvider"
+            :options="providerOptions"
             :disabled="configuredProviders.length === 0"
-            @change="updateToolCallProvider(($event.target as HTMLSelectElement).value)"
-          >
-            <option
-              v-if="configuredProviders.length === 0"
-              value=""
-            >
-              No configured providers
-            </option>
-            <option
-              v-for="provider in configuredProviders"
-              :key="provider.id"
-              :value="provider.id"
-            >
-              {{ provider.name }}
-            </option>
-          </select>
+            aria-label="Tool Call Provider"
+            @update:model-value="updateToolCallProvider(String($event))"
+          />
         </SettingRow>
 
         <SettingRow
           label="Model"
           :description="toolCallModelHint"
         >
-          <select
-            class="form-input model-setting-select"
-            :value="selectedToolCallModel"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="model-setting-select"
+            :model-value="selectedToolCallModel"
+            :options="modelOptions"
             :disabled="selectedToolCallModels.length === 0"
-            @change="updateToolCallModel(($event.target as HTMLSelectElement).value)"
-          >
-            <option
-              v-if="selectedToolCallModels.length === 0"
-              value=""
-            >
-              No selected models
-            </option>
-            <option
-              v-for="model in selectedToolCallModels"
-              :key="model"
-              :value="model"
-            >
-              {{ getModelName(model) }}
-            </option>
-          </select>
+            aria-label="Tool Call Model"
+            @update:model-value="updateToolCallModel(String($event))"
+          />
         </SettingRow>
 
         <SettingRow
           label="Think Mode"
           description="Independent from the chat Think control. Disabled by default for fast utility calls."
         >
-          <label class="toggle">
-            <input
-              type="checkbox"
-              :checked="toolCallThinkingEnabled"
-              :disabled="!selectedToolCallModel"
-              @change="updateToolCallThinking(($event.target as HTMLInputElement).checked)"
-            >
-            <span class="toggle-slider" />
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="toolCallThinkingEnabled"
+            :disabled="!selectedToolCallModel"
+            aria-label="Tool call think mode"
+            @update:model-value="updateToolCallThinking(Boolean($event))"
+          />
         </SettingRow>
 
         <SettingRow
           label="Thinking Effort"
           description="Used only when Tool Call Think Mode is enabled."
         >
-          <select
-            class="form-input model-setting-select"
-            :value="selectedToolCallThinkingEffort"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="model-setting-select"
+            :model-value="selectedToolCallThinkingEffort"
+            :options="thinkingEffortSelectOptions"
             :disabled="!toolCallThinkingEnabled || !selectedToolCallModel"
-            @change="updateToolCallThinkingEffort(($event.target as HTMLSelectElement).value as ThinkingEffort)"
-          >
-            <option
-              v-for="option in thinkingEffortOptions"
-              :key="option.value"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </option>
-          </select>
+            aria-label="Thinking Effort"
+            @update:model-value="updateToolCallThinkingEffort(String($event) as ThinkingEffort)"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -163,17 +125,13 @@
             <span :class="['tool-category', tool.category]">{{ tool.category }}</span>
           </template>
           <div class="tool-controls">
-            <label
-              class="toggle small"
-              :title="getToolEnabled(tool.id) ? 'Enabled' : 'Disabled'"
-            >
-              <input
-                type="checkbox"
-                :checked="getToolEnabled(tool.id)"
-                @change="setToolEnabled(tool.id, ($event.target as HTMLInputElement).checked)"
-              >
-              <span class="toggle-slider" />
-            </label>
+            <Switch
+              variant="ledger"
+              size="mini"
+              :model-value="getToolEnabled(tool.id)"
+              :aria-label="`Enable ${tool.name}`"
+              @update:model-value="setToolEnabled(tool.id, Boolean($event))"
+            />
           </div>
         </SettingRow>
       </SettingsGroup>
@@ -213,7 +171,10 @@
 </template>
 
 <script setup lang="ts">
+import Select from '@/components/common/Select.vue'
+import Switch from '@/components/common/Switch.vue'
 import { computed } from 'vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import type { AppSettings, ToolDefinition } from '@/types'
 import type { ThinkingEffort } from '@shared/ipc/providers'
 import type { PermissionMode, WebSearchSettings } from '@shared/ipc/tools'
@@ -239,6 +200,20 @@ const emit = defineEmits<{
 
 const settingsStore = useSettingsStore()
 
+/** Settings-area dropdown spelling; teleported because the tab body scrolls. */
+const LEDGER_SELECT = {
+  variant: 'ledger',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+} as const
+
+const PERMISSION_MODE_OPTIONS: SelectOptionLike[] = [
+  { value: 'normal', label: 'Normal' },
+  { value: 'auto-accept-edits', label: 'Auto Accept Edits' },
+  { value: 'dangerously-allow-all', label: 'Dangerously Allow All' },
+]
+
 const thinkingEffortOptions: Array<{ value: ThinkingEffort; label: string }> = [
   { value: 'minimal', label: 'Minimal' },
   { value: 'low', label: 'Low' },
@@ -247,6 +222,8 @@ const thinkingEffortOptions: Array<{ value: ThinkingEffort; label: string }> = [
   { value: 'xhigh', label: 'X High' },
   { value: 'max', label: 'Max' },
 ]
+
+const thinkingEffortSelectOptions: SelectOptionLike[] = [...thinkingEffortOptions]
 
 const displayTools = computed(() => {
   return props.tools
@@ -276,6 +253,21 @@ const selectedToolCallProvider = computed(() => {
 const selectedToolCallModels = computed(() => {
   return getProviderModelIds(selectedToolCallProvider.value)
 })
+
+/* The empty-state entries were `<option value="">` rows before; keeping them as
+   real options (rather than a placeholder) preserves what the closed control
+   reads when nothing is configured. */
+const providerOptions = computed<SelectOptionLike[]>(() => (
+  configuredProviders.value.length === 0
+    ? [{ value: '', label: 'No configured providers' }]
+    : configuredProviders.value.map(provider => ({ value: provider.id, label: provider.name }))
+))
+
+const modelOptions = computed<SelectOptionLike[]>(() => (
+  selectedToolCallModels.value.length === 0
+    ? [{ value: '', label: 'No selected models' }]
+    : selectedToolCallModels.value.map(model => ({ value: model, label: getModelName(model) }))
+))
 
 const selectedToolCallModel = computed(() => {
   const configured = props.settings.tools.toolCallModel?.model
@@ -443,8 +435,9 @@ function updateBraveApiKey(apiKey: string) {
 <style scoped>
 /*
  * Tools tab — ledger 画线风.
- * Toggle (`.toggle > input + .toggle-slider`), inputs, and rows are drawn by
- * the SettingsPage :deep() layer; only layout and the category ring live here.
+ * Inputs and rows are drawn by the SettingsPage :deep() layer; the toggles are
+ * `<Switch variant="ledger">` and the dropdowns `<Select variant="ledger">`,
+ * both self-drawn. Only layout and the category ring live here.
  */
 .tab-content {
   animation: fadeIn 0.15s ease;
@@ -503,11 +496,14 @@ function updateBraveApiKey(apiKey: string) {
   cursor: not-allowed;
 }
 
+/* Layout-only classes on the Select roots — the paint is the variant's. */
 .mode-select {
   max-width: 220px;
+  min-width: 0;
 }
 
 .model-setting-select {
   max-width: min(360px, 100%);
+  min-width: 0;
 }
 </style>

@@ -86,13 +86,12 @@
           label="私聊消息系统通知"
           description="不在这间房时,私聊来消息弹一条系统通知。"
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="dmNotificationsEnabled"
-              @change="updateDmNotifications(($event.target as HTMLInputElement).checked)"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="dmNotificationsEnabled"
+            aria-label="私聊消息系统通知"
+            @update:model-value="updateDmNotifications(Boolean($event))"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -104,21 +103,14 @@
           label="Theme Mode"
           description="Choose a fixed appearance or follow the system setting."
         >
-          <select
-            class="form-select prefer-select"
-            :value="settings.theme"
-            @change="updateTheme(($event.target as HTMLSelectElement).value as 'light' | 'dark' | 'system')"
-          >
-            <option value="system">
-              System
-            </option>
-            <option value="light">
-              Light
-            </option>
-            <option value="dark">
-              Dark
-            </option>
-          </select>
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="prefer-select"
+            :model-value="settings.theme"
+            :options="THEME_MODE_OPTIONS"
+            aria-label="Theme Mode"
+            @update:model-value="updateTheme(String($event) as 'light' | 'dark' | 'system')"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -188,13 +180,12 @@
           label="Enable automatic compact"
           description="Summarizes older chat history before the context limit. Memory writes during compact are controlled separately in Memory settings."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="contextCompactEnabled"
-              @change="updateContextCompactEnabled(($event.target as HTMLInputElement).checked)"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="contextCompactEnabled"
+            aria-label="Enable automatic compact"
+            @update:model-value="updateContextCompactEnabled(Boolean($event))"
+          />
         </SettingRow>
 
         <SettingRow
@@ -253,20 +244,21 @@
           label="English Font"
           description="Primary Latin text face."
         >
-          <select
-            class="form-select font-select"
-            :value="currentFontEn"
-            @change="updateFontEn(($event.target as HTMLSelectElement).value)"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="font-select"
+            :model-value="currentFontEn"
+            :options="enFontOptions"
+            aria-label="English Font"
+            @update:model-value="updateFontEn(String($event))"
           >
-            <option
-              v-for="font in enFonts"
-              :key="font.id"
-              :value="font.id"
-              :style="{ fontFamily: font.family }"
-            >
-              {{ font.name }}
-            </option>
-          </select>
+            <template #option="{ option, label }">
+              <span
+                class="font-option"
+                :style="{ fontFamily: (option as FontOption).family }"
+              >{{ label }}</span>
+            </template>
+          </Select>
         </SettingRow>
 
         <!-- Chinese Font -->
@@ -274,20 +266,21 @@
           label="中文字体"
           description="Primary CJK text face."
         >
-          <select
-            class="form-select font-select"
-            :value="currentFontZh"
-            @change="updateFontZh(($event.target as HTMLSelectElement).value)"
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="font-select"
+            :model-value="currentFontZh"
+            :options="zhFontOptions"
+            aria-label="中文字体"
+            @update:model-value="updateFontZh(String($event))"
           >
-            <option
-              v-for="font in zhFonts"
-              :key="font.id"
-              :value="font.id"
-              :style="{ fontFamily: font.family }"
-            >
-              {{ font.name }}
-            </option>
-          </select>
+            <template #option="{ option, label }">
+              <span
+                class="font-option"
+                :style="{ fontFamily: (option as FontOption).family }"
+              >{{ label }}</span>
+            </template>
+          </Select>
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -298,13 +291,12 @@
           label="Enable Search Everywhere daily notes"
           description="Adds the Daily tab and today shortcut."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="dailyNotes.enabled !== false"
-              @change="updateDailyNotes({ enabled: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="dailyNotes.enabled !== false"
+            aria-label="Enable Search Everywhere daily notes"
+            @update:model-value="updateDailyNotes({ enabled: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -362,13 +354,12 @@
           label="Use Obsidian Daily Notes config"
           description="Reads .obsidian/daily-notes.json when available."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="dailyNotes.useObsidianConfig !== false"
-              @change="updateDailyNotes({ useObsidianConfig: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="dailyNotes.useObsidianConfig !== false"
+            aria-label="Use Obsidian Daily Notes config"
+            @update:model-value="updateDailyNotes({ useObsidianConfig: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -392,13 +383,12 @@
           label="Enable todo card"
           description="Shows the markdown todo and plan card in chat."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="todoPlan.enabled !== false"
-              @change="updateTodoPlan({ enabled: ($event.target as HTMLInputElement).checked })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="todoPlan.enabled !== false"
+            aria-label="Enable todo card"
+            @update:model-value="updateTodoPlan({ enabled: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -431,8 +421,11 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Select from '@/components/common/Select.vue'
+import Switch from '@/components/common/Switch.vue'
 import { computed, ref } from 'vue'
 import { RotateCcw } from 'lucide-vue-next'
+import type { SelectOptionLike } from '@/components/common/select'
 import type { AppSettings, TypographyDensity } from '@/types'
 import type { DailyNoteSettings, UserProfileSettings } from '@shared/ipc/settings'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
@@ -460,9 +453,36 @@ const emit = defineEmits<{
 }>()
 
 
+/**
+ * One spelling of "a settings-area dropdown", spread onto every Select on this
+ * tab. `teleported` is not optional: the settings body is a scroll container,
+ * and an in-flow panel gets clipped by it near the bottom of the page.
+ */
+const LEDGER_SELECT = {
+  variant: 'ledger',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+} as const
+
+const THEME_MODE_OPTIONS: SelectOptionLike[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+]
+
+/** Font rows keep their own family on the option so the list previews itself. */
+type FontOption = { value: string, label: string, family: string }
+
 // Available fonts by language
 const enFonts = getFontsByLang('en')
 const zhFonts = getFontsByLang('zh')
+const enFontOptions: SelectOptionLike[] = enFonts.map(font => (
+  { value: font.id, label: font.name, family: font.family } satisfies FontOption
+))
+const zhFontOptions: SelectOptionLike[] = zhFonts.map(font => (
+  { value: font.id, label: font.name, family: font.family } satisfies FontOption
+))
 const minFontSize = 12
 const maxFontSize = 20
 const defaultFontSize = 15
@@ -756,21 +776,26 @@ async function chooseTodoPlanDirectory() {
   flex-shrink: 0;
 }
 
-.form-select {
-  min-width: 0;
-  padding: 6px 10px;
-}
-
-.form-select.prefer-select {
+/* P3: the dropdowns are `<Select variant="ledger">`; these two classes sit on
+   the component root and may only carry layout — the paint is the variant's. */
+.prefer-select {
   width: 100%;
   max-width: 176px;
   min-width: 0;
 }
 
-.form-select.font-select {
+.font-select {
   width: 100%;
   max-width: 320px;
   min-width: 0;
+}
+
+/* The option previews itself in its own face; the label text is the sample. */
+.font-option {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Segmented control: one ruled box; the active segment is marked by an

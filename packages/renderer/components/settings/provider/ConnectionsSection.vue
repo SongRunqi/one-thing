@@ -343,6 +343,33 @@
                   </option>
                 </select>
               </div>
+              <template v-if="providerSettings.isQwenProvider.value">
+                <div class="settings-row">
+                  <span class="row-label">版本</span>
+                  <Select
+                    class="row-select"
+                    size="small"
+                    :model-value="providerSettings.currentQwenRegion.value"
+                    :options="QWEN_REGION_OPTIONS"
+                    aria-label="Qwen region"
+                    @update:model-value="providerSettings.updateQwenRegion(String($event))"
+                  />
+                </div>
+                <div class="settings-row">
+                  <span class="row-label">计费方式</span>
+                  <Select
+                    class="row-select"
+                    size="small"
+                    :model-value="providerSettings.currentQwenApiMode.value"
+                    :options="QWEN_API_MODE_OPTIONS"
+                    aria-label="Qwen API mode"
+                    @update:model-value="providerSettings.updateQwenApiMode(String($event))"
+                  />
+                </div>
+                <p class="row-note">
+                  订阅用户必须选对档位。用通用 Key 和地址调用会走按量计费，在订阅之外额外扣钱。
+                </p>
+              </template>
             </div>
 
             <!-- Model catalog for this provider: checked models feed the ledger above -->
@@ -356,6 +383,7 @@
               :is-loading="providerSettings.isLoadingModels.value"
               :error="providerSettings.modelError.value"
               :max-outputs="providerSettings.currentProviderMaxOutputs.value"
+              :context-lengths="providerSettings.currentProviderContextLengths.value"
               :model-capabilities="providerSettings.currentProviderModelCapabilities.value"
               :rename-model="providerSettings.renameModel"
               :active-model-id="providerSettings.activeModelId.value"
@@ -371,6 +399,7 @@
               @update:new-model-input="providerSettings.newModelInput.value = $event"
               @add-custom="providerSettings.addCustomModel"
               @update-max-output="providerSettings.updateModelMaxOutput"
+              @update-context-length="providerSettings.updateModelContextLength"
               @update-capability="providerSettings.updateModelCapability"
               @reset-capabilities="providerSettings.resetModelCapabilities"
               @select-active="providerSettings.setActiveModel"
@@ -387,7 +416,19 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ChevronDown, Terminal } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
+import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
+
+const QWEN_REGION_OPTIONS = [
+  { value: 'cn', label: '国内版' },
+  { value: 'intl', label: '海外版 (QwenCloud)' },
+]
+
+const QWEN_API_MODE_OPTIONS = [
+  { value: 'standard', label: 'API 按量付费 (sk-ws-)' },
+  { value: 'token-plan', label: 'Token Plan 订阅 (sk-sp-)' },
+  { value: 'coding-plan', label: 'Coding Plan 订阅 (sk-sp-)' },
+]
 import type { AppSettings, ProviderInfo } from '@/types'
 import { providerFamilyOf, type ProviderFamily } from '@shared/provider-families'
 import ProviderIcon from '../ProviderIcon.vue'
@@ -634,7 +675,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   padding: 10px 2px;
   cursor: pointer;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  transition: background 0.12s ease;
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
 .conn-row:hover {
@@ -746,7 +787,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   font-size: 11px;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .conn-action:hover,
@@ -765,7 +806,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 
 .conn-action-icon {
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-  transition: transform 0.16s ease;
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .conn-action-icon.expanded {
@@ -799,7 +840,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   font-size: 11px;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default);
 }
 
 .channel-tab:hover {
@@ -823,7 +864,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 .conn-detail-enter-active,
 .conn-detail-leave-active {
   overflow: hidden;
-  transition: opacity 0.18s ease, max-height 0.22s ease, transform 0.18s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), max-height var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .conn-detail-enter-from,
@@ -901,6 +942,18 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   font: inherit;
   font-size: 13px;
 }
+/* Full-width note under the two selects it warns about. Deliberately NOT a
+   settings-row: the row grid's control column inherits single-line ellipsis,
+   which silently truncated this sentence mid-word. */
+.row-note {
+  overflow: visible;
+  margin: 0;
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: clip;
+  white-space: normal;
+}
 
 .acp-connection-row {
   display: flex;
@@ -971,7 +1024,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   top: 50%;
   height: 0;
   border-top: 1px dashed var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  transition: border-color 140ms ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 :deep(.app-switch.is-checked .app-switch-core) {

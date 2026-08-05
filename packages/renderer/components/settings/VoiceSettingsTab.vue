@@ -38,13 +38,12 @@
           label="Turn on voice"
           description="Use the microphone while onething is running."
         >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              :checked="voice.enabled"
-              @change="updateVoice({ enabled: checked($event) })"
-            >
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="voice.enabled"
+            aria-label="Turn on voice"
+            @update:model-value="updateVoice({ enabled: Boolean($event) })"
+          />
         </SettingRow>
 
         <SettingRow
@@ -54,39 +53,22 @@
         >
           <div class="settings-grid">
             <SettingsField label="Voice agent">
-              <select
-                class="form-input"
-                :value="voice.conversation.defaultAgentId"
-                @change="updateConversation({ defaultAgentId: value($event) })"
-              >
-                <option
-                  v-for="agent in agents"
-                  :key="agent.id"
-                  :value="agent.id"
-                >
-                  {{ agent.name }}
-                </option>
-              </select>
+              <Select
+                v-bind="LEDGER_SELECT"
+                :model-value="voice.conversation.defaultAgentId"
+                :options="agentOptions"
+                aria-label="Voice agent"
+                @update:model-value="updateConversation({ defaultAgentId: String($event) })"
+              />
             </SettingsField>
             <SettingsField label="Response timing">
-              <select
-                class="form-input"
-                :value="voice.conversation.endpointing"
-                @change="setEndpointing(value($event) as any)"
-              >
-                <option value="fast">
-                  Fast response
-                </option>
-                <option value="balanced">
-                  Balanced
-                </option>
-                <option value="patient">
-                  Patient
-                </option>
-                <option value="custom">
-                  Custom
-                </option>
-              </select>
+              <Select
+                v-bind="LEDGER_SELECT"
+                :model-value="voice.conversation.endpointing"
+                :options="ENDPOINTING_OPTIONS"
+                aria-label="Response timing"
+                @update:model-value="setEndpointing(String($event) as VoiceEndpointingMode)"
+              />
             </SettingsField>
           </div>
         </SettingRow>
@@ -190,13 +172,12 @@
                 <span>Speak assistant replies</span>
                 <small>Only replies to voice-started turns are read aloud.</small>
               </div>
-              <label class="native-toggle">
-                <input
-                  type="checkbox"
-                  :checked="voice.tts.autoSpeak"
-                  @change="updateTTS({ autoSpeak: checked($event) })"
-                >
-              </label>
+              <Switch
+                variant="ledger"
+                :model-value="voice.tts.autoSpeak"
+                aria-label="Speak assistant replies"
+                @update:model-value="updateTTS({ autoSpeak: Boolean($event) })"
+              />
             </div>
 
             <div class="settings-grid settings-grid-compact">
@@ -204,27 +185,13 @@
                 label="TTS provider"
                 :hint="ttsProviderHint"
               >
-                <select
-                  class="form-input"
-                  :value="voice.tts.provider"
-                  @change="updateTTS({ provider: value($event) as any })"
-                >
-                  <option value="system-tts">
-                    System voice (no key)
-                  </option>
-                  <option value="openrouter-tts">
-                    OpenRouter TTS
-                  </option>
-                  <option value="openai-tts">
-                    OpenAI TTS
-                  </option>
-                  <option value="qwen-tts">
-                    Qwen / CosyVoice
-                  </option>
-                  <option value="doubao">
-                    Doubao voices
-                  </option>
-                </select>
+                <Select
+                  v-bind="LEDGER_SELECT"
+                  :model-value="voice.tts.provider"
+                  :options="TTS_PROVIDER_OPTIONS"
+                  aria-label="TTS provider"
+                  @update:model-value="updateTTS({ provider: String($event) as VoiceSettings['tts']['provider'] })"
+                />
               </SettingsField>
 
               <SettingsField
@@ -309,20 +276,14 @@
                 label="OpenRouter TTS model"
                 :hint="openRouterTTSModelHint"
               >
-                <select
+                <Select
                   v-if="ttsModels.length"
-                  class="form-input"
-                  :value="voice.tts.openrouter.model"
-                  @change="selectOpenRouterTTSModel(value($event))"
-                >
-                  <option
-                    v-for="model in ttsModels"
-                    :key="model.id"
-                    :value="model.id"
-                  >
-                    {{ model.name || model.id }}
-                  </option>
-                </select>
+                  v-bind="LEDGER_SELECT"
+                  :model-value="voice.tts.openrouter.model"
+                  :options="ttsModelOptions"
+                  aria-label="OpenRouter TTS model"
+                  @update:model-value="selectOpenRouterTTSModel(String($event))"
+                />
                 <input
                   v-else
                   class="form-input"
@@ -335,20 +296,14 @@
                 label="Voice"
                 :hint="openRouterTTSVoiceHint"
               >
-                <select
+                <Select
                   v-if="selectedOpenRouterTTSVoices.length"
-                  class="form-input"
-                  :value="voice.tts.openrouter.voice"
-                  @change="updateOpenRouterTTS({ voice: value($event) })"
-                >
-                  <option
-                    v-for="voiceName in selectedOpenRouterTTSVoices"
-                    :key="voiceName"
-                    :value="voiceName"
-                  >
-                    {{ voiceName }}
-                  </option>
-                </select>
+                  v-bind="LEDGER_SELECT"
+                  :model-value="voice.tts.openrouter.voice"
+                  :options="openRouterTTSVoiceOptions"
+                  aria-label="OpenRouter TTS voice"
+                  @update:model-value="updateOpenRouterTTS({ voice: String($event) })"
+                />
                 <input
                   v-else
                   class="form-input"
@@ -422,19 +377,13 @@
               class="settings-grid settings-grid-compact provider-config-grid"
             >
               <SettingsField label="Doubao voice">
-                <select
-                  class="form-input"
-                  :value="voice.doubao.speaker"
-                  @change="updateDoubao({ speaker: value($event) })"
-                >
-                  <option
-                    v-for="speaker in DOUBAO_SPEAKERS"
-                    :key="speaker.id"
-                    :value="speaker.id"
-                  >
-                    {{ speaker.name }}
-                  </option>
-                </select>
+                <Select
+                  v-bind="LEDGER_SELECT"
+                  :model-value="voice.doubao.speaker"
+                  :options="DOUBAO_SPEAKER_OPTIONS"
+                  aria-label="Doubao voice"
+                  @update:model-value="updateDoubao({ speaker: String($event) })"
+                />
               </SettingsField>
             </div>
 
@@ -480,13 +429,12 @@
                 <span>Listen for the wake phrase</span>
                 <small>The mic stays open while onething runs.</small>
               </div>
-              <label class="native-toggle">
-                <input
-                  type="checkbox"
-                  :checked="wakeWordEnabled"
-                  @change="setWakeWordEnabled(checked($event))"
-                >
-              </label>
+              <Switch
+                variant="ledger"
+                :model-value="wakeWordEnabled"
+                aria-label="Listen for the wake phrase"
+                @update:model-value="setWakeWordEnabled(Boolean($event))"
+              />
             </div>
 
             <div
@@ -509,21 +457,13 @@
                 label="Sensitivity"
                 hint="Higher triggers more easily but risks false wakes."
               >
-                <select
-                  class="form-input"
-                  :value="voice.wake.sensitivity || 'medium'"
-                  @change="updateWake({ sensitivity: value($event) as any })"
-                >
-                  <option value="low">
-                    Low
-                  </option>
-                  <option value="medium">
-                    Medium
-                  </option>
-                  <option value="high">
-                    High
-                  </option>
-                </select>
+                <Select
+                  v-bind="LEDGER_SELECT"
+                  :model-value="voice.wake.sensitivity || 'medium'"
+                  :options="WAKE_SENSITIVITY_OPTIONS"
+                  aria-label="Wake sensitivity"
+                  @update:model-value="updateWake({ sensitivity: String($event) as WakeSensitivity })"
+                />
               </SettingsField>
             </div>
           </div>
@@ -610,18 +550,13 @@
       <SettingsGroup>
         <div class="settings-grid">
           <SettingsField label="VAD provider">
-            <select
-              class="form-input"
-              :value="voice.vad.provider"
-              @change="updateVAD({ provider: value($event) as any })"
-            >
-              <option value="silero-web">
-                Silero Web
-              </option>
-              <option value="energy">
-                Energy fallback
-              </option>
-            </select>
+            <Select
+              v-bind="LEDGER_SELECT"
+              :model-value="voice.vad.provider"
+              :options="VAD_PROVIDER_OPTIONS"
+              aria-label="VAD provider"
+              @update:model-value="updateVAD({ provider: String($event) as VoiceSettings['vad']['provider'] })"
+            />
           </SettingsField>
           <SettingsField label="Silence ms">
             <input
@@ -669,27 +604,13 @@
       <SettingsGroup>
         <div class="settings-grid">
           <SettingsField label="ASR provider">
-            <select
-              class="form-input"
-              :value="voice.asr.provider"
-              @change="updateASR({ provider: value($event) as any })"
-            >
-              <option value="funasr-stream">
-                FunASR Streaming
-              </option>
-              <option value="doubao">
-                Doubao Streaming
-              </option>
-              <option value="openai-transcribe">
-                OpenAI Transcribe
-              </option>
-              <option value="openrouter-transcribe">
-                OpenRouter Whisper
-              </option>
-              <option value="funasr-server">
-                FunASR HTTP Server
-              </option>
-            </select>
+            <Select
+              v-bind="LEDGER_SELECT"
+              :model-value="voice.asr.provider"
+              :options="ASR_PROVIDER_OPTIONS"
+              aria-label="ASR provider"
+              @update:model-value="updateASR({ provider: String($event) as VoiceSettings['asr']['provider'] })"
+            />
           </SettingsField>
           <SettingsField label="OpenAI ASR model">
             <input
@@ -721,8 +642,11 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Select from '@/components/common/Select.vue'
+import Switch from '@/components/common/Switch.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Loader2, Mic, RefreshCw, Volume2 } from 'lucide-vue-next'
+import type { SelectOptionLike } from '@/components/common/select'
 import type { AgentDefinition, AppSettings, VoiceEndpointingMode, VoiceSettings, VoiceTTSModel } from '@/types'
 import {
   SettingRow,
@@ -743,6 +667,8 @@ const emit = defineEmits<{
 
 const voice = computed<VoiceSettings>(() => props.settings.voice ?? DEFAULT_VOICE_SETTINGS)
 
+type WakeSensitivity = NonNullable<VoiceSettings['wake']['sensitivity']>
+
 const DOUBAO_SPEAKERS = [
   { id: 'zh_female_cancan_mars_bigtts', name: '灿灿(女声)' },
   { id: 'zh_female_shuangkuaisisi_moon_bigtts', name: '爽快思思(女声)' },
@@ -751,6 +677,57 @@ const DOUBAO_SPEAKERS = [
   { id: 'zh_female_linjianvhai_moon_bigtts', name: '邻家女孩(女声)' },
   { id: 'zh_male_jingqiangkanye_moon_bigtts', name: '京腔侃爷(男声)' },
 ]
+
+/**
+ * One spelling of "a settings-area dropdown", spread onto every Select on this
+ * tab. `teleported` is not optional here: the settings body is a scroll
+ * container, and an in-flow panel gets clipped by it the moment the field is
+ * near the bottom — which is exactly where the ASR provider field lives.
+ */
+const LEDGER_SELECT = {
+  variant: 'ledger',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+} as const
+
+const ENDPOINTING_OPTIONS: SelectOptionLike[] = [
+  { value: 'fast', label: 'Fast response' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'patient', label: 'Patient' },
+  { value: 'custom', label: 'Custom' },
+]
+
+const TTS_PROVIDER_OPTIONS: SelectOptionLike[] = [
+  { value: 'system-tts', label: 'System voice (no key)' },
+  { value: 'openrouter-tts', label: 'OpenRouter TTS' },
+  { value: 'openai-tts', label: 'OpenAI TTS' },
+  { value: 'qwen-tts', label: 'Qwen / CosyVoice' },
+  { value: 'doubao', label: 'Doubao voices' },
+]
+
+const WAKE_SENSITIVITY_OPTIONS: SelectOptionLike[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+]
+
+const VAD_PROVIDER_OPTIONS: SelectOptionLike[] = [
+  { value: 'silero-web', label: 'Silero Web' },
+  { value: 'energy', label: 'Energy fallback' },
+]
+
+const ASR_PROVIDER_OPTIONS: SelectOptionLike[] = [
+  { value: 'funasr-stream', label: 'FunASR Streaming' },
+  { value: 'doubao', label: 'Doubao Streaming' },
+  { value: 'openai-transcribe', label: 'OpenAI Transcribe' },
+  { value: 'openrouter-transcribe', label: 'OpenRouter Whisper' },
+  { value: 'funasr-server', label: 'FunASR HTTP Server' },
+]
+
+const DOUBAO_SPEAKER_OPTIONS: SelectOptionLike[] = DOUBAO_SPEAKERS.map(
+  speaker => ({ value: speaker.id, label: speaker.name }),
+)
 const showAdvanced = ref(false)
 const agents = ref<AgentDefinition[]>([])
 const asrTestStatus = ref<'idle' | 'recording' | 'testing' | 'success' | 'error'>('idle')
@@ -799,6 +776,15 @@ const selectedOpenRouterTTSModel = computed(() => (
   ttsModels.value.find(model => model.id === voice.value.tts.openrouter.model)
 ))
 const selectedOpenRouterTTSVoices = computed(() => selectedOpenRouterTTSModel.value?.supportedVoices || [])
+const agentOptions = computed<SelectOptionLike[]>(() => (
+  agents.value.map(agent => ({ value: agent.id, label: agent.name }))
+))
+const ttsModelOptions = computed<SelectOptionLike[]>(() => (
+  ttsModels.value.map(model => ({ value: model.id, label: model.name || model.id }))
+))
+const openRouterTTSVoiceOptions = computed<SelectOptionLike[]>(() => (
+  selectedOpenRouterTTSVoices.value.map(voiceName => ({ value: voiceName, label: voiceName }))
+))
 const openRouterTTSModelHint = computed(() => {
   if (ttsModelsStatus.value === 'loading') return 'Loading speech models from OpenRouter...'
   if (ttsModels.value.length) return 'Loaded from OpenRouter models API.'
@@ -953,10 +939,6 @@ watch(() => voice.value.tts.provider, (provider) => {
     void loadOpenRouterTTSModels()
   }
 })
-
-function checked(event: Event) {
-  return (event.target as HTMLInputElement).checked
-}
 
 function value(event: Event) {
   return (event.target as HTMLInputElement | HTMLSelectElement).value
@@ -1452,7 +1434,9 @@ function normalizeASRTestError(error: any) {
   color: var(--ui-status-warning-fg, #b45309);
 }
 
-/* .native-toggle visuals come from SettingsPage's global ledger toggle. */
+/* P3: the three `.native-toggle` checkboxes here are now `<Switch
+   variant="ledger">`, which draws the same dashed-rail/ink-dot toggle from
+   inside the component. Nothing local styles them — that was the point. */
 
 .voice-replies-control {
   display: flex;

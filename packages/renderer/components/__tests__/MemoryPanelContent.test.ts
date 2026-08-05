@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MemoryPanelContent from '../memory/MemoryPanelContent.vue'
 
@@ -118,14 +119,23 @@ describe('MemoryPanelContent', () => {
   })
 
   it('offers only surviving note filters (no reflection reports)', async () => {
-    const wrapper = mount(MemoryPanelContent)
+    const wrapper = mount(MemoryPanelContent, { attachTo: document.body })
     await vi.waitFor(() => {
       expect(wrapper.findAll('.file-row').length).toBeGreaterThan(0)
     })
 
-    const options = wrapper.findAll('.notes-header .view-select option').map(option => option.attributes('value'))
-    expect(options).toEqual(['all', 'ai', 'daily'])
-    expect(wrapper.find('.notes-header .view-select').text()).not.toContain('Reflection reports')
+    // P3: the filter is a teleported `<Select>` — its options live in
+    // document.body, not inside the wrapper, and only once it is open.
+    wrapper.find('.notes-header .view-select [role="combobox"]').element
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+
+    const panel = document.querySelector('.app-select-dropdown')!
+    const options = [...panel.querySelectorAll('.app-select-option')].map(node => node.textContent?.trim())
+    expect(options).toEqual(['All notes', 'AI notes', 'Daily captures'])
+    expect(panel.textContent).not.toContain('Reflection reports')
+
+    wrapper.unmount()
   })
 
   it('shows a plain muted loading note while memory overview is loading', async () => {
