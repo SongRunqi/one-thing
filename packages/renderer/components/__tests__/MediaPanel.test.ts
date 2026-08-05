@@ -2,7 +2,15 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MediaPanel from '../MediaPanel.vue'
+import { confirmStack, settleConfirm } from '@/composables/useConfirm'
+import { destroyUiOverlayHost } from '@/services/ui-overlay-host'
 import type { MediaAsset } from '@/types'
+
+/** P2: the native `confirm()` is now the promise service. */
+async function answerConfirm(accepted: boolean): Promise<void> {
+  await vi.waitFor(() => expect(confirmStack.value.length).toBeGreaterThan(0))
+  settleConfirm(confirmStack.value[confirmStack.value.length - 1].id, accepted)
+}
 
 vi.mock('../ArchivedChatsContent.vue', () => ({
   default: { template: '<div />' },
@@ -99,7 +107,6 @@ describe('MediaPanel', () => {
     storeState.mediaStore.loadMedia.mockResolvedValue(undefined)
     storeState.mediaStore.removeMedia.mockResolvedValue(undefined)
     platformState.platformApi.onImageGenerated.mockReturnValue(vi.fn())
-    vi.stubGlobal('confirm', vi.fn(() => true))
     Object.defineProperty(window, 'electronAPI', {
       value: {
         onImageGenerated: platformState.platformApi.onImageGenerated,
@@ -111,6 +118,8 @@ describe('MediaPanel', () => {
   })
 
   afterEach(() => {
+    confirmStack.value = []
+    destroyUiOverlayHost()
     vi.clearAllMocks()
     vi.unstubAllGlobals()
   })
@@ -240,7 +249,9 @@ describe('MediaPanel', () => {
     })
 
     await wrapper.find('.delete-btn').trigger('click')
+    await answerConfirm(true)
 
-    expect(storeState.mediaStore.removeMedia).toHaveBeenCalledWith('upload-1')
+    await vi.waitFor(() =>
+      expect(storeState.mediaStore.removeMedia).toHaveBeenCalledWith('upload-1'))
   })
 })

@@ -174,14 +174,19 @@
                     </p>
                     <span class="media-meta">{{ assetSubtitle(asset) }}</span>
                   </div>
-                  <Button
-                    unstyled
+                  <!-- 原生 button,不套 Button unstyled:这个筹码不要 loading/icon/
+                       group,套上去只换来一场必输的官司 —— `.app-button:hover:not(:disabled)`
+                       是 (0,4,0),消费者的 `.delete-btn:hover` 只有 (0,3,0),hover 时
+                       `--app-button-hover-fg`(= --ui-text-primary-fg,深灰)盖掉白字,
+                       在 rgba(0,0,0,.62) 的黑筹码上等于消失(真机实测:只剩边框看得见)。 -->
+                  <button
+                    type="button"
                     class="delete-btn"
                     title="Remove from library"
                     @click.stop="removeAsset(asset.id)"
                   >
                     remove
-                  </Button>
+                  </button>
                 </div>
               </div>
             </template>
@@ -472,6 +477,7 @@ import Select from './common/Select.vue'
 import MemoryPanelContent from './memory/MemoryPanelContent.vue'
 import SchedulerPanelContent from './SchedulerPanelContent.vue'
 import PracticePanelContent from './PracticePanelContent.vue'
+import { useConfirm } from '@/composables/useConfirm'
 import { useMediaStore } from '@/stores/media'
 import type { MediaAsset, MediaKind, MediaSource } from '@/types'
 import {
@@ -515,6 +521,7 @@ type KindFilterOption = { value: MediaKind; label: string; icon: Component }
 type SourceFilterOption = { value: SourceFilter; label: string }
 
 const mediaStore = useMediaStore()
+const { confirm } = useConfirm()
 const searchQuery = ref('')
 const activeNav = ref<WorkspacePanelNav>(normalizeNav(props.activeTab ?? props.initialTab) ?? 'media')
 const mountedNavs = ref<WorkspacePanelNav[]>([activeNav.value])
@@ -704,17 +711,22 @@ function openFileExternally(asset: MediaAsset) {
   }
 }
 
+const REMOVE_MEDIA_ASK = {
+  title: 'Remove from library',
+  message: 'Remove this item from the library? The original chat message will stay unchanged.',
+  confirmText: 'Remove',
+  danger: true,
+} as const
+
 async function deleteAssetFromDrawer(asset: MediaAsset) {
-  if (confirm('Remove this item from the library? The original chat message will stay unchanged.')) {
-    selectedAsset.value = null
-    await mediaStore.removeMedia(asset.id)
-  }
+  if (!await confirm({ ...REMOVE_MEDIA_ASK })) return
+  selectedAsset.value = null
+  await mediaStore.removeMedia(asset.id)
 }
 
 async function removeAsset(id: string) {
-  if (confirm('Remove this item from the library? The original chat message will stay unchanged.')) {
-    await mediaStore.removeMedia(id)
-  }
+  if (!await confirm({ ...REMOVE_MEDIA_ASK })) return
+  await mediaStore.removeMedia(id)
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -1005,7 +1017,7 @@ onUnmounted(() => {
 /* ---- media toolbar ---- */
 .content-header {
   position: relative;
-  z-index: calc(var(--z-dropdown, 1000) + 5);
+  z-index: calc(var(--z-dropdown) + 5);
   padding: 16px 4px 12px;
   display: flex;
   align-items: center;
@@ -1199,19 +1211,25 @@ onUnmounted(() => {
   opacity: 1;
 }
 
+/* Own reset: nothing paints this button but this rule (see the template note).
+   The radius restores what BorderBox used to hand an `unstyled` Button before
+   the paint withdrawal — the chip was never a square. */
 .delete-btn {
   position: absolute;
   top: 6px;
   right: 6px;
+  appearance: none;
+  margin: 0;
   padding: 3px 7px;
   border: none;
+  border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.62);
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   color: rgba(255, 255, 255, 0.88);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease, color 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .media-item:hover .delete-btn,
@@ -1365,7 +1383,7 @@ onUnmounted(() => {
   border-left: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
   display: flex;
   flex-direction: column;
-  z-index: 100;
+  z-index: var(--z-dropdown);
   overflow: hidden;
 }
 

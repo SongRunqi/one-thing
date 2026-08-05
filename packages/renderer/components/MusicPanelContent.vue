@@ -275,6 +275,22 @@ function openSession(sessionId: string) {
   gap: 20px;
 }
 
+/*
+ * The workspace IS the scroller, so none of its three sections may shrink.
+ * They used to: `.music-programme` / `.music-sessions` carried `min-height: 0`,
+ * which lets a column flex item collapse below its content — and because
+ * `.programme-row` is `flex-shrink: 0` and neither section clips, a full
+ * 节目单 kept its rows at full height while its box collapsed, so the rows
+ * drew straight over 编排记录 underneath (真机实测:14 首时越界 457px,
+ * 节目单文字与「电台 / vip群 + 时间戳」逐行叠印)。 Shrink is the bug; the
+ * overflow belongs to `.music-workspace`, which already scrolls.
+ */
+.music-station,
+.music-programme,
+.music-sessions {
+  flex-shrink: 0;
+}
+
 /* Ledger block, same vocabulary as the composer's music bar. */
 .music-station {
   position: relative;
@@ -338,7 +354,6 @@ function openSession(sessionId: string) {
   display: flex;
   flex-direction: column;
   gap: 0;
-  min-height: 0;
 }
 
 .request-box {
@@ -523,7 +538,6 @@ function openSession(sessionId: string) {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-height: 0;
 }
 
 .music-sessions-title {

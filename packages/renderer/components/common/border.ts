@@ -37,6 +37,19 @@ export interface BorderBoxProps {
   width?: BorderLength
   padding?: BorderSpace
   interactive?: boolean
+  /**
+   * Withdraw every paint declaration — border, radius, background, shadow,
+   * padding, colour, transition — in ALL states, leaving the consumer's own
+   * scoped rules unopposed.
+   *
+   * This is not "paint it transparent". Painting neutral values still emits
+   * declarations, and a declaration on a component's root element competes with
+   * the consumer's scoped rule for the same property; when the two land on the
+   * same specificity the winner is decided by stylesheet injection order, which
+   * reshuffles whenever components are added. `unstyled` removes BorderBox from
+   * that contest instead of trying to win it.
+   */
+  unstyled?: boolean
 }
 
 type CssVarName = `--${string}`
@@ -127,6 +140,17 @@ const spaceTokens: Record<BorderSpaceToken, string> = {
 }
 
 export function createBorderBoxStyle(props: BorderBoxProps): BorderBoxStyle {
+  // Nothing but the focus ring survives `unstyled`: every other custom property
+  // below feeds a declaration that the `.is-unstyled` gate switches off, so
+  // emitting them would only put dead variables on the element. The ring is
+  // keyboard accessibility, not decoration, and stays in every mode.
+  if (props.unstyled) {
+    return {
+      '--border-box-focus-ring-color': normalizeCssValue(props.focusRingColor)
+        || 'var(--ui-border-focus-ring, var(--ui-accent-primary-fg, var(--accent)))',
+    }
+  }
+
   const tone = normalizeOption(props.tone, toneBorderTokens, 'default')
   const shadow = normalizeOption(props.shadow, shadowTokens, 'none')
   const shadowValue = normalizeCssValue(props.shadowValue) || shadowTokens[shadow]

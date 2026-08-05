@@ -1230,8 +1230,9 @@ defineExpose({
   right: 8px;
 }
 
+/* 裸图标钮的 hover 用 8% ink 淡染(主题对称),整块 hover-bg 在这块画线面板上过重 */
 .workbench-close:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
   color: var(--ui-text-primary-fg, var(--text));
 }
 
@@ -1581,7 +1582,7 @@ defineExpose({
 }
 
 .browser-go:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
   color: var(--ui-text-primary-fg, var(--text));
 }
 

@@ -15,6 +15,7 @@
     :focus-ring-color="resolvedFocusRingColor"
     :width="resolvedBorderWidth"
     :padding="resolvedPadding"
+    :unstyled="isUnstyled"
     :interactive="!isDisabled"
     :type="nativeButtonType"
     :disabled="isDisabled"
@@ -123,12 +124,21 @@ const resolvedTextColor = computed(() => props.textColor ?? group?.textColor.val
 const nativeButtonType = computed(() => props.nativeType)
 const resolvedIcon = computed(() => props.icon ? toRaw(props.icon) : undefined)
 const resolvedBorderStyle = computed<BorderLineStyle>(() => isDashed.value && !isText.value ? 'dashed' : 'solid')
-const resolvedBorderColor = computed(() => 'var(--app-button-border)')
-const resolvedHoverBorderColor = computed(() => 'var(--app-button-hover-border)')
-const resolvedBackground = computed(() => 'var(--app-button-fill)')
-const resolvedHoverBackground = computed(() => 'var(--app-button-hover-fill)')
-const resolvedShadow = computed(() => 'var(--app-button-shadow)')
-const resolvedHoverShadow = computed(() => 'var(--app-button-hover-shadow)')
+/**
+ * `unstyled` means the caller owns the whole look, so the button hands BorderBox
+ * nothing to paint with — not even a transparent value. A transparent value is
+ * still a declaration, and a declaration on this root element competes with the
+ * caller's own scoped rule; `.border-box.is-interactive:hover` even out-weighs a
+ * caller's `.card:hover`, which is how one caller's border came to disappear on
+ * hover. Withdrawing beats winning.
+ */
+const paintOrNone = (value: string) => (isUnstyled.value ? undefined : value)
+const resolvedBorderColor = computed(() => paintOrNone('var(--app-button-border)'))
+const resolvedHoverBorderColor = computed(() => paintOrNone('var(--app-button-hover-border)'))
+const resolvedBackground = computed(() => paintOrNone('var(--app-button-fill)'))
+const resolvedHoverBackground = computed(() => paintOrNone('var(--app-button-hover-fill)'))
+const resolvedShadow = computed(() => paintOrNone('var(--app-button-shadow)'))
+const resolvedHoverShadow = computed(() => paintOrNone('var(--app-button-hover-shadow)'))
 const resolvedFocusRingColor = computed(() => 'color-mix(in srgb, var(--app-button-tone) 58%, transparent)')
 const resolvedBorderWidth = computed(() => (isText.value || isUnstyled.value) ? 0 : 1)
 const resolvedPadding = computed(() => '0 var(--app-button-effective-padding-x)')

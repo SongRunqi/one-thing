@@ -906,9 +906,19 @@ defineExpose({
   color: var(--ui-surface-app-bg, var(--bg));
 }
 
-.room-surface .room-composer :deep(.toolbar-right > .send-btn:hover:not(:disabled)),
+/* Hover/active step the ink one notch toward the paper, the same move the
+   global `.btn.primary:hover` makes (mix the opposite tone into the fill).
+   The previous recipe faded the fill's ALPHA to 82%, which on an opaque
+   34px disc mostly let the composer behind it bleed through — the disc kept
+   its shape and the change read as nothing happening. Staying opaque and
+   shifting the tone is what makes the state legible. */
+.room-surface .room-composer :deep(.toolbar-right > .send-btn:hover:not(:disabled)) {
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 86%, var(--ui-surface-app-bg, var(--bg)));
+  color: var(--ui-surface-app-bg, var(--bg));
+}
+
 .room-surface .room-composer :deep(.toolbar-right > .send-btn:active:not(:disabled)) {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 74%, var(--ui-surface-app-bg, var(--bg)));
   color: var(--ui-surface-app-bg, var(--bg));
 }
 

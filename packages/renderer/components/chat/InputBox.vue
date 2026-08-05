@@ -387,8 +387,11 @@
                   />
                 </template>
               </Button>
+              <!-- unstyled:SEND 是账页文本钮,涂装全由下方 .send-btn 持有。
+                   之前用 type="primary" 再整套覆盖,与 BorderBox 涂装是 (0,2,0)
+                   平局,HMR 热更重排注入顺序后翻边成实心蓝药丸(真机实锤)。 -->
               <Button
-                type="primary"
+                unstyled
                 class="send-btn"
                 :class="{ 'stop-btn': shouldShowStopAction }"
                 :disabled="isPrimaryActionDisabled"
@@ -2415,12 +2418,33 @@ defineExpose({
 }
 
 /* Cell dividers on the right-side buttons: their own `border: 0` resets
-   would otherwise erase the shared cell rule. */
+   would otherwise erase the shared cell rule.
+   ---------------------------------------------------------------------------
+   The cell GEOMETRY lives here too, and deliberately so. The four icon cells
+   are still painted `Button`s, so `.border-box[data-v-borderbox]` is also
+   declaring `border-radius` / `padding` / (via `.app-button`) `height` on the
+   very same element — at (0,2,0), dead level with `.voice-btn`'s own (0,2,0).
+   A level tie is settled by stylesheet injection order, which Vite reshuffles
+   whenever BorderBox/Button are hot-updated; when BorderBox lands last the
+   cells silently pick up its 6px radius and the hover wash renders as a
+   rounded pill instead of a full-height ledger cell (真机截图:📎 一格圆角灰底,
+   相邻三格因为没 hover 看不出来). Stating the geometry on the child-combinator
+   rule is not specificity brinkmanship — `.border-box[data-v]` is fixed at
+   (0,2,0) forever, so (0,3,0) is a settled outcome, not another coin toss.
+   The room skin overrides these cells from its own file at higher specificity
+   and is unaffected. */
 .toolbar-right > .voice-btn,
 .toolbar-right > .voice-aux-btn,
 .toolbar-right > .send-btn {
   border: 0;
   border-left: 1px solid var(--composer-cell-divider);
+  border-radius: 0;
+  height: 100%;
+}
+
+.toolbar-right > .voice-btn,
+.toolbar-right > .voice-aux-btn {
+  padding: 0 12px;
 }
 
 /* The SEND label rides in the icon slot, so the Button component squares
@@ -2811,10 +2835,6 @@ defineExpose({
   --app-button-height: 26px;
   --app-button-min-width: 0;
   --app-button-padding-x: 9px;
-  --app-button-hover-fill: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
-  --app-button-hover-fg: var(--ui-accent-primary-fg, var(--accent));
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
 
   height: 100%;
   min-width: 0;
@@ -2859,12 +2879,20 @@ defineExpose({
 }
 
 .send-btn.stop-btn {
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-
   background: transparent;
   box-shadow: none;
   color: var(--ui-action-ghost-fg, var(--muted));
+}
+
+/* stop 态的 hover 是中性灰,不是 accent 洗;unstyled 后须自持(原先由
+   BorderBox 消费 --app-button-hover-fill 提供,该链路对 unstyled 已撤)。 */
+.send-btn.stop-btn:hover:not(:disabled) {
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.send-btn.stop-btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 14%, transparent);
 }
 
 .send-btn.stop-btn:hover {

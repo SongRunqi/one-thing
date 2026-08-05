@@ -102,7 +102,7 @@ describe('Button', () => {
     expect(wrapper.attributes('style')).toContain('--border-box-border-color: var(--app-button-border)')
   })
 
-  it('supports unstyled migration mode while still using the border box root', () => {
+  it('withdraws every paint declaration in unstyled mode', () => {
     const wrapper = mount(Button, {
       props: {
         unstyled: true,
@@ -120,7 +120,28 @@ describe('Button', () => {
     expect(button.classes()).toContain('app-button')
     expect(button.classes()).toContain('is-unstyled')
     expect(button.classes()).toContain('legacy-icon-button')
-    expect(button.attributes('style')).toContain('--border-box-border-width: 0px')
+
+    // `unstyled` means the caller owns the look, so BorderBox contributes no
+    // paint at all — not even neutral values. A transparent border is still a
+    // declaration, and a declaration on this root competes with the caller's
+    // own scoped rule; `.border-box.is-interactive:hover` (0,4,0) even beats a
+    // caller's `.card:hover` (0,3,0), which is how one caller's border came to
+    // vanish on hover. `is-unstyled` switches the paint rules off entirely.
+    expect(button.classes()).toContain('is-unstyled')
+    const style = button.attributes('style') ?? ''
+    for (const dead of [
+      '--border-box-border-width',
+      '--border-box-border-color',
+      '--border-box-hover-border-color',
+      '--border-box-background',
+      '--border-box-hover-background',
+      '--border-box-shadow',
+      '--border-box-padding',
+    ]) {
+      expect(style).not.toContain(dead)
+    }
+    // The keyboard focus ring is accessibility, not decoration: it stays.
+    expect(style).toContain('--border-box-focus-ring-color')
     expect(button.text()).toBe('Legacy')
   })
 })
