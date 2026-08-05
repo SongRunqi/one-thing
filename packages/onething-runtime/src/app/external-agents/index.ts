@@ -14,7 +14,10 @@ import type {
 import { Permission } from '../permission/index.js'
 import { getSession, getSettings } from '../store.js'
 import { getStorePath } from '../stores/paths.js'
+import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 import type { ChatMessage } from '@shared/ipc.js'
+
+export { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 
 // ---------------------------------------------------------------------------
 // CLI detection
@@ -163,6 +166,9 @@ export function getExternalAgentConnectors(): Record<string, ExternalAgentConnec
       executablePath: findClaudeExecutable(),
       permissionHandler: askExternalAgentPermission,
       resolveSpawnEnv: resolveExternalAgentSpawnEnv,
+      // E3 宿主工具面:协作工具经进程内 MCP 注入 SDK,发言权回到房间(§2)。
+      // 连接器仍会再问一次 E0 能力表(`hostTools`)—— 装上不等于开着。
+      hostToolSurface: resolveClaudeCodeHostToolSurface,
       logger: console,
     }),
   }

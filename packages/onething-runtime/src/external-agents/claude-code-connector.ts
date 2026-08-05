@@ -6,9 +6,15 @@ import type {
   AgentUsage,
 } from '@onething/core/agent-loop'
 import { createTwoFilesPatch } from 'diff'
+import { findAgentExecutorDescriptor } from '../agents/executor/capabilities.js'
 import { onethingClaudeModelFamily } from '../providers/model-capability.js'
 import { countLineChanges } from '../tools/file-snapshot.js'
 import { trimDiff, truncateDiffForDisplay } from '../tools/replacers.js'
+import {
+  isHostMcpToolName,
+  stripHostMcpToolPrefix,
+  type HostMcpSurfaceResolver,
+} from './host-mcp/index.js'
 import type {
   ExternalAgentCapabilities,
   ExternalAgentConnector,
@@ -81,6 +87,12 @@ export interface ClaudeCodeQueryOptions {
   thinking?: { type: 'adaptive' } | { type: 'enabled'; budgetTokens: number } | { type: 'disabled' }
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   abortController?: AbortController
+  /**
+   * 进程内 MCP 服务器(E3 宿主工具面)。键是服务器名,值是
+   * `{ type: 'sdk', name, instance }`(SDK 的 `McpSdkServerConfigWithInstance`)。
+   * 结构保持宽松,SDK 因此仍是这个模块的软依赖。
+   */
+  mcpServers?: Record<string, unknown>
   canUseTool?: (
     toolName: string,
     input: Record<string, unknown>,
@@ -114,6 +126,26 @@ export interface ClaudeCodeConnectorOptions {
    * "Request not allowed").
    */
   resolveSpawnEnv?: () => Record<string, string | undefined> | undefined
+  /**
+   * 宿主工具面(E3,§2)。装配层实现它 —— 它认识 store、工具注册表、v3 回合登记簿,
+   * 而这个模块一个都不该认识。
+   *
+   * **不装 = 不注入**,与 E3 之前逐字同形:外部 agent 只有 SDK 自带的工具,发言
+   * 靠收养兜底。装上之后协作工具经进程内 MCP 进去,发言权回到房间。
+   */
+  hostToolSurface?: HostMcpSurfaceResolver
+}
+
+/**
+ * 这个执行器接不接宿主工具 —— **从 E0 的能力表读**,不在这里硬编码。
+ *
+ * 判据写死成 `providerId === 'claude-code-agent'` 的话,能力表就成了一份没人读的
+ * 文档:把 `hostTools` 翻成 false 不会改变任何行为,而那正是「声明与真实能力分家」
+ * 的开始(原则 5)。表里那一行现在有了读者,翻它就真的会停掉注入。
+ */
+function executorAcceptsHostTools(): boolean {
+  return findAgentExecutorDescriptor(CLAUDE_CODE_AGENT_CONNECTOR_ID)
+    ?.capabilities.hostTools === true
 }
 
 const CLAUDE_CODE_CAPABILITIES: ExternalAgentCapabilities = {
@@ -248,6 +280,25 @@ function fileChangeMetadata(
 }
 
 /**
+ * 事件流出口的**名字归一化**(E3)。
+ *
+ * SDK 侧宿主工具叫 `mcp__onething__send_message`(MCP 全名的规矩),而它就是本地
+ * 回合里那个 `send_message` —— 前缀说的是「这次它是怎么进到 SDK 里的」,不是
+ * 「它是什么」。归一化放在这里(翻译器出口)之后,下游一个都不必改:
+ *
+ *  - 打字灯的 `isCollabSendCall` 认得出它,外部 agent 说话时群里的「正在输入」
+ *    终于会亮 —— 此前 W19 那盏灯对外部 agent 是恒灭的;
+ *  - 步骤渲染、调度日志、退役名表看到的都是与本地回合逐字相同的名字。
+ *
+ * `canUseTool` 那一侧**刻意不归一化**:那是 SDK 的审批口,两类工具的分界线就画在
+ * 那个前缀上(见下面的 `canUseTool`)。同一个字符串在两个面上承担两件事,所以只
+ * 在事件面上抹掉。
+ */
+function normalizeToolName(name: string | undefined): string {
+  return name ? stripHostMcpToolPrefix(name) : 'tool'
+}
+
+/**
  * Per-turn translator: Claude Agent SDK message stream → normalized agent
  * events. Tool calls stream as content blocks (start → input_json_delta →
  * stop) and are marked externallyExecuted; their results arrive as
@@ -286,7 +337,7 @@ class ClaudeCodeTurnTranslator {
     if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
       const index = event.index ?? 0
       const id = event.content_block.id ?? `tool-${index}`
-      const name = event.content_block.name ?? 'tool'
+      const name = normalizeToolName(event.content_block.name)
       this.toolCallsByIndex.set(index, { id, name, args: '' })
       return [{ type: 'tool-call-start', turn: this.turn, toolCallId: id, toolName: name }]
     }
@@ -333,7 +384,7 @@ class ClaudeCodeTurnTranslator {
     for (const block of content) {
       if (block.type !== 'tool_use' || !block.id) continue
       if (this.toolCallsById.has(block.id)) continue
-      const name = block.name ?? 'tool'
+      const name = normalizeToolName(block.name)
       events.push({ type: 'tool-call-start', turn: this.turn, toolCallId: block.id, toolName: name })
       events.push(...this.completeToolCall(block.id, name, JSON.stringify(block.input ?? {})))
     }
@@ -441,6 +492,32 @@ export function createClaudeCodeConnector(
       const translator = new ClaudeCodeTurnTranslator(request.turn)
       let linkEmitted = false
 
+      /**
+       * 宿主工具面的注入(E3 §2)。
+       *
+       * 两道门缺一不可:能力表说这个执行器接得住(`hostTools`),装配层装上了
+       * 解析器。任何一道不过就退回 E3 之前的形状 —— 只有 SDK 自带工具。
+       *
+       * 解析失败**不炸回合**:注入不上的代价是这一轮没有发言权(收养兜底还在),
+       * 抛出去的代价是这一轮什么都没有。
+       */
+      let hostTools: Awaited<ReturnType<HostMcpSurfaceResolver>> | undefined
+      if (options.hostToolSurface && executorAcceptsHostTools()) {
+        try {
+          hostTools = await options.hostToolSurface({
+            localSessionId: request.localSessionId,
+            ...(request.messageId ? { messageId: request.messageId } : {}),
+            cwd: request.cwd,
+          })
+        } catch (error) {
+          options.logger?.warn?.(
+            `[ClaudeCodeConnector] host tool surface failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          )
+        }
+      }
+
       try {
         const spawnEnv = options.resolveSpawnEnv?.()
         const queryOptions: ClaudeCodeQueryOptions = {
@@ -451,9 +528,26 @@ export function createClaudeCodeConnector(
           includePartialMessages: true,
           permissionMode: 'default',
           ...(spawnEnv ? { env: spawnEnv } : {}),
+          ...(hostTools ? { mcpServers: hostTools.mcpServers } : {}),
           ...claudeCodeThinkingOptions(request),
           abortController,
+          /**
+           * **两类工具在这里分家**(§2)。
+           *
+           * 判据是 MCP 全名的前缀 `mcp__onething__`:
+           *
+           *  - **宿主工具**(带前缀):跑在我们自己的执行器里,而那条路上已经有
+           *    完整的一套 —— 场子门、`permissionGuard`、`enforcePermissionPolicy`、
+           *    v3 持牌校验。再过一遍 `canUseTool` 就是同一个动作被审两次:用户
+           *    要点两下,而第二下问的是一件他刚刚已经答过的事。所以直接放行,
+           *    真正的门在下游。
+           *  - **SDK 自带工具**(不带前缀):Read/Write/Bash 跑在 CLI 进程里,
+           *    我们对它们只剩这一座桥,照旧走宿主的审批。
+           */
           canUseTool: async (toolName, input, { signal }) => {
+            if (isHostMcpToolName(toolName)) {
+              return { behavior: 'allow', updatedInput: input }
+            }
             if (!options.permissionHandler) {
               return { behavior: 'deny', message: 'No permission handler registered in host.' }
             }
@@ -485,7 +579,11 @@ export function createClaudeCodeConnector(
           if (message.type === 'system' && message.subtype === 'init') {
             const init = message as ClaudeCodeSdkMessage & { apiKeySource?: string; model?: string; cwd?: string }
             options.logger?.log?.(
-              `[ClaudeCodeConnector] init session=${message.session_id} model=${init.model} apiKeySource=${init.apiKeySource} cwd=${init.cwd}`,
+              `[ClaudeCodeConnector] init session=${message.session_id} model=${init.model}`
+                + ` apiKeySource=${init.apiKeySource} cwd=${init.cwd}`
+                // 这一轮到底给了它哪几个宿主工具。注入静静地失败是最坏的结局
+                // (发言权没了却看不出来),所以每一轮都把答案写进日志。
+                + ` hostTools=[${hostTools?.toolNames.join(', ') ?? ''}]`,
             )
           }
           if (message.type === 'result' && message.subtype !== 'success') {
@@ -510,6 +608,9 @@ export function createClaudeCodeConnector(
       } finally {
         request.abortSignal?.removeEventListener('abort', forwardAbort)
         abortControllers.delete(request.localSessionId)
+        // 语境解绑。漏解的条目会让下一轮之后的迟到调用打在一份过期语境上,而那
+        // 是最难查的一类串房 —— 所以它在 `finally` 里,与 abort 清理并列。
+        hostTools?.release?.()
       }
     },
 

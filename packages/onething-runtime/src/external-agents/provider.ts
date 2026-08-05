@@ -47,6 +47,21 @@ export function createExternalAgentProvider(
       outputModalities: ['text'],
       supportsStreaming: true,
       supportsReasoning: options.connector.capabilities.thinking,
+      /**
+       * 仍是 false —— 而 E3 之后这句话的含义变了,值得写清楚。
+       *
+       * 它答的是「**引擎的工具循环**要不要为这个 provider 装载工具」,答案是不要:
+       * 外部 agent 的工具在它自己的循环里执行,引擎再装一份只会把同一批工具发两遍,
+       * 然后等一个永远不会回到我们这条循环里的结果。
+       *
+       * 协作工具**不走这条路**:它们经进程内 MCP 直接注入 SDK(E3,§2
+       * `host-mcp/`),由 connector 的 `hostToolSurface` 在每一轮解析、由**我们的**
+       * 执行器执行。所以「没有工具面」这个 §0 诊断已经不成立了 —— 工具面回来了,
+       * 只是它接在 connector 上,不接在这里。
+       *
+       * 这一位翻真要等 E2:那时 AgentExecutor 抽象接管「工具装载看 `hostTools`」,
+       * 引擎不再从 provider 的这一位推断任何东西。
+       */
       supportsTools: false,
     },
 

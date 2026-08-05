@@ -42,8 +42,17 @@ const EXTERNAL_DESCRIPTORS: AgentExecutorDescriptor[] = [
     id: 'claude-code-agent',
     kind: 'external',
     capabilities: {
-      // SDK 原生支持 mcpServers 的进程内注入(connector 声明
-      // mcpInjection: 'in-process')——架构上可接;真接在 E3。
+      /**
+       * **E3 已真接**(2026-08-05):`external-agents/host-mcp/` 起一台进程内 MCP
+       * 服务器,协作工具经 SDK 的 `mcpServers` 选项注入
+       * (`McpSdkServerConfigWithInstance` = `{ type:'sdk', name, instance }`,
+       * SDK 0.3.214 原生支持,不需要 stdio 子进程)。
+       *
+       * 这一位现在**有读者**:`claude-code-connector` 的
+       * `executorAcceptsHostTools()` 每轮读它,翻成 false 就真的停掉注入(外部
+       * agent 退回只有 SDK 自带工具、发言靠收养兜底的 E3 之前形状)。声明与真实
+       * 能力从此不会分家 —— 原则 5 的具体兑现。
+       */
       hostTools: true,
       // connector 的 CLAUDE_CODE_CAPABILITIES.steer = false。
       steer: false,
@@ -59,9 +68,18 @@ const EXTERNAL_DESCRIPTORS: AgentExecutorDescriptor[] = [
     id: 'acp',
     kind: 'external',
     capabilities: {
-      // 保守 false:ACP 的 MCP 注入是 config 形态(connector 声明
-      // mcpInjection: 'config'),而 E3 的宿主工具面是进程内 server;
-      // 两者能否对上尚未验证,E3 落地时按实测翻。
+      /**
+       * 仍然 false —— E3 落地后**按实测保持**,不是忘了翻。
+       *
+       * ACP 的 MCP 注入是 config 形态(connector 声明 `mcpInjection: 'config'`):
+       * 它要的是一份可序列化的服务器配置(stdio 命令行 / http 地址),而 E3 的
+       * 宿主工具面是一个**活的进程内实例**——`speakThroughCollabLease` 依赖的
+       * store 与 v3 回合登记簿都在这个进程里,序列化不过去。真要接,得先给
+       * host-mcp 加一条 stdio/http 出口,那是独立的一件事。
+       *
+       * 保守的代价只是 ACP agent 暂时没有宿主工具;乐观的代价是我们以为它有
+       * 发言权,而它其实一句话都发不出去。
+       */
       hostTools: false,
       // connector 的 ACP_CAPABILITIES.steer = false。
       steer: false,
