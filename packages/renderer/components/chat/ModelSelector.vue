@@ -33,17 +33,25 @@
       />
     </button>
 
-    <!-- The flyout lives in .composer-anchor next to the command/file pickers:
-         the toolbar cell clips (.toolbar-left is overflow:hidden), and the
-         anchor is what keeps flyouts glued to the composer's top edge at the
-         composer's full width. Vue keeps this teleported subtree in the
-         component's style scope. -->
-    <Teleport
-      v-if="flyoutAnchor"
-      :to="flyoutAnchor"
+    <!-- Geometry comes from the floating kernel (P1); this component only says
+         what the layer hangs off. The anchor is the COMPOSER box, not the chip:
+         the flyout has always spanned the composer's full width 9px above its
+         top edge (it used to be a Teleport into `.composer-anchor` carrying
+         `left:0; right:0; bottom:calc(100% + 9px)`), because the toolbar cell it
+         is triggered from clips (`.toolbar-left` is overflow:hidden). Anchoring
+         the kernel to that same box with `width: 'anchor'` reproduces the old
+         coordinates exactly and adds flip / viewport clamping / scroll tracking.
+         Slot content stays in this component's style scope. -->
+    <Popover
+      :open="open"
+      v-bind="flyoutPopover"
+      @update:open="value => value || closeFlyout()"
+      @close="handleFlyoutClose"
     >
       <ComposerExtensionPanel
+        floating
         :visible="open"
+        :placement="placement"
         class="model-flyout"
         title="Model"
         :count="filteredCount"
@@ -153,7 +161,7 @@
           </template>
         </div>
       </ComposerExtensionPanel>
-    </Teleport>
+    </Popover>
   </div>
 </template>
 
@@ -166,6 +174,9 @@ import type { AIProvider, OpenRouterModel } from '@shared/ipc'
 import { providerFamilyDisplayName } from '@shared/provider-families'
 import ProviderIcon from '../settings/ProviderIcon.vue'
 import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
+import Popover from '@/components/common/Popover.vue'
+import type { FloatingCloseReason } from '@/composables/floating/useFloatingLayer'
+import type { ComputedPosition } from '@/composables/floating/compute-position'
 import { isProviderConfigEnabled, resolveProviderModelSelection } from '@/stores/helpers/provider-model'
 import { useSessionAgentModel } from '@/composables/useSessionAgentModel'
 
@@ -192,7 +203,7 @@ const selectorRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLButtonElement | null>(null)
 const searchRef = ref<HTMLInputElement | null>(null)
 const listRef = ref<HTMLElement | null>(null)
-const flyoutAnchor = ref<HTMLElement | null>(null)
+const composerAnchorEl = ref<HTMLElement | null>(null)
 const isCompact = ref(false)
 let resizeObserver: ResizeObserver | null = null
 
@@ -200,6 +211,46 @@ const open = ref(false)
 const query = ref('')
 const providerFilter = ref<'all' | string>('all')
 const focusIdx = ref(0)
+const placement = ref<'up' | 'down'>('up')
+
+/** The gap the flyout has always kept from the composer's top edge. */
+const FLYOUT_GAP = 9
+
+/**
+ * Everything about *where* the layer lands is the kernel's (ui-system.md §1);
+ * what stays here is which box it hangs off and how wide it is.
+ */
+const flyoutPopover = computed(() => ({
+  // `.composer-anchor` is the real anchor — see the template comment. The chip
+  // is only the fallback for mounts that have no composer around them.
+  anchor: composerAnchorEl.value ?? selectorRef.value,
+  placement: 'top-start' as const,
+  offset: FLYOUT_GAP,
+  // Full composer width, exactly as `left: 0; right: 0` used to give.
+  width: 'anchor' as const,
+  // The panel draws its own notched frame and shadow; a second surface under
+  // it would double the border.
+  surface: false,
+  // Same stop as before the migration: a composer flyout is dropdown +1
+  // (ComposerExtensionPanel's own rule), under InputBox's +2 command toast.
+  zOffset: 1,
+  // `scroll: false` = follow the scroll, do not dismiss on it.
+  closeOn: { esc: true, outside: true, scroll: false },
+  onPositioned: onFlyoutPositioned,
+}))
+
+/** Fires on every (re)placement — open, scroll, resize, content resize. */
+function onFlyoutPositioned(position: ComputedPosition): void {
+  // The panel grows out of the composer edge, so it needs to know which way it
+  // went once the kernel flips it.
+  placement.value = position.side === 'top' ? 'up' : 'down'
+}
+
+function handleFlyoutClose(reason: FloatingCloseReason) {
+  // Esc hands the caret back to the control it came from; an outside click has
+  // already put focus somewhere the user chose.
+  if (reason === 'esc') triggerRef.value?.focus()
+}
 
 const currentSession = computed(() => {
   const sid = props.sessionId
@@ -316,9 +367,9 @@ function checkCompactMode() {
 }
 
 onMounted(() => {
-  // Same anchor the command/file/path pickers render into. Without one
-  // (isolated mounts, tests) the flyout is simply unavailable.
-  flyoutAnchor.value = selectorRef.value?.closest('.composer-anchor') as HTMLElement | null
+  // The box the flyout is glued to — the same one the command/file/path pickers
+  // hang off. Without one (isolated mounts, tests) the chip is the fallback.
+  composerAnchorEl.value = selectorRef.value?.closest('.composer-anchor') as HTMLElement | null
 
   checkCompactMode()
 
@@ -330,15 +381,13 @@ onMounted(() => {
 
   window.addEventListener('resize', checkCompactMode)
   window.addEventListener('onething:open-model-selector', handleOpenModelSelectorEvent)
-  document.addEventListener('mousedown', handleDocumentMousedown)
-  document.addEventListener('keydown', handleDocumentKeydown, true)
+  composerAnchorEl.value?.addEventListener('mousedown', handleComposerMousedown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkCompactMode)
   window.removeEventListener('onething:open-model-selector', handleOpenModelSelectorEvent)
-  document.removeEventListener('mousedown', handleDocumentMousedown)
-  document.removeEventListener('keydown', handleDocumentKeydown, true)
+  composerAnchorEl.value?.removeEventListener('mousedown', handleComposerMousedown)
   resizeObserver?.disconnect()
   resizeObserver = null
 })
@@ -474,22 +523,18 @@ function scrollFocusedIntoView() {
   })
 }
 
-/* The panel shell stops mousedown propagation, so anything that reaches the
-   document is outside the flyout; the trigger keeps its own toggle. */
-function handleDocumentMousedown(event: MouseEvent) {
+/* The kernel dismisses presses that land outside the layer AND outside its
+   anchor — and the anchor here is the whole composer box, so to the kernel a
+   press on the editor or on a neighbouring toolbar picker reads as "inside".
+   Those must still dismiss: the picker is a transient overlay on the composer,
+   not a second panel to stack beside. This listener is bound to the composer
+   itself (the flyout is teleported to body, so its own presses never reach it)
+   and covers exactly the half the kernel cannot see; the chip keeps its toggle. */
+function handleComposerMousedown(event: MouseEvent) {
   if (!open.value) return
   const target = event.target as Node | null
   if (target && selectorRef.value?.contains(target)) return
   closeFlyout()
-}
-
-/* Capture-phase so the flyout wins the Escape before the editor's own
-   escape handling reacts. */
-function handleDocumentKeydown(event: KeyboardEvent) {
-  if (!open.value || event.key !== 'Escape') return
-  event.stopPropagation()
-  closeFlyout()
-  triggerRef.value?.focus()
 }
 
 async function loadModelsForProvider(providerId: string) {
@@ -618,7 +663,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   white-space: nowrap;
 }
 
-/* ————— MODEL flyout (teleported into .composer-anchor) ————— */
+/* ————— MODEL flyout (Popover slot content — still this component's scope) ————— */
 
 /* 画线风:方角,不用共享 shell 的 12px 圆角。 */
 .model-flyout.composer-extension-panel {
@@ -761,21 +806,51 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   background: var(--composer-extension-divider);
 }
 
-/* 画线风:行无底色无圆角,行与行之间一道极淡点线 —— 相邻的选中行与
-   hover 行不再是两块底色粘在一起,靠行首圈点区分。
-   圈点与 AgentSelector 同记号:hover/键盘焦点空心浮现,当前填实。 */
+/* 行语言(ui-system.md §1「列表行的两种状态不能是同一种记号」):
+   面 register —— 瞬时态(hover / 键盘)与持久态(current)各走一条通道,
+   靠 2px 呼吸缝把两块底色读开。缝写 2px 而不是 1px:列表是普通块容器,
+   相邻行的纵向 margin 会合并取大值,写 1px 得到的就是 1px。
+   圈点从此只说「哪一个在跑」,不再兼职说「手指着哪一行」—— 那是底色的活。 */
 .model-row {
+  /* 选中底只定义一次,下面「加深一档」贴着它写,两处数值不会各自漂移。 */
+  --model-row-selected-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 11%, transparent);
+
   display: flex;
   align-items: flex-start;
   gap: 8px;
   min-height: 32px;
+  /* 与 .composer-extension-row 同一套内缩:横向 4px 让底色块不贴框。 */
+  margin: 2px 4px;
   padding: 6px 8px;
-  border-radius: 0;
+  border-radius: 3px;
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
-.model-row + .model-row {
-  border-top: 1px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 62%, transparent);
+/* 键盘 active 与鼠标 hover 是同一视觉通道,所以挂在同一条规则上;
+   `.focused` 由方向键与 mouseenter 共同写入,几何只在基类里。 */
+.model-row:hover,
+.model-row.focused {
+  background: var(--ui-state-hover-bg, var(--hover));
+}
+
+.model-row.current {
+  background: var(--model-row-selected-bg);
+}
+
+/* 指着一行「已经选中的」行。少了这条,选中行就是死区:`.current` 与
+   `:hover` 同为 (0,2,0) 且写在后面,底色块会把 hover 整个吞掉(Select 的
+   box 变体实测过)。做法是在选中底上加深一档,掺的是 --ui-text-primary-fg
+   ——「往对立色调混」,浅色主题它是深的、深色主题它是浅的,两边都成立;
+   单纯抬 accent 的 alpha 在深色主题里几乎不动。混色一律 in srgb:
+   oklch 的 color-mix 在近中性色上会泛粉(模型选择器当年踩过)。 */
+.model-row.current:hover,
+.model-row.current.focused {
+  background: color-mix(
+    in srgb,
+    var(--model-row-selected-bg) 92%,
+    var(--ui-text-primary-fg, var(--text))
+  );
 }
 
 .model-dot {
@@ -788,10 +863,6 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   border-radius: 50%;
   opacity: 0;
   transition: opacity 0.12s ease;
-}
-
-.model-row.focused .model-dot {
-  opacity: 0.45;
 }
 
 .model-row.current .model-dot {
@@ -825,6 +896,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   transition: color 0.12s ease;
 }
 
+.model-row:hover .model-name,
 .model-row.focused .model-name {
   color: var(--ui-text-primary-fg, var(--text));
 }
