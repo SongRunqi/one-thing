@@ -71,6 +71,16 @@ export interface MCPToolCallResult {
     data?: string
     mimeType?: string
   }>
+  /**
+   * Readable rendering of `content`, with binary parts summarised.
+   *
+   * The agent loop turns a tool result into message text via `toolOutputToText`,
+   * which falls back to `JSON.stringify(data)` unless the payload carries an
+   * `output` string. Without this field an image part's base64 was stringified
+   * into the tool message *in addition to* being attached as a real image part
+   * — the same payload billed twice.
+   */
+  output?: string
   error?: string
   isError?: boolean
 }

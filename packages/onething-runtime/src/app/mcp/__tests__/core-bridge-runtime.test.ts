@@ -155,6 +155,7 @@ describe('CoreMCPBridgeRuntime', () => {
     expect(result).toEqual({
       success: true,
       content: [{ type: 'text', text: 'ok' }],
+      output: 'ok',
       isError: undefined,
     })
     expect(callTool).toHaveBeenCalledWith('server-a', 'query', { q: 'hello' })

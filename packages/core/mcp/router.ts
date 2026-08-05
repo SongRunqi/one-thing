@@ -586,6 +586,21 @@ export function resolveMCPRouterAction(
   }
 }
 
+/**
+ * Attach the readable rendering of an MCP result before it reaches the agent
+ * loop.
+ *
+ * `toolOutputToText` (core/agent-loop/tools.ts) JSON.stringifies any payload
+ * that has no `output` string. For a result carrying an image part that meant
+ * the base64 was inlined into the tool message text *and* attached again as a
+ * real image part — the same bytes charged twice. The summary keeps binary
+ * parts as `[image: image/png]` while `content` still carries the real parts.
+ */
+function withMCPResultOutputText(result: MCPToolCallResult): MCPToolCallResult {
+  if (!result.success) return result
+  return { ...result, output: mcpContentToString(result.content) }
+}
+
 export async function executeMCPBridgeTool(
   toolId: string,
   args: JsonObject,
@@ -606,8 +621,9 @@ export async function executeMCPBridgeTool(
     // text part discarded every non-text part: an image came back as
     // JSON.stringify output, so the model never saw the picture and the base64
     // was billed as transcript text. The preview line stays text-only.
-    options.onPartialResult?.(mcpContentToString(result.content), 'ready')
-    return result
+    const withOutput = withMCPResultOutputText(result)
+    options.onPartialResult?.(withOutput.output ?? '', 'ready')
+    return withOutput
   }
 
   const parsed = options.parseToolId(toolId)
@@ -618,5 +634,5 @@ export async function executeMCPBridgeTool(
     }
   }
 
-  return options.callTool(parsed.serverId, parsed.toolName, args)
+  return withMCPResultOutputText(await options.callTool(parsed.serverId, parsed.toolName, args))
 }

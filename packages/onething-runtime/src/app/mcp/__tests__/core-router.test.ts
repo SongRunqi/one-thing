@@ -412,6 +412,13 @@ describe('core MCP router helpers', () => {
     expect(preview).toContain('here is the screenshot')
     expect(preview).toContain('[image: image/png]')
     expect(preview).not.toContain('AAAABBBBCCCC')
+
+    // `output` is what the agent loop turns into the tool message text. Without
+    // it the loop JSON.stringifies the whole result, so the base64 would be
+    // billed once as text AND once as the real image part.
+    expect(result.output).toContain('here is the screenshot')
+    expect(result.output).toContain('[image: image/png]')
+    expect(result.output).not.toContain('AAAABBBBCCCC')
   })
 
   it('executes MCP bridge router and direct tool paths through core adapters', async () => {
@@ -440,6 +447,8 @@ describe('core MCP router helpers', () => {
     expect(routerResult).toEqual({
       success: true,
       content: [{ type: 'text', text: 'called fetch-server/fetch' }],
+      // Readable rendering for the agent loop's tool message text.
+      output: 'called fetch-server/fetch',
       isError: undefined,
     })
     expect(calls[0]).toEqual({
