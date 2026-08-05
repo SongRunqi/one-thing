@@ -49,6 +49,17 @@ vi.mock('@/stores/collabBoard', () => ({
   useCollabBoardStore: () => ({ ensurePendingForSession: vi.fn() }),
 }))
 
+// 提问账本(E2)同理:这一面只说"这个会话上屏了",反查与卡片归账本。
+vi.mock('@/stores/interactions', () => ({
+  useInteractionsStore: () => ({
+    ensureForSession: vi.fn(),
+    pendingFor: () => [],
+    settledFor: () => [],
+    respond: vi.fn(),
+    decline: vi.fn(),
+  }),
+}))
+
 vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => mocks.sessionsStore,
 }))

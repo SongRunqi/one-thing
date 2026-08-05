@@ -98,7 +98,29 @@
             :goal="settledGoal"
             @review="emit('reviewGoal', props.sessionId || '')"
           />
+
+          <!-- 提问卡:带 toolCallId 的贴在发起它的那次工具调用所属的消息之后
+               (与审批卡同一条归位键)。答完不消失,进历史态留在原地。 -->
+          <InteractionCard
+            v-for="card in interactionCardsByIndex.get(index)"
+            :key="card.request.id"
+            :request="card.request"
+            :answer="card.answer"
+            @submit="handleInteractionSubmit"
+            @decline="handleInteractionDecline"
+          />
         </template>
+
+        <!-- 无主的提问(没有 toolCallId,或那次调用还没进这一页)挂在会话末尾:
+             一张答不了的卡不如一张位置不完美的卡。 -->
+        <InteractionCard
+          v-for="card in tailInteractionCards"
+          :key="card.request.id"
+          :request="card.request"
+          :answer="card.answer"
+          @submit="handleInteractionSubmit"
+          @decline="handleInteractionDecline"
+        />
 
         <div
           ref="bottomSentinelRef"
@@ -109,18 +131,18 @@
     </Scrollbar>
 
     <!-- Selection toolbar: one instance for the whole list; MessageItems
-         report selections upward instead of each owning a toolbar. -->
-    <Teleport to="body">
-      <SelectionToolbar
-        :visible="selectionToolbarVisible"
-        :position="selectionToolbarPosition"
-        :selected-text="selectionToolbarText"
-        :can-branch="canCreateBranch"
-        @quote="handleSelectionQuote"
-        @branch="handleSelectionBranch"
-        @close="hideSelectionToolbar"
-      />
-    </Teleport>
+         report selections upward instead of each owning a toolbar. P6: the
+         singleton `Teleport to="body"` went away with the hand-rolled
+         coordinates — the toolbar is a Popover now and teleports itself. -->
+    <SelectionToolbar
+      :visible="selectionToolbarVisible"
+      :anchor="selectionToolbarAnchor"
+      :selected-text="selectionToolbarText"
+      :can-branch="canCreateBranch"
+      @quote="handleSelectionQuote"
+      @branch="handleSelectionBranch"
+      @close="hideSelectionToolbar"
+    />
 
     <Teleport
       :to="props.outlineRailTarget || 'body'"
@@ -187,9 +209,18 @@
 import Button from '@/components/common/Button.vue'
 import Scrollbar from '@/components/common/Scrollbar.vue'
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdated } from 'vue'
-import type { ChatMessage, ChatMessageReplyTo, SessionGoal, ToolCall } from '@/types'
+import type {
+  ChatMessage,
+  ChatMessageReplyTo,
+  InteractionAnswer,
+  InteractionQuestionAnswer,
+  InteractionRequest,
+  SessionGoal,
+  ToolCall,
+} from '@/types'
 import MessageItem from './MessageItem.vue'
 import GoalSummaryCard from './message/GoalSummaryCard.vue'
+import InteractionCard from './interaction/InteractionCard.vue'
 import RoomTimeCapsule from './message/RoomTimeCapsule.vue'
 import {
   EMPTY_ROOM_LAYOUT,
@@ -213,6 +244,7 @@ import {
 import { ArrowDown } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useCollabBoardStore } from '@/stores/collabBoard'
+import { useInteractionsStore } from '@/stores/interactions'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
@@ -220,6 +252,7 @@ import { useCollabReactions } from '@/composables/useCollabReactions'
 import { usePermissionResponder } from '@/composables/usePermissionResponder'
 import { useHistoryPagination } from '@/composables/useHistoryPagination'
 import type { PermissionResponse } from './permission/permission-ledger'
+import type { AnchorRect } from '@/composables/floating/compute-position'
 import {
   useFollowScroll,
   shouldShowScrollToBottomButton,
@@ -302,6 +335,7 @@ const { reactionHint, react: handleReact } = useCollabReactions(() => effectiveS
 
 const chatStore = useChatStore()
 const collabBoardStore = useCollabBoardStore()
+const interactionsStore = useInteractionsStore()
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const messageScrollbarRef = ref<InstanceType<typeof Scrollbar> | null>(null)
@@ -947,6 +981,76 @@ function anchorIndexFor(goal: SessionGoal): number {
     if ((props.messages[i]?.timestamp ?? 0) <= settledAt) return i
   }
   return -1
+}
+
+/* ── agent 提问卡(E2)──────────────────────────────────────────────────── */
+
+interface InteractionCardEntry {
+  request: InteractionRequest
+  /** 有它就是历史态。 */
+  answer?: InteractionAnswer
+}
+
+/**
+ * 这个会话上要画的所有提问卡:还欠着的 + 本窗口见过的已结算的,按提问时间排。
+ *
+ * 两份都从账本读(pending 来自反查,settled 来自结算事件的转达),这里不记账,
+ * 只把它们排成一列。
+ */
+const interactionCards = computed<InteractionCardEntry[]>(() => {
+  const sessionId = props.sessionId
+  if (!sessionId) return []
+  const entries: InteractionCardEntry[] = [
+    ...interactionsStore.pendingFor(sessionId).map(request => ({ request })),
+    ...interactionsStore.settledFor(sessionId).map(entry => ({
+      request: entry.request,
+      answer: entry.answer,
+    })),
+  ]
+  return entries.sort((a, b) => a.request.createdAt - b.request.createdAt)
+})
+
+/**
+ * 归位:提问带 `toolCallId` 时贴在**那次工具调用所属的消息**之后 —— 与审批卡
+ * 认的是同一个耐久相关键。找不到落点(没带 id,或那条消息还没进这一页)的走
+ * 尾部,而不是被丢掉:一张位置不完美的卡仍然答得了,一张不画的卡答不了。
+ */
+const interactionCardsByIndex = computed<Map<number, InteractionCardEntry[]>>(() => {
+  const byIndex = new Map<number, InteractionCardEntry[]>()
+  for (const entry of interactionCards.value) {
+    const index = interactionAnchorIndex(entry.request.toolCallId)
+    if (index === -1) continue
+    const bucket = byIndex.get(index)
+    if (bucket) bucket.push(entry)
+    else byIndex.set(index, [entry])
+  }
+  return byIndex
+})
+
+const tailInteractionCards = computed<InteractionCardEntry[]>(() =>
+  interactionCards.value.filter(entry => interactionAnchorIndex(entry.request.toolCallId) === -1),
+)
+
+function interactionAnchorIndex(toolCallId: string | undefined): number {
+  if (!toolCallId) return -1
+  return props.messages.findIndex(message =>
+    message.toolCalls?.some(toolCall => toolCall.id === toolCallId),
+  )
+}
+
+async function handleInteractionSubmit(
+  request: InteractionRequest,
+  answers: Record<string, InteractionQuestionAnswer>,
+): Promise<void> {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return
+  await interactionsStore.respond(sessionId, request, answers)
+}
+
+async function handleInteractionDecline(request: InteractionRequest): Promise<void> {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return
+  await interactionsStore.decline(sessionId, request)
 }
 
 
@@ -1728,7 +1832,6 @@ function detachMessageListListeners() {
 
 // Setup event listeners
 onMounted(() => {
-  document.addEventListener('click', handleSelectionDocumentClick)
   document.addEventListener('selectionchange', handleSelectionChange)
   nextTick(() => {
     attachMessageListListeners()
@@ -1796,7 +1899,6 @@ watch(
 )
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleSelectionDocumentClick)
   document.removeEventListener('selectionchange', handleSelectionChange)
   if (deferredLayoutMeasurementTimer) {
     clearTimeout(deferredLayoutMeasurementTimer)
@@ -1856,6 +1958,9 @@ watch(
     if (msgCount === 0) return  // Messages not loaded yet, wait
 
     await collabBoardStore.ensurePendingForSession(newSessionId)
+    // 提问那条链同一句话:上屏了就去问一次「这个会话还欠哪些回答」。窗口重载
+    // 或切回一个正在等回答的会话时,没有任何事件会补发,补水是唯一的来源。
+    await interactionsStore.ensureForSession(newSessionId)
   },
   { immediate: true }
 )
@@ -1969,13 +2074,15 @@ function handleQuote(quotedText: string) {
 // ============ Selection toolbar (single instance for the list) ============
 const selectionToolbarVisible = ref(false)
 const selectionToolbarText = ref('')
-const selectionToolbarPosition = ref({ top: 0, left: 0 })
+/** The selection's box; the toolbar hands it to the floating kernel as a
+ *  virtual anchor, so nothing here computes coordinates any more (P6). */
+const selectionToolbarAnchor = ref<AnchorRect | null>(null)
 const selectionMessageId = ref<string | null>(null)
 
-function handleTextSelection(messageId: string, text: string, position: { top: number; left: number }) {
+function handleTextSelection(messageId: string, text: string, rect: AnchorRect) {
   selectionMessageId.value = messageId
   selectionToolbarText.value = text
-  selectionToolbarPosition.value = position
+  selectionToolbarAnchor.value = rect
   selectionToolbarVisible.value = true
 }
 
@@ -1994,15 +2101,8 @@ async function handleSelectionBranch(text: string) {
   await handleBranch(selectionMessageId.value, text)
 }
 
-// Close the toolbar when clicking outside of it
-function handleSelectionDocumentClick(event: MouseEvent) {
-  const target = event.target as HTMLElement
-  if (!target.closest('.selection-toolbar')) {
-    hideSelectionToolbar()
-  }
-}
-
-// Hide the toolbar when the selection is cleared
+// 外点关闭已交给浮层内核(SelectionToolbar 的 Popover),这里只留语义那一半:
+// 选区本身没了,工具条就没有操作对象 —— 内核看不到这件事。
 function handleSelectionChange() {
   if (!selectionToolbarVisible.value) return
   const text = window.getSelection()?.toString().trim()

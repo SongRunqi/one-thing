@@ -196,6 +196,10 @@ function recordInteraction(
 ): void {
   const turn = findCollabV3Turn(sessionId)
   if (!turn) return
+  // 注:房间转录里那一行「XX 正在等你回答」**不在这里** —— 记账与说话是两件事,
+  // 而说话要的名册会把半个主进程拖进这个模块的图里(观测面刻意只认三样东西:
+  // 总线、时间轴写入口、v3 登记簿)。那一行装在 `actors/runtime.ts`,与其他
+  // 系统行同一处出口。
   append(turn.roomSessionId, collabSchedulerInteraction({
     at: Date.now(),
     phase: input.phase,

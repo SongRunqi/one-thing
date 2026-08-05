@@ -49,6 +49,11 @@ const mocks = vi.hoisted(() => ({
   storePath: '',
   sessions: new Map<string, unknown>(),
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
+  /** 总线订阅(eventType → handlers),给"装在总线上的接线"用。 */
+  busHandlers: new Map<
+    string,
+    Array<(envelope: { sessionId: string; event: Record<string, unknown> }) => void>
+  >(),
   deleteListeners: [] as Array<(ids: readonly string[]) => void>,
   aborted: [] as string[],
   /** 喊停时被显式中断的外部执行会话(E4/G10)。 */
@@ -104,7 +109,22 @@ vi.mock('../../../events/index.js', () => ({
       mocks.emitted.push({ sessionId, event })
     },
     onAny: () => () => {},
-    onAnySession: () => () => {},
+    // 订阅要记下来:E2 的「XX 正在等你回答」是装在总线上的一盏灯,
+    // 一个永远收不到事件的替身等于把要测的接线替掉了。
+    onAnySession: (
+      eventType: string,
+      handler: (envelope: { sessionId: string; event: Record<string, unknown> }) => void,
+    ) => {
+      const handlers = mocks.busHandlers.get(eventType) ?? []
+      handlers.push(handler)
+      mocks.busHandlers.set(eventType, handlers)
+      return () => {
+        mocks.busHandlers.set(
+          eventType,
+          (mocks.busHandlers.get(eventType) ?? []).filter(item => item !== handler),
+        )
+      }
+    },
   }),
 }))
 
@@ -208,10 +228,16 @@ function roomMessages(): Array<Record<string, unknown>> {
   return (mocks.sessions.get(ROOM) as FakeSession).messages
 }
 
+/** 往总线上打一条事件(只有装了订阅的接线才收得到)。 */
+function fireBus(eventType: string, sessionId: string, event: Record<string, unknown>): void {
+  for (const handler of mocks.busHandlers.get(eventType) ?? []) handler({ sessionId, event })
+}
+
 beforeEach(() => {
   mocks.storePath = fs.mkdtempSync(path.join(os.tmpdir(), 'collab-v3-wiring-'))
   mocks.sessions.clear()
   mocks.emitted.length = 0
+  mocks.busHandlers.clear()
   mocks.deleteListeners.length = 0
   mocks.aborted.length = 0
   // 与 `aborted` 同进同退。房级那条用例只 `toContain`,所以这一格漏了重置也没
@@ -917,6 +943,57 @@ describe('D8 O1:房间快照的发射时机', () => {
     } finally {
       mind.release()
     }
+    await drainCollabV3Runtime()
+  })
+
+  it('提问开的那一刻,房间转录落一行「XX 正在等你回答」(E2 §4)', async () => {
+    seedRoom(['fe'])
+    const mind = createCollabScriptedMindPort([])
+    const judge = createCollabScriptedRefereeJudgePort([])
+    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await warmCollabV3Agents()
+
+    // 提问跑在执行会话上,而人看的是房 —— 这一行验的正是那次翻译。
+    beginCollabV3Turn({
+      agentId: 'fe',
+      roomSessionId: ROOM,
+      execSessionId: 'exec-ask',
+      leaseId: 'L-ask',
+      epoch: 1,
+      startedAt: Date.now(),
+    })
+    fireBus('interaction:requested', 'exec-ask', {
+      type: 'interaction:requested',
+      request: {
+        id: 'itx-1',
+        sessionId: 'exec-ask',
+        origin: 'external-agent',
+        questions: [{ id: 'q1', question: '暖色还是冷色?', options: [{ label: '暖' }] }],
+        deadlineAt: 0,
+        createdAt: 0,
+      },
+    })
+
+    const lines = roomMessages().filter(message => message.role === 'system')
+    expect(lines.map(message => message.content)).toContain('小李 正在等你回答')
+    // 题干不进转录:那是卡片的事,系统行只是一盏灯。
+    expect(JSON.stringify(lines)).not.toContain('暖色')
+
+    // 不在任何一轮回合里的提问翻不出房 —— 不落行,也不报错。
+    fireBus('interaction:requested', 'exec-unknown', {
+      type: 'interaction:requested',
+      request: {
+        id: 'itx-2',
+        sessionId: 'exec-unknown',
+        origin: 'host-tool',
+        questions: [],
+        deadlineAt: 0,
+        createdAt: 0,
+      },
+    })
+    expect(roomMessages().filter(message => message.role === 'system')).toHaveLength(lines.length)
+
+    endCollabV3Turn('exec-ask', 'L-ask')
     await drainCollabV3Runtime()
   })
 })

@@ -13,6 +13,7 @@ import { platformApi } from '@/platform'
 
 import { useChatStore } from '@/stores/chat'
 import { useCollabBoardStore } from '@/stores/collabBoard'
+import { useInteractionsStore } from '@/stores/interactions'
 import {
   isCollabDriveMessage,
   isCollabPassMessage,
@@ -162,6 +163,18 @@ export function initializeIPCHub() {
       case 'permission:queued':
       case 'permission:settled':
         useCollabBoardStore().notePermissionEvent(sessionId, event)
+        break
+
+      // Interaction events(agent 提问 → 用户应答,E2)。与审批那三条逐字同一条
+      // 纪律:事件只说「这个会话的欠账动了」,账本自己去 `getPendingInteractions`
+      // 反查全量。settle 额外转达一个只有事件里才有的事实 —— 用户答了什么、
+      // 怎么收的场 —— 卡片的历史态靠它。
+      //
+      // 落在**独立**的 interactions store 而不是 collabBoard:提问不是协作专属
+      // (协议里 `origin: 'host-tool'` 是一等分支),而水龙头仍然只有这一个。
+      case 'interaction:requested':
+      case 'interaction:settled':
+        useInteractionsStore().noteInteractionEvent(sessionId, event)
         break
 
       // Message lifecycle events (event-driven message creation)

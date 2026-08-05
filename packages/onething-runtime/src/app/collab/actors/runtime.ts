@@ -154,6 +154,7 @@ import {
 import {
   clearCollabV3Turns,
   collabV3TurnsInRoom,
+  findCollabV3Turn,
   configureCollabV3RoomPostPort,
   configureCollabV3RoomResetPort,
   configureCollabV3SpeakPort,
@@ -376,6 +377,23 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
   //      外部回合往一份已经收摊的运行时里记账。
   configureCollabExternalLogSink(schedulerLog)
   runtime.disposers.push(installCollabExternalObservers())
+  // ④'''' 提问的那盏灯(E2 §4):房间转录落一行「XX 正在等你回答」。
+  //
+  //      为什么在这里而不是在观测面里:提问跑在 `kind:'agent'` 的执行会话上,
+  //      而人看的是房 —— 不落这一行,房里就只剩一段静默(那个人还持着牌,确实
+  //      还在这一轮,但屏幕上没有任何东西说它在等谁)。而**说话要名册**,把名册
+  //      拖进观测面就等于让「记一笔账」把半个主进程拉起来 —— 记账与说话是两件事。
+  //      这里则本来就既有名册又有系统行出口。
+  //
+  //      与预算、断路器同一类机械台账,所以走 `postSystemLine`(display-only,
+  //      不进模型投影):这不是房里的一句发言,是一盏灯。只在提问**开**的那一刻
+  //      落一行 —— 收场时卡片自己会变成历史态,再补一行只是把转录撑长。
+  runtime.disposers.push(getEventBus().onAnySession('interaction:requested', envelope => {
+    const turn = findCollabV3Turn(envelope.sessionId)
+    if (!turn) return
+    const name = findAgent(turn.agentId)?.name ?? turn.agentId
+    postSystemLine(turn.roomSessionId, `${name} 正在等你回答`)
+  }, 'collab-v3-interaction-notice'))
 
   // ⑤ 删房:actor 跟着走。房目录整个被删掉(`removeCollabRoomDirectory`),
   //    v3 的账与信箱就在那个目录下,所以这里只需要把内存里的循环停掉。
