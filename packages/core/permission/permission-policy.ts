@@ -1,6 +1,7 @@
 import { Permission } from './index.js'
 import * as PermissionGrants from './permission-grants.js'
 import { coversAll } from './capability-registry.js'
+import { principalId, type Principal } from './principal.js'
 import { toJsonObject } from '../json.js'
 
 export type PermissionPolicyMode = Permission.Mode
@@ -50,6 +51,13 @@ export interface EnforcePermissionPolicyInput {
   workspaceRoot?: string
   userId?: string
   workspaceId?: string
+  /**
+   * Who is running this tool. Carried from the engine boundary, never derived
+   * here. Nothing in `decidePermission` reads it yet — P0 only makes the actor
+   * visible (permission card, audit ledger); the judgment gains its subject
+   * dimension in P3.
+   */
+  principal?: Principal
   grantMatcher?: PermissionGrantMatcher
   permissionBridge?: PermissionBridge
 }
@@ -175,8 +183,12 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
       workingDirectory: input.workspaceRoot,
       userId: input.userId,
       workspaceId: input.workspaceId,
+      principal: input.principal,
       metadata: toJsonObject({
         toolName: input.toolName,
+        // Mirrored into metadata so transports that only carry the JSON blob
+        // (SSE replay, persisted prompts) can still name the actor.
+        ...(input.principal ? { principalId: principalId(input.principal) } : {}),
         ...(input.preview?.metadata ?? {}),
         ...(effect.metadata ?? {}),
         resources: effect.resources,

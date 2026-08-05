@@ -7,6 +7,7 @@
  */
 
 import type { AppSettings, ProviderConfig, ToolSettings } from '@shared/ipc.js'
+import type { Principal } from '@onething/core/permission'
 import * as modelRegistry from '../../providers/model-registry.js'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
@@ -64,6 +65,8 @@ export interface StreamExecutionParams {
    * output space is the tool surface.
    */
   initialToolChoice?: CoreInitialToolChoice
+  /** Actor behind this turn; minted at the engine boundary, carried to tools. */
+  principal?: Principal
 }
 
 /**

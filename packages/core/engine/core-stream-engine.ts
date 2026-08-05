@@ -6,6 +6,7 @@ import type { PendingMessage } from './message-queue.js'
 import type { CoreInitialToolChoice } from './stream-executor.js'
 import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import { expandFileMentions, isFileMentionTrustedChannel } from './file-mentions.js'
+import { parsePrincipal } from '../permission/principal.js'
 import type {
   StreamEngineCompactionAdapter,
   StreamEngineClockAdapter,
@@ -188,6 +189,17 @@ interface SendMessageCommandLike {
   source?: string
   voice?: unknown
   origin?: unknown
+  /**
+   * Who is behind this turn. NOT a passthrough the engine trusts: hosts mint
+   * it at their boundary (app/engine/stream-engine.ts) after proving the
+   * sender may name an actor, and overwrite anything that arrived on the wire.
+   * The engine only carries it down to the tool executor.
+   *
+   * A forwarded command CAN spell this field — apps/server forwards commands
+   * whole — which is exactly why the mint site, not the engine, is the
+   * authority. Same lesson as collabDriveToken (app/collab/drive-guard.ts).
+   */
+  principal?: unknown
   /**
    * IM quote-reply snapshot ({messageId, authorLabel, excerpt}). Persisted
    * verbatim onto the user message — the engine never reads inside it. This is
@@ -626,6 +638,7 @@ export class CoreStreamEngine<
         speakMode: userMessage.source === 'voice',
         ...(cmd.usageSource ? { usageSource: cmd.usageSource } : {}),
         ...(cmd.initialToolChoice ? { initialToolChoice: cmd.initialToolChoice } : {}),
+        ...(parsePrincipal(cmd.principal) ? { principal: parsePrincipal(cmd.principal) } : {}),
       })
     } catch (error) {
       const streamError = this.normalizeStreamError(error)

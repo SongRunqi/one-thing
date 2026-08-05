@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { JsonObject } from '../json.js'
+import type { Principal } from './principal.js'
 import * as PermissionGrants from './permission-grants.js'
 
 export const DEFAULT_PERMISSION_REJECTED_MESSAGE = 'The user rejected permission for this tool.'
@@ -80,6 +81,13 @@ export namespace Permission {
     targetChannel?: string
     userId?: string
     workspaceId?: string
+    /**
+     * Who is asking. Minted once per turn at the engine boundary (see
+     * ./principal.ts) and carried down — this is NOT re-derived here.
+     * Optional while the mint sites are being wired; absent means "the
+     * boundary could not prove an actor", which reads as least privilege.
+     */
+    principal?: Principal
   }
 
   export type Response = 'once' | 'session' | 'workdir' | 'reject'
@@ -347,6 +355,7 @@ export namespace Permission {
     workingDirectory?: string
     userId?: string
     workspaceId?: string
+    principal?: Principal
   }): Promise<void> {
     const session = getSession(input.sessionId)
     const targetChannel = channelResolver ? channelResolver(input.sessionId) : 'ipc'
@@ -364,6 +373,7 @@ export namespace Permission {
       targetChannel,
       userId: input.userId,
       workspaceId: input.workspaceId,
+      principal: input.principal,
     }
 
     const equivalent = findEquivalentPending(session, info)
@@ -537,3 +547,4 @@ export namespace Permission {
 export * from './capability-registry.js'
 export * from './permission-grants.js'
 export * from './permission-policy.js'
+export * from './principal.js'

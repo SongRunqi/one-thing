@@ -10,6 +10,7 @@ import { analyzeTool, executeTool } from '../../tools/index.js'
 import { isMCPTool, executeMCPTool, resolveMCPServerIdForToolRef } from '../../mcp/index.js'
 import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '../../tools/types.js'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
+import type { Principal } from '@onething/core/permission'
 import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { enforcePermissionPolicy } from '../../tools/core/permission-policy.js'
@@ -46,6 +47,8 @@ export async function executeToolDirectly(
     workingDirectory?: string  // Session's active working directory
     workingDirectoryRoots?: string[] // Additional sandbox roots
     abortSignal?: AbortSignal
+    /** Actor behind this call; minted at the engine boundary, never derived here. */
+    principal?: Principal
     onMetadata?: ToolExecutionContext['onMetadata']
     onPartialResult?: (update: ToolPartialResultUpdate) => void
     // Step event callbacks for sub-agent tools (e.g., CustomAgent)

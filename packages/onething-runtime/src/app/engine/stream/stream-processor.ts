@@ -5,6 +5,7 @@
 
 import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, ToolSettings, Step } from '@shared/ipc.js'
+import type { Principal } from '@onething/core/permission'
 import type { ToolCall } from '@shared/ipc.js'
 import type { ReasoningPlacement } from '@shared/events/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../../mcp/index.js'
@@ -113,6 +114,14 @@ export interface StreamContext {
    * applies it to iteration 1 alone.
    */
   initialToolChoice?: CoreInitialToolChoice
+  /**
+   * Who is running this turn. Minted at the engine boundary
+   * (app/engine/stream-engine.ts) after the sender's right to name an actor is
+   * proven, and carried down to the tool executor. Deliberately NOT derived
+   * from `session.agentId` here: that field is stamped on every session, so
+   * its presence proves nothing (docs/design/agent-permission-system-2026-08.md §1.1).
+   */
+  principal?: Principal
   /**
    * This turn's agent capability profile (tool surface, turn budget, model
    * binding), resolved once when the run starts —

@@ -17,6 +17,7 @@ import {
 	type AgentSourceToolDefinition,
 	type AgentToolChoice,
 } from "@onething/core/agent-loop";
+import type { Principal } from "@onething/core/permission";
 import {
 	agentLoopInitSkills,
 	agentLoopSkillContexts,
@@ -126,6 +127,8 @@ export interface OnethingAgentLoopRuntimeContext<
 	 * and drops it when the model does not advertise forced tool use.
 	 */
 	initialToolChoice?: AgentToolChoice;
+	/** Actor behind this turn; minted at the engine boundary, carried to tools. */
+	principal?: Principal;
 	/**
 	 * The turn's capability profile, resolved ONCE by the assembly layer before
 	 * the run starts (product code cannot read the agent store — that would
@@ -873,6 +876,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 					workingDirectory: sessionWorkingDir,
 					workingDirectoryRoots: sessionWorkingDirRoots,
 					abortSignal: ctx.abortSignal,
+					principal: ctx.principal,
 				},
 				executeToolDirectly: executeToolDirectlyWithFreshSession,
 			}),

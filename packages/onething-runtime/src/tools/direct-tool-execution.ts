@@ -12,6 +12,7 @@ import {
   type CoreDirectToolPreviewLike,
 } from '@onething/core/engine'
 import type { AgentJsonObject } from '@onething/core'
+import type { Principal } from '@onething/core/permission'
 import { toolFailureText } from '@onething/core'
 
 export type OnethingDirectToolArgs = AgentJsonObject
@@ -27,6 +28,8 @@ export interface OnethingDirectToolContext<
   workingDirectory?: string
   workingDirectoryRoots?: string[]
   abortSignal?: CoreAbortSignalLike
+  /** Actor behind this call; minted at the engine boundary. */
+  principal?: Principal
   onMetadata?: (update: TMetadataUpdate) => void
   onPartialResult?: (update: TPartialResultUpdate) => void
   onStepStart?: (step: TStep) => void
@@ -94,6 +97,10 @@ export function createOnethingDirectToolExecutionContext<
     workingDirectory: context.workingDirectory,
     workingDirectoryRoots: context.workingDirectoryRoots,
     abortSignal: context.abortSignal,
+    // The tool's own ctx gets the actor too: collab tools currently re-derive
+    // it from session.agentId (say/board/dm/history/notebook each do their own
+    // lookup), and this is the field that lets those collapse into one answer.
+    principal: context.principal,
     onMetadata: context.onMetadata,
     onPartialResult: context.onPartialResult,
     onStepStart: context.onStepStart,

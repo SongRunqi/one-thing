@@ -246,6 +246,9 @@ export function createCollabEngineMindPort(
           }),
           // 标记说这是什么,令牌证明是谁发的:引擎的 room/exec 门因此不必信一个字符串。
           ...(driveToken ? { collabDriveToken: driveToken } : {}),
+          // 令牌既然证明了「是协调者发的」,它就有资格指名这一轮的行动主体。
+          // 引擎那侧只在验票通过时才采信这个字段(engine/turn-principal.ts)。
+          ...(driveToken ? { principal: { kind: 'agent', agentId: request.agentId } } : {}),
           // 这一轮答的是哪张牌。落在执行会话里 = 一份比内存账活得久的幂等凭据。
           collabLeaseId: request.lease.leaseId,
           ...collabAgentModelFields(agent, modelPinned),

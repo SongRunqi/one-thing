@@ -23,6 +23,7 @@ import {
 	isCollabRoomSession,
 } from "../collab/ingress.js";
 import { isTrustedCollabDrive } from "../collab/drive-guard.js";
+import { mintTurnPrincipal } from "./turn-principal.js";
 import { getEventBus } from "../events/index.js";
 import { composeAgentPermissionMode } from "@onething/runtime/agents";
 import { defaultAgent, findAgent } from "../agents/store.js";
@@ -85,6 +86,14 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 			 * the room/exec gate below and by the ingress gate; never persisted.
 			 */
 			collabDriveToken?: string;
+			/**
+			 * The actor the sender CLAIMS. Honoured only when the drive token
+			 * proves the claim (see mintTurnPrincipal); otherwise overwritten.
+			 * apps/server forwards commands whole, so this field is reachable
+			 * from the network — treating it as trusted would hand any caller a
+			 * chosen identity.
+			 */
+			principal?: unknown;
 			/** Billing attribution passthrough (W13.3); default 'chat'. */
 			usageSource?: string;
 			/**
@@ -129,7 +138,10 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 			}
 			await super.handleSendMessage(
 				sessionId,
-				this.withAgentModelBinding(sessionId, command),
+				this.withAgentModelBinding(sessionId, {
+					...command,
+					principal: mintTurnPrincipal(command, command.origin),
+				}),
 				sender,
 			);
 			return;
@@ -155,6 +167,9 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 			origin: routed.origin,
 			source: command.source || routed.origin.source,
 			channel: command.channel || channelForOrigin(routed.origin),
+			// Minted AFTER routing: the router is what resolves a gateway message
+			// to a channel identity, and that identity is the actor.
+			principal: mintTurnPrincipal(command, routed.origin),
 		};
 		await super.handleSendMessage(
 			routed.sessionId,

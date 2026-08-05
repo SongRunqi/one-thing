@@ -1,4 +1,5 @@
 import type { JsonObject } from '../json.js'
+import type { Principal } from '../permission/principal.js'
 import { isToolAbortError } from '../tools/abort.js'
 import {
   buildMCPPartialResultUpdate,
@@ -21,6 +22,8 @@ export interface CoreDirectToolExecutionContext<
   workingDirectory?: string
   workingDirectoryRoots?: string[]
   abortSignal?: CoreAbortSignalLike
+  /** Actor behind this call; minted at the engine boundary (permission/principal.ts). */
+  principal?: Principal
   onMetadata?: (update: TMetadataUpdate) => void
   onPartialResult?: (update: TPartialResultUpdate) => void
   onStepStart?: (step: TStep) => void
@@ -77,6 +80,7 @@ export interface CoreDirectToolPermissionInput<TEffect = unknown, TPreview = unk
   effects: TEffect[]
   preview?: TPreview
   workspaceRoot?: string
+  principal?: Principal
 }
 
 export interface CoreDirectToolMCPExecutionOptions {
@@ -165,6 +169,7 @@ export async function executeCoreDirectTool<
           effects: permissionPlan.effects as TEffect[],
           preview: permissionPlan.preview as unknown as TPreview,
           workspaceRoot: context.workingDirectory,
+          principal: context.principal,
         })
         await context.beforeSideEffect?.()
       }
@@ -205,6 +210,7 @@ export async function executeCoreDirectTool<
       effects: analysis.effects ?? [],
       preview: analysis.preview,
       workspaceRoot: context.workingDirectory,
+      principal: context.principal,
     })
     execContext.approvedAnalysis = {
       effects: analysis.effects ?? [],

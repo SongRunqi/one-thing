@@ -11,6 +11,7 @@ import type { ToolDefinition, ToolCall, ToolParameter, ProviderConfig, ToolSetti
 import type { JsonObject, JsonValue } from '@shared/json.js'
 import type { CoreProviderToolSchema } from '@onething/core/tools'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
+import type { Principal } from '@onething/core/permission'
 
 // Re-export shared types
 export type { ToolDefinition, ToolCall, ToolParameter }
@@ -36,6 +37,13 @@ export interface ToolExecutionContext {
   // Sandbox boundary for file access restrictions
   workingDirectory?: string  // Session's active working directory
   workingDirectoryRoots?: string[] // Additional sandbox roots
+  /**
+   * Who is running this tool. Minted once at the engine boundary and carried
+   * here — the reason this field exists is that everything downstream used to
+   * re-derive an actor from `session.agentId`, a field stamped on every
+   * session (core/session/store-helpers.ts), so its presence proved nothing.
+   */
+  principal?: Principal
   // Extended context for Tool Agent delegation
   providerId?: string
   providerConfig?: ProviderConfig

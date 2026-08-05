@@ -17,6 +17,7 @@ import {
   type AgentSourceToolDefinition,
 } from '../agent-loop/tools.js'
 import { resolveAIToolName } from '../agent-loop/tool-names.js'
+import type { Principal } from '../permission/principal.js'
 import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import type { AgentTool } from '../agent-loop/types.js'
 import { toJsonObject, toJsonValue, type JsonObject } from '../json.js'
@@ -347,6 +348,13 @@ export interface CoreAgentLoopDirectToolRuntimeContext {
   workingDirectory?: string
   workingDirectoryRoots?: string[]
   abortSignal?: AbortSignal
+  /**
+   * Who is running this turn — minted at the engine boundary, carried here.
+   * The tool executor used to receive only `sessionId`, which is why every
+   * downstream consumer re-derived an actor from `session.agentId` (a field
+   * stamped on EVERY session, so its presence proves nothing).
+   */
+  principal?: Principal
 }
 
 export interface CoreAgentLoopDirectToolMetadataUpdate {
@@ -372,6 +380,7 @@ export interface CoreAgentLoopDirectToolExecutionContext<TPartialResultUpdate = 
   workingDirectory?: string
   workingDirectoryRoots?: string[]
   abortSignal?: AbortSignal
+  principal?: Principal
   onMetadata?: (update: CoreAgentLoopDirectToolMetadataUpdate) => void
   onPartialResult?: (update: TPartialResultUpdate) => void
 }
@@ -713,6 +722,7 @@ export function buildAgentLoopDirectToolsWithAdapters<
       workingDirectory: options.context.workingDirectory,
       workingDirectoryRoots: options.context.workingDirectoryRoots,
       abortSignal: toolCtx.abortSignal ?? options.context.abortSignal,
+      principal: options.context.principal,
       onMetadata: toolCtx.onMetadata
         ? update => toolCtx.onMetadata?.({
             title: update.title,

@@ -1,7 +1,7 @@
 # 多 Agent 权限系统:主体化重构方案
 
-状态:**方案 · P1 部分已实施(未提交)** · v2(已过三视角对抗审查并修订)
-进度:见 §14。已落地 = B1(bash 解析)+ B4(env 面)。其余全部未动。
+状态:**方案 · P0 主体贯通已落地 + P1 部分** · v2(已过三视角对抗审查并修订)
+进度:见 §14。已落地 = **P0.1 主体贯通(send-message 链路)** + B1(bash 解析)+ B4(env 面)。
 日期:2026-08-05
 关联:`docs/design/capability-registry.md`、`docs/design/collab-actor-v3.md`、`docs/design/agent-capability-profile.md`、`docs/design/agent-domain-model.md`、`docs/design/agent-sandbox-rust.md`、`docs/design/agent-sandbox-mac.md`
 
@@ -405,7 +405,7 @@ export interface ToolInfo {
 
 | 期 | 名称 | breaking | 开关 | 依赖 |
 |---|---|---|---|---|
-| **P0** | 主体贯通 | 否 | — | — |
+| **P0** | 主体贯通 — **P0.1 已落地**(send-message 链路);edit/retry/resume 三条命令、审计账本、EXECUTE_TOOL 并线未做 | 否 | — | — |
 | **P1** | **★ 申报可信** — **2/5 已落地**(B1 ✅ B4 ⚠️ 半;B2/B8/B9 未动) | 是(bash 行为收紧) | `permissions.enforceDeclaration` | P0 |
 | **P2** | 资源对象化 | **是**(realpath 化) | `permissions.enforceFsRealpath` | P1 |
 | **P3** | 领地与判定链 | **是** | `permissions.enforceRead`、`permissions.agentEscalation` | P2 |
@@ -547,9 +547,35 @@ per-agent 覆盖(`agents.json`):`escalation` · `realm.{workspace,readonly,exec,
 
 > 这一节是**实况**,不是计划。改完代码必须回来改这里,否则文档就成了它自己批评的那种黑盒。
 
-### 已落地(2026-08-05,未提交)
+### P0.1 主体贯通(2026-08-06)
 
-止血批(M0):六处修复,+244/−35,八个文件 + 22 条回归测试。`bun run typecheck` 干净,定向 335 条测试全绿,`bun run boundary:gate` 无新增。全量套件里的失败项经 stash 对照确认**全部为既有**(shell-mode 与 MCP 两批在途改造)。
+**Principal 从此被铸造并传递,不再被反查。** 20 个文件,17 条新测试。
+
+| 环节 | 落点 |
+|---|---|
+| 对象 | `packages/core/permission/principal.ts` — `Principal`(user / agent / system)+ `principalId` + `parsePrincipal` |
+| **铸造 + 验真** | `app/engine/turn-principal.ts` `mintTurnPrincipal` —— 命令上的 `principal` 是**声明不是事实**,只在 `isTrustedCollabDrive` 验票通过时采信;其余一律现铸并丢弃声明 |
+| 协调者盖章 | `app/collab/actors/{engine,worker}-mind-port.ts` —— 与 `collabDriveToken` 同处盖 `principal` |
+| 传递 | 命令 → `core-stream-engine`(`parsePrincipal`)→ `stream-executor` → `StreamContext` → agent-loop ctx → `CoreAgentLoopDirectToolRuntimeContext` → `executeToolDirectly` → `EnforcePermissionPolicyInput` → `Permission.Info` |
+| 兜底 | 铸不出 = `system:<component>`(六槽全空),**不是 default agent** |
+
+三条设计要点(都写进了代码注释):
+
+1. **身份是凭据不是字符串。** 不验真就等于把身份送给任何能 POST 的调用方(`apps/server` 整包转发命令)。判例照搬 `app/collab/drive-guard.ts`。
+2. **铸造点不在 `agent-loop-executor.ts:456`。** 那一行就是方案自己判定不可靠的那次反查。上移到引擎边界。
+3. **兜底落 `system` 不落 default agent。** `createCoreSessionRecord` 给每条会话都盖 `agentId`,所以"查 session.agentId"永远有答案、永远看着像真的。
+
+**实施中抓到一个真缺陷**:调度器用 `channel: 'scheduler'` 且**不带 `source`**(`scheduler/agent-task-runner.ts:308-312`),而 `SYSTEM_INTERNAL_MESSAGE_SOURCES` 只有 `{goal, radio, collab}` —— 定时任务会铸成 `user:local`,继承桌面主人的全部身份。已加独立的 `MACHINE_DRIVEN_CHANNELS`(**不复用路由那个集合**:那个集合决定"要不要旁路路由",扩大它会改路由行为)。
+
+**尚未接线**(principal 为 undefined,判定层按最小权限读):`edit-and-resend` / `retry-message` / `resume-after-confirm` 三条命令、`EXECUTE_TOOL` IPC 通道(§7 B10)、gateway 的 `gateway-runtime.ts:52`(不过 EventBus,信封传不到)。
+
+> P0.1 **行为零变化**:没有任何判定读 `principal`。它现在只是"看得见谁"。判定获得主体维度是 P3。
+
+---
+
+### 止血批 M0(2026-08-05,commit `77b5e156`)
+
+六处修复,+244/−35,八个文件 + 22 条回归测试。`bun run typecheck` 干净,定向 335 条测试全绿,`bun run boundary:gate` 无新增。全量套件里的失败项经 stash 对照确认**全部为既有**(shell-mode 与 MCP 两批在途改造)。
 
 | # | 内容 | 落点 | 对应条目 |
 |---|---|---|---|

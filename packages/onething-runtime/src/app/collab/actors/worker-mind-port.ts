@@ -287,6 +287,8 @@ export function createCollabEngineWorkerPort(
             usageSource: COLLAB_USAGE_SOURCE_WORK,
           }),
           ...(driveToken ? { collabDriveToken: driveToken } : {}),
+          // 同 engine-mind-port:验过票的 drive 才有资格指名主体。
+          ...(driveToken ? { principal: { kind: 'agent', agentId: request.agentId } } : {}),
           ...collabAgentModelFields(agent, pinned),
         } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
 

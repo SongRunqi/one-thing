@@ -5,6 +5,8 @@
  * down a drive. Nothing on this path READS it — it is a passthrough from the
  * send-message command to `runAgentLoop`.
  */
+import type { Principal } from '../permission/principal.js'
+
 export type CoreInitialToolChoice =
   | 'required'
   | { type: 'function'; function: { name: string } }
@@ -65,6 +67,8 @@ export interface CoreMessageStreamParams<
   usageSource?: string
   /** Force the run's first model call into a (named) tool call — drives only. */
   initialToolChoice?: CoreInitialToolChoice
+  /** Actor behind this turn; minted at the host boundary (permission/principal.ts). */
+  principal?: Principal
 }
 
 export type CoreTextStreamContext<
@@ -93,6 +97,8 @@ export type CoreTextStreamContext<
   usageSource?: string
   /** Force the run's first model call into a (named) tool call — drives only. */
   initialToolChoice?: CoreInitialToolChoice
+  /** Actor behind this turn; minted at the host boundary (permission/principal.ts). */
+  principal?: Principal
 }
 
 export interface CoreSpecialStreamExecutionInput<
@@ -232,6 +238,7 @@ export async function executeCoreMessageStream<
     speakMode,
     usageSource,
     initialToolChoice,
+    principal,
   } = options.params
   const logger = options.logger ?? console
   const controller = options.controller ?? options.createController()
@@ -274,6 +281,7 @@ export async function executeCoreMessageStream<
         toolSettings,
         usageSource,
         initialToolChoice,
+        principal,
       },
       steeringQueue: options.registry.getSteeringQueue(sessionId),
       followUpQueue: options.registry.getFollowUpQueue(sessionId),

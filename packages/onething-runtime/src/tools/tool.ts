@@ -4,6 +4,7 @@ import type {
   JsonValue,
 } from '@onething/core'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
+import type { Principal } from '@onething/core/permission'
 
 type JsonObjectProperty = JsonValue | undefined
 interface JsonSchemaObject extends JsonObject {
@@ -112,6 +113,12 @@ export interface ToolContext<M extends ToolMetadata = ToolMetadata> {
   workingDirectory?: string
   workingDirectoryRoots?: string[]
   abortSignal?: AbortSignal
+  /**
+   * Who is running this tool, minted at the engine boundary. Collab tools
+   * (say/board/dm/history/notebook) each reverse-look-up an actor from
+   * `session.agentId` today; this is the field that lets them share one answer.
+   */
+  principal?: Principal
   metadata(input: { title?: string; metadata?: Partial<M> }): void
   updateResult?(input: ToolPartialResultUpdate): void
   onStepStart?: (step: ToolStep) => void
