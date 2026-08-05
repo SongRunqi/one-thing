@@ -2,7 +2,17 @@ export { buildContextCompactPrompt } from "./compact-prompt.js";
 
 export { createCoreId } from "./ids.js";
 
-export { isCoreExternalAgentProvider } from "./external-agent-providers.js";
+export {
+	coreProviderOwnsItsContextWindow,
+	getCoreProviderExecution,
+	isCoreExternalAgentProvider,
+	registerCoreProviderExecution,
+} from "./external-agent-providers.js";
+export type {
+	CoreProviderContextWindowOwner,
+	CoreProviderExecutionFacts,
+	CoreProviderExecutionKind,
+} from "./external-agent-providers.js";
 
 export type {
 	CoreOSType,

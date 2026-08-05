@@ -1,6 +1,8 @@
 import { toJsonObject, type JsonObject, type JsonValue } from '@onething/core'
-import { isCoreExternalAgentProvider } from '@onething/core/engine'
 import { resolveOnethingProviderBaseUrl } from './zhipu.js'
+// 鉴权豁免改问执行器能力面(E0):判据是「它是不是外部执行体」,
+// 不是「它的 id 在不在某张名单里」。表在 agents/executor/capabilities.ts。
+import { isExternalAgentExecutorProvider } from '../agents/executor/registry.js'
 
 export interface CoreProviderErrorDetails {
   message?: string
@@ -282,7 +284,7 @@ export async function getProviderApiKeyWithAdapters<TProvider extends CoreProvid
   // the engine-side credential is deliberately empty.
   if (
     options.providerId === (options.acpProviderId ?? 'acp')
-    || isCoreExternalAgentProvider(options.providerId)
+    || isExternalAgentExecutorProvider(options.providerId)
   ) {
     return ''
   }
@@ -310,7 +312,7 @@ export async function resolveProviderAuthWithAdapters<
 
   if (
     options.providerId === (options.acpProviderId ?? 'acp')
-    || isCoreExternalAgentProvider(options.providerId)
+    || isExternalAgentExecutorProvider(options.providerId)
   ) {
     return createApiKeyAuth('')
   }

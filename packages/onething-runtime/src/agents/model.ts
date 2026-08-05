@@ -18,6 +18,7 @@ import type {
   OnethingAgentModelBinding,
   OnethingAgentStatus,
 } from './store.js'
+import { resolveAgentExecutorSelection } from './executor/selection.js'
 
 /**
  * 身份面:被引用的最小面。变更要广播(署名/联系人跟随),retired 后永久保留
@@ -72,12 +73,20 @@ export function agentIdentity(agent: OnethingAgentDefinition): OnethingAgentIden
   }
 }
 
-/** 心智面投影。 */
+/**
+ * 心智面投影。
+ *
+ * executor 从「存了什么就是什么、没存就算 native」改成**解析结果**(E0 接线,
+ * claude-code-integration-v2 §3):显式字段优先,缺省由 model.providerId 推导。
+ * 从前那个 `?? { type: 'native' }` 会对 Iris(providerId 是外部执行体、
+ * executor 字段为空)撒谎说「本引擎驱动」——字段没接线时无人消费所以看不出来,
+ * 一接线就是个陷阱。
+ */
 export function agentMind(agent: OnethingAgentDefinition): OnethingAgentMind {
   return {
     systemPrompt: agent.systemPrompt,
     model: agent.model,
-    executor: agent.executor ?? { type: 'native' },
+    executor: resolveAgentExecutorSelection(agent),
   }
 }
 

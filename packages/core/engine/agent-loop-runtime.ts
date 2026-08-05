@@ -17,7 +17,7 @@ import {
   type AgentSourceToolDefinition,
 } from '../agent-loop/tools.js'
 import { resolveAIToolName } from '../agent-loop/tool-names.js'
-import { isCoreExternalAgentProvider } from './external-agent-providers.js'
+import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import type { AgentTool } from '../agent-loop/types.js'
 import { toJsonObject, toJsonValue, type JsonObject } from '../json.js'
 
@@ -36,6 +36,8 @@ export interface CoreAgentLoopProviderRuntimeConfigLike extends CoreAgentLoopPro
   apiKey?: unknown
   baseUrl?: unknown
   zhipuApiMode?: unknown
+  qwenApiMode?: unknown
+  qwenRegion?: unknown
   apiType?: unknown
   oauthToken?: unknown
   authContext?: unknown
@@ -48,6 +50,8 @@ export type CoreAgentLoopProviderRuntimeConfigFor<TProviderConfig extends CoreAg
     | 'apiKey'
     | 'baseUrl'
     | 'zhipuApiMode'
+    | 'qwenApiMode'
+    | 'qwenRegion'
     | 'model'
     | 'apiType'
     | 'oauthToken'
@@ -607,6 +611,8 @@ export function planAgentLoopRuntimePreparation<
       apiKey: input.ctx.providerConfig.apiKey,
       baseUrl: input.ctx.providerConfig.baseUrl,
       zhipuApiMode: input.ctx.providerConfig.zhipuApiMode,
+      qwenApiMode: input.ctx.providerConfig.qwenApiMode,
+      qwenRegion: input.ctx.providerConfig.qwenRegion,
       model: input.ctx.providerConfig.model,
       apiType: input.ctx.providerConfig.apiType,
       oauthToken: input.ctx.providerConfig.oauthToken,
@@ -756,7 +762,8 @@ export function shouldStartAgentLoopContextCompact(options: {
   compactEnabled: boolean
 }): boolean {
   if (options.turn <= 1) return false
-  if (isCoreExternalAgentProvider(options.providerId)) return false
+  // 能力查询而非身份判定:上下文归执行体自己管时,我们不压缩(E0)。
+  if (coreProviderOwnsItsContextWindow(options.providerId)) return false
   if (!options.compactEnabled) return false
   return true
 }
@@ -863,7 +870,8 @@ export function getAgentLoopContextBlockReason(options: {
   inputTokens?: number
 }): string | undefined {
   if (options.turn <= 1) return undefined
-  if (isCoreExternalAgentProvider(options.providerId)) return undefined
+  // 同上:别人的上下文窗口,我们连「太大了」都不该判。
+  if (coreProviderOwnsItsContextWindow(options.providerId)) return undefined
   if (!options.compactEnabled) return undefined
   if (!options.session) return undefined
   if (shouldSkipAutoCompactForProviderUsageMismatch({

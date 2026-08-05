@@ -4,7 +4,7 @@ import {
 } from './headless-stream-engine.js'
 import type { PendingMessage } from './message-queue.js'
 import type { CoreInitialToolChoice } from './stream-executor.js'
-import { isCoreExternalAgentProvider } from './external-agent-providers.js'
+import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import { expandFileMentions, isFileMentionTrustedChannel } from './file-mentions.js'
 import type {
   StreamEngineCompactionAdapter,
@@ -1146,7 +1146,8 @@ export class CoreStreamEngine<
     configWithApiKey: TProviderConfigWithKey,
     settings: TSettings,
   ): Promise<boolean> {
-    if (isCoreExternalAgentProvider(providerId)) return true
+    // 发送前压缩同理走能力查询(E0):别人的窗口,别人自己管。
+    if (coreProviderOwnsItsContextWindow(providerId)) return true
 
     const compactSettings = settings.chat
     if (compactSettings?.contextCompactEnabled === false) return true
