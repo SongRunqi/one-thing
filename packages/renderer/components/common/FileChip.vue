@@ -1,8 +1,14 @@
 <template>
   <div
+    ref="chipRef"
     :class="['file-chip', `size-${size}`]"
-    :title="tooltip"
   >
+    <!-- detached trigger:整枚 chip 是触发区,套 wrapper 会在附件行里多出一个
+         flex 子项。trigger-el 模式下 Tooltip 自身 display:none。 -->
+    <Tooltip
+      :trigger-el="chipRef"
+      :text="tooltip"
+    />
     <span class="file-chip-icon">
       <FileText
         :size="13"
@@ -32,8 +38,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import Button from '@/components/common/Button.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { FileText, X } from 'lucide-vue-next'
 import { formatFileSize } from '@/utils/format'
 
@@ -57,6 +64,8 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'remove'): void
 }>()
+
+const chipRef = ref<HTMLElement | null>(null)
 
 const tooltip = computed(() => {
   if (props.tooltipText) return props.tooltipText

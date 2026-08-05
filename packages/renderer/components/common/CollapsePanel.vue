@@ -272,10 +272,17 @@
             <template v-if="hasBuiltInContent">
               <div
                 v-if="contentMetaText"
+                ref="contentMetaRef"
                 class="collapse-panel-content-meta"
-                :title="contentMetaText"
               >
                 {{ contentMetaText }}
+                <!-- detached trigger:这行是被截断的元信息条,套 wrapper 会在
+                     内容区里多出一个 inline-flex 盒子。trigger-el 模式下
+                     Tooltip 自身 display:none。 -->
+                <Tooltip
+                  :trigger-el="contentMetaRef"
+                  :text="contentMetaText"
+                />
               </div>
 
               <pre
@@ -305,6 +312,7 @@ import { ChevronDown } from 'lucide-vue-next'
 import BorderBox from './BorderBox.vue'
 import LayoutGrid from './LayoutGrid.vue'
 import Space from './Space.vue'
+import Tooltip from './Tooltip.vue'
 import type { BorderRadius } from './border'
 import {
   collapseGroupKey,
@@ -388,6 +396,7 @@ const isActionsHovered = ref(false)
 const isIconHovered = ref(false)
 const userControlledExpansion = ref(false)
 const durationNow = ref(Date.now())
+const contentMetaRef = ref<HTMLElement | null>(null)
 const isControlled = computed(() => props.modelValue !== undefined)
 const panelKey = computed<CollapsePanelKey>(() => props.name ?? localKey)
 const fallbackExpanded = computed(() => props.modelValue ?? !props.defaultCollapsed)
@@ -646,7 +655,7 @@ function clearCollapseTransitionHeight(element: Element) {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  transition: background-color 0.14s ease, color 0.14s ease;
+  transition: background-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .collapse-panel.variant-plain > .collapse-panel-header {
@@ -676,7 +685,7 @@ function clearCollapseTransitionHeight(element: Element) {
 }
 
 .collapse-panel.icon-display-hover > .collapse-panel-header .collapse-panel-icon {
-  transition: opacity 0.14s ease, color 0.14s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .collapse-panel.icon-display-hover > .collapse-panel-header:focus-within .collapse-panel-icon {
@@ -802,7 +811,7 @@ function clearCollapseTransitionHeight(element: Element) {
 
 .collapse-panel-default-icon {
   transform: rotate(-90deg);
-  transition: transform 0.16s ease, color 0.14s ease;
+  transition: transform var(--duration-normal) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .collapse-panel-icon.is-expanded .collapse-panel-default-icon {
@@ -936,8 +945,8 @@ function clearCollapseTransitionHeight(element: Element) {
 .collapse-panel-body-enter-active,
 .collapse-panel-body-leave-active {
   transition:
-    max-height 0.18s cubic-bezier(0.25, 1, 0.5, 1),
-    opacity 0.14s ease;
+    max-height var(--duration-normal) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-default);
   will-change: max-height, opacity;
 }
 

@@ -97,10 +97,12 @@ const RULES = [
     zones: ['template'],
     test: (line, ctx) =>
       /\s:?title="/.test(line) &&
-      // 语义场景放行:img/abbr 的 title 是无障碍属性,<title> 是 SVG/文档标题。
+      // 语义场景放行:img/abbr 的 title 是无障碍属性,<title> 是 SVG/文档标题,
+      // iframe 的 title 是它的**可及名**(嵌套浏览上下文没有别的命名途径,
+      // 换成 Tooltip 反而会让屏幕阅读器读到一个无名 frame)。
       // 同时看行内和 ctx.tag —— 属性换行写时 `<img` 不在同一行,只看行内会漏。
-      !/<(img|abbr|svg|title)\b/.test(line) &&
-      !['img', 'abbr', 'svg', 'title'].includes(ctx.tag) &&
+      !/<(img|abbr|svg|title|iframe)\b/.test(line) &&
+      !['img', 'abbr', 'svg', 'title', 'iframe'].includes(ctx.tag) &&
       // `<slot :title="title">` 是作用域插槽的 prop —— <slot> 不渲染元素,
       // 它身上的 title 永远到不了 DOM,不可能是原生 tooltip。
       // (P5 实测:CollapseGroup/CollapsePanel 的 4 处误报全是这一种。)
@@ -117,8 +119,16 @@ const RULES = [
   {
     name: 'transition-literal',
     zones: ['style', 'script'],
-    test: line =>
-      /\btransition\b[^;]*?\d+(\.\d+)?m?s/.test(line) && !/var\(\s*--duration/.test(line),
+    test: line => {
+      // 注释里提到时长不是违规("expand transition (~160ms)" 那类旁注被抓过)。
+      const trimmed = line.trimStart()
+      if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return false
+      if (!/\btransition\b[^;]*?\d+(\.\d+)?m?s/.test(line)) return false
+      if (/var\(\s*--duration/.test(line)) return false
+      // `transition-duration: 0s` 是"关掉过渡",不是一档时长 —— 没有档位可归,
+      // 归了反而把 reduced-motion 分支写坏。只有非零时长才算债。
+      return [...line.matchAll(/(\d*\.?\d+)(ms|s)\b/g)].some(m => Number(m[1]) !== 0)
+    },
   },
   {
     name: 'shadow-literal-floating',
@@ -136,10 +146,16 @@ const RULES = [
     test: line =>
       /:focus(?![-\w])/.test(line) &&
       /[{,]/.test(line) &&
+      // `:focus:not(:focus-visible) { outline: none }` 是**关掉鼠标点击焦点环**的
+      // 标准写法 —— 它正是这条规则想要的结果,不是病灶。判据卡在这个完整组合上,
+      // 不是"行里出现过 focus-visible"。
+      !/:focus:not\(\s*:focus-visible\s*\)/.test(line) &&
       // 输入框 caret 场景:裸 :focus 是对的(:focus-visible 在键入时不触发)。
       // 白名单卡在**元素选择器**上,不是"行里出现过 input 这几个字":
       // `.model-select-btn:focus` 不是输入框,放它过去等于把这条规则废掉。
-      !/(^|[\s,>+~(])(input|textarea|select)\b/i.test(line) &&
+      // 引号也算合法前导:CSS-in-JS 里选择器是字符串键(`'input.x:focus': {`),
+      // 少了这三个字符,editor/ 下写对了元素选择器的规则照样报红。
+      !/(^|[\s,>+~('"`])(input|textarea|select)\b/i.test(line) &&
       !/(contenteditable|caret)/i.test(line),
   },
 ]

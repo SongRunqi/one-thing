@@ -9,7 +9,7 @@
 
 | 想做的东西 | 用 | 状态 |
 |---|---|---|
-| 悬停提示 | `components/common/Tooltip.vue` | 已有,**别再写 `title=`** |
+| 悬停提示 | `components/common/Tooltip.vue` | 已有,**别再写 `title=`**;不能套壳的位置走下面的 `trigger-el` 写法 |
 | 锚定在某元素旁的面板 | `components/common/Popover.vue` | 已有(P1) |
 | 菜单(含右键) | `components/common/Dropdown.vue` / `ContextMenu.vue` | 已有(P1;ContextMenu = Dropdown 的坐标触发包装) |
 | 确认框 / 表单弹窗 | `components/common/Dialog.vue` + `composables/useConfirm.ts` | 已有(P2)。**别再写 `.dialog-overlay`/`.dialog` 全局类**,它们只剩存量 |
@@ -18,6 +18,40 @@
 | 多选 | `components/common/Checkbox.vue` | 已有(P3);默认 `variant="rule"` 挂线 tick,支持 `indeterminate`。**无标签的密集行(表格选择列)传 `variant="box"`** —— 15px 有框方块、选中填色打勾,对齐它替下来的原生 `accent-color` 方块的辨识度(P3-B 实测:裸 7px 挂线在无标签行读不出"可选中",像分隔线)。行内对齐由组件自己 `align-items: center` 解决,表格不要用 `:deep()` 去够它 |
 | 单选 | `components/common/Radio.vue`(+ `RadioGroup.vue`) | 已有(P3);墨环+点。组可选,单个 `v-model` 也成立 |
 | 开关 | `components/common/Switch.vue` | 已有,别自绘。设置区传 `variant="ledger"` |
+
+**Tooltip 的 detached 用法(`trigger-el`)—— 组件根 / 截断块的标准解。**
+`<Tooltip>` 默认要求把触发元素**包进**它的 `.tooltip-wrapper`(`display: inline-flex`)。
+包不得的场合有三类,它们正是 `title=` 存量最后赖着不走的地方:
+
+1. **组件根元素**(`Badge`、`FileChip`):套一层 wrapper 会把 wrapper 变成父级 flex/grid 的子项,
+   吃掉 gap、打乱负 margin 拼接;
+2. **行内的一枚 chip**(`Select` 的 `+N` 计数标签):同上,行内节奏会被顶开;
+3. **被截断的整块**(`CollapsePanel` 的元信息条):触发区就是这个块本身,没有"外面"可套。
+
+写法:给元素一个 ref,把它交给 `trigger-el`,Tooltip 放在**元素内部**当兄弟节点即可 ——
+`.tooltip-wrapper-detached` 是 `display: none`,自身不占位,只留传送到 body 的浮层。
+
+```vue
+<span ref="badgeRef" class="badge">
+  {{ label }}
+  <Tooltip :trigger-el="badgeRef" :text="title || label" />
+</span>
+```
+
+组件根是 `<Button>` 之类的**组件**时,ref 拿到的是实例,取 `.$el`:
+`const el = computed(() => (btnRef.value?.$el as HTMLElement) ?? null)`(见 `AllowSplitButton.vue`)。
+其它现成例子:`SessionItem.vue`(整行做触发区)、`Sidebar.vue`(rail 按钮)、`GoalStatusBar.vue`。
+
+**仍然保留 `title=` 的地方(P5 逐个查过,不是漏网):**
+
+| 位置 | 理由 |
+|---|---|
+| `MenuItem.vue` / `SubMenu.vue` 的 `:title="title \|\| undefined"` | 这里的 `title` **就是菜单项自己的可见文案**(同一个 prop 渲染成 label),原生 title 在这只当"截断了才浮出来"的兜底。换成 Tooltip = 每划过一行都弹一次样式化气泡,复述用户已经看见的字,比现状更吵;而且菜单本身是浮层,再叠一层浮层要处理 z 序与 Esc 栈 |
+| `<iframe title="…">` | 是嵌套浏览上下文的**可及名**,不是 tooltip。检查器已豁免(与 `img`/`abbr`/`svg`/`title` 同列) |
+| `Dialog` 的 `title` prop | 属性名恰好叫 title,渲染成标题栏文案。检查器按组件名豁免 |
+
+**图标钮没有可及名 ≠ 有 Tooltip 就够了。** Tooltip 是视觉悬停提示,不进可及性树;
+纯图标按钮必须另外写 `aria-label`(P5 补了 `MessageActions` 11 处、`MCPServerItem` 3 处)。
 
 **表单控件的三个"皮肤"**(P3 起由组件自己出,不许消费者用 scoped 规则重画 ——
 根元素上的类和组件自己的规则同为 (0,2,0),平局归注入顺序):
@@ -128,8 +162,10 @@ P2 新增 Dialog/ConfirmHost 后它当场翻边,全局实心 `background` 赢了
 | hover 背景 | `background: var(--ui-state-hover-bg)`(区域别名如 `--ui-sidebar-item-hover-bg` 由主题层派生,组件端只引用) |
 | selected 背景 | `var(--ui-state-selected-bg)` 或其区域别名。**不要**拿 `--ui-accent-primary-fg` / `--accent` 当选中底色 |
 | focus ring | `.u-focus-ring`(components.css);输入框用 `.u-focus-ring-input` |
-| focus 伪类 | 一律 `:focus-visible`。裸 `:focus` 只留给输入框 caret 场景 |
+| focus 伪类 | 一律 `:focus-visible`。裸 `:focus` 只留给输入框 caret 场景 —— 而且要**把元素选择器写出来**(`input.form-input:focus`),检查器就是按元素名放行的,类名再像输入框也没用 |
 | 过渡 | `transition: <prop> var(--duration-fast) var(--ease-default)`。**禁字面时长** |
+| 过渡时长档位 | `--duration-fast` 120ms / `--duration-normal` 200ms / `--duration-slow` 300ms。归档口径:**≤140ms→fast、150–250ms→normal、260ms+→slow**(P5 按这条把 411 行归了位,±30ms 级偏移是[方案 §2.2](./ui-system-consolidation.md) 批准的设计决策,不逐处求像素不变) |
+| 缓动档位 | `--ease-default` = `cubic-bezier(.4,0,.2,1)`(含关键字 `ease` / `ease-in` / `ease-in-out`)、`--ease-out` = `cubic-bezier(0,0,.2,1)`(含各路 expo-out 曲线)、`--ease-spring` = `cubic-bezier(.34,1.56,.64,1)`(含各路 overshoot)。`linear` 保留原样 —— 它没有语义档位,进度条/跑马灯要的就是匀速 |
 | 圆角 | `var(--radius-xs|sm|md|lg|full)` = 3 / 6 / 10 / 16 / 9999px |
 | 浮层阴影 | 锚定浮层 `--shadow-floating`,对话框 `--shadow-elevated`,纸墨签名影 `--shadow-paper` |
 
@@ -251,17 +287,19 @@ Select 还要额外传 `teleported`(它默认在流内);Mention **默认就是 t
 | `raw-teleport` | 原语层白名单之外的 `<Teleport to="body">` |
 | `native-select` | 原生 `<select>` —— 用 `Select.vue` |
 | `native-confirm` | 原生 `confirm()` / `alert()` —— 用 `useConfirm()`。引了 `composables/useConfirm` 的文件整体豁免(`await confirm({…})` 是治愈后的样子) |
-| `title-attr` | 模板里的 `title=` / `:title=` —— 用 `Tooltip.vue`;纯调试信息直接删 |
+| `title-attr` | 模板里的 `title=` / `:title=` —— 用 `Tooltip.vue`(包不住就用 `trigger-el`,见 §1);纯调试信息直接删。豁免:`img` / `abbr` / `svg` / `title` / **`iframe`**(可及名)、`<slot :title>`、`Dialog` 的同名 prop |
 | `ui-hex-fallback` | `var(--ui-x, #fff)` / `var(--ui-x, rgba(…))` |
-| `transition-literal` | `transition: … 0.15s` —— 用 `var(--duration-*)` |
+| `transition-literal` | `transition: … 0.15s` —— 用 `var(--duration-*)`。豁免:注释行、**全零时长**(`transition-duration: 0s` 是"关掉过渡",没有档位可归) |
 | `shadow-literal-floating` | 浮层类选择器(popover/dropdown/menu/dialog/tooltip/flyout/popup/modal)里的字面 `box-shadow` |
-| `focus-bare` | 裸 `:focus`(输入框元素选择器除外)—— 用 `:focus-visible` |
+| `focus-bare` | 裸 `:focus`(输入框元素选择器除外)—— 用 `:focus-visible`。豁免:`:focus:not(:focus-visible)`(这**就是**关掉鼠标焦点环的标准写法)、行内出现 `caret`/`contenteditable` 的 caret 场景。元素选择器白名单认引号前导(CSS-in-JS 的 `'input.x:focus':` 也算) |
 
 误报出口:文件里加一行 `/* ui-gate-allow: <规则名> */`(也认 `// …` 和 `<!-- … -->`,
 多条逗号分隔,`all` 全放)。**用之前先确认它真是误报** —— 白名单是给语义场景留的,不是给赶工留的。
 
 已知盲区(行级正则的代价,不是可以钻的空子):跨行的 `transition:` 续行、
 多行属性写法的 `<Teleport\n to="body">`、CSS-in-JS 里的浮层阴影。
+其中"跨行续行"在 P5 的清扫脚本里是**跟到分号为止**处理的(108 行续行债一并归了档位),
+检查器本身仍然看不见它们 —— 新代码别指望 gate 拦下这一类。
 
 ---
 
@@ -272,9 +310,22 @@ bun run ui:check   # 全量清单(存量 + 新增),按规则分类计数
 bun run ui:gate    # 棘轮:只对基线之外的新增 exit 1;治愈的行会打印出来
 ```
 
-基线:`docs/audit/ui-baseline-2026-08-05.txt`(**768 条**存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
+基线:`docs/audit/ui-baseline-2026-08-06.txt`(**70 条**存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
 P0 首录 1144 条 → P2 实测 1044(`native-confirm` 归零、`raw-teleport` 12→4,未重录)
-→ P4 收官 768(`ui-hex-fallback` 151→0、`focus-bare` 65→27),**此处已重录**。
+→ P4 收官 768(`ui-hex-fallback` 151→0、`focus-bare` 65→27,已重录)
+→ P5 第一波 376(`title-attr` 455→63)→ **P5 收官 70,此处已重录**
+(`transition-literal` 275→1、`shadow-literal-floating` 6→0、`focus-bare` 27→7、`title-attr` 63→57)。
+
+剩下的 70 条构成(全部逐条查过,都是"确认无害"而不是"还没轮到"):
+
+| 规则 | 条数 | 是什么 |
+|---|---|---|
+| `title-attr` | 57 | 绝大多数是 `MenuItem`/`SubMenu` 一族与设置页的截断兜底(理由见 §1 的保留表) |
+| `focus-bare` | 7 | `SettingsPage` 的 6 条 `:deep`(`.row-input`/`.row-select`/`.add-model-input` 骑在 `<Input>`/`<Select>` 组件外壳上,加元素前缀会打空)+ `ShortcutInput` 的录制态 |
+| `raw-teleport` | 3 | `MessageList` 的滚动锚点、`MessageActions` 的表情面板/降评面板 |
+| `native-select` | 2 | `ConnectionsSection` 两处 |
+| `transition-literal` | 1 | `PracticeStrip` 的倒计时进度条(`width 1s linear` 与每秒一跳的计时器同步,已就地注明) |
+
 清掉一批之后重新生成基线把棘轮收紧:
 
 ```bash

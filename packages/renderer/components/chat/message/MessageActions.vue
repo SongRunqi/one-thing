@@ -8,6 +8,7 @@
       <Button
         unstyled
         class="action-btn copy-btn"
+        :aria-label="copied ? 'Copied!' : 'Copy'"
         @click="handleCopy"
       >
         <Check
@@ -31,6 +32,7 @@
       <Button
         unstyled
         class="action-btn reply-btn"
+        aria-label="回复"
         @click.stop="emit('reply')"
       >
         <Reply
@@ -50,6 +52,7 @@
         <Button
           unstyled
           class="action-btn react-btn"
+          aria-label="表情回应"
           @click.stop="toggleReactPicker"
         >
           <SmilePlus
@@ -70,6 +73,7 @@
             :key="emoji"
             type="button"
             class="react-picker-item"
+            :aria-label="`回应 ${emoji}`"
             @click="pickReaction(emoji)"
           >
             {{ emoji }}
@@ -86,6 +90,7 @@
       <Button
         unstyled
         class="action-btn edit-btn"
+        aria-label="Edit"
         @click.stop="emit('edit')"
       >
         <Pencil
@@ -104,6 +109,7 @@
         unstyled
         class="action-btn regenerate-btn"
         :class="{ armed: regenerateArmed }"
+        :aria-label="regenerateArmed ? 'Click again to regenerate' : 'Regenerate'"
         @click="handleRegenerateClick"
       >
         <RefreshCw
@@ -122,6 +128,7 @@
         unstyled
         class="action-btn speak-btn"
         :class="{ speaking: isCurrentlySpeaking }"
+        :aria-label="isCurrentlySpeaking ? 'Stop' : 'Speak'"
         @click="handleSpeak"
       >
         <Pause
@@ -147,6 +154,7 @@
         unstyled
         class="action-btn downvote-btn"
         :class="{ downvoted }"
+        :aria-label="downvoted ? 'Reported' : 'Report bad response'"
         @click="handleDownvote"
       >
         <ThumbsDown
@@ -205,6 +213,7 @@
           unstyled
           class="action-btn"
           :class="{ 'has-branches': hasBranches }"
+          :aria-label="hasBranches ? `${branchCount} branch${branchCount > 1 ? 'es' : ''}` : 'Branch'"
           @click="hasBranches ? toggleBranchMenu() : emit('branch')"
         >
           <GitBranch
@@ -273,6 +282,7 @@
         unstyled
         class="action-btn regenerate-btn"
         :class="{ armed: regenerateArmed }"
+        :aria-label="regenerateArmed ? 'Click again to regenerate' : 'Regenerate'"
         @click="handleRegenerateClick"
       >
         <RefreshCw
@@ -292,6 +302,7 @@
         <Button
           unstyled
           class="action-btn more-btn"
+          aria-label="More"
           @click.stop="toggleMoreMenu"
         >
           <MoreHorizontal

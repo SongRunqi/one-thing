@@ -1,13 +1,25 @@
 <template>
   <span
+    ref="badgeRef"
     :class="['badge', `tone-${tone}`, `size-${size}`]"
-    :title="title || label"
   >
     <slot>{{ label }}</slot>
+    <!-- detached trigger:徽章是 inline-flex 的叶子,外面套一层 wrapper 会多出一个
+         flex 子项并吃掉父级 gap。trigger-el 模式下 Tooltip 自身 display:none,
+         只留传送出去的浮层。 -->
+    <Tooltip
+      :trigger-el="badgeRef"
+      :text="title || label"
+    />
   </span>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+import Tooltip from '@/components/common/Tooltip.vue'
+
+const badgeRef = ref<HTMLElement | null>(null)
+
 withDefaults(defineProps<{
   label: string
   title?: string

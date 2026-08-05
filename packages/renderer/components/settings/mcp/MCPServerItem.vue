@@ -62,6 +62,7 @@
               'is-connected': server.status === 'connected'
             }"
             :disabled="!server.config.enabled || isConnecting"
+            :aria-label="server.status === 'connected' ? `Stop ${server.config.name}` : `Start ${server.config.name}`"
             @click.stop="$emit('toggle-connect')"
           >
             <Loader2
@@ -86,6 +87,7 @@
           <Button
             unstyled
             class="icon-btn small"
+            :aria-label="`Edit ${server.config.name}`"
             @click.stop="$emit('edit')"
           >
             <svg
@@ -108,6 +110,7 @@
           <Button
             unstyled
             class="icon-btn small danger"
+            :aria-label="`Delete ${server.config.name}`"
             @click.stop="$emit('delete')"
           >
             <svg
@@ -270,7 +273,7 @@ function formatTime(timestamp: number): string {
 .server-item {
   background: transparent;
   border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 32%, transparent);
-  transition: box-shadow 0.12s ease;
+  transition: box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .server-item:last-child {
@@ -323,7 +326,7 @@ function formatTime(timestamp: number): string {
   border-radius: 50%;
   border: 1px dashed var(--ui-border-default-border);
   background: transparent;
-  transition: border-color 0.2s ease;
+  transition: border-color var(--duration-normal) var(--ease-default);
 }
 
 .status-ring {
@@ -444,7 +447,7 @@ function formatTime(timestamp: number): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .icon-btn:hover:not(:disabled) {
@@ -484,7 +487,7 @@ function formatTime(timestamp: number): string {
 
 .expand-chevron {
   flex-shrink: 0;
-  transition: transform 0.2s ease;
+  transition: transform var(--duration-normal) var(--ease-default);
   color: var(--ui-text-muted-fg);
 }
 

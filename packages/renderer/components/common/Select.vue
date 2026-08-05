@@ -57,10 +57,17 @@
 
             <span
               v-if="hiddenTagCount > 0"
+              ref="hiddenTagRef"
               class="app-select-tag app-select-tag-count"
-              :title="collapseTagsTooltip ? hiddenTagLabel : undefined"
             >
               +{{ hiddenTagCount }}
+              <!-- detached trigger:`+N` 是 tag 行里的一枚 flex 子项,套 wrapper 会
+                   把它挤出行内节奏。trigger-el 模式下 Tooltip 自身 display:none。 -->
+              <Tooltip
+                v-if="collapseTagsTooltip"
+                :trigger-el="hiddenTagRef"
+                :text="hiddenTagLabel"
+              />
             </span>
           </template>
 
@@ -280,6 +287,7 @@ import {
   type CSSProperties,
   type StyleValue,
 } from 'vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import type { ComputedPosition, FloatingPlacement } from '@/composables/floating/compute-position'
 import { popEscLayer, pushEscLayer } from '@/composables/floating/esc-stack'
 import {
@@ -456,6 +464,7 @@ const rootRef = ref<HTMLElement | null>(null)
 const controlRef = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
+const hiddenTagRef = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
 const searchQuery = ref('')
 const highlightedKey = ref<string | null>(null)
@@ -1225,7 +1234,7 @@ defineExpose({
   background: var(--ui-surface-input-bg);
   color: var(--ui-text-primary-fg);
   cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), box-shadow var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 .app-select--small .app-select-control {
@@ -1516,7 +1525,7 @@ button.app-select-tag {
 }
 
 .app-select-chevron {
-  transition: transform 0.16s ease;
+  transition: transform var(--duration-normal) var(--ease-default);
 }
 
 .app-select.is-open .app-select-chevron {
@@ -1542,7 +1551,7 @@ button.app-select-tag {
   border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
   background: color-mix(in oklch, var(--ui-surface-panel-bg, var(--ui-surface-app-bg)) 70%, var(--ui-surface-elevated-bg) 30%);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-floating);
 }
 
 /*
@@ -1670,7 +1679,7 @@ button.app-select-tag {
 
 .app-select-dropdown-enter-active,
 .app-select-dropdown-leave-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
 }
 
 .app-select-dropdown-enter-from,
