@@ -702,8 +702,8 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   /* Above the message list's scroll-to-bottom button, which overlaps the
-     bar visually — hovering "inside the bar" must stay on the bar. */
-  z-index: 30;
+     bar visually (z-index 4) — hovering "inside the bar" must stay on the bar. */
+  z-index: var(--z-sticky);
   margin-bottom: 9px;
   display: flex;
   align-items: center;

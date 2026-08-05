@@ -620,7 +620,7 @@ onBeforeUnmount(() => {
   top: 8px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: var(--z-modal, 30);
+  z-index: var(--z-modal);
   min-width: 248px;
   padding: 6px;
   background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));

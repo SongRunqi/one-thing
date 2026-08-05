@@ -177,9 +177,11 @@
 	/* ============================================
      Animation Tokens
      ============================================ */
-	--duration-fast: 0.15s;
-	--duration-normal: 0.2s;
-	--duration-slow: 0.3s;
+	/* 校准到实测众数(docs/design/ui-system-consolidation.md §2.2):
+	   0.12s 在库里出现 209 次,0.15s 只有 100 次 —— token 记录事实,不记录理想。 */
+	--duration-fast: 120ms;
+	--duration-normal: 200ms;
+	--duration-slow: 300ms;
 	--ease-default: cubic-bezier(0.4, 0, 0.2, 1);
 	--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 	--ease-out: cubic-bezier(0, 0, 0.2, 1);
@@ -195,9 +197,12 @@
 	/* ============================================
      Border Radius
      ============================================ */
-	--radius-xs: 4px;
-	--radius-sm: 8px;
-	--radius-md: 12px;
+	/* 校准到实测众数(docs/design/ui-system-consolidation.md §2.2):
+	   3px×24、6px×61、10px×20+9px×6 —— 6px 是全库最大众数,
+	   docs/design/browser-ui/_tokens.css 镜像早就写成 6px 了。 */
+	--radius-xs: 3px;
+	--radius-sm: 6px;
+	--radius-md: 10px;
 	--radius-lg: 16px;
 	--radius-xl: 24px;
 	--radius-full: 9999px;

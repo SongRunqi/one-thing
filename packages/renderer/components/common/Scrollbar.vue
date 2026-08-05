@@ -525,7 +525,8 @@ defineExpose({
 
 .scrollbar-track {
   position: absolute;
-  z-index: 20;
+  /* 滚动条压在内容之上,但仍属 sticky 档(内容最高到 5)。 */
+  z-index: calc(var(--z-sticky) + 10);
   flex: none;
   border-radius: 999px;
   opacity: var(--scrollbar-idle-opacity);

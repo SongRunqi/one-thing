@@ -1237,7 +1237,7 @@ defineExpose<VirtualTableRef>({
 .virtual-table-header {
   position: sticky;
   top: 0;
-  z-index: var(--z-sticky, 10);
+  z-index: var(--z-sticky);
   display: grid;
   min-width: 100%;
   border-bottom: 1px solid var(--virtual-table-strong-border);

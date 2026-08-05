@@ -832,7 +832,7 @@ onBeforeUnmount(() => {
 
 .splitter-resizer {
   position: absolute;
-  z-index: var(--z-sticky, 10);
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   justify-content: center;

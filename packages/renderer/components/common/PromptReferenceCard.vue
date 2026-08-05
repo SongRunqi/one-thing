@@ -86,7 +86,7 @@ defineProps<{
   background: var(--ui-surface-panel-bg, var(--panel, var(--bg)));
   color: var(--ui-text-primary-fg, var(--text));
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.2);
-  z-index: 50;
+  z-index: var(--z-dropdown);
   white-space: normal;
 }
 

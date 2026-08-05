@@ -347,7 +347,7 @@ async function refreshThemes() {
 /* Dropdown sheet: paper base (covers content below) + hard-offset ink shadow. */
 .theme-menu {
   position: absolute;
-  z-index: 30;
+  z-index: var(--z-dropdown);
   top: calc(100% + 6px);
   left: 0;
   right: 0;

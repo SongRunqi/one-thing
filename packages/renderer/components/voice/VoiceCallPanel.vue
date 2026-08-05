@@ -117,7 +117,8 @@ function hangUp() {
 .voice-call-screen {
   position: fixed;
   inset: 0;
-  z-index: 960;
+  /* 通话全屏面板压在悬浮胶囊(--z-overlay)之上,同属 overlay 档。 */
+  z-index: calc(var(--z-overlay) + 10);
   display: flex;
   flex-direction: column;
   background: var(--ui-surface-app-bg, var(--bg-primary, var(--bg)));

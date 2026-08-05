@@ -960,7 +960,7 @@ defineExpose({
 
 .app-slider-tooltip {
   position: absolute;
-  z-index: var(--z-tooltip, 700);
+  z-index: var(--z-tooltip);
   padding: 5px 8px;
   border-radius: 6px;
   border: 0.5px solid var(--ui-surface-tooltip-border, color-mix(in srgb, white 14%, transparent));

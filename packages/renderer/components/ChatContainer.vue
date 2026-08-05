@@ -419,7 +419,7 @@ defineExpose({
   height: calc(100% - 40px);
   -webkit-app-region: no-drag;
   cursor: pointer;
-  z-index: 10;
+  z-index: var(--z-sticky);
 }
 
 .chat-panels {

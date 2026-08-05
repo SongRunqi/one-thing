@@ -93,7 +93,7 @@ function handleOverlayAction() {
   position: fixed;
   right: 18px;
   bottom: 18px;
-  z-index: 900;
+  z-index: var(--z-overlay);
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) 28px;
   align-items: center;

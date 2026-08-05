@@ -684,7 +684,7 @@ defineExpose({
 
 .app-mention-dropdown {
   position: absolute;
-  z-index: calc(var(--z-dropdown, 100) + 20);
+  z-index: calc(var(--z-dropdown) + 20);
   left: 0;
   min-width: 100%;
   max-width: min(360px, calc(100vw - 24px));

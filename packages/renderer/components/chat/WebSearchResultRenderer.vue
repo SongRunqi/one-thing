@@ -708,7 +708,7 @@ function onFaviconError(e: Event) {
   background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  z-index: 999;
+  z-index: var(--z-overlay);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s ease;
@@ -729,7 +729,7 @@ function onFaviconError(e: Event) {
   background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   border-left: 1px solid var(--ui-border-divider-border, var(--border-divider));
   box-shadow: var(--shadow-xl);
-  z-index: 1000;
+  z-index: calc(var(--z-overlay) + 1);
   transform: translateX(100%);
   transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1), visibility 0.26s;
   visibility: hidden;

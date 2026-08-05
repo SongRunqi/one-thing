@@ -234,7 +234,7 @@ class PromptRefWidget extends WidgetType {
       'background: var(--ui-surface-panel-bg, var(--panel, var(--bg)))',
       'color: var(--ui-text-primary-fg, var(--text))',
       'box-shadow: 0 16px 42px rgba(0, 0, 0, 0.22)',
-      'z-index: 10000',
+      'z-index: var(--z-max)',
       'white-space: normal',
       'box-sizing: border-box',
       'pointer-events: auto',

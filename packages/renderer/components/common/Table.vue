@@ -1701,7 +1701,7 @@ defineExpose({
 
 .app-table-filter-menu {
   position: fixed;
-  z-index: calc(var(--z-dropdown, 1000) + 24);
+  z-index: calc(var(--z-dropdown) + 24);
   min-width: 164px;
   max-width: 260px;
   max-height: min(260px, calc(100vh - 16px));

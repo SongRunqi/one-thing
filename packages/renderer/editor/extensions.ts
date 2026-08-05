@@ -455,7 +455,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       background: 'var(--ui-surface-panel-bg, var(--panel, var(--bg)))',
       color: 'var(--ui-text-primary-fg, var(--text))',
       boxShadow: '0 16px 42px rgba(0, 0, 0, 0.2)',
-      zIndex: '50',
+      zIndex: 'var(--z-dropdown)',
       whiteSpace: 'normal',
     },
     '.prompt-ref-widget:hover .prompt-ref-widget-popover, .prompt-ref-widget:focus .prompt-ref-widget-popover': {

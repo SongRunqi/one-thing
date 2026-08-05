@@ -483,7 +483,7 @@ defineExpose({
 
 .split-drop-overlay {
   position: absolute;
-  z-index: var(--z-sticky, 10);
+  z-index: var(--z-sticky);
   pointer-events: none;
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 16%, transparent);
   border: 2px solid var(--ui-accent-primary-fg, var(--accent));
