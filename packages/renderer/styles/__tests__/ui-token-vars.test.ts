@@ -407,7 +407,8 @@ describe('renderer UI semantic variables', () => {
     const settingsPage = readRendererFile('components/SettingsPage.vue')
     const sidebar = readRendererFile('components/sidebar/Sidebar.vue')
     const sessionItem = readRendererFile('components/sidebar/SessionItem.vue')
-    const sessionContextMenu = readRendererFile('components/sidebar/SessionContextMenu.vue')
+    // P1 合流:菜单族样式的唯一一份落在 Dropdown.vue(原 SessionContextMenu 已删)。
+    const dropdownMenu = readRendererFile('components/common/Dropdown.vue')
     const todoPlanWindow = readRendererFile('components/TodoPlanWindow.vue')
     const todoPlanPanel = readRendererFile('components/chat/TodoPlanPanel.vue')
     const todoNotesActionPanel = readRendererFile('components/chat/TodoNotesActionPanel.vue')
@@ -462,15 +463,15 @@ describe('renderer UI semantic variables', () => {
     // Sidebar v7: the active state is a full-row fill (SessionItem owns the
     // row background), not the pre-v7 left border.
     expect(sessionItem).toContain('var(--ui-state-selected-bg')
-    expect(sessionContextMenu).toContain('var(--ui-surface-menu-bg')
-    expect(sessionContextMenu).toContain('var(--ui-surface-menu-hover-bg')
+    expect(dropdownMenu).toContain('var(--ui-surface-menu-bg')
+    expect(dropdownMenu).toContain('var(--ui-surface-menu-hover-bg')
     // Menu row hover must resolve to the dedicated menu-item-hover color, not
     // to the same elevated fill the menu surface itself uses — with
     // --color-neutral-dark-fill first, hover was literally invisible
     // (regression guard).
     expect(variablesCss).toContain('--ui-surface-menu-hover-bg: var(--bg-menu-item-hover')
-    expect(sessionContextMenu).toContain('var(--ui-surface-tooltip-shadow')
-    expect(sessionContextMenu).toContain('var(--ui-status-danger-fg')
+    expect(dropdownMenu).toContain('var(--ui-surface-tooltip-shadow')
+    expect(dropdownMenu).toContain('var(--ui-status-danger-fg')
     expect(todoPlanWindow).toContain('var(--ui-surface-elevated-bg')
     expect(todoPlanPanel).toContain('var(--ui-surface-elevated-bg')
     expect(todoPlanPanel).toContain('var(--ui-border-default-border')

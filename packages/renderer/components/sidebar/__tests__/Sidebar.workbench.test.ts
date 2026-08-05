@@ -117,7 +117,6 @@ function mountSidebar(props: Record<string, unknown> = {}) {
         SidebarHeader: true,
         SidebarActionGroup: true,
         SessionList: true,
-        SessionContextMenu: true,
         RoomCreateDialog: true,
         Teleport: true,
       },

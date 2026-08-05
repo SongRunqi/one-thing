@@ -150,15 +150,15 @@ withDefaults(defineProps<{
   overflow: visible;
 }
 
-/* Floating mode: the consumer owns the coordinates (it has a trigger to track),
-   so every self-positioning declaration above is released. The frame, the
+/* Floating mode: the panel sits inside a Popover, which owns the coordinates
+   and the stacking level, so every self-positioning declaration above is
+   released and the panel simply fills the layer it was handed. The frame, the
    notched label, the row grammar and the hints rule stay exactly as they are —
-   that is the whole point of sharing the shell. */
+   that is the whole point of sharing the shell. (`relative`, not `static`: the
+   notched header is absolutely positioned against this box.) */
 .composer-extension-panel.is-floating {
-  position: fixed;
-  left: auto;
-  right: auto;
-  bottom: auto;
+  position: relative;
+  inset: auto;
   width: auto;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
 }

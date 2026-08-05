@@ -217,11 +217,19 @@
             class="branch-count-badge"
           >{{ branchCount }}</span>
         </Button>
-        <!-- Branch dropdown menu -->
-        <div
-          v-if="showBranchMenu && hasBranches"
+        <!-- Branch dropdown menu. P1: 坐标/翻转/外点关闭全部由 Dropdown 内核给,
+             这里只剩内容与菜单语义(role=menuitem 让键盘导航能找到行)。 -->
+        <Dropdown
+          :open="showBranchMenu && hasBranches"
           class="branch-menu"
-          :style="branchMenuStyle"
+          :anchor="branchBtnRef"
+          :offset="8"
+          :z-offset="25"
+          :min-width="180"
+          :surface="false"
+          transition="none"
+          aria-label="Branches"
+          @update:open="setBranchMenu"
         >
           <div class="branch-menu-list">
             <Button
@@ -229,6 +237,7 @@
               :key="branch.id"
               unstyled
               class="branch-menu-item"
+              role="menuitem"
               @click="handleGoToBranch(branch.id)"
             >
               <span class="branch-name">{{ branch.name || 'Untitled branch' }}</span>
@@ -242,6 +251,7 @@
             <Button
               unstyled
               class="branch-menu-new"
+              role="menuitem"
               @click="handleNewBranch"
             >
               <Plus
@@ -251,7 +261,7 @@
               <span>New branch</span>
             </Button>
           </div>
-        </div>
+        </Dropdown>
       </div>
     </Tooltip>
 
@@ -291,64 +301,69 @@
           />
         </Button>
       </Tooltip>
-      <!-- More menu dropdown -->
-      <Teleport to="body">
-        <div
-          v-if="showMoreMenu"
-          class="more-menu"
-          :style="moreMenuStyle"
-          @click.stop
-        >
-          <!-- Action items -->
-          <div class="more-menu-actions">
-            <Button
-              unstyled
-              class="more-menu-item"
-              @click="handleViewTokenUsage"
-            >
-              <Hash
-                :size="14"
-                :stroke-width="2"
-              />
-              <span>Token usage</span>
-              <span
-                v-if="usage"
-                class="more-menu-item-badge"
-              >{{ formatCompact(usage.totalTokens) }}</span>
-            </Button>
-            <!-- Add more action items here in the future -->
-          </div>
-
-          <!-- Info section (shown when expanded) -->
-          <div
-            v-if="showTokenDetails && usage"
-            class="more-menu-details"
+      <!-- More menu dropdown (P1: Dropdown 内核;弹层不再自己算 rect) -->
+      <Dropdown
+        :open="showMoreMenu"
+        class="more-menu"
+        :anchor="moreBtnRef"
+        :offset="4"
+        :z-offset="25"
+        :min-width="180"
+        :surface="false"
+        transition="none"
+        aria-label="More"
+        @update:open="setMoreMenu"
+      >
+        <!-- Action items -->
+        <div class="more-menu-actions">
+          <Button
+            unstyled
+            class="more-menu-item"
+            role="menuitem"
+            @click="handleViewTokenUsage"
           >
-            <div class="token-detail-row">
-              <span>Input</span>
-              <span>{{ formatNumber(usage.inputTokens) }}</span>
-            </div>
-            <div class="token-detail-row">
-              <span>Output</span>
-              <span>{{ formatNumber(usage.outputTokens) }}</span>
-            </div>
-            <div
-              v-if="outputSpeed"
-              class="token-detail-row speed"
-            >
-              <span>Speed</span>
-              <span>{{ outputSpeed }} tok/s</span>
-            </div>
-            <div
-              v-if="model"
-              class="token-detail-row model"
-            >
-              <span>Model</span>
-              <span>{{ model }}</span>
-            </div>
+            <Hash
+              :size="14"
+              :stroke-width="2"
+            />
+            <span>Token usage</span>
+            <span
+              v-if="usage"
+              class="more-menu-item-badge"
+            >{{ formatCompact(usage.totalTokens) }}</span>
+          </Button>
+          <!-- Add more action items here in the future -->
+        </div>
+
+        <!-- Info section (shown when expanded) -->
+        <div
+          v-if="showTokenDetails && usage"
+          class="more-menu-details"
+        >
+          <div class="token-detail-row">
+            <span>Input</span>
+            <span>{{ formatNumber(usage.inputTokens) }}</span>
+          </div>
+          <div class="token-detail-row">
+            <span>Output</span>
+            <span>{{ formatNumber(usage.outputTokens) }}</span>
+          </div>
+          <div
+            v-if="outputSpeed"
+            class="token-detail-row speed"
+          >
+            <span>Speed</span>
+            <span>{{ outputSpeed }} tok/s</span>
+          </div>
+          <div
+            v-if="model"
+            class="token-detail-row model"
+          >
+            <span>Model</span>
+            <span>{{ model }}</span>
           </div>
         </div>
-      </Teleport>
+      </Dropdown>
     </div>
   </div>
 </template>
@@ -356,6 +371,7 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import Dropdown from '@/components/common/Dropdown.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { useTTS } from '@/composables/useTTS'
 import { stripMarkdown } from '@/composables/useMarkdownRenderer'
@@ -496,7 +512,8 @@ const downvoteNoteStyle = computed(() => ({
   position: 'fixed' as const,
   top: `${downvoteNotePosition.value.top}px`,
   left: `${downvoteNotePosition.value.left}px`,
-  zIndex: 1000,
+  // 内联样式里同样只走层级变量(消息级浮层档,见 docs/design/ui-system.md)。
+  zIndex: 'calc(var(--z-dropdown) + 25)',
 }))
 
 function handleDownvote() {
@@ -569,7 +586,7 @@ const reactPickerStyle = computed(() => ({
   position: 'fixed' as const,
   top: `${reactPickerPosition.value.top}px`,
   left: `${reactPickerPosition.value.left}px`,
-  zIndex: 1000,
+  zIndex: 'calc(var(--z-dropdown) + 25)',
 }))
 
 function toggleReactPicker() {
@@ -609,58 +626,30 @@ function pickReaction(emoji: string) {
 // Branch menu
 const showBranchMenu = ref(false)
 const branchBtnRef = ref<HTMLElement | null>(null)
-const branchMenuPosition = ref({ top: 0, left: 0 })
 
 const hasBranches = computed(() => props.branches && props.branches.length > 0)
 const branchCount = computed(() => props.branches?.length || 0)
 
-const branchMenuStyle = computed(() => ({
-  top: `${branchMenuPosition.value.top}px`,
-  left: `${branchMenuPosition.value.left}px`
-}))
+/** Single door for the open state: the Dropdown reports its own dismissals
+ *  (Esc / outside / scroll) through the same function the button uses, so the
+ *  hover bar's `menuOpen` flag can never drift out of sync with the menu. */
+function setBranchMenu(open: boolean) {
+  if (showBranchMenu.value === open) return
+  showBranchMenu.value = open
+  emit('menuOpen', open)
+}
 
 function toggleBranchMenu() {
-  if (showBranchMenu.value) {
-    showBranchMenu.value = false
-    emit('menuOpen', false)
-    return
-  }
-
-  if (branchBtnRef.value) {
-    const btnRect = branchBtnRef.value.getBoundingClientRect()
-    const menuWidth = 200
-    const menuHeight = 150
-    const padding = 8
-
-    let top = btnRect.bottom + padding
-    let left = btnRect.left
-
-    if (left + menuWidth > window.innerWidth - padding) {
-      left = window.innerWidth - menuWidth - padding
-    }
-    if (left < padding) {
-      left = padding
-    }
-    if (top + menuHeight > window.innerHeight - padding) {
-      top = btnRect.top - menuHeight - padding
-    }
-
-    branchMenuPosition.value = { top, left }
-  }
-
-  showBranchMenu.value = true
-  emit('menuOpen', true)
+  setBranchMenu(!showBranchMenu.value)
 }
 
 function handleGoToBranch(sessionId: string) {
-  showBranchMenu.value = false
-  emit('menuOpen', false)
+  setBranchMenu(false)
   emit('goToBranch', sessionId)
 }
 
 function handleNewBranch() {
-  showBranchMenu.value = false
-  emit('menuOpen', false)
+  setBranchMenu(false)
   emit('branch')
 }
 
@@ -668,18 +657,10 @@ function handleNewBranch() {
 const showMoreMenu = ref(false)
 const showTokenDetails = ref(false)
 const moreBtnRef = ref<HTMLElement | null>(null)
-const moreMenuPosition = ref({ top: 0, left: 0 })
 
-const moreMenuStyle = computed(() => ({
-  position: 'fixed' as const,
-  top: `${moreMenuPosition.value.top}px`,
-  left: `${moreMenuPosition.value.left}px`,
-  zIndex: 1000,
-}))
-
-// Note: We don't auto-close menus when visible changes because
-// the menu is teleported to body and user needs to move mouse to it.
-// Menus are closed by click outside handler instead.
+// Note: We don't auto-close menus when `visible` changes because the menu is
+// teleported to body and the pointer has to be able to travel to it. Dismissal
+// is the floating kernel's job (Esc / outside press / scroll).
 
 function handleViewTokenUsage() {
   showTokenDetails.value = !showTokenDetails.value
@@ -698,66 +679,30 @@ const outputSpeed = computed(() => {
   return (props.usage.outputTokens / seconds).toFixed(1)
 })
 
+function setMoreMenu(open: boolean) {
+  if (showMoreMenu.value === open) return
+  showMoreMenu.value = open
+  if (!open) showTokenDetails.value = false
+  emit('menuOpen', open)
+}
+
 function toggleMoreMenu() {
-  if (showMoreMenu.value) {
-    showMoreMenu.value = false
-    showTokenDetails.value = false
-    emit('menuOpen', false)
-    return
-  }
-
-  if (moreBtnRef.value) {
-    const btnRect = moreBtnRef.value.getBoundingClientRect()
-    const menuWidth = 180
-    const menuHeight = 120
-    const padding = 4
-
-    let top = btnRect.bottom + padding
-    let left = btnRect.left
-
-    if (left + menuWidth > window.innerWidth - padding) {
-      left = window.innerWidth - menuWidth - padding
-    }
-    if (left < padding) {
-      left = padding
-    }
-    if (top + menuHeight > window.innerHeight - padding) {
-      top = btnRect.top - menuHeight - padding
-    }
-
-    moreMenuPosition.value = { top, left }
-  }
-
-  showMoreMenu.value = true
-  emit('menuOpen', true)
+  setMoreMenu(!showMoreMenu.value)
 }
 
 function formatNumber(num: number): string {
   return num.toLocaleString()
 }
 
-// Click outside handler
+// Click outside handler. Only the reaction palette still needs one — the two
+// menus below it are Dropdowns now, and the floating kernel dismisses those.
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement
-  if (!target.closest('.branch-btn-wrapper')) {
-    if (showBranchMenu.value) {
-      showBranchMenu.value = false
-      emit('menuOpen', false)
-    }
-  }
   // Teleported palette: the click can land on the panel itself, so both the
   // trigger wrapper and the panel count as "inside".
   if (!target.closest('.react-btn-wrapper') && !target.closest('.react-picker')) {
     if (showReactPicker.value) {
       showReactPicker.value = false
-      emit('menuOpen', false)
-    }
-  }
-  // For more menu, check both the button wrapper and the teleported menu itself
-  if (!target.closest('.more-btn-wrapper') && !target.closest('.more-menu')) {
-    if (showMoreMenu.value) {
-      showMoreMenu.value = false
-      showTokenDetails.value = false
       emit('menuOpen', false)
     }
   }
@@ -803,7 +748,7 @@ onUnmounted(() => {
   display: flex;
   gap: 4px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
   height: 28px;
   min-height: 28px;
   align-items: center;
@@ -838,7 +783,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: all var(--duration-fast) var(--ease-default);
   flex: 0 0 28px;
   position: relative;
 }
@@ -861,7 +806,7 @@ onUnmounted(() => {
 
 /* Regenerate button animation */
 .regenerate-btn svg {
-  transition: transform 0.3s ease;
+  transition: transform var(--duration-slow) var(--ease-default);
 }
 
 .regenerate-btn:hover svg {
@@ -924,7 +869,7 @@ onUnmounted(() => {
 
 .downvote-note-btn.primary {
   background: var(--ui-status-danger-bg);
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg, var(--color-danger));
   border: 1px solid var(--ui-status-danger-border);
 }
 
@@ -983,32 +928,10 @@ onUnmounted(() => {
   justify-content: center;
 }
 
-/* Branch menu */
-.branch-menu {
-  position: fixed;
-  z-index: 1000;
-  min-width: 180px;
-  max-width: 280px;
-  background: var(--ui-surface-floating-bg, var(--bg-floating));
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
-  border-radius: 12px;
-  box-shadow: var(--shadow-floating);
-  overflow: hidden;
-  animation: menuSlideIn 0.15s ease-out;
-}
-
-@keyframes menuSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
+/* Branch menu: the surface itself moved to the global block below — it is drawn
+   on the Dropdown's root, which is teleported and therefore out of this scope.
+   The rows stay here: slot content keeps the parent's scope id wherever it is
+   teleported to. */
 .branch-menu-list {
   max-height: 200px;
   overflow-y: auto;
@@ -1029,7 +952,7 @@ onUnmounted(() => {
   text-align: left;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
 .branch-menu-item:hover {
@@ -1060,7 +983,7 @@ onUnmounted(() => {
   font-size: 13px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
 .branch-menu-new:hover {
@@ -1094,6 +1017,30 @@ onUnmounted(() => {
 
 <!-- Global styles for Teleported menu -->
 <style>
+/* Branch menu surface. Coordinates and stacking come from the Dropdown kernel
+   (zOffset 25 = 消息级浮层档,压过 Select/Mention +20 与表格筛选 +24). */
+.branch-menu {
+  max-width: 280px;
+  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
+  border-radius: 12px;
+  box-shadow: var(--shadow-floating);
+  overflow: hidden;
+  animation: menuSlideIn 0.15s ease-out;
+}
+
+@keyframes menuSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Reaction palette (§3.6): a hairline strip of glyphs. No fill, no shadow
    stack, no bounce — hover moves the ink behind the emoji, nothing else. */
 .react-picker {
@@ -1125,7 +1072,7 @@ onUnmounted(() => {
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
 .react-picker-item:hover {
@@ -1171,7 +1118,7 @@ onUnmounted(() => {
   text-align: left;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
 .more-menu-item:hover {

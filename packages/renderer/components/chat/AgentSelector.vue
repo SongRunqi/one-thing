@@ -27,20 +27,24 @@
       />
     </Button>
 
-    <Teleport to="body">
+    <!-- The kernel only *asks* to close (outside click); this component owns the
+         flag. Without the handler the flyout would hide while `open` stayed
+         true, and the next chip click would toggle it to false — a dead tap. -->
+    <Popover
+      :open="open"
+      v-bind="flyoutPopover"
+      @update:open="value => value || close()"
+    >
       <ComposerExtensionPanel
         floating
         class="agent-flyout"
-        :style="menuStyle"
+        title="Agent"
         :visible="open"
         :placement="placement"
-        title="Agent"
         :count="selectableAgents.length"
         empty-text="No agents"
         empty-hint="Create one in Agents"
         :hints="HINTS"
-        @mousedown.stop
-        @click.stop
       >
         <div
           ref="listRef"
@@ -100,7 +104,7 @@
           :message="selectionError"
         />
       </ComposerExtensionPanel>
-    </Teleport>
+    </Popover>
   </div>
 </template>
 
@@ -108,6 +112,8 @@
 import Button from '@/components/common/Button.vue'
 import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Popover from '@/components/common/Popover.vue'
+import type { ComputedPosition } from '@/composables/floating/compute-position'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Bot, ChevronDown } from 'lucide-vue-next'
 import { useAgentsStore, DEFAULT_AGENT_ID } from '@/stores/agents'
@@ -127,17 +133,47 @@ const chipRef = ref<HTMLElement | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 const open = ref(false)
 const selectionError = ref('')
-const menuStyle = ref<Record<string, string>>({})
 const placement = ref<'up' | 'down'>('down')
 const highlightedIndex = ref(0)
+const viewportWidth = ref(typeof window === 'undefined' ? 1024 : window.innerWidth)
 
 const HINTS = ['↑↓ move', '⏎ switch', 'esc dismiss']
 
 const MENU_WIDTH = 372
 const MENU_MARGIN = 8
 const MENU_GAP = 8
-/** Below this much room the panel flips above the chip instead. */
-const MENU_MIN_ROOM = 280
+
+/**
+ * Positioning, viewport clamping, flipping and outside-click all come from the
+ * floating kernel now (P1). What stays local is the *width* — the panel is a
+ * fixed-width picker, and the kernel measures whatever box it is handed.
+ */
+const menuWidth = computed(() =>
+  Math.min(MENU_WIDTH, Math.max(240, viewportWidth.value - MENU_MARGIN * 2)),
+)
+
+const flyoutPopover = computed(() => ({
+  anchor: chipRef.value,
+  placement: 'bottom-start' as const,
+  offset: MENU_GAP,
+  margin: MENU_MARGIN,
+  width: menuWidth.value,
+  // The panel draws its own notched frame; a second surface under it would
+  // double the border and the shadow.
+  surface: false,
+  // 复合器浮层三兄弟的最上一层:ComposerExtensionPanel +1 / InputBox +2 / 本层 +3。
+  zOffset: 3,
+  // Esc and the arrows are handled by this component's own key handler.
+  closeOn: { esc: false, outside: true, scroll: false },
+  onPositioned: onFlyoutPositioned,
+}))
+
+/** Fires on every (re)placement — open, scroll, resize, content resize. */
+function onFlyoutPositioned(position: ComputedPosition): void {
+  viewportWidth.value = window.innerWidth
+  // The panel grows out of its trigger, so it needs to know which way it went.
+  placement.value = position.side === 'top' ? 'up' : 'down'
+}
 
 const session = computed(() =>
   sessionsStore.getSessionItem(props.sessionId) || null
@@ -177,40 +213,6 @@ function getAgentTooltip(agent: { name: string, systemPrompt?: string }) {
 function close() {
   open.value = false
   selectionError.value = ''
-}
-
-function updateMenuPosition() {
-  if (!open.value) return
-  const chip = chipRef.value
-  if (!chip) return
-
-  const rect = chip.getBoundingClientRect()
-  const width = Math.min(MENU_WIDTH, Math.max(240, window.innerWidth - MENU_MARGIN * 2))
-  let left = rect.left
-  if (left + width > window.innerWidth - MENU_MARGIN) {
-    left = window.innerWidth - width - MENU_MARGIN
-  }
-  left = Math.max(MENU_MARGIN, left)
-
-  const below = window.innerHeight - rect.bottom - MENU_GAP - MENU_MARGIN
-  const above = rect.top - MENU_GAP - MENU_MARGIN
-  const openAbove = below < MENU_MIN_ROOM && above > below
-  placement.value = openAbove ? 'up' : 'down'
-
-  menuStyle.value = {
-    left: `${Math.round(left)}px`,
-    width: `${Math.round(width)}px`,
-    ...(openAbove
-      ? { bottom: `${Math.round(window.innerHeight - rect.top + MENU_GAP)}px`, top: 'auto' }
-      : { top: `${Math.round(rect.bottom + MENU_GAP)}px`, bottom: 'auto' }),
-  }
-}
-
-function handleDocumentClick(event: MouseEvent) {
-  const target = event.target as Element | null
-  if (rootRef.value?.contains(target as Node)) return
-  if (target?.closest?.('.agent-flyout')) return
-  close()
 }
 
 function moveHighlight(delta: number) {
@@ -257,7 +259,6 @@ async function openMenu() {
   const current = selectableAgents.value.findIndex(agent => agent.id === currentAgentId.value)
   highlightedIndex.value = current >= 0 ? current : 0
   await nextTick()
-  updateMenuPosition()
   scrollHighlightIntoView()
 }
 
@@ -291,17 +292,11 @@ watch(isDisabled, disabled => {
 
 onMounted(() => {
   void agentsStore.loadAgents()
-  document.addEventListener('click', handleDocumentClick)
   window.addEventListener('keydown', handleKeydown)
-  window.addEventListener('resize', updateMenuPosition)
-  window.addEventListener('scroll', updateMenuPosition, true)
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', handleDocumentClick)
   window.removeEventListener('keydown', handleKeydown)
-  window.removeEventListener('resize', updateMenuPosition)
-  window.removeEventListener('scroll', updateMenuPosition, true)
 })
 </script>
 
@@ -337,7 +332,7 @@ onBeforeUnmount(() => {
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: color var(--duration-normal) var(--ease-default);
 }
 
 /* 底部墨段:落在 40px 栏的基线上(28px 控件下方留 6px) */
@@ -349,7 +344,7 @@ onBeforeUnmount(() => {
   left: 6px;
   height: 0;
   border-bottom: 1.5px dotted transparent;
-  transition: border-color 0.2s ease;
+  transition: border-color var(--duration-normal) var(--ease-default);
   pointer-events: none;
 }
 
@@ -416,7 +411,8 @@ onBeforeUnmount(() => {
    here restyles a row — the frame, the tab stop and the ⏎ all come from
    ComposerExtensionPanel, so an agent row reads exactly like a command row. */
 .agent-flyout {
-  z-index: 1200;
+  /* 层级与坐标都由 Popover 内核给(zOffset: 3 = 复合器浮层三兄弟的最上一层);
+     这里只剩「面板本体不参与窗口拖拽区」这一条。 */
   -webkit-app-region: no-drag;
 }
 

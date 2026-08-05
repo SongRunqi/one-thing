@@ -112,6 +112,19 @@ vi.mock('../useSessionOrganizer', () => ({
   formatRelativeTime: (ts: number) => (ts ? `t${ts}` : ''),
 }))
 
+/**
+ * The sidebar now hangs three `ContextMenu`s (workspace / session / contact) —
+ * the session one stopped being `SessionContextMenu` when P1 folded that
+ * parallel implementation into the shared kernel. Pick the one that is actually
+ * showing instead of the first in document order.
+ */
+function openMenu(wrapper: ReturnType<typeof mountSidebar>) {
+  const menu = wrapper.findAllComponents({ name: 'ContextMenu' })
+    .find(candidate => candidate.props('show') === true)
+  if (!menu) throw new Error('no ContextMenu is open')
+  return menu
+}
+
 function mountSidebar() {
   return mount(Sidebar, {
     global: {
@@ -119,7 +132,6 @@ function mountSidebar() {
         SidebarHeader: true,
         SidebarActionGroup: true,
         SessionList: true,
-        SessionContextMenu: true,
         RoomCreateDialog: true,
         CollapsePanel: true,
         Teleport: true,
@@ -237,7 +249,7 @@ describe('Sidebar 联系人区', () => {
     const wrapper = mountSidebar()
     await wrapper.findAll('.sidebar-contact-item')[1].trigger('contextmenu')
 
-    const menu = wrapper.findComponent({ name: 'ContextMenu' })
+    const menu = openMenu(wrapper)
     expect(menu.props('items')).toEqual([
       { id: 'agent-space', label: '打开空间' },
       { id: 'configure-agent', label: '配置 Agent' },
@@ -258,7 +270,7 @@ describe('Sidebar 联系人区', () => {
     const wrapper = mountSidebar()
     await wrapper.findAll('.sidebar-contact-item')[1].trigger('contextmenu')
 
-    const menu = wrapper.findComponent({ name: 'ContextMenu' })
+    const menu = openMenu(wrapper)
     menu.vm.$emit('select', 'agent-space')
     await wrapper.vm.$nextTick()
     expect(mocks.openAgentSpace).toHaveBeenCalledWith('fe', 'sessions')

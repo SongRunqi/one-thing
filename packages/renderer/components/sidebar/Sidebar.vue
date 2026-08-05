@@ -555,16 +555,15 @@
         @close="showRoomDialog = false"
       />
 
-      <!-- Context Menu -->
-      <SessionContextMenu
+      <!-- 会话右键菜单。P1 合流:原 SessionContextMenu.vue(平行实现,自己 teleport、自己画遮罩、不回弹视口)整份删掉,改清单驱动。 -->
+      <ContextMenu
         :show="contextMenu.show"
         :x="contextMenu.x"
         :y="contextMenu.y"
-        :session="contextMenu.session"
+        :items="sessionMenuItems"
+        :min-width="160"
+        @select="onSessionMenuSelect"
         @close="closeContextMenu"
-        @rename="handleContextRename"
-        @pin="handleContextPin"
-        @delete="handleContextDelete"
       />
 
       <!-- 联系人右键:「打开空间」(= 点头像同一处)与「配置 Agent」。两条都走
@@ -590,12 +589,11 @@ import ContextMenu from '@/components/common/ContextMenu.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
-import { Bot, Brain, CalendarClock, Images, MoreVertical, Plus, Radio, Settings } from 'lucide-vue-next'
+import { Bot, Brain, CalendarClock, Images, MoreVertical, Pencil, Pin, Plus, Radio, Settings, X } from 'lucide-vue-next'
 import { buildRoomMemberEntries, type RoomMemberEntry } from '@/components/chat/room-member-strip'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarActionGroup from './SidebarActionGroup.vue'
 import SessionList from './SessionList.vue'
-import SessionContextMenu from './SessionContextMenu.vue'
 import RoomCreateDialog from './RoomCreateDialog.vue'
 import ActiveWorkSection from './ActiveWorkSection.vue'
 import { hasActiveWorkSignal, type ActiveWorkCardModel } from './active-work'
@@ -1203,24 +1201,26 @@ function closeContextMenu() {
   contextMenu.value.show = false
 }
 
-function handleContextRename() {
-  if (contextMenu.value.session) {
-    startInlineRename(contextMenu.value.session)
-  }
-}
+/** 与旧 SessionContextMenu 逐项等价:重命名 / 钉住(文案随状态翻转)/ 分隔线 / 关闭。 */
+const sessionMenuItems = computed<ContextMenuItem[]>(() => [
+  { id: 'rename', label: 'Rename', icon: Pencil },
+  { id: 'pin', label: contextMenu.value.session?.isPinned ? 'Unpin' : 'Pin', icon: Pin },
+  { id: 'delete', label: 'Close', icon: X, danger: true, separatorBefore: true },
+])
 
-async function handleContextPin() {
-  if (contextMenu.value.session) {
-    await sessionsStore.updateSessionPin(
-      contextMenu.value.session.id,
-      !contextMenu.value.session.isPinned
-    )
+async function onSessionMenuSelect(id: string): Promise<void> {
+  const session = contextMenu.value.session
+  if (!session) return
+  if (id === 'rename') {
+    startInlineRename(session)
+    return
   }
-}
-
-async function handleContextDelete() {
-  if (contextMenu.value.session) {
-    await sessionsStore.deleteSession(contextMenu.value.session.id)
+  if (id === 'pin') {
+    await sessionsStore.updateSessionPin(session.id, !session.isPinned)
+    return
+  }
+  if (id === 'delete') {
+    await sessionsStore.deleteSession(session.id)
   }
 }
 
@@ -1318,7 +1318,7 @@ onUnmounted(() => {
     + var(--sidebar-floating-safe-zone)
   ) !important;
   height: 100%;
-  z-index: 650;
+  z-index: var(--z-sidebar);
   background: transparent;
   animation: slideInLeft 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards;
   overflow: visible;
@@ -2038,7 +2038,7 @@ html[data-shell-mode='workbench'] .sidebar-pane .sidebar-subgroup-item {
   .sidebar {
     position: fixed;
     height: 100%;
-    z-index: 1000;
+    z-index: var(--z-sidebar);
   }
 }
 </style>

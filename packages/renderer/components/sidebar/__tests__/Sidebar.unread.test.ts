@@ -98,7 +98,6 @@ function mountSidebar() {
         SidebarHeader: true,
         SidebarActionGroup: true,
         SessionList: true,
-        SessionContextMenu: true,
         RoomCreateDialog: true,
         CollapsePanel: true,
         Teleport: true,

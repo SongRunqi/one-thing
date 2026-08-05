@@ -312,15 +312,23 @@
 
           <!-- Attribution popover (W8b): who is behind this emoji. Hover-only
                (the click stays the toggle) and pointer-transparent, so it can
-               never steal the tap it is describing. -->
-          <Teleport to="body">
-            <div
-              v-if="hoveredReactionChip"
-              class="reaction-attribution"
-              :style="reactionAttributionStyle"
-            >
+               never steal the tap it is describing. P1: 位置/翻转/视口回弹走
+               Popover 内核;皮肤留在插槽这层 div 上(Popover 的根元素不在本组件
+               的 scoped 作用域里 —— 方案 §6.1)。 -->
+          <Popover
+            :open="!!hoveredReactionChip"
+            :anchor="hoveredReactionAnchor"
+            placement="top-start"
+            :offset="6"
+            :z-offset="25"
+            :surface="false"
+            :close-on="{}"
+            transition="none"
+            style="pointer-events: none"
+          >
+            <div class="reaction-attribution">
               <div
-                v-for="reactor in hoveredReactionChip.reactors"
+                v-for="reactor in hoveredReactionChip?.reactors ?? []"
                 :key="reactor.key"
                 class="reaction-attribution-row"
               >
@@ -333,7 +341,7 @@
                 <span class="reaction-attribution-name">{{ reactor.label }}</span>
               </div>
             </div>
-          </Teleport>
+          </Popover>
         </div>
 
         <!-- Steering identity line: marks the message as an interjection
@@ -449,6 +457,7 @@ import GoalSetMessage from './message/GoalSetMessage.vue'
 import MessageThinking from './message/MessageThinking.vue'
 import MessageBubble from './message/MessageBubble.vue'
 import MessageActions from './message/MessageActions.vue'
+import Popover from '@/components/common/Popover.vue'
 import { humanizeStreamError } from './message/error-humanizer'
 import { rawTextFromPromptParts } from '@shared/prompt-references'
 import { isActiveAgent } from '@shared/ipc'
@@ -816,11 +825,10 @@ function handleReact(emoji: string) {
 // on its way somewhere else must not flash three panels) and closes the instant
 // the pointer leaves. Nothing is written, nothing is focused — it is a label.
 const REACTION_POPOVER_DELAY_MS = 300
-const REACTION_POPOVER_ROW_HEIGHT = 20
-const REACTION_POPOVER_WIDTH = 132
 
 const hoveredReactionEmoji = ref<string | null>(null)
-const reactionPopoverPosition = ref({ top: 0, left: 0 })
+/** The chip the popover hangs off. Positioning itself is the kernel's job. */
+const hoveredReactionAnchor = ref<HTMLElement | null>(null)
 let reactionHoverTimer: ReturnType<typeof setTimeout> | null = null
 
 /** Resolved live: a toggle that lands while the popover is open re-derives it,
@@ -831,13 +839,6 @@ const hoveredReactionChip = computed(() => {
   return reactionChips.value.find(chip => chip.emoji === emoji) ?? null
 })
 
-const reactionAttributionStyle = computed(() => ({
-  position: 'fixed' as const,
-  top: `${reactionPopoverPosition.value.top}px`,
-  left: `${reactionPopoverPosition.value.left}px`,
-  zIndex: 1000,
-}))
-
 function clearReactionHoverTimer() {
   if (reactionHoverTimer !== null) {
     clearTimeout(reactionHoverTimer)
@@ -845,31 +846,16 @@ function clearReactionHoverTimer() {
   }
 }
 
-function placeReactionPopover(anchor: HTMLElement | null, rows: number) {
-  if (!anchor?.getBoundingClientRect) return
-  const rect = anchor.getBoundingClientRect()
-  const padding = 6
-  const height = rows * REACTION_POPOVER_ROW_HEIGHT + 10
-  let left = rect.left
-  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 0
-  if (viewportWidth && left + REACTION_POPOVER_WIDTH > viewportWidth - padding) {
-    left = viewportWidth - REACTION_POPOVER_WIDTH - padding
-  }
-  if (left < padding) left = padding
-  // Above the chip by default — the popover must not cover the message it
-  // annotates; flip below only when the top of the viewport is in the way.
-  let top = rect.top - height - padding
-  if (top < padding) top = rect.bottom + padding
-  reactionPopoverPosition.value = { top, left }
-}
-
 function handleReactionChipEnter(emoji: string, event: Event) {
   clearReactionHoverTimer()
   const anchor = event.currentTarget as HTMLElement | null
-  const rows = reactionChips.value.find(chip => chip.emoji === emoji)?.reactors.length ?? 1
   reactionHoverTimer = setTimeout(() => {
     reactionHoverTimer = null
-    placeReactionPopover(anchor, rows)
+    // `top-start` with flip: above the chip by default — the popover must not
+    // cover the message it annotates — turning below only when the top of the
+    // viewport is in the way. The kernel measures the real panel instead of the
+    // row-count estimate this used to guess with.
+    hoveredReactionAnchor.value = anchor
     hoveredReactionEmoji.value = emoji
   }, REACTION_POPOVER_DELAY_MS)
 }
@@ -877,6 +863,7 @@ function handleReactionChipEnter(emoji: string, event: Event) {
 function handleReactionChipLeave() {
   clearReactionHoverTimer()
   hoveredReactionEmoji.value = null
+  hoveredReactionAnchor.value = null
 }
 
 onBeforeUnmount(clearReactionHoverTimer)
@@ -1169,7 +1156,7 @@ function handleUpdateThinkingTime(time: number) {
   min-height: 28px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .message-item-wrapper:hover .message-footer,
@@ -1244,7 +1231,7 @@ function handleUpdateThinkingTime(time: number) {
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .steer-retract-btn:hover {
@@ -1290,7 +1277,7 @@ function handleUpdateThinkingTime(time: number) {
   text-align: left;
   color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
-  transition: border-left-color 0.12s ease, color 0.12s ease;
+  transition: border-left-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .reply-quote:hover {
@@ -1346,7 +1333,7 @@ function handleUpdateThinkingTime(time: number) {
   font: inherit;
   line-height: 1.4;
   cursor: pointer;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 .reaction-chip:hover {
@@ -1462,7 +1449,7 @@ function handleUpdateThinkingTime(time: number) {
   color: var(--ui-text-muted-fg, var(--text-muted));
   /* Idle it is a whisper; the group head is the loud part of the row. */
   opacity: 0.55;
-  transition: opacity 120ms ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .message-item-wrapper:hover .room-group-toggle,
@@ -1481,7 +1468,7 @@ function handleUpdateThinkingTime(time: number) {
   display: inline-block;
   font-size: 12px;
   line-height: 1;
-  transition: transform 120ms ease;
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .room-group-caret.open {
@@ -1623,7 +1610,7 @@ function handleUpdateThinkingTime(time: number) {
 /* 「可点」提示:静止态与今天完全一致,hover 只垫一层软阴影的立体感 ——
    不描色、不缩放(§3.6)。按下阴影收紧一档。四处头像同一句法。 */
 .room-avatar-btn .room-avatar {
-  transition: box-shadow 0.16s ease;
+  transition: box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .room-avatar-btn:hover .room-avatar,
@@ -1679,7 +1666,7 @@ function handleUpdateThinkingTime(time: number) {
   background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
   /* Landing from a quote deepens the frame — STATE, not an animation; only
      the 120ms fade is motion (§3.6). */
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .message.is-room-agent.highlighted :deep(.bubble.assistant) {

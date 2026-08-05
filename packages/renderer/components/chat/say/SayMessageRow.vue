@@ -71,19 +71,19 @@
     </div>
 
     <!-- 表情面板挂 body:中栏是个 Scrollbar 容器,面板留在行里会被裁掉。 -->
-    <Teleport to="body">
-      <div
-        v-if="emojiPanelOpen"
-        class="say-emoji-backdrop"
-        @pointerdown="closeEmojiPanel"
-        @wheel="closeEmojiPanel"
-      />
-      <div
-        v-if="emojiPanelOpen"
-        class="say-emoji-panel"
-        :style="emojiPanelStyle"
-        @pointerdown.stop
-      >
+    <!-- P1:坐标/翻转/视口回弹交给 Popover 内核;原先那张全屏 backdrop 由 closeOn.outside 顶替(点面板外一样关,滚动同样关)。
+         bottom-end = 面板右缘对齐按钮右缘,与原先 rect.right - 216 一致。面板皮肤留在插槽里的这层 div 上:
+         插槽内容仍在本组件的 scoped 作用域内,而 Popover 的根元素不在(方案 §6.1 的坑)。 -->
+    <Popover
+      v-model:open="emojiPanelOpen"
+      :anchor="emojiButtonRef"
+      placement="bottom-end"
+      :offset="6"
+      :z-offset="25"
+      :surface="false"
+      :close-on="{ esc: true, outside: true, scroll: true }"
+    >
+      <div class="say-emoji-panel">
         <div class="say-emoji-cap">
           最近
         </div>
@@ -113,7 +113,7 @@
           </button>
         </div>
       </div>
-    </Teleport>
+    </Popover>
 
     <!-- 「⋯」低频项走既有 ContextMenu(teleport + 视口回弹都是现成的)。 -->
     <ContextMenu
@@ -367,6 +367,7 @@ import FileChip from '@/components/common/FileChip.vue'
 import { SAY_COMMON_EMOJIS, useSayRecentEmojis } from './say-emoji'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import MessageMarkdown from '../message/MessageMarkdown.vue'
+import Popover from '@/components/common/Popover.vue'
 import { buildReactionChips } from '../message/reactions'
 import { REPLY_USER_LABEL, buildReplyToSnapshot } from '../message/reply-quote'
 import { SAY_METRICS } from './say-typography'
@@ -589,7 +590,6 @@ const emojiPanelOpen = ref(false)
 const moreMenuOpen = ref(false)
 const emojiButtonRef = ref<HTMLElement | null>(null)
 const moreButtonRef = ref<HTMLElement | null>(null)
-const emojiPanelPosition = ref({ top: 0, left: 0 })
 const moreMenuPosition = ref({ x: 0, y: 0 })
 
 const { quick: quickEmojis, panelRecent: panelRecentEmojis, remember: rememberEmoji } = useSayRecentEmojis()
@@ -597,41 +597,17 @@ const { quick: quickEmojis, panelRecent: panelRecentEmojis, remember: rememberEm
 /** 面板/菜单开着的时候操作条不许消失 —— 鼠标已经离开行去点面板了。 */
 const barPinned = computed(() => emojiPanelOpen.value || moreMenuOpen.value)
 
-const emojiPanelStyle = computed(() => ({
-  top: `${emojiPanelPosition.value.top}px`,
-  left: `${emojiPanelPosition.value.left}px`,
-}))
-
-const EMOJI_PANEL_WIDTH = 216
-const EMOJI_PANEL_HEIGHT = 190
-const VIEWPORT_MARGIN = 8
-
 function closeOverlays(): void {
   emojiPanelOpen.value = false
   moreMenuOpen.value = false
 }
 
-function closeEmojiPanel(): void {
-  emojiPanelOpen.value = false
-}
-
+/** 面板的落点、翻转与视口回弹都由 Popover 内核算(见 template 的 placement/offset);
+ *  这里只管「同一时刻只开一个浮层」。 */
 function toggleEmojiPanel(): void {
   if (emojiPanelOpen.value) {
     emojiPanelOpen.value = false
     return
-  }
-  const rect = emojiButtonRef.value?.getBoundingClientRect()
-  if (rect) {
-    // 下方放不下就翻到上方 —— 面板宁可盖住消息,也不能掉出视口。
-    const below = rect.bottom + 6
-    const fitsBelow = below + EMOJI_PANEL_HEIGHT + VIEWPORT_MARGIN <= window.innerHeight
-    emojiPanelPosition.value = {
-      top: fitsBelow ? below : Math.max(VIEWPORT_MARGIN, rect.top - EMOJI_PANEL_HEIGHT - 6),
-      left: Math.min(
-        Math.max(VIEWPORT_MARGIN, rect.right - EMOJI_PANEL_WIDTH),
-        window.innerWidth - EMOJI_PANEL_WIDTH - VIEWPORT_MARGIN,
-      ),
-    }
   }
   moreMenuOpen.value = false
   emojiPanelOpen.value = true
@@ -772,7 +748,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
    不描色、不缩放(§3.6),章还是那枚章。按下阴影收紧一档。
    四处头像同一句法。 */
 .say-avatar-btn .say-avatar {
-  transition: box-shadow 0.16s ease;
+  transition: box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .say-avatar-btn:hover .say-avatar,
@@ -1043,10 +1019,10 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   align-items: center;
   gap: 1px;
   padding: 2px 3px;
-  border: 1px solid var(--ui-border-default-border, #dedbd2);
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
-  background: var(--ui-surface-raised-bg, #faf9f6);
-  box-shadow: var(--ui-shadow-popover, 0 1px 2px rgba(20, 18, 12, 0.06), 0 4px 14px rgba(20, 18, 12, 0.1));
+  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  box-shadow: var(--shadow-floating, 0 4px 14px rgba(20, 18, 12, 0.1));
 }
 
 .say-hoverbar-btn {
@@ -1060,14 +1036,14 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   background: none;
   font-size: 13px;
   line-height: 1;
-  color: var(--ui-text-muted-fg, #6f6c64);
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: transform 0.1s ease, background 0.12s ease;
+  transition: transform var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default);
 }
 
 .say-hoverbar-btn:hover {
-  background: var(--ui-state-hover-bg, #f4f2ed);
-  color: var(--ui-text-primary-fg, #1c1b18);
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
   transform: scale(1.06);
 }
 
@@ -1076,25 +1052,18 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   width: 1px;
   height: 14px;
   margin: 0 3px;
-  background: var(--ui-border-default-border, #dedbd2);
+  background: var(--ui-border-default-border);
 }
 
-/* 表情面板:teleport 到 body,所以定位是 fixed(视口坐标现算)。 */
-.say-emoji-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 998;
-}
-
+/* 表情面板:定位/层级(+25)/视口回弹都在 Popover 内核的内联样式里,这里只剩皮肤。
+   面板是 Popover 的根元素 —— 子组件根元素会被父级 scoped CSS 命中,所以这条留在本作用域内仍然生效。 */
 .say-emoji-panel {
-  position: fixed;
-  z-index: 999;
   width: 216px;
   padding: 10px 12px 12px;
-  border: 1px solid var(--ui-border-default-border, #dedbd2);
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 10px;
-  background: var(--ui-surface-raised-bg, #faf9f6);
-  box-shadow: var(--ui-shadow-popover, 0 2px 6px rgba(20, 18, 12, 0.08), 0 12px 32px rgba(20, 18, 12, 0.14));
+  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  box-shadow: var(--shadow-floating);
   font-size: 13px;
   line-height: normal;
 }
@@ -1104,7 +1073,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, #a5a29a);
+  color: var(--ui-text-muted-fg);
 }
 
 .say-emoji-grid {
@@ -1126,11 +1095,11 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   background: none;
   font-size: 15px;
   cursor: pointer;
-  transition: transform 0.1s ease, background 0.12s ease;
+  transition: transform var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default);
 }
 
 .say-emoji-grid button:hover {
-  background: var(--ui-state-hover-bg, #f4f2ed);
+  background: var(--ui-state-hover-bg);
   transform: scale(1.12);
 }
 </style>
