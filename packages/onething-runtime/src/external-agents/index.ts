@@ -1,8 +1,13 @@
 export { createAcpConnector } from './acp-connector.js'
 export type { AcpConnectorOptions } from './acp-connector.js'
 export {
+  ASK_USER_QUESTION_TOOL,
+  askUserQuestionOutput,
+  askUserQuestionToInteraction,
   CLAUDE_CODE_AGENT_CONNECTOR_ID,
   createClaudeCodeConnector,
+  DEFAULT_USER_DIALOG_KINDS,
+  userDialogToInteraction,
 } from './claude-code-connector.js'
 export type {
   ClaudeCodeConnectorOptions,
@@ -42,9 +47,12 @@ export type {
   ExternalAgentCapabilities,
   ExternalAgentConnector,
   ExternalAgentEvent,
+  ExternalAgentInteractionAsk,
+  ExternalAgentInteractionHandler,
   ExternalAgentMcpAttribution,
   ExternalAgentPermissionAsk,
   ExternalAgentPermissionBridgeKind,
+  ExternalAgentPermissionDecision,
   ExternalAgentPermissionHandler,
   ExternalAgentSessionLink,
   ExternalAgentTurnRequest,

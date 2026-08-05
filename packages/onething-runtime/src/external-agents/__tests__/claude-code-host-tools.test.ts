@@ -144,7 +144,7 @@ describe('注入的两道门', () => {
 
 describe('两类工具在 canUseTool 上分家', () => {
   it('宿主工具直接放行 —— 审批已经在我们自己的执行器那条路上了', async () => {
-    const permissionHandler = vi.fn(async () => true)
+    const permissionHandler = vi.fn(async () => ({ behavior: 'allow' as const }))
     const { captured } = await runTurn({
       hostToolSurface: () => injection,
       permissionHandler,
@@ -161,7 +161,7 @@ describe('两类工具在 canUseTool 上分家', () => {
   })
 
   it('SDK 自带工具照旧过桥', async () => {
-    const permissionHandler = vi.fn(async () => false)
+    const permissionHandler = vi.fn(async () => ({ behavior: 'deny' as const, message: 'User denied this tool call.' }))
     const { captured } = await runTurn({
       hostToolSurface: () => injection,
       permissionHandler,
@@ -179,7 +179,7 @@ describe('两类工具在 canUseTool 上分家', () => {
   })
 
   it('别人家的 MCP 服务器不是宿主工具 —— 它照旧要审批', async () => {
-    const permissionHandler = vi.fn(async () => true)
+    const permissionHandler = vi.fn(async () => ({ behavior: 'allow' as const }))
     const { captured } = await runTurn({
       hostToolSurface: () => injection,
       permissionHandler,

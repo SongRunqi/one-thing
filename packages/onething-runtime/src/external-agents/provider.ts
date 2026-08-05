@@ -32,6 +32,26 @@ function latestUserPrompt(request: AgentTurnRequest): string {
 }
 
 /**
+ * 整份 system prompt(E4/G9)。
+ *
+ * 在此之前这里只取最后一条 user 文本,system 位**整个被丢掉** —— 于是群里的 Iris
+ * 不是 Iris:她的 persona(agents.json 里那段「a designer with sharp taste and a
+ * sharper tongue」)在房间回合里就是 system prompt 的全部内容
+ * (`app/engine/prompt/system-prompt.ts:151` 注释:persona already IS the system
+ * prompt),丢了它就只剩一台通用的 Claude Code。
+ *
+ * 引擎把 system prompt 放在 `messages` 的 system 位(`core/agent-loop/prompts.ts`),
+ * 与 claude/gemini provider 的取法逐字一致;多条按顺序拼(压缩摘要也走这一位)。
+ */
+function systemPrompt(request: AgentTurnRequest): string {
+  return request.messages
+    .filter(message => message.role === 'system')
+    .map(message => agentContentToText(message.content).trim())
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+/**
  * Adapts an ExternalAgentConnector to the engine's AgentProvider seam:
  * connector-level events (session-established, agent-status) are consumed
  * here; everything else is the AgentTurnStreamEvent vocabulary already.
@@ -69,6 +89,7 @@ export function createExternalAgentProvider(
       const prompt = latestUserPrompt(request)
       if (!prompt) throw new Error(`${options.providerId} prompt is empty`)
 
+      const system = systemPrompt(request)
       const localSessionId = options.localSessionId ?? `${options.providerId}-${request.model}`
       const resume = options.connector.capabilities.resume
         ? options.resolveSessionLink?.(localSessionId)
@@ -78,6 +99,7 @@ export function createExternalAgentProvider(
         localSessionId,
         messageId: options.messageId,
         prompt,
+        ...(system ? { systemPrompt: system } : {}),
         // `||`: unbound sessions arrive with an empty-string working dir.
         cwd: options.workingDirectory || process.cwd(),
         // The provider id doubles as the picker's pseudo-model; only a real

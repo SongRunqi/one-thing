@@ -907,6 +907,29 @@ export function stopCollabV3RoomFloor(sessionId: string): boolean | null {
   for (const turn of turns) engine?.abort(turn.execSessionId)
   engine?.abort(sessionId)
 
+  /**
+   * 外部执行体要**再停一次**(E4/G10)。
+   *
+   * `engine.abort` 掐的是我们这一侧的流;外部 agent 的思考在别的进程里,那边收不到
+   * 我们的 abort,于是「停了」之后它还在跑工具、还在记账。`interrupt` 才是那一侧的
+   * 停止键,能力表说它有(`capabilities.interrupt`)才调。
+   *
+   * **动态 import 是刻意的**:静态引会把连接器注册表(node:child_process / node:fs /
+   * 审批门 / 宿主工具面)拖进每一个 import 这个文件的协作测试的收集阶段。与同文件
+   * 里 `digest-runner` 那条同一个理由。
+   */
+  if (turns.length > 0) {
+    void import('../../external-agents/index.js')
+      .then(async module => {
+        for (const turn of turns) {
+          await module.interruptExternalAgentSessions(turn.execSessionId)
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('[collab-v3] 外部执行体中断失败:', error)
+      })
+  }
+
   const hadFloor = collabRoomActiveLeases(entry.actor.account, Date.now()).length > 0
   void entry.actor.bumpEpoch('epoch-bumped').catch((error: unknown) => {
     console.error('[collab-v3] 换代失败:', error)

@@ -224,6 +224,22 @@ export async function createOnethingBackend(
         }
       }
       getStreamEngine().abortAll()
+      /**
+       * 外部执行体跟着收摊(E4/G10)。`abortAll` 停的是我们这一侧的流,外部 agent
+       * 的进程要它自己的 dispose 才会走 —— 漏了它,退出之后 CLI 子进程还活着。
+       *
+       * 无条件调:连接器是懒建的,没建过就是一次 no-op。桌面端另有一条
+       * `shutdownACP` 也会调到它,dispose 本身幂等(表清空后再调直接返回)。
+       *
+       * 动态 import:装配层的静态图里不该多一条只在收摊时才用得上的边
+       * (`import-side-effect-free` 那条纪律)。
+       */
+      try {
+        const externalAgents = await import('./external-agents/index.js')
+        await externalAgents.disposeExternalAgentConnectors()
+      } catch (error) {
+        console.error('[Backend] external agent dispose error:', error)
+      }
       if (options.mcpAcp) {
         await ACPManager.shutdown()
         await MCPManager.shutdown()

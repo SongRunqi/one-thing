@@ -56,11 +56,20 @@ const EXTERNAL_DESCRIPTORS: AgentExecutorDescriptor[] = [
       hostTools: true,
       // connector 的 CLAUDE_CODE_CAPABILITIES.steer = false。
       steer: false,
-      // query() 的 interrupt 是真中断(能让 CLI 侧回合停下),E5 接停止三级。
+      /**
+       * **E4 已有读者**(2026-08-05):`app/external-agents/index.ts` 的
+       * `interruptExternalAgentSessions` 每次喊停都读它,翻成 false 就真的不再对
+       * 这个执行器调 `connector.interrupt` —— 外部那一侧只剩 `engine.abort`
+       * (掐我们的流,不掐它的进程)。停止链的落点见 `stopCollabV3RoomFloor`。
+       */
       interrupt: true,
       // 会话在 SDK 侧,上下文是它的;我们压缩只会把两边的账搞乱。
       contextWindow: 'theirs',
-      // persona 走 SDK 的 systemPrompt(E4 接;今天 G9 只送最后一条 user 文本)。
+      /**
+       * **E4 已兑现**:persona 经 `provider.ts` 收集 system 位 → connector 翻成
+       * SDK 的 `systemPrompt: { type:'preset', preset:'claude_code', append }`。
+       * G9(只送最后一条 user 文本、persona 整个丢掉)到此结束。
+       */
       persona: 'system',
     },
   },

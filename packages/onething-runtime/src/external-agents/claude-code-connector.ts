@@ -19,10 +19,12 @@ import type {
   ExternalAgentCapabilities,
   ExternalAgentConnector,
   ExternalAgentEvent,
+  ExternalAgentInteractionHandler,
   ExternalAgentPermissionHandler,
   ExternalAgentSessionLink,
   ExternalAgentTurnRequest,
 } from './types.js'
+import type { InteractionAnswer, InteractionQuestion } from '@onething/core/interaction'
 
 export const CLAUDE_CODE_AGENT_CONNECTOR_ID = 'claude-code-agent'
 
@@ -93,14 +95,43 @@ export interface ClaudeCodeQueryOptions {
    * 结构保持宽松,SDK 因此仍是这个模块的软依赖。
    */
   mcpServers?: Record<string, unknown>
+  /**
+   * SDK 的 `systemPrompt`(`sdk.d.ts:1990`)。三种形状里我们用 preset+append:
+   * 换成裸字符串会把 Claude Code 自己那份操作说明(Read/Write/Bash 怎么用)
+   * 整个替掉,persona 到位了工具却不会用了。
+   */
+  systemPrompt?: string | string[] | {
+    type: 'preset'
+    preset: 'claude_code'
+    append?: string
+    excludeDynamicSections?: boolean
+  }
   canUseTool?: (
     toolName: string,
     input: Record<string, unknown>,
-    options: { signal: AbortSignal },
+    /** SDK 的 options 还有 suggestions/title/requestId 等;这里只取用得上的。 */
+    options: { signal: AbortSignal; toolUseID?: string },
   ) => Promise<
     | { behavior: 'allow'; updatedInput?: Record<string, unknown> }
     | { behavior: 'deny'; message: string }
   >
+  /**
+   * `request_user_dialog` 的宿主渲染回调(`sdk.d.ts:1287-1289`)。
+   * 结果只有两种形状:`{behavior:'completed', result}` 与 `{behavior:'cancelled'}`,
+   * 后者是「答不上来」的**规定答法**(CLI 转而执行该 dialog 的默认行为)。
+   */
+  onUserDialog?: (
+    request: { dialogKind: string; payload: Record<string, unknown>; toolUseID?: string },
+    options: { signal: AbortSignal },
+  ) => Promise<{ behavior: 'completed'; result: unknown } | { behavior: 'cancelled' }>
+  /**
+   * 我们真能画出来的 dialog kinds(`sdk.d.ts:1551` / `3405`,注意名字是
+   * `supportedDialogKinds`,不是方案里写的 `userDialogKinds`)。
+   *
+   * **缺席 = 不能显示,CLI 就地失败关闭** —— 只给 `onUserDialog` 而不声明这张表,
+   * 一个 dialog 都不会发过来。这正是今天那一半静默。
+   */
+  supportedDialogKinds?: string[]
 }
 
 export type ClaudeCodeQueryFn = (params: {
@@ -112,6 +143,16 @@ export interface ClaudeCodeConnectorOptions {
   /** Absolute path to the locally installed claude executable. */
   executablePath?: string
   permissionHandler?: ExternalAgentPermissionHandler
+  /**
+   * 提问落点(E4,§4)。**不装 = 没有落点**:`AskUserQuestion` 与 `onUserDialog`
+   * 都退回「当场拒绝 / cancelled」,而不是挂着等一个不会来的答案。
+   */
+  interactionHandler?: ExternalAgentInteractionHandler
+  /**
+   * 覆盖 `supportedDialogKinds`。给空数组 = 一个 dialog 都不接(退回 E4 之前的
+   * 形状:CLI 走每个 dialog 的默认行为)。装配层因此不必改代码就能关掉这条路。
+   */
+  userDialogKinds?: string[]
   /**
    * The SDK's query(); injectable for fixture-replay tests. Default lazily
    * imports @anthropic-ai/claude-agent-sdk.
@@ -277,6 +318,143 @@ function fileChangeMetadata(
   const diff = truncateDiffForDisplay(trimDiff(createTwoFilesPatch(path, path, before, after)))
   const { additions, deletions } = countLineChanges(before, after)
   return { path, diff, additions, deletions }
+}
+
+/* ── 提问(E4 / G6+G7) ─────────────────────────────────────────────────── */
+
+/** SDK 自带的「问用户」工具(`sdk-tools.d.ts:847-900` 的 `AskUserQuestionInput`)。 */
+export const ASK_USER_QUESTION_TOOL = 'AskUserQuestion'
+
+/**
+ * 默认声明的 dialog kinds。
+ *
+ * d.ts 里唯一被点名的 kind 就是 `refusal_fallback_prompt`(拒答后要不要重试),
+ * 而**每个 kind 的 payload / result 形状在类型里是不透明的**
+ * (`payload: Record<string, unknown>`、`result: unknown`)。所以这里的纪律是:
+ *
+ *  - 声明的 kind → 走通用映射去问人;答上来了才回 `completed`,
+ *  - 没声明 / 没落点 / 没答上来 → 一律 `cancelled`(SDK 规定的「答不上来」答法,
+ *    CLI 转而执行该 dialog 的默认行为 —— 也就是 E4 之前的形状,只会更好不会更坏)。
+ *
+ * 装配层可用 `userDialogKinds: []` 就地关掉这条路,不必改代码。
+ */
+export const DEFAULT_USER_DIALOG_KINDS = ['refusal_fallback_prompt']
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function readString(source: Record<string, unknown>, key: string): string | undefined {
+  const value = source[key]
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+/**
+ * `AskUserQuestionInput` → E1 的 `InteractionQuestion[]`。字段逐一对得上
+ * (E1 的形状就是照它设计的),两处刻意的不同:
+ *
+ * 1. **主键用 `id` 不用 `header`**:header 是给人看的短标签(SDK 自己写「max 12
+ *    chars」),两题撞名就静默串答案。这里按下标造稳定 id。
+ * 2. `allowFreeText` 恒真:SDK 说「There should be no 'Other' option, that will be
+ *    provided automatically」—— 那个自动的「其他」在我们这边要显式声明出来。
+ */
+export function askUserQuestionToInteraction(input: unknown): InteractionQuestion[] {
+  const questions = asRecord(input)?.questions
+  if (!Array.isArray(questions)) return []
+  const mapped: InteractionQuestion[] = []
+  questions.forEach((entry, index) => {
+    const question = asRecord(entry)
+    const text = question ? readString(question, 'question') : undefined
+    if (!question || !text) return
+    const options = Array.isArray(question.options) ? question.options : []
+    mapped.push({
+      id: `q${index}`,
+      ...(readString(question, 'header') ? { header: readString(question, 'header')! } : {}),
+      question: text,
+      multiSelect: question.multiSelect === true,
+      options: options.flatMap(raw => {
+        const option = asRecord(raw)
+        const label = option ? readString(option, 'label') : undefined
+        if (!option || !label) return []
+        return [{
+          label,
+          ...(readString(option, 'description') ? { description: readString(option, 'description')! } : {}),
+          ...(readString(option, 'preview') ? { preview: readString(option, 'preview')! } : {}),
+        }]
+      }),
+      allowFreeText: true,
+    })
+  })
+  return mapped
+}
+
+/**
+ * `InteractionAnswer` → SDK 的 `AskUserQuestionOutput` 形状。
+ *
+ * 键是**问题原文**,不是 questionId —— d.ts 写死了「question text -> answer
+ * string; multi-select answers are comma-separated」。所以这里做一次
+ * questionId → 问题原文的回译;E1 用 id 当主键换来的是「两题撞名不串答案」,
+ * 代价只有这一次回译。
+ *
+ * `response` 是「用户没选选项、自己写了一句」那一格(d.ts 的 freeform text)。
+ */
+export function askUserQuestionOutput(
+  questions: InteractionQuestion[],
+  answer: InteractionAnswer,
+): Record<string, unknown> {
+  const answers: Record<string, string> = {}
+  let freeform: string | undefined
+  for (const question of questions) {
+    const entry = answer.answers[question.id]
+    if (!entry) continue
+    const selected = entry.selected.filter(Boolean)
+    const text = selected.length > 0 ? selected.join(', ') : (entry.freeText ?? '')
+    answers[question.question] = text
+    if (!freeform && entry.freeText) freeform = entry.freeText
+  }
+  return {
+    answers,
+    ...(freeform ? { response: freeform } : {}),
+  }
+}
+
+/**
+ * `request_user_dialog` 的 payload → 一道提问。
+ *
+ * payload 的形状按 kind 定义,而 d.ts 把它透明地放过去(`Record<string, unknown>`),
+ * 所以这里只认三样**跨 kind 都成立**的东西:一句问题、一组选项、一个标题。
+ * 认不出问题就返回空表 —— 上层据此回 `cancelled`,绝不拿一张空卡去占住一个人。
+ */
+export function userDialogToInteraction(
+  dialogKind: string,
+  payload: Record<string, unknown>,
+): InteractionQuestion[] {
+  const question =
+    readString(payload, 'question')
+    ?? readString(payload, 'message')
+    ?? readString(payload, 'prompt')
+    ?? readString(payload, 'title')
+  if (!question) return []
+  const rawOptions = Array.isArray(payload.options) ? payload.options : []
+  const options = rawOptions.flatMap(raw => {
+    const option = asRecord(raw)
+    if (!option) return typeof raw === 'string' && raw ? [{ label: raw }] : []
+    const label = readString(option, 'label') ?? readString(option, 'value')
+    if (!label) return []
+    return [{
+      label,
+      ...(readString(option, 'description') ? { description: readString(option, 'description')! } : {}),
+    }]
+  })
+  return [{
+    id: 'dialog',
+    header: dialogKind,
+    question,
+    options: options.length > 0 ? options : [{ label: '继续' }, { label: '取消' }],
+    allowFreeText: true,
+  }]
 }
 
 /**
@@ -477,6 +655,59 @@ export function createClaudeCodeConnector(
 ): ExternalAgentConnector {
   const abortControllers = new Map<string, AbortController>()
   const now = options.now ?? (() => Date.now())
+  const dialogKinds = options.userDialogKinds ?? DEFAULT_USER_DIALOG_KINDS
+
+  /**
+   * `AskUserQuestion` 的四种收场,逐一翻成 SDK 看得懂的答复(原则 3:每一种收场
+   * 都要有翻译,不能有一种是「继续等」)。
+   *
+   *  - `answered` → allow,答案按 `AskUserQuestionOutput` 的形状回填进 input;
+   *  - 其余三种 → deny,理由用 E1 的 `answer.reason` 原文(它本来就是写给模型看的
+   *    一句人话:「无人应答……请按你自己的判断选一条最稳妥的路继续」)。
+   *
+   * 没有落点(装配层没装 handler)也是**当场拒绝**,不是挂着 —— 挂着就是 F3。
+   */
+  async function askUserQuestion(
+    request: ExternalAgentTurnRequest,
+    input: Record<string, unknown>,
+    toolUseID: string | undefined,
+  ): Promise<
+    | { behavior: 'allow'; updatedInput?: Record<string, unknown> }
+    | { behavior: 'deny'; message: string }
+  > {
+    if (!options.interactionHandler) {
+      return {
+        behavior: 'deny',
+        message: '此处没有可以回答问题的人。请不要提问,按你自己的判断继续,并在回答里说明你替用户做了哪个假设。',
+      }
+    }
+    const questions = askUserQuestionToInteraction(input)
+    if (questions.length === 0) {
+      return { behavior: 'deny', message: 'AskUserQuestion input carried no answerable question.' }
+    }
+    try {
+      const answer = await options.interactionHandler({
+        connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
+        localSessionId: request.localSessionId,
+        ...(request.messageId ? { messageId: request.messageId } : {}),
+        ...(toolUseID ? { toolCallId: toolUseID } : {}),
+        questions,
+      })
+      if (answer.outcome === 'answered') {
+        return {
+          behavior: 'allow',
+          updatedInput: { ...input, ...askUserQuestionOutput(questions, answer) },
+        }
+      }
+      return {
+        behavior: 'deny',
+        message: answer.reason || `Question settled as ${answer.outcome}.`,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { behavior: 'deny', message: `Interaction bridge failed: ${message}` }
+    }
+  }
 
   return {
     id: CLAUDE_CODE_AGENT_CONNECTOR_ID,
@@ -529,8 +760,67 @@ export function createClaudeCodeConnector(
           permissionMode: 'default',
           ...(spawnEnv ? { env: spawnEnv } : {}),
           ...(hostTools ? { mcpServers: hostTools.mcpServers } : {}),
+          /**
+           * **persona 进 system 位**(E4/G9)。E0 能力表里 claude-code 的
+           * `persona: 'system'` 说的就是这里。
+           *
+           * 用 `preset + append` 而不是裸字符串:裸字符串会把 Claude Code 自己那份
+           * 操作说明整个替掉 —— persona 到位了,Read/Write/Bash 却不会用了。追加的
+           * 位置在预设之后,于是「这一轮的你是谁」是模型读到的最后一段。
+           */
+          ...(request.systemPrompt?.trim()
+            ? {
+                systemPrompt: {
+                  type: 'preset' as const,
+                  preset: 'claude_code' as const,
+                  append: request.systemPrompt.trim(),
+                },
+              }
+            : {}),
           ...claudeCodeThinkingOptions(request),
           abortController,
+          /**
+           * `request_user_dialog` 的落点(E4/G7)。声明表必须与回调同时给 ——
+           * d.ts 明写「Requires `onUserDialog`;passing a non-empty list without
+           * the callback throws at option intake」。
+           */
+          ...(dialogKinds.length > 0
+            ? {
+                supportedDialogKinds: dialogKinds,
+                onUserDialog: async (dialogRequest, { signal }) => {
+                  if (signal.aborted) return { behavior: 'cancelled' as const }
+                  if (!options.interactionHandler) return { behavior: 'cancelled' as const }
+                  const questions = userDialogToInteraction(
+                    dialogRequest.dialogKind,
+                    dialogRequest.payload ?? {},
+                  )
+                  // 认不出这个 payload。`cancelled` 是 SDK 规定的「答不上来」答法,
+                  // CLI 转而执行该 dialog 的默认行为(= E4 之前的形状)。
+                  if (questions.length === 0) return { behavior: 'cancelled' as const }
+                  try {
+                    const answer = await options.interactionHandler({
+                      connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
+                      localSessionId: request.localSessionId,
+                      ...(request.messageId ? { messageId: request.messageId } : {}),
+                      ...(dialogRequest.toolUseID ? { toolCallId: dialogRequest.toolUseID } : {}),
+                      questions,
+                    })
+                    if (answer.outcome !== 'answered') return { behavior: 'cancelled' as const }
+                    return {
+                      behavior: 'completed' as const,
+                      result: askUserQuestionOutput(questions, answer),
+                    }
+                  } catch (error) {
+                    options.logger?.warn?.(
+                      `[ClaudeCodeConnector] user dialog bridge failed: ${
+                        error instanceof Error ? error.message : String(error)
+                      }`,
+                    )
+                    return { behavior: 'cancelled' as const }
+                  }
+                },
+              }
+            : {}),
           /**
            * **两类工具在这里分家**(§2)。
            *
@@ -544,26 +834,38 @@ export function createClaudeCodeConnector(
            *  - **SDK 自带工具**(不带前缀):Read/Write/Bash 跑在 CLI 进程里,
            *    我们对它们只剩这一座桥,照旧走宿主的审批。
            */
-          canUseTool: async (toolName, input, { signal }) => {
+          canUseTool: async (toolName, input, { signal, toolUseID }) => {
             if (isHostMcpToolName(toolName)) {
               return { behavior: 'allow', updatedInput: input }
             }
+            if (signal.aborted) return { behavior: 'deny', message: 'Aborted.' }
+
+            /**
+             * **提问不是审批**(E4/G6)。`AskUserQuestion` 问的是「A 还是 B」,
+             * 答案是结构化的;拿审批那套四选一去接它,只能翻成一个「允许 / 拒绝」,
+             * 而模型要的那个选择就丢了。所以它在这里拐进 InteractionRegistry。
+             */
+            if (toolName === ASK_USER_QUESTION_TOOL) {
+              return askUserQuestion(request, input, toolUseID)
+            }
+
             if (!options.permissionHandler) {
               return { behavior: 'deny', message: 'No permission handler registered in host.' }
             }
             try {
-              if (signal.aborted) return { behavior: 'deny', message: 'Aborted.' }
-              const allowed = await options.permissionHandler({
+              const decision = await options.permissionHandler({
                 connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
                 localSessionId: request.localSessionId,
                 messageId: request.messageId,
                 cwd: request.cwd,
                 toolName,
                 input,
+                // G1:丢了它,卡就画不出来(见 `ExternalAgentPermissionAsk.toolCallId`)。
+                toolCallId: toolUseID,
               })
-              return allowed
+              return decision.behavior === 'allow'
                 ? { behavior: 'allow', updatedInput: input }
-                : { behavior: 'deny', message: 'User denied this tool call.' }
+                : { behavior: 'deny', message: decision.message }
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error)
               return { behavior: 'deny', message: `Permission bridge failed: ${message}` }

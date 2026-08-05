@@ -51,6 +51,18 @@ const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
   deleteListeners: [] as Array<(ids: readonly string[]) => void>,
   aborted: [] as string[],
+  /** 喊停时被显式中断的外部执行会话(E4/G10)。 */
+  externallyInterrupted: [] as string[],
+}))
+
+/**
+ * 外部执行体的中断口(E4/G10)。`engine.abort` 只掐我们这一侧的流,外部 agent 的
+ * 思考在别的进程里 —— 喊停必须再走这一道,否则「停了」之后它还在跑工具。
+ */
+vi.mock('../../../external-agents/index.js', () => ({
+  interruptExternalAgentSessions: async (sessionId: string) => {
+    mocks.externallyInterrupted.push(sessionId)
+  },
 }))
 
 vi.mock('../../../stores/paths.js', () => ({
@@ -329,6 +341,13 @@ describe('D6-a 装配:喊停清三样', () => {
       // ① 在飞的执行会话被掐了。
       expect(mocks.aborted).toContain(mind.calls[0]!.execSessionId)
       expect(findCollabV3Turn(mind.calls[0]!.execSessionId)).toBeTruthy()
+      /**
+       * ①-b 外部执行体**再停一次**(E4/G10)。它是异步的(动态 import),所以等
+       * 一下;等不到就是「界面说停了、CLI 还在跑」那个旧状态。
+       */
+      await vi.waitFor(() => {
+        expect(mocks.externallyInterrupted).toContain(mind.calls[0]!.execSessionId)
+      })
     } finally {
       // 挂住的端口必须放开,否则收摊会等一个永远不来的回合。
       mind.release()

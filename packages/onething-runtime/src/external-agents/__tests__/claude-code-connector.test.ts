@@ -4,7 +4,11 @@ import {
   createClaudeCodeConnector,
 } from '../claude-code-connector.js'
 import type { ClaudeCodeQueryOptions, ClaudeCodeSdkMessage } from '../claude-code-connector.js'
-import type { ExternalAgentEvent, ExternalAgentPermissionAsk } from '../types.js'
+import type {
+  ExternalAgentEvent,
+  ExternalAgentPermissionAsk,
+  ExternalAgentPermissionDecision,
+} from '../types.js'
 
 async function* replay(messages: ClaudeCodeSdkMessage[]): AsyncGenerator<ClaudeCodeSdkMessage, void, void> {
   for (const message of messages) yield message
@@ -88,7 +92,7 @@ describe('ClaudeCodeConnector', () => {
     const captured: { prompt: string; options: ClaudeCodeQueryOptions }[] = []
     const connector = createClaudeCodeConnector({
       executablePath: '/usr/local/bin/claude',
-      permissionHandler: async () => true,
+      permissionHandler: async () => ({ behavior: 'allow' as const }),
       queryFn: params => {
         captured.push(params)
         return replay(fullTurnFixture)
@@ -150,25 +154,18 @@ describe('ClaudeCodeConnector', () => {
     expect(cost).toMatchObject({ providerData: { type: 'cost', costUSD: 0.0123 } })
   })
 
-  it('routes canUseTool through the permission handler and denies on false/throw/missing', async () => {
+  it('routes canUseTool through the permission handler and denies on deny/throw/missing', async () => {
     const asks: ExternalAgentPermissionAsk[] = []
-    let verdict: boolean | Error = true
-    const connector = createClaudeCodeConnector({
-      permissionHandler: async ask => {
-        asks.push(ask)
-        if (verdict instanceof Error) throw verdict
-        return verdict
-      },
-      queryFn: () => replay([initMessage, { type: 'result', subtype: 'success', session_id: 'claude-session-1' }]),
-    })
+    let verdict: ExternalAgentPermissionDecision | Error = { behavior: 'allow' }
+    const handler = async (ask: ExternalAgentPermissionAsk) => {
+      asks.push(ask)
+      if (verdict instanceof Error) throw verdict
+      return verdict
+    }
 
     let canUseTool: NonNullable<ClaudeCodeQueryOptions['canUseTool']> | undefined
     const capture = createClaudeCodeConnector({
-      permissionHandler: async ask => {
-        asks.push(ask)
-        if (verdict instanceof Error) throw verdict
-        return verdict
-      },
+      permissionHandler: handler,
       queryFn: params => {
         canUseTool = params.options.canUseTool
         return replay([initMessage, { type: 'result', subtype: 'success', session_id: 'claude-session-1' }])
@@ -184,7 +181,9 @@ describe('ClaudeCodeConnector', () => {
     if (!canUseTool) throw new Error('canUseTool was not passed to the SDK')
     const signal = new AbortController().signal
 
-    await expect(canUseTool('Bash', { command: 'ls' }, { signal })).resolves.toEqual({
+    await expect(
+      canUseTool('Bash', { command: 'ls' }, { signal, toolUseID: 'toolu_01' }),
+    ).resolves.toEqual({
       behavior: 'allow',
       updatedInput: { command: 'ls' },
     })
@@ -195,13 +194,18 @@ describe('ClaudeCodeConnector', () => {
       cwd: '/tmp/p',
       toolName: 'Bash',
       input: { command: 'ls' },
+      // G1:SDK 给的 toolUseID 必须原样过桥,否则卡片永远匹配不上 toolCall。
+      toolCallId: 'toolu_01',
     })
 
-    verdict = false
-    await expect(canUseTool('Bash', {}, { signal })).resolves.toMatchObject({ behavior: 'deny' })
+    verdict = { behavior: 'deny', message: '无人响应,权限请求在 120 秒后自动拒绝' }
+    await expect(canUseTool('Bash', {}, { signal, toolUseID: 't2' })).resolves.toEqual({
+      behavior: 'deny',
+      message: '无人响应,权限请求在 120 秒后自动拒绝',
+    })
 
     verdict = new Error('boom')
-    await expect(canUseTool('Bash', {}, { signal })).resolves.toMatchObject({
+    await expect(canUseTool('Bash', {}, { signal, toolUseID: 't3' })).resolves.toMatchObject({
       behavior: 'deny',
       message: expect.stringContaining('boom'),
     })
@@ -217,8 +221,9 @@ describe('ClaudeCodeConnector', () => {
     await collect(noHandler.streamTurn({
       localSessionId: 's', prompt: 'x', cwd: '/tmp', turn: 1,
     }))
-    await expect(noHandlerCanUse!('Bash', {}, { signal })).resolves.toMatchObject({ behavior: 'deny' })
-    void connector
+    await expect(
+      noHandlerCanUse!('Bash', {}, { signal, toolUseID: 't4' }),
+    ).resolves.toMatchObject({ behavior: 'deny' })
   })
 
   it('skips subagent-nested messages and settles unreported tool calls at result', async () => {
