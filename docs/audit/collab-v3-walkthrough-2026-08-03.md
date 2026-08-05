@@ -710,6 +710,107 @@ folder 落到 `workingDirectory` 上了。
 
 ---
 
+### F3 · 外部 agent(Claude Code)在群里问了一句话,然后挂死 2 分 11 秒
+
+**现象** 绑 `claude-code-agent` 的 Iris 在群里被 `@`,回合起跑之后调用了
+`AskUserQuestion`。屏幕上出现的是:
+
+- 一行工具调用,标题写着 **`[object Object]`**;
+- 状态条与成员徽标始终写「生成中」,再没有别的动静;
+- **没有任何卡片**可以回答那个问题;
+- **房面没有停止按钮**(唯一入口在协调器状态条的 hover 里),于是连掐掉都做不到;
+- 计时器走到 **2 分 11 秒**,直到用户自己关掉窗口。
+
+**根因** 症状有四个,病只有一个:**外部 agent 被当成 provider 层的一个特例接进来,
+于是它绕开了本地回合走的每一道门**。方案 `docs/design/claude-code-integration-v2.md`
+的 §9 证据表把它拆成十个缺口,逐条都有原始定位:
+
+| # | 缺口 | 一句话 |
+| --- | --- | --- |
+| G1 | 外部 ask 不带 `callId` | 卡片**从未上屏**——消费端匹配不到就永久缓存 |
+| G2 | 外部 ask 绕开策略门 | 直调 `Permission.ask`,于是 120s 拒绝桥与 30min 提醒桥**一条都没走** |
+| G3 | 房面无停止按钮 | 唯一入口在状态条 hover 里 |
+| G4 | 人级停止不可达 | 没有 revoke-lease 通道 |
+| G5 | `[object Object]` | 折叠行的泛化兜底 `String(第一个值)` 撞上 `{questions:[…]}` |
+| G6 | `AskUserQuestion` 无落点 | 全仓源码零命中——模型问了一句话,那句话哪儿都没去 |
+| G7 | `onUserDialog` 未接 | 缺席 = fail closed |
+| G8 | 工具面结构性失效 | `supportsTools:false` 把**协作工具**一并关掉,发言只能靠收养兜底 |
+| G9 | 上下文只给最后一条 user 文本 | persona 丢失——群里的 Iris 不是 Iris |
+| G10 | `interrupt()`/`dispose()` 零调用 | 我们这侧掐了流,CLI 那侧照跑 |
+
+那 2 分 11 秒是 G6 + G2 + G1 三条叠出来的:**没有落点**(问了没人接)、**没有
+deadline**(绕开了策略门)、**没有卡片**(callId 丢了)。G3/G4 让它连停都停不掉,
+G5 让它连「在等什么」都看不出来。
+
+**修复(分五期,每期解决什么)**
+
+| 期 | 提交 | 解决 |
+| --- | --- | --- |
+| E0 | `a7d66eea` | `AgentExecutor` 契约 + 能力表;三处硬编码 Set 判定收敛成能力查询——后面每一期的判据都从表里读 |
+| E1 | `32a64a40` | `core/interaction` 内核:与 Permission **并列**的一等概念,四种收场全是正常返回,**deadline 收进内核**(不依赖 UI 在场)→ 治 G6 的一半、G2 的全部 |
+| E3 | `6a71aa23` | 宿主工具面:协作工具经**进程内 MCP** 注入 SDK,由我们自己的执行器执行 → 治 G8,**发言权收回**(不再靠收养) |
+| E4 | `fe578380` | 通路重接:`callId` 透传(G1)、审批改走策略门(G2)、`AskUserQuestion`/`onUserDialog` 接进 InteractionRegistry(G6/G7)、persona 进 system 位(G9) |
+| E5 | `a11f312c` | 停止三级:`collab:room-revoke-lease` 通道 + 房面按钮复活 + `interrupt`/`dispose` 接线(G3/G4/G10) |
+| E6 | 本期 | 观测与验收:外部回合进调度时间轴、快照加 `waitingOn`、preview 修复(G5) |
+
+**未完成的一期**:**E2(交互 UI)** —— 一等提问卡片、倒计时、协作房系统行。因
+renderer 外壳拆除并行施工而**未做**。后果是**此刻提问仍然没有可点的卡**,但它不再
+挂死:内核到点自结算,理由回到模型(见下面的复验 a)。
+
+**复验步骤**
+
+a) **提问能落地、不再无限挂**。让一个绑 `claude-code-agent` 的 agent 在群里被
+   `@`,提示它「先问我一个多选问题再动手」。预期:后端发起一次 interaction
+   (`[Interaction] Asking: … external-agent … deadlineIn: 120000ms` 进 dev.log);
+   **E2 未做,所以此刻没有卡片**,预期是 **120s 后自动结成 `timeout`**,理由
+   (「无人应答,提问已超时结算。请按你自己的判断选一条最稳妥的路继续……」)作为
+   工具结果回到模型,模型继续往下走。**关键判据:回合会结束,不再停在 2 分 11 秒
+   之后还在转。** 折叠行标题此刻应该是**第一题的题干**,不是 `[object Object]`。
+
+   ⚠️ 这 120 秒是 `Interaction` **内核自己挂的表**(`DEFAULT_INTERACTION_TIMEOUT_MS`),
+   无条件生效。别和**审批**那条链的超时混起来:房内回合跑在 `kind:'agent'` 执行会话上,
+   审批走的是 **30 分钟协作软提醒桥**(房里有人在看,不自动拒),120 秒自动拒绝只
+   适用于非协作的系统驱动回合。两条等待链的超时不是同一套机制。
+
+b) **说话走持牌路径,不是收养**。同一个 agent 在群里正常发言。
+   `bun scripts/collab-v3-inspect.mjs --room <roomId> --tail 20`,时间轴上应看到
+   `grant` → `external-tool(send_message, allow, hostTool=true)` → `speak` 这条链,
+   **`speak` 的 `triggeredBy` 等于 `grant` 的 `leaseId`**。若看到的是一条没有前置
+   `external-tool` 的 `speak`,那是收养兜底在干活 —— E3 的注入这一轮没成(去
+   dev.log 里搜 `hostTools=[]`)。
+
+c) **能停**。回合在跑时:房面输入区右侧**有停止按钮且可按**(G3);工作台「调度」
+   页的租约表上,每一行有撤单张牌的入口(G4)。两处按下去之后,时间轴上应各有一条
+   `revoke`,以及一条 `external-turn(phase=end, outcome=aborted)` —— **`aborted` 而
+   不是 `error`**,「被人停掉」与「炸了」在账上是两个结论。
+
+d) **三类新事件在时间轴上看得见**。
+   `bun scripts/collab-v3-inspect.mjs --room <roomId> --tail 40 --type external-turn,external-tool,interaction`。
+   一轮完整的外部回合应该给出:`external-turn(start)` → 若干 `external-tool` →
+   (若提过问)`interaction(open)` + `interaction(answered|timeout|declined)` →
+   `external-turn(end)`。**因果链**:前三类的 `triggeredBy` 都是牌号,提问的结算相
+   指回 `open` 的 `interactionId`。**保密**:账里不该出现任何题干、任何工具 input。
+
+e) **persona 真的进了 system 位**。开 provider dump(`~/.onething/provider-requests/`),
+   起一轮外部回合,在 dump 里确认 `systemPrompt` 是
+   `{type:'preset', preset:'claude_code', append:'<agent 的 persona 原文>'}` ——
+   **`append` 而不是裸字符串**:裸字符串会把 Claude Code 自己那份操作说明整个替掉
+   (persona 到位了,Read/Write/Bash 却不会用了)。
+
+f) **「等你回答」的灯**(E6 的快照那一半,UI 已接)。提问挂着的那段时间里,大脑面板
+   (Agent 空间 → 大脑)的大字应从「在『房名』思考」变成 **「等你回答」**,群头成员
+   条上那个人的徽标应变成 **danger 色**、tooltip 写「等你回答」。审批挂着时是
+   「等你审批」。两条链都不挂时这一格缺席,徽标回到原来的四态。
+
+**测试** `claude-code-observer.test.ts`(连接器侧:起落三种收场 / `canUseTool` 六个
+return 走同一个记账出口 / 观测口抛了不影响决定)、`external-observability.test.ts`
+(装配侧:执行会话→房间的翻译、因果引用、正文永不入账、不装=不记账)、
+`scheduler-log-rules.test.ts`(17 类往返 + 新三类的保密断言)、
+`agent-activity.test.ts`(`waitingOn` 三条)、`agent-mind.test.ts` /
+`room-member-strip.test.ts`(等人**压过**在生成)、`tool-preview.test.ts`(G5 九条)。
+
+---
+
 ## 5. 结果记录
 
 逐条落，**「部分」与「未走」也要落**——空着与通过分不开，是这类清单最常见的失效方式。

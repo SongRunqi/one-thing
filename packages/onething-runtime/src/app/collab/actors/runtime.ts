@@ -90,6 +90,10 @@ import {
   shutdownCollabAgentActivity,
   type CollabAgentActivityView,
 } from '../agent-activity.js'
+import {
+  configureCollabExternalLogSink,
+  installCollabExternalObservers,
+} from '../external-observability.js'
 import { findAgent, listAgents } from '../../agents/index.js'
 import { getEventBus } from '../../events/index.js'
 import { getStreamEngineSafe } from '../../engine/index.js'
@@ -367,6 +371,11 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
     broadcastCollabCoordinator(turn.roomSessionId, { activity: true })
     broadcastCollabAgentActivity(turn.agentId, { activity: true })
   })
+  // ④''' 外部通路的观测面(E6,§6):外部回合的起落、每一次工具决定、每一次提问
+  //      都进这本时间轴。写入口在这里装 —— 它与账本同生同灭,而不是让一个还在飞的
+  //      外部回合往一份已经收摊的运行时里记账。
+  configureCollabExternalLogSink(schedulerLog)
+  runtime.disposers.push(installCollabExternalObservers())
 
   // ⑤ 删房:actor 跟着走。房目录整个被删掉(`removeCollabRoomDirectory`),
   //    v3 的账与信箱就在那个目录下,所以这里只需要把内存里的循环停掉。
@@ -408,6 +417,7 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
   configureCollabRoomSnapshotSource(null)
   configureCollabAgentActivitySource(null)
   configureCollabV3TurnObserver(null)
+  configureCollabExternalLogSink(null)
 
   for (const dispose of runtime.disposers) {
     try { dispose() } catch { /* noop */ }

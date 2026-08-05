@@ -152,3 +152,47 @@ describe('整面', () => {
     expect(view(activity()).missing).toBe('')
   })
 })
+
+/**
+ * 第四态(E6,claude-code-integration-v2 §6):**球在人这边**。
+ *
+ * 在它之前,一次挂在提问或审批上的等待在这一面上与「正在写一段很长的回答」长得
+ * 一模一样 —— F3 里 Iris 挂了 2 分 11 秒,界面自始至终只说「思考」。那不只是不
+ * 好看:用户没有任何理由去找那张要他点的卡。
+ */
+describe('等你回答(E6)', () => {
+  it('提问挂着 → 「等你回答」,计时从提问发起那一刻起', () => {
+    expect(buildAgentMindHeadline(
+      activity({
+        mind: { state: 'thinking', roomSessionId: 'room-1', since: 5_000 },
+        waitingOn: { kind: 'interaction', since: 6_000 },
+      }),
+      roomName,
+    )).toEqual({ state: 'waiting', text: '等你回答', since: 6_000 })
+  })
+
+  it('审批挂着 → 「等你审批」', () => {
+    expect(buildAgentMindHeadline(
+      activity({ waitingOn: { kind: 'permission', since: 7_000 } }),
+      roomName,
+    )).toEqual({ state: 'waiting', text: '等你审批', since: 7_000 })
+  })
+
+  it('等人**压过**在想 —— 两句话同时成立,只有一句需要用户动手', () => {
+    const headline = buildAgentMindHeadline(
+      activity({
+        mind: { state: 'thinking', roomSessionId: 'room-1', since: 1 },
+        heldLeases: [{ roomSessionId: 'room-1', leaseId: 'L1', since: 1, executing: true }],
+        waitingOn: { kind: 'interaction', since: 2 },
+      }),
+      roomName,
+    )
+    expect(headline.state).toBe('waiting')
+    expect(headline.text).not.toContain('思考')
+  })
+
+  it('整面也跟着走(view 读的是同一句 headline)', () => {
+    expect(view(activity({ waitingOn: { kind: 'interaction', since: 3 } })).headline.state)
+      .toBe('waiting')
+  })
+})

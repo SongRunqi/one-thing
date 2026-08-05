@@ -17,6 +17,10 @@ import { findAgentExecutorDescriptor } from '@onething/runtime/agents'
 import { isAgentPairDmRoom } from '@onething/runtime/collab'
 import { Interaction } from '@onething/core/interaction'
 import type { InteractionAnswer } from '@onething/core/interaction'
+import {
+  recordExternalAgentTool,
+  recordExternalAgentTurn,
+} from '../collab/external-observability.js'
 import { getSession, getSettings } from '../store.js'
 import { getStorePath } from '../stores/paths.js'
 import { enforcePermissionPolicy } from '../tools/core/permission-policy.js'
@@ -275,6 +279,12 @@ export function getExternalAgentConnectors(): Record<string, ExternalAgentConnec
       // E3 宿主工具面:协作工具经进程内 MCP 注入 SDK,发言权回到房间(§2)。
       // 连接器仍会再问一次 E0 能力表(`hostTools`)—— 装上不等于开着。
       hostToolSurface: resolveClaudeCodeHostToolSurface,
+      // E6 观测:外部回合的起落与每一次工具决定进调度时间轴(§6)。装配层认识
+      // 房间与时间轴,连接器不认识 —— 所以它是一个端口而不是一条 import。
+      observer: {
+        turn: input => { recordExternalAgentTurn(input) },
+        toolDecision: input => { recordExternalAgentTool(input) },
+      },
       logger: console,
     }),
   }

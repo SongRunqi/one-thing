@@ -20,6 +20,7 @@ import type {
   ExternalAgentConnector,
   ExternalAgentEvent,
   ExternalAgentInteractionHandler,
+  ExternalAgentObserver,
   ExternalAgentPermissionHandler,
   ExternalAgentSessionLink,
   ExternalAgentTurnRequest,
@@ -175,6 +176,11 @@ export interface ClaudeCodeConnectorOptions {
    * 靠收养兜底。装上之后协作工具经进程内 MCP 进去,发言权回到房间。
    */
   hostToolSurface?: HostMcpSurfaceResolver
+  /**
+   * 观测口(E6,§6)。**不装 = 不记账**,外部回合在调度时间轴上退回 E6 之前的
+   * 那一片空白 —— 不影响这一轮跑不跑得成。
+   */
+  observer?: ExternalAgentObserver
 }
 
 /**
@@ -749,6 +755,34 @@ export function createClaudeCodeConnector(
         }
       }
 
+      /**
+       * 一轮的起 / 落(E6,§6)。
+       *
+       * 起点画在这里而不是 `streamTurn` 的第一行:宿主工具面解析失败要退回「只有 SDK
+       * 自带工具」,那不是一轮的开始出了问题。落点在 `finally` —— 它是这个生成器
+       * **唯一**的收场出口,正常跑完、抛错、被 abort 掐断走的都是它,所以「起了却
+       * 没落」在账上只可能意味着进程没了,不可能意味着漏记。
+       */
+      const turnStartedAt = now()
+      let turnOutcome: 'complete' | 'error' | 'aborted' = 'complete'
+      observeTurn('start')
+
+      function observeTurn(phase: 'start' | 'end'): void {
+        if (!options.observer) return
+        try {
+          options.observer.turn({
+            connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
+            localSessionId: request.localSessionId,
+            phase,
+            ...(phase === 'end'
+              ? { outcome: turnOutcome, elapsedMs: Math.max(0, now() - turnStartedAt) }
+              : {}),
+          })
+        } catch {
+          // 观测绝不能变成第二个故障源(与落盘层同一条纪律)。
+        }
+      }
+
       try {
         const spawnEnv = options.resolveSpawnEnv?.()
         const queryOptions: ClaudeCodeQueryOptions = {
@@ -834,43 +868,74 @@ export function createClaudeCodeConnector(
            *  - **SDK 自带工具**(不带前缀):Read/Write/Bash 跑在 CLI 进程里,
            *    我们对它们只剩这一座桥,照旧走宿主的审批。
            */
-          canUseTool: async (toolName, input, { signal, toolUseID }) => {
-            if (isHostMcpToolName(toolName)) {
-              return { behavior: 'allow', updatedInput: input }
+          /**
+           * 决定 + 记账。**记账只在这一处**(E6):`decideToolUse` 有六个 return,
+           * 逐个去记必然漏掉其中一两个,而漏掉的多半是 deny 那几支 —— 恰恰是回查时
+           * 最想看见的。所以决定与记账在这里分层:内层只管答,外层只管记。
+           */
+          canUseTool: async (toolName, input, context) => {
+            const decision = await decideToolUse(toolName, input, context)
+            if (options.observer) {
+              try {
+                options.observer.toolDecision({
+                  connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
+                  localSessionId: request.localSessionId,
+                  // 账上与事件流上是同一个名字(E3 的归一化),否则同一次调用在
+                  // 时间轴与步骤面上看起来像两件事。
+                  toolName: normalizeToolName(toolName),
+                  decision: decision.behavior,
+                  hostTool: isHostMcpToolName(toolName),
+                  ...(context.toolUseID ? { toolCallId: context.toolUseID } : {}),
+                })
+              } catch { /* 观测绝不能变成第二个故障源 */ }
             }
-            if (signal.aborted) return { behavior: 'deny', message: 'Aborted.' }
-
-            /**
-             * **提问不是审批**(E4/G6)。`AskUserQuestion` 问的是「A 还是 B」,
-             * 答案是结构化的;拿审批那套四选一去接它,只能翻成一个「允许 / 拒绝」,
-             * 而模型要的那个选择就丢了。所以它在这里拐进 InteractionRegistry。
-             */
-            if (toolName === ASK_USER_QUESTION_TOOL) {
-              return askUserQuestion(request, input, toolUseID)
-            }
-
-            if (!options.permissionHandler) {
-              return { behavior: 'deny', message: 'No permission handler registered in host.' }
-            }
-            try {
-              const decision = await options.permissionHandler({
-                connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
-                localSessionId: request.localSessionId,
-                messageId: request.messageId,
-                cwd: request.cwd,
-                toolName,
-                input,
-                // G1:丢了它,卡就画不出来(见 `ExternalAgentPermissionAsk.toolCallId`)。
-                toolCallId: toolUseID,
-              })
-              return decision.behavior === 'allow'
-                ? { behavior: 'allow', updatedInput: input }
-                : { behavior: 'deny', message: decision.message }
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error)
-              return { behavior: 'deny', message: `Permission bridge failed: ${message}` }
-            }
+            return decision
           },
+        }
+
+        async function decideToolUse(
+          toolName: string,
+          input: Record<string, unknown>,
+          { signal, toolUseID }: { signal: AbortSignal; toolUseID?: string },
+        ): Promise<
+          | { behavior: 'allow'; updatedInput?: Record<string, unknown> }
+          | { behavior: 'deny'; message: string }
+        > {
+          if (isHostMcpToolName(toolName)) {
+            return { behavior: 'allow', updatedInput: input }
+          }
+          if (signal.aborted) return { behavior: 'deny', message: 'Aborted.' }
+
+          /**
+           * **提问不是审批**(E4/G6)。`AskUserQuestion` 问的是「A 还是 B」,
+           * 答案是结构化的;拿审批那套四选一去接它,只能翻成一个「允许 / 拒绝」,
+           * 而模型要的那个选择就丢了。所以它在这里拐进 InteractionRegistry。
+           */
+          if (toolName === ASK_USER_QUESTION_TOOL) {
+            return askUserQuestion(request, input, toolUseID)
+          }
+
+          if (!options.permissionHandler) {
+            return { behavior: 'deny', message: 'No permission handler registered in host.' }
+          }
+          try {
+            const decision = await options.permissionHandler({
+              connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
+              localSessionId: request.localSessionId,
+              messageId: request.messageId,
+              cwd: request.cwd,
+              toolName,
+              input,
+              // G1:丢了它,卡就画不出来(见 `ExternalAgentPermissionAsk.toolCallId`)。
+              toolCallId: toolUseID,
+            })
+            return decision.behavior === 'allow'
+              ? { behavior: 'allow', updatedInput: input }
+              : { behavior: 'deny', message: decision.message }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            return { behavior: 'deny', message: `Permission bridge failed: ${message}` }
+          }
         }
 
         const stream = options.queryFn
@@ -907,7 +972,16 @@ export function createClaudeCodeConnector(
           }
           yield* translator.translate(message)
         }
+      } catch (error) {
+        // abort 先判:SDK 把一次中断也抛成异常,而「被人停掉」与「炸了」在回查时
+        // 是两个完全不同的结论(E5 的三级停止正是要在账上看得见)。
+        turnOutcome = abortController.signal.aborted ? 'aborted' : 'error'
+        throw error
       } finally {
+        // 生成器被下游提前丢弃(`return()`)时既不进 catch 也不抛,但流确实没跑完 ——
+        // 靠信号补判,否则那一支会被记成 `complete`。
+        if (turnOutcome === 'complete' && abortController.signal.aborted) turnOutcome = 'aborted'
+        observeTurn('end')
         request.abortSignal?.removeEventListener('abort', forwardAbort)
         abortControllers.delete(request.localSessionId)
         // 语境解绑。漏解的条目会让下一轮之后的迟到调用打在一份过期语境上,而那

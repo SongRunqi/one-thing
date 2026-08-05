@@ -489,6 +489,19 @@ export interface CollabAgentActivitySnapshot {
   lastSpokeAt?: number
   /** 只增计数;详情走调度时间轴(与房间快照同一条纪律)。 */
   deadLetterCount: number
+  /**
+   * **它在等人**(E6,claude-code-integration-v2 §6)。
+   *
+   * `mind.state === 'thinking'` 答的是「大脑在转」,而一次挂在提问或审批上的等待
+   * 在那一格里与「正在写一段很长的回答」长得一模一样 —— F3 里 Iris 挂了 2 分 11 秒,
+   * 界面自始至终只说「生成中」。这一格把两者分开:有它 = 球在**人**这边。
+   *
+   * 两条并列的等待链共用这一格(`interaction` 提问 / `permission` 审批),读的是
+   * 两个内核现成的 pending 表(`Interaction.getPending` / `Permission.getPendingPrompts`),
+   * **不新开一本账**。两条都挂着时取更早的那一条 —— 「等了多久」问的是这个人被卡住
+   * 有多久,不是某一张卡开了多久。
+   */
+  waitingOn?: { kind: 'interaction' | 'permission'; since: number }
 }
 
 /**

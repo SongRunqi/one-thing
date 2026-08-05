@@ -138,6 +138,40 @@ export type ExternalAgentInteractionHandler = (
   ask: ExternalAgentInteractionAsk,
 ) => Promise<InteractionAnswer>
 
+/**
+ * 外部回合的**观测口**(E6,§6)。
+ *
+ * 与 `permissionHandler` / `interactionHandler` 同一个形状,理由也同一条:连接器住在
+ * 纯运行时层,不认识调度时间轴,更不该认识「房间」这个概念。装上就记账,不装就是不记
+ * —— 观测是旁路,金重放与纯测试跑的正是不装的那一档。
+ *
+ * 两个方法都必须**同步、绝不抛**:它们挂在外部回合的关键路径上,一次记账失败让那一轮
+ * 炸掉,是把「看不见」升级成「跑不动」。
+ */
+export interface ExternalAgentObserver {
+  /** 一轮的起 / 落。`end` 带收场与墙钟。 */
+  turn(input: {
+    connectorId: string
+    localSessionId: string
+    phase: 'start' | 'end'
+    outcome?: 'complete' | 'error' | 'aborted'
+    elapsedMs?: number
+  }): void
+  /**
+   * `canUseTool` 的一次决定。`hostTool` 分开两条完全不同的路:宿主工具直接放行
+   * (真正的门在下游我们自己的执行器里),SDK 自带工具走宿主审批。
+   */
+  toolDecision(input: {
+    connectorId: string
+    localSessionId: string
+    /** 归一化之后的名字(`mcp__onething__` 前缀已剥)。 */
+    toolName: string
+    decision: 'allow' | 'deny'
+    hostTool: boolean
+    toolCallId?: string
+  }): void
+}
+
 export interface ExternalAgentConnector {
   readonly id: string
   readonly capabilities: ExternalAgentCapabilities

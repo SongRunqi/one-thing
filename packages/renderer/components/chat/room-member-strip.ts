@@ -118,18 +118,29 @@ export function buildRoomMemberEntries(options: {
  * 「TA 在别的房忙着」,而按房过滤会把这句话直接删掉。
  */
 
-export type RoomMemberPresence = 'generating' | 'holding' | 'working' | 'idle'
+export type RoomMemberPresence = 'waiting' | 'generating' | 'holding' | 'working' | 'idle'
+
+/** 两条等待链各自的一句话(与大脑面同一套措辞)。 */
+const MEMBER_WAITING_TEXT: Readonly<Record<'interaction' | 'permission', string>> = {
+  interaction: '等你回答',
+  permission: '等你审批',
+}
 
 /**
  * 一位同事此刻的在场态。拿不到快照 = 空闲(「读不到」与「空闲」在徽标上是同一
  * 个样子:都不画,而人本来就该是空闲居多)。
  *
- * 次序即优先级:在写字 > 拿着牌还没开始 > 在干活 > 闲着。
+ * 次序即优先级:等人 > 在写字 > 拿着牌还没开始 > 在干活 > 闲着。
+ *
+ * **等人排在最前**(E6):它与「在生成」在真机上同时成立(大脑那一轮还开着),
+ * 但只有它需要用户做点什么。把它压在下面,徽标就会一直说「生成中」—— 而那正是
+ * F3 里没人去找那张卡的原因。
  */
 export function resolveRoomMemberPresence(
   activity: CollabAgentActivitySnapshot | null | undefined,
 ): RoomMemberPresence {
   if (!activity) return 'idle'
+  if (activity.waitingOn) return 'waiting'
   if (activity.mind.state === 'thinking') return 'generating'
   // 大脑循环那一格拿不到时退回牌上的登记簿标志(两者在真机上说的是同一件事)。
   if (activity.heldLeases.some(lease => lease.executing)) return 'generating'
@@ -145,6 +156,9 @@ export function formatRoomMemberPresence(
 ): string {
   const presence = resolveRoomMemberPresence(activity)
   if (presence === 'idle' || !activity) return ''
+  if (presence === 'waiting' && activity.waitingOn) {
+    return MEMBER_WAITING_TEXT[activity.waitingOn.kind]
+  }
   if (presence === 'generating') {
     const room = activity.mind.state === 'thinking'
       ? (resolveRoomName(activity.mind.roomSessionId) || activity.mind.roomSessionId)

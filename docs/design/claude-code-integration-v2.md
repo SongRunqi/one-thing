@@ -194,3 +194,101 @@ interface InteractionAnswer {
 | G8 | 工具面结构性失效 | `external-agents/provider.ts:50` → `agent-loop/stream-runtime.ts:682-699`；伴生：发言靠 `engine-mind-port.ts:274-277` 收养 |
 | G9 | 上下文只给最后一条 user 文本 | `external-agents/provider.ts:24-32,54`（persona 丢失） |
 | G10 | `interrupt()`/`dispose()` 零调用 | grep `.interrupt(` 只命中定义 |
+
+---
+
+## 10. 实施勘误
+
+方案是 2026-08-04 写的,实施跨了五个提交。这一节记**方案与落地之间的每一处不同** ——
+不是为了认错,是因为下一个读这份文档的人会拿它当地图,而地图上没标的那几条岔路
+正是他会走错的地方。
+
+### 10.1 逐期提交号
+
+| 期 | 提交 | 状态 |
+| --- | --- | --- |
+| E0 契约与骨架 | `a7d66eea` | 已落地 |
+| E1 交互协议内核 | `32a64a40` | 已落地 |
+| **E2 交互 UI** | — | **未做**(唯一未完成期,见 §10.3) |
+| E3 宿主工具面 | `6a71aa23` | 已落地 |
+| E4 外部通路重接 | `fe578380` | 已落地 |
+| E5 停止三级 | `a11f312c` | 已落地 |
+| E6 观测与验收 | 本次 | 已落地 |
+
+依赖链上 E2 被跳过了一环:方案写的是 `E1→E2→E4` 串行(协议→UI→映射)。真跑下来
+**E4 不依赖 E2** —— 映射依赖的是 E1 的协议,不是它的呈现。E2 缺席的代价因此不是
+「E4 做不了」,而是「提问没有可点的卡」(§10.3)。
+
+### 10.2 与方案的偏离
+
+**E4 · 三处 SDK API 名/形状纠正**(已在该期提交里逐条记过,这里汇总。方案按记忆写的
+名字与 `sdk.d.ts` 实际不符,一律以 d.ts 为准):
+
+1. `userDialogKinds` → **`supportedDialogKinds`**。方案写的那个名字在 d.ts 上根本
+   不存在。给错名字 = 那张声明表没递出去,而 d.ts 明写「absence = 不能显示,CLI
+   就地失败关闭」;
+2. persona 的两个字段 → **`{type:'preset', preset:'claude_code', append}`**。方案写的
+   两个是 SDK 的**内部**字段。更要紧的是形状:裸字符串会把 Claude Code 自己那份操作
+   说明整个替掉 —— persona 到位了,Read/Write/Bash 却不会用了;
+3. `AskUserQuestion` 的**回填形状**:d.ts 里 answers 以问题**原文**为键、多选逗号
+   连接(我们内部用 `questionId` 主键 + `selected: string[]`,那是刻意的,见
+   `core/interaction/types.ts`——但递回 SDK 的那一份必须按它的形状回填)。
+
+教训是同一条:**SDK 的形状要从 d.ts 读,不从记忆写**。这三处任何一处写错都不会在
+typecheck 里红(选项对象是结构化的、可选的),只会在真机上静默地什么都不发生。
+
+**E4 · 一处路由实况澄清**(方案里没写清,复验时容易读错):房内的外部回合跑在
+`kind:'agent'` 的执行会话上,所以**审批**走的是 30 分钟协作软提醒桥(房里有人在看,
+不自动拒),120 秒自动拒绝只适用于非协作的系统驱动回合。而**提问**那条链的 120 秒是
+`Interaction` 内核自己挂的表(`DEFAULT_INTERACTION_TIMEOUT_MS`),**无条件生效** ——
+两条等待链的超时不是同一套机制,别把它们混着讲。
+
+**E3 · `supportsTools` 仍然是 `false`**,方案里那句「翻真」没有做。这不是遗漏,是
+判断变了:这一位答的是「**引擎的工具循环**要不要为这个 provider 装载工具」,答案
+仍然是不要 —— 外部 agent 的工具在它自己的循环里执行,引擎再装一份只会把同一批工具
+发两遍,然后等一个永远不会回到我们这条循环里的结果。**协作工具不走这条路**:它们经
+进程内 MCP 直接注入 SDK,由 connector 的 `hostToolSurface` 每轮解析、由我们自己的
+执行器执行。所以 §0 那条「工具面结构性失效」的诊断已经不成立 —— 工具面回来了,只是
+它接在 connector 上,不接在 provider 的这一位上。这一位要翻真得等 `AgentExecutor`
+抽象接管「工具装载看 `hostTools`」、引擎不再从 provider 推断任何东西的那一天。
+(注释原文在 `external-agents/provider.ts:70-85`。)
+
+**E5 · 三个入口全做了**,没有削减:房面停止按钮、协调器状态条、调度页租约表的单张
+撤牌。方案写的是「人级三入口」,落地一个不少。
+
+**E6 · 多做了两处**,都是为了让复验步骤真的可操作:
+
+- **诊断 CLI 的渲染**(`inspect-rules.ts`):新三类若不给渲染分支会落到
+  `JSON.stringify` 兜底 —— 读得出来但没法读。顺带补了 `collabInspectRowAgentId`
+  的三支,否则 `--agent <id>` 会把这个人整段外部回合过滤掉。
+- **`waitingOn` 的 UI 消费**:方案 §6 只写了快照那一半。落地时发现
+  `components/agents/*` 与 `chat/room-member-strip.ts` 不在并行施工范围内(并行方动的是
+  `RoomSurface.vue` / `Sidebar.vue` / workspace 那一片),于是把大脑面板与成员条徽标
+  一起接了 —— 两处都新增一个**排在最前**的 `waiting` 态:它与「在生成」在真机上同时
+  成立,但只有它需要用户动手。
+
+**E6 · 一处比方案更严**:方案 §6 写的 `interaction` 行带 `questionCount`。落地时
+`origin` 与 `questionCount` 做成了**只有 `open` 相才有** —— 结算事件载的是答案,它
+身上根本没有这两格,补一个猜出来的值就是往诊断账里写假话。后四相靠 `triggeredBy`
+指回 `open` 那一行,这正是因果引用存在的理由。
+
+### 10.3 唯一未完成的一期:E2(交互 UI)
+
+**没做什么**:一等提问卡片、renderer 的 reconcile 账、倒计时、协作房里的提问系统行、
+pair 房的 `declined` 呈现。
+
+**为什么**:renderer 外壳拆除(shellMode / workspace 树 / TabBar 退役)正在并行施工,
+它动的恰好是卡片要落脚的那一片。在一棵正在被拆的树上接新枝,冲突的代价高于收益。
+
+**此刻的实际行为**(复验时会看到的):提问**发得出去**(后端起 interaction、卡片
+事件上了总线),但**没有面在画它**。于是每一次提问都走到 deadline:内核到点自结算成
+`timeout`,理由(「无人应答,提问已超时结算。请按你自己的判断选一条最稳妥的路继续,
+并在回答里说明你替用户做了哪个假设」)作为工具结果回到模型,模型继续往下走。
+
+**这不是 F3 那个 bug 的复发**,区别是结构性的:F3 是**无限**挂起(没有落点、没有
+deadline、没有卡片);现在是**有界**等待(有落点、有 deadline、理由回得到模型),
+只是那一界目前是 120 秒而不是用户点一下。E2 补上之后这条路才算走完。
+
+**E2 的前置全部就绪**:协议(`core/interaction`)、事件(`interaction:requested` /
+`interaction:settled`)、IPC 面(`getPendingInteractionsForIpc` /
+`respondInteractionForIpc`)、通道亲和、补水口都在位。E2 只剩呈现。

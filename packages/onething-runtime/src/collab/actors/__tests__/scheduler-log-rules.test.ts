@@ -2,7 +2,7 @@
  * 调度时间轴的纯规则(D8 §3.3)。
  *
  * 三件事在这里被钉死:
- *  - **14 类行渲染/解析往返**:写下去什么样,读回来就什么样。一本读不回来的账
+ *  - **17 类行渲染/解析往返**:写下去什么样,读回来就什么样。一本读不回来的账
  *    等于没有;
  *  - **正文永不入账**:类型级门 + 一条按行断言的测试(speak 行只有 messageId);
  *  - **一次房间转换派生哪几行**:因果链(triggeredBy)能不能从 posted 一路走到 yield。
@@ -16,9 +16,12 @@ import {
   COLLAB_SCHEDULER_LOG_TYPES,
   collabSchedulerDeadLetter,
   collabSchedulerErrorLine,
+  collabSchedulerExternalTool,
+  collabSchedulerExternalTurn,
   collabSchedulerGateBlock,
   collabSchedulerGrant,
   collabSchedulerHand,
+  collabSchedulerInteraction,
   collabSchedulerJudgeDegraded,
   collabSchedulerJudgeOpen,
   collabSchedulerJudgeVerdict,
@@ -63,13 +66,43 @@ const SAMPLES: CollabSchedulerLogRow[] = [
   collabSchedulerWorkerSpawn({ at: 12, agentId: 'ana', workerId: 'w1', cardId: 'card-1', triggeredBy: 'card-1' }),
   collabSchedulerWorkerResult({ at: 13, agentId: 'ana', workerId: 'w1', cardId: 'card-1', outcome: 'complete', triggeredBy: 'w1' }),
   collabSchedulerDeadLetter({ at: 14, actor: 'agent:ana', eventType: 'room:posted', error: 'boom', triggeredBy: 'evt-1' }),
+  // ── 外部通路三类(E6,claude-code-integration-v2 §6)──
+  collabSchedulerExternalTurn({
+    at: 15,
+    agentId: 'iris',
+    connectorId: 'claude-code-agent',
+    phase: 'end',
+    outcome: 'aborted',
+    elapsedMs: 131_000,
+    triggeredBy: 'r#L2',
+  }),
+  collabSchedulerExternalTool({
+    at: 16,
+    agentId: 'iris',
+    connectorId: 'claude-code-agent',
+    toolName: 'send_message',
+    decision: 'allow',
+    hostTool: true,
+    toolCallId: 'toolu_1',
+    triggeredBy: 'r#L2',
+  }),
+  collabSchedulerInteraction({
+    at: 17,
+    phase: 'open',
+    interactionId: 'itx-1',
+    origin: 'external-agent',
+    questionCount: 3,
+    agentId: 'iris',
+    toolCallId: 'toolu_2',
+    triggeredBy: 'r#L2',
+  }),
 ]
 
 describe('行类型表', () => {
-  it('14 类,双向穷尽(C3 纪律)', () => {
+  it('17 类,双向穷尽(C3 纪律)', () => {
     expect(COLLAB_SCHEDULER_LOG_TABLE_IS_EXHAUSTIVE).toBe(true)
-    expect(COLLAB_SCHEDULER_LOG_TYPES).toHaveLength(14)
-    expect(new Set(COLLAB_SCHEDULER_LOG_TYPES).size).toBe(14)
+    expect(COLLAB_SCHEDULER_LOG_TYPES).toHaveLength(17)
+    expect(new Set(COLLAB_SCHEDULER_LOG_TYPES).size).toBe(17)
   })
 
   it('样本覆盖全表 —— 一类新行没有样本就红', () => {
@@ -84,7 +117,7 @@ describe('行类型表', () => {
 })
 
 describe('渲染与解析', () => {
-  it('14 类行逐条往返,一个字段都不丢', () => {
+  it('17 类行逐条往返,一个字段都不丢', () => {
     for (const row of SAMPLES) {
       const parsed = parseCollabSchedulerLogLine(formatCollabSchedulerLogLine(row))
       expect(parsed).toEqual(row)
@@ -141,6 +174,29 @@ describe('正文永不入账(保密纪律 §7)', () => {
     for (const forbidden of ['"content"', '"text"', '"body"', '"summary"', '"excerpt"']) {
       expect(text).not.toContain(forbidden)
     }
+  })
+
+  it('提问行只记题数,一个题干都不带(E6)', () => {
+    const row = collabSchedulerInteraction({
+      at: 17, phase: 'open', interactionId: 'itx-1', origin: 'external-agent', questionCount: 3,
+    })
+    expect(Object.keys(row).sort()).toEqual(
+      ['at', 'interactionId', 'origin', 'phase', 'questionCount', 'type'],
+    )
+    expect(formatCollabSchedulerLogLine(row)).not.toMatch(/question"|prompt|content/)
+  })
+
+  it('外部工具行只记名字与决定,不带 input(E6)', () => {
+    const row = collabSchedulerExternalTool({
+      at: 16,
+      agentId: 'iris',
+      connectorId: 'claude-code-agent',
+      toolName: 'Write',
+      decision: 'deny',
+      hostTool: false,
+    })
+    expect(Object.keys(row)).not.toContain('input')
+    expect(formatCollabSchedulerLogLine(row)).not.toMatch(/content|text|body/)
   })
 
   it('裁决的 why 是**系统自己写的**那一句,所以它在账上(而且带耗时与模型)', () => {

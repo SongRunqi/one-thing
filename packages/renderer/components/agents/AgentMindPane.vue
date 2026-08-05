@@ -189,6 +189,12 @@ const view = computed(() => buildAgentMindView({
   color: var(--ui-status-success-fg, var(--color-success));
 }
 
+/* 等你回答 / 等你审批(E6):球在人这边。这是这一面上唯一一句要求用户动手的话,
+   所以它比「在思考」的绿更响 —— 在 E6 之前它根本没有自己的一格。 */
+.am-hero.is-waiting .am-headline {
+  color: var(--ui-status-danger-fg, var(--color-error));
+}
+
 .am-elapsed {
   flex: 0 0 auto;
   color: var(--ui-text-muted-fg);

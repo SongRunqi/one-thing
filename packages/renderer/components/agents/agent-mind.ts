@@ -25,7 +25,21 @@ import type {
 /** 信箱那一行的固定副文案(保密纪律的**用户可见**那一半)。 */
 export const AGENT_MIND_INBOX_NOTE = '只记事件类型与到达时刻,不含正文'
 
-export type AgentMindState = 'idle' | 'thinking' | 'holding'
+/**
+ * 四态。`waiting` 是 E6 补上的那一格
+ * (claude-code-integration-v2 §6):**球在人这边**。
+ *
+ * 在它之前,一次挂在提问或审批上的等待在这一面上与「正在写一段很长的回答」长得
+ * 一模一样 —— F3 里 Iris 挂了 2 分 11 秒,界面自始至终只说「思考」。那不只是不
+ * 好看:用户没有任何理由去找那张要他点的卡,于是那 2 分 11 秒是他自己等出来的。
+ */
+export type AgentMindState = 'idle' | 'thinking' | 'holding' | 'waiting'
+
+/** 两条等待链各自的一句话。措辞刻意是**祈使**的:这一句要让人动手。 */
+const WAITING_TEXT: Readonly<Record<'interaction' | 'permission', string>> = {
+  interaction: '等你回答',
+  permission: '等你审批',
+}
 
 export interface AgentMindHeadline {
   state: AgentMindState
@@ -112,6 +126,15 @@ export function buildAgentMindHeadline(
   resolveRoomName: (roomSessionId: string) => string,
 ): AgentMindHeadline {
   if (!activity) return { state: 'idle', text: '空闲', since: 0 }
+  // 等人**排在思考前面**:两者在真机上同时成立(大脑那一轮确实还开着),而这两句
+  // 话里只有一句需要用户做点什么。判据的次序在这一面上就是「哪一句更该被读到」。
+  if (activity.waitingOn) {
+    return {
+      state: 'waiting',
+      text: WAITING_TEXT[activity.waitingOn.kind],
+      since: activity.waitingOn.since,
+    }
+  }
   if (activity.mind.state === 'thinking') {
     const room = resolveRoomName(activity.mind.roomSessionId) || activity.mind.roomSessionId
     return { state: 'thinking', text: `在「${room}」思考`, since: activity.mind.since }

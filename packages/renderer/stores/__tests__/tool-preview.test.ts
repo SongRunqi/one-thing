@@ -180,6 +180,89 @@ describe('formatToolCallPreview', () => {
       expect(formatToolCallPreview(tc({ toolName: 'unknown', arguments: {} }))).toBe('')
     })
   })
+
+  /**
+   * G5(claude-code-integration-v2 §9)。F3 现场那一行 `[object Object]` 的原始形状:
+   * `AskUserQuestion` 的 args 是 `{questions:[{...}]}`,泛化兜底的 `String(第一个值)`
+   * 拿到的是一个对象数组。
+   */
+  describe('结构化参数摘要(G5)', () => {
+    it('AskUserQuestion 印第一题的题干,而不是 [object Object]', () => {
+      const preview = formatToolCallPreview(tc({
+        toolName: 'AskUserQuestion',
+        arguments: {
+          questions: [
+            { header: '配色', question: '这一版的主色用暖色还是冷色?', options: [{ label: '暖' }] },
+          ],
+        },
+      }))
+      expect(preview).toBe('这一版的主色用暖色还是冷色?')
+      expect(preview).not.toContain('[object Object]')
+    })
+
+    it('多题时补一个计数 —— 「还有几题」决定要不要展开', () => {
+      expect(formatToolCallPreview(tc({
+        toolName: 'AskUserQuestion',
+        arguments: {
+          questions: [
+            { question: '主色?' },
+            { question: '字号?' },
+            { question: '圆角?' },
+          ],
+        },
+      }))).toBe('主色? (+2)')
+    })
+
+    it('超长题干截断', () => {
+      const long = '很'.repeat(200)
+      const preview = formatToolCallPreview(tc({
+        toolName: 'AskUserQuestion',
+        arguments: { questions: [{ question: long }] },
+      }))
+      expect(preview.length).toBeLessThanOrEqual(72)
+      expect(preview.endsWith('...')).toBe(true)
+    })
+
+    it('题干读不出来时退回 header,再退回「提问」—— 不落回泛化兜底', () => {
+      expect(formatToolCallPreview(tc({
+        toolName: 'AskUserQuestion',
+        arguments: { questions: [{ header: '配色' }] },
+      }))).toBe('配色')
+      expect(formatToolCallPreview(tc({
+        toolName: 'AskUserQuestion',
+        arguments: { questions: [] },
+      }))).toBe('提问')
+    })
+
+    it('未知工具:数组值给长度,对象值给键名,一个 [object Object] 都不许有', () => {
+      expect(formatToolCallPreview(tc({
+        toolName: 'unknown',
+        arguments: { questions: [{ a: 1 }, { a: 2 }, { a: 3 }] },
+      }))).toBe('questions: 3 项')
+      expect(formatToolCallPreview(tc({
+        toolName: 'unknown',
+        arguments: { spec: { width: 1, height: 2 } },
+      }))).toBe('spec: {width, height}')
+    })
+
+    it('全标量的短数组直接列出来 —— 「2 项」是没必要的信息损失', () => {
+      expect(formatToolCallPreview(tc({
+        toolName: 'unknown',
+        arguments: { tags: ['red', 'blue'] },
+      }))).toBe('tags: red, blue')
+    })
+
+    it('标量照旧只印值(行为逐字不变),空值跳到下一个键', () => {
+      expect(formatToolCallPreview(tc({
+        toolName: 'unknown',
+        arguments: { foo: 'bar' },
+      }))).toBe('bar')
+      expect(formatToolCallPreview(tc({
+        toolName: 'unknown',
+        arguments: { empty: [], nothing: null, real: 'yes' },
+      }))).toBe('yes')
+    })
+  })
 })
 
 describe('shortenPathsInText', () => {

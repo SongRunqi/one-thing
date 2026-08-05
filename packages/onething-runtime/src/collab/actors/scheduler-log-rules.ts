@@ -191,6 +191,93 @@ export interface CollabSchedulerDeadLetterRow extends CollabSchedulerLogBase {
   error: string
 }
 
+/* ── 外部通路三类(E6,claude-code-integration-v2 §6)──────────────────────── */
+//
+// 在这三类之前,一个外部 agent(Claude Code)的回合在时间轴上是**一片空白**:
+// 房间那一侧看得见发牌与收牌,中间那几分钟里它跑了什么工具、被哪一次提问卡住、
+// 最后是跑完了还是被掐了 —— 一个字都没有。F3 那 2 分 11 秒之所以只能靠截图复盘,
+// 根子就在这里。
+//
+// 三类都**只带 id 与枚举**,与本文件其余十四类同一条保密纪律:提问的题干不入账
+// (它在转录与交互卡里,按可见性走),工具的 input 不入账(那是正文的另一种形态)。
+
+/** 外部回合怎么结束的。`aborted` 含人级撤牌与 `connector.interrupt`(E5)。 */
+export type CollabExternalTurnOutcome = 'complete' | 'error' | 'aborted'
+
+/**
+ * 一次外部回合的起 / 落。
+ *
+ * 起落写成**同一类的两相**而不是两类:回查时这两行要成对读(「起了却没落」正是
+ * 挂死的形状),分成两类只会让 `--type` 过滤每次都要写两个名字。
+ */
+export interface CollabSchedulerExternalTurnRow extends CollabSchedulerLogBase {
+  type: 'external-turn'
+  agentId: string
+  /** 哪个执行器(`claude-code-agent` / `acp` / …)。 */
+  connectorId: string
+  phase: 'start' | 'end'
+  /** 仅 `end` 有。 */
+  outcome?: CollabExternalTurnOutcome
+  /** 仅 `end` 有,墙钟毫秒。 */
+  elapsedMs?: number
+}
+
+/**
+ * 外部回合里一次工具调用的**决定**(不是它的结果)。
+ *
+ * `hostTool` 是这一行最值钱的一格:宿主工具(经进程内 MCP 注入,跑在我们自己的
+ * 执行器里,真正的门在下游)与 SDK 自带工具(跑在 CLI 沙箱里,只剩审批这一座桥)
+ * 在 `canUseTool` 里是两条完全不同的路。分不开它们,一条 `allow` 就说不清是
+ * 「放行给下游去审」还是「用户点了同意」。
+ */
+export interface CollabSchedulerExternalToolRow extends CollabSchedulerLogBase {
+  type: 'external-tool'
+  agentId: string
+  connectorId: string
+  /** 归一化之后的名字(`mcp__onething__` 前缀已剥,与本地回合逐字相同)。 */
+  toolName: string
+  decision: 'allow' | 'deny'
+  hostTool: boolean
+  toolCallId?: string
+}
+
+/** 一次提问的五相。后四相与 `InteractionOutcome` 逐字同名(属主在 core/interaction)。 */
+export type CollabSchedulerInteractionPhase =
+  | 'open'
+  | 'answered'
+  | 'declined'
+  | 'timeout'
+  | 'aborted'
+
+/**
+ * 提问的开与结。
+ *
+ * `origin` 的字面量属主是 `@onething/core/interaction` 的 `InteractionOrigin`,
+ * 这里照抄一份而不是 import —— 本文件是纯规则的叶子,一条通往 core 的边会让
+ * 金重放与纯测试跟着搬。抄错不会静默:产生点那一侧是直接把 `request.origin`
+ * 赋进来的,core 哪天多一种来源,那一行当场红。
+ */
+export interface CollabSchedulerInteractionRow extends CollabSchedulerLogBase {
+  type: 'interaction'
+  phase: CollabSchedulerInteractionPhase
+  /** `InteractionRequest.id`。`open` 之后各相的 `triggeredBy` 就是它。 */
+  interactionId: string
+  /**
+   * 谁在问。**只有 `open` 有** —— 结算事件载的是答案,它身上根本没有这一格,
+   * 而在这里补一个猜出来的值就是往账里写一句假话。后四相靠 `triggeredBy`
+   * 指回 `open` 那一行,回查时两行一起读(这正是因果引用存在的理由)。
+   */
+  origin?: 'external-agent' | 'host-tool'
+  /**
+   * 几道题。同样**只有 `open` 有**。
+   * **题干不入账** —— 保密纪律,而「几题」已经够回答「它在等多大一件事」。
+   */
+  questionCount?: number
+  /** 提问所属的同事。会话不在任何一轮 v3 回合里时缺席。 */
+  agentId?: string
+  toolCallId?: string
+}
+
 export type CollabSchedulerLogRow =
   | CollabSchedulerPostedRow
   | CollabSchedulerHandRow
@@ -206,6 +293,9 @@ export type CollabSchedulerLogRow =
   | CollabSchedulerWorkerSpawnRow
   | CollabSchedulerWorkerResultRow
   | CollabSchedulerDeadLetterRow
+  | CollabSchedulerExternalTurnRow
+  | CollabSchedulerExternalToolRow
+  | CollabSchedulerInteractionRow
 
 export type CollabSchedulerLogType = CollabSchedulerLogRow['type']
 
@@ -225,6 +315,9 @@ export const COLLAB_SCHEDULER_LOG_TYPES = [
   'worker-spawn',
   'worker-result',
   'dead-letter',
+  'external-turn',
+  'external-tool',
+  'interaction',
 ] as const satisfies readonly CollabSchedulerLogType[]
 
 /** 双向穷尽守卫,与 `COLLAB_ACTOR_VERB_TABLE_IS_EXHAUSTIVE` 同一套(C3 纪律)。 */
@@ -369,6 +462,24 @@ export function collabSchedulerDeadLetter(
   input: Omit<CollabSchedulerDeadLetterRow, 'type'>,
 ): CollabSchedulerDeadLetterRow {
   return { ...input, type: 'dead-letter' }
+}
+
+export function collabSchedulerExternalTurn(
+  input: Omit<CollabSchedulerExternalTurnRow, 'type'>,
+): CollabSchedulerExternalTurnRow {
+  return { ...input, type: 'external-turn' }
+}
+
+export function collabSchedulerExternalTool(
+  input: Omit<CollabSchedulerExternalToolRow, 'type'>,
+): CollabSchedulerExternalToolRow {
+  return { ...input, type: 'external-tool' }
+}
+
+export function collabSchedulerInteraction(
+  input: Omit<CollabSchedulerInteractionRow, 'type'>,
+): CollabSchedulerInteractionRow {
+  return { ...input, type: 'interaction' }
 }
 
 /** 错误 → 账上那一行。**只取首行**,长了截断 —— 堆栈归 crash-log。 */

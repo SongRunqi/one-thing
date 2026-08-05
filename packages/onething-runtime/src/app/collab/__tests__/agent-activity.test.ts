@@ -13,6 +13,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { CollabAgentAccount, CollabRoomAccount } from '@onething/runtime/collab/actors'
+import { Interaction } from '@onething/core/interaction'
+import { Permission } from '@onething/core/permission'
 
 const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
@@ -284,6 +286,61 @@ describe('组装', () => {
     const serialized = JSON.stringify(buildCollabAgentActivity('iris'))
     expect(serialized).not.toContain('content')
     expect(serialized).not.toContain('summary')
+  })
+
+  /**
+   * 第十格 `waitingOn`(E6,claude-code-integration-v2 §6)。
+   *
+   * 它答的是「球在人这边吗」—— 在它之前,一次挂在提问或审批上的等待与「正在写一段
+   * 很长的回答」在快照上长得一模一样(F3 里 Iris 挂了 2 分 11 秒,界面只说生成中)。
+   */
+  describe('waitingOn —— 球在人这边(E6)', () => {
+    beforeEach(() => {
+      // clearSession 而不是 shutdown:前者**逐条 settle** 再删表(内核纪律),
+      // 于是上一条用例挂的那只 deadline 定时器不会活到下一条里去。
+      Interaction.clearSession('exec-1')
+      Permission.clearSession('exec-1')
+    })
+
+    it('没挂任何等待时这一格缺席(不是一个空对象)', () => {
+      serve('iris', { inFlight: { roomSessionId: 'room-1', since: 900 } })
+      beginCollabV3Turn({
+        agentId: 'iris', roomSessionId: 'room-1', execSessionId: 'exec-1',
+        leaseId: 'L1', epoch: 1, startedAt: 900,
+      })
+      expect(buildCollabAgentActivity('iris').waitingOn).toBeUndefined()
+    })
+
+    it('提问挂着 → kind=interaction,since 是提问发起的时刻', () => {
+      serve('iris', { inFlight: { roomSessionId: 'room-1', since: 900 } })
+      beginCollabV3Turn({
+        agentId: 'iris', roomSessionId: 'room-1', execSessionId: 'exec-1',
+        leaseId: 'L1', epoch: 1, startedAt: 900,
+      })
+      // 内核自己挂表,不需要 EventBus 在场(E1 的全部意义)。
+      void Interaction.ask({
+        sessionId: 'exec-1',
+        origin: 'external-agent',
+        questions: [{ id: 'q1', question: '暖色还是冷色?', options: [{ label: '暖' }] }],
+        timeoutMs: 60_000,
+      })
+      const waitingOn = buildCollabAgentActivity('iris').waitingOn
+      expect(waitingOn?.kind).toBe('interaction')
+      expect(waitingOn?.since).toBeGreaterThan(0)
+      // 大脑那一格照旧说「在想」—— 两件事同时成立,呈现层决定先读哪一句。
+      expect(buildCollabAgentActivity('iris').mind.state).toBe('thinking')
+    })
+
+    it('会话不在任何一轮 v3 回合里 → 读不到(提问记在执行会话上,房间会话没有 pending)', () => {
+      serve('iris', {})
+      void Interaction.ask({
+        sessionId: 'exec-1',
+        origin: 'external-agent',
+        questions: [{ id: 'q1', question: '?', options: [] }],
+        timeoutMs: 60_000,
+      })
+      expect(buildCollabAgentActivity('iris').waitingOn).toBeUndefined()
+    })
   })
 })
 

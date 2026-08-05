@@ -48,6 +48,11 @@ import {
   type CollabAgentAccount,
   type CollabRoomAccount,
 } from '@onething/runtime/collab/actors'
+// 两个内核的**只读**口(E6 的 `waitingOn`)。引的是 core 而不是装配层的门面:
+// 这个文件会被 IPC 层直接调用,一条通往门面的边会把「读一份快照」重新变成
+// 「把半个主进程拉起来」—— 与文件头那条端口纪律同一个理由。
+import { Interaction } from '@onething/core/interaction'
+import { Permission } from '@onething/core/permission'
 
 import { getEventBus } from '../events/index.js'
 import { collabV3TurnsOfAgent } from './actors/turn-context.js'
@@ -183,7 +188,47 @@ export function buildCollabAgentActivity(agentId: string): CollabAgentActivitySn
     workers: buildWorkers(view.account),
     ...(lastSpokeAt === undefined ? {} : { lastSpokeAt }),
     deadLetterCount: view.deadLetterCount,
+    ...(() => {
+      const waitingOn = buildWaitingOn(turns)
+      return waitingOn ? { waitingOn } : {}
+    })(),
   }
+}
+
+/**
+ * 它在等人吗(E6,§6)。
+ *
+ * 读两个内核**现成的** pending 表,一个字段都不写 —— 第十格与前九格同一条纪律
+ * (`buildCollabAgentActivity` 是纯读,任何时候调都安全)。为它新开一本账的代价
+ * 已经在别处付过好几次:两本账迟早会漂,而漂的那一刻界面上是一盏永远亮着的
+ * 「等你回答」,比没有这盏灯更坏。
+ *
+ * 扫的是这位同事**此刻在跑的那几个执行会话**:提问与审批都记在执行会话上
+ * (回合就跑在那儿),而房间会话上从来没有 pending。
+ *
+ * 两条链都挂着时取**更早**的那一条:这一格答的是「这个人被卡住多久了」,
+ * 不是「最新那张卡开了多久」。
+ */
+function buildWaitingOn(
+  turns: ReadonlyArray<{ execSessionId: string }>,
+): CollabAgentActivitySnapshot['waitingOn'] {
+  let best: { kind: 'interaction' | 'permission'; since: number } | undefined
+  const consider = (kind: 'interaction' | 'permission', since: number): void => {
+    if (!Number.isFinite(since)) return
+    if (!best || since < best.since) best = { kind, since }
+  }
+  for (const turn of turns) {
+    for (const request of Interaction.getPending(turn.execSessionId)) {
+      consider('interaction', request.createdAt)
+    }
+    for (const prompt of Permission.getPendingPrompts(turn.execSessionId)) {
+      // `queued` 的那些排在别人后面,球还不在人这边 —— 亮灯会把「排队」说成
+      // 「等你答」,而用户在界面上找不到那张要他点的卡。
+      if (prompt.promptState !== 'actionable') continue
+      consider('permission', prompt.createdAt)
+    }
+  }
+  return best
 }
 
 /**

@@ -501,7 +501,13 @@ export interface CollabInspectRowFilter {
   limit?: number
 }
 
-/** 行里那个「这是谁」的格子。没有 = 这一类行不属于任何人(posted / phase / 裁决)。 */
+/**
+ * 行里那个「这是谁」的格子。没有 = 这一类行不属于任何人(posted / phase / 裁决)。
+ *
+ * 外部通路三类(E6)也属于某个人:少了它们,`--agent iris` 会把她那一整轮外部回合
+ * 过滤掉 —— 而那恰恰是最想按人筛的一段。`interaction` 的 `agentId` 可能缺席(会话
+ * 不在任何一轮 v3 回合里),照旧原样返回。
+ */
 export function collabInspectRowAgentId(row: CollabSchedulerLogRow): string | undefined {
   switch (row.type) {
     case 'posted':
@@ -514,6 +520,9 @@ export function collabInspectRowAgentId(row: CollabSchedulerLogRow): string | un
     case 'revoke':
     case 'worker-spawn':
     case 'worker-result':
+    case 'external-turn':
+    case 'external-tool':
+    case 'interaction':
       return row.agentId
     default:
       return undefined
@@ -927,6 +936,22 @@ function collabInspectRowBody(
       return `${labelOf(row.agentId, options)}  卡=${shortCollabInspectId(row.cardId, 12)} 结果=${row.outcome}`
     case 'dead-letter':
       return `! ${row.actor}  事件=${row.eventType}  ${row.error}`
+    /* ── 外部通路三类(E6,claude-code-integration-v2 §6)── */
+    case 'external-turn':
+      return `${labelOf(row.agentId, options)}  ${row.connectorId} ${row.phase}`
+        + `${row.outcome ? ` 结果=${row.outcome}` : ''}`
+        + `${row.elapsedMs === undefined ? '' : ` 耗时=${formatCollabInspectDuration(row.elapsedMs)}`}`
+    case 'external-tool':
+      // `宿主`/`SDK` 那一格是这一行最值钱的信息:同一个 `allow` 在两条路上意思完全
+      // 不同(「放行给下游去审」vs「用户点了同意」)。
+      return `${labelOf(row.agentId, options)}  ${row.hostTool ? '宿主' : 'SDK'} ${row.toolName}`
+        + `  ${row.decision === 'allow' ? '放行' : '拒绝'}`
+        + `${row.toolCallId ? ` call=${shortCollabInspectId(row.toolCallId, 12)}` : ''}`
+    case 'interaction':
+      return `${row.agentId ? `${labelOf(row.agentId, options)}  ` : ''}${row.phase}`
+        + ` id=${shortCollabInspectId(row.interactionId, 12)}`
+        + `${row.questionCount === undefined ? '' : ` ${row.questionCount} 题`}`
+        + `${row.origin ? ` 来源=${row.origin}` : ''}`
     default:
       // 类型表已穷尽(`COLLAB_SCHEDULER_LOG_TABLE_IS_EXHAUSTIVE`),这条只兜住
       // 「盘上有一行是新版本写的」——诊断工具读老账/新账都不该炸。

@@ -84,8 +84,21 @@ const GROUP_LABEL: Record<RoomPresenceGroupKey, string> = {
 
 const GROUP_ORDER: readonly RoomPresenceGroupKey[] = ['busy', 'idle', 'retired']
 
-/** 在场态 → 行上那三个字。空闲不出词(它由"没有词"表达)。 */
+/**
+ * 在场态 → 行上那三个字。空闲不出词(它由"没有词"表达)。
+ *
+ * `waiting`(E6)与另外三个态的分别是:它说的不是「TA 在忙什么」,而是
+ * **「球在你这边」**。段分组照旧算「在忙」(`busy = presence !== 'idle'`)——
+ * 那个人的确还没闲下来,只是卡住他的是我们自己。
+ *
+ * 措辞是「处理」而不是成员条上那句「等你回答」:这张表按**在场态**取词,而
+ * `waiting` 一个态盖着提问与审批两条链。想说准就得把 `waitingOn.kind` 一路穿进来
+ * (改的是 `presence` 那个端口的签名,牵动每一个调用点)。一句对两条链都成立的
+ * 话,好过一句对一半的人说错的话 —— 要精确的那句在成员条 tooltip 上,那儿手里
+ * 有整份快照。
+ */
 const PRESENCE_DETAIL: Readonly<Record<RoomMemberPresence, string>> = {
+  waiting: '等你处理',
   generating: '生成中',
   holding: '持牌等大脑',
   working: '在干活',

@@ -46,6 +46,8 @@ const AGENT_ACTIVITY_FIELDS = [
   'workers',
   'lastSpokeAt',
   'deadLetterCount',
+  // E6:第十格 —— 「球在人这边」。见 `CollabAgentActivitySnapshot.waitingOn`。
+  'waitingOn',
 ] as const satisfies readonly (keyof CollabAgentActivitySnapshot)[]
 
 type AgentActivityMissing = Exclude<

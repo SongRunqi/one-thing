@@ -9,6 +9,10 @@ import type { ToolCall } from '@/types'
 const STREAMING_TAIL_MAX = 80
 const BASH_PREVIEW_MAX = 96
 const PATTERN_PREVIEW_MAX = 20
+/** 未知工具兜底摘要的上限。折叠行只有一行,再长也读不完。 */
+const GENERIC_PREVIEW_MAX = 60
+/** 提问题干的上限 —— 比泛化那格宽:题干是这一行存在的全部理由。 */
+const ASK_QUESTION_PREVIEW_MAX = 72
 
 /** Shorten a file path to its last 1-2 segments when it exceeds maxLen. */
 export function shortenPath(path: string, maxLen: number = 45): string {
@@ -205,6 +209,18 @@ function formatArgsSummary(toolCall: ToolCall): string {
       return String(args.timezone || args.format || 'current time')
     }
 
+    /**
+     * AskUserQuestion —— 外部 agent 的提问工具(E1 起是一等交互概念)。
+     *
+     * 它是 `[object Object]` 那条 bug 的原始现场:args 是 `{questions:[{...}]}`,
+     * 泛化兜底的 `String(第一个值)` 拿到的是一个对象数组。折叠行上该看见的是
+     * **第一题的题干** —— 那才是「它在等我答什么」这个问题的答案;多题时补一个
+     * 计数,因为「还有几题」决定了要不要展开。
+     */
+    case 'askuserquestion': {
+      return formatAskUserQuestionPreview(args)
+    }
+
     default: {
       // Generic fallback: prefer file path > pattern > command > first value
       const rawPath = pathArg(args)
@@ -213,10 +229,80 @@ function formatArgsSummary(toolCall: ToolCall): string {
       }
       if (args.pattern) return `"${args.pattern}"`
       if (args.command || args.CommandLine) return truncate(shortenPathsInText(String(args.command || args.CommandLine)), BASH_PREVIEW_MAX)
-      const firstVal = Object.values(args)[0]
-      return firstVal !== undefined ? String(firstVal) : ''
+      return firstArgSummary(args)
     }
   }
+}
+
+/**
+ * 未知工具的第一格参数摘要(G5)。
+ *
+ * 从前这里是 `String(Object.values(args)[0])` —— 对标量没问题,对**对象或数组**
+ * 就直接印出 `[object Object]`。那不是一个不好看的字符串,而是一格**假信息**:
+ * 折叠行看上去像是渲染坏了,于是没人会想到去展开它(详情面用的是
+ * `JSON.stringify`,一直是对的 —— 坏的只有这一行标题)。
+ *
+ * 修法是给结构化值一句**可读概要**而不是它的类型名:数组给长度、对象给键名。
+ * 不改成 `JSON.stringify`:折叠行只有一行,一份被截断的 JSON 比一句概要更难读,
+ * 而且真要看全文本来就该展开。
+ */
+function firstArgSummary(args: Record<string, unknown>): string {
+  for (const [key, value] of Object.entries(args)) {
+    if (value === undefined || value === null) continue
+    const summary = describeArgValue(value)
+    if (!summary) continue
+    // 标量照旧只印值(`read` 之外的绝大多数工具都是这一支,行为逐字不变);
+    // 结构化值带上键名 —— 没有它,「3 项」是一句谁都看不懂的话。
+    return isScalar(value) ? summary : `${key}: ${summary}`
+  }
+  return ''
+}
+
+function isScalar(value: unknown): boolean {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+}
+
+/** 一个参数值的一行概要。空数组 / 空对象返回空串(交给下一个键)。 */
+function describeArgValue(value: unknown): string {
+  if (isScalar(value)) return truncate(String(value), GENERIC_PREVIEW_MAX)
+  if (Array.isArray(value)) {
+    if (value.length === 0) return ''
+    // 全标量的短数组直接列出来 —— `["a","b"]` 印成「2 项」是没必要的信息损失。
+    if (value.every(isScalar)) {
+      return truncate(value.map(item => String(item)).join(', '), GENERIC_PREVIEW_MAX)
+    }
+    return `${value.length} 项`
+  }
+  if (typeof value === 'object') {
+    const keys = Object.keys(value as Record<string, unknown>)
+    if (keys.length === 0) return ''
+    return truncate(`{${keys.join(', ')}}`, GENERIC_PREVIEW_MAX)
+  }
+  return ''
+}
+
+/** `AskUserQuestion` 的 args 形状(SDK `AskUserQuestionInput`,E1 逐字对齐)。 */
+interface AskUserQuestionLike {
+  question?: unknown
+  header?: unknown
+}
+
+function formatAskUserQuestionPreview(args: Record<string, unknown>): string {
+  const raw = args.questions
+  const questions = Array.isArray(raw) ? raw : []
+  const first = questions.find(
+    (item): item is AskUserQuestionLike => typeof item === 'object' && item !== null,
+  )
+  const title = typeof first?.question === 'string' && first.question.trim()
+    ? first.question.trim()
+    : typeof first?.header === 'string' && first.header.trim()
+      ? first.header.trim()
+      : ''
+  // 一个字都读不出来时不要退回泛化兜底:那条路会把 questions 数组印回
+  // `questions: N 项`,而「在提问」这件事本身比参数结构更值得占这一行。
+  if (!title) return questions.length > 1 ? `${questions.length} 个问题` : '提问'
+  const head = truncate(title, ASK_QUESTION_PREVIEW_MAX)
+  return questions.length > 1 ? `${head} (+${questions.length - 1})` : head
 }
 
 function formatVariablePreview(args: Record<string, unknown>): string {
