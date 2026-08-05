@@ -121,8 +121,8 @@ function hangUp() {
   z-index: calc(var(--z-overlay) + 10);
   display: flex;
   flex-direction: column;
-  background: var(--ui-surface-app-bg, var(--bg-primary, var(--bg)));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-app-bg, var(--bg-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 /* ---- header: single hairline rule, ledger caption ---- */
@@ -131,7 +131,7 @@ function hangUp() {
   align-items: baseline;
   justify-content: space-between;
   padding: calc(env(safe-area-inset-top, 0px) + 18px) 24px 12px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   -webkit-app-region: drag;
 }
 
@@ -140,13 +140,13 @@ function hangUp() {
   font-weight: 650;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .call-header-elapsed {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* ---- stage: ink orb + status + live subtitle ---- */
@@ -177,7 +177,7 @@ function hangUp() {
 }
 
 .orb-ring {
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
 }
 
 .ring-outer {
@@ -199,18 +199,18 @@ function hangUp() {
 .orb-core {
   width: 14px;
   height: 14px;
-  background: var(--ui-text-muted-fg, var(--muted));
+  background: var(--ui-text-muted-fg);
 }
 
 /* listening: core beats in danger ink, rings ripple outward */
 .is-recording .orb-core {
-  background: var(--ui-status-danger-fg, #b3403a);
+  background: var(--ui-status-danger-fg);
   animation: orb-beat 1.6s ease-in-out infinite;
 }
 
 .is-recording .ring-outer,
 .is-recording .ring-middle {
-  border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
+  border-color: var(--ui-status-danger-border, var(--ui-border-default-border));
   animation: orb-ripple 1.6s ease-out infinite;
 }
 
@@ -221,19 +221,19 @@ function hangUp() {
 /* thinking / transcribing: dashed ring slowly rotates */
 .is-thinking .ring-dashed,
 .is-transcribing .ring-dashed {
-  border-color: var(--ui-text-muted-fg, var(--muted));
+  border-color: var(--ui-text-muted-fg);
   animation: orb-rotate 5s linear infinite;
 }
 
 /* speaking: accent core with breathing rings */
 .is-speaking .orb-core {
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   animation: orb-beat 1.1s ease-in-out infinite;
 }
 
 .is-speaking .ring-outer,
 .is-speaking .ring-middle {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, var(--ui-border-default-border, var(--border)));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 45%, var(--ui-border-default-border));
   animation: orb-ripple 1.1s ease-out infinite;
 }
 
@@ -262,7 +262,7 @@ function hangUp() {
   font-weight: 650;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .call-transcript {
@@ -276,7 +276,7 @@ function hangUp() {
   text-align: center;
   font-size: 13px;
   line-height: 1.35;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* ---- footer: hairline rule + round ink hang-up ---- */
@@ -286,7 +286,7 @@ function hangUp() {
   align-items: center;
   gap: 8px;
   padding: 18px 24px calc(env(safe-area-inset-bottom, 0px) + 30px);
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
+  border-top: 1px solid var(--ui-border-default-border);
 }
 
 .call-hangup {
@@ -295,10 +295,10 @@ function hangUp() {
   justify-content: center;
   width: 58px;
   height: 58px;
-  border: 1px solid var(--ui-status-danger-fg, #b3403a);
+  border: 1px solid var(--ui-status-danger-fg);
   border-radius: 50%;
   background: transparent;
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
   cursor: pointer;
   transition: background 0.15s ease, transform 0.15s ease;
 }
@@ -316,7 +316,7 @@ function hangUp() {
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .voice-call-fade-enter-active,

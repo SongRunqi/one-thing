@@ -110,7 +110,7 @@ function isModifiedClick(event: MouseEvent): boolean {
   min-width: 0;
   max-width: 100%;
   list-style: none;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .app-breadcrumb-item__content {
@@ -136,18 +136,18 @@ function isModifiedClick(event: MouseEvent): boolean {
 }
 
 .app-breadcrumb-item__link:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-breadcrumb-item__link:focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 2px var(--ui-surface-app-bg, var(--bg-app)),
-    0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 42%, transparent);
+    0 0 0 2px var(--ui-surface-app-bg),
+    0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg) 42%, transparent);
 }
 
 .app-breadcrumb-item.is-last {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-breadcrumb-item.is-last .app-breadcrumb-item__content {
@@ -161,7 +161,7 @@ function isModifiedClick(event: MouseEvent): boolean {
   flex: 0 0 auto;
   min-width: 1.7em;
   padding: 0 0.46em;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 72%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 72%, transparent);
   line-height: 1;
   user-select: none;
 }

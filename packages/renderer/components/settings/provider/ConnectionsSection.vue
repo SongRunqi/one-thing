@@ -657,12 +657,12 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 }
 
 .conn-rows {
-  border-top: 2px solid var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  border-top: 2px solid var(--settings-ink, var(--ui-text-primary-fg));
   min-width: 0;
 }
 
 .conn-row-block + .conn-row-block {
-  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
 }
 
 .conn-row {
@@ -674,16 +674,16 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   min-height: 54px;
   padding: 10px 2px;
   cursor: pointer;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   transition: background var(--duration-fast) var(--ease-default);
 }
 
 .conn-row:hover {
-  background: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 4%, transparent);
+  background: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 4%, transparent);
 }
 
 .conn-row:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 24%, transparent);
   outline-offset: -2px;
 }
 
@@ -694,8 +694,8 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg));
 }
 
 /* Status dot: hollow ring when off, filled dot when connected (paper halo masks the tile edge). */
@@ -705,15 +705,15 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   bottom: -4px;
   width: 8px;
   height: 8px;
-  border: 1px solid var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  border: 1px solid var(--settings-ink-4, var(--ui-text-muted-fg));
   border-radius: 50%;
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
-  box-shadow: 0 0 0 2px var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  background: var(--settings-paper, var(--ui-surface-app-bg));
+  box-shadow: 0 0 0 2px var(--settings-paper, var(--ui-surface-app-bg));
 }
 
 .conn-status-dot.on {
-  border-color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
-  background: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
+  border-color: var(--ui-status-success-fg);
+  background: var(--ui-status-success-fg);
 }
 
 .conn-main {
@@ -732,7 +732,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 
 .conn-name {
   overflow: hidden;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 13.5px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -742,10 +742,10 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 .conn-pill {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 999px;
   background: transparent;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   line-height: 1.5;
@@ -754,18 +754,18 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 }
 
 .conn-pill.green {
-  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, var(--text-success, var(--color-success))));
-  color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg));
+  color: var(--ui-status-success-fg);
 }
 
 .conn-pill.red {
-  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, var(--color-danger, #b3403a)));
-  color: var(--ui-status-danger-fg, var(--color-danger, #b3403a));
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
+  color: var(--ui-status-danger-fg, var(--color-danger));
 }
 
 .conn-summary {
   overflow: hidden;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
@@ -782,7 +782,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   padding: 4px 0;
   border: 0;
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   white-space: nowrap;
@@ -792,20 +792,20 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 
 .conn-action:hover,
 .mini-action:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .conn-action:focus-visible,
 .mini-action:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 24%, transparent);
   outline-offset: 2px;
 }
 
 .conn-action-icon {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   transition: transform var(--duration-fast) var(--ease-default);
 }
 
@@ -815,7 +815,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 
 .conn-detail {
   padding: 12px 0 18px 16px;
-  border-top: 1px dashed var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-top: 1px dashed var(--settings-rule-soft, var(--ui-border-subtle-border));
 }
 
 /* Family channel switcher: mono text tabs on a hairline, active gets the accent underline. */
@@ -823,7 +823,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   display: flex;
   gap: 20px;
   margin-bottom: 14px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
 }
 
 .channel-tab {
@@ -835,7 +835,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   white-space: nowrap;
@@ -844,21 +844,21 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 }
 
 .channel-tab:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .channel-tab.active {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  border-bottom-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
+  border-bottom-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .channel-tab:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 24%, transparent);
   outline-offset: 2px;
 }
 
 .channel-tab-check {
-  color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
+  color: var(--ui-status-success-fg);
 }
 
 .conn-detail-enter-active,
@@ -898,7 +898,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 
 .row-label {
   font-size: 14px;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   flex-shrink: 0;
   font-weight: 520;
 }
@@ -919,10 +919,10 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 1px 7px 2px;
-  border: 1px solid var(--ui-status-success-border, var(--ui-status-success-fg, var(--text-success, var(--color-success))));
+  border: 1px solid var(--ui-status-success-border, var(--ui-status-success-fg));
   border-radius: 999px;
   background: transparent;
-  color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
+  color: var(--ui-status-success-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-weight: 560;
@@ -967,14 +967,14 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 .row-note {
   min-width: 0;
   overflow: hidden;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .row-note.is-error {
-  color: var(--ui-status-danger-fg, var(--color-danger, #b3403a));
+  color: var(--ui-status-danger-fg, var(--color-danger));
 }
 
 .settings-row.compact-toggle-row {
@@ -984,10 +984,10 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 
 .row-input :deep(.app-input-control) {
   min-height: 32px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   box-shadow: none;
 }
 
@@ -997,12 +997,12 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 }
 
 .row-input.is-focused :deep(.app-input-control) {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
   box-shadow: none;
 }
 
 .row-input :deep(.app-input-inner::placeholder) {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
 }
 
 /*
@@ -1023,7 +1023,7 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   right: 1px;
   top: 50%;
   height: 0;
-  border-top: 1px dashed var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-top: 1px dashed var(--settings-rule, var(--ui-border-default-border));
   transition: border-color var(--duration-fast) var(--ease-default);
 }
 
@@ -1034,31 +1034,31 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 
 :deep(.app-switch.is-checked .app-switch-core)::after {
   border-top-style: solid;
-  border-top-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 65%, transparent);
+  border-top-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg)) 65%, transparent);
 }
 
 :deep(.app-switch .app-switch-action) {
   left: 1px;
   width: 10px;
   height: 10px;
-  border: 1px solid var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  border: 1px solid var(--settings-ink-4, var(--ui-text-muted-fg));
   border-radius: 50%;
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  background: var(--settings-paper, var(--ui-surface-app-bg));
   box-shadow: none;
   overflow: hidden;
   z-index: 1;
 }
 
 :deep(.app-switch.is-checked .app-switch-action) {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  color: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
+  background: var(--settings-accent, var(--ui-accent-primary-fg));
+  color: var(--settings-paper, var(--ui-surface-app-bg));
   transform: translate(calc(var(--app-switch-width) - 14px), -50%);
 }
 
 :deep(.app-switch .app-switch-core:focus-visible) {
   box-shadow: none;
-  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 24%, transparent);
   outline-offset: 2px;
 }
 </style>

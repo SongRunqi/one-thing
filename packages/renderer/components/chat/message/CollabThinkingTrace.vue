@@ -88,12 +88,12 @@ const label = computed(() =>
   font-size: 11px;
   line-height: 1.5;
   letter-spacing: 0.02em;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   user-select: none;
 }
 
 .trace-line:hover .trace-label {
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .trace-caret {

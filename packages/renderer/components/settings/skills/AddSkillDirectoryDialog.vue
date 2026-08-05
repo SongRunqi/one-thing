@@ -184,14 +184,14 @@ async function submit() {
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .field-label em {
   font-style: normal;
   text-transform: none;
   letter-spacing: normal;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .field-row {
@@ -210,11 +210,11 @@ async function submit() {
   appearance: none;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   border-radius: 0;
   padding: 4px 0 5px;
   font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   transition: border-color 0.12s ease;
 }
 
@@ -223,19 +223,19 @@ async function submit() {
   font-size: 12px;
 }
 
-.field-input:focus {
+input.field-input:focus {
   outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg);
 }
 
 .field-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 
 .field-hint {
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .text-action {
@@ -245,20 +245,20 @@ async function submit() {
   padding: 0;
   font-size: 12px;
   font-family: var(--font-mono, monospace);
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .text-action:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .text-action.is-primary {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .text-action:disabled {

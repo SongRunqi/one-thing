@@ -236,14 +236,14 @@ defineExpose({
 
 <style scoped>
 .app-button {
-  --app-button-tone: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
-  --app-button-fill: var(--ui-action-secondary-bg, var(--ui-state-hover-bg, var(--hover)));
-  --app-button-fg: var(--ui-action-secondary-fg, var(--ui-text-primary-fg, var(--text)));
-  --app-button-border: var(--ui-border-default-border, var(--border));
-  --app-button-hover-fill: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --app-button-hover-border: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
-  --app-button-contrast: var(--ui-action-primary-fg, #fff);
+  --app-button-tone: var(--ui-text-secondary-fg);
+  --app-button-fill: var(--ui-action-secondary-bg, var(--ui-state-hover-bg));
+  --app-button-fg: var(--ui-action-secondary-fg, var(--ui-text-primary-fg));
+  --app-button-border: var(--ui-border-default-border);
+  --app-button-hover-fill: var(--ui-surface-elevated-bg);
+  --app-button-hover-fg: var(--ui-text-primary-fg);
+  --app-button-hover-border: var(--ui-border-focus-border, var(--ui-accent-primary-fg));
+  --app-button-contrast: var(--ui-action-primary-fg);
   --app-button-border-style: solid;
   --app-button-height: 32px;
   --app-button-min-width: 72px;
@@ -311,66 +311,66 @@ defineExpose({
 }
 
 .app-button--primary {
-  --app-button-tone: var(--ui-accent-primary-fg, var(--accent));
-  --app-button-fill: var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent)));
-  --app-button-fg: var(--ui-action-primary-fg, #fff);
+  --app-button-tone: var(--ui-accent-primary-fg);
+  --app-button-fill: var(--ui-action-primary-bg, var(--ui-accent-primary-fg));
+  --app-button-fg: var(--ui-action-primary-fg);
   --app-button-border: var(--ui-action-primary-border, transparent);
-  --app-button-hover-fill: var(--ui-action-primary-hover-bg, color-mix(in srgb, var(--app-button-tone) 86%, var(--ui-text-primary-fg, #111) 14%));
-  --app-button-hover-fg: var(--ui-action-primary-hover-fg, var(--ui-action-primary-fg, #fff));
+  --app-button-hover-fill: var(--ui-action-primary-hover-bg, color-mix(in srgb, var(--app-button-tone) 86%, var(--ui-text-primary-fg) 14%));
+  --app-button-hover-fg: var(--ui-action-primary-hover-fg, var(--ui-action-primary-fg));
   --app-button-hover-border: var(--ui-action-primary-hover-border, var(--app-button-tone));
 }
 
 .app-button--success {
-  --app-button-tone: var(--ui-status-success-fg, var(--color-success, #10b981));
+  --app-button-tone: var(--ui-status-success-fg, var(--color-success));
   --app-button-fill: var(--app-button-tone);
-  --app-button-fg: var(--ui-status-success-on-fg, #fff);
+  --app-button-fg: var(--ui-status-success-on-fg);
   --app-button-border: var(--app-button-tone);
-  --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 84%, var(--ui-text-primary-fg, #111) 16%);
-  --app-button-hover-fg: var(--ui-status-success-on-fg, #fff);
+  --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 84%, var(--ui-text-primary-fg) 16%);
+  --app-button-hover-fg: var(--ui-status-success-on-fg);
   --app-button-hover-border: var(--app-button-hover-fill);
 }
 
 .app-button--warning {
-  --app-button-tone: var(--ui-status-warning-fg, var(--color-warning, #f59e0b));
+  --app-button-tone: var(--ui-status-warning-fg, var(--color-warning));
   --app-button-fill: var(--app-button-tone);
-  --app-button-fg: var(--ui-status-warning-on-fg, #111);
+  --app-button-fg: var(--ui-status-warning-on-fg);
   --app-button-border: var(--app-button-tone);
-  --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 82%, var(--ui-text-primary-fg, #111) 18%);
-  --app-button-hover-fg: var(--ui-status-warning-on-fg, #111);
+  --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 82%, var(--ui-text-primary-fg) 18%);
+  --app-button-hover-fg: var(--ui-status-warning-on-fg);
   --app-button-hover-border: var(--app-button-hover-fill);
-  --app-button-contrast: var(--ui-status-warning-on-fg, #111);
+  --app-button-contrast: var(--ui-status-warning-on-fg);
 }
 
 .app-button--danger {
-  --app-button-tone: var(--ui-status-danger-fg, var(--color-danger, #b3403a));
+  --app-button-tone: var(--ui-status-danger-fg, var(--color-danger));
   --app-button-fill: var(--app-button-tone);
-  --app-button-fg: var(--ui-status-danger-on-fg, #fff);
+  --app-button-fg: var(--ui-status-danger-on-fg);
   --app-button-border: var(--app-button-tone);
-  --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 84%, var(--ui-text-primary-fg, #111) 16%);
-  --app-button-hover-fg: var(--ui-status-danger-on-fg, #fff);
+  --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 84%, var(--ui-text-primary-fg) 16%);
+  --app-button-hover-fg: var(--ui-status-danger-on-fg);
   --app-button-hover-border: var(--app-button-hover-fill);
 }
 
 .app-button--info {
   --app-button-tone: var(--ui-status-info-fg, var(--color-info));
   --app-button-fill: var(--app-button-tone);
-  --app-button-fg: var(--ui-status-info-on-fg, #111);
+  --app-button-fg: var(--ui-status-info-on-fg);
   --app-button-border: var(--app-button-tone);
-  --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 82%, var(--ui-text-primary-fg, #111) 18%);
-  --app-button-hover-fg: var(--ui-status-info-on-fg, #111);
+  --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 82%, var(--ui-text-primary-fg) 18%);
+  --app-button-hover-fg: var(--ui-status-info-on-fg);
   --app-button-hover-border: var(--app-button-hover-fill);
-  --app-button-contrast: var(--ui-status-info-on-fg, #111);
+  --app-button-contrast: var(--ui-status-info-on-fg);
 }
 
 .app-button.has-custom-color {
   --app-button-tone: var(--app-button-custom-color);
   --app-button-fill: var(--app-button-custom-color);
-  --app-button-fg: var(--app-button-custom-fg, var(--ui-action-primary-fg, #fff));
+  --app-button-fg: var(--app-button-custom-fg, var(--ui-action-primary-fg));
   --app-button-border: var(--app-button-custom-color);
-  --app-button-hover-fill: color-mix(in srgb, var(--app-button-custom-color) 84%, var(--ui-text-primary-fg, #111) 16%);
-  --app-button-hover-fg: var(--app-button-custom-fg, var(--ui-action-primary-fg, #fff));
+  --app-button-hover-fill: color-mix(in srgb, var(--app-button-custom-color) 84%, var(--ui-text-primary-fg) 16%);
+  --app-button-hover-fg: var(--app-button-custom-fg, var(--ui-action-primary-fg));
   --app-button-hover-border: var(--app-button-hover-fill);
-  --app-button-contrast: var(--app-button-custom-fg, var(--ui-action-primary-fg, #fff));
+  --app-button-contrast: var(--app-button-custom-fg, var(--ui-action-primary-fg));
 }
 
 .app-button:hover:not(:disabled) {
@@ -402,17 +402,17 @@ defineExpose({
 }
 
 .app-button--default.is-plain:not(.has-custom-color) {
-  --app-button-border: var(--ui-border-default-border, var(--border));
+  --app-button-border: var(--ui-border-default-border);
   --app-button-fill: transparent;
-  --app-button-hover-border: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-hover-border: var(--ui-border-focus-border, var(--ui-accent-primary-fg));
+  --app-button-hover-fill: var(--ui-state-hover-bg);
+  --app-button-hover-fg: var(--ui-text-primary-fg);
 
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
 }
 
 .app-button--default.is-plain:not(.has-custom-color):hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-button.is-dashed:not(.is-text) {
@@ -426,9 +426,9 @@ defineExpose({
 }
 
 .app-button--default.is-dashed:not(.is-text):not(.has-custom-color) {
-  --app-button-border: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 82%, var(--ui-text-secondary-fg, var(--text-secondary)));
+  --app-button-border: color-mix(in srgb, var(--ui-border-default-border) 82%, var(--ui-text-secondary-fg));
 
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
 }
 
 .app-button.is-dashed:not(.is-text):hover:not(:disabled) {
@@ -468,10 +468,10 @@ defineExpose({
 }
 
 .app-button--default.is-text:not(.has-custom-color) {
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-hover-fill: var(--ui-state-hover-bg);
+  --app-button-hover-fg: var(--ui-text-primary-fg);
 
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
 }
 
 .app-button.is-text:hover:not(:disabled) {
@@ -479,7 +479,7 @@ defineExpose({
 }
 
 .app-button--default.is-text:not(.has-custom-color):hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-button.is-round {

@@ -297,7 +297,7 @@ html[data-theme='light'] .app-dialog-overlay {
 .app-dialog-overlay.is-paper {
   background: var(
     --app-dialog-overlay-bg,
-    color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent)
+    color-mix(in srgb, var(--ui-surface-app-bg) 55%, transparent)
   );
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -314,8 +314,8 @@ html[data-theme='light'] .app-dialog-overlay {
      per-section paddings are then set to 0 by the caller. */
   padding: var(--app-dialog-padding, 0);
   border-radius: var(--app-dialog-radius, var(--radius-lg));
-  border: 1px solid var(--app-dialog-border, var(--ui-border-default-border, var(--border)));
-  background: var(--app-dialog-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));
+  border: 1px solid var(--app-dialog-border, var(--ui-border-default-border));
+  background: var(--app-dialog-bg, var(--ui-surface-elevated-bg));
   /* Matches the original global `.dialog` exactly (components.css:124) so the
      sixteen migrations are pixel-equivalent; `--shadow-elevated` is the last
      resort rather than the first, per 方案 §2.2. */
@@ -325,8 +325,8 @@ html[data-theme='light'] .app-dialog-overlay {
 
 .app-dialog.is-paper {
   border-radius: var(--app-dialog-radius, 0);
-  border-color: var(--app-dialog-border, var(--ui-border-strong-border, var(--border-strong, var(--border))));
-  background: var(--app-dialog-bg, var(--ui-surface-app-bg, var(--bg)));
+  border-color: var(--app-dialog-border, var(--ui-border-strong-border));
+  background: var(--app-dialog-bg, var(--ui-surface-app-bg));
   box-shadow: var(--app-dialog-shadow, var(--shadow-paper));
 }
 
@@ -344,13 +344,13 @@ html[data-theme='light'] .app-dialog-overlay {
 }
 
 .app-dialog.has-header-divider .app-dialog-header {
-  border-bottom: 1px solid var(--app-dialog-divider, var(--ui-border-default-border, var(--border)));
+  border-bottom: 1px solid var(--app-dialog-divider, var(--ui-border-default-border));
 }
 
 .app-dialog.is-paper.has-header-divider .app-dialog-header {
   border-bottom: 1px solid var(
     --app-dialog-divider,
-    color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent)
+    color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent)
   );
 }
 
@@ -380,7 +380,7 @@ html[data-theme='light'] .app-dialog-overlay {
   font-size: var(--app-dialog-title-size, var(--type-headline-size));
   font-weight: var(--type-headline-weight);
   line-height: var(--type-headline-line-height);
-  color: var(--app-dialog-accent, var(--ui-text-primary-fg, var(--text)));
+  color: var(--app-dialog-accent, var(--ui-text-primary-fg));
 }
 
 .app-dialog.is-paper .app-dialog-header :deep(h3) {
@@ -417,13 +417,13 @@ html[data-theme='light'] .app-dialog-overlay {
 }
 
 .app-dialog.has-actions-divider .app-dialog-actions {
-  border-top: 1px solid var(--app-dialog-divider, var(--ui-border-default-border, var(--border)));
+  border-top: 1px solid var(--app-dialog-divider, var(--ui-border-default-border));
 }
 
 .app-dialog.is-paper.has-actions-divider .app-dialog-actions {
   border-top: 1px solid var(
     --app-dialog-divider,
-    color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 55%, transparent)
+    color-mix(in srgb, var(--ui-border-subtle-border) 55%, transparent)
   );
 }
 
@@ -483,27 +483,27 @@ html[data-theme='light'] .app-dialog-overlay {
   padding: 0;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-default);
 }
 
 .app-dialog-text-btn:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .app-dialog-text-btn.is-primary,
 .app-dialog-text-btn.is-primary:hover:not(:disabled) {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .app-dialog-text-btn.is-danger,
 .app-dialog-text-btn.is-danger:hover:not(:disabled) {
-  color: var(--ui-status-danger-fg, var(--text-error));
-  text-decoration-color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
+  text-decoration-color: var(--ui-status-danger-fg);
 }
 
 .app-dialog-text-btn:disabled {
@@ -518,6 +518,6 @@ html[data-theme='light'] .app-dialog-overlay {
   outline: none;
   /* Kept on one line: `shadow-literal-floating` reads line-by-line, and a
      wrapped value hides the `var(--…)` that proves this is not a literal. */
-  box-shadow: 0 0 0 2px var(--ui-surface-app-bg, var(--bg-app)), 0 0 0 4px var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: 0 0 0 2px var(--ui-surface-app-bg), 0 0 0 4px var(--ui-state-focus-ring, var(--ui-accent-primary-fg));
 }
 </style>

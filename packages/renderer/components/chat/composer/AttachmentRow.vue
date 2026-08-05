@@ -108,7 +108,7 @@ function handleWheel(event: WheelEvent) {
 .attachment-frame {
   position: relative;
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   border-radius: var(--radius-xs, 4px);
 }
 
@@ -118,12 +118,12 @@ function handleWheel(event: WheelEvent) {
   left: 10px;
   z-index: 1;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   pointer-events: none;
   user-select: none;
 }
@@ -172,10 +172,10 @@ function handleWheel(event: WheelEvent) {
   gap: 6px;
   height: 24px;
   padding: 0 9px;
-  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
   border-radius: 3px;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }

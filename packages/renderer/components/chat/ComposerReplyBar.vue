@@ -37,18 +37,18 @@ const emit = defineEmits<{ cancel: [] }>()
   gap: 6px;
   min-width: 0;
   padding: 2px 4px 2px 7px;
-  border-left: 2px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 30%, transparent);
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--ui-text-primary-fg) 30%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 3%, transparent);
   font-size: 11px;
   line-height: 1.55;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   user-select: none;
 }
 
 .reply-author {
   flex-shrink: 0;
   font-weight: 600;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .reply-excerpt {
@@ -68,17 +68,17 @@ const emit = defineEmits<{ cancel: [] }>()
   font: inherit;
   font-size: 13px;
   line-height: 1;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .reply-cancel:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .reply-cancel:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 1px;
 }
 </style>

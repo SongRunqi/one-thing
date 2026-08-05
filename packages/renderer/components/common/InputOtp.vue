@@ -346,18 +346,18 @@ defineExpose({
   align-items: center;
   min-width: 0;
   gap: 8px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-input-otp-field {
   width: var(--app-input-otp-size);
   height: var(--app-input-otp-size);
   flex: 0 0 var(--app-input-otp-size);
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
   outline: none;
-  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-input-bg);
+  color: var(--ui-text-primary-fg);
   font: inherit;
   font-size: var(--app-input-otp-font-size);
   font-weight: 650;
@@ -384,23 +384,23 @@ defineExpose({
 }
 
 .app-input-otp-field:hover,
-.app-input-otp-field:focus {
-  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+input.app-input-otp-field:focus {
+  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg));
+  background: var(--ui-surface-elevated-bg);
 }
 
-.app-input-otp-field:focus {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 24%, transparent);
+input.app-input-otp-field:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 24%, transparent);
 }
 
 .app-input-otp--filled .app-input-otp-field {
   border-color: transparent;
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .app-input-otp--filled .app-input-otp-field:hover,
-.app-input-otp--filled .app-input-otp-field:focus {
-  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
+.app-input-otp--filled input.app-input-otp-field:focus {
+  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg));
 }
 
 .app-input-otp--underlined .app-input-otp-field {
@@ -410,8 +410,8 @@ defineExpose({
   box-shadow: none;
 }
 
-.app-input-otp--underlined .app-input-otp-field:focus {
-  box-shadow: 0 1px 0 var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
+.app-input-otp--underlined input.app-input-otp-field:focus {
+  box-shadow: 0 1px 0 var(--ui-border-focus-border, var(--ui-accent-primary-fg));
 }
 
 .app-input-otp.is-disabled,
@@ -429,7 +429,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   min-width: 6px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 13px;
   font-weight: 600;
   line-height: 1;

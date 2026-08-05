@@ -1180,16 +1180,16 @@ defineExpose<VirtualTableRef>({
 
 <style scoped>
 .virtual-table {
-  --virtual-table-bg: var(--ui-surface-panel-bg, var(--panel, var(--bg)));
-  --virtual-table-head-bg: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+  --virtual-table-bg: var(--ui-surface-panel-bg);
+  --virtual-table-head-bg: var(--ui-surface-elevated-bg);
   --virtual-table-row-bg: var(--virtual-table-bg);
-  --virtual-table-row-hover-bg: var(--ui-state-hover-bg, var(--hover));
-  --virtual-table-stripe-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 5%, transparent);
-  --virtual-table-border: var(--ui-border-default-border, var(--border));
-  --virtual-table-strong-border: color-mix(in srgb, var(--virtual-table-border) 72%, var(--ui-text-primary-fg, var(--text)) 28%);
-  --virtual-table-fg: var(--ui-text-primary-fg, var(--text));
-  --virtual-table-muted-fg: var(--ui-text-muted-fg, var(--muted));
-  --virtual-table-accent: var(--ui-accent-primary-fg, var(--accent));
+  --virtual-table-row-hover-bg: var(--ui-state-hover-bg);
+  --virtual-table-stripe-bg: color-mix(in srgb, var(--ui-text-muted-fg) 5%, transparent);
+  --virtual-table-border: var(--ui-border-default-border);
+  --virtual-table-strong-border: color-mix(in srgb, var(--virtual-table-border) 72%, var(--ui-text-primary-fg) 28%);
+  --virtual-table-fg: var(--ui-text-primary-fg);
+  --virtual-table-muted-fg: var(--ui-text-muted-fg);
+  --virtual-table-accent: var(--ui-accent-primary-fg);
   width: 100%;
   color: var(--virtual-table-fg);
   font-family: var(--font-body, system-ui, sans-serif);

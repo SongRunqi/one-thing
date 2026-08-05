@@ -182,24 +182,24 @@ defineEmits<Emits>()
 }
 
 .import-btn {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .import-btn:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .add-server-btn {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .add-server-btn:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 /* Empty state: dashed frame, faint ink, no fill */
@@ -211,23 +211,23 @@ defineEmits<Emits>()
   padding: 40px 24px;
   text-align: center;
   background: transparent;
-  border: 1px dashed var(--ui-border-default-border, var(--border));
+  border: 1px dashed var(--ui-border-default-border);
 }
 
 .empty-state svg {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   margin-bottom: 14px;
 }
 
 .empty-state p {
   margin: 0;
   font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .empty-state .hint {
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   margin-top: 4px;
 }
 

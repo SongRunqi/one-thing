@@ -140,9 +140,9 @@ defineExpose({
 
 <style scoped>
 .app-link {
-  --app-link-fg: var(--ui-text-link-fg, var(--text-link, var(--ui-accent-primary-fg, var(--accent))));
-  --app-link-hover-fg: var(--ui-text-link-hover-fg, var(--text-link-hover, var(--ui-accent-primary-fg, var(--accent))));
-  --app-link-disabled-fg: var(--ui-text-disabled-fg, var(--text-input-disabled, var(--ui-text-muted-fg, var(--muted))));
+  --app-link-fg: var(--ui-text-link-fg);
+  --app-link-hover-fg: var(--ui-text-link-hover-fg);
+  --app-link-disabled-fg: var(--ui-text-disabled-fg);
   --app-link-focus-ring: color-mix(in srgb, var(--app-link-fg) 45%, transparent);
   --app-link-icon-gap: 0.34em;
 
@@ -174,7 +174,7 @@ defineExpose({
 .app-link:focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 2px var(--ui-surface-app-bg, var(--bg-app)),
+    0 0 0 2px var(--ui-surface-app-bg),
     0 0 0 4px var(--app-link-focus-ring);
 }
 

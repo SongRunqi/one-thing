@@ -568,12 +568,12 @@ defineExpose<EditorHandle>({
 }
 
 .profile-composer {
-  --editor-text: var(--ui-editor-text-fg, var(--text-input));
+  --editor-text: var(--ui-editor-text-fg);
 }
 
 .profile-inline-message,
 .profile-markdown-document,
 .profile-code-file {
-  --editor-text: var(--ui-text-primary-fg, var(--text));
+  --editor-text: var(--ui-text-primary-fg);
 }
 </style>

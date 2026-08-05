@@ -596,7 +596,7 @@ async function runMenuAction(itemId: string): Promise<void> {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-bottom: 1px solid var(--ui-border-strong-border);
 }
 
 /* P3: the room picker is `<Select>` — the component owns the frame, the fill
@@ -623,11 +623,11 @@ async function runMenuAction(itemId: string): Promise<void> {
   border: none;
   background: transparent;
   cursor: pointer;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .board-budget:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .board-budget-input {
@@ -635,10 +635,10 @@ async function runMenuAction(itemId: string): Promise<void> {
   font-size: 12px;
   width: 64px;
   padding: 2px 5px;
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: 5px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-app-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .board-freeze {
@@ -647,7 +647,7 @@ async function runMenuAction(itemId: string): Promise<void> {
   border: none;
   background: transparent;
   cursor: pointer;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 视图切换:一行墨灰文字,选中只加深不做胶囊底(§3.6) */
@@ -657,12 +657,12 @@ async function runMenuAction(itemId: string): Promise<void> {
   border: none;
   background: transparent;
   cursor: pointer;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .board-view-toggle:hover,
 .board-view-toggle.is-active {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .board-view-count {
@@ -671,21 +671,21 @@ async function runMenuAction(itemId: string): Promise<void> {
 }
 
 .board-freeze.is-frozen {
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
 }
 
 .board-empty {
   padding: 24px 16px;
   font-size: 13px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 冲突/失败提示:一行墨灰,不做卡片不做图标(§3.6) */
 .board-hint {
   padding: 6px 10px;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  color: var(--ui-text-muted-fg);
+  border-bottom: 1px solid var(--ui-border-subtle-border);
 }
 
 .board-columns {
@@ -707,7 +707,7 @@ async function runMenuAction(itemId: string): Promise<void> {
 .board-column-title {
   font-size: 11px;
   letter-spacing: 0.06em;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   display: flex;
   justify-content: space-between;
   padding: 0 2px;
@@ -728,7 +728,7 @@ async function runMenuAction(itemId: string): Promise<void> {
 /* 从消息里点标签跳过来的那张卡:亮一下就退,不留常驻选中态 —— 定位是一次
    动作,不是一种状态。 */
 .board-card-slot.is-focused .board-card {
-  --board-focus-accent: var(--ui-accent-primary-fg, var(--accent));
+  --board-focus-accent: var(--ui-accent-primary-fg);
   border-color: var(--board-focus-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--board-focus-accent) 18%, transparent);
   transition: box-shadow 240ms ease, border-color 240ms ease;
@@ -737,9 +737,9 @@ async function runMenuAction(itemId: string): Promise<void> {
 .board-card {
   font: inherit;
   text-align: left;
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: 6px;
-  background: var(--ui-surface-app-bg, var(--bg));
+  background: var(--ui-surface-app-bg);
   padding: 7px 8px;
   cursor: pointer;
   display: flex;
@@ -763,7 +763,7 @@ async function runMenuAction(itemId: string): Promise<void> {
   font: inherit;
   font-size: 13px;
   line-height: 1;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   opacity: 0;
 }
@@ -774,13 +774,13 @@ async function runMenuAction(itemId: string): Promise<void> {
 }
 
 .board-card-more:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .board-card-title {
   font-size: 12px;
   padding-right: 16px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -790,7 +790,7 @@ async function runMenuAction(itemId: string): Promise<void> {
 /* 受阻原因 / 执行证据:同一条墨灰小字,两行截断,全文进 title。 */
 .board-card-note {
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -802,7 +802,7 @@ async function runMenuAction(itemId: string): Promise<void> {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 指派人:章 + 名字一行。章跟着 meta 的 11px 走,只有图片头像需要一个盒子。 */
@@ -819,11 +819,11 @@ async function runMenuAction(itemId: string): Promise<void> {
 }
 
 .board-card-reject {
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
 }
 
 .board-card-ask {
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
   font-weight: 600;
 }
 
@@ -844,7 +844,7 @@ async function runMenuAction(itemId: string): Promise<void> {
 
 .board-card-files-more {
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .deliverable-file {
@@ -856,7 +856,7 @@ async function runMenuAction(itemId: string): Promise<void> {
   padding: 0;
   cursor: pointer;
   max-width: 100%;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -865,7 +865,7 @@ async function runMenuAction(itemId: string): Promise<void> {
 
 .deliverable-file:hover,
 .deliverable-file:focus-visible {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .deliverable-file.is-card {
@@ -894,14 +894,14 @@ async function runMenuAction(itemId: string): Promise<void> {
 .deliverable-task {
   font-size: 11px;
   letter-spacing: 0.06em;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   padding-bottom: 3px;
   margin-bottom: 2px;
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border);
 }
 
 .deliverable-name {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   flex: 0 0 auto;
 }
 

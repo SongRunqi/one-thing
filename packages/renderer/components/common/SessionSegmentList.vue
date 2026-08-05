@@ -195,7 +195,7 @@ function fileSummary(files: SessionSegmentFile[]): string {
 }
 
 .segment-item.clickable .segment-row:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent);
 }
 
 /* A segment with no anchor cannot be jumped to; say so by going inert rather
@@ -211,12 +211,12 @@ function fileSummary(files: SessionSegmentFile[]): string {
   font-family: var(--type-mono-font, monospace);
   font-size: 10px;
   line-height: 1.8;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* goal 段是事实投影而非推断,给一道朱砂标出来 */
 .segment-item.is-goal .item-index {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .item-body {
@@ -249,7 +249,7 @@ function fileSummary(files: SessionSegmentFile[]): string {
   margin-left: auto;
   font-family: var(--type-mono-font, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .item-outcome {
@@ -258,7 +258,7 @@ function fileSummary(files: SessionSegmentFile[]): string {
   font-size: 9.5px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .outcome-blocked,
@@ -273,7 +273,7 @@ function fileSummary(files: SessionSegmentFile[]): string {
 .item-detail {
   display: -webkit-box;
   margin-top: 1px;
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 78%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 78%, transparent);
   overflow: hidden;
   /* Four lines, not two: an `update` folds several turns together, so the
      detail is where the substance accumulates. The host scrolls, so the clamp
@@ -288,7 +288,7 @@ function fileSummary(files: SessionSegmentFile[]): string {
   margin-top: 2px;
   font-family: var(--type-mono-font, monospace);
   font-size: 10px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   overflow: hidden;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -332,13 +332,13 @@ function fileSummary(files: SessionSegmentFile[]): string {
 }
 
 .topic-message-row:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent);
 }
 
 .topic-message-tick {
   flex: 0 0 auto;
   width: 7px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 65%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-muted-fg) 65%, transparent);
   transform: translateY(-3px);
 }
 
@@ -346,7 +346,7 @@ function fileSummary(files: SessionSegmentFile[]): string {
   min-width: 0;
   font-size: 11.5px;
   line-height: 1.35;
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 84%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 84%, transparent);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -358,6 +358,6 @@ function fileSummary(files: SessionSegmentFile[]): string {
   padding: 2px 0;
   font-size: 11px;
   font-style: italic;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 </style>

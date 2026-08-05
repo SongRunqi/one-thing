@@ -22,7 +22,7 @@
   align-items: center;
   height: 44px;
   margin-top: -12px;
-  background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--bg-app, var(--bg))));
+  background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg));
   -webkit-app-region: drag;
 }
 
@@ -35,7 +35,7 @@
   height: 12px;
   background: linear-gradient(
     to bottom,
-    var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--bg-app, var(--bg)))),
+    var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg)),
     transparent
   );
   pointer-events: none;

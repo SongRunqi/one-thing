@@ -52,7 +52,7 @@ const titleStyle = computed<StyleValue>(() => ({
 .app-menu-item-group-title {
   min-width: 0;
   padding-block: 6px 4px;
-  color: var(--text-menu-header, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--text-menu-header, var(--ui-text-muted-fg));
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;

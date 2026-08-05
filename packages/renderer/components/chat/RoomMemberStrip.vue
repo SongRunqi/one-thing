@@ -328,9 +328,9 @@ async function commit(update: {
   justify-content: center;
   padding: 0;
   appearance: none;
-  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg) 35%, transparent);
   border-radius: 50%;
-  background: var(--ui-tab-bar-surface-bg, var(--ui-surface-app-bg, var(--bg)));
+  background: var(--ui-tab-bar-surface-bg, var(--ui-surface-app-bg));
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
@@ -355,19 +355,19 @@ async function commit(update: {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  box-shadow: 0 0 0 1.5px var(--ui-tab-bar-surface-bg, var(--ui-surface-app-bg, var(--bg)));
+  box-shadow: 0 0 0 1.5px var(--ui-tab-bar-surface-bg, var(--ui-surface-app-bg));
 }
 
 .member-badge.is-generating {
-  background: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  background: var(--ui-status-success-fg, var(--color-success));
 }
 
 .member-badge.is-holding {
-  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  background: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .member-badge.is-working {
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 .member-chip + .member-chip {
@@ -391,11 +391,11 @@ async function commit(update: {
 }
 
 .room-members.is-pair-dm .member-chip:hover {
-  border-color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 35%, transparent);
+  border-color: color-mix(in srgb, var(--ui-text-primary-fg) 35%, transparent);
 }
 
 .member-chip:hover {
-  border-color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--ui-text-primary-fg);
   /* Lift by stacking order, not by size: §3.6 bans hover scaling. */
   z-index: 1;
 }
@@ -404,18 +404,18 @@ async function commit(update: {
    同一句法(agent-space-workbench.md P3)。只在真会下钻的形态上给,
    旧壳里那颗只开名册菜单的成员堆保持原样,免得承诺一件不会发生的事。 */
 .room-members.is-space-target .member-chip:hover {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
 }
 
 .member-chip:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 1px;
 }
 
 /* The lead wears a firmer ring — the same "thicken the mark" register the
    member tick uses in the settings dialog. */
 .member-chip.is-pm {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 70%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 70%, transparent);
 }
 
 /* 墓碑:已退休,或者花名册上一个查无此人的 id。照旧显示(才移得走),但虚描 +
@@ -430,13 +430,13 @@ async function commit(update: {
 .room-members .member-add {
   margin-left: 12px;
   border-style: dashed;
-  border-color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 35%, transparent);
-  color: var(--ui-text-muted-fg, var(--muted));
+  border-color: color-mix(in srgb, var(--ui-text-primary-fg) 35%, transparent);
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
 }
 
 .member-add:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .member-error {
@@ -446,6 +446,6 @@ async function commit(update: {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 </style>

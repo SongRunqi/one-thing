@@ -1345,7 +1345,7 @@ onUnmounted(() => {
 
   height: 100%;
   width: 100%;
-  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+  background: var(--ui-surface-app-bg);
 }
 
 .app-shell :deep(.app-shell-body),
@@ -1406,7 +1406,7 @@ onUnmounted(() => {
   min-width: 0;
   position: relative;
   overflow: hidden;
-  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+  background: var(--ui-surface-app-bg);
 }
 
 .app-main-region {
@@ -1414,7 +1414,7 @@ onUnmounted(() => {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+  background: var(--ui-surface-app-bg);
 }
 
 .app-content-splitter {
@@ -1449,7 +1449,7 @@ onUnmounted(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+  background: var(--ui-surface-app-bg);
 }
 
 .workspace-view {

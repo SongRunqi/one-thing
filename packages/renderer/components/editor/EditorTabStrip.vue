@@ -47,8 +47,8 @@ defineEmits<{
   align-items: stretch;
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border-bottom: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-panel-bg);
   flex-shrink: 0;
   scrollbar-width: none;
 }
@@ -66,22 +66,22 @@ defineEmits<{
   gap: 7px;
   padding: 0 9px;
   border: none;
-  border-right: 1px solid var(--ui-border-default-border, var(--border));
+  border-right: 1px solid var(--ui-border-default-border);
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
 }
 
 .editor-tab.active {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-elevated-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .dirty-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   flex-shrink: 0;
 }
 

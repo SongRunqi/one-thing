@@ -47,22 +47,22 @@ const statusLabel = computed(() => props.label || 'Loading')
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   text-align: center;
 }
 
 .loading-spinner-ring {
   width: var(--loading-spinner-size);
   height: var(--loading-spinner-size);
-  border: var(--loading-spinner-thickness) solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 78%, transparent);
-  border-top-color: var(--ui-accent-primary-fg, var(--accent));
-  border-right-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 54%, transparent);
+  border: var(--loading-spinner-thickness) solid color-mix(in srgb, var(--ui-border-default-border) 78%, transparent);
+  border-top-color: var(--ui-accent-primary-fg);
+  border-right-color: color-mix(in srgb, var(--ui-accent-primary-fg) 54%, transparent);
   border-radius: 999px;
   animation: loading-spinner-spin 0.8s linear infinite;
 }
 
 .loading-spinner-label {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 13px;
   line-height: 1.4;
 }

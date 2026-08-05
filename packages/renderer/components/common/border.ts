@@ -104,30 +104,30 @@ const shadowTokens: Record<BorderShadow, string> = {
 }
 
 const toneBorderTokens: Record<BorderTone, string> = {
-  default: 'var(--ui-border-default-border, var(--border))',
-  subtle: 'color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 72%, transparent)',
-  strong: 'var(--ui-border-strong-border, var(--border-strong, var(--border)))',
-  accent: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 58%, transparent)',
-  success: 'var(--ui-status-success-border, var(--color-success, #10b981))',
-  warning: 'var(--ui-status-warning-border, var(--color-warning, #f59e0b))',
-  danger: 'var(--ui-status-danger-border, var(--color-danger, #b3403a))',
+  default: 'var(--ui-border-default-border)',
+  subtle: 'color-mix(in srgb, var(--ui-border-subtle-border) 72%, transparent)',
+  strong: 'var(--ui-border-strong-border)',
+  accent: 'color-mix(in srgb, var(--ui-accent-primary-fg) 58%, transparent)',
+  success: 'var(--ui-status-success-border, var(--color-success))',
+  warning: 'var(--ui-status-warning-border, var(--color-warning))',
+  danger: 'var(--ui-status-danger-border, var(--color-danger))',
 }
 
 const toneHoverBorderTokens: Record<BorderTone, string> = {
-  default: 'var(--ui-border-strong-border, var(--border-strong, var(--border)))',
-  subtle: 'var(--ui-border-default-border, var(--border))',
-  strong: 'color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 88%, var(--ui-text-primary-fg, var(--text)))',
-  accent: 'var(--ui-accent-primary-fg, var(--accent))',
-  success: 'var(--ui-status-success-fg, var(--color-success, #10b981))',
-  warning: 'var(--ui-status-warning-fg, var(--color-warning, #f59e0b))',
-  danger: 'var(--ui-status-danger-fg, var(--color-danger, #b3403a))',
+  default: 'var(--ui-border-strong-border)',
+  subtle: 'var(--ui-border-default-border)',
+  strong: 'color-mix(in srgb, var(--ui-border-strong-border) 88%, var(--ui-text-primary-fg))',
+  accent: 'var(--ui-accent-primary-fg)',
+  success: 'var(--ui-status-success-fg, var(--color-success))',
+  warning: 'var(--ui-status-warning-fg, var(--color-warning))',
+  danger: 'var(--ui-status-danger-fg, var(--color-danger))',
 }
 
 const surfaceTokens: Record<BorderSurface, string> = {
   transparent: 'transparent',
-  panel: 'var(--ui-surface-panel-bg, var(--panel))',
-  elevated: 'var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel)))',
-  input: 'var(--ui-surface-input-bg, var(--bg-input, var(--bg)))',
+  panel: 'var(--ui-surface-panel-bg)',
+  elevated: 'var(--ui-surface-elevated-bg)',
+  input: 'var(--ui-surface-input-bg)',
 }
 
 const spaceTokens: Record<BorderSpaceToken, string> = {
@@ -147,7 +147,7 @@ export function createBorderBoxStyle(props: BorderBoxProps): BorderBoxStyle {
   if (props.unstyled) {
     return {
       '--border-box-focus-ring-color': normalizeCssValue(props.focusRingColor)
-        || 'var(--ui-border-focus-ring, var(--ui-accent-primary-fg, var(--accent)))',
+        || 'var(--ui-border-focus-ring, var(--ui-accent-primary-fg))',
     }
   }
 
@@ -164,7 +164,7 @@ export function createBorderBoxStyle(props: BorderBoxProps): BorderBoxStyle {
     '--border-box-hover-border-color': normalizeCssValue(props.hoverBorderColor) || toneHoverBorderTokens[tone],
     '--border-box-background': normalizeCssValue(props.background) || surfaceTokens[normalizeOption(props.surface, surfaceTokens, 'transparent')],
     '--border-box-hover-background': normalizeCssValue(props.hoverBackground) || normalizeCssValue(props.background) || surfaceTokens[normalizeOption(props.surface, surfaceTokens, 'transparent')],
-    '--border-box-focus-ring-color': normalizeCssValue(props.focusRingColor) || 'var(--ui-border-focus-ring, var(--ui-accent-primary-fg, var(--accent)))',
+    '--border-box-focus-ring-color': normalizeCssValue(props.focusRingColor) || 'var(--ui-border-focus-ring, var(--ui-accent-primary-fg))',
     '--border-box-border-width': normalizeLength(props.width, '1px'),
     '--border-box-padding': normalizeSpace(props.padding, '0'),
   }

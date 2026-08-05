@@ -252,6 +252,6 @@ function renderSpacer(
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  color: var(--ui-text-secondary-fg, var(--text-muted));
+  color: var(--ui-text-secondary-fg, var(--ui-text-muted-fg));
 }
 </style>

@@ -43,7 +43,7 @@ withDefaults(defineProps<{
   /* Pointer-transparent so dragover keeps firing on the zone underneath;
      an interactive overlay would strobe the enter/leave counter. */
   pointer-events: none;
-  background: color-mix(in srgb, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg))) 82%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-chat-bg) 82%, transparent);
   backdrop-filter: blur(1px);
 }
 
@@ -54,9 +54,9 @@ withDefaults(defineProps<{
   width: 100%;
   height: 100%;
   justify-content: center;
-  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 70%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border) 70%, transparent);
   border-radius: var(--radius-xs, 4px);
-  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  color: var(--ui-text-muted-fg);
 }
 
 .drop-overlay-icon {

@@ -209,7 +209,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   flex-direction: column;
   gap: 12px;
   padding: 12px 0 0;
-  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
   background: transparent;
   min-width: 0;
 }
@@ -229,7 +229,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 }
 
 .usage-title {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 14px;
   font-weight: 620;
 }
@@ -237,10 +237,10 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 /* Outlined ring badge — no fill. */
 .usage-state {
   padding: 1px 7px 2px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 999px;
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   line-height: 1.4;
@@ -249,7 +249,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 
 .usage-subtitle {
   margin-top: 3px;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-size: 12px;
 }
 
@@ -262,7 +262,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   padding: 4px 0;
   border: none;
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   cursor: pointer;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
@@ -270,10 +270,10 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 }
 
 .usage-button:hover:not(:disabled) {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .usage-button:disabled {
@@ -301,7 +301,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 .limit-row,
 .additional-limits {
   border: 0;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
   background: transparent;
 }
 
@@ -317,14 +317,14 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 .limit-copy small,
 .additional-row small,
 .usage-panel {
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-size: 12px;
 }
 
 .usage-metric strong,
 .limit-meter strong {
   overflow: hidden;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 13px;
   font-weight: 620;
   text-overflow: ellipsis;
@@ -353,7 +353,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 }
 
 .limit-copy span {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 13px;
   font-weight: 560;
   overflow: hidden;
@@ -390,7 +390,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   right: 0;
   top: 50%;
   height: 0;
-  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
 }
 
 .meter-track span {
@@ -399,7 +399,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   top: calc(50% - 1px);
   height: 2px;
   border-radius: 0;
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .usage-panel {
@@ -411,7 +411,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 }
 
 .additional-limits summary {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   cursor: pointer;
   font-size: 13px;
   font-weight: 560;
@@ -434,7 +434,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 
 .additional-row span {
   overflow: hidden;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;

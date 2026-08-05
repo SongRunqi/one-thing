@@ -19,13 +19,13 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 0;
-  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-default-border));
   background: transparent;
 }
 
 .settings-action-status {
   min-width: 0;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 12px;
   line-height: 1.35;
 }

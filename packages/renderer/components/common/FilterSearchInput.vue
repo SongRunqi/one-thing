@@ -64,20 +64,20 @@ function emitValue(event: Event) {
   align-items: center;
   min-width: 0;
   height: 34px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-muted-fg);
+  background: var(--ui-surface-input-bg);
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
   transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .filter-search:focus-within {
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--ui-text-primary-fg);
+  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg));
   box-shadow:
     inset 0 1px 2px rgba(0, 0, 0, 0.03),
-    0 0 0 1px var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
+    0 0 0 1px var(--ui-border-focus-border, var(--ui-accent-primary-fg));
 }
 
 .filter-search-icon {
@@ -93,7 +93,7 @@ function emitValue(event: Event) {
   padding: 0 10px 0 7px;
   border: none;
   outline: none;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   background: transparent;
   font: inherit;
   font-size: 12.5px;
@@ -108,7 +108,7 @@ function emitValue(event: Event) {
 }
 
 .filter-search-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .filter-search-clear {
@@ -122,13 +122,13 @@ function emitValue(event: Event) {
   padding: 0;
   border: none;
   border-radius: 6px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   background: transparent;
   cursor: pointer;
 }
 
 .filter-search-clear:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
+  background: var(--ui-state-hover-bg);
 }
 </style>

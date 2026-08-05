@@ -485,7 +485,7 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
   padding: 10px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   background: transparent;
 }
 
@@ -503,7 +503,7 @@ onUnmounted(() => {
   min-width: 0;
   min-height: 36px;
   overflow: hidden;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 38%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 38%, transparent);
   transition: flex-grow 0.26s ease;
 }
 
@@ -554,7 +554,7 @@ onUnmounted(() => {
 
 .chat-side-esum-title {
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-text-muted-fg, var(--muted)));
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 82%, var(--ui-text-muted-fg));
   font-family: var(--font-display, var(--font-serif, serif));
   font-size: 11px;
   font-weight: 600;
@@ -568,7 +568,7 @@ onUnmounted(() => {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -585,7 +585,7 @@ onUnmounted(() => {
   align-self: center;
   height: 0;
   min-width: 12px;
-  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent);
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-strong-border) 85%, transparent);
   transform: translateY(1px);
 }
 
@@ -616,13 +616,13 @@ onUnmounted(() => {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
 }
 
 .chat-side-icon-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-surface-hover-bg, var(--bg-hover, var(--bg-secondary))) 68%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 68%, transparent);
+  color: var(--ui-text-primary-fg);
 }
 
 .chat-side-icon-button:disabled {
@@ -635,7 +635,7 @@ onUnmounted(() => {
   align-items: flex-start;
   min-height: 42px;
   padding: 9px 10px 10px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -676,7 +676,7 @@ onUnmounted(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   font-family: var(--type-mono-font, monospace);
   font-size: 9.5px;
@@ -685,18 +685,18 @@ onUnmounted(() => {
 }
 
 .chat-side-mode-option:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .chat-side-mode-option.active {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 
 .chat-side-mode-sep {
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 55%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 55%, transparent);
   font-size: 9.5px;
 }
 
@@ -727,13 +727,13 @@ onUnmounted(() => {
 }
 
 .chat-side-usermsg-row:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent);
 }
 
 .chat-side-usermsg-tick {
   flex: 0 0 auto;
   width: 7px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 65%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-muted-fg) 65%, transparent);
   transform: translateY(-3px);
 }
 
@@ -746,7 +746,7 @@ onUnmounted(() => {
   -webkit-box-orient: vertical;
   font-size: 11.5px;
   line-height: 1.35;
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 84%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 84%, transparent);
 }
 
 .chat-side-variables-section :deep(.variables-panel) {
@@ -804,7 +804,7 @@ onUnmounted(() => {
 /* 目录空态:与 leader 线同一淡墨,不喧宾夺主 */
 .chat-side-toc-empty {
   font-size: 11.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-style: italic;
 }
 </style>

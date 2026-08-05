@@ -774,10 +774,10 @@ watch(showOverflowMenu, (shown) => {
 
 <style scoped>
 .tab-bar {
-  --ot-active-bg: var(--ui-tab-bar-item-active-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 58%, transparent));
-  --ot-active-text: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
-  --ot-hover-bg: var(--ui-tab-bar-item-hover-bg, color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4.5%, transparent));
-  --ot-divider: var(--ui-tab-bar-divider-border, color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 70%, var(--ui-text-muted-fg, var(--muted))));
+  --ot-active-bg: var(--ui-tab-bar-item-active-bg, color-mix(in srgb, var(--ui-surface-elevated-bg) 58%, transparent));
+  --ot-active-text: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg));
+  --ot-hover-bg: var(--ui-tab-bar-item-hover-bg, color-mix(in srgb, var(--ui-text-primary-fg) 4.5%, transparent));
+  --ot-divider: var(--ui-tab-bar-divider-border, color-mix(in srgb, var(--ui-border-subtle-border, var(--ui-border-subtle-border, var(--ui-border-default-border))) 70%, var(--ui-text-muted-fg)));
 
   display: flex;
   align-items: center;
@@ -787,7 +787,7 @@ watch(showOverflowMenu, (shown) => {
   user-select: none;
   flex-shrink: 0;
   position: relative;
-  background: var(--ui-tab-bar-surface-bg, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg-panel))));
+  background: var(--ui-tab-bar-surface-bg, var(--ui-surface-chat-bg));
   box-shadow: var(--ui-tab-bar-surface-shadow, none);
   /* 整条顶栏打底可拖窗:tab / 按钮 / agent 选择器各自 no-drag 盖回。
      app-region 只算 content box,所以这些控件的间隙与内边距会回退到这层 drag,
@@ -803,7 +803,7 @@ watch(showOverflowMenu, (shown) => {
   bottom: 0;
   left: 0;
   height: 1px;
-  background: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle))) 32%, transparent);
+  background: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border)) 32%, transparent);
   pointer-events: none;
   z-index: 0;
 }
@@ -934,7 +934,7 @@ watch(showOverflowMenu, (shown) => {
 .tab-scroll-thumb {
   height: 100%;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 55%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 55%, transparent);
   will-change: transform, width;
 }
 
@@ -944,7 +944,7 @@ watch(showOverflowMenu, (shown) => {
   height: 14px;
   margin: 0 6px;
   flex: 0 0 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 85%, transparent);
 }
 
 .tab-bar-drag-spacer {
@@ -998,7 +998,7 @@ watch(showOverflowMenu, (shown) => {
 
 .dm-identity-open:hover .dm-identity-name,
 .dm-identity-open:focus-visible .dm-identity-name {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .dm-identity-avatar {
@@ -1008,7 +1008,7 @@ watch(showOverflowMenu, (shown) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg) 35%, transparent);
   border-radius: 50%;
   font-size: 13px;
   line-height: 1;
@@ -1025,7 +1025,7 @@ watch(showOverflowMenu, (shown) => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .dm-identity-title {
@@ -1035,7 +1035,7 @@ watch(showOverflowMenu, (shown) => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 工作状态徽标(§4.3):一段虚线下划的小字,不是填充胶囊 —— 它是状态旁白,
@@ -1053,16 +1053,16 @@ watch(showOverflowMenu, (shown) => {
   font-family: inherit;
   font-size: 11px;
   line-height: 1.4;
-  color: var(--ui-text-muted-fg, var(--muted));
-  border-bottom: 1px dotted color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 60%, transparent);
+  color: var(--ui-text-muted-fg);
+  border-bottom: 1px dotted color-mix(in srgb, var(--ui-text-muted-fg) 60%, transparent);
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
 
 .dm-work-badge:hover,
 .dm-work-badge:focus-visible {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
+  border-bottom-color: var(--ui-accent-primary-fg);
 }
 
 /* 座标底线(案 A):按钮无底色,悬停变墨并在基线上落一小段点线 */
@@ -1088,7 +1088,7 @@ watch(showOverflowMenu, (shown) => {
   border: 0;
   background: transparent;
   border-radius: 0;
-  color: var(--ui-tab-bar-action-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-tab-bar-action-fg, var(--ui-text-muted-fg));
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition:
@@ -1109,11 +1109,11 @@ watch(showOverflowMenu, (shown) => {
 }
 
 .header-btn:hover {
-  color: var(--ui-tab-bar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  color: var(--ui-tab-bar-action-hover-fg, var(--ui-text-primary-fg));
 }
 
 .header-btn:hover::after {
-  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 75%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg) 75%, transparent);
 }
 
 .header-btn:active {
@@ -1126,11 +1126,11 @@ watch(showOverflowMenu, (shown) => {
   width: 1px;
   height: 14px;
   margin: 0 2px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 85%, transparent);
 }
 
 .header-btn.back-btn {
-  color: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
+  color: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg));
 }
 
 .header-btn.inspector-toggle {

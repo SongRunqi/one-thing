@@ -177,7 +177,7 @@ async function handleRetire(caseId: string) {
 }
 
 .evals-case-summary:hover {
-  background: color-mix(in srgb, var(--settings-accent) 5%, transparent);
+  background: var(--ui-settings-row-hover-bg);
 }
 
 .evals-case-meta {
@@ -274,7 +274,7 @@ async function handleRetire(caseId: string) {
 }
 
 .evals-action-btn:hover {
-  background: color-mix(in srgb, var(--settings-accent) 10%, var(--settings-paper-3));
+  background: var(--ui-settings-row-active-bg);
 }
 
 .evals-action-btn:disabled {

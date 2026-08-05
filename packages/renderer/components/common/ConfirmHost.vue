@@ -80,7 +80,7 @@ function confirmButtonClass(request: ConfirmRequest): string {
   margin: 0;
   font-size: var(--type-body-size);
   line-height: var(--type-body-line-height);
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   white-space: pre-wrap;
   word-break: break-word;
 }

@@ -114,7 +114,7 @@ defineExpose({
   overflow: hidden;
   background: transparent;
   /* Blueprint section cut: the preview is a ruled figure inside the frame. */
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-tool-surface-border)) 60%, transparent);
   border-radius: 0;
 }
 
@@ -124,7 +124,7 @@ defineExpose({
   max-height: 220px;
   overflow: auto;
   overscroll-behavior: contain;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
   font-weight: 400;
@@ -160,7 +160,7 @@ defineExpose({
   min-height: calc(var(--tool-font-size-body) * var(--tool-code-line-height));
   /* Deliberately no --diff-* colours: nothing here is a diff, so nothing may
      borrow the add/delete palette that stands for ground truth. */
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
 }
 
 .line-text {
@@ -177,24 +177,24 @@ defineExpose({
 
 /* The content a write is about to put on disk. */
 .line-content {
-  color: var(--ui-tool-text-args-fg, var(--text-tool-args, var(--tool-soft)));
+  color: var(--ui-tool-text-muted-fg);
 }
 
 /* An edit's replacement pair. `old` is what the model expects to find — it is
    not a deletion, so it reads as quiet, not red. */
 .line-old {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   opacity: 0.72;
 }
 
 .line-new {
-  color: var(--ui-tool-text-args-fg, var(--text-tool-args, var(--tool-soft)));
+  color: var(--ui-tool-text-muted-fg);
 }
 
 .line-label {
   min-height: 0;
   padding-top: 4px;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-size: calc(var(--tool-font-size-body) * 0.85);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -206,7 +206,7 @@ defineExpose({
 }
 
 .line-elided {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   opacity: 0.6;
 }
 </style>

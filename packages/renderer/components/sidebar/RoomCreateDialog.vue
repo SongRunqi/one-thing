@@ -224,7 +224,7 @@ async function create(): Promise<void> {
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .field-label em {
@@ -241,22 +241,22 @@ async function create(): Promise<void> {
   font-size: 13px;
   padding: 4px 0 5px;
   border: none;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   border-radius: 0;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 /* Element-qualified so the underline reads as a caret surface, not a box. */
 input.field-input:focus {
   outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg);
   box-shadow: none;
 }
 
 .field-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* P3: the PM picker is `<Select variant="underline">`. The hand-drawn chevron
@@ -268,7 +268,7 @@ input.field-input:focus {
 
 .field-hint {
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* The roster is the only unbounded repeater in this sheet: without a cap the
@@ -311,14 +311,14 @@ input.field-input:focus {
 }
 
 .member-title {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
 }
 
 .room-error {
   margin: 0;
   font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
 }
 
 /* Footer buttons are `.app-dialog-text-btn` — the mono text button published by

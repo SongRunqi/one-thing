@@ -692,21 +692,21 @@ onBeforeUnmount(() => {
 .state-pill {
   align-self: flex-start;
   padding: 2px 8px;
-  border: 1px solid var(--ui-border-default-border, var(--border-default));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 999px;
   font-size: 11px;
   color: var(--text-tertiary);
 }
 
 .state-pill.on {
-  border-color: var(--ui-status-success-fg, var(--color-success, currentColor));
-  color: var(--ui-status-success-fg, var(--color-success, currentColor));
+  border-color: var(--ui-status-success-fg, var(--color-success));
+  color: var(--ui-status-success-fg, var(--color-success));
 }
 
 .status-copy {
   margin: 0;
   font-size: 13px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .steps {
@@ -726,11 +726,11 @@ onBeforeUnmount(() => {
 }
 
 .step.active {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .step.done {
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .step-mark {
@@ -762,13 +762,13 @@ onBeforeUnmount(() => {
 
 .player-row strong {
   font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .tag {
   margin-left: 6px;
   padding: 1px 5px;
-  border: 1px solid var(--ui-border-default-border, var(--border-default));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 999px;
   font-size: 10px;
   font-weight: 400;
@@ -786,7 +786,7 @@ onBeforeUnmount(() => {
 
 .tool-name {
   font-family: var(--font-mono);
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .tool-ok {
@@ -803,15 +803,15 @@ onBeforeUnmount(() => {
 
 .field-label {
   font-size: 12px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .field-input {
   padding: 6px 8px;
-  border: 1px solid var(--ui-border-default-border, var(--border-default));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: var(--radius-sm, 4px);
-  background: var(--ui-surface-input-bg, var(--bg-input, transparent));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: var(--ui-surface-input-bg);
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
 }
 
@@ -827,7 +827,7 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: var(--space-2, 8px);
   overflow-x: auto;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border-default)));
+  border: 1px solid var(--ui-border-subtle-border);
   border-radius: var(--radius-sm, 4px);
   font-family: var(--font-mono);
   white-space: pre;
@@ -845,7 +845,7 @@ onBeforeUnmount(() => {
   display: block;
   width: 208px;
   height: 208px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border-default)));
+  border: 1px solid var(--ui-border-subtle-border);
   border-radius: var(--radius-sm, 4px);
 }
 
@@ -858,7 +858,7 @@ onBeforeUnmount(() => {
   margin: 0;
   padding-left: 18px;
   font-size: 13px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .usage li {
@@ -872,7 +872,7 @@ onBeforeUnmount(() => {
 }
 
 .login-hint {
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .btn-row {
@@ -884,10 +884,10 @@ onBeforeUnmount(() => {
 .primary-btn {
   align-self: flex-start;
   padding: 6px 12px;
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border-default)));
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: var(--radius-sm, 4px);
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
   cursor: pointer;
 }
@@ -901,7 +901,7 @@ onBeforeUnmount(() => {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--text-link, var(--text-secondary));
+  color: var(--ui-text-link-fg, var(--ui-text-secondary-fg));
   font-size: 12px;
   text-decoration: underline;
   cursor: pointer;

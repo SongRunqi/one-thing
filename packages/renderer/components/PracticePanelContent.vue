@@ -288,9 +288,9 @@ watch(lastSettled, () => void refresh())
 
 <style scoped>
 .practice-panel {
-  --pp-ink: var(--ui-text-primary-fg, var(--text));
-  --pp-muted: var(--ui-text-muted-fg, var(--muted));
-  --pp-hairline: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 60%, transparent);
+  --pp-ink: var(--ui-text-primary-fg);
+  --pp-muted: var(--ui-text-muted-fg);
+  --pp-hairline: color-mix(in srgb, var(--ui-border-subtle-border) 60%, transparent);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -365,7 +365,7 @@ watch(lastSettled, () => void refresh())
 }
 
 .num:hover,
-.num:focus {
+input.num:focus {
   border-bottom-color: color-mix(in srgb, var(--pp-muted) 60%, transparent);
 }
 

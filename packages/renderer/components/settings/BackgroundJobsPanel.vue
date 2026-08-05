@@ -124,7 +124,7 @@ onMounted(() => {
   gap: 12px;
   padding: 12px 0;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--ui-border-default-border))) 55%, transparent);
   border-radius: 0;
   background: transparent;
 }
@@ -141,7 +141,7 @@ onMounted(() => {
 .job-title {
   font-family: var(--font-mono, monospace);
   font-size: 13px;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   word-break: break-all;
 }
 
@@ -151,7 +151,7 @@ onMounted(() => {
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
 }
 
 .job-meta {
@@ -173,12 +173,12 @@ onMounted(() => {
 }
 
 .status.running {
-  color: var(--ui-status-success-fg, var(--success-color, #16a34a));
+  color: var(--ui-status-success-fg, var(--success-color));
 }
 
 .status.killed,
 .status.exited {
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 /* Outlined square buttons; danger actions carry a danger line. */
@@ -192,15 +192,15 @@ onMounted(() => {
   border-radius: 0;
   padding: 5px 10px;
   background: transparent;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: 12px;
   cursor: pointer;
   transition: border-color 0.12s ease, color 0.12s ease;
 }
 
 .btn:hover:not(:disabled) {
-  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .btn:disabled {
@@ -209,13 +209,13 @@ onMounted(() => {
 }
 
 .btn.danger {
-  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, var(--danger-color, #b3403a)));
-  color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
+  color: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 .btn.danger:hover:not(:disabled) {
-  border-color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
-  color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  border-color: var(--ui-status-danger-fg, var(--danger-color));
+  color: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 .spinning {

@@ -246,7 +246,7 @@ function handleSave() {
    since P2. The gear icon rides in `#header-leading`, so its colour is set on
    the slot content here (slot content keeps this file's scope). */
 .header-icon {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   flex-shrink: 0;
 }
 
@@ -272,7 +272,7 @@ function handleSave() {
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   margin-bottom: 5px;
 }
 
@@ -288,9 +288,9 @@ function handleSave() {
   padding: 4px 0 5px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   border-radius: 0;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
   outline: none;
   overflow: hidden;
@@ -298,17 +298,17 @@ function handleSave() {
   transition: border-color 0.15s ease;
 }
 
-.form-input:focus {
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+input.form-input:focus {
+  border-bottom-color: var(--ui-accent-primary-fg);
 }
 
 .form-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .form-hint {
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   margin-top: 6px;
   overflow-wrap: anywhere;
 }
@@ -329,9 +329,9 @@ function handleSave() {
   gap: 8px;
   padding: 10px 8px;
   background: transparent;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 0;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   font-size: 13px;
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
@@ -342,15 +342,15 @@ function handleSave() {
 }
 
 .api-type-btn:hover {
-  border-color: var(--ui-text-muted-fg, var(--text-muted));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  border-color: var(--ui-text-muted-fg);
+  color: var(--ui-text-primary-fg);
 }
 
 .api-type-btn.active {
   background: transparent;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: inset 0 -2px 0 var(--ui-accent-primary-fg, var(--accent));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  border-color: var(--ui-accent-primary-fg);
+  box-shadow: inset 0 -2px 0 var(--ui-accent-primary-fg);
+  color: var(--ui-text-primary-fg);
 }
 
 /* positioning only — visuals come from ErrorNote */

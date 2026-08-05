@@ -96,7 +96,7 @@ function handleSwitchModel() {
    tinted with the danger ink, a punched legend on the top rule. The failure
    belongs to the run, not to either speaker, so it spans the reading column. */
 .error-card {
-  --err-ink: var(--ui-status-danger-fg, var(--text-error, rgb(220, 68, 68)));
+  --err-ink: var(--ui-status-danger-fg);
 
   position: relative;
   margin-top: 7px;
@@ -117,7 +117,7 @@ function handleSwitchModel() {
   gap: 0.75em;
   align-items: baseline;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   user-select: none;
 }
 
@@ -132,7 +132,7 @@ function handleSwitchModel() {
 .frame-label .zh {
   font-size: 11px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .error-raw {
@@ -144,7 +144,7 @@ function handleSwitchModel() {
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-all;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .error-actions {
@@ -166,7 +166,7 @@ function handleSwitchModel() {
   font-weight: 600;
   letter-spacing: 1px;
   line-height: 1.6;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color var(--transition-fast, 0.15s) ease,
     border-color var(--transition-fast, 0.15s) ease;
@@ -174,7 +174,7 @@ function handleSwitchModel() {
 
 .error-btn:hover {
   border-color: currentcolor;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .error-btn.primary {
@@ -192,7 +192,7 @@ function handleSwitchModel() {
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-faint-fg, var(--text-faint));
+  color: var(--ui-text-faint-fg);
   white-space: nowrap;
 }
 

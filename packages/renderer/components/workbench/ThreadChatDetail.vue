@@ -155,7 +155,7 @@ watch(
 .thread-head {
   flex-shrink: 0;
   padding: 9px 10px 8px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border-color, var(--border)));
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border-color));
 }
 
 .head-line {
@@ -167,7 +167,7 @@ watch(
 
 .head-tag {
   flex-shrink: 0;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
@@ -178,7 +178,7 @@ watch(
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12.5px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -187,7 +187,7 @@ watch(
 
 .head-live {
   flex: 0 0 auto;
-  color: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  color: var(--ui-status-success-fg, var(--color-success));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
 }

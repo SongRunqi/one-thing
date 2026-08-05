@@ -132,7 +132,7 @@ function confettiStyle(i: number) {
   const left = (i * 10 + 5) % 100
   const delay = (i * 1.5) % 12
   const duration = 12 + (i % 5)
-  const colors = ['var(--ui-status-warning-fg, #fbbf24)', 'var(--ui-status-danger-fg, #b3403a)', 'var(--ui-accent-subtle-fg, #a78bfa)', 'var(--ui-status-success-fg, #34d399)', 'var(--ui-status-info-fg, #60a5fa)']
+  const colors = ['var(--ui-status-warning-fg)', 'var(--ui-status-danger-fg)', 'var(--ui-accent-subtle-fg)', 'var(--ui-status-success-fg)', 'var(--ui-status-info-fg)']
   const color = colors[i % colors.length]
   const size = 4 + (i % 4)
   return {
@@ -170,7 +170,7 @@ function confettiStyle(i: number) {
 
 .star {
   position: absolute;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   opacity: 0.15;
   animation: twinkle ease-in-out infinite;
 }
@@ -231,10 +231,10 @@ function confettiStyle(i: number) {
   border-radius: 50%;
   background: linear-gradient(
     135deg,
-    var(--ui-surface-note-bg, var(--ui-status-warning-bg, #fef3c7)) 0%,
-    color-mix(in srgb, var(--ui-surface-note-bg, var(--ui-status-warning-bg, #fef3c7)) 68%, var(--ui-status-warning-fg, #fde68a) 32%) 30%,
-    var(--ui-status-warning-fg, #fbbf24) 60%,
-    var(--ui-status-warning-fg, #f59e0b) 100%
+    var(--ui-surface-note-bg, var(--ui-status-warning-bg)) 0%,
+    color-mix(in srgb, var(--ui-surface-note-bg, var(--ui-status-warning-bg)) 68%, var(--ui-status-warning-fg) 32%) 30%,
+    var(--ui-status-warning-fg) 60%,
+    var(--ui-status-warning-fg) 100%
   );
   display: flex;
   align-items: center;
@@ -280,7 +280,7 @@ function confettiStyle(i: number) {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 36px;
   font-weight: 700;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   opacity: 0.9;
   animation: digit-appear 0.5s ease-out backwards;
 }
@@ -304,7 +304,7 @@ function confettiStyle(i: number) {
 }
 
 .title-text {
-  background: linear-gradient(90deg, var(--ui-text-primary-fg, var(--text)), var(--ui-status-warning-fg, #d97706));
+  background: linear-gradient(90deg, var(--ui-text-primary-fg), var(--ui-status-warning-fg));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -317,7 +317,7 @@ function confettiStyle(i: number) {
 }
 
 .greeting {
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   opacity: 0.8;
   letter-spacing: 0.05em;
 }
@@ -363,7 +363,7 @@ function confettiStyle(i: number) {
 
 .card-inner {
   padding: 14px 16px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-elevated-bg);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-radius: 11px;
@@ -372,7 +372,7 @@ function confettiStyle(i: number) {
   gap: 10px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   transition: all 0.3s ease;
 }
 
@@ -383,7 +383,7 @@ function confettiStyle(i: number) {
 }
 
 .suggestion-card:hover .card-inner {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .card-icon {

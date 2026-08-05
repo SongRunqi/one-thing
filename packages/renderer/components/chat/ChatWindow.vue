@@ -156,11 +156,11 @@ const props = withDefaults(defineProps<Props>(), {
   panelFocused: true,
 })
 
-const chatBorderColor = 'color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 52%, transparent)'
+const chatBorderColor = 'color-mix(in srgb, var(--ui-border-subtle-border) 52%, transparent)'
 const chatPanelShadowFallback = [
   '0 10px 28px rgba(0, 0, 0, 0.11)',
   '0 1px 5px rgba(0, 0, 0, 0.055)',
-  'inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.8%, transparent)',
+  'inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg) 2.8%, transparent)',
 ].join(', ')
 const chatPanelShadowValue = `var(--ui-surface-chat-panel-shadow, ${chatPanelShadowFallback})`
 
@@ -427,7 +427,7 @@ defineExpose({
 
 <style scoped>
 .chat {
-  --chat-surface: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
+  --chat-surface: var(--ui-surface-chat-bg);
 
   flex: 1;
   height: 100%;
@@ -485,8 +485,8 @@ defineExpose({
   position: absolute;
   z-index: var(--z-sticky);
   pointer-events: none;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 16%, transparent);
-  border: 2px solid var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 16%, transparent);
+  border: 2px solid var(--ui-accent-primary-fg);
   box-sizing: border-box;
 }
 

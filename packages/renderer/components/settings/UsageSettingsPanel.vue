@@ -416,7 +416,7 @@ onMounted(() => {
   justify-content: space-between;
   gap: 16px;
   padding: 6px 0 12px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
 }
 
 .month-nav {
@@ -428,9 +428,9 @@ onMounted(() => {
 .nav-btn {
   width: 22px;
   height: 22px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   cursor: pointer;
   font-size: 13px;
   line-height: 1;
@@ -443,7 +443,7 @@ onMounted(() => {
 
 .month-label {
   min-width: 62px;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
@@ -466,12 +466,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-size: 11px;
 }
 
 .total-metric strong {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -480,7 +480,7 @@ onMounted(() => {
 
 .badge {
   padding: 0 4px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 999px;
   font-size: 9px;
   font-style: normal;
@@ -490,7 +490,7 @@ onMounted(() => {
 .usage-empty {
   padding: 8px 0;
   font-size: 12px;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
 }
 
 .usage-error {
@@ -506,7 +506,7 @@ onMounted(() => {
 }
 
 .weekday-row span {
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-size: 10px;
   text-align: center;
 }
@@ -524,7 +524,7 @@ onMounted(() => {
   aspect-ratio: 1.7;
   padding: 2px 4px;
   border: 1px solid transparent;
-  background: color-mix(in oklab, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 4%, transparent);
+  background: color-mix(in oklab, var(--settings-ink, var(--ui-text-primary-fg)) 4%, transparent);
   cursor: pointer;
   font: inherit;
 }
@@ -534,47 +534,47 @@ onMounted(() => {
 }
 
 .day-cell em {
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 9.5px;
   font-style: normal;
 }
 
-.day-cell.l1 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 15%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.day-cell.l2 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 30%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.day-cell.l3 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 46%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.day-cell.l4 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 62%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.day-cell.l5 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 80%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.day-cell.l6 { background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))); }
+.day-cell.l1 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 15%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.day-cell.l2 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 30%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.day-cell.l3 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 46%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.day-cell.l4 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 62%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.day-cell.l5 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 80%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.day-cell.l6 { background: var(--settings-accent, var(--ui-accent-primary-fg)); }
 
 .day-cell.l1 em,
 .day-cell.l2 em {
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
 }
 
 .day-cell.l3 em,
 .day-cell.l4 em,
 .day-cell.l5 em,
 .day-cell.l6 em {
-  color: var(--settings-bg, var(--ui-surface-base-bg, var(--bg)));
+  color: var(--settings-bg, var(--ui-surface-app-bg));
 }
 
 .day-cell.future {
   background: repeating-linear-gradient(
     -45deg,
     transparent 0 3px,
-    var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle))) 3px 4px
+    var(--settings-rule-soft, var(--ui-border-subtle-border)) 3px 4px
   );
   cursor: default;
 }
 
 .day-cell:not(.future):not(.pad):hover {
-  border-color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  border-color: var(--settings-ink-3, var(--ui-text-secondary-fg));
 }
 
 .day-cell.selected {
-  border-color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  box-shadow: 0 0 0 1px var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  border-color: var(--settings-ink, var(--ui-text-primary-fg));
+  box-shadow: 0 0 0 1px var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .scale-legend {
@@ -583,7 +583,7 @@ onMounted(() => {
   justify-content: flex-end;
   gap: 3px;
   padding: 7px 0 10px;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-size: 10px;
 }
 
@@ -592,18 +592,18 @@ onMounted(() => {
   height: 8px;
 }
 
-.scale-legend i.l0 { background: color-mix(in oklab, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 4%, transparent); }
-.scale-legend i.l1 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 15%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.scale-legend i.l2 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 30%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.scale-legend i.l3 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 46%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.scale-legend i.l4 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 62%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.scale-legend i.l5 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 80%, var(--settings-bg, var(--ui-surface-base-bg, var(--bg)))); }
-.scale-legend i.l6 { background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))); }
+.scale-legend i.l0 { background: color-mix(in oklab, var(--settings-ink, var(--ui-text-primary-fg)) 4%, transparent); }
+.scale-legend i.l1 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 15%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.scale-legend i.l2 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 30%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.scale-legend i.l3 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 46%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.scale-legend i.l4 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 62%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.scale-legend i.l5 { background: color-mix(in oklab, var(--settings-accent, var(--ui-accent-primary-fg)) 80%, var(--settings-bg, var(--ui-surface-app-bg))); }
+.scale-legend i.l6 { background: var(--settings-accent, var(--ui-accent-primary-fg)); }
 
 /* ── selected day detail ── */
 .day-detail {
   padding-top: 10px;
-  border-top: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-top: 1px solid var(--settings-rule, var(--ui-border-default-border));
 }
 
 .detail-head {
@@ -615,7 +615,7 @@ onMounted(() => {
 }
 
 .detail-date {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 12.5px;
   font-weight: 600;
@@ -625,14 +625,14 @@ onMounted(() => {
 .detail-date small,
 .detail-total small {
   margin-left: 6px;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   font-weight: 400;
 }
 
 .detail-total {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 14px;
   font-weight: 650;
@@ -655,12 +655,12 @@ onMounted(() => {
 }
 
 .token-split label {
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-size: 10.5px;
 }
 
 .token-split b {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   font-weight: 600;
@@ -675,7 +675,7 @@ onMounted(() => {
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .model-list {
@@ -693,7 +693,7 @@ onMounted(() => {
 
 .model-name {
   overflow: hidden;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -702,17 +702,17 @@ onMounted(() => {
 .model-track {
   position: relative;
   height: 4px;
-  background: color-mix(in oklab, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 6%, transparent);
+  background: color-mix(in oklab, var(--settings-ink, var(--ui-text-primary-fg)) 6%, transparent);
 }
 
 .model-track i {
   position: absolute;
   inset: 0 auto 0 0;
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .model-amt {
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   font-variant-numeric: tabular-nums;

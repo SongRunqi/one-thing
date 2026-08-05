@@ -2020,30 +2020,30 @@ defineExpose({
   left: 12px;
   z-index: 2;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   pointer-events: none;
   user-select: none;
 }
 
 /* --- voice turn: the frame itself is the state --- */
 .composer-frame-label.listening {
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 
 .composer-frame-label.transcribing {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .composer-frame-elapsed {
   margin-left: 1em;
   letter-spacing: 0.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* --- music: the tag is the whole collapsed state, and the hover target --- */
@@ -2057,18 +2057,18 @@ defineExpose({
 
 .composer-frame-label.music:hover,
 .composer-frame-label.music:focus-visible {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .composer-frame-label.music:focus-visible {
-  outline: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 70%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 70%, transparent);
   outline-offset: 2px;
 }
 
 .composer-frame-note {
   margin-left: 0.5em;
   letter-spacing: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .composer-voice-cancel {
@@ -2078,21 +2078,21 @@ defineExpose({
   z-index: 2;
   padding: 0 6px;
   border: 0;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   text-decoration: underline;
-  text-decoration-color: var(--ui-border-default-border, var(--border));
+  text-decoration-color: var(--ui-border-default-border);
   text-underline-offset: 3px;
   cursor: pointer;
 }
 
 .composer-voice-cancel:hover {
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
   text-decoration-color: currentColor;
 }
 
@@ -2102,18 +2102,18 @@ defineExpose({
 
 @keyframes composer-listening-breathe {
   0%, 100% {
-    border-color: var(--ui-status-danger-fg, #b3403a);
+    border-color: var(--ui-status-danger-fg);
     box-shadow: 0 0 0 0 transparent;
   }
   50% {
-    border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
+    border-color: var(--ui-status-danger-border, var(--ui-border-default-border));
     box-shadow: var(--ui-status-danger-ring-shadow, 0 0 0 3px var(--ui-status-danger-bg, transparent));
   }
 }
 
 .composer.transcribing {
   border-style: dashed;
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, var(--ui-border-default-border, var(--border)));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 45%, var(--ui-border-default-border));
 }
 
 /* --- command turn: the frame itself is the state, same as the voice turn.
@@ -2125,7 +2125,7 @@ defineExpose({
   display: inline-flex;
   align-items: baseline;
   max-width: calc(100% - 108px); /* leaves the esc-exit tag its corner */
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   letter-spacing: 1.4px;
 }
 
@@ -2137,12 +2137,12 @@ defineExpose({
   white-space: nowrap;
   letter-spacing: 0.4px;
   font-weight: 400;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .composer.command-mode {
   border-style: dashed;
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 55%, var(--composer-border));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 55%, var(--composer-border));
 }
 
 /* Focus keeps its solid ring; the dash is what carries "command", so it stays. */
@@ -2151,11 +2151,11 @@ defineExpose({
 }
 
 .composer-command-exit:hover {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .composer-anchor:has(.composer.focused) .composer-frame-label {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 /* Dock: in-flow stack of persistent draft context above the composer.
@@ -2205,7 +2205,7 @@ defineExpose({
   box-shadow: var(--ui-composer-overlay-shadow);
   backdrop-filter: blur(8px) saturate(1.02);
   -webkit-backdrop-filter: blur(8px) saturate(1.02);
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
   line-height: 1.3;
   pointer-events: none;
@@ -2213,12 +2213,12 @@ defineExpose({
 
 .command-feedback.success {
   border-color: var(--ui-status-success-border, var(--color-success));
-  color: var(--ui-status-success-fg, var(--text-success, var(--text)));
+  color: var(--ui-status-success-fg);
 }
 
 .command-feedback.error {
   border-color: var(--ui-status-danger-border, var(--color-danger));
-  color: var(--ui-status-danger-fg, var(--text-error, var(--text)));
+  color: var(--ui-status-danger-fg);
 }
 
 .command-feedback span {
@@ -2241,8 +2241,8 @@ defineExpose({
 .composer {
   /* Blueprint frame: zero fill, one confident outline. The surface token is
      kept only for the collapsed-mask/tooling fallbacks below. */
-  --composer-surface: var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)))));
-  --composer-border: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  --composer-surface: var(--ui-surface-input-bg);
+  --composer-border: color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
 
   position: relative;
   z-index: 1;
@@ -2257,9 +2257,9 @@ defineExpose({
 }
 
 .composer.focused {
-  border-color: var(--ui-surface-input-focus-border, var(--ui-state-focus-border, var(--ui-accent-primary-fg, var(--accent))));
+  border-color: var(--ui-surface-input-focus-border, var(--ui-state-focus-border));
   background: transparent;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 28%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg)) 28%, transparent);
 }
 
 /* Input area */
@@ -2289,7 +2289,7 @@ defineExpose({
 /* Bottom toolbar: a segmented status line — full-bleed cells split by
    hairline dividers, annotated in mono. */
 .composer-toolbar {
-  --composer-cell-divider: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 30%, transparent);
+  --composer-cell-divider: color-mix(in srgb, var(--ui-border-strong-border) 30%, transparent);
 
   display: flex;
   justify-content: space-between;
@@ -2344,7 +2344,7 @@ defineExpose({
 
 .toolbar-left :deep(.model-trigger:hover),
 .toolbar-left :deep(.model-trigger.is-open) {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .toolbar-left {
@@ -2405,7 +2405,7 @@ defineExpose({
 
 .toolbar-left :deep(.app-select-control:hover),
 .toolbar-left :deep(.app-select.is-open .app-select-control) {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
   box-shadow: none;
 }
 
@@ -2477,7 +2477,7 @@ defineExpose({
 }
 
 .guard-label {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   white-space: nowrap;
 }
 
@@ -2485,10 +2485,10 @@ defineExpose({
 /* Resident gauge as a mono cell-meter: ctx ▮▮▮▮▯▯▯▯▯▯ 37%.
    Warning thresholds recolor the filled cells, never resize. */
 .context-meter {
-  --context-meter-fg: var(--ui-text-muted-fg, var(--muted));
+  --context-meter-fg: var(--ui-text-muted-fg);
   /* Ink, not accent: a healthy gauge must not glow alarm-red at 25%. The
      warning tones below are the only states that recolor it. */
-  --context-meter-cell: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  --context-meter-cell: var(--ui-text-secondary-fg);
 
   position: relative;
   height: 100%;
@@ -2506,21 +2506,21 @@ defineExpose({
 }
 
 .context-meter.is-empty {
-  --context-meter-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 80%, transparent);
+  --context-meter-fg: color-mix(in srgb, var(--ui-text-muted-fg) 80%, transparent);
 }
 
 .context-meter.is-medium {
-  --context-meter-cell: var(--ui-status-warning-fg, var(--text-warning));
+  --context-meter-cell: var(--ui-status-warning-fg);
 }
 
 .context-meter.is-high {
-  --context-meter-cell: var(--ui-status-danger-fg, var(--text-error));
-  --context-meter-fg: var(--ui-status-danger-fg, var(--text-error));
+  --context-meter-cell: var(--ui-status-danger-fg);
+  --context-meter-fg: var(--ui-status-danger-fg);
 }
 
 .context-meter:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
+  background: var(--ui-state-hover-bg);
 }
 
 .context-meter-prefix {
@@ -2543,7 +2543,7 @@ defineExpose({
 
 .context-meter-cells em {
   font-style: normal;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .context-meter-label {
@@ -2561,21 +2561,21 @@ defineExpose({
  * auto-edit/danger recolor the label.
  */
 .permission-mode-select {
-  --permission-mode-fg: var(--ui-text-muted-fg, var(--muted));
-  --permission-mode-fg-hover: var(--ui-text-primary-fg, var(--text));
+  --permission-mode-fg: var(--ui-text-muted-fg);
+  --permission-mode-fg-hover: var(--ui-text-primary-fg);
 
   width: auto;
   flex: 0 0 auto;
 }
 
 .permission-mode-select.mode-auto-accept-edits .guard-label {
-  color: var(--ui-status-success-fg, var(--text-success));
+  color: var(--ui-status-success-fg);
 }
 
 /* Guard off is THE alarm state — the one place in the toolbar allowed to
    wear the danger color. */
 .permission-mode-select.mode-dangerously-allow-all .guard-label {
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
 }
 
 .permission-mode-select :deep(.app-select-control) {
@@ -2604,7 +2604,7 @@ defineExpose({
 /* Suppress the base Select :focus ring — the guard cell is a subtle
    mono label, not a form input; its hover / is-open affordances are
    enough.  A lingering focus ring after click looks stuck. */
-.permission-mode-select :deep(.app-select-control:focus),
+.permission-mode-select :deep(.app-select-control:focus-visible),
 .permission-mode-select :deep(.app-select-control:focus-visible) {
   color: var(--permission-mode-fg);
   border-color: transparent;
@@ -2612,23 +2612,23 @@ defineExpose({
 }
 
 :global(.inputbox-select-dropdown) {
-  --inputbox-select-panel-bg: var(--ui-surface-menu-bg, var(--ui-surface-overlay-bg, var(--ui-surface-input-bg, var(--bg-input, #282c34))));
-  --inputbox-select-row-fg: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 88%, var(--ui-text-primary-fg, var(--text)) 12%);
-  --inputbox-select-row-muted-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 84%, var(--ui-text-primary-fg, var(--text)) 16%);
-  --inputbox-select-row-muted-active-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 64%, var(--ui-text-primary-fg, var(--text)) 36%);
-  --inputbox-select-row-hover-bg: var(--ui-state-hover-bg, var(--hover, #2a303b));
-  --inputbox-select-row-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --inputbox-select-row-selected-bg: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover, #2a303b))));
-  --inputbox-select-row-selected-fg: var(--ui-state-selected-fg, var(--ui-text-primary-fg, var(--text, #f4f4f5)));
-  --inputbox-select-row-selected-hover-bg: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--active, var(--inputbox-select-row-selected-bg))));
-  --inputbox-select-row-selected-border: var(--ui-state-selected-border, var(--ui-border-selected-border, var(--ui-accent-subtle-fg, var(--ui-accent-primary-fg, var(--accent, #60a5fa)))));
-  --inputbox-select-check-fg: var(--ui-accent-subtle-fg, var(--ui-accent-primary-fg, var(--accent, #60a5fa)));
+  --inputbox-select-panel-bg: var(--ui-surface-menu-bg, var(--ui-surface-overlay-bg));
+  --inputbox-select-row-fg: color-mix(in srgb, var(--ui-text-secondary-fg) 88%, var(--ui-text-primary-fg) 12%);
+  --inputbox-select-row-muted-fg: color-mix(in srgb, var(--ui-text-muted-fg) 84%, var(--ui-text-primary-fg) 16%);
+  --inputbox-select-row-muted-active-fg: color-mix(in srgb, var(--ui-text-muted-fg) 64%, var(--ui-text-primary-fg) 36%);
+  --inputbox-select-row-hover-bg: var(--ui-state-hover-bg);
+  --inputbox-select-row-hover-fg: var(--ui-text-primary-fg);
+  --inputbox-select-row-selected-bg: var(--ui-state-selected-bg);
+  --inputbox-select-row-selected-fg: var(--ui-state-selected-fg, var(--ui-text-primary-fg));
+  --inputbox-select-row-selected-hover-bg: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg));
+  --inputbox-select-row-selected-border: var(--ui-state-selected-border, var(--ui-border-selected-border));
+  --inputbox-select-check-fg: var(--ui-accent-subtle-fg, var(--ui-accent-primary-fg));
   --inputbox-select-chip-bg: color-mix(in srgb, var(--inputbox-select-row-hover-bg) 72%, transparent);
   --inputbox-select-chip-bg-active: color-mix(in srgb, var(--inputbox-select-row-selected-hover-bg) 82%, transparent);
   --inputbox-select-chip-fg: var(--inputbox-select-row-muted-active-fg);
 
   padding: 6px;
-  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border, #3b4250)) 76%, var(--ui-text-primary-fg, var(--text, #f4f4f5)) 8%);
+  border-color: color-mix(in srgb, var(--ui-border-default-border) 76%, var(--ui-text-primary-fg) 8%);
   border-radius: 12px;
   background: var(--inputbox-select-panel-bg);
   background-clip: padding-box;
@@ -2640,7 +2640,7 @@ defineExpose({
 
 :global(.app-select-dropdown.inputbox-select-dropdown.think-select-dropdown),
 :global(.app-select-dropdown.inputbox-select-dropdown.permission-mode-dropdown) {
-  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border, #3b4250)) 76%, var(--ui-text-primary-fg, var(--text, #f4f4f5)) 8%);
+  border-color: color-mix(in srgb, var(--ui-border-default-border) 76%, var(--ui-text-primary-fg) 8%);
   background: var(--inputbox-select-panel-bg);
 }
 
@@ -2693,7 +2693,7 @@ defineExpose({
 :global(.inputbox-select-dropdown .app-select-option .model-option-name),
 :global(.inputbox-select-dropdown .app-select-option .think-option-text),
 :global(.inputbox-select-dropdown .app-select-option .app-select-option-label) {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 :global(.inputbox-select-dropdown .app-select-option.selected .model-option-name),
@@ -2757,10 +2757,10 @@ defineExpose({
   --app-button-min-width: 29px;
   --app-button-padding-x: 0;
   --app-button-fill: transparent;
-  --app-button-fg: var(--ui-text-muted-fg, var(--muted));
+  --app-button-fg: var(--ui-text-muted-fg);
   --app-button-border: transparent;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-hover-fill: var(--ui-state-hover-bg);
+  --app-button-hover-fg: var(--ui-text-primary-fg);
   --app-button-hover-border: transparent;
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
@@ -2771,7 +2771,7 @@ defineExpose({
   border-radius: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -2781,33 +2781,33 @@ defineExpose({
 
 .voice-btn:hover:not(:disabled),
 .voice-aux-btn:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
+  background: var(--ui-state-hover-bg);
 }
 
 .voice-btn.needs-setup {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 38%, var(--ui-border-default-border, var(--border)));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, var(--ui-state-hover-bg, var(--hover)));
+  color: var(--ui-accent-primary-fg);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 38%, var(--ui-border-default-border));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, var(--ui-state-hover-bg));
 }
 
 .voice-btn.needs-setup:hover {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 56%, var(--ui-border-default-border, var(--border)));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 16%, var(--ui-state-hover-bg, var(--hover)));
+  color: var(--ui-accent-primary-fg);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 56%, var(--ui-border-default-border));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 16%, var(--ui-state-hover-bg));
 }
 
 .voice-btn.active {
-  color: var(--ui-status-danger-fg, #b3403a);
-  border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
+  color: var(--ui-status-danger-fg);
+  border-color: var(--ui-status-danger-border, var(--ui-border-default-border));
   background: var(--ui-status-danger-bg, transparent);
   box-shadow: var(--ui-status-danger-ring-shadow, 0 0 0 4px var(--ui-status-danger-bg, transparent));
 }
 
 .voice-btn.transcribing {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 42%, var(--ui-border-default-border, var(--border)));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, transparent);
+  color: var(--ui-accent-primary-fg);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 42%, var(--ui-border-default-border));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 9%, transparent);
 }
 
 .voice-spinner {
@@ -2815,13 +2815,13 @@ defineExpose({
 }
 
 .tts-toggle-btn.tts-off {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   opacity: 0.65;
 }
 
 .call-btn.call-active {
-  color: var(--ui-status-danger-fg, #b3403a);
-  border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
+  color: var(--ui-status-danger-fg);
+  border-color: var(--ui-status-danger-border, var(--ui-border-default-border));
   background: var(--ui-status-danger-bg, transparent);
 }
 
@@ -2842,7 +2842,7 @@ defineExpose({
   border-radius: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2862,18 +2862,18 @@ defineExpose({
 }
 
 .send-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 12%, transparent);
 }
 
 .send-btn:active:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 18%, transparent);
 }
 
 /* Keep border-color untouched: the cell divider between mic and send lives
    on this button's border-left and must survive the disabled state. */
 .send-btn:disabled {
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 50%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 50%, transparent);
   cursor: default;
   box-shadow: none;
 }
@@ -2881,27 +2881,27 @@ defineExpose({
 .send-btn.stop-btn {
   background: transparent;
   box-shadow: none;
-  color: var(--ui-action-ghost-fg, var(--muted));
+  color: var(--ui-action-ghost-fg, var(--ui-text-muted-fg));
 }
 
 /* stop 态的 hover 是中性灰,不是 accent 洗;unstyled 后须自持(原先由
    BorderBox 消费 --app-button-hover-fill 提供,该链路对 unstyled 已撤)。 */
 .send-btn.stop-btn:hover:not(:disabled) {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .send-btn.stop-btn:active:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 14%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 14%, transparent);
 }
 
 .send-btn.stop-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .send-btn.stop-btn:active {
-  background: var(--ui-state-active-bg, var(--active));
+  background: var(--ui-state-active-bg);
 }
 
 /* Responsive styles */

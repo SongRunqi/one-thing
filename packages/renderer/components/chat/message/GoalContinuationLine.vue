@@ -89,23 +89,23 @@ const tooltip = computed(() => {
   font-weight: 600;
   letter-spacing: 1.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   user-select: none;
 }
 
 .tag.warn {
-  color: var(--ui-status-warning-fg, var(--warning-color, #d97706));
+  color: var(--ui-status-warning-fg, var(--warning-color));
 }
 
 .cont-rule:hover .tag {
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .cont-body {
   margin: 4px 0 0;
   padding: 8px 10px;
   border-left: 2px solid var(--ui-border-default-border, var(--border-color));
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;

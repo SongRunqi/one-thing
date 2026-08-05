@@ -48,80 +48,80 @@ withDefaults(defineProps<{
 
 .tone-neutral,
 .tone-muted {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 10%, transparent);
-  border-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 16%, transparent);
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ui-text-muted-fg) 16%, transparent);
+  color: var(--ui-text-secondary-fg);
 }
 
 .tone-accent {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 11%, transparent);
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 11%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 18%, transparent);
+  color: var(--ui-accent-primary-fg);
 }
 
 .tone-info {
   background: var(--ui-status-info-bg, transparent);
-  border-color: var(--ui-status-info-border, var(--ui-status-info-fg, var(--color-info)));
+  border-color: var(--ui-status-info-border, var(--ui-status-info-fg));
   color: var(--ui-status-info-fg, var(--color-info));
 }
 
 .tone-success {
   background: var(--ui-status-success-bg, transparent);
-  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, #10b981));
-  color: var(--ui-status-success-fg, #10b981);
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg));
+  color: var(--ui-status-success-fg);
 }
 
 .tone-warning {
   background: var(--ui-status-warning-bg, transparent);
-  border-color: var(--ui-status-warning-border, var(--ui-status-warning-fg, #f59e0b));
-  color: var(--ui-status-warning-fg, #f59e0b);
+  border-color: var(--ui-status-warning-border, var(--ui-status-warning-fg));
+  color: var(--ui-status-warning-fg);
 }
 
 .tone-danger {
   background: var(--ui-status-danger-bg, transparent);
-  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #b3403a));
-  color: var(--ui-status-danger-fg, #b3403a);
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
+  color: var(--ui-status-danger-fg);
 }
 
 .tone-category-1 {
-  background: var(--ui-category-1-badge-bg, color-mix(in srgb, var(--ui-category-1-icon, var(--ui-accent-primary-fg, var(--accent))) 12%, transparent));
-  border-color: color-mix(in srgb, var(--ui-category-1-icon, var(--ui-accent-primary-fg, var(--accent))) 28%, transparent);
-  color: var(--ui-category-1-badge-text, var(--ui-category-1-icon, var(--ui-accent-primary-fg, var(--accent))));
+  background: var(--ui-category-1-badge-bg, color-mix(in srgb, var(--ui-category-1-icon, var(--ui-accent-primary-fg)) 12%, transparent));
+  border-color: color-mix(in srgb, var(--ui-category-1-icon, var(--ui-accent-primary-fg)) 28%, transparent);
+  color: var(--ui-category-1-badge-text, var(--ui-category-1-icon));
 }
 
 .tone-category-2 {
   background: var(--ui-category-2-badge-bg, color-mix(in srgb, var(--ui-category-2-icon, var(--ui-status-info-fg, var(--color-info))) 12%, transparent));
-  border-color: color-mix(in srgb, var(--ui-category-2-icon, var(--ui-status-info-fg, var(--color-info))) 28%, transparent);
-  color: var(--ui-category-2-badge-text, var(--ui-category-2-icon, var(--ui-status-info-fg, var(--color-info))));
+  border-color: color-mix(in srgb, var(--ui-category-2-icon, var(--ui-status-info-fg)) 28%, transparent);
+  color: var(--ui-category-2-badge-text, var(--ui-category-2-icon));
 }
 
 .tone-category-3 {
   background: var(--ui-category-3-badge-bg, color-mix(in srgb, var(--ui-category-3-icon, var(--ui-status-success-fg, var(--color-success))) 12%, transparent));
-  border-color: color-mix(in srgb, var(--ui-category-3-icon, var(--ui-status-success-fg, var(--color-success))) 28%, transparent);
-  color: var(--ui-category-3-badge-text, var(--ui-category-3-icon, var(--ui-status-success-fg, var(--color-success))));
+  border-color: color-mix(in srgb, var(--ui-category-3-icon, var(--ui-status-success-fg)) 28%, transparent);
+  color: var(--ui-category-3-badge-text, var(--ui-category-3-icon));
 }
 
 .tone-category-4 {
   background: var(--ui-category-4-badge-bg, color-mix(in srgb, var(--ui-category-4-icon, var(--ui-status-warning-fg, var(--color-warning))) 12%, transparent));
-  border-color: color-mix(in srgb, var(--ui-category-4-icon, var(--ui-status-warning-fg, var(--color-warning))) 28%, transparent);
-  color: var(--ui-category-4-badge-text, var(--ui-category-4-icon, var(--ui-status-warning-fg, var(--color-warning))));
+  border-color: color-mix(in srgb, var(--ui-category-4-icon, var(--ui-status-warning-fg)) 28%, transparent);
+  color: var(--ui-category-4-badge-text, var(--ui-category-4-icon));
 }
 
 .tone-category-5 {
   background: var(--ui-category-5-badge-bg, color-mix(in srgb, var(--ui-category-5-icon, var(--ui-status-warning-fg, var(--color-warning))) 12%, transparent));
-  border-color: color-mix(in srgb, var(--ui-category-5-icon, var(--ui-status-warning-fg, var(--color-warning))) 28%, transparent);
-  color: var(--ui-category-5-badge-text, var(--ui-category-5-icon, var(--ui-status-warning-fg, var(--color-warning))));
+  border-color: color-mix(in srgb, var(--ui-category-5-icon, var(--ui-status-warning-fg)) 28%, transparent);
+  color: var(--ui-category-5-badge-text, var(--ui-category-5-icon));
 }
 
 .tone-category-6 {
-  background: var(--ui-category-6-badge-bg, color-mix(in srgb, var(--ui-category-6-icon, var(--ui-text-muted-fg, var(--muted))) 12%, transparent));
-  border-color: color-mix(in srgb, var(--ui-category-6-icon, var(--ui-text-muted-fg, var(--muted))) 28%, transparent);
-  color: var(--ui-category-6-badge-text, var(--ui-category-6-icon, var(--ui-text-muted-fg, var(--muted))));
+  background: var(--ui-category-6-badge-bg, color-mix(in srgb, var(--ui-category-6-icon, var(--ui-text-muted-fg)) 12%, transparent));
+  border-color: color-mix(in srgb, var(--ui-category-6-icon, var(--ui-text-muted-fg)) 28%, transparent);
+  color: var(--ui-category-6-badge-text, var(--ui-category-6-icon));
 }
 
 .tone-category-7 {
-  background: var(--ui-category-7-badge-bg, color-mix(in srgb, var(--ui-category-7-icon, var(--ui-accent-primary-fg, var(--accent))) 12%, transparent));
-  border-color: color-mix(in srgb, var(--ui-category-7-icon, var(--ui-accent-primary-fg, var(--accent))) 28%, transparent);
-  color: var(--ui-category-7-badge-text, var(--ui-category-7-icon, var(--ui-accent-primary-fg, var(--accent))));
+  background: var(--ui-category-7-badge-bg, color-mix(in srgb, var(--ui-category-7-icon, var(--ui-accent-primary-fg)) 12%, transparent));
+  border-color: color-mix(in srgb, var(--ui-category-7-icon, var(--ui-accent-primary-fg)) 28%, transparent);
+  color: var(--ui-category-7-badge-text, var(--ui-category-7-icon));
 }
 </style>

@@ -315,28 +315,28 @@ async function commitBudget() {
   /* Blueprint frame, matching the composer below it: zero fill, one hairline
      outline, a punched-out legend on the border. Status colors travel on one
      ink variable instead of per-element overrides. */
-  --goal-ink: var(--ui-status-success-fg, var(--success-color, #16a34a));
+  --goal-ink: var(--ui-status-success-fg, var(--success-color));
 
   position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 7px 12px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   border-radius: var(--radius-xs, 4px);
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
 }
 
 .goal-bar[data-status='paused'],
 .goal-bar[data-status='budget_limited'],
 .goal-bar[data-retrying] {
-  --goal-ink: var(--ui-status-warning-fg, var(--warning-color, #d97706));
+  --goal-ink: var(--ui-status-warning-fg, var(--warning-color));
 }
 
 .goal-bar[data-status='blocked'] {
-  --goal-ink: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  --goal-ink: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 .goal-frame-label {
@@ -345,12 +345,12 @@ async function commitBudget() {
   left: 12px;
   z-index: 2;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   pointer-events: none;
   user-select: none;
 }
@@ -381,32 +381,32 @@ async function commitBudget() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   cursor: text;
 }
 
 .goal-objective:hover {
   text-decoration: underline dashed;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  text-decoration-color: var(--ui-border-strong-border);
 }
 
 /* Inline editors: bare fields on an ink baseline, matching the frame. */
 .goal-edit {
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 70%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 70%, transparent);
   padding: 0 0 1px;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   outline: none;
 }
 
-.goal-edit:focus {
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+input.goal-edit:focus {
+  border-bottom-color: var(--ui-accent-primary-fg);
 }
 
 .goal-edit[data-invalid] {
-  border-bottom-color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  border-bottom-color: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 .goal-objective-input {
@@ -432,7 +432,7 @@ async function commitBudget() {
   font-size: 10px;
   letter-spacing: 0.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .goal-actions {
@@ -452,17 +452,17 @@ async function commitBudget() {
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
 }
 
 .goal-btn:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
 .goal-btn.clear:hover {
-  color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  color: var(--ui-status-danger-fg, var(--danger-color));
 }
 </style>

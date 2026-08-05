@@ -527,7 +527,7 @@ function formatShortDate(ms?: number): string {
 /* ---- page header ---- */
 .memory-page-shell :deep(.page-shell-header) {
   padding: 10px 20px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
   background: transparent;
 }
 
@@ -557,7 +557,7 @@ function formatShortDate(ms?: number): string {
   font-weight: var(--font-weight-semibold, 600);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
 }
 
@@ -576,7 +576,7 @@ function formatShortDate(ms?: number): string {
   padding: 4px 0;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   white-space: nowrap;
   transition: color 0.12s ease;
@@ -585,16 +585,16 @@ function formatShortDate(ms?: number): string {
 .text-action:hover:not(:disabled),
 .text-action:focus-visible {
   outline: none;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .text-action.is-danger:hover:not(:disabled),
 .text-action.is-danger:focus-visible {
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
+  text-decoration-color: var(--ui-status-danger-fg);
 }
 
 .text-action:disabled {
@@ -611,7 +611,7 @@ function formatShortDate(ms?: number): string {
 .ledger-note {
   margin: 0;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .loading-note {
@@ -625,7 +625,7 @@ function formatShortDate(ms?: number): string {
 .truncated-note {
   flex-shrink: 0;
   padding: 7px 12px 8px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
 }
 
 /* ---- the ledger sheet ---- */
@@ -650,7 +650,7 @@ function formatShortDate(ms?: number): string {
   top: 18px;
   bottom: 18px;
   width: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 72%, transparent);
 }
 
 .memory-section {
@@ -692,7 +692,7 @@ function formatShortDate(ms?: number): string {
   flex-wrap: wrap;
   gap: 4px 14px;
   padding: 8px 0 6px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
 }
 
 .memory-section-header::before {
@@ -702,7 +702,7 @@ function formatShortDate(ms?: number): string {
   top: 16px;
   width: 10px;
   height: 2px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
 }
 
 .notes-title {
@@ -714,7 +714,7 @@ function formatShortDate(ms?: number): string {
   font-weight: var(--font-weight-semibold, 600);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
 }
 
@@ -742,7 +742,7 @@ function formatShortDate(ms?: number): string {
   gap: 6px;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
 }
 
@@ -755,13 +755,13 @@ function formatShortDate(ms?: number): string {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  border: 1px dashed var(--ui-text-muted-fg, var(--text-muted));
+  border: 1px dashed var(--ui-text-muted-fg);
   background: transparent;
 }
 
 .status-dot.saved {
-  border: 1px solid var(--ui-accent-primary-fg, var(--accent));
-  background: var(--ui-accent-primary-fg, var(--accent));
+  border: 1px solid var(--ui-accent-primary-fg);
+  background: var(--ui-accent-primary-fg);
 }
 
 .status-dot.pulsing {
@@ -780,10 +780,10 @@ function formatShortDate(ms?: number): string {
 }
 
 .tab-action.is-active {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 /* ---- notes workspace ---- */
@@ -815,7 +815,7 @@ function formatShortDate(ms?: number): string {
   flex-direction: column;
   overflow: hidden;
   background: transparent;
-  border-right: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
 }
 
 .viewer {
@@ -851,9 +851,9 @@ function formatShortDate(ms?: number): string {
   padding: 8px 4px 9px 8px;
   border: none;
   border-radius: 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   font: inherit;
   cursor: pointer;
   text-align: left;
@@ -867,23 +867,23 @@ function formatShortDate(ms?: number): string {
 
 .file-row:focus-visible {
   outline: none;
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 55%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-accent-primary-fg) 55%, transparent);
 }
 
 /* selection is a line, not a fill */
 .file-row.active {
-  box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg);
 }
 
 .file-icon {
   flex-shrink: 0;
   margin-top: 2px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .file-row:hover .file-icon,
 .file-row.active .file-icon {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .file-main {
@@ -916,7 +916,7 @@ function formatShortDate(ms?: number): string {
   white-space: nowrap;
   font-size: 12px;
   font-weight: var(--font-weight-medium, 500);
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .file-date {
@@ -924,7 +924,7 @@ function formatShortDate(ms?: number): string {
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 10.5px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
 }
 
@@ -935,7 +935,7 @@ function formatShortDate(ms?: number): string {
   white-space: nowrap;
   font-size: 11.5px;
   line-height: 1.45;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* ---- viewer ---- */
@@ -946,7 +946,7 @@ function formatShortDate(ms?: number): string {
   flex-shrink: 0;
   min-height: 40px;
   padding: 8px 12px 7px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
   background: transparent;
 }
 
@@ -969,7 +969,7 @@ function formatShortDate(ms?: number): string {
 }
 
 .viewer-title strong {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
   font-weight: var(--font-weight-medium, 500);
 }
@@ -977,7 +977,7 @@ function formatShortDate(ms?: number): string {
 .viewer-title small {
   font-family: var(--font-mono, monospace);
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .notes-viewer-body {
@@ -997,14 +997,14 @@ function formatShortDate(ms?: number): string {
   resize: none;
   outline: none;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   font-family: var(--font-mono, monospace);
   font-size: 13px;
   line-height: 1.6;
 }
 
 .memory-editor::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .memory-preview-container {
@@ -1013,7 +1013,7 @@ function formatShortDate(ms?: number): string {
   overflow-y: auto;
   line-height: 1.6;
   font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 /* ---- narrow panel: stacked list/viewer with slide-in detail ----
@@ -1047,7 +1047,7 @@ function formatShortDate(ms?: number): string {
     transform: translateX(100%);
     transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 2;
-    background: var(--ui-surface-app-bg, var(--bg));
+    background: var(--ui-surface-app-bg);
   }
 
   .detail-active .notes-list-surface {

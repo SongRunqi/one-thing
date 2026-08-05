@@ -88,12 +88,12 @@ const borderStyle = computed<StyleValue>(() => createBorderBoxStyle(props))
   border:
     var(--border-box-border-width, 1px)
     var(--border-box-border-style, solid)
-    var(--border-box-border-color, var(--ui-border-default-border, var(--border)));
+    var(--border-box-border-color, var(--ui-border-default-border));
   border-radius: var(--border-box-border-radius, var(--radius-md));
   background: var(--border-box-background, transparent);
   box-shadow: var(--border-box-shadow, none);
   padding: var(--border-box-padding, 0);
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   transition:
     border-color var(--duration-fast, 0.15s) var(--ease-default, ease),
     background var(--duration-fast, 0.15s) var(--ease-default, ease),
@@ -105,7 +105,7 @@ const borderStyle = computed<StyleValue>(() => createBorderBoxStyle(props))
 }
 
 .border-box.is-interactive:where(:not(.is-unstyled)):hover {
-  border-color: var(--border-box-hover-border-color, var(--border-box-border-color, var(--ui-border-default-border, var(--border))));
+  border-color: var(--border-box-hover-border-color, var(--border-box-border-color, var(--ui-border-default-border)));
   background: var(--border-box-hover-background, var(--border-box-background, transparent));
   box-shadow: var(--border-box-hover-shadow, var(--border-box-shadow, none));
 }
@@ -114,7 +114,7 @@ const borderStyle = computed<StyleValue>(() => createBorderBoxStyle(props))
   outline: none;
   box-shadow:
     var(--border-box-shadow, none),
-    0 0 0 2px var(--ui-surface-app-bg, var(--bg-app)),
-    0 0 0 4px var(--border-box-focus-ring-color, var(--ui-border-focus-ring, var(--ui-accent-primary-fg, var(--accent))));
+    0 0 0 2px var(--ui-surface-app-bg),
+    0 0 0 4px var(--border-box-focus-ring-color, var(--ui-border-focus-ring, var(--ui-accent-primary-fg)));
 }
 </style>

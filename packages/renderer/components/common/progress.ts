@@ -22,7 +22,7 @@ const progressStatusColors: Record<ProgressStatus, string> = {
   exception: 'var(--ui-status-danger-fg, var(--color-danger))',
 }
 
-const defaultProgressColor = 'var(--ui-accent-primary-fg, var(--accent))'
+const defaultProgressColor = 'var(--ui-accent-primary-fg)'
 
 export function normalizeProgressPercentage(value: number): number {
   if (!Number.isFinite(value)) return 0

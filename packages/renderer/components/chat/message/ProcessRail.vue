@@ -133,7 +133,7 @@ watch(() => expanded.value || props.solo, (open) => {
   border: none;
   border-radius: 0;
   background: none;
-  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  color: var(--ui-text-muted-fg);
   /* Process summary is chrome: UI sans, not the reading font. */
   font-family: var(--font-sans, inherit);
   font-size: 12.5px;
@@ -144,14 +144,14 @@ watch(() => expanded.value || props.solo, (open) => {
 
 /* Hover: text brightens only — no background band in either state. */
 .process-rail-header:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .process-rail-header::before,
 .process-rail-header::after {
   content: '';
   align-self: center;
-  border-top: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border, var(--border))) 55%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border)) 55%, transparent);
 }
 
 .process-rail-header::before {
@@ -198,14 +198,14 @@ watch(() => expanded.value || props.solo, (open) => {
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
 }
 
 .process-rail-failed-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  background: var(--ui-status-danger-fg);
 }
 
 .process-rail-live {
@@ -213,7 +213,7 @@ watch(() => expanded.value || props.solo, (open) => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   animation: process-rail-pulse 1.2s ease-in-out infinite;
 }
 
@@ -239,7 +239,7 @@ watch(() => expanded.value || props.solo, (open) => {
   position: relative;
   margin: -12px 0 4px;
   padding: 18px 12px 8px;
-  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border, var(--border))) 55%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border)) 55%, transparent);
   border-top: none;
   display: flex;
   flex-direction: column;
@@ -276,7 +276,7 @@ watch(() => expanded.value || props.solo, (open) => {
 /* Thought full text: outlined blueprint block — no fills, no quote line.
    Sans — process content is chrome, not reading matter. */
 .process-rail-body :deep(.inline-reasoning-content) {
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border)) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--ui-border-default-border)) 60%, transparent);
   margin: 2px 0 6px 22px;
   padding: 8px 10px;
   background: transparent;

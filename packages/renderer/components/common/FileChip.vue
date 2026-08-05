@@ -76,10 +76,10 @@ const tooltip = computed(() => {
   height: 28px;
   max-width: min(220px, 100%);
   padding: 0 9px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
   border-radius: var(--radius-xs, 4px);
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .file-chip.size-sm {
@@ -91,7 +91,7 @@ const tooltip = computed(() => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .file-chip-name {
@@ -107,14 +107,14 @@ const tooltip = computed(() => {
 .file-chip-badge {
   flex-shrink: 0;
   padding: 0 4px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
   border-radius: 2px;
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 1px;
   line-height: 14px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .file-chip-remove {
@@ -123,8 +123,8 @@ const tooltip = computed(() => {
   --app-button-padding-x: 0;
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-hover-fill: var(--ui-state-hover-bg);
+  --app-button-hover-fg: var(--ui-text-primary-fg);
 
   width: 18px;
   height: 18px;
@@ -132,7 +132,7 @@ const tooltip = computed(() => {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -145,7 +145,7 @@ const tooltip = computed(() => {
 }
 
 .file-chip-remove:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 </style>

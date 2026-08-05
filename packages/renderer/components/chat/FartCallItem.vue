@@ -348,20 +348,20 @@ function maybePlayAudio() {
   background:
     linear-gradient(
       180deg,
-      var(--ui-surface-floating-bg, #18181b) 0%,
-      var(--ui-surface-app-bg, #0c0c0e) 100%
+      var(--ui-surface-floating-bg) 0%,
+      var(--ui-surface-app-bg) 100%
     );
-  border: 1px solid var(--ui-border-strong-border, #3f3f46);
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: 8px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 4px 16px rgba(0, 0, 0, 0.45);
   font-family: 'Press Start 2P', 'VT323', 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  color: var(--ui-status-success-fg, #00ff88);
+  color: var(--ui-status-success-fg);
 }
 
 .arcade-cabinet.status-failed {
-  border-color: var(--ui-status-danger-border, #7f1d1d);
+  border-color: var(--ui-status-danger-border);
 }
 
 /* ── Marquee ── */
@@ -372,9 +372,9 @@ function maybePlayAudio() {
   gap: 10px;
   padding: 6px 10px;
   background:
-    linear-gradient(180deg, var(--ui-accent-primary-fg, #db2777) 0%, var(--ui-accent-subtle-fg, #7e22ce) 100%);
+    linear-gradient(180deg, var(--ui-accent-primary-fg) 0%, var(--ui-accent-subtle-fg) 100%);
   border-radius: 4px;
-  color: var(--ui-text-inverse-fg, #fff);
+  color: var(--ui-text-inverse-fg);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 2px;
@@ -402,9 +402,9 @@ function maybePlayAudio() {
 .crt {
   position: relative;
   padding: 6px;
-  background: var(--ui-surface-app-bg, #000);
+  background: var(--ui-surface-app-bg);
   border-radius: 10px;
-  border: 2px solid var(--ui-border-strong-border, #27272a);
+  border: 2px solid var(--ui-border-strong-border);
   box-shadow:
     inset 0 0 20px rgba(0, 255, 136, 0.15),
     inset 0 0 60px rgba(0, 0, 0, 0.8);
@@ -418,8 +418,8 @@ function maybePlayAudio() {
   background:
     radial-gradient(
       ellipse at center,
-      var(--ui-surface-code-block-bg, #0b1b13) 0%,
-      var(--ui-surface-app-bg, #000) 80%
+      var(--ui-surface-code-block-bg) 0%,
+      var(--ui-surface-app-bg) 80%
     );
   overflow: hidden;
 }
@@ -431,20 +431,20 @@ function maybePlayAudio() {
   gap: 10px;
   font-size: 10px;
   letter-spacing: 2px;
-  color: var(--ui-status-success-fg, #a3e635);
+  color: var(--ui-status-success-fg);
   margin-bottom: 8px;
   text-shadow: 0 0 6px rgba(163, 230, 53, 0.5);
 }
 
 .hud-label {
-  color: var(--ui-status-warning-fg, #facc15);
+  color: var(--ui-status-warning-fg);
   text-shadow: 0 0 6px rgba(250, 204, 21, 0.5);
 }
 
 .hud-value {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: var(--ui-text-inverse-fg, #fff);
+  color: var(--ui-text-inverse-fg);
   text-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
 }
 
@@ -473,15 +473,15 @@ function maybePlayAudio() {
   max-width: 80%;
   margin: 0 auto 8px;
   padding: 8px 12px;
-  background: var(--ui-surface-floating-bg, #fff);
-  color: var(--ui-text-primary-fg, #111);
-  border: 2px solid var(--ui-border-strong-border, #000);
+  background: var(--ui-surface-floating-bg);
+  color: var(--ui-text-primary-fg);
+  border: 2px solid var(--ui-border-strong-border);
   border-radius: 6px;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 12px;
   line-height: 1.45;
   box-shadow:
-    2px 2px 0 var(--ui-border-strong-border, #000),
+    2px 2px 0 var(--ui-border-strong-border),
     4px 4px 0 rgba(0, 0, 0, 0.2);
   text-shadow: none;
 }
@@ -500,8 +500,8 @@ function maybePlayAudio() {
   height: 0;
   border-left: 8px solid transparent;
   border-right: 8px solid transparent;
-  border-top: 10px solid var(--ui-surface-floating-bg, #fff);
-  filter: drop-shadow(0 2px 0 var(--ui-border-strong-border, #000));
+  border-top: 10px solid var(--ui-surface-floating-bg);
+  filter: drop-shadow(0 2px 0 var(--ui-border-strong-border));
 }
 
 .bubble-tail::after {
@@ -513,13 +513,13 @@ function maybePlayAudio() {
   height: 0;
   border-left: 8px solid transparent;
   border-right: 8px solid transparent;
-  border-top: 10px solid var(--ui-border-strong-border, #000);
+  border-top: 10px solid var(--ui-border-strong-border);
   z-index: -1;
 }
 
 .caret {
   display: inline-block;
-  color: var(--ui-accent-primary-fg, #db2777);
+  color: var(--ui-accent-primary-fg);
   animation: caret-blink 0.6s steps(2, end) infinite;
   margin-left: 1px;
 }
@@ -583,11 +583,11 @@ function maybePlayAudio() {
   min-width: 70px;
   height: 30px;
   padding: 0 10px;
-  border: 2px solid var(--ui-border-strong-border, #0f172a);
+  border: 2px solid var(--ui-border-strong-border);
   border-radius: 14px;
   background:
-    linear-gradient(180deg, var(--ui-status-danger-fg, #b3403a) 0%, var(--ui-status-danger-fg, #b3403a) 100%);
-  color: var(--ui-text-inverse-fg, #fff);
+    linear-gradient(180deg, var(--ui-status-danger-fg) 0%, var(--ui-status-danger-fg) 100%);
+  color: var(--ui-text-inverse-fg);
   font-family: inherit;
   font-size: 9px;
   letter-spacing: 1.5px;
@@ -596,7 +596,7 @@ function maybePlayAudio() {
   box-shadow:
     inset 0 2px 0 rgba(255, 255, 255, 0.25),
     inset 0 -2px 0 rgba(0, 0, 0, 0.3),
-    0 2px 0 var(--ui-border-strong-border, #0f172a);
+    0 2px 0 var(--ui-border-strong-border);
   transition: transform 0.06s ease, box-shadow 0.06s ease;
 }
 
@@ -605,7 +605,7 @@ function maybePlayAudio() {
   box-shadow:
     inset 0 2px 0 rgba(255, 255, 255, 0.2),
     inset 0 -1px 0 rgba(0, 0, 0, 0.3),
-    0 0 0 var(--ui-border-strong-border, #0f172a);
+    0 0 0 var(--ui-border-strong-border);
 }
 
 .arcade-btn:disabled {
@@ -614,11 +614,11 @@ function maybePlayAudio() {
 }
 
 .btn-start {
-  background: linear-gradient(180deg, var(--ui-status-success-fg, #22c55e) 0%, var(--ui-status-success-fg, #15803d) 100%);
+  background: linear-gradient(180deg, var(--ui-status-success-fg) 0%, var(--ui-status-success-fg) 100%);
 }
 
 .btn-sound {
-  background: linear-gradient(180deg, var(--ui-accent-primary-fg, var(--accent)) 0%, var(--ui-accent-primary-fg, var(--accent)) 100%);
+  background: linear-gradient(180deg, var(--ui-accent-primary-fg) 0%, var(--ui-accent-primary-fg) 100%);
 }
 
 .btn-label {
@@ -628,10 +628,10 @@ function maybePlayAudio() {
 .credits {
   margin-left: auto;
   padding: 4px 10px;
-  border: 1px solid var(--ui-border-strong-border, #3f3f46);
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: 4px;
-  background: var(--ui-surface-app-bg, #000);
-  color: var(--ui-status-warning-fg, #facc15);
+  background: var(--ui-surface-app-bg);
+  color: var(--ui-status-warning-fg);
   font-size: 9px;
   letter-spacing: 2px;
   font-family: inherit;
@@ -640,7 +640,7 @@ function maybePlayAudio() {
 
 /* ── Status tints ── */
 .arcade-cabinet.status-failed .stage {
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
   text-shadow:
     0 0 8px rgba(239, 68, 68, 0.6),
     0 0 16px rgba(239, 68, 68, 0.35);

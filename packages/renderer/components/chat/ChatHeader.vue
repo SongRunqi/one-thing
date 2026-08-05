@@ -176,7 +176,7 @@ defineEmits<{
   transform: translateX(-50%);
   font-size: 13px;
   font-weight: 500;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -206,7 +206,7 @@ defineEmits<{
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -216,23 +216,23 @@ defineEmits<{
 }
 
 .chat-header-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover, rgba(255, 255, 255, 0.08)));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .chat-header-btn.back-btn {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .chat-header-btn.close-btn:hover {
   background: rgba(239, 68, 68, 0.15);
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 
 .chat-header-btn.flow-btn.active,
 .chat-header-btn.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 15%, transparent);
+  color: var(--ui-text-primary-fg);
 }
 
 .chat-header-btn.inspector-toggle {

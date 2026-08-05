@@ -273,7 +273,7 @@ onMounted(() => {
 
 .section-desc {
   font-size: 12px;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   margin: 0 0 14px;
   line-height: 1.5;
 }
@@ -286,7 +286,7 @@ onMounted(() => {
   background: transparent;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg));
 }
 
 /* ── Plugin list: ledger rows, no card chrome ── */
@@ -301,7 +301,7 @@ onMounted(() => {
   justify-content: space-between;
   gap: 10px;
   padding: 6px 0 8px;
-  border-bottom: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-bottom: 1px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
 }
 
@@ -309,7 +309,7 @@ onMounted(() => {
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
 }
 
 .refresh-btn {
@@ -322,7 +322,7 @@ onMounted(() => {
   display: flex;
   align-items: flex-start;
   padding: 12px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--ui-border-default-border))) 55%, transparent);
 }
 
 .plugin-item:last-child {
@@ -331,13 +331,13 @@ onMounted(() => {
 
 /* Disabled plugin: faint ink + strike-through, not an opacity veil. */
 .plugin-item.disabled .plugin-name {
-  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
   text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted))) 60%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg))) 60%, transparent);
 }
 
 .plugin-item.disabled .plugin-desc {
-  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
 }
 
 .plugin-body {
@@ -368,19 +368,19 @@ onMounted(() => {
 .plugin-name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 /* Badges: outlined rings, zero fill. */
 .plugin-version {
   flex-shrink: 0;
   padding: 1px 7px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 999px;
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 10px;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
 }
 
 .status-badge {
@@ -396,24 +396,24 @@ onMounted(() => {
 }
 
 .status-badge.loaded {
-  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, #34d399));
-  color: var(--ui-status-success-fg, #34d399);
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg));
+  color: var(--ui-status-success-fg);
 }
 
 .status-badge.error {
-  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #b3403a));
-  color: var(--ui-status-danger-fg, #b3403a);
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
+  color: var(--ui-status-danger-fg);
 }
 
 .status-badge.stopped {
   border-style: dashed;
-  border-color: var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
+  border-color: var(--settings-rule, var(--ui-border-default-border));
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
 }
 
 .plugin-desc {
   font-size: 12px;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   margin: 0;
   line-height: 1.45;
 }
@@ -433,31 +433,31 @@ onMounted(() => {
   white-space: nowrap;
   font-family: var(--font-mono, monospace);
   font-size: 10px;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
 }
 
 .meta-tag.path {
-  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
 }
 
 .meta-tag.needs-install {
   padding: 1px 7px;
-  border: 1px solid var(--ui-status-warning-border, var(--ui-status-warning-fg, #f59e0b));
+  border: 1px solid var(--ui-status-warning-border, var(--ui-status-warning-fg));
   border-radius: 999px;
   background: transparent;
-  color: var(--ui-status-warning-fg, #f59e0b);
+  color: var(--ui-status-warning-fg);
 }
 
 .meta-tag.builtin {
   padding: 1px 7px;
-  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg)) 55%, transparent);
   border-radius: 999px;
   background: transparent;
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .cmd-list {
-  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
 }
 
 /* ── Empty/Loading/Error ── */
@@ -465,12 +465,12 @@ onMounted(() => {
 .loading-row {
   padding: 28px 16px;
   text-align: center;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-size: 13px;
 }
 
 .empty-state {
-  border: 1px dashed var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px dashed var(--settings-rule, var(--ui-border-default-border));
 }
 
 .empty-state p {
@@ -493,8 +493,8 @@ onMounted(() => {
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid color-mix(in srgb, var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted))) 30%, transparent);
-  border-top-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border: 2px solid color-mix(in srgb, var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg))) 30%, transparent);
+  border-top-color: var(--settings-accent, var(--ui-accent-primary-fg));
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -512,25 +512,25 @@ onMounted(() => {
   padding: 3px 10px;
   font-size: 11px;
   font-family: var(--font-mono, monospace);
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   background: transparent;
-  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--ui-text-primary-fg)));
   cursor: pointer;
   transition: border-color 0.12s ease, color 0.12s ease;
 }
 
 .btn-sm:hover {
   background: transparent;
-  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .install-steps {
   margin: 0;
   padding-left: 18px;
   line-height: 1.8;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-size: 12px;
 }
 </style>

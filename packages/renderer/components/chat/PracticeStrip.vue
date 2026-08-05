@@ -522,9 +522,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .practice-strip {
-  --ps-ink: var(--ui-text-primary-fg, var(--text));
-  --ps-muted: var(--ui-text-muted-fg, var(--muted));
-  --ps-hairline: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 55%, transparent);
+  --ps-ink: var(--ui-text-primary-fg);
+  --ps-muted: var(--ui-text-muted-fg);
+  --ps-hairline: color-mix(in srgb, var(--ui-border-subtle-border) 55%, transparent);
   position: relative;
   flex-shrink: 0;
   user-select: none;
@@ -623,8 +623,8 @@ onBeforeUnmount(() => {
   z-index: var(--z-modal);
   min-width: 248px;
   padding: 6px;
-  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
+  border: 1px solid var(--ui-border-subtle-border);
   border-radius: 10px;
   box-shadow: var(--ui-surface-tooltip-shadow, 0 4px 14px rgb(0 0 0 / 0.12));
 }
@@ -679,8 +679,8 @@ onBeforeUnmount(() => {
   top: -6px;
   min-width: 128px;
   padding: 6px;
-  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
+  border: 1px solid var(--ui-border-subtle-border);
   border-radius: 10px;
   box-shadow: var(--ui-surface-tooltip-shadow, 0 4px 14px rgb(0 0 0 / 0.12));
 }

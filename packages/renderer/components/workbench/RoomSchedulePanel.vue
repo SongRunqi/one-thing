@@ -344,7 +344,7 @@ defineExpose({ reload })
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  background: var(--ui-surface-panel-bg);
 }
 
 .rs-scroll {
@@ -364,7 +364,7 @@ defineExpose({ reload })
   gap: 6px;
   align-items: center;
   padding: 11px 12px 3px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   letter-spacing: 0.02em;
 }
@@ -380,25 +380,25 @@ defineExpose({ reload })
   padding: 0;
   border: 0;
   background: none;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   font: inherit;
   font-size: 10.5px;
 }
 
 .rs-reload:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .rs-empty {
   margin: 0;
   padding: 3px 12px 6px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-size: 11.5px;
 }
 
 .rs-empty.is-warn {
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 /* ── 租约 / 举手:同一条行式骨架,行宽不跳 ── */
@@ -414,7 +414,7 @@ defineExpose({ reload })
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -422,20 +422,20 @@ defineExpose({ reload })
 
 .rs-state {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
 }
 
 /* 真在生成的那一行才上墨 —— 「持牌」与「生成中」在这一列上必须看得出差别。 */
 .rs-lease.is-run .rs-state {
-  color: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  color: var(--ui-status-success-fg, var(--color-success));
 }
 
 .rs-meta {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -444,7 +444,7 @@ defineExpose({ reload })
 
 .rs-at {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -452,7 +452,7 @@ defineExpose({ reload })
 
 .rs-lease-id {
   flex: 0 0 auto;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   cursor: help;
@@ -462,14 +462,14 @@ defineExpose({ reload })
 .rs-gate {
   flex: 0 0 auto;
   padding: 0 5px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
-  color: var(--ui-text-muted-fg, var(--muted));
+  border: 1px solid var(--ui-border-subtle-border);
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
 }
 
 .rs-gate.is-actionable {
-  border-color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  border-color: var(--ui-status-warning-fg, var(--color-warning));
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 /* ── 裁决 ── */
@@ -487,20 +487,20 @@ defineExpose({ reload })
   height: 6px;
   border-radius: 50%;
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--ui-text-muted-fg, var(--muted));
+  box-shadow: inset 0 0 0 1px var(--ui-text-muted-fg);
 }
 
 .rs-judge-now.is-inflight .rs-judge-mark {
-  background: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-text-primary-fg);
   box-shadow: none;
 }
 
 .rs-judge-now.is-degraded {
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .rs-judge-now.is-degraded .rs-judge-mark {
-  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  background: var(--ui-status-warning-fg, var(--color-warning));
   border-radius: 1px;
   box-shadow: none;
 }
@@ -517,11 +517,11 @@ defineExpose({ reload })
 .rs-verdict {
   margin: 2px 12px 4px;
   padding: 6px 0 6px 9px;
-  border-left: 1.5px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-left: 1.5px solid var(--ui-border-subtle-border);
 }
 
 .rs-verdict.is-degraded {
-  border-left-color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  border-left-color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .rs-verdict-head {
@@ -533,26 +533,26 @@ defineExpose({ reload })
 .rs-verdict-order {
   flex: 1 1 auto;
   min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
 }
 
 .rs-verdict-why {
   margin: 3px 0 0;
-  color: var(--ui-text-secondary-fg, var(--text));
+  color: var(--ui-text-secondary-fg, var(--ui-text-primary-fg));
   font-size: 11.5px;
   line-height: 1.6;
 }
 
 .rs-verdict-why.is-warn {
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .rs-verdict-meta {
   display: flex;
   gap: 10px;
   margin-top: 4px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
@@ -570,15 +570,15 @@ defineExpose({ reload })
   padding: 1px 6px;
   border: 1px solid transparent;
   background: none;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   font: inherit;
   font-size: 10.5px;
 }
 
 .rs-filter.is-on {
-  border-color: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
-  color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--ui-border-subtle-border);
+  color: var(--ui-text-primary-fg);
 }
 
 .rs-log {
@@ -591,7 +591,7 @@ defineExpose({ reload })
 
 .rs-log-at {
   flex: 0 0 30px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
@@ -601,26 +601,26 @@ defineExpose({ reload })
 .rs-log-text {
   flex: 1 1 auto;
   min-width: 0;
-  color: var(--ui-text-secondary-fg, var(--text));
+  color: var(--ui-text-secondary-fg, var(--ui-text-primary-fg));
 }
 
 .rs-log-from {
   flex: 0 0 auto;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
 }
 
 /* 四档而不是十四色:出事了 / 花钱了 / 动了牌 / 只是流水。 */
 .rs-log.is-fault .rs-log-text {
-  color: var(--ui-status-danger-fg, var(--color-danger, #a33));
+  color: var(--ui-status-danger-fg, var(--color-danger));
 }
 
 .rs-log.is-judge .rs-log-text {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .rs-log.is-plain .rs-log-text {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 </style>

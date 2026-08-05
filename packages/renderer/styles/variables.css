@@ -387,19 +387,19 @@
 	--ui-surface-code-block-bg: var(--color-neutral-base-fill, var(--bg-code-block));
 	--ui-surface-code-block-border: var(--color-neutral-base-border, var(--border-code));
 	--ui-surface-code-header-bg: var(--color-neutral-dark-fill, var(--bg-code-header));
-	--ui-surface-code-block-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 1.8%, transparent),
+	--ui-surface-code-block-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text)) 1.8%, transparent),
 		0 1px 2px rgba(0, 0, 0, 0.025);
 	--ui-surface-chat-panel-shadow:
 		0 10px 28px rgba(0, 0, 0, 0.11),
 		0 1px 5px rgba(0, 0, 0, 0.055),
-		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 2.8%, transparent);
+		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text)) 2.8%, transparent);
 	--ui-surface-composer-shadow:
 		0 1px 3px rgba(0, 0, 0, 0.03),
-		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 1.8%, transparent);
+		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text)) 1.8%, transparent);
 	--ui-surface-composer-focus-shadow:
 		0 1px 5px rgba(0, 0, 0, 0.04),
-		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 2.2%, transparent),
-		0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--color-primary-border, var(--color-primary, var(--accent))))) 4.5%, transparent);
+		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text)) 2.2%, transparent),
+		0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg)) 4.5%, transparent);
 	--ui-surface-composer-queue-shadow: 0 -1px 6px rgba(0, 0, 0, 0.035);
 	/* Composer overlay system: shared surface for everything floating or
 	   docked above the composer (pickers, queue, quote, attachment chips).
@@ -408,7 +408,7 @@
 	--ui-composer-overlay-border: color-mix(in srgb, var(--ui-border-subtle-border) 32%, transparent);
 	--ui-composer-overlay-shadow:
 		0 8px 18px rgba(0, 0, 0, 0.045),
-		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 1.4%, transparent);
+		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text)) 1.4%, transparent);
 	--ui-surface-tooltip-bg: var(--bg-tooltip);
 	--ui-surface-tooltip-fg: var(--text-tooltip);
 	--ui-surface-tooltip-border: var(--color-neutral-dark-border, var(--border-strong, var(--border-default)));
@@ -463,9 +463,9 @@
 	--ui-action-danger-hover-border: var(--ui-action-danger-border);
 	--ui-action-disabled-bg: var(--color-neutral-lighter-fill, var(--bg-input-disabled));
 	--ui-action-disabled-fg: var(--color-neutral-disabled-text, var(--text-btn-disabled));
-	--ui-action-primary-shadow: 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--color-primary-text, var(--color-primary, var(--accent))))) 22%, transparent);
-	--ui-action-primary-hover-shadow: 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--color-primary-text, var(--color-primary, var(--accent))))) 24%, transparent);
-	--ui-action-primary-active-shadow: 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--color-primary-text, var(--color-primary, var(--accent))))) 18%, transparent);
+	--ui-action-primary-shadow: 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg)) 22%, transparent);
+	--ui-action-primary-hover-shadow: 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg)) 24%, transparent);
+	--ui-action-primary-active-shadow: 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg)) 18%, transparent);
 
 	--ui-state-hover-bg: var(--bg-hover);
 	--ui-state-active-bg: var(--bg-active);
@@ -476,6 +476,15 @@
 	--ui-state-highlight-bg: var(--color-warning-bg, var(--color-warning-light, var(--bg-highlight)));
 	--ui-state-focus-border: var(--color-primary-border, var(--color-primary, var(--border-input-focus)));
 	--ui-state-focus-ring: var(--color-primary-border, var(--color-primary, var(--border-input-focus)));
+	/* focus ring 三档配方(唯一出处,ui-system.md §2)。工具类 `.u-focus-ring` /
+	   `.u-focus-ring-input` 在 components.css;拿不到全局类的 scoped 规则直接引
+	   这三个 shadow token,别再手抄一遍双环。 */
+	--ui-focus-ring-shadow:
+		0 0 0 2px var(--ui-surface-app-bg),
+		0 0 0 4px var(--ui-state-focus-ring);
+	--ui-focus-ring-input-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-surface-input-focus-ring) 15%, transparent);
+	/* 无"底环"可依的浮面/侧栏:单环、半透明,不去咬邻行。 */
+	--ui-focus-ring-soft-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
 	--ui-state-disabled-bg: var(--bg-input-disabled, var(--color-neutral-lighter-fill));
 	--ui-state-disabled-fg: var(--color-neutral-disabled-text, var(--text-input-disabled, var(--text-btn-disabled)));
 
@@ -487,9 +496,11 @@
 	   The generic neutral-regular/primary text used to shadow them, making rest
 	   and hover titles nearly the same brightness. */
 	--ui-sidebar-item-fg: var(--text-sidebar-item, var(--color-neutral-regular-text));
-	--ui-sidebar-item-hover-bg: var(--ui-state-hover-bg);
+	/* 行状态底走「墨阶」——配方在主题层 role-mapping.ts 的 REGION_OVERLAY_STEPS,
+	   运行时由 css-mapper 解析成实色写下来;这里的表达式是未加载主题时的同值兜底。 */
+	--ui-sidebar-item-hover-bg: color-mix(in srgb, var(--ui-sidebar-row-ink) 8%, transparent);
 	--ui-sidebar-item-hover-fg: var(--text-sidebar-item-hover, var(--color-neutral-primary-text));
-	--ui-sidebar-item-active-bg: var(--ui-state-selected-bg);
+	--ui-sidebar-item-active-bg: color-mix(in srgb, var(--ui-sidebar-row-ink) 14%, transparent);
 	--ui-sidebar-item-active-fg: var(--ui-text-primary-fg);
 	--ui-sidebar-item-active-border: var(--ui-border-selected-border);
 	--ui-sidebar-item-muted-fg: var(--color-neutral-secondary-text, var(--text-sidebar-muted));
@@ -498,6 +509,17 @@
 	--ui-sidebar-action-hover-bg: var(--ui-state-hover-bg);
 	--ui-sidebar-action-hover-fg: var(--ui-text-primary-fg);
 	--ui-sidebar-border-border: var(--ui-border-divider-border);
+	/* 整棵 sidebar 共用的那条墨阶:行文 / rail 与 ActiveWorkCard 这类嵌套面。 */
+	--ui-sidebar-row-ink: var(--ui-text-primary-fg);
+	--ui-sidebar-row-fg: color-mix(in srgb, var(--ui-sidebar-row-ink) 72%, transparent);
+	--ui-sidebar-rail-bg: color-mix(in srgb, var(--ui-sidebar-row-ink) 2.5%, transparent);
+	/* rail 上的行状态叠在 rail 自己的 2.5% 墨底上(主题层解析实色时同样以它为基)。 */
+	--ui-sidebar-rail-hover-bg: color-mix(in srgb, var(--ui-sidebar-row-ink) 4.5%, var(--ui-sidebar-rail-bg));
+	--ui-sidebar-rail-active-bg: color-mix(in srgb, var(--ui-sidebar-row-ink) 7.5%, var(--ui-sidebar-rail-bg));
+	--ui-sidebar-rail-muted-fg: color-mix(in srgb, var(--ui-sidebar-row-ink) 47%, var(--ui-sidebar-rail-bg));
+	/* 设置区行状态底(accent 墨),同一条配方链的 settings 分支。 */
+	--ui-settings-row-hover-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 5%, transparent);
+	--ui-settings-row-active-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, var(--ui-surface-panel-bg));
 
 	--ui-tab-bar-surface-bg: color-mix(in srgb, var(--ui-surface-panel-bg) 78%, var(--ui-surface-elevated-bg));
 	--ui-tab-bar-surface-border: var(--ui-border-subtle-border);
@@ -528,7 +550,7 @@
 	--ui-status-success-bg: var(--color-success-bg, var(--color-success-light));
 	--ui-status-success-border: var(--color-success-border, var(--color-success, var(--border-success)));
 	--ui-status-success-on-fg: var(--color-neutral-basic-white);
-	--ui-status-info-fg: var(--color-info-text, var(--color-info, var(--text-info)));
+	--ui-status-info-fg: var(--color-info-text, var(--color-info));
 	--ui-status-info-bg: var(--color-info-bg, var(--color-info-light));
 	--ui-status-info-border: var(--color-info-border, var(--color-info, var(--border-accent)));
 	--ui-status-info-on-fg: var(--color-neutral-basic-black);
@@ -562,7 +584,7 @@
 	--ui-tool-surface-hover-bg: var(--color-neutral-darker-fill, var(--bg-tool-call-hover, var(--bg-tool-call, var(--color-neutral-dark-fill))));
 	--ui-tool-surface-subtle-bg: color-mix(
 		in srgb,
-		var(--ui-tool-text-fg, var(--color-neutral-primary-text, var(--text-primary))) 3%,
+		var(--ui-tool-text-fg, var(--color-neutral-primary-text)) 3%,
 		var(--ui-tool-surface-bg, var(--bg-tool-call))
 	);
 	--ui-tool-result-bg: var(--color-neutral-base-fill, var(--bg-tool-result));
@@ -835,7 +857,7 @@ html[data-typography-density="comfortable"] {
 	/* Paper-ink signature shadow: hard offset, zero blur — a sheet laid on a
 	   sheet. THE shadow for ledger cards/dialogs; never hand-copy the
 	   color-mix recipe into components. */
-	--shadow-paper: 4px 4px 0 color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 24%, transparent);
+	--shadow-paper: 4px 4px 0 color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong)) 24%, transparent);
 
 	/* ============================================
      Effects - Dark Theme

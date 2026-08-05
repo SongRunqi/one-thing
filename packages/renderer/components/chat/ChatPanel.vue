@@ -826,7 +826,7 @@ defineExpose({
   padding: 10px 0;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  color: var(--ui-text-muted-fg);
   user-select: none;
 }
 

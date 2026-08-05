@@ -45,7 +45,7 @@ defineProps<{
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
-  color: var(--settings-ink-2, var(--type-body-strong-color, var(--ui-text-primary-fg, var(--text-primary))));
+  color: var(--settings-ink-2, var(--type-body-strong-color, var(--ui-text-primary-fg)));
   font-size: var(--type-body-strong-size);
   font-weight: var(--type-body-strong-weight);
   line-height: var(--type-body-strong-line-height);
@@ -53,14 +53,14 @@ defineProps<{
 
 .settings-field-value {
   margin-left: auto;
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
   font-size: var(--type-meta-size);
   font-weight: var(--type-body-strong-weight);
 }
 
 .settings-field-hint {
   margin: 7px 0 0;
-  color: var(--settings-ink-4, var(--type-caption-muted-color, var(--ui-text-muted-fg, var(--text-muted))));
+  color: var(--settings-ink-4, var(--type-caption-muted-color, var(--ui-text-muted-fg)));
   font-size: var(--type-caption-muted-size);
   line-height: var(--type-caption-muted-line-height);
 }

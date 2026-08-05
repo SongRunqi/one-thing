@@ -224,7 +224,7 @@ defineExpose({ load })
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 1.5px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .head-objective {
@@ -234,7 +234,7 @@ defineExpose({ load })
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .head-refresh {
@@ -242,11 +242,11 @@ defineExpose({ load })
   display: flex;
   padding: 3px;
   border-radius: var(--radius-xs, 4px);
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .head-refresh:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .head-stats {
@@ -256,24 +256,24 @@ defineExpose({ load })
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .review-state {
   padding: 16px 12px;
   font-size: 12px;
   line-height: 1.6;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .review-state.is-error {
-  color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  color: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 .state-note {
   margin-top: 6px;
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .review-files {
@@ -291,7 +291,7 @@ defineExpose({ load })
   gap: 8px;
   align-items: center;
   padding: 6px 8px;
-  background: var(--ui-surface-raised-bg, var(--bg-secondary, transparent));
+  background: transparent;
 }
 
 .file-toggle {
@@ -304,7 +304,7 @@ defineExpose({ load })
 
 .file-chevron {
   flex-shrink: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   transition: transform var(--transition-fast, 0.15s) ease;
 }
 
@@ -322,7 +322,7 @@ defineExpose({ load })
   text-align: left;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .file-badge {
@@ -334,11 +334,11 @@ defineExpose({ load })
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 1px;
-  color: var(--ui-status-success-fg, var(--success-color, #16a34a));
+  color: var(--ui-status-success-fg, var(--success-color));
 }
 
 .file-badge.is-deleted {
-  color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  color: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 .file-counts {
@@ -355,18 +355,18 @@ defineExpose({ load })
   display: flex;
   padding: 3px;
   border-radius: var(--radius-xs, 4px);
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .file-open:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .plus {
-  color: var(--ui-status-success-fg, var(--success-color, #16a34a));
+  color: var(--ui-status-success-fg, var(--success-color));
 }
 
 .minus {
-  color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  color: var(--ui-status-danger-fg, var(--danger-color));
 }
 </style>

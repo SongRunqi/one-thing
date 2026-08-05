@@ -134,7 +134,7 @@
    Additions (diff)
    ============================================ */
 .hljs-addition {
-	color: var(--hg-syntax-inserted-fg, var(--diff-add-text, var(--ui-status-success-fg, var(--hljs-string, var(--text-code-string)))));
+	color: var(--hg-syntax-inserted-fg, var(--diff-add-text, var(--ui-status-success-fg, var(--hljs-string))));
 	background-color: var(--hg-syntax-inserted-bg, var(--diff-add-bg, var(--ui-status-success-bg, transparent)));
 }
 
@@ -142,7 +142,7 @@
    Deletions (diff)
    ============================================ */
 .hljs-deletion {
-	color: var(--hg-syntax-deleted-fg, var(--diff-del-text, var(--ui-status-danger-fg, var(--text-error))));
+	color: var(--hg-syntax-deleted-fg, var(--diff-del-text, var(--ui-status-danger-fg)));
 	background-color: var(--hg-syntax-deleted-bg, var(--diff-del-bg, var(--ui-status-danger-bg, transparent)));
 }
 
@@ -169,7 +169,7 @@
    Links
    ============================================ */
 .hljs-link {
-	color: var(--hg-syntax-link-fg, var(--text-link));
+	color: var(--hg-syntax-link-fg, var(--ui-text-link-fg));
 	background-color: var(--hg-syntax-link-bg, transparent);
 	font-style: var(--hg-syntax-link-font-style, normal);
 	font-weight: var(--hg-syntax-link-font-weight, 400);

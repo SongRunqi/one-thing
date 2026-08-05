@@ -142,11 +142,11 @@ function sourceTitle(source?: string): string {
 .transcript-round {
   align-self: center;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-secondary));
+  color: var(--ui-text-muted-fg, var(--ui-text-secondary-fg));
   padding: 2px 10px;
   border-radius: 999px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-elevated-bg);
+  border: 1px solid var(--ui-border-default-border);
 }
 
 .transcript-bubble {
@@ -160,13 +160,13 @@ function sourceTitle(source?: string): string {
 .transcript-bubble.user {
   align-self: flex-end;
   background: var(--ui-action-primary-bg, var(--accent-light));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
 }
 
 .transcript-bubble.assistant {
   align-self: flex-start;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-elevated-bg);
+  border: 1px solid var(--ui-border-default-border);
 }
 
 .transcript-tool-call {
@@ -176,8 +176,8 @@ function sourceTitle(source?: string): string {
   margin-top: 6px;
   padding: 6px 8px;
   border-radius: 6px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px dashed var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-app-bg);
+  border: 1px dashed var(--ui-border-default-border);
   font-size: 12px;
   overflow-x: auto;
 }
@@ -189,7 +189,7 @@ function sourceTitle(source?: string): string {
 }
 
 .transcript-tool-args {
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   font-size: 11.5px;
   white-space: nowrap;
 }
@@ -199,8 +199,8 @@ function sourceTitle(source?: string): string {
   max-width: 82%;
   margin-left: 16px;
   border-radius: 8px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-app-bg, var(--bg));
+  border: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-app-bg);
   overflow: hidden;
 }
 
@@ -209,7 +209,7 @@ function sourceTitle(source?: string): string {
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   font-size: 11.5px;
 }
 
@@ -222,17 +222,17 @@ function sourceTitle(source?: string): string {
 .transcript-source-badge.source-recorded,
 .transcript-source-badge.source-real {
   background: var(--ui-status-success-bg);
-  color: var(--ui-status-success-fg, #27ae60);
+  color: var(--ui-status-success-fg);
 }
 
 .transcript-source-badge.source-simulated {
   background: var(--ui-status-warning-bg);
-  color: var(--ui-status-warning-fg, #e67e22);
+  color: var(--ui-status-warning-fg);
 }
 
 .transcript-source-badge.source-stub {
   background: var(--ui-status-danger-bg);
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 
 .transcript-tool-result-body {
@@ -244,7 +244,7 @@ function sourceTitle(source?: string): string {
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .transcript-judge {
@@ -258,13 +258,13 @@ function sourceTitle(source?: string): string {
 
 .transcript-judge.pass {
   background: var(--ui-status-success-bg);
-  color: var(--ui-status-success-fg, #27ae60);
+  color: var(--ui-status-success-fg);
   border: 1px solid var(--ui-status-success-border);
 }
 
 .transcript-judge.fail {
   background: var(--ui-status-danger-bg);
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
   border: 1px solid var(--ui-status-danger-border);
 }
 
@@ -274,7 +274,7 @@ function sourceTitle(source?: string): string {
 }
 
 .transcript-empty {
-  color: var(--ui-text-muted-fg, var(--text-secondary));
+  color: var(--ui-text-muted-fg, var(--ui-text-secondary-fg));
   font-size: 12.5px;
   text-align: center;
   padding: 24px 0;

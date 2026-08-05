@@ -217,7 +217,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  background: var(--ui-surface-panel-bg);
 }
 
 /* ── 顶部三数字 ──
@@ -228,7 +228,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
   flex-wrap: wrap;
   gap: 14px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border);
 }
 
 .so-total {
@@ -239,7 +239,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 }
 
 .so-total-num {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-family: var(--font-mono, monospace);
   font-size: 17px;
   font-variant-numeric: tabular-nums;
@@ -247,23 +247,23 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 
 /* 三色:对话 / 裁决 / 工作。它们花的是同一份钱,但出事时要做的事完全不同。 */
 .so-total-num.is-conversation {
-  color: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  color: var(--ui-status-success-fg, var(--color-success));
 }
 
 .so-total-num.is-judge {
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .so-total-num.is-worker {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .so-total-num.is-fault {
-  color: var(--ui-status-danger-fg, var(--color-danger, #a33));
+  color: var(--ui-status-danger-fg, var(--color-danger));
 }
 
 .so-total-label {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   white-space: nowrap;
 }
@@ -284,7 +284,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
   gap: 6px;
   align-items: center;
   padding: 11px 14px 3px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   letter-spacing: 0.02em;
 }
@@ -298,7 +298,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 .so-empty {
   margin: 0;
   padding: 2px 14px 6px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-size: 11.5px;
   line-height: 1.6;
 }
@@ -318,11 +318,11 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 }
 
 .so-room:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .so-room.is-degraded {
-  border-left-color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  border-left-color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .so-room.is-frozen {
@@ -339,7 +339,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -347,13 +347,13 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 
 .so-room-judge {
   flex: 0 0 auto;
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
   font-size: 10.5px;
 }
 
 .so-room-dead {
   flex: 0 0 auto;
-  color: var(--ui-status-danger-fg, var(--color-danger, #a33));
+  color: var(--ui-status-danger-fg, var(--color-danger));
   font-size: 10.5px;
 }
 
@@ -361,7 +361,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
   display: flex;
   gap: 12px;
   margin-top: 2px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -377,17 +377,17 @@ const agentRows = computed(() => buildSchedulingAgentRows({
   position: relative;
   flex: 1 1 0;
   height: 2px;
-  background: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: var(--ui-border-subtle-border);
 }
 
 .so-gate i {
   position: absolute;
   inset: 0 auto 0 0;
-  background: var(--ui-text-secondary-fg, var(--text));
+  background: var(--ui-text-secondary-fg, var(--ui-text-primary-fg));
 }
 
 .so-gate.is-warn i {
-  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  background: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 /* ── agent 矩阵:六列,行宽不跳 ── */
@@ -406,7 +406,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 }
 
 .so-matrix-head {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-size: 10px;
 }
 
@@ -416,7 +416,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 }
 
 .so-agent:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .so-cell-name {
@@ -426,7 +426,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
   align-items: center;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -439,7 +439,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -447,7 +447,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 
 .so-cell-num {
   flex: 0 0 18px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -455,7 +455,7 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 }
 
 .so-cell-num.is-fault {
-  color: var(--ui-status-danger-fg, var(--color-danger, #a33));
+  color: var(--ui-status-danger-fg, var(--color-danger));
 }
 
 /* 在场三色:与成员条那颗徽标同一套语义(D8 §4.4)。空闲不画。 */
@@ -468,14 +468,14 @@ const agentRows = computed(() => buildSchedulingAgentRows({
 }
 
 .so-dot.is-generating {
-  background: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  background: var(--ui-status-success-fg, var(--color-success));
 }
 
 .so-dot.is-holding {
-  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  background: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .so-dot.is-working {
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 </style>

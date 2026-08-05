@@ -252,7 +252,7 @@ async function refreshThemes() {
 .theme-select-label {
   display: block;
   margin: 0 0 7px;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: 13px;
   font-weight: 650;
   line-height: 1.3;
@@ -271,10 +271,10 @@ async function refreshThemes() {
   align-items: center;
   gap: 10px;
   padding: 7px 10px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -283,7 +283,7 @@ async function refreshThemes() {
 
 .theme-trigger:hover,
 .theme-trigger[aria-expanded='true'] {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .theme-trigger-copy,
@@ -297,7 +297,7 @@ async function refreshThemes() {
 .theme-trigger-name,
 .theme-option-name {
   overflow: hidden;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 13px;
   font-weight: 620;
   line-height: 1.25;
@@ -308,7 +308,7 @@ async function refreshThemes() {
 .theme-trigger-meta,
 .theme-option-meta {
   overflow: hidden;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 11px;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -317,7 +317,7 @@ async function refreshThemes() {
 }
 
 .theme-trigger-icon {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
 }
 
 /* Preview strip: swatches stay, container keeps square corners.
@@ -329,7 +329,7 @@ async function refreshThemes() {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   overflow: hidden;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border)));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--ui-border-default-border)));
   border-radius: 0;
   background: transparent;
 }
@@ -341,7 +341,7 @@ async function refreshThemes() {
 
 .theme-swatch {
   min-width: 0;
-  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 45%, transparent);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--ui-border-default-border))) 45%, transparent);
 }
 
 /* Dropdown sheet: paper base (covers content below) + hard-offset ink shadow. */
@@ -353,9 +353,9 @@ async function refreshThemes() {
   right: 0;
   max-height: 280px;
   overflow-y: auto;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
-  background: var(--ui-surface-elevated-bg, var(--settings-paper, var(--bg-panel)));
+  background: var(--ui-surface-elevated-bg, var(--settings-paper));
   box-shadow: var(--shadow-paper);
 }
 
@@ -370,14 +370,14 @@ async function refreshThemes() {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   cursor: pointer;
   font: inherit;
   text-align: left;
 }
 
 .theme-option + .theme-option {
-  border-top: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 45%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--ui-border-default-border))) 45%, transparent);
 }
 
 .theme-option:hover {
@@ -385,22 +385,22 @@ async function refreshThemes() {
 }
 
 .theme-option:hover .theme-option-meta {
-  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg));
 }
 
 /* Selection lives in the left ink rule, not a fill. */
 .theme-option.selected {
   background: transparent;
-  box-shadow: inset 2px 0 0 var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: inset 2px 0 0 var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .theme-option-check {
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .theme-menu-empty {
   padding: 14px 10px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 12px;
   text-align: center;
 }
@@ -418,10 +418,10 @@ async function refreshThemes() {
   align-items: center;
   gap: 7px;
   padding: 6px 10px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   background: transparent;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -429,9 +429,9 @@ async function refreshThemes() {
 }
 
 .action-btn:hover:not(:disabled) {
-  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg));
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .action-btn:disabled {

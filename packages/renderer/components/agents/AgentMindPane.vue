@@ -171,29 +171,29 @@ const view = computed(() => buildAgentMindView({
 .am-headline {
   flex: 1 1 auto;
   min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 17px;
   font-weight: var(--font-weight-semibold, 600);
 }
 
 .am-hero.is-idle .am-headline {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-weight: 400;
 }
 
 /* 持牌等待:v3 特有的第三种状态,给它一个自己的颜色 —— 它既不是"在跑"
    也不是"闲着",而在 D8 之前每一个界面都把它画成前者。 */
 .am-hero.is-holding .am-headline {
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .am-hero.is-thinking .am-headline {
-  color: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  color: var(--ui-status-success-fg, var(--color-success));
 }
 
 .am-elapsed {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -202,7 +202,7 @@ const view = computed(() => buildAgentMindView({
 .am-lastspoke {
   margin: 0;
   padding: 0 16px 6px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-size: 11px;
 }
 
@@ -211,7 +211,7 @@ const view = computed(() => buildAgentMindView({
   gap: 6px;
   align-items: center;
   padding: 12px 16px 3px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   letter-spacing: 0.02em;
 }
@@ -226,7 +226,7 @@ const view = computed(() => buildAgentMindView({
 .am-note {
   margin: 0;
   padding: 2px 16px 4px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-size: 11.5px;
 }
 
@@ -254,14 +254,14 @@ const view = computed(() => buildAgentMindView({
 }
 
 .am-row:hover:not(.is-flat) {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .am-row-name {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -269,19 +269,19 @@ const view = computed(() => buildAgentMindView({
 
 .am-row-state {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
 }
 
 .am-row.is-run .am-row-state {
-  color: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  color: var(--ui-status-success-fg, var(--color-success));
 }
 
 .am-row-meta {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -290,7 +290,7 @@ const view = computed(() => buildAgentMindView({
 
 .am-row-at {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -299,8 +299,8 @@ const view = computed(() => buildAgentMindView({
 .am-dead {
   margin: 12px 16px 0;
   padding: 6px 0 6px 9px;
-  border-left: 1.5px solid var(--ui-status-danger-fg, var(--color-danger, #a33));
-  color: var(--ui-status-danger-fg, var(--color-danger, #a33));
+  border-left: 1.5px solid var(--ui-status-danger-fg, var(--color-danger));
+  color: var(--ui-status-danger-fg, var(--color-danger));
   font-size: 11.5px;
   line-height: 1.6;
 }

@@ -212,10 +212,10 @@ const resultsRef = ref<HTMLElement | null>(null)
  * this dialog wants the title field, not the first focusable (the close button).
  */
 const promptDialogVars: CSSProperties = {
-  '--app-dialog-overlay-bg': 'color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 66%, transparent)',
+  '--app-dialog-overlay-bg': 'color-mix(in srgb, var(--ui-surface-app-bg) 66%, transparent)',
   '--app-dialog-radius': '10px',
-  '--app-dialog-bg': 'color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel, var(--bg))) 94%, var(--ui-surface-app-bg, var(--bg)) 6%)',
-  '--app-dialog-border': 'color-mix(in srgb, var(--ui-border-default-border, var(--border)) 68%, transparent)',
+  '--app-dialog-bg': 'color-mix(in srgb, var(--ui-surface-panel-bg) 94%, var(--ui-surface-app-bg) 6%)',
+  '--app-dialog-border': 'color-mix(in srgb, var(--ui-border-default-border) 68%, transparent)',
   '--app-dialog-shadow': 'var(--ui-surface-popover-shadow, var(--shadow-md))',
   '--app-dialog-padding': '12px',
   '--app-dialog-body-padding': '0',
@@ -440,10 +440,10 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--ui-surface-app-bg, var(--bg));
+  background: var(--ui-surface-app-bg);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 0 0 0.5px var(--ui-border-default-border, var(--border));
+  box-shadow: 0 0 0 0.5px var(--ui-border-default-border);
   font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, sans-serif);
   user-select: none;
 }
@@ -453,14 +453,14 @@ onUnmounted(() => {
   inset: 5px;
   pointer-events: none;
   z-index: 9;
-  border: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 34%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg) 34%, transparent);
   border-radius: 9px;
   opacity: 0.86;
 }
 
 .drag-guides.is-default-bounds {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 62%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 62%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg) 12%, transparent);
 }
 
 .guide-line {
@@ -473,14 +473,14 @@ onUnmounted(() => {
   top: 0;
   bottom: 0;
   left: 50%;
-  border-left: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 54%, transparent);
+  border-left: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg) 54%, transparent);
 }
 
 .guide-default-top,
 .guide-default-height {
   left: 10px;
   right: 10px;
-  border-top: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 48%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg) 48%, transparent);
 }
 
 .guide-default-top {
@@ -507,8 +507,8 @@ onUnmounted(() => {
   z-index: 8;
   opacity: 0.42;
   background:
-    linear-gradient(135deg, transparent 0 50%, color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 28%, transparent) 50% 56%, transparent 56% 100%),
-    linear-gradient(135deg, transparent 0 66%, color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 22%, transparent) 66% 72%, transparent 72% 100%);
+    linear-gradient(135deg, transparent 0 50%, color-mix(in srgb, var(--ui-text-muted-fg) 28%, transparent) 50% 56%, transparent 56% 100%),
+    linear-gradient(135deg, transparent 0 66%, color-mix(in srgb, var(--ui-text-muted-fg) 22%, transparent) 66% 72%, transparent 72% 100%);
 }
 
 .search-input-row {
@@ -522,15 +522,15 @@ onUnmounted(() => {
 
 .search-icon {
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 52%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 52%, transparent);
 }
 
 .intent-chip {
   flex-shrink: 0;
   padding: 1px 6px;
   border-radius: 5px;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent);
-  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 86%, var(--ui-text-primary-fg, var(--text)) 14%);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 14%, transparent);
+  color: color-mix(in srgb, var(--ui-accent-primary-fg) 86%, var(--ui-text-primary-fg) 14%);
   font-size: var(--type-micro-size);
   font-weight: 500;
   line-height: var(--type-micro-line-height);
@@ -545,12 +545,12 @@ onUnmounted(() => {
   outline: none;
   font-size: var(--type-headline-size);
   line-height: var(--type-headline-line-height);
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-family: inherit;
 }
 
 .search-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   opacity: 0.54;
 }
 
@@ -584,7 +584,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 48%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 48%, transparent);
   cursor: pointer;
   font: inherit;
   font-size: var(--type-micro-size);
@@ -620,15 +620,15 @@ onUnmounted(() => {
 }
 
 .scope-tab:hover {
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 22%, transparent);
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 76%, transparent);
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 22%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 76%, transparent);
 }
 
 .scope-tab.active {
   max-width: 0;
   padding: 0 4px;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 82%, var(--ui-text-primary-fg, var(--text)) 18%);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 82%, var(--ui-text-primary-fg) 18%);
   opacity: 0;
   pointer-events: none;
 }
@@ -642,8 +642,8 @@ onUnmounted(() => {
 .scope-tabs:hover .scope-tab.active,
 .scope-tabs:focus-within .scope-tab.active {
   max-width: 76px;
-  background: color-mix(in srgb, var(--ui-state-selected-bg, var(--selection, var(--ui-accent-primary-fg, var(--accent)))) 16%, transparent);
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 84%, transparent);
+  background: color-mix(in srgb, var(--ui-state-selected-bg, var(--selection)) 16%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 84%, transparent);
 }
 
 .scope-tabs:hover .scope-tab.active.default-scope,
@@ -655,7 +655,7 @@ onUnmounted(() => {
 }
 
 .scope-tab kbd {
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 62%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 62%, transparent);
   font: inherit;
   font-size: var(--type-micro-size);
   opacity: 0;
@@ -695,24 +695,24 @@ onUnmounted(() => {
 
 .search-results:hover,
 .search-results:focus-within {
-  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 16%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg) 16%, transparent) transparent;
 }
 
 .search-results:hover::-webkit-scrollbar-thumb,
 .search-results:focus-within::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 16%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 16%, transparent);
 }
 
 .search-state {
   padding: 16px 18px 0 32px;
   text-align: left;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 58%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 58%, transparent);
   font-size: var(--type-caption-size);
   line-height: var(--type-caption-line-height);
 }
 
 .search-state.error {
-  color: var(--ui-status-danger-fg, var(--danger, #d14));
+  color: var(--ui-status-danger-fg, var(--danger));
 }
 
 /* The backdrop and the panel frame are `Dialog` since P2. This overlay used to
@@ -744,7 +744,7 @@ onUnmounted(() => {
 .prompt-dialog-close {
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   font-size: 18px;
 }
@@ -753,7 +753,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 78%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 78%, transparent);
   font-size: var(--type-caption-size);
   line-height: var(--type-caption-line-height);
 }
@@ -762,10 +762,10 @@ onUnmounted(() => {
 .prompt-dialog textarea {
   width: 100%;
   box-sizing: border-box;
-  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 72%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border) 72%, transparent);
   border-radius: 7px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-app-bg);
+  color: var(--ui-text-primary-fg);
   font: inherit;
   font-size: var(--type-body-size);
   line-height: var(--type-body-line-height);
@@ -776,9 +776,9 @@ onUnmounted(() => {
 
 .prompt-dialog button[type="submit"],
 .prompt-dialog .secondary {
-  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 72%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border) 72%, transparent);
   border-radius: 7px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   color: white;
   cursor: pointer;
   font: inherit;
@@ -789,7 +789,7 @@ onUnmounted(() => {
 
 .prompt-dialog .secondary {
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .prompt-dialog-error {

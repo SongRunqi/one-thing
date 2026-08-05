@@ -29,11 +29,11 @@
 }
 
 .agent-ledger .editor-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 18%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 18%, transparent);
 }
 
 .agent-ledger .editor-scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 32%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 32%, transparent);
 }
 
 /* ---- 字段挂在自己那根墨线上 ---- */
@@ -52,7 +52,7 @@
   top: 6px;
   bottom: 6px;
   width: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 72%, transparent);
 }
 
 .agent-ledger .agent-field {
@@ -79,7 +79,7 @@
   font-weight: var(--font-weight-semibold, 600);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .agent-ledger .editor-body .field-label::before {
@@ -89,7 +89,7 @@
   top: 50%;
   width: 10px;
   height: 2px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
 }
 
 /* ---- inputs: 状态活在底线上 ---- */
@@ -99,19 +99,19 @@
   appearance: none;
   background: transparent;
   border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
   border-radius: 0;
   padding: 2px 2px 6px;
   font: inherit;
   font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   outline: none;
   transition: border-color 0.12s ease;
 }
 
 .agent-ledger .ledger-input:hover:not(:disabled),
-.agent-ledger .ledger-input:focus {
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+.agent-ledger input.ledger-input:focus {
+  border-bottom-color: var(--ui-accent-primary-fg);
 }
 
 .agent-ledger .ledger-textarea {
@@ -122,26 +122,26 @@
   appearance: none;
   background: transparent;
   border: none;
-  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
   border-radius: 0;
   padding: 4px 2px 8px 10px;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   line-height: 1.6;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   outline: none;
   transition: border-color 0.12s ease;
 }
 
 .agent-ledger .ledger-textarea::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .agent-ledger .ledger-textarea:hover:not(:disabled),
-.agent-ledger .ledger-textarea:focus {
-  border-left-color: var(--ui-accent-primary-fg, var(--accent));
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+.agent-ledger textarea.ledger-textarea:focus {
+  border-left-color: var(--ui-accent-primary-fg);
+  border-bottom-color: var(--ui-accent-primary-fg);
 }
 
 .agent-ledger .ledger-input:focus-visible,
@@ -168,7 +168,7 @@
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
 }
 
@@ -177,7 +177,7 @@
   margin: 0;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* ---- mode switch:两个文字动作压在一条线上 ---- */
@@ -195,29 +195,29 @@
   padding: 0 0 2px;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease, border-color 0.12s ease;
 }
 
 .agent-ledger .mode-option:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .agent-ledger .mode-option.is-on {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
+  border-bottom-color: var(--ui-accent-primary-fg);
 }
 
 .agent-ledger .mode-option:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 2px;
 }
 
 .agent-ledger .mode-divider {
   width: 1px;
   align-self: stretch;
-  background: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 60%, transparent);
+  background: color-mix(in srgb, var(--ui-border-default-border) 60%, transparent);
 }
 
 /* ---- tool rows: 悬挂刻度 ---- */
@@ -240,7 +240,7 @@
   text-align: left;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease;
 }
@@ -252,30 +252,30 @@
   top: 50%;
   width: 7px;
   height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
   transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
 }
 
 .agent-ledger .tool-line:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .agent-ledger .tool-line:hover::before {
-  background: var(--ui-text-muted-fg, var(--text-muted));
+  background: var(--ui-text-muted-fg);
 }
 
 .agent-ledger .tool-line.is-on {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .agent-ledger .tool-line.is-on::before {
   width: 10px;
   height: 2px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 .agent-ledger .tool-line:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 1px;
 }
 
@@ -289,7 +289,7 @@
 .agent-ledger .tool-note {
   flex-shrink: 0;
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
 }
 
@@ -306,7 +306,7 @@
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .agent-ledger .ledger-select {
@@ -316,12 +316,12 @@
   appearance: none;
   background: transparent;
   border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
   border-radius: 0;
   padding: 2px 2px 5px;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   outline: none;
   cursor: pointer;
   transition: border-color 0.12s ease;
@@ -329,7 +329,7 @@
 
 .agent-ledger .ledger-select:hover:not(:disabled),
 .agent-ledger .ledger-select:focus {
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg);
 }
 
 .agent-ledger .ledger-select:disabled {
@@ -338,8 +338,8 @@
 }
 
 .agent-ledger .ledger-select option {
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: var(--ui-surface-panel-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 /* ---- prompt templates ---- */
@@ -354,7 +354,7 @@
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
 }
 
@@ -397,7 +397,7 @@
 
 .agent-ledger .avatar-image-preview {
   font-size: 17px;
-  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg) 30%, transparent);
   border-radius: 50%;
   width: 28px;
   height: 28px;
@@ -419,7 +419,7 @@
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .agent-ledger .agent-room-rows {
@@ -443,9 +443,9 @@
   font-family: inherit;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   cursor: pointer;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 40%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 40%, transparent);
 }
 
 .agent-ledger .agent-room-rows li:last-child .agent-room-line {
@@ -454,7 +454,7 @@
 
 .agent-ledger .agent-room-line:hover,
 .agent-ledger .agent-room-line:focus-visible {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .agent-ledger .agent-room-name {
@@ -471,9 +471,9 @@
   font-size: 10px;
   line-height: 1;
   padding: 2px 7px 3px;
-  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg) 65%, transparent);
   border-radius: 9px;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   background: transparent;
   white-space: nowrap;
   max-width: 110px;
@@ -503,9 +503,9 @@
   font-family: inherit;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   cursor: pointer;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 40%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 40%, transparent);
 }
 
 .agent-ledger .history-rows li:last-child .history-line {
@@ -514,13 +514,13 @@
 
 .agent-ledger .history-line:hover,
 .agent-ledger .history-line:focus-visible {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 /* 还原不出绝对路径的交付物:留着这一行,但不是按钮。 */
 .agent-ledger .history-line.is-inert {
   cursor: default;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .agent-ledger .history-name {
@@ -539,14 +539,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .agent-ledger .history-meta {
   flex: 0 0 auto;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .agent-ledger .history-count {
@@ -569,7 +569,7 @@
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* ---- footer actions ---- */
@@ -578,7 +578,7 @@
   justify-content: flex-end;
   gap: 18px;
   padding: 12px 2px 0 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
 }
 
 /* ---- shared text actions ---- */
@@ -589,25 +589,25 @@
   padding: 0;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .agent-ledger .text-action:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .agent-ledger .text-action.is-danger:hover:not(:disabled) {
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
+  text-decoration-color: var(--ui-status-danger-fg);
 }
 
 .agent-ledger .text-action.is-primary {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .agent-ledger .text-action:disabled {
@@ -616,7 +616,7 @@
 }
 
 .agent-ledger .text-action:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 2px;
 }
 
@@ -624,7 +624,7 @@
 .agent-ledger .ledger-note {
   margin: 10px 0 0;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   word-break: break-word;
 }
 

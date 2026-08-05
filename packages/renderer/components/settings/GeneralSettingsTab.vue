@@ -763,13 +763,13 @@ async function chooseTodoPlanDirectory() {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .reset-inline:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .app-input-number {
@@ -806,7 +806,7 @@ async function chooseTodoPlanDirectory() {
   width: 100%;
   max-width: 320px;
   min-width: 0;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   background: transparent;
 }
@@ -818,7 +818,7 @@ async function chooseTodoPlanDirectory() {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-size: var(--type-label-size);
   line-height: var(--type-label-line-height);
   white-space: nowrap;
@@ -829,18 +829,18 @@ async function chooseTodoPlanDirectory() {
 }
 
 .segment-btn + .segment-btn {
-  border-left: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-left: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
 }
 
 .segment-btn:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   background: transparent;
 }
 
 .segment-btn.active {
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
   background: transparent;
-  box-shadow: inset 0 -2px 0 var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: inset 0 -2px 0 var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .directory-field {
@@ -875,7 +875,7 @@ async function chooseTodoPlanDirectory() {
 /* Disabled = dashed line + faint ink, not an opacity veil. */
 .secondary-btn:disabled {
   border-style: dashed;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   cursor: not-allowed;
 }
 

@@ -469,25 +469,25 @@ defineExpose({
 
 <style scoped>
 .app-tabs {
-  --app-tabs-border: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
-  --app-tabs-border-strong: var(--ui-border-default-border, var(--border));
+  --app-tabs-border: var(--ui-border-subtle-border);
+  --app-tabs-border-strong: var(--ui-border-default-border);
   --app-tabs-surface: transparent;
   --app-tabs-nav-bg: transparent;
   --app-tabs-content-bg: transparent;
-  --app-tabs-hover-bg: var(--ui-tab-bar-item-hover-bg, var(--ui-state-hover-bg, var(--bg-hover)));
-  --app-tabs-active-bg: var(--ui-tab-bar-item-active-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));
-  --app-tabs-text: var(--ui-tab-bar-item-fg, var(--ui-text-secondary-fg, var(--text-secondary)));
-  --app-tabs-active-text: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
-  --app-tabs-muted-text: var(--ui-text-muted-fg, var(--muted));
-  --app-tabs-disabled-text: var(--ui-state-disabled-fg, var(--text-disabled, var(--muted)));
-  --app-tabs-accent: var(--ui-accent-primary-fg, var(--accent));
+  --app-tabs-hover-bg: var(--ui-tab-bar-item-hover-bg, var(--ui-state-hover-bg));
+  --app-tabs-active-bg: var(--ui-tab-bar-item-active-bg, var(--ui-surface-elevated-bg));
+  --app-tabs-text: var(--ui-tab-bar-item-fg, var(--ui-text-secondary-fg));
+  --app-tabs-active-text: var(--ui-tab-bar-item-active-fg, var(--ui-text-primary-fg));
+  --app-tabs-muted-text: var(--ui-text-muted-fg);
+  --app-tabs-disabled-text: var(--ui-state-disabled-fg, var(--text-disabled));
+  --app-tabs-accent: var(--ui-accent-primary-fg);
   --app-tabs-focus: color-mix(in srgb, var(--app-tabs-accent) 48%, transparent);
 
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-family: var(--type-label-font, var(--font-body));
   font-size: var(--type-label-size, 13px);
   line-height: var(--type-leading-control, 1.3);
@@ -767,8 +767,8 @@ defineExpose({
 }
 
 .app-tabs--border-card {
-  --app-tabs-content-bg: var(--ui-surface-panel-bg, var(--bg-panel));
-  --app-tabs-nav-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 44%, transparent);
+  --app-tabs-content-bg: var(--ui-surface-panel-bg);
+  --app-tabs-nav-bg: color-mix(in srgb, var(--ui-surface-elevated-bg) 44%, transparent);
 
   overflow: hidden;
   border: 1px solid var(--app-tabs-border);

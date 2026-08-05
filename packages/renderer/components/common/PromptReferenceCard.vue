@@ -37,10 +37,10 @@ defineProps<{
   max-width: min(240px, 100%);
   margin: 0 2px;
   padding: 0 5px;
-  border: 1px solid color-mix(in srgb, var(--ui-text-link-fg, var(--ui-accent-primary-fg, var(--accent))) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-link-fg, var(--ui-accent-primary-fg)) 40%, transparent);
   border-radius: 3px;
   background: transparent;
-  color: var(--ui-text-link-fg, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--ui-text-link-fg, var(--ui-accent-primary-fg));
   vertical-align: baseline;
   cursor: default;
   outline: none;
@@ -48,9 +48,9 @@ defineProps<{
 }
 
 .prompt-ref-card:hover,
-.prompt-ref-card:focus {
-  border-color: color-mix(in srgb, var(--ui-text-link-fg, var(--ui-accent-primary-fg, var(--accent))) 70%, transparent);
-  background: color-mix(in srgb, var(--ui-text-link-fg, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent);
+.prompt-ref-card:focus-visible {
+  border-color: color-mix(in srgb, var(--ui-text-link-fg, var(--ui-accent-primary-fg)) 70%, transparent);
+  background: color-mix(in srgb, var(--ui-text-link-fg, var(--ui-accent-primary-fg)) 8%, transparent);
 }
 
 .prompt-ref-card > svg {
@@ -81,23 +81,23 @@ defineProps<{
   flex-direction: column;
   gap: 7px;
   padding: 10px 11px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
-  background: var(--ui-surface-panel-bg, var(--panel, var(--bg)));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-panel-bg);
+  color: var(--ui-text-primary-fg);
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.2);
   z-index: var(--z-dropdown);
   white-space: normal;
 }
 
 .prompt-ref-card:hover .prompt-ref-popover,
-.prompt-ref-card:focus .prompt-ref-popover,
+.prompt-ref-card:focus-visible .prompt-ref-popover,
 .prompt-ref-card:focus-within .prompt-ref-popover {
   display: flex;
 }
 
 .prompt-ref-description {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
 }
 

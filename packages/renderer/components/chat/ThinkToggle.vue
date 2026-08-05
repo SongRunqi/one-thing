@@ -605,45 +605,45 @@ async function setLegacyPairThinking(enabled: boolean): Promise<void> {
   padding: 3px 7px 3px 9px;
   border-radius: 7px;
   border-color: transparent;
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
-  color: var(--ui-text-muted-fg, var(--muted));
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 45%, transparent);
+  color: var(--ui-text-muted-fg);
 }
 
 .think-select :deep(.app-select-control:hover),
 .think-select.is-open :deep(.app-select-control) {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   border-color: transparent;
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
   box-shadow: none;
 }
 
 /* Suppress the base Select :focus styles — the think toggle is a subtle
    text label, not a form input.  Its hover / is-open affordances are
    enough; a lingering focus ring after click looks stuck. */
-.think-select :deep(.app-select-control:focus),
+.think-select :deep(.app-select-control:focus-visible),
 .think-select :deep(.app-select-control:focus-visible) {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   border-color: transparent;
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 45%, transparent);
   box-shadow: none;
 }
 
 .think-select.active :deep(.app-select-control) {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   border-color: transparent;
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 45%, transparent);
 }
 
 .think-select.active :deep(.app-select-control:hover),
 .think-select.active.is-open :deep(.app-select-control) {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .think-select :deep(.app-select-single-value),
 .think-value {
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
   font-weight: 520;
   text-overflow: ellipsis;
@@ -651,7 +651,7 @@ async function setLegacyPairThinking(enabled: boolean): Promise<void> {
 }
 
 .think-select:not(.active) .think-value {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .think-option-row {
@@ -684,12 +684,12 @@ async function setLegacyPairThinking(enabled: boolean): Promise<void> {
 }
 
 .think-option-description {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
 }
 
 .think-option-check {
   flex: 0 0 auto;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 </style>

@@ -344,17 +344,17 @@ defineExpose({
 
 <style scoped>
 .app-switch {
-  --app-switch-on-color: var(--el-switch-on-color, var(--ui-accent-primary-fg, var(--accent)));
-  --app-switch-off-color: var(--el-switch-off-color, color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 36%, transparent));
-  --app-switch-border-color: var(--el-switch-border-color, color-mix(in srgb, var(--ui-border-default-border, var(--border)) 72%, transparent));
-  --app-switch-action-bg: var(--ui-surface-elevated-bg, var(--bg-elevated, #fff));
-  --app-switch-inline-fg: var(--ui-action-primary-fg, #fff);
+  --app-switch-on-color: var(--el-switch-on-color, var(--ui-accent-primary-fg));
+  --app-switch-off-color: var(--el-switch-off-color, color-mix(in srgb, var(--ui-text-muted-fg) 36%, transparent));
+  --app-switch-border-color: var(--el-switch-border-color, color-mix(in srgb, var(--ui-border-default-border) 72%, transparent));
+  --app-switch-action-bg: var(--ui-surface-elevated-bg);
+  --app-switch-inline-fg: var(--ui-action-primary-fg);
   --app-switch-focus-ring: color-mix(in srgb, var(--app-switch-on-color) 42%, transparent);
   display: inline-flex;
   align-items: center;
   max-width: 100%;
   gap: 8px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   vertical-align: middle;
 }
 
@@ -390,10 +390,10 @@ defineExpose({
 .app-switch.app-switch--ledger {
   --app-switch-height: 20px;
   --app-switch-action-size: 10px;
-  --app-switch-rule: var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  --app-switch-ring: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
-  --app-switch-action-bg: var(--settings-paper, var(--ui-surface-elevated-bg, var(--bg-elevated)));
-  --app-switch-on-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  --app-switch-rule: var(--settings-rule, var(--ui-border-default-border));
+  --app-switch-ring: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
+  --app-switch-action-bg: var(--settings-paper, var(--ui-surface-elevated-bg));
+  --app-switch-on-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 /* Every rule that contends with a base one carries the extra `.app-switch`.
@@ -468,7 +468,7 @@ defineExpose({
   padding: 0;
   border: 1px solid var(--app-switch-border-color);
   border-radius: 999px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   background: var(--app-switch-off-color);
   cursor: pointer;
   outline: none;
@@ -546,7 +546,7 @@ defineExpose({
   width: var(--app-switch-action-size);
   height: var(--app-switch-action-size);
   border-radius: 999px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   background: var(--app-switch-action-bg);
   box-shadow:
     0 1px 3px rgba(15, 23, 42, 0.18),
@@ -585,7 +585,7 @@ defineExpose({
   max-width: min(18rem, 44vw);
   gap: 5px;
   overflow: hidden;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: var(--app-switch-font-size);
   font-weight: 600;
   line-height: 1.25;
@@ -595,7 +595,7 @@ defineExpose({
 }
 
 .app-switch-label.is-active {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-switch-label--active.is-active {

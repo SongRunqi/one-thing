@@ -778,7 +778,7 @@ onUnmounted(() => {
   border-radius: 6px;
   border: none;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -789,8 +789,8 @@ onUnmounted(() => {
 }
 
 .action-btn:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  color: var(--ui-accent-primary-fg);
 }
 
 .action-btn:active {
@@ -815,12 +815,12 @@ onUnmounted(() => {
 
 /* 上膛态:强调色 + 停在半圈,和普通 hover 明确区分开。 */
 .regenerate-btn.armed svg {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   transform: rotate(180deg);
 }
 
 .regenerate-btn.armed {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 /* Downvote button */
@@ -828,8 +828,8 @@ onUnmounted(() => {
   width: 320px;
   padding: 10px;
   border-radius: 10px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-elevated-bg);
+  border: 1px solid var(--ui-border-default-border);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   display: flex;
   flex-direction: column;
@@ -842,9 +842,9 @@ onUnmounted(() => {
   min-height: 44px;
   padding: 8px;
   border-radius: 6px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-input-bg, var(--bg-input));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  border: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-input-bg);
+  color: var(--ui-text-primary-fg);
   font-size: 12.5px;
   line-height: 1.5;
   font-family: inherit;
@@ -864,7 +864,7 @@ onUnmounted(() => {
 }
 
 .downvote-note-btn.secondary {
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .downvote-note-btn.primary {
@@ -874,25 +874,25 @@ onUnmounted(() => {
 }
 
 .downvote-btn.downvoted {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .downvote-btn.downvoted:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 15%, transparent);
 }
 
 /* Copy button success state - when showing check icon */
 .copy-btn:has(.lucide-check) {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 /* Speak button speaking state */
 .speak-btn.speaking {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .speak-btn.speaking:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 15%, transparent);
 }
 
 /* Branch button with count */
@@ -908,7 +908,7 @@ onUnmounted(() => {
 }
 
 .action-btn.has-branches {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .branch-count-badge {
@@ -918,7 +918,7 @@ onUnmounted(() => {
   min-width: 14px;
   height: 14px;
   padding: 0 4px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   color: white;
   font-size: 10px;
   font-weight: 600;
@@ -947,7 +947,7 @@ onUnmounted(() => {
   padding: 8px 12px;
   border: none;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
   text-align: left;
   border-radius: 8px;
@@ -956,7 +956,7 @@ onUnmounted(() => {
 }
 
 .branch-menu-item:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
 }
 
 .branch-name {
@@ -968,7 +968,7 @@ onUnmounted(() => {
 
 .branch-menu-footer {
   padding: 4px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
+  border-top: 1px solid var(--ui-border-default-border);
 }
 
 .branch-menu-new {
@@ -979,7 +979,7 @@ onUnmounted(() => {
   padding: 8px 12px;
   border: none;
   background: transparent;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   font-size: 13px;
   border-radius: 8px;
   cursor: pointer;
@@ -987,7 +987,7 @@ onUnmounted(() => {
 }
 
 .branch-menu-new:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
 }
 
 /* Reaction palette trigger (§3.5 B) */
@@ -1021,9 +1021,9 @@ onUnmounted(() => {
    (zOffset 25 = 消息级浮层档,压过 Select/Mention +20 与表格筛选 +24). */
 .branch-menu {
   max-width: 280px;
-  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  background: var(--ui-surface-floating-bg);
   backdrop-filter: blur(20px);
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: 12px;
   box-shadow: var(--shadow-floating);
   overflow: hidden;
@@ -1047,9 +1047,9 @@ onUnmounted(() => {
   display: flex;
   gap: 2px;
   padding: 3px 4px;
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: 4px;
-  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  background: var(--ui-surface-floating-bg);
   animation: reactPickerIn 0.12s ease-out;
 }
 
@@ -1076,14 +1076,14 @@ onUnmounted(() => {
 }
 
 .react-picker-item:hover {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
 }
 
 .more-menu {
   min-width: 180px;
-  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  background: var(--ui-surface-floating-bg);
   backdrop-filter: blur(20px);
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: 10px;
   box-shadow: var(--shadow-floating);
   overflow: hidden;
@@ -1113,7 +1113,7 @@ onUnmounted(() => {
   padding: 8px 10px;
   border: none;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
   text-align: left;
   border-radius: 6px;
@@ -1122,19 +1122,19 @@ onUnmounted(() => {
 }
 
 .more-menu-item:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
 }
 
 .more-menu-item-badge {
   margin-left: auto;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-variant-numeric: tabular-nums;
 }
 
 .more-menu-details {
   padding: 8px 12px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
+  border-top: 1px solid var(--ui-border-default-border);
   background: rgba(0, 0, 0, 0.02);
 }
 
@@ -1147,11 +1147,11 @@ onUnmounted(() => {
 }
 
 .token-detail-row span:first-child {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .token-detail-row span:last-child {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-variant-numeric: tabular-nums;
 }
 

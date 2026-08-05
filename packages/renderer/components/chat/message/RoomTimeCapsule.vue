@@ -28,7 +28,7 @@ defineProps<{ label: string }>()
 
 .capsule-rule {
   flex: 1;
-  border-top: 1px dashed color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 30%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--ui-text-muted-fg) 30%, transparent);
 }
 
 .capsule-label {
@@ -36,7 +36,7 @@ defineProps<{ label: string }>()
   font-size: 10px;
   letter-spacing: 0.06em;
   line-height: 1;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-variant-numeric: tabular-nums;
 }
 </style>

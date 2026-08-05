@@ -305,15 +305,15 @@ defineExpose({
 
 <style scoped>
 .app-menu {
-  --app-menu-bg: var(--ui-surface-menu-bg, var(--bg-menu));
+  --app-menu-bg: var(--ui-surface-menu-bg);
   --app-menu-item-bg: transparent;
-  --app-menu-item-fg: var(--text-menu-item, var(--ui-text-secondary-fg, var(--text-secondary)));
-  --app-menu-item-hover-bg: var(--ui-surface-menu-hover-bg, var(--bg-menu-item-hover));
-  --app-menu-item-hover-fg: var(--text-menu-item-hover, var(--ui-text-primary-fg, var(--text)));
-  --app-menu-active-bg: var(--bg-menu-item-active, var(--ui-surface-menu-hover-bg, var(--hover)));
-  --app-menu-active-fg: var(--text-menu-item-active, var(--ui-accent-primary-fg, var(--accent)));
-  --app-menu-disabled-fg: var(--ui-text-muted-fg, var(--text-muted));
-  --app-menu-border: var(--ui-border-subtle-border, var(--border));
+  --app-menu-item-fg: var(--text-menu-item, var(--ui-text-secondary-fg));
+  --app-menu-item-hover-bg: var(--ui-surface-menu-hover-bg);
+  --app-menu-item-hover-fg: var(--text-menu-item-hover, var(--ui-text-primary-fg));
+  --app-menu-active-bg: var(--bg-menu-item-active, var(--ui-surface-menu-hover-bg, var(--ui-state-hover-bg)));
+  --app-menu-active-fg: var(--text-menu-item-active, var(--ui-accent-primary-fg));
+  --app-menu-disabled-fg: var(--ui-text-muted-fg);
+  --app-menu-border: var(--ui-border-subtle-border, var(--ui-border-default-border));
   --app-menu-shadow: var(--ui-surface-tooltip-shadow, var(--shadow-lg));
   --app-menu-item-height: 34px;
   --app-menu-item-radius: 7px;

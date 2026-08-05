@@ -171,9 +171,9 @@ const subtitle = computed(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg));
 }
 
 .auth-copy {
@@ -190,7 +190,7 @@ const subtitle = computed(() => {
 .auth-title {
   font-size: 14px;
   font-weight: 620;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 /* Status badge: outlined ring, transparent fill, state lives in the line + ink color. */
@@ -202,23 +202,23 @@ const subtitle = computed(() => {
   font-size: 11px;
   line-height: 1.4;
   white-space: nowrap;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
 }
 
 .auth-state.connected {
-  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, var(--text-success, var(--color-success))));
-  color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg));
+  color: var(--ui-status-success-fg);
 }
 
 .auth-state.error {
-  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, var(--text-error, var(--color-error))));
-  color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
+  color: var(--ui-status-danger-fg);
 }
 
 .auth-state.pending {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 65%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 65%, transparent);
+  color: var(--ui-accent-primary-fg);
 }
 
 .auth-subtitle,
@@ -226,7 +226,7 @@ const subtitle = computed(() => {
 .panel-label {
   margin-top: 3px;
   font-size: 12px;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   overflow-wrap: anywhere;
 }
 
@@ -234,10 +234,10 @@ const subtitle = computed(() => {
 .auth-button {
   min-height: 32px;
   padding: 0 12px;
-  border: 1px solid var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border: 1px solid var(--settings-accent, var(--ui-accent-primary-fg));
   border-radius: 0;
   background: transparent;
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
   font: inherit;
   font-size: 13px;
   font-weight: 560;
@@ -246,19 +246,19 @@ const subtitle = computed(() => {
 }
 
 .auth-button:hover:not(:disabled) {
-  box-shadow: inset 0 -2px 0 var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: inset 0 -2px 0 var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .auth-button.secondary {
-  border-color: var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-color: var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg));
 }
 
 .auth-button.secondary:hover:not(:disabled) {
-  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg));
   box-shadow: none;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .auth-button:disabled {
@@ -273,14 +273,14 @@ const subtitle = computed(() => {
   gap: 8px;
   padding: 4px 0 4px 10px;
   border: 0;
-  border-left: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-left: 1px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
   min-width: 0;
 }
 
 .panel-link {
   font-size: 12px;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   overflow-wrap: anywhere;
 }
 
@@ -288,12 +288,12 @@ const subtitle = computed(() => {
   align-self: flex-start;
   max-width: 100%;
   padding: 7px 10px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 18px;
   letter-spacing: 0;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   background: transparent;
   overflow-wrap: anywhere;
 }
@@ -307,10 +307,10 @@ const subtitle = computed(() => {
 .code-input {
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font: inherit;
   font-size: 13px;
   overflow: hidden;
@@ -318,13 +318,13 @@ const subtitle = computed(() => {
   transition: border-color 0.12s ease;
 }
 
-.code-input:focus {
+input.code-input:focus {
   outline: none;
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .code-input::placeholder {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
 }
 </style>
 

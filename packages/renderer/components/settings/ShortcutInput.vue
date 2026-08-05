@@ -172,7 +172,7 @@ function clearShortcut() {
   max-width: 100%;
   padding: 6px 10px;
   background: transparent;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   cursor: pointer;
   transition: border-color 0.12s ease, color 0.12s ease;
   font-size: 12px;
@@ -180,16 +180,16 @@ function clearShortcut() {
 }
 
 .shortcut-input:hover {
-  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg));
 }
 
 .shortcut-input:focus {
   outline: none;
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .shortcut-input:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary))) 24%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 24%, transparent);
   outline-offset: 1px;
 }
 
@@ -199,11 +199,11 @@ function clearShortcut() {
 
 .shortcut-input.recording {
   border-style: dashed;
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .shortcut-input.empty .shortcut-display {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
 }
 
 .shortcut-display {
@@ -211,14 +211,14 @@ function clearShortcut() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
 
 .recording-hint {
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
   font-family: var(--font-mono, monospace);
   white-space: nowrap;
   animation: pulse 1s ease-in-out infinite;
@@ -237,13 +237,13 @@ function clearShortcut() {
   padding: 2px;
   border: none;
   background: transparent;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .clear-btn:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 @media (prefers-reduced-motion: reduce) {

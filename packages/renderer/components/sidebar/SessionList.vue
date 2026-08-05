@@ -429,7 +429,7 @@ onUnmounted(() => {
 .scroll-indicator-top {
   height: 1px;
   margin: 0 16px;
-  background: var(--ui-border-subtle-border, var(--border-subtle));
+  background: var(--ui-border-subtle-border);
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;
@@ -443,12 +443,12 @@ onUnmounted(() => {
 .sessions-list {
   --sidebar-list-meta-fg: color-mix(
     in srgb,
-    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 72%,
+    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg)) 72%,
     transparent
   );
   --sidebar-list-meta-fg-strong: color-mix(
     in srgb,
-    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 84%,
+    var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg)) 84%,
     transparent
   );
   position: relative;
@@ -474,7 +474,7 @@ onUnmounted(() => {
 
 .sessions-list.is-scrolling::-webkit-scrollbar-thumb,
 .sessions-list::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 26%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 26%, transparent);
 }
 
 .sidebar-menu {
@@ -488,11 +488,11 @@ onUnmounted(() => {
   /* MenuItem 会给二级项打内联 padding-inline-start: calc(12px + step)。
      归零 step，让所有行的包装盒都从 12px 起，行几何才可控。 */
   --app-menu-indent-step: 0px;
-  --app-menu-item-fg: var(--sidebar-row-fg, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))));
-  --app-menu-item-hover-bg: var(--sidebar-row-hover-fill, var(--ui-state-hover-bg, var(--hover)));
-  --app-menu-item-hover-fg: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-sidebar-item-hover)));
+  --app-menu-item-fg: var(--sidebar-row-fg, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg)));
+  --app-menu-item-hover-bg: var(--sidebar-row-hover-fill, var(--ui-state-hover-bg));
+  --app-menu-item-hover-fg: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--ui-sidebar-item-hover-fg)));
   --app-menu-active-bg: transparent;
-  --app-menu-active-fg: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text-primary)));
+  --app-menu-active-fg: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg));
 
   position: relative;
   gap: 0;
@@ -523,9 +523,9 @@ onUnmounted(() => {
   padding-bottom: 7px;
   padding-right: 8px;
   /* 静置不透明底：sticky 时挡住滚过的行文 */
-  background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
+  background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg));
   /* 分组头用全墨：与 72% 墨的行文拉开一档，层级靠色阶不靠猜主题 */
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   /* v7 dhead：12px/600，无字距 */
   font-size: 12px;
   font-weight: var(--font-weight-semibold, 600);
@@ -537,18 +537,18 @@ onUnmounted(() => {
 /* hover 填充叠在不透明底之上（背景图层），sticky 状态下滚过的内容不会透出 */
 .session-group :deep(.app-sub-menu-title:hover),
 .session-group :deep(.app-sub-menu-title:focus-visible) {
-  background-color: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
+  background-color: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg));
   background-image: linear-gradient(
-    var(--sidebar-row-hover-fill, var(--ui-state-hover-bg, var(--hover))),
-    var(--sidebar-row-hover-fill, var(--ui-state-hover-bg, var(--hover)))
+    var(--sidebar-row-hover-fill, var(--ui-state-hover-bg)),
+    var(--sidebar-row-hover-fill, var(--ui-state-hover-bg))
   );
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   box-shadow: none;
 }
 
 .session-group :deep(.app-sub-menu-chevron-hit) {
   width: 12px;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
 }
 
 .session-group :deep(.app-sub-menu-chevron) {
@@ -580,7 +580,7 @@ onUnmounted(() => {
   font-size: var(--type-caption-muted-size, 10px);
   font-weight: var(--font-weight-normal, 400);
   letter-spacing: 0.1em;
-  color: var(--sidebar-list-meta-fg, var(--ui-text-faint-fg, var(--text-faint, var(--text-muted))));
+  color: var(--sidebar-list-meta-fg, var(--ui-text-faint-fg));
   user-select: none;
 }
 
@@ -603,7 +603,7 @@ onUnmounted(() => {
   --app-button-padding-x: 0;
   --app-button-font-size: 11px;
   --app-button-hover-fill: transparent;
-  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
@@ -622,10 +622,10 @@ onUnmounted(() => {
 
 .load-more-btn:hover {
   background: transparent;
-  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg));
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 /* Kill child transitions while initial state settles to avoid the
@@ -640,7 +640,7 @@ onUnmounted(() => {
 .empty-sessions {
   padding: 20px;
   text-align: center;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   font-size: 13px;
 }
 

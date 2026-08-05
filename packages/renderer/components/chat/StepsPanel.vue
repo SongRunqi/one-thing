@@ -558,13 +558,13 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   /* Defined here (StepsPanel's own root) so they inherit into slot content;
      panel/list containers are rendered by NestedCollapseGroup/CollapsePanel
      and never carry this component's scope attribute. */
-  --activity-title-fg: var(--ui-tool-text-faint-fg, var(--tool-faint));
-  --activity-row-fg: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  --activity-hover-fg: var(--ui-tool-text-fg, var(--tool-ink));
-  --activity-link-fg: color-mix(in srgb, var(--ui-tool-accent-fg, var(--accent)) 60%, var(--ui-tool-text-muted-fg, var(--tool-soft)));
+  --activity-title-fg: var(--ui-tool-text-faint-fg);
+  --activity-row-fg: var(--ui-tool-text-muted-fg);
+  --activity-hover-fg: var(--ui-tool-text-fg);
+  --activity-link-fg: color-mix(in srgb, var(--ui-tool-accent-fg, var(--ui-accent-primary-fg)) 60%, var(--ui-tool-text-muted-fg));
   width: 100%;
   margin: 4px 0 6px;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-sans);
   /* Blueprint ledger: rows are numbered like figures on a sheet. */
   counter-reset: tool-fig;
@@ -617,7 +617,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 
 .group-header:focus-visible,
 .operation-row:focus-visible {
-  outline: 1.5px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1.5px solid var(--ui-accent-primary-fg);
   outline-offset: -1.5px;
 }
 
@@ -642,7 +642,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 
 .group-meta {
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 86%, transparent);
+  color: color-mix(in srgb, var(--ui-text-faint-fg, var(--ui-text-muted-fg)) 86%, transparent);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -661,23 +661,23 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 }
 
 .group-status-badge.ok {
-  color: var(--ui-status-success-fg, var(--text-success));
+  color: var(--ui-status-success-fg);
 }
 
 .group-status-badge.failed {
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
 }
 
 .group-status-badge.cancelled {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .group-stat.addition {
-  color: var(--ui-tool-success-text-fg, var(--tool-add-bar));
+  color: var(--ui-tool-success-text-fg);
 }
 
 .group-stat.deletion {
-  color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
+  color: var(--ui-tool-danger-text-fg);
 }
 
 .group-header:hover .group-summary-text {
@@ -685,7 +685,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 }
 
 .group-header:hover .group-meta {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
 }
 
 .tool-activity-timeline :deep(.operation-list) {
@@ -703,7 +703,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 
 /* Hairline rules between ledger rows. */
 .tool-activity-timeline :deep(.operation-list > * + *) {
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
 }
 
 .tool-activity-timeline :deep(.workflow-group .operation-list) {
@@ -718,7 +718,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   left: 6px;
   width: 1px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 28%, transparent);
+  background: color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 28%, transparent);
 }
 
 .tool-activity-timeline :deep(.operation-list.single) {
@@ -762,7 +762,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   flex: 0 0 auto;
   width: 20px;
   padding-top: 1px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   line-height: 1.75;
@@ -814,7 +814,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   /* Never crushed by a long title/error: the timing readout stays legible. */
   flex: 0 0 auto;
   overflow: hidden;
-  color: color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 88%, transparent);
+  color: color-mix(in srgb, var(--ui-text-faint-fg, var(--ui-text-muted-fg)) 88%, transparent);
 }
 
 /* Title: `ToolName(primary arg)` — one line like every other row, ellipsis
@@ -845,7 +845,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 
 .operation-row.status-failed .node-action,
 .operation-row.status-rejected .node-action {
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
 }
 
 .node-target-name {
@@ -897,7 +897,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
     animation: none;
     background: none;
     -webkit-text-fill-color: initial;
-    color: var(--ui-tool-accent-fg, var(--accent));
+    color: var(--ui-tool-accent-fg, var(--ui-accent-primary-fg));
   }
 }
 
@@ -907,19 +907,19 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 }
 
 .operation-row.has-details:hover .node-target-name.file-link {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .operation-row.is-expanded .node-action:not(.is-flowing),
 .operation-row.is-expanded .node-target-name {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
 }
 
 .operation-list.single .operation-row.has-details:hover .node-target-name.file-link,
 .operation-list.single .operation-row:focus-within .node-target-name.file-link {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .node-status-badge {
@@ -929,15 +929,15 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   font-weight: 540;
   line-height: 1.3;
   white-space: nowrap;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .node-status-badge.badge-awaiting-confirmation {
-  color: var(--ui-status-warning-fg, var(--text-warning));
+  color: var(--ui-status-warning-fg);
 }
 
 .node-status-badge.badge-rejected {
-  color: var(--ui-tool-danger-text-fg, var(--text-error));
+  color: var(--ui-tool-danger-text-fg, var(--ui-status-danger-fg));
 }
 
 .node-error-summary {
@@ -945,7 +945,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   min-width: 0;
   max-width: min(56ch, 100%);
   overflow: hidden;
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1.35;
@@ -963,13 +963,13 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
     background: transparent;
   }
   45% {
-    background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
+    background: color-mix(in srgb, var(--ui-accent-primary-fg) 8%, transparent);
   }
 }
 
 .diff-stats-inline {
   flex: 0 0 auto;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   line-height: 1.25;
@@ -980,7 +980,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 .node-duration {
   flex: 0 0 auto;
   overflow: hidden;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   font-variant-numeric: tabular-nums;

@@ -404,7 +404,7 @@ const hasAnyOverride = computed(() =>
   outline: none;
   /* One line on purpose: `shadow-literal-floating` reads line-by-line and a
      wrapped value hides the `var(--…)` that proves this is not a literal. */
-  box-shadow: 0 0 0 2px var(--ui-surface-app-bg, var(--bg-app)), 0 0 0 4px var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: var(--ui-focus-ring-shadow);
 }
 
 .config-head-actions {
@@ -517,7 +517,7 @@ const hasAnyOverride = computed(() =>
 .config-tristate-btn:focus-visible {
   outline: none;
   /* Single line — see `.config-close:focus-visible`. */
-  box-shadow: 0 0 0 2px var(--ui-surface-app-bg, var(--bg-app)), 0 0 0 4px var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: var(--ui-focus-ring-shadow);
 }
 .config-tristate-btn.on {
   background: var(--ui-state-selected-bg);

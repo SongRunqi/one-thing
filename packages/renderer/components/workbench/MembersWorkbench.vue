@@ -204,14 +204,14 @@ function closeSpace(): void {
   height: 100%;
   min-height: 0;
   overflow-y: auto;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  background: var(--ui-surface-panel-bg);
 }
 
 /* ── 列表层 ── */
 .member-group-head {
   padding: 14px 18px 6px;
   font-size: 11.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .member-row {
@@ -228,7 +228,7 @@ function closeSpace(): void {
 }
 
 .member-row:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .member-row.is-off {
@@ -248,23 +248,23 @@ function closeSpace(): void {
   width: 11px;
   height: 11px;
   border-radius: 50%;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  border: 2px solid var(--ui-surface-panel-bg, var(--bg-panel));
+  background: var(--ui-border-strong-border);
+  border: 2px solid var(--ui-surface-panel-bg);
 }
 
 .member-dot.is-busy {
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
-  border-color: var(--ui-status-success-fg, var(--text-success));
+  background: var(--ui-surface-panel-bg);
+  border-color: var(--ui-status-success-fg);
 }
 
 /* 三色分别是三件不同的事(D8 §4.4):真在写字 / 拿着牌还没开始 / 在干一张卡的活。
    顺序在 is-busy 之后,同特异性后来居上。 */
 .member-dot.is-holding {
-  border-color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  border-color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .member-dot.is-working {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
 }
 
 .member-text {
@@ -276,7 +276,7 @@ function closeSpace(): void {
   display: block;
   font-size: 13px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -286,7 +286,7 @@ function closeSpace(): void {
   display: block;
   font-style: normal;
   font-size: 11.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -295,7 +295,7 @@ function closeSpace(): void {
 .members-empty {
   padding: 24px 18px;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 下钻层的样式在 components/agents/AgentSpace.vue —— 那一层现在是共享件。 */
@@ -309,6 +309,6 @@ function closeSpace(): void {
 }
 
 .member-row:hover .member-mark-wrap.agent-open-target {
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 22%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg) 22%, transparent);
 }
 </style>

@@ -247,11 +247,11 @@ function cancelRename() {
 }
 
 .session-item:hover {
-  background: var(--sidebar-row-hover-fill, var(--ui-state-hover-bg, var(--hover)));
+  background: var(--sidebar-row-hover-fill, var(--ui-state-hover-bg));
 }
 
 .session-item.active {
-  background: var(--sidebar-row-active-fill, var(--ui-state-selected-bg, var(--bg-selected)));
+  background: var(--sidebar-row-active-fill, var(--ui-state-selected-bg));
 }
 
 .session-item.hidden {
@@ -299,7 +299,7 @@ function cancelRename() {
   left: 7px;
   top: 0;
   bottom: 0;
-  border-left: 1px dotted var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-left: 1px dotted var(--ui-border-strong-border);
   opacity: 0.55;
 }
 
@@ -311,8 +311,8 @@ function cancelRename() {
   top: 0;
   height: 50%;
   width: 9px;
-  border-left: 1px dotted var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  border-bottom: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-left: 1px dotted var(--ui-border-strong-border);
+  border-bottom: 1px solid var(--ui-border-strong-border);
   opacity: 0.55;
   transition: border-color 0.12s ease, opacity 0.12s ease;
 }
@@ -324,7 +324,7 @@ function cancelRename() {
   left: 7px;
   top: 0;
   bottom: 0;
-  border-left: 1px dotted var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-left: 1px dotted var(--ui-border-strong-border);
   opacity: 0.55;
 }
 
@@ -342,7 +342,7 @@ function cancelRename() {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   flex-shrink: 0;
   opacity: 0;
   transform: scale(0.8);
@@ -372,7 +372,7 @@ function cancelRename() {
   --app-button-gap: 0;
   --app-button-font-size: var(--type-caption-size);
   --app-button-hover-fill: transparent;
-  --app-button-hover-fg: var(--ui-accent-primary-fg, var(--accent));
+  --app-button-hover-fg: var(--ui-accent-primary-fg);
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
@@ -381,11 +381,11 @@ function cancelRename() {
   padding: 0 5px;
   border-radius: 9px;
   background: transparent;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   font-size: var(--type-caption-size);
   font-weight: var(--font-weight-medium);
   line-height: var(--type-caption-line-height);
-  border: 1px solid var(--ui-border-default-border, var(--border-default, var(--border)));
+  border: 1px solid var(--ui-border-default-border);
   cursor: pointer;
   flex-shrink: 0;
   display: flex;
@@ -396,21 +396,21 @@ function cancelRename() {
 
 .branch-badge:hover {
   background: transparent;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
+  color: var(--ui-accent-primary-fg);
 }
 
 /* 已收起时的 badge 样式：虚线描边提示"折叠中" */
 .session-item.collapsed .branch-badge {
   background: transparent;
   border-style: dashed;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
 }
 
 .session-item.collapsed .branch-badge:hover {
   background: transparent;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
+  color: var(--ui-accent-primary-fg);
 }
 
 
@@ -432,7 +432,7 @@ function cancelRename() {
   line-height: var(--type-chat-compact-line-height-px);
   letter-spacing: 0;
   /* 72% 墨：比全墨的分组头轻一档（色阶来自 SessionList 的 --sidebar-row-* 派生链） */
-  color: var(--sidebar-row-fg, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))));
+  color: var(--sidebar-row-fg, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg)));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -440,12 +440,12 @@ function cancelRename() {
 }
 
 .session-item:hover .session-name {
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-sidebar-item-hover)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--ui-sidebar-item-hover-fg)));
 }
 
 .session-item.active .session-name {
   font-weight: var(--type-label-weight);
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 .session-name-input {
@@ -458,7 +458,7 @@ function cancelRename() {
   font-size: 13px;
   font-weight: var(--type-body-weight);
   line-height: var(--type-chat-compact-line-height-px);
-  color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
+  color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg));
   outline: none;
 }
 
@@ -468,7 +468,7 @@ function cancelRename() {
   --app-button-min-width: 23px;
   --app-button-padding-x: 0;
   --app-button-hover-fill: transparent;
-  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text-primary)));
+  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
@@ -486,7 +486,7 @@ function cancelRename() {
   background: transparent;
   color: var(
     --ui-sidebar-action-fg,
-    color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 88%, transparent)
+    color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--ui-sidebar-item-fg))) 88%, transparent)
   );
   cursor: pointer;
   opacity: 0;
@@ -501,6 +501,6 @@ function cancelRename() {
 
 .more-btn:hover {
   background: transparent;
-  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg));
 }
 </style>

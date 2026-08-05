@@ -285,7 +285,7 @@ function handleWheel(event: WheelEvent) {
 .tool-result-renderer {
   --tool-result-max-height: var(--tool-pane-max, clamp(148px, 28vh, 240px));
   min-width: 0;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-sans);
 }
 
@@ -303,7 +303,7 @@ function handleWheel(event: WheelEvent) {
 
 .variable-row {
   padding: 9px 12px;
-  border-top: 0.5px solid var(--ui-tool-border-border, var(--tool-border));
+  border-top: 0.5px solid var(--ui-tool-border-border, var(--ui-tool-surface-border));
 }
 
 .variable-row:first-child {
@@ -320,18 +320,18 @@ function handleWheel(event: WheelEvent) {
 }
 
 .variable-name {
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-fg);
   font-weight: 500;
 }
 
 .variable-value {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
 }
 
 .variable-desc {
   max-width: 62ch;
   margin-top: 4px;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-sans);
   font-size: var(--tool-font-size-body);
   font-weight: 400;
@@ -341,16 +341,16 @@ function handleWheel(event: WheelEvent) {
 .variable-tag {
   padding: 1px 7px;
   border-radius: calc(var(--tool-radius) - 5px);
-  background: color-mix(in srgb, var(--ui-tool-text-fg, var(--tool-ink)) 8%, transparent);
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  background: color-mix(in srgb, var(--ui-tool-text-fg) 8%, transparent);
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-meta);
   line-height: 1.25;
 }
 
 .variable-tag.accent {
-  background: var(--ui-tool-accent-fg, var(--tool-accent));
-  color: var(--ui-tool-accent-on-fg, var(--tool-accent-on));
+  background: var(--ui-tool-accent-fg);
+  color: var(--ui-tool-accent-on-fg);
 }
 
 .tool-result-renderer pre {
@@ -359,7 +359,7 @@ function handleWheel(event: WheelEvent) {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 2px 0;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
   font-weight: 400;
@@ -376,7 +376,7 @@ function handleWheel(event: WheelEvent) {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 2px 0;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
   font-weight: 400;
@@ -397,7 +397,7 @@ function handleWheel(event: WheelEvent) {
 }
 
 .bash-line.result {
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-fg);
 }
 
 .bash-line-text {
@@ -410,7 +410,7 @@ function handleWheel(event: WheelEvent) {
   padding: 1px 0;
   border: 0;
   background: transparent;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
   font-size: 10px;
   letter-spacing: 1px;
@@ -421,14 +421,14 @@ function handleWheel(event: WheelEvent) {
 }
 
 .expand-line:hover {
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-fg);
 }
 
 /* Blueprint dimension note: bare caps annotation, no side bar. */
 .bash-meta {
   margin-top: 6px;
   padding: 0;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
   font-size: 10px;
   letter-spacing: 1px;
@@ -461,12 +461,12 @@ function handleWheel(event: WheelEvent) {
   gap: 6px;
   align-items: baseline;
   margin-top: 4px;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-size: var(--tool-font-size-body);
 }
 
 .tool-result-file code {
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
 }

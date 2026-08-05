@@ -112,6 +112,6 @@ defineEmits<{
 /* 墨线:面板间的分隔线常驻可见一道极细的线,而不是一条空白的宽间隔带。
    Splitter 自带的 hover/active 态(变 currentColor)已经够用,这里只补默认态。 */
 .panel-tree-splitter :deep(.splitter-resizer-line) {
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
 }
 </style>

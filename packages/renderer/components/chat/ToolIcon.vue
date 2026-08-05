@@ -47,17 +47,17 @@ const icon = computed(() => getToolIcon(props.toolName))
 
 .tool-icon.icon-streaming-input,
 .tool-icon.icon-executing {
-  color: var(--ui-tool-accent-fg, var(--accent));
+  color: var(--ui-tool-accent-fg, var(--ui-accent-primary-fg));
 }
 
 .tool-icon.icon-awaiting-confirmation {
-  color: var(--ui-status-warning-fg, var(--text-warning));
+  color: var(--ui-status-warning-fg);
   animation: tool-icon-attention 2s ease-in-out infinite alternate;
 }
 
 .tool-icon.icon-failed,
 .tool-icon.icon-rejected {
-  color: var(--ui-tool-danger-text-fg, var(--text-error));
+  color: var(--ui-tool-danger-text-fg, var(--ui-status-danger-fg));
 }
 
 @keyframes tool-icon-attention {

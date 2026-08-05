@@ -257,7 +257,7 @@ function removeDirectory(index: number) {
 .settings-section {
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-top: 1px solid var(--settings-rule, var(--ui-border-default-border));
 }
 
 .form-group {
@@ -271,14 +271,14 @@ function removeDirectory(index: number) {
 .form-label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   display: block;
   margin-bottom: 6px;
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   margin-top: 4px;
   margin-bottom: 0;
 }
@@ -297,20 +297,20 @@ function removeDirectory(index: number) {
   padding: 9px 11px;
   font-family: var(--font-mono, monospace);
   font-size: 12.5px;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   background: transparent;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   outline: none;
   transition: border-color 0.15s;
 }
 
-.text-input:focus {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+input.text-input:focus {
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .text-input::placeholder {
-  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
 }
 
 /* Input with button */
@@ -327,9 +327,9 @@ function removeDirectory(index: number) {
   padding: 9px 14px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   background: transparent;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
@@ -338,8 +338,8 @@ function removeDirectory(index: number) {
 
 .browse-btn:hover {
   background: transparent;
-  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 /* Directory list: ledger rows on hairlines, no boxes. */
@@ -358,14 +358,14 @@ function removeDirectory(index: number) {
   padding: 7px 0;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--ui-border-default-border))) 55%, transparent);
 }
 
 .directory-path {
   flex: 1;
   min-width: 0;
   font-size: 12.5px;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -381,23 +381,23 @@ function removeDirectory(index: number) {
   background: transparent;
   border: none;
   border-radius: 0;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   cursor: pointer;
   transition: color 0.15s;
 }
 
 .remove-btn:hover {
   background: transparent;
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
 }
 
 /* Empty state: dashed frame + faint ink. */
 .empty-hint {
   font-size: 12px;
-  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
   padding: 10px 12px;
   background: transparent;
-  border: 1px dashed var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px dashed var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   margin-top: 12px;
   margin-bottom: 12px;
@@ -411,7 +411,7 @@ function removeDirectory(index: number) {
   padding: 4px 0;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -420,9 +420,9 @@ function removeDirectory(index: number) {
 
 .add-btn:hover {
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 </style>

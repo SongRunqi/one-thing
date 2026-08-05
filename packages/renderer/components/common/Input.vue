@@ -571,7 +571,7 @@ defineExpose({
   display: inline-flex;
   width: 100%;
   min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
   line-height: 1.4;
   vertical-align: middle;
@@ -591,9 +591,9 @@ defineExpose({
   display: flex;
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
-  color: var(--ui-text-primary-fg, var(--text));
+  border: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-input-bg);
+  color: var(--ui-text-primary-fg);
   transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
 }
 
@@ -625,13 +625,13 @@ defineExpose({
 .app-input-textarea-wrap:hover,
 .app-input.is-focused .app-input-control,
 .app-input.is-focused .app-input-textarea-wrap {
-  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg));
+  background: var(--ui-surface-elevated-bg);
 }
 
 .app-input.is-focused .app-input-control,
 .app-input.is-focused .app-input-textarea-wrap {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 24%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 24%, transparent);
 }
 
 .app-input.is-disabled {
@@ -687,7 +687,7 @@ defineExpose({
 
 .app-input-inner::placeholder,
 .app-input-textarea::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .app-input-inner:disabled,
@@ -702,7 +702,7 @@ defineExpose({
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .app-input-prefix {
@@ -731,14 +731,14 @@ defineExpose({
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
 }
 
 .app-input-action:hover,
 .app-input-clear:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
+  background: var(--ui-state-hover-bg);
 }
 
 .app-input-clear--textarea {
@@ -749,7 +749,7 @@ defineExpose({
 
 .app-input-count {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
   line-height: 1;
   white-space: nowrap;
@@ -761,7 +761,7 @@ defineExpose({
   bottom: 7px;
   padding: 2px 4px;
   border-radius: 5px;
-  background: color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--bg))) 86%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-input-bg) 86%, transparent);
 }
 
 .app-input-group {
@@ -770,9 +770,9 @@ defineExpose({
   align-items: center;
   min-height: 34px;
   padding: 0 11px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-muted-bg, var(--bg-soft, var(--hover)));
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  border: 1px solid var(--ui-border-default-border);
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-secondary-fg);
   font-size: 12px;
   white-space: nowrap;
 }

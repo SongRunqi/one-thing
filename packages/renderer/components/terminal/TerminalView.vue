@@ -133,14 +133,14 @@ async function handleRestart(): Promise<void> {
   gap: 8px;
   padding: 4px 10px;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-muted-fg);
+  background: var(--ui-surface-elevated-bg);
+  border-bottom: 1px solid var(--ui-border-default-border);
 }
 
 .terminal-restart {
   font-size: 12px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;

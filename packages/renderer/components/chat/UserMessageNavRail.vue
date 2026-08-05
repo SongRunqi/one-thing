@@ -356,7 +356,7 @@ onUnmounted(() => {
   width: 1px;
   background: color-mix(
     in srgb,
-    var(--ui-border-strong-border, var(--border-strong, var(--border))) 80%,
+    var(--ui-border-strong-border) 80%,
     transparent
   );
   pointer-events: none;
@@ -375,8 +375,8 @@ onUnmounted(() => {
 
 .user-nav-card.open {
   width: var(--user-nav-expanded-width);
-  border-color: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+  border-color: color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
+  background: var(--ui-surface-elevated-bg);
 }
 
 .user-nav-rail.placement-side .user-nav-card {
@@ -444,7 +444,7 @@ onUnmounted(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   font: inherit;
   overflow: visible;
@@ -467,7 +467,7 @@ onUnmounted(() => {
   width: calc(var(--user-nav-expanded-width) - 72px);
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   font-size: 12.5px;
   line-height: 1;
   opacity: 0;
@@ -496,7 +496,7 @@ onUnmounted(() => {
 
 .user-nav-card.open .user-nav-row:hover .user-nav-label,
 .user-nav-card.open .user-nav-row:focus-visible .user-nav-label {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   opacity: 1;
 }
 
@@ -508,7 +508,7 @@ onUnmounted(() => {
   right: 6px;
   width: 7px;
   height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
   transform: translateY(-50%);
   transition:
     width 0.12s ease,
@@ -519,7 +519,7 @@ onUnmounted(() => {
 .user-nav-row:hover .user-nav-marker,
 .user-nav-row:focus-visible .user-nav-marker {
   width: 12px;
-  background: var(--ui-text-muted-fg, var(--text-muted));
+  background: var(--ui-text-muted-fg);
 }
 
 .user-nav-row:focus-visible {
@@ -527,7 +527,7 @@ onUnmounted(() => {
 }
 
 .user-nav-card.open .user-nav-row.active .user-nav-label {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-weight: 600;
   opacity: 1;
   visibility: visible;
@@ -536,7 +536,7 @@ onUnmounted(() => {
 .user-nav-row.active .user-nav-marker {
   width: 14px;
   height: 2px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 /* Page position: a darker segment riding the ledger rule itself */
@@ -546,7 +546,7 @@ onUnmounted(() => {
   right: 6px;
   display: none;
   width: 1px;
-  background: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  background: var(--ui-text-muted-fg);
   pointer-events: none;
 }
 
@@ -570,7 +570,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 62%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 62%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
@@ -586,7 +586,7 @@ onUnmounted(() => {
 .user-nav-page-cue:hover,
 .user-nav-page-cue:focus-visible {
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   opacity: 0.9;
   outline: none;
 }
@@ -629,7 +629,7 @@ onUnmounted(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 72%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 72%, transparent);
   cursor: pointer;
   font: inherit;
   font-size: 10.5px;
@@ -639,16 +639,16 @@ onUnmounted(() => {
 }
 
 .user-nav-mode-tab.active {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   cursor: default;
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .user-nav-mode-tab:not(.active):hover,
 .user-nav-mode-tab:not(.active):focus-visible {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   outline: none;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -668,7 +668,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 56%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 56%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
@@ -680,20 +680,20 @@ onUnmounted(() => {
 .user-nav-close:hover,
 .user-nav-close:focus-visible {
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   opacity: 0.9;
   outline: none;
 }
 
 .user-nav-close.can-pin {
-  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 76%, var(--ui-text-muted-fg, var(--muted)));
+  color: color-mix(in srgb, var(--ui-accent-primary-fg) 76%, var(--ui-text-muted-fg));
   opacity: 0.7;
 }
 
 .user-nav-close.can-pin:hover,
 .user-nav-close.can-pin:focus-visible {
   background: transparent;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   opacity: 1;
 }
 

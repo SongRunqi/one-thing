@@ -153,7 +153,7 @@ function formatSummarySection(label: string, value: unknown): string {
 .context-compact-event {
   width: min(760px, 100%);
   margin: 16px auto 18px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   animation: fadeIn 0.18s ease-out;
 }
 
@@ -171,7 +171,7 @@ function formatSummarySection(label: string, value: unknown): string {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 82%, var(--ui-text-primary-fg, var(--text)) 18%);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 82%, var(--ui-text-primary-fg) 18%);
 }
 
 .event-dot {
@@ -206,7 +206,7 @@ function formatSummarySection(label: string, value: unknown): string {
 }
 
 .event-toggle:hover .event-title {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .event-text {
@@ -218,14 +218,14 @@ function formatSummarySection(label: string, value: unknown): string {
 }
 
 .event-title {
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 72%, var(--ui-text-muted-fg, var(--muted)) 28%);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 72%, var(--ui-text-muted-fg) 28%);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
 }
 
 .event-meta {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -240,7 +240,7 @@ function formatSummarySection(label: string, value: unknown): string {
 
 .event-chevron {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   transform: rotate(-90deg);
   transition: transform 0.16s ease, color 0.16s ease;
 }
@@ -250,14 +250,14 @@ function formatSummarySection(label: string, value: unknown): string {
 }
 
 .event-toggle:hover .event-chevron {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .summary-content {
   margin: 8px 0 0 27px;
   padding: 9px 0 2px 12px;
-  border-left: 1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 28%, transparent);
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 86%, var(--ui-text-muted-fg, var(--muted)) 14%);
+  border-left: 1px solid color-mix(in srgb, var(--ui-text-muted-fg) 28%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 86%, var(--ui-text-muted-fg) 14%);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -267,7 +267,7 @@ function formatSummarySection(label: string, value: unknown): string {
 .summary-content :deep(h3),
 .summary-content :deep(h4) {
   margin: 0.75em 0 0.35em;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 1em;
   font-weight: 600;
 }
@@ -291,14 +291,14 @@ function formatSummarySection(label: string, value: unknown): string {
 }
 
 .summary-content :deep(strong) {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-weight: 600;
 }
 
 .summary-content {
   --md-inline-code-padding: 1px 5px;
-  --md-inline-code-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 16%, transparent);
-  --md-inline-code-fg: var(--ui-text-primary-fg, var(--text));
+  --md-inline-code-bg: color-mix(in srgb, var(--ui-text-muted-fg) 16%, transparent);
+  --md-inline-code-fg: var(--ui-text-primary-fg);
 }
 
 .summary-enter-active,

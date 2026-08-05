@@ -175,10 +175,10 @@ function rejectWithInstruction() {
    zero fill, one outline, hairline cell dividers, mono annotations. The
    only colour is carried by the two decisions themselves. */
 .session-permission-panel {
-  --permission-frame: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
-  --permission-divider: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 30%, transparent);
-  --permission-allow-fg: var(--ui-status-success-fg, var(--text-success));
-  --permission-reject-fg: var(--ui-status-warning-fg, var(--text-warning));
+  --permission-frame: color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
+  --permission-divider: color-mix(in srgb, var(--ui-border-strong-border) 30%, transparent);
+  --permission-allow-fg: var(--ui-status-success-fg);
+  --permission-reject-fg: var(--ui-status-warning-fg);
 
   width: var(--chat-composer-width);
   margin: 0 var(--chat-content-column-right, auto) 8px var(--chat-content-column-left, auto);
@@ -208,7 +208,7 @@ function rejectWithInstruction() {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .permission-value {
@@ -218,14 +218,14 @@ function rejectWithInstruction() {
   padding: 0 11px;
   font-family: var(--font-mono, monospace);
   font-size: 11.5px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .permission-value.is-dim {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .permission-row.is-scope .permission-value {
@@ -242,13 +242,13 @@ function rejectWithInstruction() {
   font-family: var(--font-mono, monospace);
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   transition: color 0.16s ease, background 0.16s ease;
 }
 
 .permission-scope-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .permission-scope-btn[aria-pressed='true'] {
@@ -272,15 +272,15 @@ function rejectWithInstruction() {
   padding: 8px 11px;
   border: 0;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-family: var(--font-mono, monospace);
   font-size: 11.5px;
   line-height: 1.5;
 }
 
-.permission-instruction-input:focus {
+textarea.permission-instruction-input:focus {
   outline: none;
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .permission-foot {
@@ -297,7 +297,7 @@ function rejectWithInstruction() {
   padding: 0 11px;
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -316,7 +316,7 @@ function rejectWithInstruction() {
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   transition: background 0.16s ease;
 }
 

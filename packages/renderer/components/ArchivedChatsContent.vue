@@ -403,22 +403,22 @@ async function confirmDelete(session: ArchivedSession) {
   min-width: 0;
   padding: 4px 2px 5px;
   font-size: 12px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   background: transparent;
   border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
   border-radius: 0;
   transition: border-color 0.12s ease;
 }
 
 .search-input:hover,
-.search-input:focus {
+input.search-input:focus {
   outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg);
 }
 
 .search-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* Grouping toggle: text actions, active one carries the accent underline */
@@ -432,7 +432,7 @@ async function confirmDelete(session: ArchivedSession) {
 .toggle-sep {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .toggle-action {
@@ -440,10 +440,10 @@ async function confirmDelete(session: ArchivedSession) {
 }
 
 .toggle-action.is-active {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .content-body {
@@ -457,7 +457,7 @@ async function confirmDelete(session: ArchivedSession) {
 .ledger-note {
   margin: 8px 0 0;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .empty-state {
@@ -466,13 +466,13 @@ async function confirmDelete(session: ArchivedSession) {
 
 .empty-text {
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   margin: 0 0 2px;
 }
 
 .empty-hint {
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   margin: 0;
 }
 
@@ -489,7 +489,7 @@ async function confirmDelete(session: ArchivedSession) {
   top: 6px;
   bottom: 6px;
   width: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 72%, transparent);
 }
 
 /* ---- groups ---- */
@@ -511,7 +511,7 @@ async function confirmDelete(session: ArchivedSession) {
   font-weight: var(--font-weight-semibold, 600);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   cursor: pointer;
   user-select: none;
   min-width: 0;
@@ -524,7 +524,7 @@ async function confirmDelete(session: ArchivedSession) {
   top: 50%;
   width: 10px;
   height: 2px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
 }
 
 .group-header:focus-visible {
@@ -533,11 +533,11 @@ async function confirmDelete(session: ArchivedSession) {
 
 .group-header:focus-visible::before,
 .group-header:hover::before {
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 .group-header.collapsed {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   margin-bottom: 0;
 }
 
@@ -545,7 +545,7 @@ async function confirmDelete(session: ArchivedSession) {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   font-weight: var(--font-weight-normal, 400);
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   flex-shrink: 0;
   min-width: 10px;
 }
@@ -562,7 +562,7 @@ async function confirmDelete(session: ArchivedSession) {
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: var(--font-weight-normal, 400);
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   flex-shrink: 0;
 }
 
@@ -579,7 +579,7 @@ async function confirmDelete(session: ArchivedSession) {
   gap: 10px;
   min-height: 30px;
   padding: 6px 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
   cursor: pointer;
   min-width: 0;
 }
@@ -596,13 +596,13 @@ async function confirmDelete(session: ArchivedSession) {
   top: 50%;
   width: 7px;
   height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
   transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
 }
 
 .chat-row:hover::before {
   width: 12px;
-  background: var(--ui-text-muted-fg, var(--text-muted));
+  background: var(--ui-text-muted-fg);
 }
 
 .chat-row:focus-visible {
@@ -613,7 +613,7 @@ async function confirmDelete(session: ArchivedSession) {
 .chat-row:focus-visible::before {
   width: 14px;
   height: 2px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 .row-index::before {
@@ -621,7 +621,7 @@ async function confirmDelete(session: ArchivedSession) {
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   flex-shrink: 0;
   min-width: 16px;
   display: inline-block;
@@ -634,11 +634,11 @@ async function confirmDelete(session: ArchivedSession) {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .chat-row.active .chat-name {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .chat-meta {
@@ -648,7 +648,7 @@ async function confirmDelete(session: ArchivedSession) {
   flex-shrink: 0;
   font-family: var(--font-mono, monospace);
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   min-width: 0;
   max-width: 55%;
 }
@@ -660,7 +660,7 @@ async function confirmDelete(session: ArchivedSession) {
 }
 
 .chat-branch {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   min-width: 0;
   max-width: 140px;
   overflow: hidden;
@@ -697,21 +697,21 @@ async function confirmDelete(session: ArchivedSession) {
   padding: 0;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .text-action:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .text-action.is-danger:hover:not(:disabled) {
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
+  text-decoration-color: var(--ui-status-danger-fg);
 }
 
 .text-action:disabled {

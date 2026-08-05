@@ -69,8 +69,8 @@ const hiddenCount = computed(() => Math.max(0, props.segments.length - props.max
 <style scoped>
 /* 账页画线风:纸面 + 细墨边,不用 tooltip 的深色胶囊 */
 .session-preview {
-  --preview-ink: var(--ui-text-primary-fg, var(--text));
-  --preview-muted: var(--ui-text-muted-fg, var(--muted));
+  --preview-ink: var(--ui-text-primary-fg);
+  --preview-muted: var(--ui-text-muted-fg);
 
   box-sizing: border-box;
   width: 380px;
@@ -84,10 +84,10 @@ const hiddenCount = computed(() => Math.max(0, props.segments.length - props.max
   font-size: 12px;
   line-height: 1.5;
   color: var(--preview-ink);
-  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
+  background: var(--ui-surface-panel-bg);
   border: 1px solid color-mix(
     in srgb,
-    var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%,
+    var(--ui-border-strong-border) 52%,
     transparent
   );
   border-radius: var(--radius-xs, 4px);

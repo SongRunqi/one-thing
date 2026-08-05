@@ -106,8 +106,8 @@ async function handleCopyLog() {
   justify-content: center;
   height: 100%;
   width: 100%;
-  background: var(--ui-surface-app-bg, var(--bg));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-app-bg);
+  color: var(--ui-text-primary-fg);
   padding: 20px;
 }
 
@@ -130,7 +130,7 @@ async function handleCopyLog() {
   font-weight: 600;
   letter-spacing: 1px;
   line-height: 1.6;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color var(--transition-fast, 0.15s) ease,
     border-color var(--transition-fast, 0.15s) ease;
@@ -138,12 +138,12 @@ async function handleCopyLog() {
 
 .error-btn:hover {
   border-color: currentcolor;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .error-btn.primary {
-  border-color: var(--ui-status-danger-border, var(--border-error));
-  color: var(--ui-status-danger-fg, var(--text-error, rgb(220, 68, 68)));
+  border-color: var(--ui-status-danger-border, var(--ui-action-danger-border));
+  color: var(--ui-status-danger-fg);
 }
 
 .error-btn.primary:hover {

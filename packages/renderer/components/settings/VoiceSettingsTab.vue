@@ -1324,7 +1324,7 @@ function normalizeASRTestError(error: any) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border));
 }
 
 .settings-grid:last-child {
@@ -1341,7 +1341,7 @@ function normalizeASRTestError(error: any) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 14px;
   padding: 14px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border));
 }
 
 .voice-setup-copy {
@@ -1355,10 +1355,10 @@ function normalizeASRTestError(error: any) {
   width: fit-content;
   min-height: 22px;
   padding: 3px 9px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 999px;
   background: transparent;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   line-height: 1;
@@ -1366,13 +1366,13 @@ function normalizeASRTestError(error: any) {
 }
 
 .voice-state-pill.on {
-  border-color: var(--ui-status-success-fg, #15803d);
-  color: var(--ui-status-success-fg, #15803d);
+  border-color: var(--ui-status-success-fg);
+  color: var(--ui-status-success-fg);
 }
 
 .voice-setup-copy h4 {
   margin: 10px 0 4px;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 14px;
   font-weight: 700;
   line-height: 1.25;
@@ -1380,7 +1380,7 @@ function normalizeASRTestError(error: any) {
 
 .voice-setup-copy p {
   margin: 0;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-size: 12px;
   line-height: 1.45;
 }
@@ -1395,7 +1395,7 @@ function normalizeASRTestError(error: any) {
 .voice-setup-item {
   min-width: 0;
   padding: 10px;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border));
   background: transparent;
 }
 
@@ -1406,7 +1406,7 @@ function normalizeASRTestError(error: any) {
 }
 
 .voice-setup-item span {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 11px;
   font-weight: 650;
   line-height: 1.2;
@@ -1417,7 +1417,7 @@ function normalizeASRTestError(error: any) {
   display: block;
   margin-top: 7px;
   overflow-wrap: anywhere;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 13px;
   font-weight: 700;
   line-height: 1.25;
@@ -1425,13 +1425,13 @@ function normalizeASRTestError(error: any) {
 
 .voice-setup-item small {
   margin-top: 5px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 12px;
   line-height: 1.35;
 }
 
 .voice-setup-item small.warning {
-  color: var(--ui-status-warning-fg, #b45309);
+  color: var(--ui-status-warning-fg);
 }
 
 /* P3: the three `.native-toggle` checkboxes here are now `<Switch
@@ -1462,7 +1462,7 @@ function normalizeASRTestError(error: any) {
 }
 
 .voice-replies-toggle span {
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: 13px;
   font-weight: 650;
   line-height: 1.3;
@@ -1470,7 +1470,7 @@ function normalizeASRTestError(error: any) {
 
 .voice-replies-toggle small {
   margin-top: 3px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 12px;
   line-height: 1.35;
 }
@@ -1494,17 +1494,17 @@ function normalizeASRTestError(error: any) {
 }
 
 .model-status {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 12px;
   line-height: 1.35;
 }
 
 .model-status.error {
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 
 .model-status.success {
-  color: var(--ui-status-success-fg, #15803d);
+  color: var(--ui-status-success-fg);
 }
 
 /* Read-only placeholder: dashed empty-state line, no fill */
@@ -1513,9 +1513,9 @@ function normalizeASRTestError(error: any) {
   display: flex;
   align-items: center;
   padding: 8px 10px;
-  border: 1px dashed var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px dashed var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 13px;
 }
 
@@ -1524,13 +1524,13 @@ function normalizeASRTestError(error: any) {
   flex-wrap: wrap;
   gap: 8px;
   padding: 12px 14px;
-  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-default-border));
 }
 
 .setup-note {
   max-width: 560px;
   margin: 8px 0 0;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 12px;
   line-height: 1.45;
 }
@@ -1541,27 +1541,27 @@ function normalizeASRTestError(error: any) {
   min-width: 0;
   margin: 0;
   padding: 2px 0 2px 8px;
-  border-left: 2px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-left: 2px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
 .setup-status.success {
-  border-left-color: var(--ui-status-success-fg, #15803d);
-  color: var(--ui-status-success-fg, #15803d);
+  border-left-color: var(--ui-status-success-fg);
+  color: var(--ui-status-success-fg);
 }
 
 .setup-status.error {
-  border-left-color: var(--ui-status-danger-fg, #b3403a);
-  color: var(--ui-status-danger-fg, #b3403a);
+  border-left-color: var(--ui-status-danger-fg);
+  color: var(--ui-status-danger-fg);
 }
 
 .setup-status.warning {
-  border-left-color: var(--ui-status-warning-fg, #92400e);
-  color: var(--ui-status-warning-fg, #92400e);
+  border-left-color: var(--ui-status-warning-fg);
+  color: var(--ui-status-warning-fg);
 }
 
 .provider-note {
@@ -1571,9 +1571,9 @@ function normalizeASRTestError(error: any) {
   gap: 10px;
   margin-bottom: 10px;
   padding: 4px 0 4px 8px;
-  border-left: 2px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-left: 2px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg));
   font-size: 12px;
   line-height: 1.35;
 }
@@ -1586,17 +1586,17 @@ function normalizeASRTestError(error: any) {
   flex-shrink: 0;
   min-height: 28px;
   padding: 5px 9px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: 12px;
   cursor: pointer;
   transition: border-color 0.12s ease, color 0.12s ease;
 }
 
 .provider-note button:hover {
-  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .secondary-button {
@@ -1606,9 +1606,9 @@ function normalizeASRTestError(error: any) {
   gap: 7px;
   min-height: 32px;
   padding: 7px 12px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: 13px;
   cursor: pointer;
   transition: border-color 0.12s ease, color 0.12s ease;
@@ -1619,8 +1619,8 @@ function normalizeASRTestError(error: any) {
 }
 
 .secondary-button:hover:not(:disabled) {
-  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .secondary-button:disabled {
@@ -1644,16 +1644,16 @@ function normalizeASRTestError(error: any) {
   background: transparent;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .advanced-toggle:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 /* .form-input visuals come from SettingsPage's global ledger styles. */

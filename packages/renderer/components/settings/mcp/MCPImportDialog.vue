@@ -668,7 +668,7 @@ defineExpose({
   border: none;
   background: transparent;
   padding: 2px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -677,7 +677,7 @@ defineExpose({
 }
 
 .close-btn:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .import-content {
@@ -693,7 +693,7 @@ defineExpose({
   display: flex;
   gap: 18px;
   padding: 12px 18px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 55%, transparent);
   background: transparent;
   flex-shrink: 0;
 }
@@ -707,20 +707,20 @@ defineExpose({
   background: transparent;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .import-tab:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .import-tab.active {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 4px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .import-tab-content {
@@ -732,7 +732,7 @@ defineExpose({
 
 .import-description {
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   margin: 0 0 14px 0;
   line-height: 1.5;
 }
@@ -745,17 +745,17 @@ defineExpose({
   gap: 10px;
   width: 100%;
   padding: 22px;
-  border: 1px dashed var(--ui-border-default-border, var(--border));
+  border: 1px dashed var(--ui-border-default-border);
   background: transparent;
   font-size: 13px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: border-color 0.12s ease, color 0.12s ease;
 }
 
 .select-file-btn:hover {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
+  color: var(--ui-accent-primary-fg);
 }
 
 .file-info {
@@ -765,13 +765,13 @@ defineExpose({
   gap: 12px;
   padding: 8px 0 8px 10px;
   margin-top: 12px;
-  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
 }
 
 .file-name {
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -782,7 +782,7 @@ defineExpose({
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   flex-shrink: 0;
 }
 
@@ -792,25 +792,25 @@ defineExpose({
   min-width: 0;
   appearance: none;
   padding: 8px 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 0;
   font-size: 12px;
   font-family: var(--font-mono, monospace);
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   resize: vertical;
   line-height: 1.5;
   transition: border-color 0.12s ease;
 }
 
-.form-textarea:focus {
+textarea.form-textarea:focus {
   outline: none;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
   box-shadow: none;
 }
 
 .form-textarea::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
 }
 
@@ -842,13 +842,13 @@ defineExpose({
 }
 
 .parse-success {
-  border-left: 2px solid var(--ui-status-success-fg, #22c55e);
-  color: var(--ui-status-success-fg, #22c55e);
+  border-left: 2px solid var(--ui-status-success-fg);
+  color: var(--ui-status-success-fg);
 }
 
 .parse-error {
-  border-left: 2px solid var(--ui-status-danger-fg, #b3403a);
-  color: var(--ui-status-danger-fg, #b3403a);
+  border-left: 2px solid var(--ui-status-danger-fg);
+  color: var(--ui-status-danger-fg);
 }
 
 /* Category filter: mono text actions, active underlined in accent */
@@ -865,20 +865,20 @@ defineExpose({
   background: transparent;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .category-btn:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .category-btn.active {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .presets-grid {
@@ -897,7 +897,7 @@ defineExpose({
   gap: 10px;
   padding: 12px 28px 12px 12px;
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
   cursor: pointer;
   transition: border-color 0.12s ease;
   position: relative;
@@ -905,11 +905,11 @@ defineExpose({
 }
 
 .preset-card:hover {
-  border-color: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-color: var(--ui-border-strong-border);
 }
 
 .preset-card.selected {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
 }
 
 .preset-icon {
@@ -917,13 +917,13 @@ defineExpose({
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   flex-shrink: 0;
   padding-top: 1px;
 }
 
 .preset-card.selected .preset-icon {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .preset-info {
@@ -935,7 +935,7 @@ defineExpose({
   display: block;
   font-size: 13px;
   font-weight: var(--font-weight-medium, 500);
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   margin-bottom: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -945,7 +945,7 @@ defineExpose({
 .preset-desc {
   display: block;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -957,13 +957,13 @@ defineExpose({
   position: absolute;
   top: 10px;
   right: 10px;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .preset-params {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 55%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 55%, transparent);
 }
 
 .preset-params h4 {
@@ -971,7 +971,7 @@ defineExpose({
   font-weight: var(--font-weight-semibold, 600);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   margin: 0 0 12px 0;
 }
 
@@ -991,7 +991,7 @@ defineExpose({
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   margin-bottom: 5px;
 }
 
@@ -1002,22 +1002,22 @@ defineExpose({
   appearance: none;
   padding: 4px 0 5px;
   border: none;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   border-radius: 0;
   font-size: 13px;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   transition: border-color 0.12s ease;
 }
 
-.form-input:focus {
+input.form-input:focus {
   outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg);
   box-shadow: none;
 }
 
 .form-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .path-input-group {
@@ -1037,17 +1037,17 @@ defineExpose({
   background: transparent;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   flex-shrink: 0;
   transition: color 0.12s ease;
 }
 
 .browse-btn:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 /* Qualified by its parent so it out-specifies the global `.form-label .required`
@@ -1058,14 +1058,14 @@ defineExpose({
 
 .import-preview {
   padding: 14px 18px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 55%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 55%, transparent);
   flex-shrink: 0;
 }
 
 .import-preview h4 {
   font-size: 11px;
   font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0 0 8px 0;
@@ -1077,7 +1077,7 @@ defineExpose({
   flex-direction: column;
   max-height: 150px;
   overflow-y: auto;
-  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
 }
 
 .preview-item {
@@ -1086,7 +1086,7 @@ defineExpose({
   gap: 10px;
   padding: 6px 0 6px 10px;
   background: transparent;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 24%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 24%, transparent);
   cursor: pointer;
   min-width: 0;
 }
@@ -1096,11 +1096,11 @@ defineExpose({
 }
 
 .preview-item:hover .preview-name {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .preview-item.selected {
-  box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg);
 }
 
 /* Layout only — the mark itself is drawn by Checkbox.vue (P3). */
@@ -1116,7 +1116,7 @@ defineExpose({
 .preview-name {
   display: block;
   font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1127,7 +1127,7 @@ defineExpose({
   display: block;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

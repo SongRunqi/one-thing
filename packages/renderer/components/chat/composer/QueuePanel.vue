@@ -156,7 +156,7 @@ function queuedFileSummaryTitle(item: QueuedMessage): string {
 .queued-frame {
   position: relative;
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   border-radius: var(--radius-xs, 4px);
 }
 
@@ -166,23 +166,23 @@ function queuedFileSummaryTitle(item: QueuedMessage): string {
   left: 10px;
   z-index: 1;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   pointer-events: none;
   user-select: none;
 }
 
 .queued-messages {
-  --queued-row-fg: var(--ui-text-primary-fg, var(--text));
-  --queued-row-muted: var(--ui-text-muted-fg, var(--muted));
-  --queued-row-faint: var(--ui-text-faint-fg, var(--muted));
-  --queued-row-accent: var(--ui-accent-primary-fg, var(--accent));
-  --queued-row-hover: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 54%, transparent);
-  --queued-row-divider: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 45%, transparent);
+  --queued-row-fg: var(--ui-text-primary-fg);
+  --queued-row-muted: var(--ui-text-muted-fg);
+  --queued-row-faint: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+  --queued-row-accent: var(--ui-accent-primary-fg);
+  --queued-row-hover: color-mix(in srgb, var(--ui-state-hover-bg) 54%, transparent);
+  --queued-row-divider: color-mix(in srgb, var(--ui-border-subtle-border) 45%, transparent);
 
   display: flex;
   flex-direction: column;
@@ -240,11 +240,11 @@ function queuedFileSummaryTitle(item: QueuedMessage): string {
 }
 
 .queued-file-additions {
-  color: var(--diff-add-text, var(--ui-status-success-fg, var(--text-success)));
+  color: var(--diff-add-text, var(--ui-status-success-fg));
 }
 
 .queued-file-deletions {
-  color: var(--diff-del-text, var(--ui-status-danger-fg, var(--text-error)));
+  color: var(--diff-del-text, var(--ui-status-danger-fg));
 }
 
 .queued-message-card {
@@ -325,7 +325,7 @@ function queuedFileSummaryTitle(item: QueuedMessage): string {
 }
 
 .queued-file-summary.is-diff {
-  color: color-mix(in srgb, var(--diff-add-text, var(--ui-status-success-fg, var(--text-success))) 70%, var(--queued-row-muted));
+  color: color-mix(in srgb, var(--diff-add-text, var(--ui-status-success-fg)) 70%, var(--queued-row-muted));
 }
 
 .queued-file-summary span:last-child {

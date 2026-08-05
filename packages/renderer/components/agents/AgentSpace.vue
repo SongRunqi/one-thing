@@ -297,7 +297,7 @@ function onOpenSession(sessionId: string): void {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  background: var(--ui-surface-panel-bg);
 }
 
 .space-back {
@@ -307,16 +307,16 @@ function onOpenSession(sessionId: string): void {
   width: 100%;
   padding: 11px 16px;
   border: 0;
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border);
   background: transparent;
   cursor: pointer;
   font-size: 11.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   text-align: left;
 }
 
 .space-back:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 /* 对话面吃掉返回行之外的全部高度 —— 里面那棵 `ChatPanel` 是自己滚的,
@@ -330,7 +330,7 @@ function onOpenSession(sessionId: string): void {
   flex: 0 0 auto;
   padding: 22px 18px 16px;
   text-align: center;
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border);
 }
 
 .space-avatar {
@@ -341,7 +341,7 @@ function onOpenSession(sessionId: string): void {
   display: block;
   font-size: 16px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .space-subtitle {
@@ -349,14 +349,14 @@ function onOpenSession(sessionId: string): void {
   margin-top: 3px;
   font-style: normal;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .space-desc {
   margin: 12px 0 0;
   font-size: 12.5px;
   line-height: 1.75;
-  color: var(--ui-text-secondary-fg, var(--text));
+  color: var(--ui-text-secondary-fg, var(--ui-text-primary-fg));
   text-align: left;
 }
 
@@ -378,13 +378,13 @@ function onOpenSession(sessionId: string): void {
   padding: 18px 16px;
   font-size: 12px;
   line-height: 1.7;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .space-tabs {
   flex: 0 0 auto;
   display: flex;
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border);
 }
 
 .space-tab {
@@ -394,17 +394,17 @@ function onOpenSession(sessionId: string): void {
   background: transparent;
   cursor: pointer;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .space-tab.is-on {
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
-  box-shadow: inset 0 -2px 0 var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
+  box-shadow: inset 0 -2px 0 var(--ui-text-primary-fg);
 }
 
 .space-tab:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 /* 四面的滚动容器(新)。滚动条只在鼠标进了这一栏时显形 —— 手法照抄

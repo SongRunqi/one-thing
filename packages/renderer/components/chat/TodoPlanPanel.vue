@@ -1432,16 +1432,16 @@ onUnmounted(() => {
 <style scoped>
 .todo-plan-panel {
   --todo-plan-nav-gutter: 52px;
-  --todo-card-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-note-bg, var(--color-warning-bg)) 8%);
-  --todo-card-bg-soft: color-mix(in srgb, var(--todo-card-bg) 86%, var(--ui-surface-app-bg, var(--bg-app)) 14%);
-  --todo-rule: var(--ui-border-default-border, var(--border-default));
+  --todo-card-bg: color-mix(in srgb, var(--ui-surface-elevated-bg) 92%, var(--ui-surface-note-bg, var(--color-warning-bg)) 8%);
+  --todo-card-bg-soft: color-mix(in srgb, var(--todo-card-bg) 86%, var(--ui-surface-app-bg) 14%);
+  --todo-rule: var(--ui-border-default-border);
   --todo-rule-soft: color-mix(in srgb, var(--todo-rule) 58%, transparent);
-  --todo-rule-strong: var(--ui-border-strong-border, var(--border-strong, var(--todo-rule)));
-  --todo-text: var(--ui-text-primary-fg, var(--text));
-  --todo-muted: var(--ui-text-muted-fg, var(--muted));
-  --todo-accent: var(--ui-accent-primary-fg, var(--accent));
-  --todo-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent);
-  --todo-accent-border: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
+  --todo-rule-strong: var(--ui-border-strong-border);
+  --todo-text: var(--ui-text-primary-fg);
+  --todo-muted: var(--ui-text-muted-fg);
+  --todo-accent: var(--ui-accent-primary-fg);
+  --todo-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg) 14%, transparent);
+  --todo-accent-border: color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
   --todo-plan-width: 280px;
   --todo-popover-inline-inset: 12px;
   --todo-popover-top: clamp(58px, 12vh, 88px);
@@ -1450,7 +1450,7 @@ onUnmounted(() => {
   /* Ink-line style: floating layers separate with a 1px rule, not a shadow
      (the panel's overflow:hidden clipped large shadows anyway). */
   --todo-popover-shadow: none;
-  --todo-popover-bg: var(--ui-surface-app-bg, var(--bg-app));
+  --todo-popover-bg: var(--ui-surface-app-bg);
   --todo-popover-search-bg: var(--todo-popover-bg);
   --todo-popover-search-height: 46px;
   --todo-popover-search-padding-x: 16px;
@@ -1629,7 +1629,7 @@ onUnmounted(() => {
 
 .note-option:hover {
   color: var(--todo-text);
-  background: var(--ui-state-hover-bg, var(--hover, color-mix(in srgb, var(--text) 8%, transparent)));
+  background: var(--ui-state-hover-bg);
 }
 
 .panel-actions {

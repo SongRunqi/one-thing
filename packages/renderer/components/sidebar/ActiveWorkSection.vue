@@ -95,7 +95,7 @@ const openedSessionId = computed(() => sessionsStore.currentSessionId)
   padding: 12px 14px 3px;
   font-size: 11.5px;
   font-weight: 500;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
 }
 
 .active-work-group {
@@ -104,7 +104,7 @@ const openedSessionId = computed(() => sessionsStore.currentSessionId)
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1.45;
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 47%, transparent);
+  color: var(--ui-sidebar-rail-muted-fg);
   user-select: none;
 }
 </style>

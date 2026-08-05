@@ -121,8 +121,8 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
   border: 1px solid var(--ui-border-default-border, var(--border-color));
   border-radius: 12px;
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-secondary)) 86%, var(--ui-accent-primary-fg, var(--accent-color, var(--accent))) 14%);
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-secondary)) 86%, var(--ui-accent-primary-fg, var(--accent-color)) 14%);
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
 }
 
@@ -138,7 +138,7 @@ onBeforeUnmount(() => {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: var(--ui-status-success-fg, var(--success-color, #16a34a));
+  background: var(--ui-status-success-fg, var(--success-color));
   box-shadow: 0 0 0 3px var(--ui-status-success-bg, transparent);
 }
 
@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
 }
 
 .job-ports {
-  color: var(--ui-accent-primary-fg, var(--accent-color, var(--accent)));
+  color: var(--ui-accent-primary-fg, var(--accent-color));
   font-weight: 600;
 }
 
@@ -181,19 +181,19 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 999px;
   padding: 3px 7px;
-  background: var(--ui-surface-elevated-bg, var(--bg-tertiary, var(--bg-secondary)));
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  background: var(--ui-surface-elevated-bg, var(--bg-tertiary));
+  color: var(--ui-text-secondary-fg);
   cursor: pointer;
   font-size: 11px;
 }
 
 .job-stop {
-  color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  color: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 .job-stop:hover,
 .refresh-btn:hover:not(:disabled) {
-  background: var(--ui-state-hover-bg, var(--hover-bg, rgba(0, 0, 0, 0.08)));
+  background: var(--ui-state-hover-bg, var(--hover-bg));
 }
 
 .refresh-btn:disabled {

@@ -103,8 +103,8 @@ function isEmptyTextNode(node: VNode): boolean {
   --app-timeline-rail-width: 18px;
   --app-timeline-gap: 12px;
   --app-timeline-item-gap: 18px;
-  --app-timeline-line-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 78%, transparent);
-  --app-timeline-node-default-color: var(--ui-text-muted-fg, var(--muted));
+  --app-timeline-line-color: color-mix(in srgb, var(--ui-border-default-border) 78%, transparent);
+  --app-timeline-node-default-color: var(--ui-text-muted-fg);
 
   display: block;
   width: 100%;
@@ -112,13 +112,13 @@ function isEmptyTextNode(node: VNode): boolean {
   margin: 0;
   padding: 0;
   list-style: none;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-timeline-text-item {
   display: block;
   padding: 0 0 var(--app-timeline-item-gap);
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-timeline-text-item:last-child {

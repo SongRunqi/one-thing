@@ -325,8 +325,8 @@ onUnmounted(() => {
   height: 6px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, transparent);
+  background: var(--ui-accent-primary-fg);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent-primary-fg) 28%, transparent);
   animation: thinkingDotPulse 1.35s ease-in-out infinite;
 }
 

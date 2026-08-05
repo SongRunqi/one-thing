@@ -356,14 +356,14 @@ onMounted(() => {
 .ledger-sub {
   margin: 0;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .ledger-sub code,
 .ledger-note code {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .ledger-actions {
@@ -379,7 +379,7 @@ onMounted(() => {
   align-items: baseline;
   gap: 8px;
   padding: 8px 0 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
   margin-bottom: 18px;
 }
 
@@ -390,13 +390,13 @@ onMounted(() => {
 .master-label {
   font-size: 13px;
   font-weight: var(--font-weight-medium, 500);
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   cursor: pointer;
 }
 
 .master-hint {
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* positioning only — visuals come from ErrorNote */
@@ -418,7 +418,7 @@ onMounted(() => {
   top: 6px;
   bottom: 6px;
   width: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 72%, transparent);
 }
 
 .ledger-body.is-muted {
@@ -445,7 +445,7 @@ onMounted(() => {
   font-weight: var(--font-weight-semibold, 600);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .group-header::before {
@@ -455,7 +455,7 @@ onMounted(() => {
   top: 50%;
   width: 10px;
   height: 2px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
 }
 
 .group-count {
@@ -463,13 +463,13 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: var(--font-weight-normal, 400);
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .ledger-note {
   margin: 0;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* ---- directory rows ---- */
@@ -480,7 +480,7 @@ onMounted(() => {
   gap: 10px;
   min-height: 30px;
   padding: 5px 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
 }
 
 .dir-row:first-child {
@@ -495,18 +495,18 @@ onMounted(() => {
   top: 50%;
   width: 7px;
   height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
   transition: width 0.12s ease, background-color 0.12s ease;
 }
 
 .dir-row:hover::before {
   width: 12px;
-  background: var(--ui-text-muted-fg, var(--text-muted));
+  background: var(--ui-text-muted-fg);
 }
 
 .dir-name {
   font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
 }
 
@@ -518,12 +518,12 @@ onMounted(() => {
   white-space: nowrap;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .dir-tag {
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
 }
 
@@ -548,9 +548,9 @@ onMounted(() => {
 /* Disabled directory: dashed strike-through language */
 .dir-row.is-off .dir-name,
 .dir-row.is-off .dir-path {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 60%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--ui-text-faint-fg, var(--ui-text-muted-fg)) 60%, transparent);
 }
 
 /* Keep the toggle for disabled rows visible so state is discoverable */
@@ -567,11 +567,11 @@ onMounted(() => {
   appearance: none;
   background: transparent;
   border: none;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
   padding: 8px 0 4px;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease;
 }
@@ -583,20 +583,20 @@ onMounted(() => {
   top: calc(50% + 2px);
   width: 7px;
   height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
   transition: width 0.12s ease, background-color 0.12s ease;
 }
 
 .add-row:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .add-row:hover::before {
   width: 12px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 /* ---- skill source sub-groups ---- */
@@ -618,14 +618,14 @@ onMounted(() => {
 .skill-group-title {
   font-size: 12px;
   font-weight: var(--font-weight-medium, 500);
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .skill-group-path {
   flex: 1;
   font-family: var(--font-mono, monospace);
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* ---- skill rows (blueprint numbering) ---- */
@@ -639,7 +639,7 @@ onMounted(() => {
 :deep(.skill-row) {
   position: relative;
   counter-increment: skill-row;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
 }
 
 /* Tick hanging each skill row on the rule */
@@ -650,19 +650,19 @@ onMounted(() => {
   top: 15px;
   width: 7px;
   height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
   transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
 }
 
 :deep(.skill-row:hover)::before {
   width: 12px;
-  background: var(--ui-text-muted-fg, var(--text-muted));
+  background: var(--ui-text-muted-fg);
 }
 
 :deep(.skill-row.is-expanded)::before {
   width: 14px;
   height: 2px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 :deep(.row-line) {
@@ -680,7 +680,7 @@ onMounted(() => {
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   flex-shrink: 0;
   min-width: 16px;
 }
@@ -688,14 +688,14 @@ onMounted(() => {
 :deep(.row-name) {
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
 }
 
 :deep(.skill-row.is-disabled .row-name) {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 60%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--ui-text-faint-fg, var(--ui-text-muted-fg)) 60%, transparent);
 }
 
 /* Agent chip: outlined ring, zero fill — accent marks the binding */
@@ -704,9 +704,9 @@ onMounted(() => {
   font-size: 10px;
   line-height: 1;
   padding: 2px 7px 3px;
-  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg) 65%, transparent);
   border-radius: 9px;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   background: transparent;
   white-space: nowrap;
   max-width: 130px;
@@ -721,11 +721,11 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 :deep(.skill-row:hover .row-desc) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 :deep(.row-actions) {
@@ -760,7 +760,7 @@ onMounted(() => {
   margin: 0;
   font-size: 12px;
   line-height: 1.55;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -776,12 +776,12 @@ onMounted(() => {
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   min-width: 42px;
 }
 
 :deep(.meta-value) {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   word-break: break-word;
 }
 
@@ -793,27 +793,27 @@ onMounted(() => {
   text-align: left;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   word-break: break-all;
 }
 
 :deep(.meta-path:hover) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 /* Instructions: a quoted excerpt held by a left rule, no filled block */
 :deep(.detail-instructions) {
   margin: 4px 0 0;
   padding: 2px 0 2px 10px;
-  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   line-height: 1.6;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 220px;
@@ -830,7 +830,7 @@ onMounted(() => {
   height: 13px;
   padding: 0;
   border-radius: 50%;
-  border: 1px dashed var(--ui-border-default-border, var(--border));
+  border: 1px dashed var(--ui-border-default-border);
   background: transparent;
   cursor: pointer;
   position: relative;
@@ -840,7 +840,7 @@ onMounted(() => {
 .enable-dot.is-on,
 :deep(.enable-dot.is-on) {
   border-style: solid;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
 }
 
 .enable-dot.is-on::after,
@@ -849,12 +849,12 @@ onMounted(() => {
   position: absolute;
   inset: 3px;
   border-radius: 50%;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 .enable-dot:hover,
 :deep(.enable-dot:hover) {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
 }
 
 .text-action,
@@ -865,23 +865,23 @@ onMounted(() => {
   padding: 0;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
 .text-action:hover:not(:disabled),
 :deep(.text-action:hover:not(:disabled)) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg);
 }
 
 .text-action.is-danger:hover:not(:disabled),
 :deep(.text-action.is-danger:hover:not(:disabled)) {
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
+  text-decoration-color: var(--ui-status-danger-fg);
 }
 
 .text-action:disabled {

@@ -817,20 +817,20 @@ defineExpose({
   --app-slider-track-size: 6px;
   --app-slider-thumb-size: 16px;
   --app-slider-hit-size: 32px;
-  --app-slider-track-bg: var(--ui-surface-input-bg, color-mix(in srgb, var(--ui-border-default-border, var(--border)) 72%, transparent));
-  --app-slider-track-active-bg: var(--ui-accent-primary-fg, var(--accent));
-  --app-slider-thumb-bg: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
-  --app-slider-thumb-border: var(--ui-accent-primary-fg, var(--accent));
+  --app-slider-track-bg: var(--ui-surface-input-bg, color-mix(in srgb, var(--ui-border-default-border) 72%, transparent));
+  --app-slider-track-active-bg: var(--ui-accent-primary-fg);
+  --app-slider-thumb-bg: var(--ui-surface-elevated-bg);
+  --app-slider-thumb-border: var(--ui-accent-primary-fg);
   --app-slider-thumb-shadow: 0 2px 7px rgba(0, 0, 0, 0.16);
-  --app-slider-stop-bg: var(--ui-surface-app-bg, var(--bg));
-  --app-slider-mark-fg: var(--ui-text-muted-fg, var(--text-muted));
+  --app-slider-stop-bg: var(--ui-surface-app-bg);
+  --app-slider-mark-fg: var(--ui-text-muted-fg);
 
   display: flex;
   align-items: center;
   width: 100%;
   min-width: 0;
   gap: 14px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-family: var(--type-label-font, var(--font-body));
   font-size: var(--type-label-size, 13px);
   line-height: var(--type-leading-control, 1.3);
@@ -902,7 +902,7 @@ defineExpose({
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--ui-surface-app-bg, var(--bg));
+  background: var(--ui-surface-app-bg);
   border: 1px solid var(--app-slider-track-active-bg);
 }
 
@@ -964,8 +964,8 @@ defineExpose({
   padding: 5px 8px;
   border-radius: 6px;
   border: 0.5px solid var(--ui-surface-tooltip-border, color-mix(in srgb, white 14%, transparent));
-  background: var(--ui-surface-tooltip-bg, rgba(24, 24, 27, 0.95));
-  color: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg, #fff));
+  background: var(--ui-surface-tooltip-bg);
+  color: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg));
   box-shadow: var(--ui-surface-tooltip-shadow, 0 2px 8px rgba(0, 0, 0, 0.25));
   font-size: var(--type-caption-size, 11px);
   font-weight: var(--type-caption-weight, 500);
@@ -1026,10 +1026,10 @@ defineExpose({
   display: inline-grid;
   grid-template-columns: minmax(58px, 76px);
   min-height: 30px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border: 1px solid var(--ui-border-subtle-border);
   border-radius: 6px;
   overflow: hidden;
-  background: var(--ui-surface-input-bg, var(--bg));
+  background: var(--ui-surface-input-bg, var(--ui-surface-app-bg));
 }
 
 .app-slider-input.has-controls {
@@ -1055,8 +1055,8 @@ defineExpose({
 }
 
 .app-slider-input:focus-within {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 55%, var(--ui-border-subtle-border, var(--border)));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 13%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 55%, var(--ui-border-subtle-border, var(--ui-border-default-border)));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 13%, transparent);
 }
 
 .app-slider-input-button,
@@ -1075,7 +1075,7 @@ defineExpose({
 }
 
 .app-slider-input-button:not(:disabled):hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .app-slider-input-button:disabled {
@@ -1084,11 +1084,11 @@ defineExpose({
 }
 
 .app-slider-input-button:first-child {
-  border-right: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-right: 1px solid var(--ui-border-subtle-border);
 }
 
 .app-slider-input-button:last-child {
-  border-left: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-left: 1px solid var(--ui-border-subtle-border);
 }
 
 .app-slider-input-field {

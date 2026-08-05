@@ -640,7 +640,7 @@ defineExpose({
   display: inline-flex;
   width: 100%;
   min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
 }
 
@@ -649,11 +649,11 @@ defineExpose({
   min-width: 0;
   min-height: 34px;
   padding: 7px 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
   outline: none;
-  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-input-bg);
+  color: var(--ui-text-primary-fg);
   font: inherit;
   line-height: 18px;
   transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
@@ -665,16 +665,16 @@ defineExpose({
 
 .app-mention-input:hover,
 .app-mention.is-focused .app-mention-input {
-  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg));
+  background: var(--ui-surface-elevated-bg);
 }
 
 .app-mention.is-focused .app-mention-input {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 24%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 24%, transparent);
 }
 
 .app-mention-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .app-mention.is-disabled,
@@ -691,9 +691,9 @@ defineExpose({
   max-height: 268px;
   overflow: auto;
   padding: 5px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+  background: var(--ui-surface-elevated-bg);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
 }
 
@@ -707,15 +707,15 @@ defineExpose({
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   text-align: left;
   cursor: pointer;
 }
 
 .app-mention-option:hover,
 .app-mention-option.highlighted {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
+  background: var(--ui-state-hover-bg);
 }
 
 .app-mention-option:disabled {
@@ -733,16 +733,16 @@ defineExpose({
 .app-mention-empty,
 .app-mention-dropdown-extra {
   padding: 9px 10px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
 }
 
 .app-mention-dropdown-header {
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-muted, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-muted));
 }
 
 .app-mention-dropdown-footer {
-  border-top: 1px solid var(--ui-border-subtle-border, var(--border-muted, var(--border)));
+  border-top: 1px solid var(--ui-border-subtle-border, var(--border-muted));
 }
 
 .app-mention-dropdown-enter-active,

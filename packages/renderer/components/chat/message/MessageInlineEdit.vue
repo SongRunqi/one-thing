@@ -109,14 +109,14 @@ onUnmounted(() => {
   border: none;
   border-radius: 0;
   background: transparent;
-  color: var(--ui-message-user-fg, var(--text-user-primary));
+  color: var(--ui-message-user-fg);
   font-size: 15px;
   line-height: 1.5;
   resize: none;
   outline: none;
   font-family: inherit;
   overflow-y: auto;
-  caret-color: var(--ui-accent-primary-fg, var(--accent));
+  caret-color: var(--ui-accent-primary-fg);
 }
 
 .edit-textarea::-webkit-scrollbar {
@@ -128,7 +128,7 @@ onUnmounted(() => {
 }
 
 .edit-textarea::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 30%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 30%, transparent);
   border-radius: 2px;
 }
 </style>

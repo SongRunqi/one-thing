@@ -171,14 +171,14 @@ onMounted(() => {
 
 <style scoped>
 .variables-panel {
-  --variables-muted: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
-  --variables-accent: var(--ui-accent-primary-fg, var(--accent));
+  --variables-muted: var(--ui-text-muted-fg);
+  --variables-accent: var(--ui-accent-primary-fg);
 
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .variables-state {
@@ -215,7 +215,7 @@ onMounted(() => {
 }
 
 .variables-group-title {
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--variables-muted));
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 82%, var(--variables-muted));
   font-size: 11.5px;
   font-weight: 650;
 }
@@ -254,7 +254,7 @@ onMounted(() => {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 90%, var(--variables-muted));
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 90%, var(--variables-muted));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   text-overflow: ellipsis;
@@ -265,7 +265,7 @@ onMounted(() => {
   flex: 1 1 auto;
   height: 0;
   min-width: 10px;
-  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 85%, transparent);
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border) 85%, transparent);
   transform: translateY(1px);
 }
 
@@ -281,7 +281,7 @@ onMounted(() => {
 }
 
 .variables-row:hover .variables-value {
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 72%, var(--variables-muted));
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 72%, var(--variables-muted));
 }
 
 .variables-value.is-empty {
@@ -300,7 +300,7 @@ onMounted(() => {
 .variables-detail-value {
   margin: 0;
   overflow-x: auto;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   line-height: 1.4;

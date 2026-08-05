@@ -463,12 +463,12 @@ defineExpose({
   --app-input-number-padding-x: 10px;
   --app-input-number-radius: 7px;
   --app-input-number-font-size: 13px;
-  --app-input-number-bg: var(--ui-surface-input-bg, var(--bg));
-  --app-input-number-fg: var(--ui-text-primary-fg, var(--text));
-  --app-input-number-muted-fg: var(--ui-text-muted-fg, var(--text-muted));
-  --app-input-number-border: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
-  --app-input-number-hover-bg: var(--ui-state-hover-bg, var(--hover));
-  --app-input-number-focus: var(--ui-accent-primary-fg, var(--accent));
+  --app-input-number-bg: var(--ui-surface-input-bg, var(--ui-surface-app-bg));
+  --app-input-number-fg: var(--ui-text-primary-fg);
+  --app-input-number-muted-fg: var(--ui-text-muted-fg);
+  --app-input-number-border: var(--ui-border-subtle-border);
+  --app-input-number-hover-bg: var(--ui-state-hover-bg);
+  --app-input-number-focus: var(--ui-accent-primary-fg);
 
   display: inline-grid;
   grid-template-areas: "decrease input increase";
@@ -638,7 +638,7 @@ defineExpose({
   cursor: not-allowed;
 }
 
-.app-input-number-input:focus,
+input.app-input-number-input:focus,
 .app-input-number-input:focus-visible {
   outline: none;
   box-shadow: none;

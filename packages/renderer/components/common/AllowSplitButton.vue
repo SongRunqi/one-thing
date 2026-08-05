@@ -27,15 +27,15 @@ const emit = defineEmits<{
   font-size: var(--font-size-sm, 12px);
   font-weight: var(--font-weight-medium, 500);
   cursor: pointer;
-  border: 1px solid var(--ui-status-success-border, var(--border-success));
+  border: 1px solid var(--ui-status-success-border);
   background: var(--ui-status-success-bg, transparent);
-  color: var(--ui-status-success-fg, var(--text-success));
+  color: var(--ui-status-success-fg);
   transition: all var(--duration-fast, 0.15s) var(--ease-default, ease);
 }
 
 .allow-button:hover {
   background: var(--ui-status-success-bg, transparent);
-  border-color: var(--ui-status-success-fg, var(--text-success));
+  border-color: var(--ui-status-success-fg);
 }
 
 .allow-button:active {

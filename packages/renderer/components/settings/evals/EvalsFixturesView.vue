@@ -743,9 +743,9 @@ async function handlePromote() {
   min-width: 0;
 }
 
-.evals-form-input:focus,
-.evals-form-select:focus,
-.evals-form-textarea:focus {
+input.evals-form-input:focus,
+.evals-form-select:focus-visible,
+textarea.evals-form-textarea:focus {
   outline: none;
   border-color: var(--settings-accent);
 }
@@ -833,13 +833,13 @@ async function handlePromote() {
 }
 
 .evals-meta-badge.has-tools {
-  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, #27ae60));
-  color: var(--ui-status-success-fg, #27ae60);
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg));
+  color: var(--ui-status-success-fg);
 }
 
 .evals-meta-badge.no-tools {
-  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #b3403a));
-  color: var(--ui-status-danger-fg, #b3403a);
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
+  color: var(--ui-status-danger-fg);
 }
 
 .evals-expect-builder {
@@ -884,9 +884,9 @@ async function handlePromote() {
   font-size: 9px;
   padding: 1px 6px 2px;
   border-radius: 999px;
-  border: 1px solid var(--ui-status-info-border, var(--ui-status-info-fg, #3498db));
+  border: 1px solid var(--ui-status-info-border, var(--ui-status-info-fg));
   background: transparent;
-  color: var(--ui-status-info-fg, #3498db);
+  color: var(--ui-status-info-fg);
   font-weight: 600;
 }
 
@@ -911,7 +911,7 @@ async function handlePromote() {
   font-variant-numeric: tabular-nums;
 }
 
-.evals-num-input:focus {
+input.evals-num-input:focus {
   outline: none;
   border-color: var(--settings-accent);
 }

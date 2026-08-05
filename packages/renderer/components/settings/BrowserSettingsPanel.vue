@@ -193,12 +193,12 @@ function onRemoveClick(id: string): void {
 /* 画线风: no background fills, no radii on rows — state lives in the line. */
 .browser-settings { display: flex; flex-direction: column; gap: 18px; }
 .bs-header { display: flex; flex-direction: column; gap: 6px; }
-.bs-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ui-text-primary-fg, var(--text)); }
+.bs-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ui-text-primary-fg); }
 .bs-sub {
   margin: 0;
   font-size: 12.5px;
   line-height: 1.65;
-  color: var(--ui-text-muted-fg, var(--text-secondary));
+  color: var(--ui-text-muted-fg, var(--ui-text-secondary-fg));
   max-width: 56ch;
 }
 
@@ -208,7 +208,7 @@ function onRemoveClick(id: string): void {
   position: absolute;
   left: 0; top: 4px; bottom: 4px;
   width: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border)) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border)) 45%, transparent);
 }
 
 .bs-row {
@@ -219,7 +219,7 @@ function onRemoveClick(id: string): void {
   width: 100%;
   padding: 9px 8px 9px 14px;
   border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 45%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 45%, transparent);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -229,9 +229,9 @@ function onRemoveClick(id: string): void {
   position: absolute;
   left: -14px; top: 50%;
   width: 10px; height: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border)) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border)) 45%, transparent);
 }
-.bs-row:hover .bs-name { color: var(--ui-text-primary-fg, var(--text)); }
+.bs-row:hover .bs-name { color: var(--ui-text-primary-fg); }
 
 .bs-dot {
   display: grid;
@@ -239,19 +239,19 @@ function onRemoveClick(id: string): void {
   width: 16px; height: 16px;
   border-radius: 50%;
   border: 1.5px dashed color-mix(in srgb, var(--ui-text-faint-fg, var(--text-tertiary)) 70%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   flex: none;
 }
-.bs-dot.on { border: 1.5px solid var(--ui-accent-primary-fg, var(--accent)); }
+.bs-dot.on { border: 1.5px solid var(--ui-accent-primary-fg); }
 
-.bs-name { font-size: 13.5px; color: var(--ui-text-secondary-fg, var(--text-secondary)); }
-.bs-row.active .bs-name { color: var(--ui-text-primary-fg, var(--text)); font-weight: 500; }
+.bs-name { font-size: 13.5px; color: var(--ui-text-secondary-fg); }
+.bs-row.active .bs-name { color: var(--ui-text-primary-fg); font-weight: 500; }
 .bs-tag {
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 .bs-spacer { flex: 1; }
 .bs-host {
@@ -268,7 +268,7 @@ function onRemoveClick(id: string): void {
 }
 .bs-row:hover .bs-remove { opacity: 1; }
 .bs-remove:hover,
-.bs-remove.confirming { opacity: 1; color: var(--ui-status-danger-fg, #b3403a); text-decoration: underline; }
+.bs-remove.confirming { opacity: 1; color: var(--ui-status-danger-fg); text-decoration: underline; }
 
 .bs-add {
   position: relative;
@@ -282,27 +282,27 @@ function onRemoveClick(id: string): void {
   position: absolute;
   left: -14px; top: 20px;
   width: 10px; height: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border)) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border)) 45%, transparent);
 }
 .bs-add-input {
   flex: 1;
   min-width: 0;
   padding: 6px 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border)) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border)) 52%, transparent);
   border-radius: var(--radius-xs, 4px);
   background: transparent;
   font-size: 12.5px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   outline: none;
 }
-.bs-add-input:focus {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, transparent);
+input.bs-add-input:focus {
+  border-color: var(--ui-accent-primary-fg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg) 28%, transparent);
 }
 .bs-add-btn {
   font-family: var(--font-mono, monospace);
   font-size: 11.5px;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   background: transparent;
   border: none;
   cursor: pointer;

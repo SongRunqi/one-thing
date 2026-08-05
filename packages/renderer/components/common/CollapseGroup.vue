@@ -270,7 +270,7 @@ provide(collapseGroupKey, context)
 .collapse-group-title {
   min-width: 0;
   max-width: 100%;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   justify-self: stretch;
 }
 
@@ -290,17 +290,17 @@ provide(collapseGroupKey, context)
   justify-content: center;
   width: 18px;
   height: 18px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .collapse-group.is-title-hovered .collapse-group-title-icon {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .collapse-group-title-text {
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   font-size: 12px;
   font-weight: 650;
   line-height: 1.35;
@@ -309,7 +309,7 @@ provide(collapseGroupKey, context)
 }
 
 .collapse-group.is-title-hovered .collapse-group-title-text {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .collapse-group-actions {

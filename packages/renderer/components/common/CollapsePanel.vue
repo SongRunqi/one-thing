@@ -621,12 +621,12 @@ function clearCollapseTransitionHeight(element: Element) {
 
 <style scoped>
 .collapse-panel {
-  --collapse-panel-border: var(--ui-border-default-border, var(--border));
+  --collapse-panel-border: var(--ui-border-default-border);
   --collapse-panel-border-soft: color-mix(in srgb, var(--collapse-panel-border) 58%, transparent);
-  --collapse-panel-bg: var(--ui-surface-default-bg, var(--surface));
-  --collapse-panel-hover-bg: color-mix(in srgb, var(--ui-surface-muted-bg, var(--surface-soft)) 70%, transparent);
-  --collapse-panel-title-fg: var(--ui-text-primary-fg, var(--text));
-  --collapse-panel-muted-fg: var(--ui-text-muted-fg, var(--muted));
+  --collapse-panel-bg: var(--ui-surface-panel-bg);
+  --collapse-panel-hover-bg: color-mix(in srgb, var(--ui-state-hover-bg) 70%, transparent);
+  --collapse-panel-title-fg: var(--ui-text-primary-fg);
+  --collapse-panel-muted-fg: var(--ui-text-muted-fg);
 
   width: 100%;
   min-width: 0;
@@ -663,12 +663,12 @@ function clearCollapseTransitionHeight(element: Element) {
   background: transparent;
 }
 
-.collapse-panel-header:focus {
+.collapse-panel-header:focus-visible {
   outline: none;
 }
 
 .collapse-panel-header:focus-visible {
-  outline: 1.5px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1.5px solid var(--ui-accent-primary-fg);
   outline-offset: -2px;
 }
 
@@ -760,7 +760,7 @@ function clearCollapseTransitionHeight(element: Element) {
       90deg,
       var(--collapse-panel-title-fg) 0%,
       var(--collapse-panel-title-fg) 28%,
-      var(--ui-accent-primary-fg, var(--accent)) 50%,
+      var(--ui-accent-primary-fg) 50%,
       var(--collapse-panel-title-fg) 72%,
       var(--collapse-panel-title-fg) 100%
     );
@@ -860,7 +860,7 @@ function clearCollapseTransitionHeight(element: Element) {
 }
 
 .collapse-panel-content.is-streaming-content {
-  border-top-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, var(--collapse-panel-border-soft));
+  border-top-color: color-mix(in srgb, var(--ui-accent-primary-fg) 18%, var(--collapse-panel-border-soft));
 }
 
 .collapse-panel-content-meta {
@@ -884,8 +884,8 @@ function clearCollapseTransitionHeight(element: Element) {
   overflow: auto;
   border: 1px solid color-mix(in srgb, var(--collapse-panel-border) 48%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-surface-muted-bg, var(--surface-soft)) 70%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 70%, transparent);
+  color: var(--ui-text-primary-fg);
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   line-height: 1.55;
@@ -982,7 +982,7 @@ function clearCollapseTransitionHeight(element: Element) {
   }
 
   .collapse-panel.is-running .collapse-panel-title-text {
-    color: var(--ui-accent-primary-fg, var(--accent));
+    color: var(--ui-accent-primary-fg);
   }
 }
 </style>

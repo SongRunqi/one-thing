@@ -314,7 +314,7 @@ async function handleCopy() {
 }
 
 .code-block-container code :deep(.tok-invalid) {
-  color: var(--hg-syntax-invalid-fg, var(--text-error));
+  color: var(--hg-syntax-invalid-fg, var(--ui-status-danger-fg));
   background-color: var(--hg-syntax-invalid-bg, transparent);
   font-style: var(--hg-syntax-invalid-font-style, normal);
   font-weight: var(--hg-syntax-invalid-font-weight, 400);
@@ -322,7 +322,7 @@ async function handleCopy() {
 }
 
 .code-block-container code :deep(.tok-inserted) {
-  color: var(--hg-syntax-inserted-fg, var(--text-success));
+  color: var(--hg-syntax-inserted-fg, var(--ui-status-success-fg));
   background-color: var(--hg-syntax-inserted-bg, transparent);
   font-style: var(--hg-syntax-inserted-font-style, normal);
   font-weight: var(--hg-syntax-inserted-font-weight, 400);
@@ -354,7 +354,7 @@ async function handleCopy() {
 }
 
 .code-block-container code :deep(.tok-link) {
-  color: var(--hg-syntax-link-fg, var(--text-link, var(--accent)));
+  color: var(--hg-syntax-link-fg, var(--ui-text-link-fg, var(--ui-accent-primary-fg)));
   background-color: var(--hg-syntax-link-bg, transparent);
   font-style: var(--hg-syntax-link-font-style, normal);
   font-weight: var(--hg-syntax-link-font-weight, 400);

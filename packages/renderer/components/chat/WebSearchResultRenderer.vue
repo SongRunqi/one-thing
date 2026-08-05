@@ -439,7 +439,7 @@ function onFaviconError(e: Event) {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-sans);
   background: transparent;
   padding: 4px 0;
@@ -454,7 +454,7 @@ function onFaviconError(e: Event) {
   gap: 10px;
   padding: 5px 0 7px;
   margin-bottom: 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 26%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-tool-surface-border)) 26%, transparent);
   background: transparent;
 }
 
@@ -462,7 +462,7 @@ function onFaviconError(e: Event) {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-fg);
   font-size: var(--font-size-sm, 12px);
   font-weight: var(--font-weight-semibold, 600);
 }
@@ -556,7 +556,7 @@ function onFaviconError(e: Event) {
   row-gap: 4px;
   text-align: left;
   border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 24%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-tool-surface-border)) 24%, transparent);
   border-radius: 0;
   background: transparent;
   padding: 7px 2px;
@@ -573,7 +573,7 @@ function onFaviconError(e: Event) {
 }
 
 .result-row.card-item:hover {
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 22%, transparent);
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 22%, transparent);
 }
 
 .result-row.card-item.active {
@@ -624,7 +624,7 @@ function onFaviconError(e: Event) {
 }
 
 .result-title {
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-fg);
   font-size: var(--font-size-sm, 12px);
   font-weight: var(--font-weight-semibold, 600);
   line-height: 1.35;
@@ -726,8 +726,8 @@ function onFaviconError(e: Event) {
   bottom: 0;
   width: 480px;
   max-width: calc(100vw - 60px);
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border-left: 1px solid var(--ui-border-divider-border, var(--border-divider));
+  background: var(--ui-surface-elevated-bg);
+  border-left: 1px solid var(--ui-border-divider-border);
   box-shadow: var(--shadow-xl);
   z-index: calc(var(--z-overlay) + 1);
   transform: translateX(100%);
@@ -751,7 +751,7 @@ function onFaviconError(e: Event) {
   justify-content: space-between;
   gap: 12px;
   padding: 16px;
-  border-bottom: 1px solid var(--ui-border-divider-border, var(--border-divider));
+  border-bottom: 1px solid var(--ui-border-divider-border);
 }
 
 .page-title-row {
@@ -805,7 +805,7 @@ function onFaviconError(e: Event) {
   gap: 6px;
   padding: 12px 16px;
   background: color-mix(in srgb, var(--ui-text-primary-fg) 2%, transparent);
-  border-bottom: 1px solid var(--ui-border-divider-border, var(--border-divider));
+  border-bottom: 1px solid var(--ui-border-divider-border);
 }
 
 .meta-tag {
@@ -843,7 +843,7 @@ function onFaviconError(e: Event) {
   flex-direction: column;
   gap: 8px;
   background: color-mix(in srgb, var(--ui-accent-primary-fg) 4%, var(--ui-surface-elevated-bg));
-  border-bottom: 1px solid var(--ui-border-divider-border, var(--border-divider));
+  border-bottom: 1px solid var(--ui-border-divider-border);
   padding: 12px 16px;
   max-height: 160px;
 }

@@ -55,7 +55,7 @@ defineProps<{
   display: flex;
   flex-direction: column;
   gap: 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 45%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 45%, transparent);
 }
 
 .page-shell-header-main {

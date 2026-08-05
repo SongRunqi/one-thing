@@ -475,8 +475,8 @@ watch(() => props.disabled, (d) => {
 }
 
 .tooltip {
-  --tooltip-bg: var(--ui-surface-tooltip-bg, var(--bg-tooltip, rgba(24, 24, 27, 0.95)));
-  --tooltip-fg: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg, #fff));
+  --tooltip-bg: var(--ui-surface-tooltip-bg);
+  --tooltip-fg: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg));
   --tooltip-border: var(--ui-surface-tooltip-border, color-mix(in srgb, var(--tooltip-fg) 14%, transparent));
   --tooltip-shadow: var(--ui-surface-tooltip-shadow, 0 2px 8px rgba(0, 0, 0, 0.25));
 

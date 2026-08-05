@@ -715,7 +715,7 @@ onUnmounted(() => {
 
 .image-count {
   font-size: 12px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   font-weight: 500;
 }
 
@@ -744,8 +744,8 @@ onUnmounted(() => {
 }
 
 .thumbnail-item.active {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 20%, transparent);
+  border-color: var(--ui-accent-primary-fg);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 20%, transparent);
 }
 
 .thumbnail-item img {
@@ -797,7 +797,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 /* Full-panel state: keep the centering, let ErrorNote carry the ink. */
@@ -812,7 +812,7 @@ onUnmounted(() => {
   width: 32px;
   height: 32px;
   border: 3px solid var(--ui-border-default-border, var(--border-primary));
-  border-top-color: var(--ui-accent-primary-fg, var(--accent));
+  border-top-color: var(--ui-accent-primary-fg);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -855,7 +855,7 @@ onUnmounted(() => {
 
 .image-name {
   font-size: 13px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -870,14 +870,14 @@ onUnmounted(() => {
   background: transparent;
   border: none;
   border-radius: 6px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .control-btn:hover:not(:disabled) {
   background: var(--ui-surface-elevated-bg, var(--bg-tertiary));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .control-btn:disabled {
@@ -891,7 +891,7 @@ onUnmounted(() => {
   text-align: center;
   font-size: 12px;
   font-weight: 500;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   font-variant-numeric: tabular-nums;
 }
 

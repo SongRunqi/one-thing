@@ -129,27 +129,27 @@ const totals = computed(() => fileChanges.value.reduce(
    the declaration this is not a bubble — the outcome belongs to the run, not
    to either speaker, so it spans the reading column. */
 .goal-summary {
-  --goal-ink: var(--ui-status-success-fg, var(--success-color, #16a34a));
+  --goal-ink: var(--ui-status-success-fg, var(--success-color));
 
   position: relative;
   margin: 14px 0 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   border-radius: var(--radius-xs, 4px);
   padding: 11px 12px 9px;
 }
 
 .goal-summary[data-status='paused'],
 .goal-summary[data-status='budget_limited'] {
-  --goal-ink: var(--ui-status-warning-fg, var(--warning-color, #d97706));
+  --goal-ink: var(--ui-status-warning-fg, var(--warning-color));
 }
 
 .goal-summary[data-status='blocked'] {
-  --goal-ink: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  --goal-ink: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 /* 主动放弃不是故障:走淡墨,与 blocked 的朱砂告警区分开 */
 .goal-summary[data-status='abandoned'] {
-  --goal-ink: var(--ui-text-muted-fg, var(--muted));
+  --goal-ink: var(--ui-text-muted-fg);
 }
 
 .frame-label {
@@ -158,12 +158,12 @@ const totals = computed(() => fileChanges.value.reduce(
   left: 12px;
   z-index: 1;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   user-select: none;
 }
 
@@ -178,7 +178,7 @@ const totals = computed(() => fileChanges.value.reduce(
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -204,7 +204,7 @@ const totals = computed(() => fileChanges.value.reduce(
 .reason-text {
   font-size: 13px;
   line-height: 1.55;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -227,7 +227,7 @@ const totals = computed(() => fileChanges.value.reduce(
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 1.5px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .head-right {
@@ -247,14 +247,14 @@ const totals = computed(() => fileChanges.value.reduce(
   font-size: 8.5px;
   font-weight: 600;
   letter-spacing: 1px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   transition: color var(--transition-fast, 0.15s) ease,
     border-color var(--transition-fast, 0.15s) ease;
 }
 
 .review-btn:hover {
   border-color: currentcolor;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .change-row {
@@ -262,11 +262,11 @@ const totals = computed(() => fileChanges.value.reduce(
   justify-content: space-between;
   gap: 12px;
   padding: 1px 0;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .change-row.more {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .change-path {
@@ -283,11 +283,11 @@ const totals = computed(() => fileChanges.value.reduce(
 }
 
 .counts .plus {
-  color: var(--ui-status-success-fg, var(--success-color, #16a34a));
+  color: var(--ui-status-success-fg, var(--success-color));
 }
 
 .counts .minus {
-  color: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  color: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 .meta {
@@ -300,6 +300,6 @@ const totals = computed(() => fileChanges.value.reduce(
   font-size: 9.5px;
   letter-spacing: 1px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 </style>

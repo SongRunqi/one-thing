@@ -294,7 +294,7 @@ function openSession(sessionId: string) {
 /* Ledger block, same vocabulary as the composer's music bar. */
 .music-station {
   position: relative;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   border-radius: 3px;
   padding: 14px 14px 10px;
   display: flex;
@@ -307,12 +307,12 @@ function openSession(sessionId: string) {
   top: -7px;
   left: 12px;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   user-select: none;
 }
 
@@ -328,12 +328,12 @@ function openSession(sessionId: string) {
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   padding-top: 1px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .station-value {
   min-width: 0;
-  color: var(--ui-text-strong-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -343,7 +343,7 @@ function openSession(sessionId: string) {
    from the ordinary key/value rows above it. */
 .station-error .station-key,
 .station-error .station-value {
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
 }
 
 .station-error .station-value {
@@ -365,29 +365,29 @@ function openSession(sessionId: string) {
 
 .request-input {
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 40%, transparent);
   border-radius: 3px;
   background: transparent;
-  color: var(--ui-text-strong-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12.5px;
   padding: 6px 8px;
   outline: none;
 }
 
-.request-input:focus {
-  border-color: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 70%, transparent);
+input.request-input:focus {
+  border-color: color-mix(in srgb, var(--ui-border-strong-border) 70%, transparent);
 }
 
 .request-feedback {
   font-size: 11.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   margin: 0;
 }
 
 .request-results {
   display: flex;
   flex-direction: column;
-  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 30%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border) 30%, transparent);
   border-radius: 3px;
   max-height: 180px;
   overflow-y: auto;
@@ -403,18 +403,18 @@ function openSession(sessionId: string) {
   text-align: left;
   cursor: pointer;
   font-size: 12px;
-  color: var(--ui-text-strong-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   min-width: 0;
   flex-shrink: 0;
 }
 
 .request-result:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 12%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 12%, transparent);
 }
 
 .request-result.is-grey,
 .request-result:disabled {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   cursor: default;
 }
 
@@ -430,7 +430,7 @@ function openSession(sessionId: string) {
   align-items: flex-start;
   gap: 10px;
   padding: 7px 8px;
-  border-bottom: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 18%, transparent);
+  border-bottom: 1px dashed color-mix(in srgb, var(--ui-border-strong-border) 18%, transparent);
   border-radius: 3px;
   min-width: 0;
   cursor: grab;
@@ -442,11 +442,11 @@ function openSession(sessionId: string) {
 }
 
 .programme-row.is-drop-target {
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 14%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 14%, transparent);
 }
 
 .programme-row.is-grey .programme-title {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   text-decoration: line-through;
 }
 
@@ -455,7 +455,7 @@ function openSession(sessionId: string) {
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   padding-top: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-variant-numeric: tabular-nums;
   min-width: 14px;
   text-align: right;
@@ -471,14 +471,14 @@ function openSession(sessionId: string) {
 
 .programme-title {
   font-size: 12.5px;
-  color: var(--ui-text-strong-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .programme-note {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-size: 11px;
 }
 
@@ -487,15 +487,15 @@ function openSession(sessionId: string) {
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   letter-spacing: 1px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 40%, transparent);
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 40%, transparent);
   border-radius: 2px;
   padding: 0 4px;
 }
 
 .programme-say {
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -521,12 +521,12 @@ function openSession(sessionId: string) {
   line-height: 1;
   padding: 3px 5px;
   border-radius: 3px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .programme-btn:hover:not(:disabled) {
-  color: var(--ui-text-strong-fg, var(--text));
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 16%, transparent);
+  color: var(--ui-text-primary-fg);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 16%, transparent);
 }
 
 .programme-btn:disabled {
@@ -544,15 +544,15 @@ function openSession(sessionId: string) {
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   padding-bottom: 6px;
-  border-bottom: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 24%, transparent);
+  border-bottom: 1px dashed color-mix(in srgb, var(--ui-border-strong-border) 24%, transparent);
   margin-bottom: 6px;
 }
 
 .music-sessions-empty {
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .music-session-row {
@@ -569,18 +569,18 @@ function openSession(sessionId: string) {
 }
 
 .music-session-row:hover {
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 12%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 12%, transparent);
 }
 
 .music-session-row.is-current .music-session-name {
-  color: var(--ui-text-strong-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .music-session-name {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 12.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -590,7 +590,7 @@ function openSession(sessionId: string) {
   flex: 0 0 auto;
   font-family: var(--font-mono, monospace);
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-variant-numeric: tabular-nums;
 }
 </style>

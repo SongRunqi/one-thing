@@ -752,13 +752,13 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   min-height: 32px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
 }
 
 .system-prompt-state.error,
 .system-prompt-warning {
-  color: var(--ui-status-danger-fg, var(--danger, #b3403a));
+  color: var(--ui-status-danger-fg, var(--danger));
 }
 
 .system-prompt-warning {
@@ -794,32 +794,32 @@ onBeforeUnmount(() => {
   flex: 1 1 auto;
   height: 0;
   min-width: 10px;
-  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 85%, transparent);
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border) 85%, transparent);
   transform: translateY(1px);
 }
 
 .system-prompt-meta-item:hover span {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .system-prompt-meta-item:hover .system-prompt-meta-leader {
   border-bottom-style: solid;
-  border-bottom-color: var(--ui-text-muted-fg, var(--muted));
+  border-bottom-color: var(--ui-text-muted-fg);
 }
 
 .system-prompt-meta-item.active span,
 .system-prompt-meta-item.active strong {
-  color: var(--ui-accent-primary-fg, var(--accent-color, var(--accent)));
+  color: var(--ui-accent-primary-fg, var(--accent-color));
 }
 
 .system-prompt-meta-item.active .system-prompt-meta-leader {
   border-bottom-style: solid;
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent-color, var(--accent)));
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent-color));
   opacity: 0.5;
 }
 
 .system-prompt-group-head {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   font-weight: 650;
   text-transform: uppercase;
@@ -827,7 +827,7 @@ onBeforeUnmount(() => {
 
 .system-prompt-meta-item span {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
   font-weight: 550;
@@ -839,7 +839,7 @@ onBeforeUnmount(() => {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 11.5px;
   font-weight: 550;
   text-overflow: ellipsis;
@@ -847,7 +847,7 @@ onBeforeUnmount(() => {
 }
 
 .system-prompt-meta-item strong.muted {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .system-prompt-group {
@@ -886,10 +886,10 @@ onBeforeUnmount(() => {
   max-width: 100%;
   overflow: hidden;
   padding: 3px 6px;
-  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent-color, var(--accent))) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent-color)) 24%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent-color, var(--accent))) 8%, transparent);
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 86%, var(--ui-accent-primary-fg, var(--accent-color, var(--accent))));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent-color)) 8%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 86%, var(--ui-accent-primary-fg, var(--accent-color)));
   font-size: 11px;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -897,15 +897,15 @@ onBeforeUnmount(() => {
 }
 
 .system-prompt-chip.inactive {
-  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 34%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 52%, transparent);
-  color: var(--ui-text-muted-fg, var(--muted));
+  border-color: color-mix(in srgb, var(--ui-border-default-border) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-panel-bg) 52%, transparent);
+  color: var(--ui-text-muted-fg);
 }
 
 .system-prompt-chip.more {
-  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 62%, transparent);
-  color: var(--ui-text-muted-fg, var(--muted));
+  border-color: color-mix(in srgb, var(--ui-border-default-border) 42%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-panel-bg) 62%, transparent);
+  color: var(--ui-text-muted-fg);
 }
 
 .system-prompt-collapse-list {
@@ -942,7 +942,7 @@ onBeforeUnmount(() => {
 .system-prompt-detail-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 11.5px;
   font-weight: 650;
   line-height: 1.25;
@@ -951,13 +951,13 @@ onBeforeUnmount(() => {
 }
 
 .system-prompt-detail-name.inactive {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .system-prompt-detail-subtitle {
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -974,7 +974,7 @@ onBeforeUnmount(() => {
 .system-prompt-description,
 .system-prompt-param-desc {
   margin: 0;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   font-size: 11.5px;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -994,7 +994,7 @@ onBeforeUnmount(() => {
 
 .system-prompt-detail-list dt,
 .system-prompt-subhead {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   font-weight: 650;
   line-height: 1.35;
@@ -1005,7 +1005,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 11.5px;
   line-height: 1.35;
 }
@@ -1038,7 +1038,7 @@ onBeforeUnmount(() => {
 .system-prompt-file-list li {
   min-width: 0;
   padding: 5px 0;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 28%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-default-border) 28%, transparent);
 }
 
 .system-prompt-param-list li:first-child,
@@ -1058,7 +1058,7 @@ onBeforeUnmount(() => {
 .system-prompt-file-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 11px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -1068,19 +1068,19 @@ onBeforeUnmount(() => {
 .system-prompt-param-type,
 .system-prompt-file-type {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   line-height: 1.25;
 }
 
 .system-prompt-param-desc {
   margin-top: 3px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .system-prompt-empty {
   margin: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11.5px;
 }
 
@@ -1098,13 +1098,13 @@ onBeforeUnmount(() => {
   gap: 2px;
   min-width: 0;
   padding: 7px 8px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border) 30%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 48%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-panel-bg) 48%, transparent);
 }
 
 .system-prompt-info-list dt {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   font-weight: 650;
   text-transform: uppercase;
@@ -1114,7 +1114,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 11.5px;
   line-height: 1.35;
 }
@@ -1132,13 +1132,13 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
 }
 
 .system-prompt-copy-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-surface-hover-bg, var(--bg-hover, var(--bg-secondary))) 68%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 68%, transparent);
+  color: var(--ui-text-primary-fg);
 }
 
 .system-prompt-copy-button:disabled {
@@ -1147,7 +1147,7 @@ onBeforeUnmount(() => {
 }
 
 .system-prompt-copy-button.copied {
-  color: var(--ui-accent-primary-fg, var(--accent-color, var(--accent)));
+  color: var(--ui-accent-primary-fg, var(--accent-color));
 }
 
 .system-prompt-text {
@@ -1157,10 +1157,10 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: 9px;
   overflow: auto;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 34%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border) 34%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-surface-code-bg, var(--bg-code, var(--bg-secondary))) 82%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-surface-code-block-bg) 82%, transparent);
+  color: var(--ui-text-primary-fg);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 11px;
   line-height: 1.45;

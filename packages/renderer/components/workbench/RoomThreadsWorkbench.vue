@@ -325,7 +325,7 @@ function stopRoomTurn(): void {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  background: var(--ui-surface-panel-bg);
 }
 
 /* ── 返回键(与空间页那颗同一句法:同一个 tab 内换层,不新开页签)── */
@@ -337,16 +337,16 @@ function stopRoomTurn(): void {
   width: 100%;
   padding: 11px 12px;
   border: 0;
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border);
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   font-size: 11.5px;
   text-align: left;
 }
 
 .thread-back:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .thread-detail {
@@ -379,7 +379,7 @@ function stopRoomTurn(): void {
 }
 
 .thread-row:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .thread-row.is-off {
@@ -399,7 +399,7 @@ function stopRoomTurn(): void {
 
 .thread-face + .thread-face {
   margin-left: -6px;
-  box-shadow: 0 0 0 1.5px var(--ui-surface-panel-bg, var(--bg-panel));
+  box-shadow: 0 0 0 1.5px var(--ui-surface-panel-bg);
 }
 
 .thread-face.is-retired {
@@ -415,7 +415,7 @@ function stopRoomTurn(): void {
 .thread-name {
   display: block;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -425,7 +425,7 @@ function stopRoomTurn(): void {
 .thread-sub {
   display: block;
   overflow: hidden;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11.5px;
   font-style: normal;
   text-overflow: ellipsis;
@@ -437,7 +437,7 @@ function stopRoomTurn(): void {
   display: inline-flex;
   gap: 5px;
   align-items: center;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
@@ -448,17 +448,17 @@ function stopRoomTurn(): void {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  background: var(--ui-status-success-fg, var(--color-success));
 }
 
 .thread-row.is-running .thread-meta {
-  color: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  color: var(--ui-status-success-fg, var(--color-success));
 }
 
 /* 组头(仅分段形态):不带计数 —— 与状态点同一条纪律,只说有没有。 */
 .thread-group-head {
   padding: 12px 12px 3px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
 }
 
@@ -476,12 +476,12 @@ function stopRoomTurn(): void {
 }
 
 .threads-empty-title {
-  color: var(--ui-text-secondary-fg, var(--text));
+  color: var(--ui-text-secondary-fg, var(--ui-text-primary-fg));
   font-size: 12.5px;
 }
 
 .threads-empty-hint {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11.5px;
   line-height: 1.7;
 }

@@ -158,7 +158,7 @@ defineExpose({ focus })
   align-items: flex-start;
   min-width: 0;
   gap: 8px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   font-size: 13px;
   line-height: 1.45;
   cursor: pointer;
@@ -205,7 +205,7 @@ defineExpose({ focus })
   top: 50%;
   width: 7px;
   height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
   transform: translateY(-50%);
   transition:
     width var(--duration-fast) var(--ease-default),
@@ -214,27 +214,27 @@ defineExpose({ focus })
 }
 
 .app-checkbox:hover:not(.is-disabled) .app-checkbox-mark::before {
-  background: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  background: var(--ui-text-muted-fg);
 }
 
 /* Mixed: the rule thickens but stays ink-grey — "some", not "yes". */
 .app-checkbox.is-indeterminate .app-checkbox-mark::before {
   width: 10px;
   height: 2px;
-  background: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  background: var(--ui-text-muted-fg);
 }
 
 .app-checkbox.is-checked .app-checkbox-mark::before {
   width: 10px;
   height: 2px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 /* Same recipe as `Dialog.vue`'s text buttons; P4 swaps both for `.u-focus-ring`.
    One line on purpose — `shadow-literal-floating` reads line by line. */
 .app-checkbox-input:focus-visible + .app-checkbox-mark {
   border-radius: var(--radius-xs);
-  box-shadow: 0 0 0 2px var(--ui-surface-app-bg, var(--bg-app)), 0 0 0 4px var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: var(--ui-focus-ring-shadow);
 }
 
 .app-checkbox-body {
@@ -245,11 +245,11 @@ defineExpose({ focus })
 }
 
 .app-checkbox.is-checked .app-checkbox-label {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-checkbox-description {
-  color: var(--ui-text-faint-fg, var(--text-faint, var(--muted)));
+  color: var(--ui-text-faint-fg);
   font-size: 11px;
   line-height: 1.4;
 }

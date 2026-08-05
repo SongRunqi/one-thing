@@ -1575,16 +1575,16 @@ defineExpose({
 
 <style scoped>
 .app-table {
-  --app-table-bg: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--panel, var(--bg))));
-  --app-table-head-bg: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) var(--app-table-head-mix-percent, 4%), transparent);
+  --app-table-bg: var(--ui-surface-chat-bg, var(--ui-surface-app-bg));
+  --app-table-head-bg: color-mix(in srgb, var(--ui-text-primary-fg) var(--app-table-head-mix-percent, 4%), transparent);
   --app-table-row-bg: var(--app-table-bg);
-  --app-table-row-hover-bg: var(--ui-state-hover-bg, var(--hover));
-  --app-table-stripe-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) var(--app-table-stripe-mix-percent, 5%), transparent);
-  --app-table-border: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) var(--app-table-border-mix-percent, 5%), transparent);
-  --app-table-strong-border: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) var(--app-table-strong-border-mix-percent, 7%), transparent);
-  --app-table-fg: var(--ui-text-primary-fg, var(--text));
-  --app-table-muted-fg: var(--ui-text-muted-fg, var(--muted));
-  --app-table-accent: var(--ui-accent-primary-fg, var(--accent));
+  --app-table-row-hover-bg: var(--ui-state-hover-bg);
+  --app-table-stripe-bg: color-mix(in srgb, var(--ui-text-muted-fg) var(--app-table-stripe-mix-percent, 5%), transparent);
+  --app-table-border: color-mix(in srgb, var(--ui-text-primary-fg) var(--app-table-border-mix-percent, 5%), transparent);
+  --app-table-strong-border: color-mix(in srgb, var(--ui-text-primary-fg) var(--app-table-strong-border-mix-percent, 7%), transparent);
+  --app-table-fg: var(--ui-text-primary-fg);
+  --app-table-muted-fg: var(--ui-text-muted-fg);
+  --app-table-accent: var(--ui-accent-primary-fg);
 
   position: relative;
   width: 100%;
@@ -1709,7 +1709,7 @@ defineExpose({
   overflow-y: auto;
   border: 1px solid var(--app-table-strong-border);
   border-radius: 8px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+  background: var(--ui-surface-elevated-bg);
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18);
   transform-origin: top center;
   overscroll-behavior: contain;
@@ -1724,15 +1724,15 @@ defineExpose({
   padding: 0 8px;
   height: 30px;
   border-radius: 6px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   background: transparent;
   text-align: left;
 }
 
 .app-table-filter-option:hover,
 .app-table-filter-option.selected {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
+  background: var(--ui-state-hover-bg);
 }
 
 .app-table-filter-check {
@@ -1740,7 +1740,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   width: 14px;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .app-table-filter-label {
@@ -1784,7 +1784,7 @@ defineExpose({
 }
 
 .app-table-row.is-current .app-table-cell {
-  background: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--app-table-row-hover-bg)));
+  background: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg));
 }
 
 .app-table-row.is-selected .app-table-cell {

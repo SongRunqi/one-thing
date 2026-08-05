@@ -470,7 +470,7 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .count-note {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   font-weight: 400;
@@ -496,15 +496,15 @@ function removeTitle(row: LedgerRow): string {
   max-width: 260px;
   flex: 1;
   padding: 4px 8px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
 }
 
 .ledger-search:focus-within {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .search-icon {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   flex: none;
 }
 
@@ -513,24 +513,24 @@ function removeTitle(row: LedgerRow): string {
   min-width: 0;
   border: 0;
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 12.5px;
   outline: none;
 }
 
 .search-input::placeholder {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
 }
 
 .search-clear {
   display: inline-flex;
   padding: 2px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   cursor: pointer;
 }
 
 .search-clear:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .ledger-chips {
@@ -542,10 +542,10 @@ function removeTitle(row: LedgerRow): string {
 
 .ledger-chip {
   padding: 1px 11px 2px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 999px;
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   cursor: pointer;
@@ -553,17 +553,17 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .ledger-chip:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .ledger-chip.sel {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 /* Table: heavy top rule, mono column caps, hairline rows. */
 .ledger-table {
-  border-top: 2px solid var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  border-top: 2px solid var(--settings-ink, var(--ui-text-primary-fg));
   min-width: 0;
 }
 
@@ -577,8 +577,8 @@ function removeTitle(row: LedgerRow): string {
 
 .ledger-head {
   padding: 7px 2px;
-  border-bottom: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  border-bottom: 1px solid var(--settings-rule, var(--ui-border-default-border));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   letter-spacing: 0.14em;
@@ -586,23 +586,23 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .ledger-row-block + .ledger-row-block {
-  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
 }
 
 .ledger-row {
   width: 100%;
   padding: 9px 2px;
   cursor: pointer;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   transition: background 0.12s ease;
 }
 
 .ledger-row:hover {
-  background: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 4%, transparent);
+  background: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 4%, transparent);
 }
 
 .ledger-row:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 24%, transparent);
   outline-offset: -2px;
 }
 
@@ -611,18 +611,18 @@ function removeTitle(row: LedgerRow): string {
   align-items: center;
   justify-content: center;
   padding: 4px;
-  color: var(--settings-ink-5, var(--ui-text-faint-fg, var(--muted)));
+  color: var(--settings-ink-5, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
   cursor: pointer;
   transition: color 0.12s ease, transform 0.12s ease;
 }
 
 .row-star:hover {
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
   transform: scale(1.15);
 }
 
 .row-star.set {
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .row-model {
@@ -634,7 +634,7 @@ function removeTitle(row: LedgerRow): string {
 
 .row-model-id {
   overflow: hidden;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 12.5px;
   text-overflow: ellipsis;
@@ -642,10 +642,10 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .row-custom-tag {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
-  border-bottom: 1px dotted var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-bottom: 1px dotted var(--settings-rule, var(--ui-border-default-border));
   flex: none;
 }
 
@@ -654,7 +654,7 @@ function removeTitle(row: LedgerRow): string {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg));
   font-size: 12px;
 }
 
@@ -670,7 +670,7 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .row-ctx {
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-size: 11.5px;
   text-align: right;
 }
@@ -679,21 +679,21 @@ function removeTitle(row: LedgerRow): string {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
 }
 
 .row-tune-hint {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   white-space: nowrap;
 }
 
 .ledger-row:hover .row-tune-hint {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .row-chevron {
@@ -710,7 +710,7 @@ function removeTitle(row: LedgerRow): string {
   flex-direction: column;
   gap: 8px;
   padding: 10px 2px 12px 38px;
-  border-top: 1px dashed var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-top: 1px dashed var(--settings-rule-soft, var(--ui-border-subtle-border));
 }
 
 .tune-line {
@@ -724,7 +724,7 @@ function removeTitle(row: LedgerRow): string {
 .tune-label {
   width: 84px;
   flex: none;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   letter-spacing: 0.1em;
@@ -733,14 +733,14 @@ function removeTitle(row: LedgerRow): string {
 
 .tune-seg {
   display: inline-flex;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
 }
 
 .seg-btn {
   padding: 2px 12px 3px;
-  border-left: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-left: 1px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-size: 11.5px;
   cursor: pointer;
   transition: color 0.12s ease, background 0.12s ease;
@@ -751,23 +751,23 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .seg-btn:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .seg-btn.sel {
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  color: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  background: var(--settings-accent, var(--ui-accent-primary-fg));
+  color: var(--settings-paper, var(--ui-surface-app-bg));
 }
 
 .tune-value {
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
 }
 
 .tune-hint {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 11.5px;
 }
 
@@ -798,24 +798,24 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .tune-cap-icon {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
 }
 
 .tune-cap-name {
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-size: 11.5px;
 }
 
 .tune-tristate {
   display: inline-flex;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
 }
 
 .tristate-btn {
   padding: 0 7px 1px;
-  border-left: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-left: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border));
   background: transparent;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   cursor: pointer;
@@ -826,12 +826,12 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .tristate-btn:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .tristate-btn.sel {
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 85%, transparent);
-  color: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg)) 85%, transparent);
+  color: var(--settings-paper, var(--ui-surface-app-bg));
 }
 
 .tune-foot {
@@ -842,7 +842,7 @@ function removeTitle(row: LedgerRow): string {
   padding: 2px 0;
   border: 0;
   background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   cursor: pointer;
@@ -850,34 +850,34 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .tune-action:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .tune-action.danger:hover {
-  text-decoration-color: var(--ui-status-danger-fg, var(--color-danger, #b3403a));
+  text-decoration-color: var(--ui-status-danger-fg, var(--color-danger));
 }
 
 .rename-input {
   min-width: 220px;
   padding: 3px 8px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   outline: none;
 }
 
-.rename-input:focus {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+input.rename-input:focus {
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
 }
 
 .ledger-empty {
   padding: 22px 2px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   font-size: 12.5px;
 }
 </style>

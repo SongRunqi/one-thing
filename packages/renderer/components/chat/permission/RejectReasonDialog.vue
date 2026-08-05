@@ -77,7 +77,7 @@ const props = defineProps<{ visible: boolean }>()
  * raised from is ordinary page content (docs/design/ui-system.md §3).
  */
 const rejectDialogVars: CSSProperties = {
-  '--app-dialog-bg': 'var(--ui-surface-panel-bg, var(--panel))',
+  '--app-dialog-bg': 'var(--ui-surface-panel-bg)',
   // Pre-P2 this title was a `<span class="reject-dialog-title">` with no
   // font-family, i.e. the body sans — not the display serif that the global
   // `.dialog-header h3` convention (and therefore Dialog's default) carries.
@@ -126,23 +126,23 @@ function confirm() {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   transition: all 0.15s ease;
 }
 
 .reject-dialog-close:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .reject-reason-input {
   width: 100%;
   min-height: 80px;
   padding: 12px 14px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 10px;
   background: var(--base);
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line-height);
   resize: vertical;
@@ -151,20 +151,20 @@ function confirm() {
 }
 
 .reject-reason-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
-.reject-reason-input:focus {
+textarea.reject-reason-input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg) 15%, transparent);
 }
 
 .reject-dialog-hint {
   margin-top: 8px;
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line-height);
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   text-align: right;
 }
 
@@ -180,9 +180,9 @@ function confirm() {
 }
 
 .reject-dialog-btn-cancel {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-border-default-border, var(--border));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
+  border-color: var(--ui-border-default-border);
 }
 
 .reject-dialog-btn-cancel:hover {
@@ -190,13 +190,13 @@ function confirm() {
 }
 
 .reject-dialog-btn-confirm {
-  background: linear-gradient(135deg, var(--ui-status-danger-fg, #b3403a) 0%, var(--ui-status-danger-fg, #b3403a) 100%);
+  background: linear-gradient(135deg, var(--ui-status-danger-fg) 0%, var(--ui-status-danger-fg) 100%);
   color: white;
-  border-color: var(--ui-status-danger-fg, #b3403a);
+  border-color: var(--ui-status-danger-fg);
 }
 
 .reject-dialog-btn-confirm:hover {
-  background: linear-gradient(135deg, var(--ui-status-danger-fg, #b3403a) 0%, var(--ui-status-danger-fg, #b3403a) 100%);
+  background: linear-gradient(135deg, var(--ui-status-danger-fg) 0%, var(--ui-status-danger-fg) 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
 }

@@ -60,8 +60,8 @@ function cssColor(name: string, fallback: string): string {
 
 export function buildXtermTheme(mode: 'dark' | 'light'): ITheme {
   const dark = mode === 'dark'
-  const background = cssColor('--bg-panel', dark ? '#1e1e1e' : '#fafafa')
-  const foreground = cssColor('--text-primary', dark ? '#e6e4d9' : '#1c1b1a')
+  const background = cssColor('--ui-surface-panel-bg', dark ? '#1e1e1e' : '#fafafa')
+  const foreground = cssColor('--ui-text-primary-fg', dark ? '#e6e4d9' : '#1c1b1a')
   return {
     background,
     foreground,

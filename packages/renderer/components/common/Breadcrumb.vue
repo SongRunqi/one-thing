@@ -120,7 +120,7 @@ function isEmptyTextNode(node: VNode): boolean {
   display: flex;
   max-width: 100%;
   min-width: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--type-label-font, var(--font-sans));
   font-size: var(--type-label-size, 13px);
   font-weight: var(--type-label-weight, 500);

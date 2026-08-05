@@ -184,7 +184,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
-  border: 1px dashed color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 75%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--ui-tool-border-border, var(--ui-tool-surface-border)) 75%, transparent);
   background: transparent;
 }
 
@@ -192,7 +192,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
   display: flex;
   align-items: baseline;
   gap: 6px;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
   font-size: 9.5px;
   font-weight: 600;
@@ -201,7 +201,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
 }
 
 .draft-meta-label {
-  color: var(--ui-tool-accent-fg, var(--tool-accent));
+  color: var(--ui-tool-accent-fg);
   animation: draft-breathe 1.6s ease-in-out infinite;
 }
 
@@ -209,7 +209,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
 
 .draft-meta-stalled {
   margin-left: auto;
-  color: var(--ui-status-warning-fg, var(--tool-accent));
+  color: var(--ui-status-warning-fg, var(--ui-tool-accent-fg));
   letter-spacing: 0.6px;
   text-transform: none;
 }
@@ -222,7 +222,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
 }
 
 .draft-placeholder {
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
@@ -231,7 +231,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
 
 .draft-label {
   margin-top: 2px;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: calc(var(--tool-font-size-body) * 0.85);
   letter-spacing: 0.06em;
@@ -240,17 +240,17 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
 }
 
 .draft-label-live {
-  color: var(--ui-tool-accent-fg, var(--tool-accent));
+  color: var(--ui-tool-accent-fg);
   text-transform: none;
 }
 
 .draft-label-flag {
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   text-transform: none;
 }
 
 .draft-sublabel {
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
   font-size: 9px;
   letter-spacing: 1.2px;
@@ -262,7 +262,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
   overflow: auto;
   overscroll-behavior: contain;
   padding: 2px 0 2px 10px;
-  border-left: 1px dashed color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 60%, transparent);
+  border-left: 1px dashed color-mix(in srgb, var(--ui-tool-border-border, var(--ui-tool-surface-border)) 60%, transparent);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
   line-height: var(--tool-code-line-height);
@@ -271,12 +271,12 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
 }
 
 .draft-find {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   opacity: 0.72;
 }
 
 .draft-replace {
-  color: var(--ui-tool-text-args-fg, var(--text-tool-args, var(--tool-soft)));
+  color: var(--ui-tool-text-muted-fg);
   opacity: 0.9;
 }
 
@@ -288,7 +288,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
 }
 
 .draft-field-key {
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
@@ -300,7 +300,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
   margin: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
@@ -314,12 +314,12 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
   height: 1em;
   margin-left: 1px;
   vertical-align: text-bottom;
-  background: var(--ui-tool-accent-fg, var(--tool-accent));
+  background: var(--ui-tool-accent-fg);
   animation: draft-caret-blink 0.7s steps(2, end) infinite;
 }
 
 .draft-tail {
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
@@ -327,7 +327,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
 }
 
 .draft-error {
-  color: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 70%, var(--ui-tool-text-fg, var(--tool-ink)));
+  color: color-mix(in srgb, var(--ui-tool-danger-text-fg) 70%, var(--ui-tool-text-fg));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);

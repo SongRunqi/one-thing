@@ -128,9 +128,9 @@ const itemStyle = computed<StyleValue>(() => {
 <style scoped>
 .app-timeline-item {
   --app-timeline-node-size: 12px;
-  --app-timeline-node-color: var(--app-timeline-node-default-color, var(--ui-text-muted-fg, var(--muted)));
+  --app-timeline-node-color: var(--app-timeline-node-default-color, var(--ui-text-muted-fg));
   --app-timeline-node-anchor: 4px;
-  --app-timeline-dot-border-color: var(--ui-surface-app-bg, var(--bg));
+  --app-timeline-dot-border-color: var(--ui-surface-app-bg);
   --app-timeline-line-width: 1px;
 
   position: relative;
@@ -147,7 +147,7 @@ const itemStyle = computed<StyleValue>(() => {
 }
 
 .app-timeline-item--primary {
-  --app-timeline-node-color: var(--ui-accent-primary-fg, var(--accent));
+  --app-timeline-node-color: var(--ui-accent-primary-fg);
 }
 
 .app-timeline-item--success {
@@ -180,7 +180,7 @@ const itemStyle = computed<StyleValue>(() => {
   grid-row: 1;
   min-width: 0;
   max-width: 100%;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-family: var(--type-body-font, var(--font-sans));
   font-size: var(--type-body-size);
   line-height: var(--type-body-line-height);
@@ -193,7 +193,7 @@ const itemStyle = computed<StyleValue>(() => {
 .app-timeline-item__timestamp {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--type-caption-muted-color, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--type-caption-muted-color, var(--ui-text-muted-fg));
   font-family: var(--type-caption-muted-font, var(--font-sans));
   font-size: var(--type-caption-muted-size, var(--type-caption-size));
   font-weight: var(--type-caption-muted-weight, 500);
@@ -213,7 +213,7 @@ const itemStyle = computed<StyleValue>(() => {
   left: 50%;
   width: var(--app-timeline-line-width);
   transform: translateX(-50%);
-  background: var(--app-timeline-line-color, var(--ui-border-default-border, var(--border)));
+  background: var(--app-timeline-line-color, var(--ui-border-default-border));
   pointer-events: none;
 }
 
@@ -245,7 +245,7 @@ const itemStyle = computed<StyleValue>(() => {
   border: 2px solid var(--app-timeline-dot-border-color);
   border-radius: 50%;
   background: var(--app-timeline-node-color);
-  color: var(--ui-text-inverse-fg, #fff);
+  color: var(--ui-text-inverse-fg);
   transform: translateX(-50%);
 }
 
@@ -265,7 +265,7 @@ const itemStyle = computed<StyleValue>(() => {
 }
 
 .app-timeline-item.is-hollow > .app-timeline-item__rail > .app-timeline-item__dot-wrapper {
-  background: var(--ui-surface-app-bg, var(--bg));
+  background: var(--ui-surface-app-bg);
   color: var(--app-timeline-node-color);
   border-color: var(--app-timeline-node-color);
 }

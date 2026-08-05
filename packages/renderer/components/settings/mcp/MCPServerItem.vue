@@ -268,21 +268,21 @@ function formatTime(timestamp: number): string {
  */
 .server-item {
   background: transparent;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 32%, transparent);
   transition: box-shadow 0.12s ease;
 }
 
 .server-item:last-child {
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 32%, transparent);
 }
 
 /* State lives in the line: left ink rule on hover, accent when expanded */
 .server-item:hover {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-border-strong-border) 72%, transparent);
 }
 
 .server-item.expanded {
-  box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg);
 }
 
 .server-header {
@@ -320,7 +320,7 @@ function formatTime(timestamp: number): string {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 1px dashed var(--ui-border-default-border, var(--border));
+  border: 1px dashed var(--ui-border-default-border);
   background: transparent;
   transition: border-color 0.2s ease;
 }
@@ -337,30 +337,30 @@ function formatTime(timestamp: number): string {
 }
 
 .server-status.connected .status-dot {
-  border: 1px solid var(--ui-status-success-fg, #22c55e);
+  border: 1px solid var(--ui-status-success-fg);
 }
 
 .server-status.connected .status-ring {
-  background: var(--ui-status-success-fg, #22c55e);
+  background: var(--ui-status-success-fg);
 }
 
 .server-status.connecting .status-dot {
-  border: 1px solid var(--ui-status-warning-fg, #f59e0b);
+  border: 1px solid var(--ui-status-warning-fg);
   border-top-color: transparent;
   animation: ring-spin 1s linear infinite;
 }
 
 .server-status.error .status-dot {
-  border: 1px solid var(--ui-status-danger-fg, #b3403a);
+  border: 1px solid var(--ui-status-danger-fg);
 }
 
 .server-status.error .status-ring {
-  background: var(--ui-status-danger-fg, #b3403a);
+  background: var(--ui-status-danger-fg);
   animation: error-blink 2s ease-in-out infinite;
 }
 
 .server-status.disconnected .status-dot {
-  border: 1px dashed color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 70%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--ui-text-faint-fg, var(--ui-text-muted-fg)) 70%, transparent);
 }
 
 @keyframes ring-spin {
@@ -381,7 +381,7 @@ function formatTime(timestamp: number): string {
 .server-name {
   font-size: 13px;
   font-weight: var(--font-weight-medium, 500);
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -403,23 +403,23 @@ function formatTime(timestamp: number): string {
   line-height: 1;
   letter-spacing: 0.05em;
   padding: 2px 7px 3px;
-  border: 1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-muted-fg) 55%, transparent);
   border-radius: 999px;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .transport-badge.stdio,
 .transport-badge.sse {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 65%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 65%, transparent);
+  color: var(--ui-accent-primary-fg);
 }
 
 .capability-count {
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -438,7 +438,7 @@ function formatTime(timestamp: number): string {
   border: none;
   background: transparent;
   padding: 4px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -447,7 +447,7 @@ function formatTime(timestamp: number): string {
 }
 
 .icon-btn:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .icon-btn:disabled {
@@ -456,15 +456,15 @@ function formatTime(timestamp: number): string {
 }
 
 .icon-btn.danger:hover:not(:disabled) {
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 
 .connect-btn.is-connected {
-  color: var(--ui-status-success-fg, #22c55e);
+  color: var(--ui-status-success-fg);
 }
 
 .connect-btn.is-connected:hover:not(:disabled) {
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 
 .connect-btn.is-loading {
@@ -473,7 +473,7 @@ function formatTime(timestamp: number): string {
 
 .connect-btn .loading-spinner {
   animation: spin 1s linear infinite;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 @keyframes spin {
@@ -484,7 +484,7 @@ function formatTime(timestamp: number): string {
 .expand-chevron {
   flex-shrink: 0;
   transition: transform 0.2s ease;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .server-item.expanded .expand-chevron {
@@ -494,7 +494,7 @@ function formatTime(timestamp: number): string {
 /* Expanded content */
 .server-expanded {
   padding: 0 0 14px 10px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 32%, transparent);
   animation: slideDown 0.2s ease;
 }
 
@@ -532,14 +532,14 @@ function formatTime(timestamp: number): string {
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   flex-shrink: 0;
   min-width: 72px;
 }
 
 .info-value {
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   min-width: 0;
   word-break: break-all;
 }
@@ -564,7 +564,7 @@ code.info-value {
   font-size: 10px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* Capability rows quoted by a left ink rule, separated by hairlines */
@@ -572,7 +572,7 @@ code.info-value {
 .resources-list {
   display: flex;
   flex-direction: column;
-  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
   padding-left: 10px;
 }
 
@@ -583,7 +583,7 @@ code.info-value {
   gap: 1px;
   padding: 5px 0;
   background: transparent;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 24%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 24%, transparent);
   min-width: 0;
 }
 
@@ -596,20 +596,20 @@ code.info-value {
 .resource-name {
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   word-break: break-word;
 }
 
 .tool-desc {
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   word-break: break-word;
 }
 
 .resource-uri {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   word-break: break-all;
 }
 </style>

@@ -35,7 +35,7 @@ defineProps<{ content: string }>()
   font-size: 11px;
   line-height: 1.5;
   letter-spacing: 0.02em;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   user-select: none;
   display: -webkit-box;
   -webkit-box-orient: vertical;

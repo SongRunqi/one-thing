@@ -597,7 +597,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 
 @keyframes model-selector-pulse {
   0% {
-    box-shadow: 0 0 0 0 var(--ui-border-focus, rgba(96, 130, 214, 0.55));
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-border-focus-border) 55%, transparent);
   }
   100% {
     box-shadow: 0 0 0 6px transparent;
@@ -616,8 +616,8 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   padding: 3px 6px;
   border: none;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
-  color: var(--ui-text-muted-fg, var(--muted));
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 45%, transparent);
+  color: var(--ui-text-muted-fg);
   font: inherit;
   cursor: pointer;
   transition: color 0.16s ease, background 0.16s ease;
@@ -625,21 +625,21 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 
 .model-trigger:hover,
 .model-trigger.is-open {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 /* Suppress the focus ring — the model cell is a subtle text label, not a
    form input; its hover / is-open affordances are enough. A lingering
    focus ring after click looks stuck. */
-.model-trigger:focus,
+.model-trigger:focus-visible,
 .model-trigger:focus-visible {
   outline: none;
 }
 
 .model-trigger-caret {
   flex-shrink: 0;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   transition: transform 0.15s ease;
 }
 
@@ -656,7 +656,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 .model-text {
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
   font-weight: 520;
   text-overflow: ellipsis;
@@ -680,7 +680,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   gap: 8px;
   padding: 7px 12px;
   border-bottom: 0.5px solid var(--composer-extension-divider);
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .model-flyout-search input {
@@ -689,13 +689,13 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   border: none;
   outline: none;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-family: inherit;
   font-size: 12.5px;
 }
 
 .model-flyout-search input::placeholder {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* Provider filter: 画线 tabs on the ruled line — the active tab draws an
@@ -722,7 +722,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 }
 
 .model-flyout-providers:hover::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
 }
 
 .model-flyout-providers::-webkit-scrollbar-track {
@@ -738,7 +738,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   padding: 0 10px;
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   font-weight: 650;
@@ -761,7 +761,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 }
 
 .provider-cell:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .provider-cell:hover::after {
@@ -769,7 +769,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 }
 
 .provider-cell.on {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .provider-cell.on::after {
@@ -777,7 +777,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 }
 
 .provider-cell-count {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -792,7 +792,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   align-items: center;
   gap: 8px;
   padding: 7px 8px 3px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 650;
@@ -813,7 +813,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
    圈点从此只说「哪一个在跑」,不再兼职说「手指着哪一行」—— 那是底色的活。 */
 .model-row {
   /* 选中底只定义一次,下面「加深一档」贴着它写,两处数值不会各自漂移。 */
-  --model-row-selected-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 11%, transparent);
+  --model-row-selected-bg: color-mix(in srgb, var(--ui-accent-primary-fg) 11%, transparent);
 
   display: flex;
   align-items: flex-start;
@@ -831,7 +831,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
    `.focused` 由方向键与 mouseenter 共同写入,几何只在基类里。 */
 .model-row:hover,
 .model-row.focused {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .model-row.current {
@@ -849,7 +849,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   background: color-mix(
     in srgb,
     var(--model-row-selected-bg) 92%,
-    var(--ui-text-primary-fg, var(--text))
+    var(--ui-text-primary-fg)
   );
 }
 
@@ -859,14 +859,14 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   width: 7px;
   height: 7px;
   margin-top: 4px;
-  border: 1.5px solid var(--ui-accent-primary-fg, var(--accent));
+  border: 1.5px solid var(--ui-accent-primary-fg);
   border-radius: 50%;
   opacity: 0;
   transition: opacity 0.12s ease;
 }
 
 .model-row.current .model-dot {
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   opacity: 1;
 }
 
@@ -886,7 +886,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 }
 
 .model-name {
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   font-size: 12.25px;
   font-weight: 500;
   line-height: 1.2;
@@ -898,11 +898,11 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 
 .model-row:hover .model-name,
 .model-row.focused .model-name {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .model-row.current .model-name {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   font-weight: 600;
 }
 
@@ -911,7 +911,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   opacity: 0.75;
 }
@@ -921,7 +921,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 .model-context {
   margin-left: auto;
   flex-shrink: 0;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   font-weight: 500;
@@ -941,7 +941,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 .model-badge {
   flex: 0 0 auto;
   white-space: nowrap;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 9.5px;
   font-weight: 500;
@@ -951,6 +951,6 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 }
 
 .model-row.current .model-badge {
-  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, var(--ui-text-muted-fg, var(--muted)) 28%);
+  color: color-mix(in srgb, var(--ui-accent-primary-fg) 72%, var(--ui-text-muted-fg) 28%);
 }
 </style>

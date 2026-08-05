@@ -31,7 +31,7 @@ describe('BorderBox', () => {
     expect(wrapper.attributes('style')).toContain('--border-box-border-radius: var(--radius-lg)')
     expect(wrapper.attributes('style')).toContain('--border-box-shadow: var(--shadow-md)')
     expect(wrapper.attributes('style')).toContain('--border-box-padding: var(--space-4)')
-    expect(wrapper.attributes('style')).toContain('--border-box-background: var(--ui-surface-panel-bg, var(--panel))')
+    expect(wrapper.attributes('style')).toContain('--border-box-background: var(--ui-surface-panel-bg)')
   })
 
   it('exposes style, radius, and shadow option sets', () => {

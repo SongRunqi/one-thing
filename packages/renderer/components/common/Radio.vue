@@ -139,7 +139,7 @@ defineExpose({ focus })
   align-items: flex-start;
   min-width: 0;
   gap: 8px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   font-size: 13px;
   line-height: 1.45;
   cursor: pointer;
@@ -183,7 +183,7 @@ defineExpose({ focus })
   top: 50%;
   width: 10px;
   height: 10px;
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: var(--radius-full);
   background: transparent;
   box-sizing: border-box;
@@ -201,7 +201,7 @@ defineExpose({ focus })
   width: 4px;
   height: 4px;
   border-radius: var(--radius-full);
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   opacity: 0;
   transform: translateY(-50%) scale(0.4);
   transition:
@@ -210,11 +210,11 @@ defineExpose({ focus })
 }
 
 .app-radio:hover:not(.is-disabled) .app-radio-mark::before {
-  border-color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  border-color: var(--ui-text-muted-fg);
 }
 
 .app-radio.is-checked .app-radio-mark::before {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
 }
 
 .app-radio.is-checked .app-radio-mark::after {
@@ -226,7 +226,7 @@ defineExpose({ focus })
    One line on purpose — `shadow-literal-floating` reads line by line. */
 .app-radio-input:focus-visible + .app-radio-mark {
   border-radius: var(--radius-xs);
-  box-shadow: 0 0 0 2px var(--ui-surface-app-bg, var(--bg-app)), 0 0 0 4px var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: var(--ui-focus-ring-shadow);
 }
 
 .app-radio-body {
@@ -237,11 +237,11 @@ defineExpose({ focus })
 }
 
 .app-radio.is-checked .app-radio-label {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-radio-description {
-  color: var(--ui-text-faint-fg, var(--text-faint, var(--muted)));
+  color: var(--ui-text-faint-fg);
   font-size: 11px;
   line-height: 1.4;
 }

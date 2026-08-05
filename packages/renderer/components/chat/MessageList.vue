@@ -2300,7 +2300,7 @@ defineExpose({
   padding: 4px 10px;
   font-size: 11px;
   text-align: center;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   pointer-events: none;
 }
 
@@ -2318,9 +2318,9 @@ defineExpose({
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg-panel)));
-  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
+  background: var(--ui-surface-chat-bg);
+  color: color-mix(in srgb, var(--ui-text-secondary-fg) 78%, transparent);
   cursor: pointer;
   opacity: 0.7;
   transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease;
@@ -2328,8 +2328,8 @@ defineExpose({
 }
 
 .scroll-to-bottom-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
   opacity: 1;
 }
 
@@ -2382,10 +2382,10 @@ defineExpose({
   min-height: 28px;
   margin: 0 auto 14px;
   padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 64%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border) 64%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))) 84%, transparent);
-  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg) 84%, transparent);
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   font: inherit;
   font-size: var(--type-meta-size);
@@ -2395,9 +2395,9 @@ defineExpose({
 }
 
 .history-page-summary:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, var(--ui-border-default-border, var(--border)));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))));
-  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 36%, var(--ui-border-default-border));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 8%, var(--ui-surface-elevated-bg));
+  color: var(--ui-accent-primary-fg);
 }
 
 .history-page-summary:disabled {

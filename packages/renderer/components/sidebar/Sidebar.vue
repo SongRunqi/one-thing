@@ -1274,18 +1274,17 @@ onUnmounted(() => {
   --sidebar-docked-width: 300px;
   --sidebar-floating-gutter: 6px;
   --sidebar-floating-safe-zone: 36px;
-  --sidebar-bg: var(
-    --ui-sidebar-surface-bg,
-    var(--ui-surface-app-bg, var(--bg-app, var(--bg)))
-  );
+  --sidebar-bg: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg));
   /* 行层级从墨色按比例派生，保证任何主题下 分组头(全墨) > 行文(72% 墨) >
-     active(14%) > hover(8%) 的对比关系都成立——直接引各主题 token 时
+     active(14%) > hover(8%) 的对比关系都成立——直接引各主题的通用 state token 时
      对比度不可控（用户实测过分组头/行文一个色、hover 看不见）。
-     整棵 sidebar（新会话/列表/SessionItem）共用这条派生链。 */
-  --sidebar-row-ink: var(--ui-text-primary-fg, var(--text-primary, var(--text)));
-  --sidebar-row-fg: color-mix(in srgb, var(--sidebar-row-ink) 72%, transparent);
-  --sidebar-row-hover-fill: color-mix(in srgb, var(--sidebar-row-ink) 8%, transparent);
-  --sidebar-row-active-fill: color-mix(in srgb, var(--sidebar-row-ink) 14%, transparent);
+     P4 起这条派生链**住在主题层**（role-mapping.ts 的 REGION_OVERLAY_STEPS，
+     由 css-mapper 按各主题的 sidebar 底色解析成实色），这里只留区域别名，
+     整棵 sidebar（新会话/列表/SessionItem/ActiveWork）共用。 */
+  --sidebar-row-ink: var(--ui-sidebar-row-ink);
+  --sidebar-row-fg: var(--ui-sidebar-row-fg);
+  --sidebar-row-hover-fill: var(--ui-sidebar-item-hover-bg);
+  --sidebar-row-active-fill: var(--ui-sidebar-item-active-bg);
   position: relative;
   flex: 1 1 auto;
   flex-shrink: 0;
@@ -1337,7 +1336,7 @@ onUnmounted(() => {
   margin: 44px var(--sidebar-floating-gutter) var(--sidebar-floating-gutter);
   padding-bottom: 0;
   background: var(--sidebar-bg);
-  border: 1px solid color-mix(in srgb, var(--ui-sidebar-border-border, var(--ui-border-subtle-border, var(--border-subtle, var(--border)))) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-sidebar-border-border, var(--ui-border-subtle-border)) 72%, transparent);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-floating);
   will-change: transform, opacity;
@@ -1411,7 +1410,7 @@ onUnmounted(() => {
   /* v7：与行文同 13px */
   font-size: 13px;
   line-height: 1.5;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -1420,7 +1419,7 @@ onUnmounted(() => {
 
 .sidebar-newchat:hover,
 .sidebar-newchat:focus-visible {
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 /* 方案三的两层壳与滚动容器。classic 下三层都是 `display: contents` —— 不生成
@@ -1435,9 +1434,9 @@ onUnmounted(() => {
 
 /* ── rail(样板 `.sb3 .rail`)────────────────────────────────────────────────
    46px 一竖条,只有 workbench 会渲染它(classic 下这个元素根本不存在)。
-   墨阶按比例从 `--sidebar-row-ink` 派生 —— 样板的字面色是给纸色底子写死的
-   (墨 / 4.5% hover / 7.5% 当前 / 2.5% 底),换算成同比例的 color-mix 之后
-   任何主题下的层级关系都成立,这与整棵 sidebar 既有的那条派生链是同一手法。 */
+   墨阶(墨 / 4.5% hover / 7.5% 当前 / 2.5% 底 / 47% 次要字)由主题层派生成
+   `--ui-sidebar-rail-*`,这里只引用 —— 样板的字面色是给纸色底子写死的,
+   换算成同比例的墨阶之后任何主题下的层级关系都成立。 */
 .sidebar-rail {
   flex: 0 0 46px;
   width: 46px;
@@ -1446,7 +1445,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 2px;
   padding: 4px 0 8px;
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 2.5%, transparent);
+  background: var(--ui-sidebar-rail-bg);
 }
 
 /* 样板 `.sb3 .rail .t`:30px 方钮、6px 圆角、hover 极淡填充、当前项填充加深
@@ -1462,24 +1461,24 @@ onUnmounted(() => {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 47%, transparent);
+  color: var(--ui-sidebar-rail-muted-fg);
   cursor: pointer;
   transition: background-color 0.12s ease, color 0.12s ease;
 }
 
 .sidebar-rail-tab:hover {
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 4.5%, transparent);
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  background: var(--ui-sidebar-rail-hover-bg);
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 .sidebar-rail-tab.is-on {
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 7.5%, transparent);
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  background: var(--ui-sidebar-rail-active-bg);
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 .sidebar-rail-tab:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
+  box-shadow: var(--ui-focus-ring-soft-shadow);
 }
 
 /* 样板 `.bdg`:右上角 5px 一枚墨点 —— 该类有未读或在跑。 */
@@ -1490,7 +1489,7 @@ onUnmounted(() => {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  background: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 .sidebar-rail-spacer {
@@ -1513,7 +1512,7 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 550;
   line-height: 1.45;
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   user-select: none;
 }
 
@@ -1521,7 +1520,7 @@ onUnmounted(() => {
   margin-left: auto;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 47%, transparent);
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 47%, transparent);
   user-select: none;
 }
 
@@ -1545,7 +1544,7 @@ onUnmounted(() => {
 .sidebar-rooms-label {
   font-size: 11px;
   letter-spacing: 0.08em;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   user-select: none;
 }
 
@@ -1556,12 +1555,12 @@ onUnmounted(() => {
   font-size: 13px;
   line-height: 1;
   padding: 2px 6px;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   cursor: pointer;
 }
 
 .sidebar-rooms-add:hover {
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 .sidebar-room-item {
@@ -1572,7 +1571,7 @@ onUnmounted(() => {
   font-size: 13px;
   line-height: 1.5;
   padding: 4px 8px 4px 0;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1581,7 +1580,7 @@ onUnmounted(() => {
 
 .sidebar-room-item:hover,
 .sidebar-room-item.is-active {
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 /* 未读:一枚墨点靠右,行文顺手提到满墨(IM 的老规矩——未读那行更"实")。
@@ -1591,7 +1590,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 .sidebar-room-item.has-unread .sidebar-room-name {
@@ -1635,7 +1634,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   margin-left: -5px;
-  border: 1px solid color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 26%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 26%, transparent);
   border-radius: 50%;
   box-shadow: 0 0 0 1.5px var(--sidebar-bg);
   background: var(--sidebar-bg);
@@ -1656,7 +1655,7 @@ onUnmounted(() => {
   margin-left: 3px;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
 }
 
 /* 未读点在堆之后,靠 margin 归零(堆已经吃掉了 auto)。 */
@@ -1671,7 +1670,7 @@ onUnmounted(() => {
   height: 5px;
   margin-left: auto;
   border-radius: 50%;
-  background: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  background: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   opacity: 0.6;
 }
 
@@ -1690,12 +1689,12 @@ onUnmounted(() => {
   line-height: 1.5;
   letter-spacing: 0.08em;
   padding: 4px 8px 2px 0;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   cursor: pointer;
 }
 
 .sidebar-subgroup:hover {
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 .sidebar-subgroup-caret {
@@ -1752,7 +1751,7 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   opacity: 0.75;
 }
 
@@ -1772,7 +1771,7 @@ onUnmounted(() => {
   border-radius: 5px;
   font-size: 10px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 62%, transparent);
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 62%, transparent);
 }
 
 /* 时间是补语:12px 淡一档,靠在名字之后、未读点之前,永远不参与压缩
@@ -1781,19 +1780,19 @@ onUnmounted(() => {
   flex: 0 0 auto;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 42%, transparent);
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 42%, transparent);
 }
 
 /* 未读那一行整体提墨,时间跟着走一档 —— 否则一行里一半实一半虚。 */
 .sidebar-room-item.has-unread .sidebar-recent-time {
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 60%, transparent);
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 60%, transparent);
 }
 
 .sidebar-recent-empty {
   padding: 14px 14px 10px;
   font-size: 11.5px;
   line-height: 1.7;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
 }
 
 /* 面板里的段头(「通讯录」下的同事 / 群聊)。与「进行中」的组头、「私下」的
@@ -1803,7 +1802,7 @@ onUnmounted(() => {
   padding: 12px 14px 3px;
   font-size: 11.5px;
   font-weight: 500;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
   user-select: none;
 }
 
@@ -1814,7 +1813,7 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 画线圆章:一圈发丝线,emoji 即身份 —— 与房间成员章同一句法,尺寸按侧栏
@@ -1826,7 +1825,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 30%, transparent);
   border-radius: 50%;
   font-size: 10px;
   line-height: 1;
@@ -1863,7 +1862,7 @@ onUnmounted(() => {
   /* 主题色：用主题自己的最亮面（主界面纸色），与 sidebar 同色相、亮一档，
      浮起感靠阴影——与设计稿"纯白对米白"的微差关系一致。
      fx-base-50 是 flexoki 静态阶，色相与自定义主题会打架，不能用。 */
-  background: var(--ui-surface-app-bg, var(--bg-app, #fff));
+  background: var(--ui-surface-app-bg);
   box-shadow: var(--shadow-md, 0 3px 12px rgba(30, 26, 16, 0.13));
 }
 
@@ -1875,14 +1874,14 @@ onUnmounted(() => {
    祖先是 `html` 本来就不需要 `:global`:scoped 只给**最后一个**复合选择器
    补 `[data-v-xxx]`,祖先部分照原样输出。 */
 html[data-theme='dark'] .sidebar-dock-pill {
-  background: var(--ui-surface-floating-bg, var(--bg-floating, var(--fx-base-300)));
+  background: var(--ui-surface-floating-bg);
 }
 
 .sidebar-dock-divider {
   width: 1px;
   height: 15px;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 12%, transparent);
+  background: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 12%, transparent);
 }
 
 /* 裸图标即入口（v7）：无按钮盒、无填充。padding+负 margin 只扩点击热区，
@@ -1896,7 +1895,7 @@ html[data-theme='dark'] .sidebar-dock-pill {
   margin: -4px;
   border: none;
   background: transparent;
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 56%, transparent);
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 56%, transparent);
   cursor: pointer;
   transition: color 0.15s ease;
 }
@@ -1904,13 +1903,13 @@ html[data-theme='dark'] .sidebar-dock-pill {
 .sidebar-dock-icon:hover,
 .sidebar-dock-icon:focus-visible,
 .sidebar-dock-icon.is-active {
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 .sidebar-dock-icon:focus-visible {
   outline: none;
   border-radius: 6px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
 }
 
 /* ── 工作台外壳:方案三 rail + 单类面板(样板 sidebar-4.html 第三格)────────
@@ -1986,17 +1985,17 @@ html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item {
   margin: 0 8px;
   padding: 0 8px;
   border-radius: 6px;
-  color: var(--sidebar-row-fg, var(--text));
+  color: var(--sidebar-row-fg, var(--ui-text-primary-fg));
 }
 
 html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item:hover {
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 4.5%, transparent);
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  background: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 4.5%, transparent);
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item.is-active {
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 7.5%, transparent);
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  background: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 7.5%, transparent);
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   font-weight: 500;
 }
 
@@ -2014,7 +2013,7 @@ html[data-shell-mode='workbench'] .sidebar-pane .sidebar-contact-title {
   flex: 0 0 auto;
   font-size: 12px;
   opacity: 1;
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 47%, transparent);
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 47%, transparent);
 }
 
 /* 「私下」子分组头退成样板的 `.grp`(与「进行中」的组头同一句法)。 */

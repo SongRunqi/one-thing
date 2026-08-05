@@ -454,8 +454,8 @@ onUnmounted(() => {
 
 .assistant-nav-card.open {
   width: var(--assistant-nav-expanded-width);
-  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 34%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 64%, transparent);
+  border-color: color-mix(in srgb, var(--ui-border-default-border) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg) 64%, transparent);
   box-shadow:
     0 8px 18px rgba(0, 0, 0, 0.045),
     0 1px 3px rgba(0, 0, 0, 0.035);
@@ -537,7 +537,7 @@ onUnmounted(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   font: inherit;
   overflow: visible;
@@ -566,7 +566,7 @@ onUnmounted(() => {
   bottom: 5px;
   left: 0;
   width: 2px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 .assistant-nav-label {
@@ -576,7 +576,7 @@ onUnmounted(() => {
   width: calc(var(--assistant-nav-expanded-width) - 72px);
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   font-size: 12px;
   line-height: 1;
   opacity: 0;
@@ -623,14 +623,14 @@ onUnmounted(() => {
 
 .assistant-nav-card.open .assistant-nav-row:hover .assistant-nav-label,
 .assistant-nav-card.open .assistant-nav-row:focus-visible .assistant-nav-label {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   opacity: 1;
 }
 
 /* 画线风:侧栏内 hover 只把字压深,不染 accent、不铺底色 */
 .assistant-nav-rail.placement-side .assistant-nav-row:hover .assistant-nav-label,
 .assistant-nav-rail.placement-side .assistant-nav-row:focus-visible .assistant-nav-label {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   opacity: 1;
 }
 
@@ -641,7 +641,7 @@ onUnmounted(() => {
   width: 14px;
   height: 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 42%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 42%, transparent);
   opacity: 0.62;
   transform: translateY(-50%);
   transition:
@@ -673,7 +673,7 @@ onUnmounted(() => {
 .assistant-nav-row:hover .assistant-nav-marker,
 .assistant-nav-row:focus-visible .assistant-nav-marker {
   opacity: 0.92;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 64%, var(--ui-text-muted-fg, var(--text-muted, var(--muted))));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 64%, var(--ui-text-muted-fg));
 }
 
 .assistant-nav-row:focus-visible {
@@ -681,7 +681,7 @@ onUnmounted(() => {
 }
 
 .assistant-nav-card.open .assistant-nav-row.active .assistant-nav-label {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-weight: 650;
   opacity: 1;
   visibility: visible;
@@ -690,18 +690,18 @@ onUnmounted(() => {
 .assistant-nav-row.active .assistant-nav-marker {
   width: 14px;
   opacity: 1;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 84%, var(--ui-text-muted-fg, var(--muted)));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 84%, var(--ui-text-muted-fg));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg) 8%, transparent);
 }
 
 /* 画线风:侧栏内 hover 尾线压深为墨色,active 为朱砂细线、无光晕 */
 .assistant-nav-rail.placement-side .assistant-nav-row:hover .assistant-nav-marker,
 .assistant-nav-rail.placement-side .assistant-nav-row:focus-visible .assistant-nav-marker {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 55%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 55%, transparent);
 }
 
 .assistant-nav-rail.placement-side .assistant-nav-row.active .assistant-nav-marker {
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   box-shadow: none;
 }
 
@@ -712,7 +712,7 @@ onUnmounted(() => {
   display: none;
   width: 3px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 24%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 24%, transparent);
   pointer-events: none;
 }
 
@@ -736,7 +736,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 62%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 62%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
@@ -752,8 +752,8 @@ onUnmounted(() => {
 
 .assistant-nav-page-cue:hover,
 .assistant-nav-page-cue:focus-visible {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  color: var(--ui-accent-primary-fg);
   opacity: 0.9;
   outline: none;
 }
@@ -768,9 +768,9 @@ onUnmounted(() => {
   align-items: center;
   height: 20px;
   padding: 1px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border) 28%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 52%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg) 52%, transparent);
   opacity: 0.5;
   pointer-events: auto;
   transition:
@@ -789,8 +789,8 @@ onUnmounted(() => {
 
 .assistant-nav-mode-tabs:hover,
 .assistant-nav-mode-tabs:focus-within {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 22%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 76%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 22%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg) 76%, transparent);
   opacity: 1;
 }
 
@@ -802,7 +802,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 72%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 72%, transparent);
   cursor: pointer;
   font: inherit;
   font-size: 10.5px;
@@ -812,14 +812,14 @@ onUnmounted(() => {
 }
 
 .assistant-nav-mode-tab.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-accent-primary-fg, var(--accent)) 18%);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 82%, var(--ui-accent-primary-fg) 18%);
   cursor: default;
 }
 
 .assistant-nav-mode-tab:not(.active):hover,
 .assistant-nav-mode-tab:not(.active):focus-visible {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   outline: none;
 }
 
@@ -837,7 +837,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 56%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 56%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
@@ -849,21 +849,21 @@ onUnmounted(() => {
 
 .assistant-nav-close:hover,
 .assistant-nav-close:focus-visible {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
+  color: var(--ui-text-primary-fg);
   opacity: 0.9;
   outline: none;
 }
 
 .assistant-nav-close.can-pin {
-  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 76%, var(--ui-text-muted-fg, var(--muted)));
+  color: color-mix(in srgb, var(--ui-accent-primary-fg) 76%, var(--ui-text-muted-fg));
   opacity: 0.7;
 }
 
 .assistant-nav-close.can-pin:hover,
 .assistant-nav-close.can-pin:focus-visible {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  color: var(--ui-accent-primary-fg);
   opacity: 1;
 }
 

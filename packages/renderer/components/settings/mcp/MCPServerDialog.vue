@@ -319,7 +319,7 @@ defineExpose({
   border: none;
   background: transparent;
   padding: 2px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -328,7 +328,7 @@ defineExpose({
 }
 
 .close-btn:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 
@@ -348,13 +348,13 @@ defineExpose({
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   margin-bottom: 5px;
 }
 
 .form-hint {
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   margin-top: 5px;
 }
 
@@ -365,22 +365,22 @@ defineExpose({
   appearance: none;
   padding: 4px 0 5px;
   border: none;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   border-radius: 0;
   font-size: 13px;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   transition: border-color 0.12s ease;
 }
 
-.form-input:focus {
+input.form-input:focus {
   outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg);
   box-shadow: none;
 }
 
 .form-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .transport-selector {
@@ -412,38 +412,38 @@ defineExpose({
   gap: 5px;
   padding: 12px;
   min-width: 0;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: border-color 0.12s ease, color 0.12s ease;
 }
 
 .transport-option:hover {
-  border-color: var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  border-color: var(--ui-border-strong-border);
+  color: var(--ui-text-primary-fg);
 }
 
 .transport-option.active {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
+  color: var(--ui-accent-primary-fg);
 }
 
 .transport-option span {
   font-size: 13px;
   font-weight: var(--font-weight-medium, 500);
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .transport-option.active span {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .transport-desc {
   font-family: var(--font-mono, monospace);
   font-size: 10px !important;
   font-weight: 400 !important;
-  color: var(--ui-text-faint-fg, var(--muted)) !important;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg)) !important;
 }
 
 /* positioning only — visuals come from ErrorNote */

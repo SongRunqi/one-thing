@@ -351,7 +351,7 @@ function openDeadLetters(): void {
 <style scoped>
 .cd {
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border);
 }
 
 /* ── 常驻条 ── */
@@ -366,7 +366,7 @@ function openDeadLetters(): void {
 }
 
 .cd-bar:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .cd-lamp {
@@ -374,43 +374,43 @@ function openDeadLetters(): void {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ui-text-muted-fg, var(--muted));
+  background: var(--ui-text-muted-fg);
 }
 
 /* 在跑的灯外面那一圈:用 status **bg** token,不是从 fg 兑出来的 color-mix ——
    一个语义色族的表面色是设计系统给的,自己兑一个只是碰巧在当前主题下好看。 */
 .cd-lamp.is-run {
-  background: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  background: var(--ui-status-success-fg, var(--color-success));
   box-shadow: 0 0 0 3px var(--ui-status-success-bg, transparent);
 }
 
 .cd-lamp.is-wait {
-  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  background: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 /* 空闲是一个**空心**点:有状态,但没在动。实心灰会读成"灭了"。 */
 .cd-lamp.is-off {
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--ui-text-muted-fg, var(--muted));
+  box-shadow: inset 0 0 0 1px var(--ui-text-muted-fg);
 }
 
 .cd-who {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cd.is-frozen .cd-who {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .cd-tail {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -421,7 +421,7 @@ function openDeadLetters(): void {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
   cursor: pointer;
   font: inherit;
   font-size: 10.5px;
@@ -436,7 +436,7 @@ function openDeadLetters(): void {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--ui-status-danger-fg, var(--color-danger, #a33));
+  color: var(--ui-status-danger-fg, var(--color-danger));
   cursor: pointer;
   font: inherit;
   font-family: var(--font-mono, monospace);
@@ -448,15 +448,15 @@ function openDeadLetters(): void {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--ui-status-danger-fg, var(--color-danger, #a33));
+  background: var(--ui-status-danger-fg, var(--color-danger));
 }
 
 .cd-chev {
   flex: 0 0 auto;
   width: 8px;
   height: 8px;
-  border-right: 1.4px solid var(--ui-text-muted-fg, var(--muted));
-  border-bottom: 1.4px solid var(--ui-text-muted-fg, var(--muted));
+  border-right: 1.4px solid var(--ui-text-muted-fg);
+  border-bottom: 1.4px solid var(--ui-text-muted-fg);
   transform: rotate(45deg) translate(-2px, -2px);
   transition: transform 0.14s ease;
 }
@@ -472,7 +472,7 @@ function openDeadLetters(): void {
 
 .cd-sec {
   padding: 9px 12px 2px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   letter-spacing: 0.02em;
 }
@@ -492,12 +492,12 @@ function openDeadLetters(): void {
 }
 
 .cd-now:hover:not(.is-flat) {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .cd-glyph {
   flex: 0 0 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10px;
   font-style: normal;
   line-height: 1;
@@ -505,17 +505,17 @@ function openDeadLetters(): void {
 }
 
 .cd-now.is-run .cd-glyph {
-  color: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  color: var(--ui-status-success-fg, var(--color-success));
 }
 
 /* 持牌但还没起跑:字形压暗一档。它不是"在跑",也不是"没排上" —— 那个中间态
    在这一列里就该长成一个中间的样子。 */
 .cd-now.is-hold .cd-glyph {
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .cd-now.is-hold .cd-name {
-  color: var(--ui-text-secondary-fg, var(--text));
+  color: var(--ui-text-secondary-fg, var(--ui-text-primary-fg));
 }
 
 /* ── 排队徽标 ── */
@@ -528,8 +528,8 @@ function openDeadLetters(): void {
 
 .cd-badge {
   padding: 1px 6px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
-  color: var(--ui-text-muted-fg, var(--muted));
+  border: 1px solid var(--ui-border-subtle-border);
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
   cursor: default;
@@ -537,8 +537,8 @@ function openDeadLetters(): void {
 
 /* 要人动手的四道闸加重:眼睛该先落在这一格上,自解的两道不必抢注意力。 */
 .cd-badge.is-actionable {
-  border-color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  border-color: var(--ui-status-warning-fg, var(--color-warning));
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 /* ── 裁决窗三态 ── */
@@ -560,13 +560,13 @@ function openDeadLetters(): void {
 /* 防抖:一个**虚**点 —— 窗还没开,钱还没花。 */
 .cd-judge.is-debouncing .cd-judge-mark {
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--ui-text-muted-fg, var(--muted));
+  box-shadow: inset 0 0 0 1px var(--ui-text-muted-fg);
 }
 
 /* 在飞:一圈转着的弧。转圈是"正在花钱"唯一诚实的记号。 */
 .cd-judge.is-inflight .cd-judge-mark {
-  border: 1.4px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
-  border-top-color: var(--ui-text-primary-fg, var(--text));
+  border: 1.4px solid var(--ui-border-subtle-border);
+  border-top-color: var(--ui-text-primary-fg);
   border-radius: 50%;
   width: 9px;
   height: 9px;
@@ -580,11 +580,11 @@ function openDeadLetters(): void {
 /* 降级:黄牌。一次回落 FIFO 是失败,不是答案 —— 它必须与「没有裁决在跑」长得
    完全不一样,那正是这一格存在的全部理由。 */
 .cd-judge.is-degraded {
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .cd-judge.is-degraded .cd-judge-mark {
-  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  background: var(--ui-status-warning-fg, var(--color-warning));
   border-radius: 1px;
 }
 
@@ -598,7 +598,7 @@ function openDeadLetters(): void {
 
 .cd-judge-at {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -606,7 +606,7 @@ function openDeadLetters(): void {
 
 .cd-judge-who {
   padding: 0 12px 4px 26px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
 }
 
@@ -614,7 +614,7 @@ function openDeadLetters(): void {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -622,14 +622,14 @@ function openDeadLetters(): void {
 
 .cd-reason {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
 }
 
 .cd-elapsed {
   flex: 0 0 auto;
   width: 34px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -643,7 +643,7 @@ function openDeadLetters(): void {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
   cursor: pointer;
   font: inherit;
   font-size: 10.5px;
@@ -665,7 +665,7 @@ function openDeadLetters(): void {
   gap: 4px;
   align-items: center;
   padding: 3px 12px 6px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11.5px;
 }
 
@@ -675,7 +675,7 @@ function openDeadLetters(): void {
 
 .cd-plan-on {
   position: relative;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-weight: 600;
 }
 
@@ -686,12 +686,12 @@ function openDeadLetters(): void {
   bottom: -3px;
   left: 0;
   height: 1.5px;
-  background: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-text-primary-fg);
 }
 
 .cd-plan-why {
   padding: 0 12px 3px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
 }
 
@@ -699,7 +699,7 @@ function openDeadLetters(): void {
   display: flex;
   justify-content: space-between;
   padding: 0 12px 2px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -715,7 +715,7 @@ function openDeadLetters(): void {
 
 .cd-gate-name {
   flex: 0 0 52px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
 }
 
@@ -723,20 +723,20 @@ function openDeadLetters(): void {
   position: relative;
   flex: 1 1 auto;
   height: 3px;
-  background: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: var(--ui-border-subtle-border);
 }
 
 .cd-gate-bar i {
   position: absolute;
   inset: 0 auto 0 0;
-  background: var(--ui-text-secondary-fg, var(--text));
+  background: var(--ui-text-secondary-fg, var(--ui-text-primary-fg));
   transition: width 0.2s ease;
 }
 
 .cd-gate.is-warn .cd-gate-bar i,
 .cd-gate.is-warn .cd-gate-value {
-  color: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
-  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  color: var(--ui-status-warning-fg, var(--color-warning));
+  background: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .cd-gate.is-warn .cd-gate-value {
@@ -745,7 +745,7 @@ function openDeadLetters(): void {
 
 .cd-gate-value {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -762,7 +762,7 @@ function openDeadLetters(): void {
 .cd-log-at {
   flex: 0 0 30px;
   padding-top: 1px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
@@ -772,10 +772,10 @@ function openDeadLetters(): void {
 .cd-log-text {
   flex: 1 1 auto;
   min-width: 0;
-  color: var(--ui-text-secondary-fg, var(--text));
+  color: var(--ui-text-secondary-fg, var(--ui-text-primary-fg));
 }
 
 .cd-log.is-muted .cd-log-text {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 </style>

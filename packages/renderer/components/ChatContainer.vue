@@ -402,7 +402,7 @@ defineExpose({
   flex: 1;
   height: 100%;
   padding: 0;
-  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+  background: var(--ui-surface-app-bg);
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -452,12 +452,12 @@ defineExpose({
 .full-page-container {
   flex: 1;
   display: flex;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 84%, transparent);
+  background: var(--ui-surface-chat-bg);
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 84%, transparent);
   border-radius: 10px;
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg) 5%, transparent);
   overflow: hidden;
 }
 
@@ -467,12 +467,12 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 84%, transparent);
+  background: var(--ui-surface-chat-bg);
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 84%, transparent);
   border-radius: 10px;
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg) 5%, transparent);
   position: relative;
   -webkit-app-region: drag;
   overflow: hidden;
@@ -483,7 +483,7 @@ defineExpose({
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   text-align: center;
   -webkit-app-region: no-drag;
 }
@@ -496,7 +496,7 @@ defineExpose({
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .empty-state-content p {
@@ -510,8 +510,8 @@ defineExpose({
   gap: 8px;
   margin-top: 8px;
   padding: 10px 20px;
-  background: var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent)));
-  color: var(--ui-action-primary-fg, var(--ui-text-inverse-fg, white));
+  background: var(--ui-action-primary-bg, var(--ui-accent-primary-fg));
+  color: var(--ui-action-primary-fg, var(--ui-text-inverse-fg));
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -522,7 +522,7 @@ defineExpose({
 }
 
 .new-chat-btn:hover {
-  background: var(--ui-action-primary-hover-bg, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))));
+  background: var(--ui-action-primary-hover-bg, var(--ui-action-primary-bg));
   transform: translateY(-1px);
 }
 </style>

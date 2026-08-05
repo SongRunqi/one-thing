@@ -100,29 +100,29 @@ function handleOverlayAction() {
   gap: 10px;
   width: min(360px, calc(100vw - 36px));
   padding: 10px 10px 10px 12px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
-  background: var(--ui-surface-app-bg, var(--bg-primary, var(--bg)));
+  background: var(--ui-surface-app-bg, var(--bg-primary));
   box-shadow: var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.24));
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .voice-dot {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--ui-text-muted-fg, var(--muted));
+  background: var(--ui-text-muted-fg);
 }
 
 .is-recording .voice-dot,
 .is-transcribing .voice-dot {
-  background: var(--ui-status-danger-fg, #b3403a);
+  background: var(--ui-status-danger-fg);
   box-shadow: 0 0 0 4px var(--ui-status-danger-bg, transparent);
 }
 
 .is-speaking .voice-dot {
-  background: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent);
+  background: var(--ui-accent-primary-fg);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg) 18%, transparent);
 }
 
 .voice-copy {
@@ -145,11 +145,11 @@ function handleOverlayAction() {
   white-space: nowrap;
   font-size: 11px;
   line-height: 1.3;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .voice-error {
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
 }
 
 .voice-stop {
@@ -158,10 +158,10 @@ function handleOverlayAction() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 6px;
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
   cursor: pointer;
 }
 

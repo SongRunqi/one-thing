@@ -61,7 +61,7 @@ watch(() => props.text, () => {
   width: 100%;
   min-height: 32px;
   padding: 6px 8px 6px 12px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   border-radius: var(--radius-xs, 4px);
 }
 
@@ -71,12 +71,12 @@ watch(() => props.text, () => {
   left: 10px;
   z-index: 1;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   pointer-events: none;
   user-select: none;
 }
@@ -88,7 +88,7 @@ watch(() => props.text, () => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   opacity: 0.85;
   font-family: var(--font-display, serif);
   font-size: 13px;
@@ -125,7 +125,7 @@ watch(() => props.text, () => {
   border-radius: 3px;
   border: none;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -137,8 +137,8 @@ watch(() => props.text, () => {
 }
 
 .remove-quote-btn:hover {
-  background: var(--ui-state-hover-bg, var(--bg-hover));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
   opacity: 1;
 }
 </style>

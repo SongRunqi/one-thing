@@ -807,18 +807,18 @@ onUnmounted(() => {
 
 <style scoped>
 .settings-page {
-  --settings-paper: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg-panel, var(--bg-elevated))));
-  --settings-paper-2: var(--ui-sidebar-surface-bg, var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2))));
-  --settings-paper-3: var(--ui-surface-panel-bg, var(--bg-panel, var(--ui-surface-elevated-bg, var(--bg-elevated))));
-  --settings-rule: var(--ui-border-default-border, var(--border-default, var(--border)));
-  --settings-rule-soft: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
-  --settings-ink: var(--ui-text-primary-fg, var(--text-primary, var(--text)));
-  --settings-ink-2: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
-  --settings-ink-3: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
-  --settings-ink-4: var(--ui-text-faint-fg, var(--text-faint, var(--muted)));
-  --settings-ink-5: color-mix(in srgb, var(--ui-text-faint-fg, var(--text-faint, var(--muted))) 66%, transparent);
-  --settings-accent: var(--ui-accent-primary-fg, var(--accent));
-  --settings-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 16%, transparent);
+  --settings-paper: var(--ui-surface-chat-bg);
+  --settings-paper-2: var(--ui-sidebar-surface-bg, var(--ui-surface-sidebar-bg));
+  --settings-paper-3: var(--ui-surface-panel-bg);
+  --settings-rule: var(--ui-border-default-border);
+  --settings-rule-soft: var(--ui-border-subtle-border);
+  --settings-ink: var(--ui-text-primary-fg);
+  --settings-ink-2: var(--ui-text-secondary-fg);
+  --settings-ink-3: var(--ui-text-muted-fg);
+  --settings-ink-4: var(--ui-text-faint-fg);
+  --settings-ink-5: color-mix(in srgb, var(--ui-text-faint-fg) 66%, transparent);
+  --settings-accent: var(--ui-accent-primary-fg);
+  --settings-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg) 16%, transparent);
   --settings-accent-tint: color-mix(in srgb, var(--settings-accent) 12%, var(--settings-paper));
   --settings-shadow: 0 30px 80px -34px rgba(0, 0, 0, 0.42), 0 10px 28px -18px rgba(0, 0, 0, 0.28);
 
@@ -1138,20 +1138,20 @@ onUnmounted(() => {
   -webkit-appearance: none;
   min-height: 26px;
   padding: 4px 26px 4px 10px;
-  border: 1px solid color-mix(in srgb, var(--settings-rule, var(--ui-border-default-border, var(--border))) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--settings-rule, var(--ui-border-default-border)) 90%, transparent);
   border-radius: 3px;
   background-color: transparent;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237d7561' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
   background-size: 10px;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 12.5px;
   cursor: pointer;
 }
 
 :deep(select:hover) {
-  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 40%, transparent);
+  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 40%, transparent);
 }
 
 @keyframes settingsFade {
@@ -1194,16 +1194,16 @@ onUnmounted(() => {
 
 /* IDE-style settings page refresh, inspired by compact desktop preferences. */
 .settings-page {
-  --settings-paper: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg-panel, var(--bg-elevated))));
-  --settings-paper-2: var(--ui-sidebar-surface-bg, var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2))));
-  --settings-paper-3: var(--ui-surface-panel-bg, var(--bg-panel, var(--ui-surface-elevated-bg, var(--bg-elevated))));
-  --settings-rule: color-mix(in srgb, var(--ui-border-default-border, var(--border-default, var(--border))) 82%, transparent);
-  --settings-rule-soft: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 66%, transparent);
-  --settings-ink: var(--ui-text-primary-fg, var(--text-primary, var(--text)));
-  --settings-ink-2: color-mix(in srgb, var(--ui-text-primary-fg, var(--text-primary, var(--text))) 90%, var(--ui-text-secondary-fg, var(--text-secondary, var(--muted))));
-  --settings-ink-3: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
-  --settings-ink-4: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
-  --settings-ink-5: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 72%, transparent);
+  --settings-paper: var(--ui-surface-chat-bg);
+  --settings-paper-2: var(--ui-sidebar-surface-bg, var(--ui-surface-sidebar-bg));
+  --settings-paper-3: var(--ui-surface-panel-bg);
+  --settings-rule: color-mix(in srgb, var(--ui-border-default-border) 82%, transparent);
+  --settings-rule-soft: color-mix(in srgb, var(--ui-border-subtle-border) 66%, transparent);
+  --settings-ink: var(--ui-text-primary-fg);
+  --settings-ink-2: color-mix(in srgb, var(--ui-text-primary-fg) 90%, var(--ui-text-secondary-fg));
+  --settings-ink-3: var(--ui-text-secondary-fg);
+  --settings-ink-4: var(--ui-text-muted-fg);
+  --settings-ink-5: color-mix(in srgb, var(--ui-text-muted-fg) 72%, transparent);
   --settings-accent-soft: color-mix(in srgb, var(--settings-accent) 16%, transparent);
 
   background: var(--settings-paper);
@@ -1904,9 +1904,9 @@ onUnmounted(() => {
 }
 
 :deep(.prompt-danger-btn) {
-  border: 1px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  border: 1px solid var(--ui-status-danger-fg);
   background: transparent;
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  color: var(--ui-status-danger-fg);
 }
 
 :deep(.form-slider) {

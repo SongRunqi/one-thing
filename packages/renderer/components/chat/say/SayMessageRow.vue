@@ -718,16 +718,16 @@ function openAttachmentImage(attachment: MessageAttachment): void {
    类驱动而不是 :hover —— 鼠标进了 teleport 到 body 的面板后行会丢 :hover,
    但归属感不能跟着丢;barPinned(面板/菜单开着)期间衬底钉住。 */
 .say-row.is-hover-anchor {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 4%, transparent);
 }
 
 /* 提及/回我的那条 = 一条左墨条,不是整行黄底。 */
 .say-row.is-addressed {
-  box-shadow: inset 2px 0 0 var(--ui-accent-default-bg, var(--accent-main, currentColor));
+  box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg);
 }
 
 .say-row.is-highlighted {
-  background: color-mix(in srgb, var(--ui-accent-default-bg, var(--accent-main)) 12%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 12%, transparent);
 }
 
 .say-gutter {
@@ -753,11 +753,11 @@ function openAttachmentImage(attachment: MessageAttachment): void {
 
 .say-avatar-btn:hover .say-avatar,
 .say-avatar-btn:focus-visible .say-avatar {
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 22%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg) 22%, transparent);
 }
 
 .say-avatar-btn:active .say-avatar {
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 18%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text-primary-fg) 18%, transparent);
 }
 
 /* 头像的框由本行画(AgentAvatar 只出内容不出框):用户与 agent 同一个
@@ -776,8 +776,8 @@ function openAttachmentImage(attachment: MessageAttachment): void {
 
 .say-avatar--self {
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
+  color: var(--ui-text-muted-fg);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
 }
 
 .say-body {
@@ -796,7 +796,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
 .say-sig-name {
   font-size: var(--say-signature-size, 12.5px);
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   padding: 0;
   border: none;
   background: none;
@@ -813,8 +813,8 @@ function openAttachmentImage(attachment: MessageAttachment): void {
 .say-sig-role,
 .say-sig-retired {
   font-size: 10px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  color: var(--ui-text-muted-fg);
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 3px;
   padding: 0 4px;
 }
@@ -822,7 +822,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
 .say-sig-time {
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 引用条(im-message §B):2px 身份色竖线 + 16px 头像 + 身份色名字 + 单行摘录。
@@ -848,7 +848,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   cursor: pointer;
   text-align: start;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 拐线:垂直段立在头像中轴上,向上圆角拐进引用行。几何 = 头像半径 + 列距。 */
@@ -859,14 +859,14 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   top: 50%;
   width: calc(var(--say-gutter-gap, 11px) + var(--say-avatar-size, 30px) / 2 - 8px);
   height: calc(50% + 6px);
-  border-inline-start: 2px solid var(--ui-border-default-border, var(--border));
-  border-top: 2px solid var(--ui-border-default-border, var(--border));
+  border-inline-start: 2px solid var(--ui-border-default-border);
+  border-top: 2px solid var(--ui-border-default-border);
   border-start-start-radius: 6px;
   pointer-events: none;
 }
 
 .say-quote:hover:not(:disabled) {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .say-quote:disabled {
@@ -884,15 +884,15 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   height: 16px;
   border-radius: 50%;
   font-size: 9px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
+  color: var(--ui-text-muted-fg);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
   user-select: none;
 }
 
 .say-quote-author {
   flex-shrink: 0;
   font-weight: 600;
-  color: var(--say-quote-color, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--say-quote-color, var(--ui-text-muted-fg));
 }
 
 .say-quote-excerpt {
@@ -906,7 +906,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
 /* 原文已删:整条灰化、摘录斜体 —— 快照读得到,但没有落点可跳。 */
 .say-quote.is-gone .say-quote-author,
 .say-quote.is-gone .say-quote-excerpt {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-style: italic;
   opacity: 0.8;
 }
@@ -915,7 +915,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   display: inline-block;
   margin-bottom: 2px;
   font-size: 10px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .say-text {
@@ -939,7 +939,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
 .say-figure-caption {
   margin-top: 2px;
   font-size: 10px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .say-attachment-files {
@@ -956,17 +956,17 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   gap: 7px;
   margin-top: 6px;
   padding: 3px 9px;
-  border: 1px dashed var(--ui-border-default-border, var(--border));
+  border: 1px dashed var(--ui-border-default-border);
   border-radius: 20px;
   background: none;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11.5px;
   cursor: pointer;
 }
 
 .say-thread-entry:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-primary-fg);
+  border-color: var(--ui-text-muted-fg);
 }
 
 .say-reactions {
@@ -981,18 +981,18 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   align-items: center;
   gap: 3px;
   padding: 0 6px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 10px;
   background: none;
   font-size: 11px;
   line-height: 1.6;
   cursor: pointer;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .say-reaction-chip.mine {
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-primary-fg);
+  border-color: var(--ui-text-muted-fg);
 }
 
 /* ── 悬浮操作条(im-message §E)───────────────────────────────────────
@@ -1021,7 +1021,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   padding: 2px 3px;
   border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
-  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  background: var(--ui-surface-floating-bg);
   box-shadow: var(--shadow-floating, 0 4px 14px rgba(20, 18, 12, 0.1));
 }
 
@@ -1062,7 +1062,7 @@ function openAttachmentImage(attachment: MessageAttachment): void {
   padding: 10px 12px 12px;
   border: 1px solid var(--ui-border-default-border);
   border-radius: 10px;
-  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  background: var(--ui-surface-floating-bg);
   box-shadow: var(--shadow-floating);
   font-size: 13px;
   line-height: normal;

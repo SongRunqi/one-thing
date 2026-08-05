@@ -1021,13 +1021,13 @@ function handleUpdateThinkingTime(time: number) {
 @keyframes highlight-pulse {
   0% {
     box-shadow:
-      0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 60%, transparent),
-      0 0 20px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
+      0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg) 60%, transparent),
+      0 0 20px color-mix(in srgb, var(--ui-accent-primary-fg) 30%, transparent);
   }
   50% {
     box-shadow:
-      0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent),
-      0 0 15px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 20%, transparent);
+      0 0 0 4px color-mix(in srgb, var(--ui-accent-primary-fg) 40%, transparent),
+      0 0 15px color-mix(in srgb, var(--ui-accent-primary-fg) 20%, transparent);
   }
   100% {
     box-shadow: none;
@@ -1061,7 +1061,7 @@ function handleUpdateThinkingTime(time: number) {
   border: none;
   background: transparent;
   padding: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10px;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   letter-spacing: 0.03em;
@@ -1079,9 +1079,9 @@ function handleUpdateThinkingTime(time: number) {
   padding: 6px 8px;
   max-width: min(74%, 680px);
   overflow-x: auto;
-  border-left: 1px solid var(--ui-border-subtle, var(--border));
+  border-left: 1px solid var(--ui-border-default-border);
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 10.5px;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   white-space: pre-wrap;
@@ -1132,7 +1132,7 @@ function handleUpdateThinkingTime(time: number) {
   font-family: var(--font-mono, monospace);
   font-size: 9.5px;
   letter-spacing: 0.5px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .message.assistant .message-content-wrapper {
@@ -1181,7 +1181,7 @@ function handleUpdateThinkingTime(time: number) {
 .meta {
   font-size: 11.5px;
   line-height: 28px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   user-select: none;
   font-variant-numeric: tabular-nums;
 }
@@ -1190,7 +1190,7 @@ function handleUpdateThinkingTime(time: number) {
    response, distinct from the solid outline of a normal user entry. */
 .message.user.steered :deep(.bubble.user) {
   border-style: dashed;
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 45%, transparent);
 }
 
 /* Steering identity line: always visible on steered messages; carries the
@@ -1203,7 +1203,7 @@ function handleUpdateThinkingTime(time: number) {
   margin-top: 4px;
   padding-right: 4px;
   font-size: 11.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   user-select: none;
 }
 
@@ -1212,9 +1212,9 @@ function handleUpdateThinkingTime(time: number) {
   line-height: 16px;
   padding: 0 5px;
   letter-spacing: 0.08em;
-  border: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg) 40%, transparent);
   border-radius: 3px;
-  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 75%, var(--ui-text-muted-fg, var(--muted)));
+  color: color-mix(in srgb, var(--ui-accent-primary-fg) 75%, var(--ui-text-muted-fg));
 }
 
 .steer-pending-hint {
@@ -1226,7 +1226,7 @@ function handleUpdateThinkingTime(time: number) {
   background: transparent;
   padding: 0 2px;
   font-size: 11.5px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
@@ -1235,7 +1235,7 @@ function handleUpdateThinkingTime(time: number) {
 }
 
 .steer-retract-btn:hover {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 @keyframes fadeIn {
@@ -1268,32 +1268,32 @@ function handleUpdateThinkingTime(time: number) {
   padding: 2px 8px 2px 7px;
   appearance: none;
   border: none;
-  border-left: 2px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 30%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--ui-text-primary-fg) 30%, transparent);
   border-radius: 0;
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 3%, transparent);
   font: inherit;
   font-size: 11px;
   line-height: 1.55;
   text-align: left;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: border-left-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .reply-quote:hover {
-  border-left-color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 55%, transparent);
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  border-left-color: color-mix(in srgb, var(--ui-text-primary-fg) 55%, transparent);
+  color: var(--ui-text-secondary-fg);
 }
 
 .reply-quote:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 1px;
 }
 
 .reply-quote-author {
   flex-shrink: 0;
   font-weight: 600;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .reply-quote-excerpt {
@@ -1327,7 +1327,7 @@ function handleUpdateThinkingTime(time: number) {
   gap: 4px;
   padding: 1px 6px;
   appearance: none;
-  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg) 18%, transparent);
   border-radius: 3px;
   background: transparent;
   font: inherit;
@@ -1337,15 +1337,15 @@ function handleUpdateThinkingTime(time: number) {
 }
 
 .reaction-chip:hover {
-  border-color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 40%, transparent);
+  border-color: color-mix(in srgb, var(--ui-text-primary-fg) 40%, transparent);
 }
 
 .reaction-chip.mine {
-  border-color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 55%, transparent);
+  border-color: color-mix(in srgb, var(--ui-text-primary-fg) 55%, transparent);
 }
 
 .reaction-chip:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 1px;
 }
 
@@ -1357,7 +1357,7 @@ function handleUpdateThinkingTime(time: number) {
 .reaction-chip-count {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* ── Collab (multi-agent room) ── */
@@ -1376,7 +1376,7 @@ function handleUpdateThinkingTime(time: number) {
 .collab-sender-name {
   font-size: 12px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 /* 可点的署名(§4.3 联系人卡入口):形态与不可点那版逐像素相同 —— 它是名字,
@@ -1394,28 +1394,28 @@ function handleUpdateThinkingTime(time: number) {
 
 .collab-sender-name.is-contact:hover,
 .collab-sender-name.is-contact:focus-visible {
-  border-bottom-color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 45%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--ui-text-primary-fg) 45%, transparent);
 }
 
 .collab-sender-title {
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 墓碑署名(域模型 §3.2):整行压暗,后面缀一枚 11px 的「已注销」。徽标是一个
    词加一道细边,不是 chip —— 历史消息的主角是那句话,不是它的注销状态。 */
 .collab-sender.is-retired .collab-sender-name,
 .collab-sender.is-retired .collab-sender-avatar {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   opacity: 0.75;
 }
 
 .collab-sender-retired {
   padding: 0 4px;
-  border: 1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-muted-fg) 40%, transparent);
   font-size: 11px;
   line-height: 1.45;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 「旁观插话」(§4.3):与署名同一个寄存器(11px 弱墨),右对齐到用户气泡那一侧
@@ -1426,7 +1426,7 @@ function handleUpdateThinkingTime(time: number) {
   margin-bottom: 2px;
   font-size: 11px;
   line-height: 1.45;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   opacity: 0.85;
   user-select: none;
 }
@@ -1446,7 +1446,7 @@ function handleUpdateThinkingTime(time: number) {
   font: inherit;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   /* Idle it is a whisper; the group head is the loud part of the row. */
   opacity: 0.55;
   transition: opacity var(--duration-fast) var(--ease-default);
@@ -1482,7 +1482,7 @@ function handleUpdateThinkingTime(time: number) {
 .collab-pass-line {
   margin: 2px 0;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   user-select: none;
   opacity: 0.75;
 }
@@ -1491,7 +1491,7 @@ function handleUpdateThinkingTime(time: number) {
   margin: 6px 0 2px;
   font-size: 11px;
   letter-spacing: 0.04em;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   user-select: none;
   opacity: 0.65;
   display: flex;
@@ -1503,7 +1503,7 @@ function handleUpdateThinkingTime(time: number) {
 .collab-drive-line::after {
   content: '';
   flex: 1;
-  border-top: 1px dashed color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 35%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--ui-text-muted-fg) 35%, transparent);
 }
 
 /* ── Room (kind='room') IM layout ──
@@ -1559,7 +1559,7 @@ function handleUpdateThinkingTime(time: number) {
      the footer anchors at 0 (it used to add the gutter back, which after the
      outdent would push it a full 38px right of the frame it belongs to). */
   left: 0;
-  background: var(--ui-surface-chat-bg, var(--bg-chat));
+  background: var(--ui-surface-chat-bg);
 }
 
 /* Compact the buttons so the row truly fits the 24px band. */
@@ -1589,7 +1589,7 @@ function handleUpdateThinkingTime(time: number) {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg) 35%, transparent);
   font-size: 15px;
   line-height: 1;
   user-select: none;
@@ -1615,11 +1615,11 @@ function handleUpdateThinkingTime(time: number) {
 
 .room-avatar-btn:hover .room-avatar,
 .room-avatar-btn:focus-visible .room-avatar {
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 22%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg) 22%, transparent);
 }
 
 .room-avatar-btn:active .room-avatar {
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 18%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text-primary-fg) 18%, transparent);
 }
 
 /* The signature sits outside the frame, flush with the frame's left edge. */
@@ -1661,17 +1661,17 @@ function handleUpdateThinkingTime(time: number) {
   max-width: 100%;
   min-width: 3.5em;
   padding: var(--message-padding, 14px 18px);
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   border-radius: var(--radius-xs, 4px);
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 4%, transparent);
   /* Landing from a quote deepens the frame — STATE, not an animation; only
      the 120ms fade is motion (§3.6). */
   transition: border-color var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .message.is-room-agent.highlighted :deep(.bubble.assistant) {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 70%, transparent);
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 70%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
 }
 
 /* The verdict is not in yet ('[pa…' could still become speech): hold a bare
@@ -1731,9 +1731,9 @@ function handleUpdateThinkingTime(time: number) {
   gap: 2px;
   max-width: 220px;
   padding: 4px 6px;
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: 4px;
-  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  background: var(--ui-surface-floating-bg);
   pointer-events: none;
   animation: reactionAttributionIn 0.12s ease-out;
 }
@@ -1763,7 +1763,7 @@ function handleUpdateThinkingTime(time: number) {
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
-  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg) 35%, transparent);
   border-radius: 50%;
   font-size: 9px;
   line-height: 1;
@@ -1774,6 +1774,6 @@ function handleUpdateThinkingTime(time: number) {
   font-size: 11px;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 </style>

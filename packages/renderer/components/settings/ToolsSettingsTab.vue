@@ -454,7 +454,7 @@ function updateBraveApiKey(apiKey: string) {
   overflow-wrap: break-word;
   font-size: 13px;
   font-weight: 500;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg));
 }
 
 /* Badge as a stroked ring: transparent fill, accent line + accent ink. */
@@ -463,10 +463,10 @@ function updateBraveApiKey(apiKey: string) {
   font-size: 10px;
   line-height: 1;
   padding: 2px 7px 3px;
-  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 65%, transparent);
+  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg)) 65%, transparent);
   border-radius: 999px;
   background: transparent;
-  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
   white-space: nowrap;
   vertical-align: 1px;
 }
@@ -492,7 +492,7 @@ function updateBraveApiKey(apiKey: string) {
 /* Disabled = dashed line + faint ink, not an opacity veil. */
 .form-input:disabled {
   border-style: dashed;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
   cursor: not-allowed;
 }
 

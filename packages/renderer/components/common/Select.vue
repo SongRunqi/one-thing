@@ -1200,7 +1200,7 @@ defineExpose({
   display: inline-flex;
   width: 100%;
   min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
 }
 
@@ -1220,10 +1220,10 @@ defineExpose({
   min-height: 34px;
   gap: 6px;
   padding: 4px 8px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
-  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-input-bg);
+  color: var(--ui-text-primary-fg);
   cursor: pointer;
   transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
 }
@@ -1250,12 +1250,12 @@ defineExpose({
 .app-select--box .app-select-control:hover,
 .app-select--box.is-open .app-select-control,
 .app-select--box .app-select-control:focus-visible {
-  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
-  background: var(--ui-surface-input-focus-bg, var(--bg-elevated, var(--bg)));
+  border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg));
+  background: var(--ui-surface-input-focus-bg, var(--ui-surface-elevated-bg));
 }
 
 .app-select--box .app-select-control:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 24%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 24%, transparent);
 }
 
 /* ————— ledger variant (设置区制图盒) —————
@@ -1267,21 +1267,21 @@ defineExpose({
 .app-select--ledger .app-select-control {
   min-height: 32px;
   padding: 4px 8px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink, var(--ui-text-primary-fg));
   font-size: 13px;
 }
 
 .app-select--ledger .app-select-control:hover {
-  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 40%, transparent);
+  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 40%, transparent);
   background: transparent;
 }
 
 .app-select--ledger.is-open .app-select-control,
 .app-select--ledger .app-select-control:focus-visible {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
   background: transparent;
   box-shadow: none;
 }
@@ -1347,12 +1347,12 @@ defineExpose({
 .app-select-dropdown--ledger .app-select-option.selected,
 .app-select-dropdown--underline .app-select-option.selected {
   background: transparent;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .app-select-dropdown--ledger .app-select-option.selected::before,
 .app-select-dropdown--underline .app-select-option.selected::before {
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 /* Hovering the selected row: the fill returns UNDER the rule, so the row reads
@@ -1373,8 +1373,8 @@ defineExpose({
 .app-select-dropdown--underline .app-select-option.selected.highlighted {
   background: color-mix(
     in srgb,
-    var(--ui-state-hover-bg, var(--hover)) 94%,
-    var(--ui-text-primary-fg, var(--text))
+    var(--ui-state-hover-bg) 94%,
+    var(--ui-text-primary-fg)
   );
 }
 
@@ -1387,7 +1387,7 @@ defineExpose({
   min-height: 0;
   padding: 4px 0 5px;
   border: none;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   border-radius: 0;
   background: transparent;
 }
@@ -1395,7 +1395,7 @@ defineExpose({
 .app-select--underline .app-select-control:hover,
 .app-select--underline.is-open .app-select-control,
 .app-select--underline .app-select-control:focus-visible {
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg);
   background: transparent;
   box-shadow: none;
 }
@@ -1419,7 +1419,7 @@ defineExpose({
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .app-select-selection {
@@ -1435,14 +1435,14 @@ defineExpose({
 .app-select-placeholder {
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .app-select-single-value.is-placeholder,
 .app-select-placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .app-select-input {
@@ -1452,11 +1452,11 @@ defineExpose({
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-select-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .app-select-tag {
@@ -1467,10 +1467,10 @@ defineExpose({
   min-width: 0;
   gap: 4px;
   padding: 0 6px;
-  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 26%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg) 26%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
   line-height: 1;
 }
@@ -1489,11 +1489,11 @@ button.app-select-tag {
 .app-select-tag-close {
   flex: 0 0 auto;
   cursor: pointer;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .app-select-tag-close:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .app-select-clear {
@@ -1506,13 +1506,13 @@ button.app-select-tag {
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
 }
 
 .app-select-clear:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
+  background: var(--ui-state-hover-bg);
 }
 
 .app-select-chevron {
@@ -1539,9 +1539,9 @@ button.app-select-tag {
      margin, so the panel gives that back and the outer inset is unchanged.
      (Padding also stops the first row's margin collapsing into the panel.) */
   padding: 3px 5px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
-  background: color-mix(in oklch, var(--ui-surface-panel-bg, var(--bg)) 70%, var(--ui-surface-elevated-bg, var(--bg-elevated)) 30%);
+  background: color-mix(in oklch, var(--ui-surface-panel-bg, var(--ui-surface-app-bg)) 70%, var(--ui-surface-elevated-bg) 30%);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
 }
 
@@ -1568,7 +1568,7 @@ button.app-select-tag {
 .app-select-option {
   /* One definition of "the selected slab", so the deepened hover below cannot
      drift away from the resting state it is supposed to be one notch above. */
-  --select-option-selected-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 11%, transparent);
+  --select-option-selected-bg: color-mix(in srgb, var(--ui-accent-primary-fg) 11%, transparent);
 
   display: flex;
   align-items: center;
@@ -1580,19 +1580,19 @@ button.app-select-tag {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
   text-align: left;
   cursor: pointer;
 }
 
 .app-select-option:hover,
 .app-select-option.highlighted {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
+  background: var(--ui-state-hover-bg);
 }
 
 .app-select-option.selected {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   background: var(--select-option-selected-bg);
 }
 
@@ -1623,7 +1623,7 @@ button.app-select-tag {
   background: color-mix(
     in srgb,
     var(--select-option-selected-bg) 92%,
-    var(--ui-text-primary-fg, var(--text))
+    var(--ui-text-primary-fg)
   );
 }
 
@@ -1647,7 +1647,7 @@ button.app-select-tag {
 
 .app-select-group-label {
   padding: 7px 8px 4px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1656,16 +1656,16 @@ button.app-select-tag {
 .app-select-empty,
 .app-select-dropdown-extra {
   padding: 9px 10px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
 }
 
 .app-select-dropdown-header {
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-muted, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-muted));
 }
 
 .app-select-dropdown-footer {
-  border-top: 1px solid var(--ui-border-subtle-border, var(--border-muted, var(--border)));
+  border-top: 1px solid var(--ui-border-subtle-border, var(--border-muted));
 }
 
 .app-select-dropdown-enter-active,

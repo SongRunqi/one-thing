@@ -442,9 +442,9 @@ defineExpose({
   /* Overlay bar stays hidden until the user scrolls, drags, or hovers the track. */
   --scrollbar-idle-opacity: 0;
   --scrollbar-active-opacity: 1;
-  --scrollbar-thumb-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 26%, transparent);
-  --scrollbar-thumb-hover-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 42%, transparent);
-  --scrollbar-thumb-active-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 48%, transparent);
+  --scrollbar-thumb-bg: color-mix(in srgb, var(--ui-text-muted-fg) 26%, transparent);
+  --scrollbar-thumb-hover-bg: color-mix(in srgb, var(--ui-text-muted-fg) 42%, transparent);
+  --scrollbar-thumb-active-bg: color-mix(in srgb, var(--ui-accent-primary-fg) 48%, transparent);
 
   position: relative;
   display: block;
@@ -471,7 +471,7 @@ defineExpose({
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 26%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg) 26%, transparent) transparent;
 }
 
 .scrollbar.is-horizontal .scrollbar-viewport {
@@ -506,7 +506,7 @@ defineExpose({
 }
 
 .scrollbar.is-native-scrollbar .scrollbar-viewport::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 22%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 22%, transparent);
   border: 2px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
@@ -514,7 +514,7 @@ defineExpose({
 
 .scrollbar.is-native-scrollbar:hover .scrollbar-viewport::-webkit-scrollbar-thumb,
 .scrollbar.is-native-scrollbar:focus-within .scrollbar-viewport::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 36%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 36%, transparent);
   border: 2px solid transparent;
   background-clip: padding-box;
 }

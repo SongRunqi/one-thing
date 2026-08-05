@@ -282,7 +282,7 @@ describe('TextEditor', () => {
     const styleText = Array.from(document.querySelectorAll('style'))
       .map(style => style.textContent || '')
       .join('\n')
-    expect(styleText).toContain('--editor-caret')
+    expect(styleText).toContain('--ui-editor-caret-fg')
     expect(styleText).toContain('caret-color')
     expect(styleText).toContain('border-left')
     expect(wrapper.element.querySelector('.md-live-heading-1')).not.toBeNull()

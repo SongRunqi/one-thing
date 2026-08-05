@@ -66,7 +66,7 @@ const hasDescription = computed(() => Boolean(props.description || slots.descrip
   flex-direction: column;
   gap: 5px;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border));
 }
 
 .setting-row:last-child {
@@ -104,7 +104,7 @@ const hasDescription = computed(() => Boolean(props.description || slots.descrip
 
 .setting-row-title {
   min-width: 0;
-  color: var(--settings-ink-2, var(--type-body-strong-color, var(--ui-text-primary-fg, var(--text-primary))));
+  color: var(--settings-ink-2, var(--type-body-strong-color, var(--ui-text-primary-fg)));
   font-size: var(--type-body-strong-size);
   font-weight: var(--type-body-strong-weight);
   line-height: var(--type-body-strong-line-height);
@@ -115,7 +115,7 @@ const hasDescription = computed(() => Boolean(props.description || slots.descrip
 
 .setting-row-description {
   max-width: min(760px, 100%);
-  color: var(--settings-ink-4, var(--type-meta-color, var(--ui-text-muted-fg, var(--text-muted))));
+  color: var(--settings-ink-4, var(--type-meta-color, var(--ui-text-muted-fg)));
   font-size: var(--type-meta-size);
   font-weight: var(--type-meta-weight);
   line-height: var(--type-meta-line-height);

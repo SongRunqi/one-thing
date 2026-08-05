@@ -363,7 +363,7 @@ async function handleGenerateTriage() {
   min-width: 0;
 }
 
-.evals-form-input:focus {
+input.evals-form-input:focus {
   outline: none;
   border-color: var(--settings-accent);
 }
@@ -471,13 +471,13 @@ async function handleGenerateTriage() {
 }
 
 .evals-signal-badge.bad {
-  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #b3403a));
-  color: var(--ui-status-danger-fg, #b3403a);
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
+  color: var(--ui-status-danger-fg);
 }
 
 .evals-signal-badge.good {
-  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, #27ae60));
-  color: var(--ui-status-success-fg, #27ae60);
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg));
+  color: var(--ui-status-success-fg);
 }
 
 .evals-record-details {

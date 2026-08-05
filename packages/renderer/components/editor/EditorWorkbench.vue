@@ -432,7 +432,7 @@ watch(() => activeBufferForRoot.value?.filePath, async () => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  background: var(--ui-surface-panel-bg);
 }
 
 .editor-workbench-container,
@@ -450,8 +450,8 @@ watch(() => activeBufferForRoot.value?.filePath, async () => {
   height: 34px;
   overflow: hidden;
   padding: 0 8px 0 12px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border-bottom: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-panel-bg);
 }
 
 :deep(.editor-workbench-body),
@@ -520,12 +520,12 @@ watch(() => activeBufferForRoot.value?.filePath, async () => {
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .explorer-toggle:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .editor-panel,
@@ -561,11 +561,11 @@ watch(() => activeBufferForRoot.value?.filePath, async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 13px;
 }
 
 .editor-state.error {
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 </style>

@@ -416,7 +416,7 @@ async function chooseMemoryDirectory(): Promise<void> {
 .settings-grid-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border));
 }
 
 .settings-grid-row :deep(.setting-row) {
@@ -431,7 +431,7 @@ async function chooseMemoryDirectory(): Promise<void> {
 }
 
 .settings-grid-row :deep(.setting-row:first-child) {
-  border-right: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border-right: 1px solid var(--settings-rule-soft, var(--ui-border-default-border));
 }
 
 @media (max-width: 760px) {
@@ -441,7 +441,7 @@ async function chooseMemoryDirectory(): Promise<void> {
 
   .settings-grid-row :deep(.setting-row:first-child) {
     border-right: 0;
-    border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+    border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border));
   }
 
   .directory-field {

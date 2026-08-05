@@ -87,12 +87,12 @@ onUnmounted(() => {
 }
 
 .resize-handle:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 40%, transparent);
   width: 6px;
 }
 
 .resize-handle:active {
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   width: 6px;
 }
 </style>

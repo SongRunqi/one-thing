@@ -81,7 +81,7 @@ const resolvedTag = computed(() => props.tone === 'warning' ? 'WARN' : 'ERROR')
    radius. Every failure state in the app reads as the same mark — only the
    density changes between `inline` and `block`. */
 .error-note {
-  --err-ink: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  --err-ink: var(--ui-status-danger-fg);
 
   min-width: 0;
   border-left: 2px solid var(--err-ink);
@@ -96,7 +96,7 @@ const resolvedTag = computed(() => props.tone === 'warning' ? 'WARN' : 'ERROR')
 }
 
 .tone-warning {
-  --err-ink: var(--ui-status-warning-fg, var(--color-warning, #b3803a));
+  --err-ink: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .size-md {
@@ -138,7 +138,7 @@ const resolvedTag = computed(() => props.tone === 'warning' ? 'WARN' : 'ERROR')
 .error-note-legend .zh {
   font-size: 11px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .error-note-body {
@@ -154,7 +154,7 @@ const resolvedTag = computed(() => props.tone === 'warning' ? 'WARN' : 'ERROR')
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-all;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .error-note-actions {

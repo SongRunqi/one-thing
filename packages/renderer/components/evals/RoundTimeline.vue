@@ -307,7 +307,7 @@ function shorten(text: string, max: number): string {
 }
 
 .rt-round {
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -319,7 +319,7 @@ function shorten(text: string, max: number): string {
   padding: 8px 12px;
   font-size: 12px;
   cursor: pointer;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-elevated-bg);
 }
 
 .rt-decision {
@@ -328,11 +328,11 @@ function shorten(text: string, max: number): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .rt-expand {
-  color: var(--ui-text-muted-fg, var(--text-secondary));
+  color: var(--ui-text-muted-fg, var(--ui-text-secondary-fg));
 }
 
 .rt-body {
@@ -347,7 +347,7 @@ function shorten(text: string, max: number): string {
   align-items: center;
   gap: 12px;
   font-size: 11.5px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .rt-messages {
@@ -357,7 +357,7 @@ function shorten(text: string, max: number): string {
 }
 
 .rt-message {
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 6px;
   padding: 4px 8px;
 }
@@ -376,7 +376,7 @@ function shorten(text: string, max: number): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .rt-message pre {
@@ -387,7 +387,7 @@ function shorten(text: string, max: number): string {
   word-break: break-word;
   max-height: 280px;
   overflow: auto;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .rt-edit-area {
@@ -397,9 +397,9 @@ function shorten(text: string, max: number): string {
   font-family: var(--font-mono, monospace);
   line-height: 1.5;
   border-radius: 6px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-app-bg, var(--bg));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  border: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-app-bg);
+  color: var(--ui-text-primary-fg);
   padding: 6px 8px;
   resize: vertical;
 }
@@ -412,18 +412,18 @@ function shorten(text: string, max: number): string {
 }
 
 .rt-attempt {
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 11.5px;
 }
 
 .rt-attempt.original {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-elevated-bg);
 }
 
 .rt-attempt.diverged {
-  border-color: var(--ui-status-warning-border, var(--ui-border-default-border, var(--border)));
+  border-color: var(--ui-status-warning-border, var(--ui-border-default-border));
 }
 
 .rt-attempt pre {
@@ -453,7 +453,7 @@ function shorten(text: string, max: number): string {
 .rt-subtitle {
   margin: 6px 0 0;
   font-size: 11.5px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -485,37 +485,37 @@ function shorten(text: string, max: number): string {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  background: var(--ui-surface-elevated-bg);
+  border: 1px solid var(--ui-border-default-border);
+  color: var(--ui-text-secondary-fg);
   flex-shrink: 0;
 }
 
 .rt-badge.round {
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .rt-badge.warn {
-  background: var(--ui-status-warning-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));
-  color: var(--ui-status-warning-fg, #e67e22);
+  background: var(--ui-status-warning-bg, var(--ui-surface-elevated-bg));
+  color: var(--ui-status-warning-fg);
 }
 
 .rt-badge.same {
   background: var(--ui-status-success-bg);
-  color: var(--ui-status-success-fg, #27ae60);
+  color: var(--ui-status-success-fg);
 }
 
 .rt-badge.role.assistant {
-  color: var(--ui-status-info-fg, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--ui-status-info-fg, var(--ui-text-primary-fg));
 }
 
 .rt-btn {
   padding: 4px 10px;
   border-radius: 6px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  border: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-elevated-bg);
+  color: var(--ui-text-primary-fg);
   font-size: 11.5px;
   cursor: pointer;
 }
@@ -537,7 +537,7 @@ function shorten(text: string, max: number): string {
 
 .rt-meta {
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-secondary));
+  color: var(--ui-text-muted-fg, var(--ui-text-secondary-fg));
   flex-shrink: 0;
 }
 
@@ -551,7 +551,7 @@ function shorten(text: string, max: number): string {
 }
 
 .rt-hint {
-  color: var(--ui-text-muted-fg, var(--text-secondary));
+  color: var(--ui-text-muted-fg, var(--ui-text-secondary-fg));
   font-size: 12px;
   padding: 10px;
   text-align: center;

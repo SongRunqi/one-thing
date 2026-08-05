@@ -163,7 +163,7 @@ const explorerDialogVars: CSSProperties = {
   '--app-dialog-overlay-bg': 'rgb(0 0 0 / 0.18)',
   '--app-dialog-overlay-padding': '16px',
   '--app-dialog-radius': '8px',
-  '--app-dialog-bg': 'var(--ui-surface-sidebar-bg, var(--panel-2))',
+  '--app-dialog-bg': 'var(--ui-surface-sidebar-bg)',
   '--app-dialog-body-padding': '14px',
 } as CSSProperties
 
@@ -313,8 +313,8 @@ async function submitDeleteDialog() {
   min-width: 180px;
   max-width: 320px;
   height: 100%;
-  border-right: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border-right: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-panel-bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -332,9 +332,9 @@ async function submitDeleteDialog() {
   padding: 0 10px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   text-transform: uppercase;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   background: transparent;
 }
 
@@ -351,14 +351,14 @@ async function submitDeleteDialog() {
   justify-content: center;
   border: none;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   border-radius: 5px;
   cursor: pointer;
 }
 
 .explorer-actions button:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .explorer-tree {
@@ -372,7 +372,7 @@ async function submitDeleteDialog() {
 
 .explorer-empty {
   padding: 16px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 13px;
 }
 
@@ -391,27 +391,27 @@ async function submitDeleteDialog() {
 .explorer-dialog label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .explorer-dialog p {
   margin: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
 }
 
 .explorer-dialog input {
   height: 30px;
   padding: 0 9px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 6px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-app-bg);
+  color: var(--ui-text-primary-fg);
   outline: none;
 }
 
 .explorer-dialog input:focus {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-accent-primary-fg);
 }
 
 .dialog-error {
@@ -427,19 +427,19 @@ async function submitDeleteDialog() {
 .dialog-actions button {
   height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 6px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-elevated-bg);
+  color: var(--ui-text-primary-fg);
   cursor: pointer;
 }
 
 .dialog-actions button:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 .dialog-actions .danger {
   border-color: rgba(239, 68, 68, 0.35);
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 </style>

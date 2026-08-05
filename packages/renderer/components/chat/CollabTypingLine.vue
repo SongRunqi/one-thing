@@ -79,7 +79,7 @@ const entries = computed(() => typingIds.value.map(agentId => {
   padding: 0 2px;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   user-select: none;
 }
 

@@ -32,8 +32,8 @@ const sizeLabel = computed(() => {
   align-items: center;
   gap: 14px;
   padding: 0 10px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-  color: var(--ui-text-muted-fg, var(--muted));
+  border-top: 1px solid var(--ui-border-default-border);
+  color: var(--ui-text-muted-fg);
   font-size: 11px;
   flex-shrink: 0;
 }

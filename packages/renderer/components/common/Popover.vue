@@ -187,9 +187,9 @@ defineExpose({
    re-declaring background/border/shadow — that is what keeps one look. */
 .app-popover.is-surface {
   padding: var(--app-popover-padding, 6px);
-  border: 1px solid var(--app-popover-border, var(--ui-border-subtle-border, var(--border-subtle)));
+  border: 1px solid var(--app-popover-border, var(--ui-border-subtle-border));
   border-radius: var(--app-popover-radius, var(--radius-sm));
-  background: var(--app-popover-bg, var(--ui-surface-floating-bg, var(--bg-floating)));
+  background: var(--app-popover-bg, var(--ui-surface-floating-bg));
   box-shadow: var(--app-popover-shadow, var(--shadow-floating));
 }
 

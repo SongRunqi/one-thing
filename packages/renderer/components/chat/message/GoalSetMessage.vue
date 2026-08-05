@@ -79,12 +79,12 @@ const capLabel = computed(() => {
 /* Same blueprint frame family as the composer and the goal status bar:
    zero fill, one hairline, a punched legend carrying the status ink. */
 .goal-set {
-  --goal-ink: var(--ui-status-success-fg, var(--success-color, #16a34a));
+  --goal-ink: var(--ui-status-success-fg, var(--success-color));
 
   position: relative;
   max-width: 85%;
   min-width: 46%;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   border-radius: var(--radius-xs, 4px);
   padding: 10px 12px 8px;
 }
@@ -92,15 +92,15 @@ const capLabel = computed(() => {
 .goal-set[data-status='paused'],
 .goal-set[data-status='budget_limited'],
 .goal-set[data-retrying] {
-  --goal-ink: var(--ui-status-warning-fg, var(--warning-color, #d97706));
+  --goal-ink: var(--ui-status-warning-fg, var(--warning-color));
 }
 
 .goal-set[data-status='blocked'] {
-  --goal-ink: var(--ui-status-danger-fg, var(--danger-color, #b3403a));
+  --goal-ink: var(--ui-status-danger-fg, var(--danger-color));
 }
 
 .goal-set[data-status='complete'] {
-  --goal-ink: var(--ui-text-muted-fg, var(--muted));
+  --goal-ink: var(--ui-text-muted-fg);
 }
 
 .frame-label {
@@ -109,12 +109,12 @@ const capLabel = computed(() => {
   left: 12px;
   z-index: 1;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   user-select: none;
 }
 
@@ -126,15 +126,15 @@ const capLabel = computed(() => {
 .objective {
   font-size: 13.5px;
   line-height: 1.55;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .objective.done {
   text-decoration: line-through;
-  text-decoration-color: var(--ui-text-muted-fg, var(--muted));
-  color: var(--ui-text-muted-fg, var(--muted));
+  text-decoration-color: var(--ui-text-muted-fg);
+  color: var(--ui-text-muted-fg);
 }
 
 .meta {
@@ -147,6 +147,6 @@ const capLabel = computed(() => {
   font-size: 9.5px;
   letter-spacing: 1px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 </style>

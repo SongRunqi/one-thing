@@ -63,7 +63,7 @@ function handleClick(event: MouseEvent) {
 .attachment-thumb-img {
   display: block;
   object-fit: cover;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
   background: var(--ui-state-disabled-bg, var(--bg-muted));
   user-select: none;
 }
@@ -93,8 +93,8 @@ function handleClick(event: MouseEvent) {
   --app-button-padding-x: 0;
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-hover-fill: var(--ui-state-hover-bg);
+  --app-button-hover-fg: var(--ui-text-primary-fg);
 
   position: absolute;
   top: -5px;
@@ -104,8 +104,8 @@ function handleClick(event: MouseEvent) {
   padding: 0;
   border: 0.5px solid var(--ui-composer-overlay-border);
   border-radius: 999px;
-  background: var(--ui-surface-panel-bg, var(--panel, var(--bg)));
-  color: var(--ui-text-muted-fg, var(--muted));
+  background: var(--ui-surface-panel-bg);
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -119,7 +119,7 @@ function handleClick(event: MouseEvent) {
 }
 
 .attachment-thumb-remove:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 </style>

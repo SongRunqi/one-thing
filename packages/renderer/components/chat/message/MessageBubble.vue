@@ -629,8 +629,8 @@ function handleContentClick(event: MouseEvent) {
   max-width: 80%;
   padding: var(--message-padding, 14px 18px);
   border-radius: 18px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-elevated-bg);
   position: relative;
   transition: all 0.2s ease;
   box-shadow: var(--ui-message-surface-shadow, var(--shadow));
@@ -643,13 +643,13 @@ function handleContentClick(event: MouseEvent) {
 .bubble.user.editing {
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.3),
-    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent);
+    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 40%, transparent);
 }
 
 html[data-theme='light'] .bubble.user.editing {
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.04),
-    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
+    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 30%, transparent);
 }
 
 /* AI messages: remove bubble styling */
@@ -669,18 +669,15 @@ html[data-theme='light'] .bubble.user.editing {
      solid color for the collapse fade mask; behind a transparent bubble the
      visible surface is the chat background, with the solid bubble token as
      fallback (--ui-message-user-solid-bg keeps gradients out of color-mix). */
-  --user-bubble-surface: var(
-    --ui-surface-chat-bg,
-    var(--ui-message-user-solid-bg, var(--bg-message-user-solid, var(--ui-surface-elevated-bg, var(--bg-elevated))))
-  );
+  --user-bubble-surface: var(--ui-surface-chat-bg, var(--ui-message-user-solid-bg));
 
   max-width: min(74%, 680px);
   /* A light ink wash inside the frame: the user's voice must be findable
      when scanning — a fully transparent box reads as an empty input, not a
      said thing. */
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 4%, transparent);
   border-radius: var(--radius-xs, 4px);
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   box-shadow: var(--ui-message-user-shadow, none);
   width: fit-content;
   /* Single-character messages ("?") must stay a short entry, not collapse
@@ -694,17 +691,17 @@ html[data-theme='light'] .bubble.user {
 
 /* Custom text selection highlight for AI messages */
 .bubble.assistant ::selection {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 35%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 35%, transparent);
   color: inherit;
 }
 
 .bubble.assistant ::-moz-selection {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 35%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 35%, transparent);
   color: inherit;
 }
 
 html[data-theme='light'] .bubble.assistant ::selection {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 25%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 25%, transparent);
 }
 
 /* Skill badge */
@@ -713,12 +710,12 @@ html[data-theme='light'] .bubble.assistant ::selection {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
   border-radius: 12px;
   margin-bottom: 8px;
   font-size: var(--type-caption-muted-size);
   line-height: var(--type-caption-muted-line-height);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .skill-icon {
@@ -758,10 +755,10 @@ html[data-theme='light'] .bubble.assistant ::selection {
   aspect-ratio: 1 / 1;
   overflow: hidden;
   border-radius: 8px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent), transparent 36%),
-    var(--ui-surface-elevated-bg, var(--bg-elevated));
+    linear-gradient(135deg, color-mix(in srgb, var(--ui-accent-primary-fg) 8%, transparent), transparent 36%),
+    var(--ui-surface-elevated-bg);
 }
 
 .image-generation-skeleton::after {
@@ -810,7 +807,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   background: linear-gradient(
     to bottom,
     transparent,
-    var(--user-bubble-surface, var(--ui-message-user-solid-bg, var(--ui-surface-chat-bg, var(--bg-chat))))
+    var(--user-bubble-surface, var(--ui-message-user-solid-bg, var(--ui-surface-chat-bg)))
   );
   pointer-events: none;
 }
@@ -826,7 +823,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   margin-top: 2px;
   background: transparent;
   border: none;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 82%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 82%, transparent);
   font-size: var(--type-meta-size);
   font-weight: var(--type-meta-weight);
   line-height: var(--type-meta-line-height);
@@ -835,7 +832,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
 }
 
 .collapse-toggle:hover {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .collapse-icon {
@@ -864,18 +861,18 @@ html[data-theme='light'] .image-generation-skeleton::after {
   font-family: var(--font-body);
   line-height: var(--message-line-height-px, var(--type-chat-comfortable-line-height-px));
   font-size: var(--message-font-size, var(--type-chat-comfortable-size));
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 96%, var(--ui-text-secondary-fg, var(--text-secondary)) 4%);
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 96%, var(--ui-text-secondary-fg) 4%);
   letter-spacing: 0;
 }
 
 /* AI message text */
 .bubble.assistant .content {
-  color: var(--ui-message-assistant-fg, var(--ai-text));
+  color: var(--ui-message-assistant-fg);
 }
 
 .bubble.user .content {
   line-height: var(--message-line-height-px, var(--type-chat-comfortable-line-height-px));
-  color: var(--ui-message-user-fg, var(--text-user-primary));
+  color: var(--ui-message-user-fg);
   /* Manuscript voice: the user's words are set in the display serif,
      independent of the chat reading-font setting. */
   font-family: var(--font-display, var(--font-sans));
@@ -910,8 +907,8 @@ html[data-theme='light'] .image-generation-skeleton::after {
   height: 6px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, transparent);
+  background: var(--ui-accent-primary-fg);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent-primary-fg) 28%, transparent);
   animation: waitingDotPulse 1.35s ease-in-out infinite;
 }
 
@@ -991,7 +988,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   min-height: 0;
   overflow: hidden;
   padding-left: 10px;
-  border-left: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 34%, var(--ui-border-default-border, var(--border)));
+  border-left: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg) 34%, var(--ui-border-default-border));
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line-height);
   color: var(--reasoning-fg);
@@ -1096,13 +1093,13 @@ html[data-theme='light'] .image-generation-skeleton::after {
 .content :deep(blockquote) {
   margin: var(--content-paragraph-gap, 8px) 0;
   padding: 0.35em 0 0.35em 0.85em;
-  border-left: 2px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 42%, transparent);
-  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary)) 88%, var(--ui-text-muted-fg, var(--muted)) 12%);
+  border-left: 2px solid color-mix(in srgb, var(--ui-text-muted-fg) 42%, transparent);
+  color: color-mix(in srgb, var(--ui-text-secondary-fg) 88%, var(--ui-text-muted-fg) 12%);
   border-radius: 0;
 }
 
 .content :deep(a) {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   text-decoration: none;
 }
 
@@ -1114,7 +1111,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
 .content :deep(hr) {
   border: none;
   height: 1px;
-  background: var(--ui-border-default-border, var(--border));
+  background: var(--ui-border-default-border);
   margin: var(--content-spacing-px, 11px) 0;
   opacity: 0.3;
 }
@@ -1162,7 +1159,7 @@ html[data-theme='light'] .content :deep(img:hover) {
   border-collapse: collapse;
   width: 100%;
   margin: var(--content-spacing-px, 11px) 0;
-  border: 1px solid var(--ui-table-border, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--ui-table-border, var(--ui-border-default-border));
 }
 
 .content :deep(.md-table-scroll > table) {
@@ -1171,7 +1168,7 @@ html[data-theme='light'] .content :deep(img:hover) {
 
 .content :deep(th),
 .content :deep(td) {
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border: 1px solid var(--ui-border-subtle-border);
   padding: 7px 12px;
   text-align: left;
 }
@@ -1190,15 +1187,15 @@ html[data-theme='light'] .content :deep(img:hover) {
 }
 
 .content :deep(tbody tr:nth-child(even) td) {
-  background: color-mix(in srgb, var(--ui-table-header-bg, var(--ui-state-hover-bg, var(--hover))) 40%, transparent);
+  background: color-mix(in srgb, var(--ui-table-header-bg, var(--ui-state-hover-bg)) 40%, transparent);
 }
 
 .content :deep(th) {
-  background: var(--ui-table-header-bg, var(--ui-state-hover-bg, var(--hover)));
-  border-bottom: 1px solid var(--ui-table-border, var(--ui-border-default-border, var(--border)));
+  background: var(--ui-table-header-bg, var(--ui-state-hover-bg));
+  border-bottom: 1px solid var(--ui-table-border, var(--ui-border-default-border));
   font-size: 0.9em;
   font-weight: var(--type-body-strong-weight, 600);
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  color: var(--ui-text-secondary-fg);
 }
 
 /* Code visuals are shared in styles/markdown.css via .md-code-block-scope and .md-inline-code-scope. */
@@ -1224,7 +1221,7 @@ html[data-theme='light'] .content :deep(img:hover) {
 
 /* MathJax SVGs render via currentColor; the semantic token resolves per theme */
 .content :deep(mjx-container svg) {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 </style>

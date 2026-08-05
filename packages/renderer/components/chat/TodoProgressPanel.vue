@@ -224,15 +224,15 @@ onUnmounted(() => {
 
 <style scoped>
 .todo-progress-panel {
-  --todo-progress-rule: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 54%, transparent);
-  --todo-progress-muted: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
-  --todo-progress-accent: var(--ui-accent-primary-fg, var(--accent));
+  --todo-progress-rule: color-mix(in srgb, var(--ui-border-default-border) 54%, transparent);
+  --todo-progress-muted: var(--ui-text-muted-fg);
+  --todo-progress-accent: var(--ui-accent-primary-fg);
 
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .todo-progress-head,
@@ -249,7 +249,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 7px;
   min-width: 0;
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 88%, var(--todo-progress-muted));
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 88%, var(--todo-progress-muted));
   font-size: 12px;
   font-weight: 650;
 }
@@ -282,7 +282,7 @@ onUnmounted(() => {
 }
 
 .todo-progress-state.is-error {
-  color: var(--ui-status-danger-fg, #c2410c);
+  color: var(--ui-status-danger-fg);
 }
 
 /* 描红:点线基线,做完的一段描成朱砂实线 */
@@ -291,7 +291,7 @@ onUnmounted(() => {
   flex: 0 0 auto;
   height: 0;
   margin: 12px 0;
-  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 90%, transparent);
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border) 90%, transparent);
 }
 
 .todo-progress-meter-fill {
@@ -325,7 +325,7 @@ onUnmounted(() => {
 }
 
 .todo-progress-current-text {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -348,7 +348,7 @@ onUnmounted(() => {
 }
 
 .todo-progress-section-title {
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--todo-progress-muted));
+  color: color-mix(in srgb, var(--ui-text-primary-fg) 82%, var(--todo-progress-muted));
   font-size: 11.5px;
   font-weight: 650;
 }
@@ -366,7 +366,7 @@ onUnmounted(() => {
   align-items: baseline;
   gap: 8px;
   min-height: 18px;
-  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 90%, var(--todo-progress-muted));
+  color: color-mix(in srgb, var(--ui-text-secondary-fg) 90%, var(--todo-progress-muted));
   font-size: 11.5px;
   line-height: 1.3;
 }
@@ -375,7 +375,7 @@ onUnmounted(() => {
   flex: 1 1 auto;
   height: 0;
   min-width: 10px;
-  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 85%, transparent);
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border) 85%, transparent);
   transform: translateY(1px);
 }
 
@@ -400,7 +400,7 @@ onUnmounted(() => {
 }
 
 .todo-progress-task.doing {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .todo-progress-task.doing .todo-progress-task-state {

@@ -539,7 +539,7 @@ onMounted(async () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   background: transparent;
   animation: ledger-fade 0.15s ease;
   container-type: inline-size;
@@ -557,7 +557,7 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 16px;
   padding: 16px 18px 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
 }
 
 .ledger-heading {
@@ -572,7 +572,7 @@ onMounted(async () => {
   font-family: var(--font-display, var(--font-serif, serif));
   font-size: 15px;
   font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .ledger-title > span:first-child {
@@ -587,13 +587,13 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: var(--font-weight-normal, 400);
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .ledger-sub {
   margin: 3px 0 0;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -632,7 +632,7 @@ onMounted(async () => {
   top: 6px;
   bottom: 6px;
   width: 1px;
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 72%, transparent);
 }
 
 /* ---- agent rows (register numbering) ---- */
@@ -646,7 +646,7 @@ onMounted(async () => {
 .agent-row {
   position: relative;
   counter-increment: agent-row;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
 }
 
 .agent-row:first-child {
@@ -661,31 +661,31 @@ onMounted(async () => {
   top: 50%;
   width: 7px;
   height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
   transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
 }
 
 .agent-row:hover::before {
   width: 12px;
-  background: var(--ui-text-muted-fg, var(--text-muted));
+  background: var(--ui-text-muted-fg);
 }
 
 /* Active agent: heavier accent tick + accent figure number */
 .agent-row.is-active::before {
   width: 14px;
   height: 2px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 /* 已退休:整行压暗、徽标转中性墨色。行还在(才点得进去恢复),只是不再是在职
    的那一栏 —— 分组标题已经说了这是哪一栏,所以这里只需要一层灰。 */
 .agent-row.is-retired .row-name {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .agent-row.is-retired .agent-chip {
-  border-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 45%, transparent);
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  border-color: color-mix(in srgb, var(--ui-text-muted-fg) 45%, transparent);
+  color: var(--ui-text-muted-fg);
 }
 
 /* 分组标题:一行 10px 的墨字,不是 section 头 —— 名册只有一张,分栏是它的内部
@@ -716,13 +716,13 @@ onMounted(async () => {
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   flex-shrink: 0;
   min-width: 16px;
 }
 
 .agent-row.is-active .row-line::before {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .row-name {
@@ -733,7 +733,7 @@ onMounted(async () => {
   white-space: nowrap;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .row-meta {
@@ -741,7 +741,7 @@ onMounted(async () => {
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
 }
 
@@ -760,7 +760,7 @@ onMounted(async () => {
   align-items: baseline;
   gap: 12px;
   padding: 8px 0 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 55%, transparent);
 }
 
 .agent-editor .back-btn {
@@ -785,13 +785,13 @@ onMounted(async () => {
   font-family: var(--font-display, var(--font-serif, serif));
   font-size: 15px;
   font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .editor-title span {
   flex-shrink: 0;
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
 }
 
@@ -804,7 +804,7 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   padding: 12px 0 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 45%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 45%, transparent);
 }
 
 /* 画线圆章,与成员章、退役的联系人卡同一句法。 */
@@ -815,7 +815,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 32%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg) 32%, transparent);
   border-radius: 50%;
   font-size: 21px;
   line-height: 1;
@@ -839,7 +839,7 @@ onMounted(async () => {
   white-space: nowrap;
   font-size: 14px;
   font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .profile-title {
@@ -847,14 +847,14 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 墓碑:压暗一档,身份还在。 */
 .profile-tombstone {
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .profile-actions {
@@ -869,7 +869,7 @@ onMounted(async () => {
   margin: 8px 0 0;
   font-size: 11px;
   line-height: 1.6;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
+  color: var(--ui-text-secondary-fg);
 }
 
 .profile-error {
@@ -889,7 +889,7 @@ onMounted(async () => {
 
 .text-action:focus-visible,
 .row-line:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 2px;
 }
 
@@ -927,7 +927,7 @@ onMounted(async () => {
   transform: translateX(100%);
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 2;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  background: var(--ui-surface-panel-bg);
 }
 
 .mode-side .detail-active .agents-list {
@@ -977,7 +977,7 @@ onMounted(async () => {
     transform: translateX(100%);
     transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 2;
-    background: var(--ui-surface-panel-bg, var(--bg-panel));
+    background: var(--ui-surface-panel-bg);
   }
 
   .detail-active .agents-list {
@@ -1027,10 +1027,10 @@ onMounted(async () => {
 }
 
 .agents-list::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 18%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 18%, transparent);
 }
 
 .agents-list::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 32%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 32%, transparent);
 }
 </style>

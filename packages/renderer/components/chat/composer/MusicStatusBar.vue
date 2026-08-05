@@ -710,9 +710,9 @@ onBeforeUnmount(() => {
   flex-wrap: wrap; /* the optional 接下来 line wraps to its own row */
   gap: 6px 12px;
   padding: 8px 12px 7px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   border-radius: 3px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
 }
 
 /* Blueprint frame tag, same as the composer's own. */
@@ -721,12 +721,12 @@ onBeforeUnmount(() => {
   top: -7px;
   left: 12px;
   padding: 0 6px;
-  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   pointer-events: none;
   user-select: none;
 }
@@ -735,7 +735,7 @@ onBeforeUnmount(() => {
   flex: 0 1 auto;
   min-width: 0;
   font-size: 12.5px;
-  color: var(--ui-text-strong-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -743,7 +743,7 @@ onBeforeUnmount(() => {
 
 .music-mark {
   margin-right: 6px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* Idle/standby: present but quiet — less ink until the pointer arrives. */
@@ -754,9 +754,9 @@ onBeforeUnmount(() => {
   flex: 1 1 auto;
   min-width: 0;
   border: none;
-  border-bottom: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border-bottom: 1px dashed color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
   background: transparent;
-  color: var(--ui-text-strong-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12.5px;
   padding: 2px 0;
   outline: none;
@@ -802,7 +802,7 @@ onBeforeUnmount(() => {
 }
 
 .music-bar[data-status='paused'] .music-title {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* A drawn line, not a rounded pill — the progress is 1px of ink. The span is
@@ -829,23 +829,23 @@ onBeforeUnmount(() => {
 }
 
 .music-track-line {
-  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 40%, transparent);
+  background: color-mix(in srgb, var(--ui-border-strong-border) 40%, transparent);
 }
 
 .music-track-fill {
   transform-origin: left center;
-  background: var(--ui-text-muted-fg, var(--muted));
+  background: var(--ui-text-muted-fg);
   transition: transform 0.25s linear;
 }
 
 .music-track.seekable:hover .music-track-fill {
-  background: var(--ui-text-strong-fg, var(--text));
+  background: var(--ui-text-primary-fg);
 }
 
 .music-time {
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -860,9 +860,9 @@ onBeforeUnmount(() => {
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   line-height: 1;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   background: none;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 32%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 32%, transparent);
   border-radius: 2px;
   padding: 3px 7px;
   cursor: pointer;
@@ -871,8 +871,8 @@ onBeforeUnmount(() => {
 
 .music-btn:hover:not(:disabled),
 .music-mode:hover:not(:disabled) {
-  color: var(--ui-text-strong-fg, var(--text));
-  border-color: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 70%, transparent);
+  color: var(--ui-text-primary-fg);
+  border-color: color-mix(in srgb, var(--ui-border-strong-border) 70%, transparent);
 }
 
 .music-btn:disabled,
@@ -883,7 +883,7 @@ onBeforeUnmount(() => {
 
 .music-mode {
   border: none;
-  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 32%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 32%, transparent);
   border-radius: 0;
   padding: 2px 0 2px 10px;
   font-size: 10px;
@@ -903,7 +903,7 @@ onBeforeUnmount(() => {
 .music-vol-value {
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-variant-numeric: tabular-nums;
   min-width: 2ch;
   text-align: center;
@@ -914,11 +914,11 @@ onBeforeUnmount(() => {
   flex-basis: 100%;
   min-width: 0;
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-top: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 24%, transparent);
+  border-top: 1px dashed color-mix(in srgb, var(--ui-border-strong-border) 24%, transparent);
   padding-top: 5px;
 }
 

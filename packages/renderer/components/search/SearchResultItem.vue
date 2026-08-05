@@ -120,7 +120,7 @@ const kindLabel = computed(() => {
   cursor: pointer;
   border-radius: 5px;
   margin: 0 3px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   /* No transition: keyboard paging scrolls instantly, and a fading highlight
      would ride along with the old row for ~120ms before settling. */
 }
@@ -133,7 +133,7 @@ const kindLabel = computed(() => {
   bottom: 7px;
   width: 2px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 72%, transparent);
   opacity: 0;
 }
 
@@ -142,7 +142,7 @@ const kindLabel = computed(() => {
 }
 
 .search-result-item.selected {
-  background: color-mix(in srgb, var(--ui-state-selected-bg, var(--hover)) 42%, transparent);
+  background: color-mix(in srgb, var(--ui-state-selected-bg, var(--ui-state-hover-bg)) 42%, transparent);
 }
 
 .search-result-item.selected::before {
@@ -150,7 +150,7 @@ const kindLabel = computed(() => {
 }
 
 .search-result-item:hover:not(.selected) {
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 24%, transparent);
+  background: color-mix(in srgb, var(--ui-state-hover-bg) 24%, transparent);
 }
 
 .result-body {
@@ -167,7 +167,7 @@ const kindLabel = computed(() => {
   font-size: var(--type-label-size);
   font-weight: 590;
   line-height: var(--type-label-line-height);
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -184,7 +184,7 @@ const kindLabel = computed(() => {
   display: inline-flex;
   align-items: baseline;
   gap: 3px;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 72%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 72%, transparent);
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line-height);
   white-space: nowrap;
@@ -205,17 +205,17 @@ const kindLabel = computed(() => {
 
 .result-detail {
   flex: 1 1 auto;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 48%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 48%, transparent);
 }
 
 .result-separator {
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 34%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 34%, transparent);
 }
 
 .search-result-item.selected .result-context,
 .search-result-item.selected .result-detail {
-  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 70%, transparent);
+  color: color-mix(in srgb, var(--ui-text-secondary-fg) 70%, transparent);
 }
 
 .result-meta {
@@ -233,23 +233,23 @@ const kindLabel = computed(() => {
   min-width: 0;
   padding: 2px 6px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))) 34%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg) 34%, transparent);
   font-size: var(--type-micro-size);
   font-weight: 540;
   line-height: var(--type-micro-line-height);
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 62%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 62%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .search-result-item.selected .result-kind {
-  background: color-mix(in srgb, var(--ui-state-selected-bg, var(--selection, var(--ui-accent-primary-fg, var(--accent)))) 20%, transparent);
-  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 66%, transparent);
+  background: color-mix(in srgb, var(--ui-state-selected-bg, var(--selection)) 20%, transparent);
+  color: color-mix(in srgb, var(--ui-text-secondary-fg) 66%, transparent);
 }
 
 .result-title mark {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 26%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 26%, transparent);
   color: inherit;
   border-radius: 3px;
   padding: 0 1px;

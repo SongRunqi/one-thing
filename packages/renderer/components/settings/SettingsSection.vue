@@ -61,7 +61,7 @@ defineProps<{
 
 .settings-section-title {
   margin: 0;
-  color: var(--settings-ink-2, var(--type-title-sm-color, var(--ui-text-primary-fg, var(--text-primary))));
+  color: var(--settings-ink-2, var(--type-title-sm-color, var(--ui-text-primary-fg)));
   font-size: var(--type-title-sm-size);
   font-weight: var(--type-title-sm-weight);
   line-height: var(--type-title-sm-line-height);
@@ -71,7 +71,7 @@ defineProps<{
 .settings-section-description {
   max-width: 620px;
   margin: 3px 0 0;
-  color: var(--settings-ink-4, var(--type-meta-color, var(--ui-text-muted-fg, var(--text-muted))));
+  color: var(--settings-ink-4, var(--type-meta-color, var(--ui-text-muted-fg)));
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line-height);
 }

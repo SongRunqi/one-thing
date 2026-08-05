@@ -231,7 +231,7 @@ watch(
 /* Matched characters gain weight and ink — the same emphasis axis the
    selected row uses, not a separate accent colour. */
 .command-hit {
-  color: var(--ui-text-strong-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-weight: 700;
 }
 </style>

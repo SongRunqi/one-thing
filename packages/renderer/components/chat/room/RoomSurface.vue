@@ -785,12 +785,12 @@ defineExpose({
   align-self: center;
   margin-bottom: 8px;
   padding: 3px 12px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border: 1px solid var(--ui-border-subtle-border);
   border-radius: 20px;
   background: transparent;
   cursor: pointer;
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .room-history-summary:disabled {
@@ -839,12 +839,12 @@ defineExpose({
  * ——「＋」在 messenger 形态下没有对应动作,凭空加一颗按钮就不是皮相而是行为。 */
 .room-surface .room-composer :deep(.composer) {
   border-radius: 12px;
-  border-color: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border-color: var(--ui-border-subtle-border);
+  background: var(--ui-surface-panel-bg);
 }
 
 .room-surface .room-composer :deep(.composer.focused) {
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  background: var(--ui-surface-panel-bg);
 }
 
 .room-surface .room-composer :deep(.input-area) {
@@ -892,8 +892,8 @@ defineExpose({
 
 /* 深色圆钮:34px、纸底墨面,箭头顶掉 mono 的 `SEND ⏎`。 */
 .room-surface .room-composer :deep(.toolbar-right > .send-btn) {
-  --app-button-hover-fill: var(--ui-text-primary-fg, var(--text));
-  --app-button-hover-fg: var(--ui-surface-app-bg, var(--bg));
+  --app-button-hover-fill: var(--ui-text-primary-fg);
+  --app-button-hover-fg: var(--ui-surface-app-bg);
 
   width: 34px;
   min-width: 34px;
@@ -902,8 +902,8 @@ defineExpose({
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--ui-text-primary-fg, var(--text));
-  color: var(--ui-surface-app-bg, var(--bg));
+  background: var(--ui-text-primary-fg);
+  color: var(--ui-surface-app-bg);
 }
 
 /* Hover/active step the ink one notch toward the paper, the same move the
@@ -913,18 +913,18 @@ defineExpose({
    its shape and the change read as nothing happening. Staying opaque and
    shifting the tone is what makes the state legible. */
 .room-surface .room-composer :deep(.toolbar-right > .send-btn:hover:not(:disabled)) {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 86%, var(--ui-surface-app-bg, var(--bg)));
-  color: var(--ui-surface-app-bg, var(--bg));
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 86%, var(--ui-surface-app-bg));
+  color: var(--ui-surface-app-bg);
 }
 
 .room-surface .room-composer :deep(.toolbar-right > .send-btn:active:not(:disabled)) {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 74%, var(--ui-surface-app-bg, var(--bg)));
-  color: var(--ui-surface-app-bg, var(--bg));
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 74%, var(--ui-surface-app-bg));
+  color: var(--ui-surface-app-bg);
 }
 
 .room-surface .room-composer :deep(.toolbar-right > .send-btn:disabled) {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 26%, transparent);
-  color: var(--ui-surface-app-bg, var(--bg));
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 26%, transparent);
+  color: var(--ui-surface-app-bg);
 }
 
 .room-surface .room-composer :deep(.send-label) {
@@ -1031,16 +1031,16 @@ defineExpose({
   width: 30px;
   height: 30px;
   padding: 0;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border: 1px solid var(--ui-border-subtle-border);
   border-radius: 50%;
-  background: var(--ui-surface-panel-bg, var(--panel));
+  background: var(--ui-surface-panel-bg);
   cursor: pointer;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .room-scroll-bottom:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  color: var(--ui-text-primary-fg);
+  border-color: var(--ui-border-strong-border);
 }
 
 .room-scroll-btn-enter-active,
@@ -1060,10 +1060,10 @@ defineExpose({
   transform: translateX(-50%);
   padding: 4px 10px;
   border-radius: var(--radius-xs, 4px);
-  background: var(--ui-surface-panel-bg, var(--panel));
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: var(--ui-surface-panel-bg);
+  border: 1px solid var(--ui-border-subtle-border);
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   pointer-events: none;
 }
 </style>

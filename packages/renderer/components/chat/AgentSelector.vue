@@ -302,7 +302,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .agent-selector {
-  --agent-selector-accent: var(--ui-category-3-icon, var(--ui-status-success-fg, var(--color-success, var(--ui-accent-primary-fg, var(--accent)))));
+  --agent-selector-accent: var(--ui-category-3-icon, var(--ui-status-success-fg));
   position: relative;
   flex: 0 0 auto;
   align-self: center;
@@ -316,7 +316,7 @@ onBeforeUnmount(() => {
   --app-button-hover-fill: transparent;
   --app-button-border: transparent;
   --app-button-hover-border: transparent;
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-hover-fg: var(--ui-text-primary-fg);
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
   position: relative;
@@ -329,7 +329,7 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
   cursor: pointer;
   transition: color var(--duration-normal) var(--ease-default);
@@ -349,12 +349,12 @@ onBeforeUnmount(() => {
 }
 
 .agent-chip:hover:not(:disabled)::after {
-  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 75%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg) 75%, transparent);
 }
 
 .agent-chip.open::after {
   border-bottom-style: solid;
-  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 90%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg) 90%, transparent);
 }
 
 .agent-chip-icon {
@@ -383,11 +383,11 @@ onBeforeUnmount(() => {
 }
 
 .agent-chip:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .agent-chip.open {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .agent-chip:hover:not(:disabled) .agent-chip-icon,
@@ -421,7 +421,7 @@ onBeforeUnmount(() => {
 .agent-row-mark-dot {
   width: 6px;
   height: 6px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 /* positioning only — visuals come from ErrorNote */

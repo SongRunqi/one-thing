@@ -140,10 +140,10 @@ function handleBranch() {
 .selection-toolbar {
   position: fixed;
   z-index: var(--z-max);
-  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  background: var(--ui-surface-floating-bg);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
+  border: 1px solid var(--ui-border-strong-border);
   border-radius: 12px;
   padding: 4px;
   box-shadow: var(--shadow-floating);
@@ -160,7 +160,7 @@ html[data-theme='light'] .selection-toolbar {
     0 0 0 1px rgba(0, 0, 0, 0.05),
     0 4px 6px -1px rgba(0, 0, 0, 0.1),
     0 12px 24px -4px rgba(0, 0, 0, 0.15),
-    0 0 40px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 6%, transparent);
+    0 0 40px color-mix(in srgb, var(--ui-accent-primary-fg) 6%, transparent);
 }
 
 .toolbar-divider {
@@ -181,7 +181,7 @@ html[data-theme='light'] .toolbar-divider {
   padding: 8px 12px;
   border: none;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
   font-weight: 500;
   border-radius: 8px;
@@ -191,8 +191,8 @@ html[data-theme='light'] .toolbar-divider {
 }
 
 .toolbar-btn:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 15%, transparent);
+  color: var(--ui-accent-primary-fg);
   transform: translateY(-1px);
 }
 

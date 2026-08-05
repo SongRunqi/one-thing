@@ -839,7 +839,7 @@ onBeforeUnmount(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
   appearance: none;
   -webkit-app-region: no-drag;
 }
@@ -889,7 +889,7 @@ onBeforeUnmount(() => {
 }
 
 .splitter-resizer:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 60%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg) 60%, transparent);
   outline-offset: -2px;
 }
 </style>

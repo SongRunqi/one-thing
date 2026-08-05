@@ -636,7 +636,7 @@ async function save(): Promise<void> {
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .field-label em {
@@ -653,22 +653,22 @@ async function save(): Promise<void> {
   font-size: 13px;
   padding: 4px 0 5px;
   border: none;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   border-radius: 0;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
   transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 /* Element-qualified so the underline reads as a caret surface, not a box. */
 input.field-input:focus {
   outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg);
   box-shadow: none;
 }
 
 .field-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* P3: the three dropdowns are `<Select variant="underline" z-layer="modal">`.
@@ -678,14 +678,14 @@ input.field-input:focus {
 
 .field-hint {
   font-size: 11px;
-  color: var(--ui-text-faint-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* 痕迹级: a fact the room grew, not a control. Same register as the typing
    line — 11px 墨灰, no box, no colour. */
 .spend-line {
   font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -704,7 +704,7 @@ input.field-input:focus {
   text-align: left;
   font: inherit;
   font-size: 13px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-default);
 }
@@ -716,41 +716,41 @@ input.field-input:focus {
   top: 50%;
   width: 7px;
   height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
   transition: width var(--duration-fast) var(--ease-default), height var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .member-line:hover {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .member-line:hover::before {
-  background: var(--ui-text-muted-fg, var(--text-muted));
+  background: var(--ui-text-muted-fg);
 }
 
 /* 只读名册行:同一条画线,但不是按钮 —— 去掉指针与 hover 提亮,墨色直接给到
    正文档(它陈述的是事实,不是一个"选中"状态)。 */
 .member-line.is-static {
   cursor: default;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .member-line.is-static:hover::before {
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  background: var(--ui-border-strong-border);
 }
 
 .member-line.is-on {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .member-line.is-on::before {
   width: 10px;
   height: 2px;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 .member-line:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 1px;
 }
 
@@ -764,7 +764,7 @@ input.field-input:focus {
   min-width: 1.4em;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .order-actions {
@@ -781,13 +781,13 @@ input.field-input:focus {
   font: inherit;
   font-size: 12px;
   line-height: 1.4;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-default);
 }
 
 .order-button:hover:not(:disabled) {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg);
 }
 
 .order-button:disabled {
@@ -796,7 +796,7 @@ input.field-input:focus {
 }
 
 .order-button:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline: 1px solid var(--ui-accent-primary-fg);
   outline-offset: 1px;
 }
 
@@ -810,7 +810,7 @@ input.field-input:focus {
 .member-title {
   flex-shrink: 0;
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* 危险区:同一套画线语言,只把墨色换成告警色 —— 不加框、不填色,与整张表
@@ -818,15 +818,15 @@ input.field-input:focus {
 .danger-zone {
   margin-top: 4px;
   padding-top: 12px;
-  border-top: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-top: 1px solid var(--ui-border-strong-border);
 }
 
 .member-line.is-danger {
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
 }
 
 .member-line.is-danger:hover::before {
-  background: var(--ui-status-danger-fg, var(--text-error));
+  background: var(--ui-status-danger-fg);
 }
 
 .danger-note {
@@ -835,7 +835,7 @@ input.field-input:focus {
 
 .danger-note strong {
   font-weight: 600;
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
 }
 
 /* Lands on a `Checkbox` root: layout only, never paint — the component's own
@@ -854,7 +854,7 @@ input.field-input:focus {
 .room-error {
   margin: 0;
   font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg);
 }
 
 /* Footer and danger-zone buttons are `.app-dialog-text-btn` (+ `is-primary` /

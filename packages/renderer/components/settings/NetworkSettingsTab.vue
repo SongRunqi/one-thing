@@ -167,7 +167,7 @@ async function testProxy() {
 .test-btn:disabled {
   cursor: not-allowed;
   border-style: dashed;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
 }
 
 .test-result {
@@ -178,10 +178,10 @@ async function testProxy() {
 }
 
 .test-result.success {
-  color: var(--ui-status-success-fg, var(--success, #22a06b));
+  color: var(--ui-status-success-fg, var(--success));
 }
 
 .test-result.error {
-  color: var(--ui-status-danger-fg, var(--danger, #d94848));
+  color: var(--ui-status-danger-fg, var(--danger));
 }
 </style>

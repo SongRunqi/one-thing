@@ -186,11 +186,11 @@ const progressStyle = computed<StyleValue>(() => ({
 
 <style scoped>
 .app-progress {
-  --app-progress-track-bg: var(--ui-surface-subtle-bg, var(--ui-surface-panel-bg, var(--panel)));
-  --app-progress-track-border: var(--ui-border-subtle-border, var(--ui-border-default-border, var(--border)));
-  --app-progress-text-fg: var(--ui-text-secondary-fg, var(--text-secondary));
-  --app-progress-inside-text-fg: var(--ui-text-inverse-fg, var(--bg-app));
-  --app-progress-radial-text-fg: var(--ui-text-primary-fg, var(--text));
+  --app-progress-track-bg: var(--ui-surface-panel-bg);
+  --app-progress-track-border: var(--ui-border-subtle-border, var(--ui-border-default-border));
+  --app-progress-text-fg: var(--ui-text-secondary-fg);
+  --app-progress-inside-text-fg: var(--ui-text-inverse-fg, var(--ui-surface-app-bg));
+  --app-progress-radial-text-fg: var(--ui-text-primary-fg);
 
   display: inline-flex;
   max-width: 100%;
@@ -317,11 +317,11 @@ const progressStyle = computed<StyleValue>(() => ({
 .app-progress.is-striped .app-progress-line-bar {
   background-image: linear-gradient(
     45deg,
-    color-mix(in srgb, var(--ui-text-inverse-fg, var(--bg-app)) 18%, transparent) 25%,
+    color-mix(in srgb, var(--ui-text-inverse-fg, var(--ui-surface-app-bg)) 18%, transparent) 25%,
     transparent 25%,
     transparent 50%,
-    color-mix(in srgb, var(--ui-text-inverse-fg, var(--bg-app)) 18%, transparent) 50%,
-    color-mix(in srgb, var(--ui-text-inverse-fg, var(--bg-app)) 18%, transparent) 75%,
+    color-mix(in srgb, var(--ui-text-inverse-fg, var(--ui-surface-app-bg)) 18%, transparent) 50%,
+    color-mix(in srgb, var(--ui-text-inverse-fg, var(--ui-surface-app-bg)) 18%, transparent) 75%,
     transparent 75%,
     transparent
   );

@@ -84,8 +84,8 @@ defineEmits<{
   --app-button-height: 24px;
   --app-button-min-width: 24px;
   --app-button-padding-x: 0;
-  --app-button-hover-fill: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
-  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  --app-button-hover-fill: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg));
+  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
@@ -99,7 +99,7 @@ defineEmits<{
   background: transparent;
   color: var(
     --ui-sidebar-action-fg,
-    color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 88%, transparent)
+    color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--ui-sidebar-item-fg))) 88%, transparent)
   );
   cursor: pointer;
   -webkit-app-region: no-drag;
@@ -107,8 +107,8 @@ defineEmits<{
 }
 
 .sidebar-action-btn:hover {
-  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
-  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg));
+  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg));
 }
 
 .sidebar-action-btn:active {
@@ -117,7 +117,7 @@ defineEmits<{
 
 .sidebar-action-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
 }
 
 .sidebar-action-group.is-sidebar {

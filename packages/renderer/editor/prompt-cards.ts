@@ -229,10 +229,10 @@ class PromptRefWidget extends WidgetType {
       'flex-direction: column',
       'gap: 7px',
       'padding: 10px 11px',
-      'border: 1px solid var(--ui-border-default-border, var(--border))',
+      'border: 1px solid var(--ui-border-default-border)',
       'border-radius: 8px',
-      'background: var(--ui-surface-panel-bg, var(--panel, var(--bg)))',
-      'color: var(--ui-text-primary-fg, var(--text))',
+      'background: var(--ui-surface-panel-bg)',
+      'color: var(--ui-text-primary-fg)',
       'box-shadow: 0 16px 42px rgba(0, 0, 0, 0.22)',
       'z-index: var(--z-max)',
       'white-space: normal',
@@ -247,7 +247,7 @@ class PromptRefWidget extends WidgetType {
     if (this.card.description) {
       const description = document.createElement('span')
       description.textContent = this.card.description
-      description.style.cssText = 'color: var(--ui-text-muted-fg, var(--muted)); font-size: 12px;'
+      description.style.cssText = 'color: var(--ui-text-muted-fg); font-size: 12px;'
       popover.appendChild(description)
     }
 

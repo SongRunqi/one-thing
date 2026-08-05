@@ -88,7 +88,7 @@ const hoverTitle = computed(() => {
 <style scoped>
 /* 样板 `.sb .r`:30px 行高、6px 圆角、左右 8px 外边距,hover 才有 4.5% 的极淡
    填充,当前项 7.5% 且转墨色。一条线都不画 —— 这正是样板"少放颜色和线"的那一层。
-   墨阶按比例从 `--sidebar-row-ink` 派生(整棵 sidebar 共用的那条派生链),
+   墨阶由主题层派生成 `--ui-sidebar-rail-*`(整棵 sidebar 共用的那条派生链),
    于是任何主题下 当前项 > 行文 > 副文 的对比关系都成立。 */
 .work-card {
   display: flex;
@@ -106,14 +106,14 @@ const hoverTitle = computed(() => {
   line-height: 1.45;
   text-align: left;
   white-space: nowrap;
-  color: var(--sidebar-row-fg, var(--text));
+  color: var(--sidebar-row-fg, var(--ui-text-primary-fg));
   cursor: pointer;
 }
 
 .work-card:hover,
 .work-card:focus-visible {
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 4.5%, transparent);
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  background: var(--ui-sidebar-rail-hover-bg);
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
 .work-card:focus-visible {
@@ -121,8 +121,8 @@ const hoverTitle = computed(() => {
 }
 
 .work-card.is-active {
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 7.5%, transparent);
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  background: var(--ui-sidebar-rail-active-bg);
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   font-weight: 500;
 }
 
@@ -132,15 +132,15 @@ const hoverTitle = computed(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 47%, transparent);
+  background: var(--ui-sidebar-rail-muted-fg);
 }
 
 .work-card-dot.run {
-  background: var(--ui-status-success-fg, var(--color-success, #4a7c3f));
+  background: var(--ui-status-success-fg, var(--color-success));
 }
 
 .work-card-dot.wait {
-  background: var(--ui-status-warning-fg, var(--color-warning, #b06c1f));
+  background: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 /* 「此刻在动」让那一枚点跳,不另加记号。 */
@@ -160,7 +160,7 @@ const hoverTitle = computed(() => {
 .work-card-meta {
   flex: 0 0 auto;
   font-size: 12px;
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 47%, transparent);
+  color: var(--ui-sidebar-rail-muted-fg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -171,7 +171,7 @@ const hoverTitle = computed(() => {
   height: 5px;
   margin-left: 0;
   border-radius: 50%;
-  background: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  background: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   opacity: 0.6;
 }
 

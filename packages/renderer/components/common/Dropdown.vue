@@ -207,8 +207,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleMenuKey, true)
    合流后这里是唯一一份。 */
 .app-context-menu.is-surface {
   padding: 6px;
-  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
+  border: 1px solid var(--ui-border-subtle-border);
   border-radius: 10px;
   box-shadow: var(--ui-surface-tooltip-shadow);
 }
@@ -228,7 +228,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleMenuKey, true)
   font-size: 12.5px;
   text-align: left;
   white-space: nowrap;
-  color: var(--ui-text-secondary-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-secondary-fg, var(--ui-text-muted-fg));
   cursor: pointer;
   transition:
     background var(--duration-fast, 0.12s) var(--ease-default, ease),
@@ -252,17 +252,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleMenuKey, true)
 .app-context-item:hover:not(:disabled),
 .app-context-item:focus-visible:not(:disabled) {
   outline: none;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   background: color-mix(
     in srgb,
-    var(--ui-surface-menu-hover-bg, var(--ui-text-primary-fg, var(--text))) 88%,
-    var(--ui-text-primary-fg, var(--text))
+    var(--ui-surface-menu-hover-bg, var(--ui-text-primary-fg)) 88%,
+    var(--ui-text-primary-fg)
   );
 }
 
 .app-context-item:hover:not(:disabled)::before,
 .app-context-item:focus-visible:not(:disabled)::before {
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
 }
 
 .app-context-item.danger {
@@ -289,6 +289,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleMenuKey, true)
 .app-context-divider {
   height: 1px;
   margin: 4px 6px;
-  background: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: var(--ui-border-subtle-border);
 }
 </style>

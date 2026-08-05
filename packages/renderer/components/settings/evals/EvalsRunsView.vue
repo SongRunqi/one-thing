@@ -608,12 +608,12 @@ function handleCancelRun() {
 }
 
 .evals-action-btn.danger {
-  color: var(--ui-status-danger-fg, #b3403a);
-  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #b3403a));
+  color: var(--ui-status-danger-fg);
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
 }
 
 .evals-action-btn.danger:hover {
-  border-color: var(--ui-status-danger-fg, #b3403a);
+  border-color: var(--ui-status-danger-fg);
 }
 
 .evals-run-case-list {
@@ -657,7 +657,7 @@ function handleCancelRun() {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 0 8px 10px;
-  border-left: 2px solid var(--ui-status-success-fg, #27ae60);
+  border-left: 2px solid var(--ui-status-success-fg);
   border-bottom: 1px solid var(--settings-rule-soft);
   font-size: 13px;
 }
@@ -889,22 +889,22 @@ function handleCancelRun() {
 
 /* Regression state lives in a left ink rule, not a filled row */
 .evals-compare-table tr.improved td:first-child {
-  box-shadow: inset 2px 0 0 var(--ui-status-success-fg, #27ae60);
+  box-shadow: inset 2px 0 0 var(--ui-status-success-fg);
   padding-left: 8px;
 }
 
 .evals-compare-table tr.regressed td:first-child {
-  box-shadow: inset 2px 0 0 var(--ui-status-danger-fg, #b3403a);
+  box-shadow: inset 2px 0 0 var(--ui-status-danger-fg);
   padding-left: 8px;
 }
 
 .evals-delta-pos {
-  color: var(--ui-status-success-fg, #27ae60);
+  color: var(--ui-status-success-fg);
   font-weight: 600;
 }
 
 .evals-delta-neg {
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
   font-weight: 600;
 }
 
@@ -924,7 +924,7 @@ function handleCancelRun() {
 }
 
 .evals-form-input,
-.evals-form-input:focus {
+input.evals-form-input:focus {
   outline: none;
   border-color: var(--settings-accent);
 }

@@ -313,7 +313,7 @@ function handleMoreSelect(id: string): void {
      多缩进一截。 */
   padding: 0 16px 0 calc(16px + var(--shell-lights-overhang, 0px));
   min-width: 0;
-  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-bottom: 1px solid var(--ui-border-subtle-border);
   -webkit-app-region: drag;
 }
 
@@ -323,7 +323,7 @@ function handleMoreSelect(id: string): void {
 }
 
 .room-hash {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 15px;
   line-height: 1;
   flex-shrink: 0;
@@ -332,7 +332,7 @@ function handleMoreSelect(id: string): void {
 .room-name {
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -344,9 +344,9 @@ function handleMoreSelect(id: string): void {
   min-width: 0;
   padding-left: 10px;
   margin-left: 2px;
-  border-left: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border-left: 1px solid var(--ui-border-subtle-border);
   font-size: 11.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -375,7 +375,7 @@ function handleMoreSelect(id: string): void {
 }
 
 .room-solo-open:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-state-hover-bg);
 }
 
 /* 「可点」提示(agent-space-workbench.md P3):整块起底之外,头像上再长一圈
@@ -394,11 +394,11 @@ function handleMoreSelect(id: string): void {
 
 .room-solo-open:hover .room-solo-avatar-wrap,
 .room-solo-open:focus-visible .room-solo-avatar-wrap {
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 22%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-text-primary-fg) 22%, transparent);
 }
 
 .room-solo-open:active .room-solo-avatar-wrap {
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 18%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-text-primary-fg) 18%, transparent);
 }
 
 .room-solo-text {
@@ -411,7 +411,7 @@ function handleMoreSelect(id: string): void {
   display: block;
   font-size: 13px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -421,31 +421,31 @@ function handleMoreSelect(id: string): void {
   display: block;
   font-style: normal;
   font-size: 10.5px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .room-solo-presence.is-busy {
-  color: var(--ui-status-success-fg, var(--text-success));
+  color: var(--ui-status-success-fg);
 }
 
 .room-head-work {
   flex-shrink: 0;
   padding: 1px 6px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  border: 1px solid var(--ui-border-subtle-border);
   border-radius: 3px;
   background: transparent;
   cursor: pointer;
   font-family: var(--font-mono, monospace);
   font-size: 10px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .room-head-work:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  color: var(--ui-text-primary-fg);
+  border-color: var(--ui-border-strong-border);
 }
 
 /* ── 动作 ── */
@@ -468,16 +468,16 @@ function handleMoreSelect(id: string): void {
   border-radius: var(--radius-xs, 4px);
   background: transparent;
   cursor: pointer;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .room-head-icon:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 .room-head-icon.is-on {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 .room-head-sidebar {

@@ -1173,36 +1173,36 @@ defineExpose({
   height: 100%;
   min-width: 0;
   min-height: 0;
-  --workbench-accent: var(--ui-status-info-fg, var(--color-info, #39586f));
-  --workbench-line: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent);
-  --workbench-tool-card-bg: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  --workbench-accent: var(--ui-status-info-fg, var(--color-info));
+  --workbench-line: color-mix(in srgb, var(--ui-border-strong-border) 85%, transparent);
+  --workbench-tool-card-bg: var(--ui-surface-elevated-bg);
   --workbench-tool-card-hover-bg: color-mix(
     in srgb,
     var(--workbench-tool-card-bg) 90%,
-    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent))) 10%
+    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg)) 10%
   );
   --workbench-tool-card-active-bg: color-mix(
     in srgb,
     var(--workbench-tool-card-bg) 87%,
-    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent))) 13%
+    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg)) 13%
   );
   --workbench-tool-card-border: color-mix(
     in srgb,
-    var(--ui-border-default-border, var(--border)) 84%,
-    var(--ui-text-muted-fg, var(--muted)) 16%
+    var(--ui-border-default-border) 84%,
+    var(--ui-text-muted-fg) 16%
   );
   --workbench-tool-card-hover-border: color-mix(
     in srgb,
     var(--workbench-tool-card-border) 76%,
-    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent))) 24%
+    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg)) 24%
   );
   --workbench-tool-card-active-border: color-mix(
     in srgb,
     var(--workbench-tool-card-border) 68%,
-    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent))) 32%
+    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg)) 32%
   );
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-panel-bg);
+  color: var(--ui-text-primary-fg);
 }
 
 :deep(.right-workbench-body),
@@ -1219,7 +1219,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   border-radius: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* Empty state has no tab header to host the button, so it floats. */
@@ -1232,8 +1232,8 @@ defineExpose({
 
 /* 裸图标钮的 hover 用 8% ink 淡染(主题对称),整块 hover-bg 在这块画线面板上过重 */
 .workbench-close:hover {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
+  color: var(--ui-text-primary-fg);
 }
 
 .right-workbench-tabs {
@@ -1316,20 +1316,20 @@ defineExpose({
 }
 
 .workbench-tab-dot.is-run {
-  background: var(--ui-status-success-fg, var(--color-success, #4d6108));
+  background: var(--ui-status-success-fg, var(--color-success));
 }
 
 .workbench-tab-dot.is-wait {
-  background: var(--ui-status-warning-fg, var(--color-warning, #b3711f));
+  background: var(--ui-status-warning-fg, var(--color-warning));
 }
 
 .workbench-tab-dot.is-new {
-  background: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-text-primary-fg);
 }
 
 /* 死信:与 wait 分开的一档 —— 等你放行是正常流程的一步,炸了不是。 */
 .workbench-tab-dot.is-fault {
-  background: var(--ui-status-danger-fg, var(--color-danger, #a33));
+  background: var(--ui-status-danger-fg, var(--color-danger));
 }
 
 .workbench-tab-label svg,
@@ -1359,9 +1359,9 @@ defineExpose({
   right: 8px;
   width: min(220px, calc(100% - 16px));
   padding: 6px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 0;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-elevated-bg);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
 }
 
@@ -1369,7 +1369,7 @@ defineExpose({
   --app-button-fill: transparent;
   --app-button-hover-fill: var(--workbench-tool-card-hover-bg);
   --app-button-hover-border: var(--workbench-tool-card-hover-border);
-  --app-button-hover-fg: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  --app-button-hover-fg: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg));
   --app-button-hover-shadow: none;
   width: 100%;
   height: 30px;
@@ -1378,7 +1378,7 @@ defineExpose({
   gap: 9px;
   padding: 0 9px;
   border-radius: 0;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
   text-align: left;
   transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
@@ -1386,7 +1386,7 @@ defineExpose({
 
 .right-workbench .picker-option:hover {
   background: var(--workbench-tool-card-hover-bg);
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg));
   box-shadow: none;
 }
 
@@ -1394,7 +1394,7 @@ defineExpose({
 .right-workbench .picker-option:focus-visible svg,
 .right-workbench .empty-action:hover svg,
 .right-workbench .empty-action:focus-visible svg {
-  color: var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--workbench-tool-icon-color, var(--ui-accent-primary-fg));
   opacity: 1;
   transform: scale(1.1);
 }
@@ -1414,7 +1414,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 13px;
 }
 
@@ -1438,7 +1438,7 @@ defineExpose({
 }
 
 .workbench-empty-title {
-  color: var(--ledger-label-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ledger-label-fg, var(--ui-text-muted-fg));
   font-family: var(--ledger-label-font, var(--font-mono, monospace));
   font-size: var(--ledger-label-size, 10px);
   font-weight: var(--ledger-label-weight, 600);
@@ -1447,7 +1447,7 @@ defineExpose({
 }
 
 .workbench-empty-hint {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-size: 12px;
 }
 
@@ -1460,10 +1460,10 @@ defineExpose({
    the grey card blocks were the most default-looking elements on screen. */
 .right-workbench .empty-action {
   --app-button-fill: transparent;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
+  --app-button-hover-fill: var(--ui-state-hover-bg);
   --app-button-border: transparent;
   --app-button-hover-border: transparent;
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-hover-fg: var(--ui-text-primary-fg);
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
   width: 100%;
@@ -1477,9 +1477,9 @@ defineExpose({
   min-width: 0;
   padding: 0 4px;
   border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 55%, transparent);
   border-radius: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   background: transparent;
   font-size: 12px;
   transition:
@@ -1492,7 +1492,7 @@ defineExpose({
   counter-increment: wb-tool;
   content: counter(wb-tool, decimal-leading-zero);
   flex: 0 0 auto;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
@@ -1509,7 +1509,7 @@ defineExpose({
 .right-workbench .empty-action:hover {
   border-color: var(--workbench-tool-card-hover-border);
   background: var(--workbench-tool-card-hover-bg);
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg));
   box-shadow: none;
 }
 
@@ -1541,7 +1541,7 @@ defineExpose({
     linear-gradient(var(--workbench-line), var(--workbench-line)) bottom 2px left 10px / 1px 10px no-repeat,
     linear-gradient(var(--workbench-line), var(--workbench-line)) bottom 2px right 2px / 10px 1px no-repeat,
     linear-gradient(var(--workbench-line), var(--workbench-line)) bottom 2px right 2px / 1px 10px no-repeat,
-    var(--ui-surface-panel-bg, var(--bg-panel));
+    var(--ui-surface-panel-bg);
 }
 
 .browser-toolbar {
@@ -1551,19 +1551,19 @@ defineExpose({
   align-items: center;
   gap: 8px;
   padding: 8px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border-top: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-panel-bg);
 }
 
 .browser-toolbar input {
   flex: 1 1 auto;
   min-width: 0;
   height: 28px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 0;
   padding: 0 9px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-app-bg);
+  color: var(--ui-text-primary-fg);
   outline: none;
 }
 
@@ -1578,18 +1578,18 @@ defineExpose({
   align-items: center;
   justify-content: center;
   border-radius: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 .browser-go:hover {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
+  color: var(--ui-text-primary-fg);
 }
 
 .browser-toolbar {
   order: -1;
   border-top: 0;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
 }
 
 .browser-frame {

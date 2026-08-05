@@ -268,8 +268,8 @@ function onDrop(e: DragEvent) {
 .tab-item {
   /* 主题把 tab-bar-item-active-border 定义为 transparent(胶囊时代无边框),
      底标直接取 accent 墨色。 */
-  --tab-ink: var(--ui-accent-primary-fg, var(--accent));
-  --tab-paper: var(--ui-tab-bar-surface-bg, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg-panel))));
+  --tab-ink: var(--ui-accent-primary-fg);
+  --tab-paper: var(--ui-tab-bar-surface-bg, var(--ui-surface-chat-bg));
   position: relative;
   flex: 0 0 auto;
   align-self: stretch;
@@ -282,7 +282,7 @@ function onDrop(e: DragEvent) {
   font-size: 12.5px;
   font-weight: 400;
   line-height: 1;
-  color: var(--ui-tab-bar-item-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-tab-bar-item-fg, var(--ui-text-muted-fg));
   background: transparent;
   transition: color var(--duration-fast) var(--ease-default);
   -webkit-app-region: no-drag;
@@ -321,17 +321,17 @@ function onDrop(e: DragEvent) {
 }
 
 .tab-item:hover {
-  color: var(--ui-tab-bar-item-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  color: var(--ui-tab-bar-item-hover-fg, var(--ui-text-primary-fg));
 }
 
 .tab-item:hover:not(.active)::after {
-  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 75%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg) 75%, transparent);
 }
 
 /* active 只靠色深 + 朱砂实线 + 图标满描区分,不改字重 ——
    字重 400→500 会加宽短标题、把后续页签整条右推(选中即跳版)。 */
 .tab-item.active {
-  color: var(--ot-active-text, var(--ui-text-primary-fg, var(--text)));
+  color: var(--ot-active-text, var(--ui-text-primary-fg));
 }
 
 .tab-item.active::after {
@@ -404,7 +404,7 @@ function onDrop(e: DragEvent) {
   border-radius: 0;
   background: transparent;
   outline: none;
-  color: var(--ot-active-text, var(--ui-text-primary-fg, var(--text)));
+  color: var(--ot-active-text, var(--ui-text-primary-fg));
   font: inherit;
   -webkit-app-region: no-drag;
 }
@@ -413,7 +413,7 @@ function onDrop(e: DragEvent) {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-accent-primary-fg);
   flex: 0 0 7px;
 }
 
@@ -434,7 +434,7 @@ function onDrop(e: DragEvent) {
   background: linear-gradient(to right, transparent, var(--tab-paper) 38%);
   -webkit-app-region: no-drag;
   border-radius: 0;
-  color: var(--ui-tab-bar-action-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-tab-bar-action-fg, var(--ui-text-muted-fg));
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -450,6 +450,6 @@ function onDrop(e: DragEvent) {
 
 .tab-close:hover {
   opacity: 1;
-  color: var(--ui-tab-bar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  color: var(--ui-tab-bar-action-hover-fg, var(--ui-text-primary-fg));
 }
 </style>

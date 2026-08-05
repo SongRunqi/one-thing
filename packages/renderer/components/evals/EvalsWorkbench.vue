@@ -666,8 +666,8 @@ function shorten(text: string, max: number): string {
   flex-direction: column;
   border-radius: 14px;
   overflow: hidden;
-  background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-app-bg);
+  border: 1px solid var(--ui-border-default-border);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
@@ -676,7 +676,7 @@ function shorten(text: string, max: number): string {
   align-items: center;
   justify-content: space-between;
   padding: 12px 18px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
 }
 
 .wb-title {
@@ -690,13 +690,13 @@ function shorten(text: string, max: number): string {
 .wb-count {
   font-size: 12px;
   font-weight: 400;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .wb-close {
   border: none;
   background: transparent;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   font-size: 15px;
   cursor: pointer;
   padding: 4px 8px;
@@ -704,7 +704,7 @@ function shorten(text: string, max: number): string {
 }
 
 .wb-close:hover {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-elevated-bg);
 }
 
 .wb-body {
@@ -717,7 +717,7 @@ function shorten(text: string, max: number): string {
   width: 280px;
   flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid var(--ui-border-default-border, var(--border));
+  border-right: 1px solid var(--ui-border-default-border);
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -731,16 +731,16 @@ function shorten(text: string, max: number): string {
   border-radius: 8px;
   padding: 8px 10px;
   cursor: pointer;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--ui-text-primary-fg);
 }
 
 .wb-list-item:hover {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-elevated-bg);
 }
 
 .wb-list-item.active {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border-color: var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-elevated-bg);
+  border-color: var(--ui-border-default-border);
 }
 
 .wb-item-title {
@@ -760,13 +760,13 @@ function shorten(text: string, max: number): string {
 
 .wb-item-date {
   font-size: 10.5px;
-  color: var(--ui-text-muted-fg, var(--text-secondary));
+  color: var(--ui-text-muted-fg, var(--ui-text-secondary-fg));
 }
 
 .wb-item-preview {
   margin-top: 3px;
   font-size: 11px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -776,21 +776,21 @@ function shorten(text: string, max: number): string {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  background: var(--ui-surface-elevated-bg);
+  border: 1px solid var(--ui-border-default-border);
+  color: var(--ui-text-secondary-fg);
 }
 
 .wb-badge.status.diagnosed,
 .wb-badge.status.case-created,
 .wb-badge.status.fixed {
   background: var(--ui-status-success-bg);
-  color: var(--ui-status-success-fg, #27ae60);
+  color: var(--ui-status-success-fg);
 }
 
 .wb-badge.status.new {
   background: var(--ui-status-danger-bg);
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 
 .wb-detail {
@@ -811,15 +811,15 @@ function shorten(text: string, max: number): string {
 .wb-btn {
   padding: 5px 12px;
   border-radius: 7px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  border: 1px solid var(--ui-border-default-border);
+  background: var(--ui-surface-elevated-bg);
+  color: var(--ui-text-primary-fg);
   font-size: 12px;
   cursor: pointer;
 }
 
 .wb-btn:hover:not(:disabled) {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-elevated-bg);
 }
 
 .wb-btn:disabled {
@@ -848,7 +848,7 @@ function shorten(text: string, max: number): string {
 .wb-tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-bottom: 1px solid var(--ui-border-default-border);
   margin-bottom: 14px;
 }
 
@@ -856,15 +856,15 @@ function shorten(text: string, max: number): string {
   padding: 7px 16px;
   border: none;
   background: transparent;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   font-size: 13px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
 }
 
 .wb-tab.active {
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  border-bottom-color: var(--ui-action-primary-bg, var(--accent));
+  color: var(--ui-text-primary-fg);
+  border-bottom-color: var(--ui-action-primary-bg, var(--ui-accent-primary-fg));
 }
 
 .wb-pane {
@@ -876,14 +876,14 @@ function shorten(text: string, max: number): string {
 .wb-cover {
   padding: 14px 16px;
   border-radius: 10px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-elevated-bg);
+  border: 1px solid var(--ui-border-default-border);
 }
 
 .wb-section-title {
   margin: 14px 0 4px;
   font-size: 12.5px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -896,10 +896,10 @@ function shorten(text: string, max: number): string {
 }
 
 .wb-prompt-section {
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
   padding: 6px 10px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-elevated-bg);
 }
 
 .wb-prompt-section summary {
@@ -912,7 +912,7 @@ function shorten(text: string, max: number): string {
 
 .wb-hash {
   font-size: 10.5px;
-  color: var(--ui-text-muted-fg, var(--text-secondary));
+  color: var(--ui-text-muted-fg, var(--ui-text-secondary-fg));
   font-family: var(--font-mono, monospace);
 }
 
@@ -924,7 +924,7 @@ function shorten(text: string, max: number): string {
   word-break: break-word;
   max-height: 320px;
   overflow: auto;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
 }
 
 .wb-replay-controls {
@@ -935,8 +935,8 @@ function shorten(text: string, max: number): string {
   font-size: 12.5px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-elevated-bg);
+  border: 1px solid var(--ui-border-default-border);
 }
 
 /* P3: the two dropdowns are `<Select>`; these rules only seat them next to
@@ -977,21 +977,21 @@ function shorten(text: string, max: number): string {
 
 .wb-verdict.pass {
   background: var(--ui-status-success-bg);
-  color: var(--ui-status-success-fg, #27ae60);
+  color: var(--ui-status-success-fg);
 }
 
 .wb-verdict.fail {
   background: var(--ui-status-danger-bg);
-  color: var(--ui-status-danger-fg, #b3403a);
+  color: var(--ui-status-danger-fg);
 }
 
 .wb-verdict.na {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  background: var(--ui-surface-elevated-bg);
+  color: var(--ui-text-secondary-fg);
 }
 
 .wb-run-row {
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -1003,7 +1003,7 @@ function shorten(text: string, max: number): string {
   padding: 8px 12px;
   font-size: 12px;
   cursor: pointer;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-elevated-bg);
 }
 
 .wb-run-attempts {
@@ -1021,13 +1021,13 @@ function shorten(text: string, max: number): string {
 
 .wb-diag-step {
   font-size: 12px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  color: var(--ui-text-secondary-fg);
   padding: 4px 10px;
-  border-left: 2px solid var(--ui-border-default-border, var(--border));
+  border-left: 2px solid var(--ui-border-default-border);
 }
 
 .wb-hint {
-  color: var(--ui-text-muted-fg, var(--text-secondary));
+  color: var(--ui-text-muted-fg, var(--ui-text-secondary-fg));
   font-size: 12.5px;
   padding: 14px;
   text-align: center;

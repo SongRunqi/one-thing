@@ -363,8 +363,8 @@ watch(
    owns its whole surface — mount points only position it. */
 .tool-step-details {
   --tool-pane-max: clamp(148px, 28vh, 240px);
-  --fig-line: color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 90%, transparent);
-  --fig-knockout: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  --fig-line: color-mix(in srgb, var(--ui-tool-border-border, var(--ui-tool-surface-border)) 90%, transparent);
+  --fig-knockout: var(--ui-surface-chat-bg);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -384,7 +384,7 @@ watch(
   max-width: calc(100% - 90px);
   padding: 0 7px;
   background: var(--fig-knockout);
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-fg);
   font-family: var(--tool-font-mono);
   font-size: 9.5px;
   font-weight: 650;
@@ -400,18 +400,18 @@ watch(
   left: auto;
   right: 10px;
   max-width: 40%;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
 }
 
 .fig-status { font-weight: 600; }
-.fig-status.ok { color: var(--ui-tool-success-text-fg, var(--tool-ok)); }
-.fig-status.bad { color: var(--ui-tool-danger-text-fg, var(--tool-del-bar)); }
-.fig-status.live { color: var(--ui-tool-accent-fg, var(--tool-accent)); }
-.fig-status.warn { color: var(--ui-status-warning-fg, var(--tool-accent)); }
-.fig-status.dim { color: var(--ui-tool-text-faint-fg, var(--tool-faint)); }
+.fig-status.ok { color: var(--ui-tool-success-text-fg); }
+.fig-status.bad { color: var(--ui-tool-danger-text-fg); }
+.fig-status.live { color: var(--ui-tool-accent-fg); }
+.fig-status.warn { color: var(--ui-status-warning-fg, var(--ui-tool-accent-fg)); }
+.fig-status.dim { color: var(--ui-tool-text-faint-fg); }
 
 .fig-cmd {
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
   line-height: var(--tool-code-line-height);
@@ -421,7 +421,7 @@ watch(
 
 .fig-cmd-ps {
   margin-right: 8px;
-  color: var(--ui-tool-accent-fg, var(--tool-accent));
+  color: var(--ui-tool-accent-fg);
 }
 
 .detail-section {
@@ -451,7 +451,7 @@ watch(
   align-items: center;
   gap: 6px;
   margin-bottom: 8px;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
   font-size: 9.5px;
   font-weight: 600;
@@ -465,7 +465,7 @@ pre {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 2px 0;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
   font-weight: 400;
@@ -483,25 +483,25 @@ pre {
 
 .summary {
   padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-tool-success-text-fg) 35%, transparent);
   background: transparent;
 }
 
 .error-text {
   max-width: 72ch;
   padding: 9px 12px;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-tool-danger-text-fg) 40%, transparent);
   background: transparent;
-  color: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 65%, var(--ui-tool-text-fg, var(--tool-ink)));
+  color: color-mix(in srgb, var(--ui-tool-danger-text-fg) 65%, var(--ui-tool-text-fg));
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
 }
 
 .rejection-text {
   padding: 9px 12px;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 38%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-tool-accent-fg) 38%, transparent);
   background: transparent;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
 }
@@ -518,7 +518,7 @@ pre {
 
 .error-details summary {
   cursor: pointer;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-sans);
   font-size: var(--tool-font-size-meta);
   font-weight: 400;
@@ -540,7 +540,7 @@ pre {
 }
 
 .detail-arg-key {
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-sans);
   font-size: var(--tool-font-size-meta);
   font-weight: 500;
@@ -555,7 +555,7 @@ pre {
   overscroll-behavior: contain;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);

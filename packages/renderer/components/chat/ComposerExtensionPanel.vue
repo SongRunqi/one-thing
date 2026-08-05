@@ -125,9 +125,9 @@ withDefaults(defineProps<{
  * draws exactly two lines, its frame and the hints rule.
  */
 .composer-extension-panel {
-  --composer-extension-frame: var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  --composer-extension-surface: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
-  --composer-extension-row-hover: var(--ui-state-hover-bg, var(--hover));
+  --composer-extension-frame: var(--ui-border-strong-border);
+  --composer-extension-surface: var(--ui-surface-chat-bg);
+  --composer-extension-row-hover: var(--ui-state-hover-bg);
   /* The soft tab stop: descriptions start on one invisible vertical edge, so
      the eye scans a column without a drawn rule to do it. */
   --composer-extension-tab-stop: 152px;
@@ -175,7 +175,7 @@ withDefaults(defineProps<{
   gap: 10px;
   padding: 0 6px;
   background: var(--composer-extension-surface);
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
@@ -214,16 +214,16 @@ withDefaults(defineProps<{
 
 .composer-extension-body:hover,
 .composer-extension-body:focus-within {
-  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 14%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg) 14%, transparent) transparent;
 }
 
 .composer-extension-body:hover::-webkit-scrollbar-thumb,
 .composer-extension-body:focus-within::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 14%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 14%, transparent);
 }
 
 .composer-extension-body::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 22%, transparent);
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 22%, transparent);
 }
 
 .composer-extension-message {
@@ -234,7 +234,7 @@ withDefaults(defineProps<{
   justify-content: center;
   gap: 2px;
   padding: 6px 14px 8px;
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 84%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 84%, transparent);
   font-size: 12px;
   text-align: center;
 }
@@ -248,7 +248,7 @@ withDefaults(defineProps<{
 }
 
 .composer-extension-message-hint {
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 62%, transparent);
+  color: color-mix(in srgb, var(--ui-text-muted-fg) 62%, transparent);
   font-size: 11px;
 }
 
@@ -263,7 +263,7 @@ withDefaults(defineProps<{
   margin-top: 6px;
   padding: 6px 12px 2px;
   border-top: 1px solid color-mix(in srgb, var(--composer-extension-frame) 16%, transparent);
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 9.5px;
   letter-spacing: 1px;
@@ -284,7 +284,7 @@ withDefaults(defineProps<{
   margin: 0 4px;
   padding: 5px 12px;
   border-radius: 3px;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg);
   cursor: pointer;
 }
 
@@ -302,13 +302,13 @@ withDefaults(defineProps<{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   line-height: 0;
 }
 
 :deep(.composer-extension-row:hover .composer-extension-row-icon),
 :deep(.composer-extension-row.selected .composer-extension-row-icon) {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* Slots two and three share a line — the tab stop keeps their boundary
@@ -334,7 +334,7 @@ withDefaults(defineProps<{
   flex: none;
   min-width: var(--composer-extension-tab-stop);
   padding-right: 14px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 12.5px;
   font-weight: 500;
@@ -343,7 +343,7 @@ withDefaults(defineProps<{
 
 :deep(.composer-extension-row:hover .composer-extension-row-title),
 :deep(.composer-extension-row.selected .composer-extension-row-title) {
-  color: var(--ui-text-strong-fg, var(--text));
+  color: var(--ui-text-primary-fg);
 }
 
 :deep(.composer-extension-row.selected .composer-extension-row-title) {
@@ -352,20 +352,20 @@ withDefaults(defineProps<{
 
 :deep(.composer-extension-row-description) {
   flex: 1 1 auto;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-size: 11.5px;
   line-height: 1.2;
 }
 
 :deep(.composer-extension-row.selected .composer-extension-row-description) {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
 }
 
 /* Slot four — the shortest true thing about the row (size, source, kind). */
 :deep(.composer-extension-row-meta) {
   flex: none;
   margin-left: 14px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
   font-size: 9.5px;
   letter-spacing: 0.5px;
@@ -379,7 +379,7 @@ withDefaults(defineProps<{
   flex: none;
   width: 1.2em;
   margin-left: 10px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-muted-fg);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
   line-height: 1.2;
