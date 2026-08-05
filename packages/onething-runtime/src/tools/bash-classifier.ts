@@ -19,10 +19,16 @@ export interface BashClassification {
 }
 
 // Read-only commands - auto-execute (allow)
+//
+// `env` / `printenv` are deliberately NOT here. They are read-only with respect
+// to the filesystem but they dump the whole process environment, and the shell
+// this classifier guards inherits it wholesale (getShellEnv in ./bash-executor)
+// — including whatever the user's login shell exported. "Read-only" is about
+// side effects; these two are a credential read, so they ask like any other.
 const READ_ONLY_COMMANDS = new Set([
   'cat', 'ls', 'pwd', 'cd', 'echo', 'grep', 'egrep', 'fgrep', 'find',
-  'head', 'tail', 'wc', 'file', 'which', 'whoami', 'date', 'env',
-  'printenv', 'less', 'more', 'diff', 'cmp', 'stat', 'du', 'df',
+  'head', 'tail', 'wc', 'file', 'which', 'whoami', 'date',
+  'less', 'more', 'diff', 'cmp', 'stat', 'du', 'df',
   'tree', 'realpath', 'dirname', 'basename', 'readlink', 'type',
   'man', 'help', 'uname', 'hostname',
   // Pure waiting, no side effects. Models habitually write `sleep 2 && <check>`
@@ -127,6 +133,21 @@ export function splitShellWords(input: string): string[] {
 
     if ((char === '"' || char === "'") && (!quote || quote === char)) {
       quote = quote ? null : char
+      continue
+    }
+
+    // A newline terminates a command exactly like `;`. It used to fall into the
+    // whitespace branch below, so every line of a multi-line script collapsed
+    // into ONE segment and only the first word was ever classified:
+    // `cat /etc/hosts\nrm -rf ~/project` classified as `cat` and auto-allowed.
+    // An escaped newline (line continuation) never reaches here — it is
+    // consumed by the `escaped` branch above, which is the correct reading.
+    if (!quote && (char === '\n' || char === '\r')) {
+      if (current) {
+        words.push(current)
+        current = ''
+      }
+      words.push(';')
       continue
     }
 
@@ -236,6 +257,60 @@ function commandRemovesRootOrHome(command: string): boolean {
 
 function hasOutputRedirection(command: string): boolean {
   return /[^<]>\s*[^>]|>>/.test(command)
+}
+
+/**
+ * Constructs whose payload this classifier cannot see.
+ *
+ * `echo $(cat ~/.ssh/id_rsa)` parses as head `echo` — a read-only command — and
+ * used to auto-execute. The same is true of backticks, process substitution and
+ * here-documents: the real command lives inside a construct we do not expand,
+ * so the head we classify is not the thing that runs.
+ *
+ * The honest answer for "I cannot analyse this" is `ask`, not `allow`. It is
+ * deliberately NOT `deny` — command substitution is ordinary shell, and denying
+ * it would push people to turn the guard off.
+ *
+ * Single quotes suppress every one of these, so the scan tracks quote state
+ * rather than pattern-matching the raw string. `$((…))` arithmetic is caught
+ * too; it is safe, but special-casing it would open a `$( (subshell) )` hole
+ * for a construct models rarely write, and an extra prompt is the cheap side.
+ */
+function findOpaqueConstruct(command: string): string | undefined {
+  let quote: '"' | "'" | null = null
+  let escaped = false
+
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]
+    const next = command[index + 1]
+
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === '\\' && quote !== "'") {
+      escaped = true
+      continue
+    }
+    if ((char === '"' || char === "'") && (!quote || quote === char)) {
+      quote = quote ? null : (char as '"' | "'")
+      continue
+    }
+
+    // Single quotes are literal all the way through.
+    if (quote === "'") continue
+
+    if (char === '`') return 'command substitution (`…`)'
+    if (char === '$' && next === '(') return 'command substitution ($(…))'
+
+    // The rest are only special outside quotes.
+    if (quote) continue
+
+    if ((char === '<' || char === '>') && next === '(') return 'process substitution'
+    if (char === '<' && next === '<') return 'here-document (<<)'
+  }
+
+  return undefined
 }
 
 /**
@@ -404,6 +479,18 @@ export function classifyBashCommand(command: string): BashClassification {
       commands,
       patterns: askPatterns,
       reason: commands.find(item => item.decision === 'ask')?.reason,
+    }
+  }
+
+  // Every segment looked harmless — but if the command hides a construct we
+  // cannot expand, the segments we classified are not the whole command.
+  const opaque = findOpaqueConstruct(command)
+  if (opaque) {
+    return {
+      decision: 'ask',
+      commands,
+      patterns: [getCommandPattern(command)],
+      reason: `Command contains ${opaque}, whose contents cannot be classified`,
     }
   }
 

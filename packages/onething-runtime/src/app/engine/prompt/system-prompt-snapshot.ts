@@ -12,6 +12,7 @@ import {
   createAgentProviderFromRuntime,
 } from '../../providers/agent-runtime.js'
 import { defaultAgent, findAgent } from '../../agents/index.js'
+import { resolveAgentProfileForSession } from '../../agents/profile.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
 import { getMCPRouterToolDefinition } from '../../mcp/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
@@ -138,6 +139,10 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     buildProjectDirsPromptVars,
     // persona 功能兜底(域模型 §3.3),与 system-prompt.ts 的 host 同一条规则。
     getAgent: (agentId?: string) => findAgent(agentId) ?? defaultAgent(),
+    // 走真回合那条解析(C2 工具面单点):agent 自带白名单 + 会话 kind 隐含的
+    // grant + dm 分格,一个都不能少 —— 否则这个面板会把 agent 调不到的工具
+    // 报成"已装配"。
+    getAgentToolAllowlist: () => resolveAgentProfileForSession(sessionId).tools,
     buildPrompt,
   })
 

@@ -238,6 +238,29 @@ function normalizeToolAllowlist(tools: unknown): string[] | undefined {
   return normalized.length > 0 ? normalized : undefined
 }
 
+/**
+ * Write-path variant of normalizeToolAllowlist.
+ *
+ * An explicit `[]` is the one input whose stored meaning is the *opposite* of
+ * how it reads: it normalizes to `undefined`, and `undefined` means "no
+ * allowlist" — which resolveAgentToolSurface reads as "every registered tool"
+ * (agents/profile.ts). So "give this agent no tools" silently became "give it
+ * all of them". The renderer guards against it, but IPC and HTTP write here
+ * directly, so the guard has to live at the store.
+ *
+ * `null` remains the documented way to clear an allowlist.
+ */
+function requireWritableToolAllowlist(tools: unknown, field: string): string[] | undefined {
+  const normalized = normalizeToolAllowlist(tools)
+  if (Array.isArray(tools) && !normalized) {
+    throw new Error(
+      `Agent "${field}" cannot be an empty list — an empty allowlist would grant every tool. `
+      + 'Send null to clear the allowlist, or name at least one tool.',
+    )
+  }
+  return normalized
+}
+
 function normalizeOptionalText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
@@ -410,7 +433,7 @@ export function createOnethingAgentStore(options: CreateOnethingAgentStoreOption
         ? current.tools
         : input.tools === null
           ? undefined
-          : normalizeToolAllowlist(input.tools),
+          : requireWritableToolAllowlist(input.tools, 'tools'),
       title: patchOptional(input.title, current.title, normalizeOptionalText),
       avatar: patchOptional(input.avatar, current.avatar, normalizeOptionalText),
       avatarImage: patchOptional(input.avatarImage, current.avatarImage, normalizeOptionalText),
@@ -515,7 +538,7 @@ export function createOnethingAgentStore(options: CreateOnethingAgentStoreOption
         id,
         name: input.name.trim() || 'Untitled Agent',
         systemPrompt: input.systemPrompt ?? '',
-        tools: normalizeToolAllowlist(input.tools),
+        tools: requireWritableToolAllowlist(input.tools, 'tools'),
         createdAt: timestamp,
         updatedAt: timestamp,
         title: normalizeOptionalText(input.title),

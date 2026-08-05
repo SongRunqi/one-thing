@@ -284,6 +284,9 @@ export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
     allowedDirectories: [],
     confirmDangerousCommands: true,
     dangerousCommandWhitelist: [],
+    // null = inherit process.env wholesale (historical behaviour). Opting into
+    // an allowlist is safe but not free — see BashToolSettings.envAllowlist.
+    envAllowlist: null,
   },
 }
 

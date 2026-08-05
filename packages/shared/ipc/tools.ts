@@ -149,6 +149,17 @@ export interface BashToolSettings {
   allowedDirectories: string[]        // List of allowed directories
   confirmDangerousCommands: boolean   // Whether to confirm dangerous commands
   dangerousCommandWhitelist: string[] // Commands to skip confirmation (e.g., "npm install")
+  /**
+   * Environment variables bash may see, on top of the baseline a shell needs
+   * (PATH/HOME/TERM/locale — see getShellEnv). Entries may end in `*` to take a
+   * family, e.g. `npm_config_*`.
+   *
+   * `null` (the default) inherits `process.env` wholesale, which on desktop
+   * carries everything the user's login shell exported — API keys included.
+   * Set a list to close that off; expect to name whatever your toolchains need
+   * (GH_TOKEN, HTTPS_PROXY, language-specific vars).
+   */
+  envAllowlist?: string[] | null
 }
 
 // Web Search settings

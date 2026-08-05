@@ -10,11 +10,23 @@ function configuredShellPath(): string | undefined {
     : undefined
 }
 
+/**
+ * Read per call, not once at module load: the user can tighten this while the
+ * app runs and the next command should honour it.
+ */
+function configuredEnvAllowlist(): string[] | null {
+  const allowlist = getSettings().tools?.bash?.envAllowlist
+  return Array.isArray(allowlist) ? allowlist : null
+}
+
 export const BashTool = createBashTool({
   getDefaultWorkingDirectory: () => getSettings().tools?.bash?.defaultWorkingDirectory,
   getToolOutputsDir,
   getShellPath: configuredShellPath,
-  createOperations: options => createLocalBashOperations(options),
+  createOperations: options => createLocalBashOperations({
+    ...options,
+    envAllowlist: configuredEnvAllowlist(),
+  }),
 })
 
 export { classifyCommand, parseCommand }

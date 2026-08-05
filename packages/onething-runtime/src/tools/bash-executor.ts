@@ -103,15 +103,60 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
   return { shell: process.env.SHELL || findBashOnPath() || '/bin/sh', args: ['-c'] }
 }
 
-export function getShellEnv(): NodeJS.ProcessEnv {
+/**
+ * Variables a shell needs to be a shell. Always inherited, even under an
+ * allowlist — an allowlist that drops PATH does not restrict the model, it just
+ * breaks every command and teaches the user to switch the setting back off.
+ * The Windows names are inert on POSIX and vice versa.
+ */
+const SHELL_ENV_BASELINE_KEYS: readonly string[] = [
+  'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'PWD', 'TZ',
+  'TMPDIR', 'TMP', 'TEMP', 'TERM', 'LANG', 'LC_ALL', 'LC_CTYPE',
+  'SystemRoot', 'SystemDrive', 'ComSpec', 'PATHEXT', 'windir',
+  'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramData', 'ProgramFiles',
+]
+
+function envKeyMatches(key: string, pattern: string): boolean {
+  return pattern.endsWith('*')
+    ? key.startsWith(pattern.slice(0, -1))
+    : key === pattern
+}
+
+/**
+ * The environment handed to bash.
+ *
+ * With no allowlist this inherits `process.env` wholesale — which on desktop
+ * includes everything the user's login shell exported (see login-shell-env.ts),
+ * API keys included. That is the historical behaviour and stays the default,
+ * because a wrong allowlist breaks toolchains in ways that are hard to
+ * diagnose (nvm/pyenv PATH shims, GH_TOKEN for `gh`, proxy vars).
+ *
+ * Pass an allowlist to opt into the tight version: baseline shell variables
+ * plus exactly what is named. Entries may end in `*` to take a family
+ * (`LC_*`, `npm_config_*`).
+ */
+export function getShellEnv(allowlist?: readonly string[] | null): NodeJS.ProcessEnv {
+  const inherited: NodeJS.ProcessEnv = allowlist
+    ? Object.fromEntries(
+      Object.entries(process.env).filter(([key]) =>
+        SHELL_ENV_BASELINE_KEYS.includes(key) ||
+        allowlist.some(pattern => envKeyMatches(key, pattern))),
+    )
+    : { ...process.env }
+
   return {
-    ...process.env,
+    ...inherited,
     LANG: process.env.LANG || 'en_US.UTF-8',
   }
 }
 
-export function resolveSpawnContext(command: string, cwd: string, spawnHook?: BashSpawnHook): BashSpawnContext {
-  const base: BashSpawnContext = { command, cwd, env: getShellEnv() }
+export function resolveSpawnContext(
+  command: string,
+  cwd: string,
+  spawnHook?: BashSpawnHook,
+  envAllowlist?: readonly string[] | null,
+): BashSpawnContext {
+  const base: BashSpawnContext = { command, cwd, env: getShellEnv(envAllowlist) }
   return spawnHook ? spawnHook(base) : base
 }
 
@@ -254,7 +299,13 @@ function createDeferredBackgroundLog(maxBytes = MAX_BACKGROUND_STARTUP_LOG_BYTES
   }
 }
 
-export function createLocalBashOperations(options: { shellPath?: string; spawnHook?: BashSpawnHook; sessionId?: string } = {}): BashOperations {
+export function createLocalBashOperations(options: {
+  shellPath?: string
+  spawnHook?: BashSpawnHook
+  sessionId?: string
+  /** Omit (or null) to inherit process.env wholesale — see getShellEnv. */
+  envAllowlist?: readonly string[] | null
+} = {}): BashOperations {
   return {
     exec: async (command, cwd, { onData, signal, timeout, env }) => {
       cleanupBackgroundJobLogs()
@@ -266,7 +317,7 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
       if (signal?.aborted) throw createToolAbortError('aborted')
 
       const { shell, args } = getShellConfig(options.shellPath)
-      const spawnContext = resolveSpawnContext(command, cwd, options.spawnHook)
+      const spawnContext = resolveSpawnContext(command, cwd, options.spawnHook, options.envAllowlist)
       const child = spawn(shell, [...args, spawnContext.command], {
         cwd: spawnContext.cwd,
         detached: process.platform !== 'win32',
@@ -341,7 +392,7 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
       }
 
       const { shell, args } = getShellConfig(options.shellPath)
-      const spawnContext = resolveSpawnContext(command, cwd, options.spawnHook)
+      const spawnContext = resolveSpawnContext(command, cwd, options.spawnHook, options.envAllowlist)
       const logPath = createBackgroundLogPath()
       const logStream = createWriteStream(logPath, { flags: 'a' })
 

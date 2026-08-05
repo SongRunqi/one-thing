@@ -230,6 +230,17 @@ export interface BuildSystemPromptSnapshotWithAdaptersOptions<
     known?: CorePromptKnownProjects
   }
   getAgent(agentId?: string): CoreSystemPromptSnapshotAgent
+  /**
+   * The tool allowlist that a REAL turn on this session would resolve
+   * (resolveAgentToolSurface: the agent's own list unioned with whatever its
+   * session kind implies). `null` means unrestricted.
+   *
+   * Without this the snapshot listed every globally-enabled tool, so the one
+   * screen that shows "what is this turn assembled from" was wrong for every
+   * agent that has an allowlist — and wrong in the reassuring direction.
+   * Optional so non-agent hosts can omit it; omitting means unrestricted.
+   */
+  getAgentToolAllowlist?(session: CoreSystemPromptSnapshotSession): string[] | null
   buildPrompt(input: CoreSystemPromptSnapshotBuildPromptInput<TSettings, TSkill>): Promise<CoreSystemPromptSnapshotPromptResult> | CoreSystemPromptSnapshotPromptResult
   now?: () => number
 }
@@ -430,9 +441,22 @@ export async function buildSystemPromptSnapshotWithAdapters<
   const allEnabledTools = enableToolCalls
     ? await options.getEnabledTools(settings.tools?.tools)
     : []
-  const builtinTools = allEnabledTools.filter(tool => !tool.id.startsWith('mcp:'))
+  // Mirror planAgentLoopTools (core/engine/agent-loop-runtime.ts): a real turn
+  // drops `mcp:` singles unconditionally and then keeps only what the agent's
+  // allowlist permits. The snapshot used to skip the second half, so it
+  // reported tools this agent can never call.
+  const agentToolAllowlist = options.getAgentToolAllowlist?.(session) ?? null
+  const allowedToolIds = agentToolAllowlist?.length ? new Set(agentToolAllowlist) : null
+  const builtinTools = allEnabledTools
+    .filter(tool => !tool.id.startsWith('mcp:'))
+    .filter(tool => !allowedToolIds || allowedToolIds.has(tool.id))
   const mcpRouterTool = enableToolCalls ? options.getMCPRouterTool() : null
-  const mcpTools = mcpRouterTool && settings.tools?.tools?.[mcpRouterTool.id]?.enabled !== false
+  const mcpRouterVisible = Boolean(
+    mcpRouterTool
+    && settings.tools?.tools?.[mcpRouterTool.id]?.enabled !== false
+    && (!allowedToolIds || allowedToolIds.has(mcpRouterTool.id)),
+  )
+  const mcpTools = mcpRouterTool && mcpRouterVisible
     ? options.sourceToolsToModelDefinitions([mcpRouterTool])
     : {}
   const modelSupportsTools = await options.resolveModelSupportsTools({
