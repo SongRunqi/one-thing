@@ -64,7 +64,7 @@
  * the winner is decided by injection order).
  */
 import { computed, ref, watch } from 'vue'
-import type { CheckboxSize, CheckboxValue } from './checkbox'
+import type { CheckboxSize, CheckboxValue, CheckboxVariant } from './checkbox'
 
 let checkboxIdCounter = 0
 
@@ -81,6 +81,8 @@ const props = withDefaults(defineProps<{
   trueValue?: CheckboxValue
   falseValue?: CheckboxValue
   size?: CheckboxSize
+  /** `rule` (hanging tick, default) or `box` (bordered square) — see `checkbox.ts`. */
+  variant?: CheckboxVariant
   id?: string
   name?: string
   ariaLabel?: string
@@ -94,6 +96,7 @@ const props = withDefaults(defineProps<{
   trueValue: true,
   falseValue: false,
   size: 'default',
+  variant: 'rule',
   id: undefined,
   name: undefined,
   ariaLabel: undefined,
@@ -120,6 +123,7 @@ const hasContent = computed(() => Boolean(props.label || props.description || sl
 
 const checkboxClasses = computed(() => [
   `app-checkbox--${props.size}`,
+  `app-checkbox--${props.variant}`,
   {
     'is-checked': isChecked.value,
     'is-indeterminate': props.indeterminate && !isChecked.value,
@@ -213,18 +217,30 @@ defineExpose({ focus })
     background-color var(--duration-fast) var(--ease-default);
 }
 
-.app-checkbox:hover:not(.is-disabled) .app-checkbox-mark::before {
+/*
+ * The three state rules below are the `rule` register's paint, and they are
+ * WITHDRAWN for the box register rather than overridden by it.
+ *
+ * Overriding was the first attempt and it silently lost: `.app-checkbox.is-checked
+ * .app-checkbox-mark` is (0,3,0) — two classes on the ancestor — while the box's
+ * `.app-checkbox--box .app-checkbox-mark` is only (0,2,0), so the hairline's
+ * `width: 10px; height: 2px; background: accent` kept flattening the tick into a
+ * single diagonal stroke. `:where()` contributes ZERO specificity, so each rule
+ * below still weighs exactly what it weighed for the rule register — it simply
+ * stops matching a box (ui-system.md §1: withdrawing beats winning).
+ */
+.app-checkbox:where(:not(.app-checkbox--box)):hover:not(.is-disabled) .app-checkbox-mark::before {
   background: var(--ui-text-muted-fg);
 }
 
 /* Mixed: the rule thickens but stays ink-grey — "some", not "yes". */
-.app-checkbox.is-indeterminate .app-checkbox-mark::before {
+.app-checkbox:where(:not(.app-checkbox--box)).is-indeterminate .app-checkbox-mark::before {
   width: 10px;
   height: 2px;
   background: var(--ui-text-muted-fg);
 }
 
-.app-checkbox.is-checked .app-checkbox-mark::before {
+.app-checkbox:where(:not(.app-checkbox--box)).is-checked .app-checkbox-mark::before {
   width: 10px;
   height: 2px;
   background: var(--ui-accent-primary-fg);
@@ -254,8 +270,115 @@ defineExpose({ focus })
   line-height: 1.4;
 }
 
+/* ── box register ─────────────────────────────────────────────────────────────
+ * A bordered square that fills and ticks, for label-less dense rows (a table's
+ * selection column). P3-B's finding: with no label beside it the 7px hanging
+ * rule reads as a divider or a stray hairline, and the row stops announcing
+ * that it can be selected at all — so this register exists to match the
+ * legibility of the native `accent-color` square it replaces, not to be a
+ * second taste option.
+ *
+ * The rule register's three STATE rules are withdrawn from a box with
+ * `:where(:not(.app-checkbox--box))` (see them above) rather than out-weighed
+ * here: `.app-checkbox.is-checked .app-checkbox-mark` is (0,3,0) and would beat
+ * anything the box could say at (0,2,0). The register's BASE `::before`
+ * (0,1,0) needs no gate — every property it sets is re-stated below at (0,2,0).
+ */
+.app-checkbox--box {
+  --app-checkbox-box-size: 15px;
+
+  /* The rule register hangs its tick at the label's first-line height
+     (`1.45em`, `flex-start`). A box has no label to align to and lives in a
+     row whose cell content is already centred, so it centres on its own axis
+     — that is the "cell align center vs 1.45em flex-start" mismatch, settled
+     on the component side so no table has to reach in with a `:deep()`. */
+  align-items: center;
+}
+
+.app-checkbox--box.app-checkbox--small {
+  --app-checkbox-box-size: 13px;
+}
+
+.app-checkbox--box .app-checkbox-input {
+  width: var(--app-checkbox-box-size);
+  height: var(--app-checkbox-box-size);
+}
+
+.app-checkbox--box .app-checkbox-mark {
+  width: var(--app-checkbox-box-size);
+  height: var(--app-checkbox-box-size);
+  border: 1px solid var(--ui-border-strong-border);
+  border-radius: var(--radius-xs);
+  background: var(--ui-surface-input-bg);
+  transition:
+    border-color var(--duration-fast) var(--ease-default),
+    background-color var(--duration-fast) var(--ease-default);
+}
+
+/* The tick: two borders of a rotated box. Drawn at rest and revealed, so the
+   check grows into place instead of popping. */
+.app-checkbox--box .app-checkbox-mark::before {
+  top: 50%;
+  left: 50%;
+  /* Two borders of a box rotated 45°: the long arm is the right edge, the short
+     arm the bottom one. The 1:1.75 ratio is what keeps it reading as a check
+     rather than a slash at 15px — a narrower box hides the short arm inside the
+     corner overlap (first draft did exactly that). */
+  width: calc(var(--app-checkbox-box-size) * 0.36);
+  height: calc(var(--app-checkbox-box-size) * 0.63);
+  border: solid var(--ui-action-primary-fg);
+  border-width: 0 2px 2px 0;
+  border-radius: 0;
+  background: none;
+  opacity: 0;
+  transform: translate(-50%, -62%) rotate(45deg) scale(0.55);
+  transition:
+    opacity var(--duration-fast) var(--ease-default),
+    transform var(--duration-fast) var(--ease-default);
+}
+
+.app-checkbox--box:hover:not(.is-disabled) .app-checkbox-mark {
+  border-color: var(--ui-text-muted-fg);
+}
+
+.app-checkbox--box.is-checked .app-checkbox-mark {
+  border-color: var(--ui-accent-primary-fg);
+  background: var(--ui-accent-primary-fg);
+}
+
+.app-checkbox--box.is-checked .app-checkbox-mark::before {
+  opacity: 1;
+  transform: translate(-50%, -62%) rotate(45deg) scale(1);
+}
+
+/* Selected rows keep their hover feedback (ui-system.md §1): one notch deeper
+   on the checked fill, mixed toward the opposite tone so it reads in both
+   light and dark. */
+.app-checkbox--box.is-checked:hover:not(.is-disabled) .app-checkbox-mark {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 88%, var(--ui-text-primary-fg));
+}
+
+/* Mixed: a dash inside the box, ink-grey — "some", same sentence as the rule
+   register's thickened hairline. */
+.app-checkbox--box.is-indeterminate .app-checkbox-mark {
+  border-color: var(--ui-text-muted-fg);
+}
+
+.app-checkbox--box.is-indeterminate .app-checkbox-mark::before {
+  width: calc(var(--app-checkbox-box-size) * 0.5);
+  height: 2px;
+  border: 0;
+  background: var(--ui-text-muted-fg);
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+
+/* (0,2,0) + later than the box register's own (0,2,0) transitions — a bare
+   `.app-checkbox-mark` here would lose to `.app-checkbox--box .app-checkbox-mark`
+   and reduced-motion would silently stop applying to the box. */
 @media (prefers-reduced-motion: reduce) {
-  .app-checkbox-mark::before {
+  .app-checkbox .app-checkbox-mark,
+  .app-checkbox .app-checkbox-mark::before {
     transition: none;
   }
 }

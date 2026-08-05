@@ -235,6 +235,28 @@ defineExpose({
 </script>
 
 <style scoped>
+/*
+ * Layout skeleton is unconditional; everything whose OWNERSHIP a consumer could
+ * plausibly claim — box metrics, colour, typography, paint transition — is gated
+ * on `:where(:not(.is-unstyled))`, exactly as `BorderBox.vue` gates its paint.
+ *
+ * Why (ui-system.md §1, "同一族的第二种变体"): `<Button unstyled class="x">` puts
+ * the consumer's `.x[data-v-consumer]` (0,2,0) on the same element as this file's
+ * `.app-button[data-v-button]` (0,2,0). A tie is not a win — it is decided by
+ * stylesheet injection order, and injection order gets reshuffled every time a
+ * component is added or HMR re-inserts a chunk. That is the SEND-pill incident's
+ * mechanism, and `color` / `font-size` / `text-align` / `white-space` / `height`
+ * were all still exposed to it here.
+ *
+ * `:where()` contributes ZERO specificity, so every STYLED consumer's standing in
+ * the cascade is bit-for-bit what it was — the gate cannot flip an existing tie.
+ * What changes is only the `unstyled` case: the rules stop matching, so the
+ * consumer holds these properties outright instead of winning a coin toss.
+ * `.app-button.is-unstyled` keeps its `--app-button-*` overrides (custom
+ * properties are nobody else's namespace, and `.is-icon-only`'s
+ * `width: var(--app-button-height)` still reads them), but its property-level
+ * `inherit` counter-writes are gone: there is no longer anything to counter.
+ */
 .app-button {
   --app-button-tone: var(--ui-text-secondary-fg);
   --app-button-fill: var(--ui-action-secondary-bg, var(--ui-state-hover-bg));
@@ -259,16 +281,23 @@ defineExpose({
 
   display: inline-flex;
   align-items: center;
+  /* Not gated: `.app-button-content` is declared `justify-content: inherit`, so
+     this is Button's own internal mechanism, not a claim on the consumer's box. */
   justify-content: center;
   position: relative;
   flex: 0 0 auto;
+  gap: var(--app-button-gap);
+  appearance: none;
+  cursor: pointer;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.app-button:where(:not(.is-unstyled)) {
   min-width: var(--app-button-min-width);
   height: var(--app-button-height);
   min-height: var(--app-button-height);
-  gap: var(--app-button-gap);
-  appearance: none;
   color: var(--app-button-fg);
-  cursor: pointer;
   font: inherit;
   font-size: var(--app-button-font-size);
   font-weight: 650;
@@ -277,8 +306,6 @@ defineExpose({
   text-align: center;
   text-decoration: none;
   white-space: nowrap;
-  user-select: none;
-  vertical-align: middle;
   transition:
     background 0.16s ease,
     border-color 0.16s ease,
@@ -373,7 +400,10 @@ defineExpose({
   --app-button-contrast: var(--app-button-custom-fg, var(--ui-action-primary-fg));
 }
 
-.app-button:hover:not(:disabled) {
+/* (0,3,0) — a consumer's own `.x:hover` is (0,2,0) and loses outright, so an
+   unstyled button used to repaint its text on hover over the consumer's head.
+   Same gate, same zero specificity cost. */
+.app-button:where(:not(.is-unstyled)):hover:not(:disabled) {
   color: var(--app-button-hover-fg);
 }
 
@@ -460,11 +490,6 @@ defineExpose({
   --app-button-min-width: 0;
   --app-button-gap: 0;
   --app-button-font-size: inherit;
-
-  min-height: 0;
-  font-weight: inherit;
-  line-height: inherit;
-  white-space: normal;
 }
 
 .app-button--default.is-text:not(.has-custom-color) {

@@ -29,7 +29,6 @@
       <div
         v-if="showTopTimestamp"
         class="app-timeline-item__timestamp app-timeline-item__timestamp--top"
-        :title="timestamp"
       >
         {{ timestamp }}
       </div>
@@ -39,7 +38,6 @@
       <div
         v-if="showBottomTimestamp"
         class="app-timeline-item__timestamp app-timeline-item__timestamp--bottom"
-        :title="timestamp"
       >
         {{ timestamp }}
       </div>

@@ -40,17 +40,16 @@
           >
             <div class="virtual-table-cell-content">
               <template v-if="columnItem.column.internalType === 'selection'">
-                <input
+                <Checkbox
                   v-if="selectionMode === 'multiple'"
                   class="virtual-table-selection-input"
-                  type="checkbox"
-                  :checked="isAllRowsSelected"
+                  variant="box"
+                  :model-value="isAllRowsSelected"
                   :indeterminate="isSomeRowsSelected && !isAllRowsSelected"
-                  :aria-checked="isAllRowsSelected ? 'true' : isSomeRowsSelected ? 'mixed' : 'false'"
                   aria-label="Select all rows"
                   @click.stop
                   @change="toggleAllRows"
-                >
+                />
               </template>
 
               <slot
@@ -126,9 +125,15 @@
             >
               <div class="virtual-table-cell-content">
                 <template v-if="columnItem.column.internalType === 'selection'">
+                  <!-- Single-select stays a native radio: `Radio.vue` draws the
+                       画线 ink ring, which is the wrong register for a
+                       label-less dense row (the same finding that produced
+                       `Checkbox variant="box"`). The two modes are mutually
+                       exclusive, so they never appear side by side. -->
                   <input
-                    class="virtual-table-selection-input"
-                    :type="selectionMode === 'single' ? 'radio' : 'checkbox'"
+                    v-if="selectionMode === 'single'"
+                    class="virtual-table-selection-radio"
+                    type="radio"
                     :name="selectionInputName"
                     :checked="rowItem.selected"
                     :disabled="!rowItem.selectable"
@@ -136,6 +141,16 @@
                     @click.stop
                     @change.stop="toggleRowSelection(rowItem)"
                   >
+                  <Checkbox
+                    v-else
+                    class="virtual-table-selection-input"
+                    variant="box"
+                    :model-value="rowItem.selected"
+                    :disabled="!rowItem.selectable"
+                    :aria-label="`Select row ${rowItem.rowIndex + 1}`"
+                    @click.stop
+                    @change="toggleRowSelection(rowItem)"
+                  />
                 </template>
 
                 <slot
@@ -199,6 +214,7 @@ import {
   type VNodeChild,
 } from 'vue'
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-vue-next'
+import Checkbox from './Checkbox.vue'
 import VirtualTableRender from './virtual-table/VirtualTableRender'
 import { useVirtualAxis, type VirtualAxisItem } from './virtual-table/useVirtualAxis'
 import type {
@@ -1361,7 +1377,11 @@ defineExpose<VirtualTableRef>({
   background: color-mix(in srgb, var(--virtual-table-accent) 10%, transparent);
 }
 
-.virtual-table-selection-input {
+/* `.virtual-table-selection-input` now lands on `Checkbox variant="box"`'s root
+   and deliberately carries no rule: a (0,2,0) selector here would tie with the
+   component's own `.app-checkbox--box` and be settled by injection order
+   (ui-system.md §1). Only the single-select radio, still native, is sized here. */
+.virtual-table-selection-radio {
   width: 14px;
   height: 14px;
   margin: 0;

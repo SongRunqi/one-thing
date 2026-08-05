@@ -44,20 +44,23 @@
             <TabLabel :pane="tabPane" />
           </span>
 
-          <button
+          <Tooltip
             v-if="isPaneClosable(tabPane)"
-            class="app-tabs-close"
-            type="button"
-            :aria-label="`Close ${tabPane.label || tabPane.name}`"
-            :title="`Close ${tabPane.label || tabPane.name}`"
-            @click.stop="handleTabRemove(tabPane.name)"
+            :text="`Close ${tabPane.label || tabPane.name}`"
           >
-            <X
-              :size="13"
-              :stroke-width="2"
-              aria-hidden="true"
-            />
-          </button>
+            <button
+              class="app-tabs-close"
+              type="button"
+              :aria-label="`Close ${tabPane.label || tabPane.name}`"
+              @click.stop="handleTabRemove(tabPane.name)"
+            >
+              <X
+                :size="13"
+                :stroke-width="2"
+                aria-hidden="true"
+              />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -65,22 +68,25 @@
         v-if="canAdd || $slots.actions"
         class="app-tabs-nav-actions"
       >
-        <button
+        <Tooltip
           v-if="canAdd"
-          class="app-tabs-add"
-          type="button"
-          aria-label="Add tab"
-          title="Add tab"
-          @click="handleTabAdd"
+          text="Add tab"
         >
-          <slot name="add-icon">
-            <Plus
-              :size="14"
-              :stroke-width="2"
-              aria-hidden="true"
-            />
-          </slot>
-        </button>
+          <button
+            class="app-tabs-add"
+            type="button"
+            aria-label="Add tab"
+            @click="handleTabAdd"
+          >
+            <slot name="add-icon">
+              <Plus
+                :size="14"
+                :stroke-width="2"
+                aria-hidden="true"
+              />
+            </slot>
+          </button>
+        </Tooltip>
 
         <slot name="actions" />
       </div>
@@ -94,6 +100,7 @@
 
 <script setup lang="ts">
 import { Plus, X } from 'lucide-vue-next'
+import Tooltip from './Tooltip.vue'
 import {
   computed,
   defineComponent,

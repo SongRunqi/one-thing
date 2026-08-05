@@ -21,7 +21,6 @@
       unstyled
       class="filter-search-clear"
       native-type="button"
-      title="Clear search"
       :aria-label="clearLabel"
       @click="emit('update:modelValue', '')"
     >

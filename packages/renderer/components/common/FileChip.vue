@@ -23,7 +23,6 @@
       circle
       class="attachment-remove file-chip-remove"
       native-type="button"
-      :title="`Remove ${fileName}`"
       :aria-label="`Remove ${fileName}`"
       :icon="X"
       @mousedown.prevent

@@ -48,75 +48,81 @@
       @keyup="refreshTriggerFromInput"
     >
 
-    <Transition name="app-mention-dropdown">
-      <div
-        v-if="dropdownVisible"
-        :id="listboxId"
-        ref="dropdownRef"
-        class="app-mention-dropdown"
-        :class="popperClass"
-        :style="dropdownStyle"
-        role="listbox"
-      >
+    <Teleport
+      to="body"
+      :disabled="!componentProps.teleported"
+    >
+      <Transition name="app-mention-dropdown">
         <div
-          v-if="$slots.header"
-          class="app-mention-dropdown-extra app-mention-dropdown-header"
+          v-if="dropdownVisible"
+          :id="listboxId"
+          :ref="setDropdownEl"
+          class="app-mention-dropdown"
+          :class="popperClass"
+          :data-placement="componentProps.teleported ? (layer.placement.value ?? undefined) : undefined"
+          :style="dropdownStyle"
+          role="listbox"
         >
-          <slot name="header" />
-        </div>
-
-        <div
-          v-if="loading"
-          class="app-mention-empty app-mention-loading"
-        >
-          <slot name="loading">
-            {{ loadingText }}
-          </slot>
-        </div>
-
-        <template v-else-if="filteredOptions.length > 0">
-          <button
-            v-for="(option, index) in filteredOptions"
-            :key="option.key"
-            class="app-mention-option"
-            type="button"
-            role="option"
-            :class="{ highlighted: highlightedIndex === index }"
-            :data-mention-index="index"
-            :aria-selected="highlightedIndex === index"
-            :disabled="option.disabled"
-            @mouseenter="highlightedIndex = index"
-            @mousedown.prevent
-            @click="selectOption(option)"
+          <div
+            v-if="$slots.header"
+            class="app-mention-dropdown-extra app-mention-dropdown-header"
           >
-            <slot
-              name="label"
-              :item="option.raw"
-              :option="option"
-              :label="option.label"
-              :value="option.value"
-              :index="index"
-            >
-              <span class="app-mention-option-label">{{ option.label }}</span>
+            <slot name="header" />
+          </div>
+
+          <div
+            v-if="loading"
+            class="app-mention-empty app-mention-loading"
+          >
+            <slot name="loading">
+              {{ loadingText }}
             </slot>
-          </button>
-        </template>
+          </div>
 
-        <div
-          v-else
-          class="app-mention-empty"
-        >
-          {{ emptyText }}
-        </div>
+          <template v-else-if="filteredOptions.length > 0">
+            <button
+              v-for="(option, index) in filteredOptions"
+              :key="option.key"
+              class="app-mention-option"
+              type="button"
+              role="option"
+              :class="{ highlighted: highlightedIndex === index }"
+              :data-mention-index="index"
+              :aria-selected="highlightedIndex === index"
+              :disabled="option.disabled"
+              @mouseenter="highlightedIndex = index"
+              @mousedown.prevent
+              @click="selectOption(option)"
+            >
+              <slot
+                name="label"
+                :item="option.raw"
+                :option="option"
+                :label="option.label"
+                :value="option.value"
+                :index="index"
+              >
+                <span class="app-mention-option-label">{{ option.label }}</span>
+              </slot>
+            </button>
+          </template>
 
-        <div
-          v-if="$slots.footer"
-          class="app-mention-dropdown-extra app-mention-dropdown-footer"
-        >
-          <slot name="footer" />
+          <div
+            v-else
+            class="app-mention-empty"
+          >
+            {{ emptyText }}
+          </div>
+
+          <div
+            v-if="$slots.footer"
+            class="app-mention-dropdown-extra app-mention-dropdown-footer"
+          >
+            <slot name="footer" />
+          </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -124,13 +130,18 @@
 import {
   computed,
   nextTick,
-  onMounted,
   onUnmounted,
   ref,
   toRefs,
   watch,
+  type CSSProperties,
   type StyleValue,
 } from 'vue'
+import { popEscLayer, pushEscLayer } from '@/composables/floating/esc-stack'
+import {
+  useFloatingLayer,
+  type FloatingZLayer,
+} from '@/composables/floating/useFloatingLayer'
 import type {
   MentionCheckIsWhole,
   MentionFilterOption,
@@ -150,6 +161,29 @@ interface MentionProps {
   filterOption?: MentionFilterOption
   placement?: 'top' | 'bottom'
   offset?: number
+  /**
+   * Drive the panel through the one positioning kernel
+   * (`composables/floating/useFloatingLayer`): `position: fixed` + Teleport to
+   * body, with flip and viewport clamping. Default ON — an @-mention list hangs
+   * off a caret that is usually near the bottom of a composer, which is exactly
+   * the case the old `position: absolute` panel could not survive.
+   * Pass `false` to keep the panel inside the caller's DOM (a caller that
+   * reaches it with `:deep()` needs that).
+   */
+  teleported?: boolean
+  /** Flip to the opposite side when the requested one has no room (teleported only). */
+  flip?: boolean
+  /** Keep the panel inside the viewport (teleported only). */
+  clamp?: boolean
+  /**
+   * z-index stop (docs/design/ui-system.md §3). Default `dropdown` + 20.
+   * **Inside a Dialog pass `z-layer="modal"`** — the dropdown stop is 120 and
+   * loses to the modal overlay's 600.
+   */
+  zLayer?: FloatingZLayer
+  zOffset?: number
+  /** Full z-index expression, when neither a stop nor an offset says it. */
+  baseZ?: string
   whole?: boolean
   checkIsWhole?: MentionCheckIsWhole
   loading?: boolean
@@ -179,6 +213,12 @@ const componentProps = withDefaults(defineProps<MentionProps>(), {
   filterOption: undefined,
   placement: 'bottom',
   offset: 6,
+  teleported: true,
+  flip: true,
+  clamp: true,
+  zLayer: 'dropdown',
+  zOffset: 20,
+  baseZ: undefined,
   whole: false,
   checkIsWhole: undefined,
   loading: false,
@@ -229,11 +269,18 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const innerValue = ref(componentProps.modelValue || '')
 const activeTrigger = ref<MentionTrigger | null>(null)
+/** Set by `dismissDropdown`; see the note in `refreshTriggerFromInput`. */
+const dismissedTriggerKey = ref<string | null>(null)
+/** True between "text replaced" and "caret restored" — see the same function. */
+let suppressTriggerRefresh = false
 const isFocused = ref(false)
 const highlightedIndex = ref(0)
 const lastSearchKey = ref('')
 const valueOnFocus = ref(innerValue.value)
 const listboxId = `app-mention-listbox-${++mentionIdCounter}`
+/** Measured from the control on every (re)placement — see `handlePositioned`. */
+const anchorWidth = ref(0)
+const availableHeight = ref(0)
 
 const mentionClasses = computed(() => ({
   'is-focused': isFocused.value,
@@ -300,10 +347,87 @@ const dropdownVisible = computed(() =>
   !componentProps.readonly
 )
 
+/**
+ * The panel goes through the one positioning kernel (ui-system.md §1: business
+ * components do not write floating mechanics). What that buys over the
+ * `position: absolute` + `calc(100% + offset)` it replaces: flip when the caret
+ * sits near the bottom of the viewport, viewport clamping at the sides, and
+ * scroll/resize tracking.
+ *
+ * The anchor is the control itself in BOTH modes, teleported or not: the kernel
+ * also arbitrates outside-clicks, and `eventHitsLayer` has to know that a click
+ * on the input is not "outside" (with a null anchor, focusing the input would
+ * dismiss the list the input just opened).
+ *
+ * `closeOn.esc` is ON and the token is pushed on the shared Esc stack — the
+ * kernel's capture-phase listener is the only thing that can beat an enclosing
+ * Dialog to the key, and the stack is what tells the Dialog to stand down.
+ */
+const layer = useFloatingLayer({
+  anchor: () => rootRef.value,
+  placement: () => (componentProps.placement === 'top' ? 'top-start' : 'bottom-start'),
+  offset: () => componentProps.offset,
+  flip: () => componentProps.flip,
+  clamp: () => componentProps.clamp,
+  zLayer: () => componentProps.zLayer,
+  zOffset: () => componentProps.zOffset,
+  baseZ: () => componentProps.baseZ,
+  closeOn: () => ({ esc: true, outside: true }),
+  onPositioned: handlePositioned,
+  // Closing is expressed as "there is no active trigger any more" — that is the
+  // single source of `dropdownVisible`, so anything else would leave the two
+  // disagreeing about whether the list is up. It has to LATCH, though: see
+  // `dismissDropdown`.
+  onRequestClose: () => dismissDropdown(),
+})
+
+const escToken = Symbol('mention')
+
+watch(dropdownVisible, visible => {
+  if (visible) {
+    // Seeded before the kernel measures: a panel that has not yet been told its
+    // minimum width gets measured at content width and then jumps.
+    anchorWidth.value = Math.round(rootRef.value?.getBoundingClientRect().width ?? 0)
+    pushEscLayer(escToken)
+    layer.show()
+    return
+  }
+  popEscLayer(escToken)
+  layer.hide()
+}, { immediate: true })
+
+function setDropdownEl(el: unknown) {
+  dropdownRef.value = el instanceof HTMLElement ? el : null
+  layer.setFloatingEl(el)
+}
+
+function handlePositioned(position: { placement: string }) {
+  const rect = rootRef.value?.getBoundingClientRect()
+  if (!rect) return
+
+  const width = Math.round(rect.width)
+  if (width !== anchorWidth.value) anchorWidth.value = width
+
+  const gap = componentProps.offset + 8
+  const space = position.placement.startsWith('top')
+    ? rect.top - gap
+    : window.innerHeight - rect.bottom - gap
+  const next = Math.round(Math.min(268, Math.max(96, space)))
+  if (Math.abs(next - availableHeight.value) > 1) availableHeight.value = next
+}
+
 const dropdownStyle = computed<StyleValue>(() => {
-  const style: Record<string, string> = componentProps.placement === 'top'
-    ? { bottom: `calc(100% + ${componentProps.offset}px)` }
-    : { top: `calc(100% + ${componentProps.offset}px)` }
+  const style: CSSProperties = {}
+
+  if (componentProps.teleported) {
+    Object.assign(style, layer.floatingStyle.value)
+    if (anchorWidth.value > 0) style.minWidth = `${anchorWidth.value}px`
+    if (availableHeight.value > 0) style.maxHeight = `${availableHeight.value}px`
+  } else if (componentProps.placement === 'top') {
+    style.bottom = `calc(100% + ${componentProps.offset}px)`
+  } else {
+    style.top = `calc(100% + ${componentProps.offset}px)`
+  }
 
   if (typeof componentProps.popperStyle === 'string') {
     return [style, componentProps.popperStyle]
@@ -407,10 +531,10 @@ function handleKeydown(event: KeyboardEvent) {
         selectOption(highlightedOption.value)
       }
       break
-    case 'Escape':
-      event.preventDefault()
-      activeTrigger.value = null
-      break
+    // Escape is NOT handled here: the kernel owns it (`closeOn.esc`) on a
+    // window capture listener, which stops the event before this bubble-phase
+    // handler could ever run — and the Esc stack is what keeps an enclosing
+    // Dialog from closing along with the list.
   }
 }
 
@@ -445,6 +569,7 @@ function selectOption(option: MentionNormalizedOption) {
   ].join('')
   const nextCursor = trigger.start + replacement.length
 
+  suppressTriggerRefresh = true
   updateValue(nextValue)
   activeTrigger.value = null
   emit('select', option.raw, trigger.prefix)
@@ -452,6 +577,8 @@ function selectOption(option: MentionNormalizedOption) {
   nextTick(() => {
     focus()
     setSelection(nextCursor, nextCursor)
+    suppressTriggerRefresh = false
+    refreshTriggerFromInput()
   })
 }
 
@@ -515,12 +642,43 @@ function refreshTriggerFromInput() {
     return
   }
 
+  // Mid-insertion the text is already the new one while the caret is still the
+  // old one — recomputing against that pair invents a trigger that the user
+  // never typed ("@Jeremy " read at caret 3 looks like an open `@Je`), and the
+  // list pops straight back up over the mention it just completed. The caret is
+  // restored on the next tick; the authoritative recompute happens there.
+  if (suppressTriggerRefresh) return
+
   const input = inputElement()
   const cursor = input?.selectionStart ?? innerValue.value.length
   const trigger = findActiveTrigger(innerValue.value, cursor)
 
+  // A dismissed list must STAY dismissed. The trigger is derived from the text,
+  // and the text does not change when you press Escape — so the very next
+  // `keyup` (the Escape key coming back up, which is also wired to this
+  // function) recomputed the same trigger and put the list straight back up.
+  // The latch is keyed on the trigger's exact content, so typing one more
+  // character is a NEW question and re-opens the list, which is what an
+  // autocomplete is expected to do.
+  if (trigger && triggerKey(trigger) === dismissedTriggerKey.value) {
+    activeTrigger.value = null
+    return
+  }
+  dismissedTriggerKey.value = null
+
   activeTrigger.value = trigger
   if (trigger) highlightedIndex.value = Math.max(filteredOptions.value.findIndex(option => !option.disabled), 0)
+}
+
+function triggerKey(trigger: MentionTrigger) {
+  return `${trigger.prefix}:${trigger.start}:${trigger.pattern}`
+}
+
+/** Close and remember it, so `refreshTriggerFromInput` cannot undo it. */
+function dismissDropdown() {
+  const trigger = activeTrigger.value
+  dismissedTriggerKey.value = trigger ? triggerKey(trigger) : null
+  activeTrigger.value = null
 }
 
 function findActiveTrigger(value: string, cursor: number): MentionTrigger | null {
@@ -583,12 +741,6 @@ function handleFocusOut(event: FocusEvent) {
   })
 }
 
-function handlePointerDown(event: PointerEvent) {
-  if (!rootRef.value?.contains(event.target as Node)) {
-    activeTrigger.value = null
-  }
-}
-
 function inputElement() {
   return componentProps.type === 'textarea' ? textareaRef.value : inputRef.value
 }
@@ -617,13 +769,16 @@ function stringifyOption(value: unknown) {
   return String(value)
 }
 
-onMounted(() => {
-  document.addEventListener('pointerdown', handlePointerDown)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('pointerdown', handlePointerDown)
-})
+// Outside-click used to be a private `document` listener that asked
+// `rootRef.contains(target)`. Teleported, the panel is no longer inside the
+// root, so that question answers "outside" for every click on an option — the
+// list would unmount on pointerdown and the click never reach the option. The
+// kernel's `eventHitsLayer` asks about the anchor AND the layer, which is the
+// question that was always meant.
+//
+// A panel torn down while open must not leave its token wedged on top of the
+// stack — Escape would go dead app-wide.
+onUnmounted(() => popEscLayer(escToken))
 
 defineExpose({
   blur,
@@ -682,6 +837,10 @@ defineExpose({
   opacity: 0.62;
 }
 
+/* `position: absolute` is the non-teleported fallback only; in the default
+   teleported mode the kernel writes `position: fixed` + top/left inline, and an
+   inline declaration always wins. Scoped styles still reach the panel after the
+   Teleport — Vue stamps the scope id on the element, not on its parent. */
 .app-mention-dropdown {
   position: absolute;
   z-index: calc(var(--z-dropdown) + 20);
@@ -697,6 +856,16 @@ defineExpose({
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
 }
 
+/* Same row language as `Select.vue`'s option: 31px, 8px gap, 6px radius,
+   secondary ink that goes primary under the pointer.
+ *
+ * Deliberately WITHOUT `margin-block: 2px`. The 2px breathing gap
+ * (ui-system.md §1) exists so a persistent `selected` slab and a transient
+ * `hover` slab stay readable when they sit on adjacent rows; a mention list has
+ * no persistent state at all — `highlighted` is the pointer/keyboard cursor and
+ * only ever one row carries it, so two coloured rows can never be adjacent.
+ * Same judgment, same reason, as `Dropdown.vue`: menus are tight by convention.
+ */
 .app-mention-option {
   display: flex;
   align-items: center;

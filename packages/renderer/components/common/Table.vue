@@ -45,15 +45,15 @@
             >
               <div class="app-table-head-content">
                 <template v-if="cell.column.type === 'selection'">
-                  <input
+                  <Checkbox
                     class="app-table-selection-input"
-                    type="checkbox"
-                    :checked="isAllVisibleSelected"
-                    :aria-checked="isAllVisibleSelected ? 'true' : isSomeVisibleSelected ? 'mixed' : 'false'"
+                    variant="box"
+                    :model-value="isAllVisibleSelected"
+                    :indeterminate="isSomeVisibleSelected && !isAllVisibleSelected"
                     aria-label="Select all rows"
                     @click.stop
                     @change="toggleAllSelection"
-                  >
+                  />
                 </template>
 
                 <slot
@@ -175,15 +175,15 @@
                     :style="treeCellStyle(rowState, column)"
                   >
                     <template v-if="column.type === 'selection'">
-                      <input
+                      <Checkbox
                         class="app-table-selection-input"
-                        type="checkbox"
-                        :checked="isRowSelected(rowState)"
+                        variant="box"
+                        :model-value="isRowSelected(rowState)"
                         :disabled="!isRowSelectable(rowState)"
                         :aria-label="`Select row ${rowState.rowIndex + 1}`"
                         @click.stop
                         @change="toggleRowSelection(rowState)"
-                      >
+                      />
                     </template>
 
                     <template v-else-if="column.type === 'index'">
@@ -312,6 +312,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, useSlots, watch, type CSSProperties, type StyleValue } from 'vue'
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronRight, Filter, Loader2 } from 'lucide-vue-next'
 import Button from './Button.vue'
+import Checkbox from './Checkbox.vue'
 import Scrollbar from './Scrollbar.vue'
 import Tooltip from './Tooltip.vue'
 import type {
@@ -1882,12 +1883,13 @@ defineExpose({
   white-space: nowrap;
 }
 
-.app-table-selection-input {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  accent-color: var(--app-table-accent);
-}
+/* `.app-table-selection-input` deliberately has NO rule any more. The selection
+   control is `Checkbox variant="box"`, and the class now lands on that
+   component's root — a `.app-table-selection-input[data-v-table]` (0,2,0) here
+   would be an exact tie with `.app-checkbox--box[data-v-checkbox]` and its size
+   would be decided by stylesheet injection order (ui-system.md §1). The box is
+   already 15px with `--ui-accent-primary-fg`, which is what
+   `--app-table-accent` resolves to; the class stays only as a query hook. */
 
 .app-table-head-cell.align-center .app-table-head-content,
 .app-table-cell.align-center .app-table-cell-content,

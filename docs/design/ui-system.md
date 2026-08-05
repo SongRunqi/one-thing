@@ -15,7 +15,7 @@
 | 确认框 / 表单弹窗 | `components/common/Dialog.vue` + `composables/useConfirm.ts` | 已有(P2)。**别再写 `.dialog-overlay`/`.dialog` 全局类**,它们只剩存量 |
 | 通知条 | `composables/useToast.ts` | 已有(P2);皮肤仍是 components.css 的 `.toast` |
 | 下拉选择 | `components/common/Select.vue` | 已有,**别用原生 `<select>`** |
-| 多选 | `components/common/Checkbox.vue` | 已有(P3);挂线 tick,支持 `indeterminate` |
+| 多选 | `components/common/Checkbox.vue` | 已有(P3);默认 `variant="rule"` 挂线 tick,支持 `indeterminate`。**无标签的密集行(表格选择列)传 `variant="box"`** —— 15px 有框方块、选中填色打勾,对齐它替下来的原生 `accent-color` 方块的辨识度(P3-B 实测:裸 7px 挂线在无标签行读不出"可选中",像分隔线)。行内对齐由组件自己 `align-items: center` 解决,表格不要用 `:deep()` 去够它 |
 | 单选 | `components/common/Radio.vue`(+ `RadioGroup.vue`) | 已有(P3);墨环+点。组可选,单个 `v-model` 也成立 |
 | 开关 | `components/common/Switch.vue` | 已有,别自绘。设置区传 `variant="ledger"` |
 
@@ -63,7 +63,7 @@ permission 选择器)。规则:
 (纯几何在同目录 `compute-position.ts`,有单测),`Popover.vue` 是它的薄壳,`Dropdown.vue`
 是 Popover 的菜单特化。可以 `<Teleport to="body">` 的文件只有 `common/` 下这几个:
 `Popover.vue`、`Dropdown.vue`、`ContextMenu.vue`、`Dialog.vue`、`Tooltip.vue`、
-`Select.vue`、`ImagePreview.vue`、`Table.vue`。(Teleport 到自定义容器不算浮层机制,不受限。)
+`Select.vue`、`Mention.vue`、`ImagePreview.vue`、`Table.vue`。(Teleport 到自定义容器不算浮层机制,不受限。)
 
 **Dialog 不是 Popover 的特化**:它不锚定任何元素,自己居中,所以没接定位内核 ——
 共用的只有焦点管理(`composables/floating/useFocusTrap.ts`,P2 从内核里抽出来的,
@@ -96,6 +96,19 @@ P2 新增 Dialog/ConfirmHost 后它当场翻边,全局实心 `background` 赢了
   `Button unstyled` / `BorderBox unstyled` 现在把整组 paint 声明(border / radius /
   background / shadow / padding / color / transition)用 `:where(:not(.is-unstyled))`
   整条关掉 —— `:where()` 特异性为 0,已上色的用法权重分毫不变,零爆炸半径。
+  P5 把 `Button` 的**布局/排版**残雷一并收了:`min-width` / `height` / `min-height` /
+  `color` / `font*` / `letter-spacing` / `text-align` / `white-space` / `transition`
+  以及 `:hover` 的 `color` 同样进了门控组(它们与消费者根类是 (0,2,0) 平局,hover 那条
+  更是 (0,3,0) 的必输官司)。**保持无条件的只有 Button 机制必需的骨架**:
+  `display` / `align-items` / `justify-content`(`.app-button-content` 写着
+  `justify-content: inherit`,它是内部机制不是对消费者盒子的主张)/ `position` /
+  `flex` / `gap` / `appearance` / `cursor` / `user-select` / `vertical-align`。
+  `.app-button.is-unstyled` 里的 `--app-button-*` 变量覆写要留着(自定义属性不占别人
+  的命名空间,`.is-icon-only` 的 `width: var(--app-button-height)` 还在读),但属性级的
+  `inherit` 反写已删 —— 没有要反的东西了。
+  改门控时的自检法:把编译产物里的 `:where(:not(.is-unstyled))` 文本删掉、合并同选择器
+  的相邻规则,应与改前逐条相等(P5 实测 36 条规则全等,且合并后无重复属性,
+  规则内声明顺序因此无关)。
 - **消费者侧**:别在别人组件的根元素上抢属性。要么用组件暴露的确定性 API,要么——
   当你其实不需要这个组件的任何能力时——**直接写原生 `<button>`**。对话框页脚就是后者:
   它们不需要 loading/icon/group,套 `Button unstyled` 只会换来一场必输的特异性官司
@@ -174,11 +187,20 @@ hljs-theme.css 与 StreamingCodeBlock 仍按那套名字消费,照旧双写。
 | `--z-tooltip` | 700 | tooltip 专用 |
 | `--z-toast` | 800 | toast 专用 |
 | `--z-max` | 9999 | 图片全屏预览、SelectionToolbar 等确需压一切的 |
+| —— | —— | **第三方库自带 z 用 `isolation` 收监**,不给它抬表(见下) |
 
 规则:
 - **只允许 `var(--z-*)`,禁数字字面量**(个位数的局部堆叠除外,如卡片内角标)。内联 style 同样适用:写 `zIndex: 'var(--z-dropdown)'`。
 - **禁给 `--z-*` 写 fallback**。variables.css 全局加载,fallback 永远用不上,却会在改档位时误导人 —— `var(--z-dropdown, 1000)` 的真值是 100。
 - 同档内相对顺序用 `calc(var(--z-x) + n)`,`n ≤ 30`。
+- **第三方库自带的 z 不进这张表,用 stacking context 收监。** Monaco 的
+  `.overlayWidgets` 是 10000、`.quick-input-widget` 是 2550,都高于 `--z-max`(9999),
+  同一个层叠上下文里它的查找条/peek 会压过 Dialog、Toast、图片预览。**正解不是抬
+  `--z-max`**(那是用更大的数字应对军备竞赛),而是在宿主容器上写 `isolation: isolate`
+  ——层叠上下文一建,库内所有 z 都改为相对本容器解析,整棵子树以宿主自己的层级作为
+  一层参与页面。落点:`editor/MonacoEditor.vue` 的 `.monaco-editor-host`。
+  用 `isolation` 而不是 `z-index: 0`/`transform`:它只建上下文,不带布局与绘制约束,
+  suggest/hover 这类溢出容器的挂件照旧能溢出。新接任何自带 z 的库照此办理。
 
 **`--z-dropdown` 档内的既定次序**(加塞前先看这里):
 
@@ -207,10 +229,10 @@ hljs-theme.css 与 StreamingCodeBlock 仍按那套名字消费,照旧双写。
   掉到 overlay 档就会被设置弹层盖住。
 
 `Select.vue` / `Mention.vue` 默认在 dropdown+20(=120),**压不过 modal(600)**。
-P3 起 Select 接了内核,这条不再是陷阱而是一个 prop:**在 Dialog 里放 Select 就传
-`z-layer="modal"`**(→ `calc(var(--z-modal) + 20)` = 620,压过 600 的遮罩),
-并且要 `teleported` —— 否则面板会被对话框的滚动体裁掉。`Mention.vue` 尚未接内核,
-同样的场景仍需手改。
+P3 起 Select、P5 起 Mention 都接了内核,这条不再是陷阱而是一个 prop:**在 Dialog 里
+放它们就传 `z-layer="modal"`**(→ `calc(var(--z-modal) + 20)` = 620,压过 600 的遮罩)。
+Select 还要额外传 `teleported`(它默认在流内);Mention **默认就是 teleported**
+——@ 列表挂在复合器的光标上,几乎总是贴着视口底,翻转是它的常态而不是边角情况。
 
 **Esc 归谁**:`composables/floating/esc-stack.ts`。浮层开着时把自己的 token 压栈,
 只有栈顶那层响应 Esc。Dialog 与 Select 都用它 —— 两者的监听都挂在 `window` 捕获期,

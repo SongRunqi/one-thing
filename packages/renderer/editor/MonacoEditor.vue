@@ -162,9 +162,31 @@ defineExpose({
 </script>
 
 <style scoped>
+/*
+ * `isolation: isolate` is load-bearing, not cosmetic.
+ *
+ * Monaco ships its own z-index ladder and the top of it is above ours:
+ * `.monaco-editor .overlayWidgets` sits at 10000 and `.quick-input-widget` at
+ * 2550, while `--z-max` is 9999 and `--z-modal` is 600. In a shared stacking
+ * context the editor's find bar / peek / quick-input therefore paint OVER any
+ * Dialog, Toast or image preview the app raises — a library's private ladder
+ * silently outranking the app's public one.
+ *
+ * Raising `--z-max` would be answering an arms race with a bigger number. The
+ * fix is to change what the numbers are measured against: this element becomes
+ * a stacking context, so every z-index Monaco writes inside it is resolved
+ * against THIS box and the whole subtree participates in the page as one layer
+ * at the host's own level. 10000 stays 10000 — it just cannot leave the room.
+ * (docs/design/ui-system.md §3, "第三方库自带 z 用 isolation 收监".)
+ *
+ * `isolation` rather than `z-index: 0` / `transform`: it creates the stacking
+ * context and nothing else — no layout effect, no paint containment, so
+ * overflowing widgets (suggest, hover) still spill out of the box as before.
+ */
 .monaco-editor-host {
   width: 100%;
   height: 100%;
   min-height: 0;
+  isolation: isolate;
 }
 </style>

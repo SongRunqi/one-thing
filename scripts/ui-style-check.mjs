@@ -30,6 +30,9 @@ const TELEPORT_PRIMITIVES = new Set([
   'components/common/Dialog.vue',
   'components/common/Tooltip.vue',
   'components/common/Select.vue',
+  // P5:Mention 接了同一个定位内核(useFloatingLayer),Teleport 是内核要求的
+  // `position: fixed` 模式的一半 —— 与 Select 同一条理由,同一个位置。
+  'components/common/Mention.vue',
   'components/common/ImagePreview.vue',
   'components/common/Table.vue',
 ])
@@ -95,7 +98,13 @@ const RULES = [
     test: (line, ctx) =>
       /\s:?title="/.test(line) &&
       // 语义场景放行:img/abbr 的 title 是无障碍属性,<title> 是 SVG/文档标题。
+      // 同时看行内和 ctx.tag —— 属性换行写时 `<img` 不在同一行,只看行内会漏。
       !/<(img|abbr|svg|title)\b/.test(line) &&
+      !['img', 'abbr', 'svg', 'title'].includes(ctx.tag) &&
+      // `<slot :title="title">` 是作用域插槽的 prop —— <slot> 不渲染元素,
+      // 它身上的 title 永远到不了 DOM,不可能是原生 tooltip。
+      // (P5 实测:CollapseGroup/CollapsePanel 的 4 处误报全是这一种。)
+      ctx.tag !== 'slot' &&
       !TITLE_PROP_COMPONENTS.has(ctx.tag) &&
       !/document\.title/.test(line),
   },

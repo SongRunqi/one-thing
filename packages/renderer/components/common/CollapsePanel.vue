@@ -131,7 +131,6 @@
         <span
           v-if="durationText"
           class="collapse-panel-duration"
-          :title="durationText"
         >{{ durationText }}</span>
 
         <span

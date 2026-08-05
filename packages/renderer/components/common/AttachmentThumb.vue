@@ -14,7 +14,6 @@
       circle
       class="attachment-remove attachment-thumb-remove"
       native-type="button"
-      :title="`Remove ${alt}`"
       :aria-label="`Remove ${alt}`"
       :icon="X"
       @mousedown.prevent
