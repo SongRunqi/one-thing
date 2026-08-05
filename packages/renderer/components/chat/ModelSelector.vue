@@ -619,7 +619,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   color: var(--ui-text-muted-fg);
   font: inherit;
   cursor: pointer;
-  transition: color 0.16s ease, background 0.16s ease;
+  transition: color var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 .model-trigger:hover,
@@ -639,7 +639,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 .model-trigger-caret {
   flex-shrink: 0;
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-normal) var(--ease-default);
 }
 
 /* Compact trigger: the provider mark joins the ink palette — a full-color
@@ -744,7 +744,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   letter-spacing: 1.2px;
   text-transform: uppercase;
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .provider-cell::after {
@@ -756,7 +756,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   height: 1.5px;
   background: currentColor;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .provider-cell:hover {
@@ -861,7 +861,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   border: 1.5px solid var(--ui-accent-primary-fg);
   border-radius: 50%;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .model-row.current .model-dot {
@@ -892,7 +892,7 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .model-row:hover .model-name,

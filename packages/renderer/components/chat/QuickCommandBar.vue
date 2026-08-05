@@ -89,7 +89,7 @@ async function executeQuickCommand(commandId: string) {
   color: var(--ui-text-muted-fg);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--duration-normal) var(--ease-default);
   white-space: nowrap;
   flex-shrink: 0;
   /* 毛玻璃效果 */

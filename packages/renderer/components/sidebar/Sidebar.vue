@@ -1328,7 +1328,7 @@ onUnmounted(() => {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--duration-normal) var(--ease-default);
   overflow: hidden;
   background: var(--sidebar-bg);
   padding: 0;
@@ -1423,7 +1423,7 @@ onUnmounted(() => {
   background: transparent;
   overflow: hidden;
   contain: layout style paint;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-normal) var(--ease-default);
 }
 
 /* Content fades out faster than width shrinks */
@@ -1450,7 +1450,7 @@ onUnmounted(() => {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  transition: color 0.15s ease;
+  transition: color var(--duration-normal) var(--ease-default);
 }
 
 .sidebar-newchat:hover,
@@ -1499,7 +1499,7 @@ onUnmounted(() => {
   background: transparent;
   color: var(--ui-sidebar-rail-muted-fg);
   cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition: background-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .sidebar-rail-tab:hover {
@@ -1737,7 +1737,7 @@ onUnmounted(() => {
   display: inline-block;
   font-size: 12px;
   line-height: 1;
-  transition: transform 0.12s ease;
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .sidebar-subgroup-caret.open {
@@ -1933,7 +1933,7 @@ html[data-theme='dark'] .sidebar-dock-pill {
   background: transparent;
   color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 56%, transparent);
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color var(--duration-normal) var(--ease-default);
 }
 
 .sidebar-dock-icon:hover,

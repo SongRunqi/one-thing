@@ -1074,7 +1074,7 @@ watch(
   color: var(--ui-text-muted-fg);
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .text-action:hover:not(:disabled) {
@@ -1110,7 +1110,7 @@ watch(
   background: transparent;
   cursor: pointer;
   position: relative;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 /* Enlarged hit area for the 13px dot */
@@ -1307,7 +1307,7 @@ watch(
   width: 7px;
   height: 1px;
   background: var(--ui-border-strong-border);
-  transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
+  transition: width var(--duration-fast) var(--ease-default), height var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .task-row:hover::before,
@@ -1395,7 +1395,7 @@ watch(
   align-self: center;
   display: inline-flex;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .task-row:hover .task-toggle,
@@ -1554,7 +1554,7 @@ watch(
   width: 7px;
   height: 1px;
   background: var(--ui-border-strong-border);
-  transition: width 0.12s ease, background-color 0.12s ease;
+  transition: width var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .meta-line:hover::before {
@@ -1606,7 +1606,7 @@ watch(
   letter-spacing: normal;
   text-transform: none;
   color: var(--ui-text-muted-fg);
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .history-toggle:hover .toggle-state {
@@ -1677,7 +1677,7 @@ watch(
   width: 7px;
   height: 1px;
   background: var(--ui-border-strong-border);
-  transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
+  transition: width var(--duration-fast) var(--ease-default), height var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .run-row:hover::before {
@@ -1823,11 +1823,14 @@ watch(
   padding: 3px 0 4px;
   font-size: 12px;
   color: var(--ui-text-primary-fg);
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
+/* `.field` 只落在 input / textarea 上(本文件模板里 7 处 input + 1 处 textarea),
+   焦点下沉底线是 caret 场景 —— 裸 :focus 是对的,元素选择器把这件事说明白。 */
 .field:hover:not(:disabled),
-.field:focus {
+input.field:focus,
+textarea.field:focus {
   outline: none;
   border-bottom-color: var(--ui-accent-primary-fg);
 }
@@ -1919,7 +1922,7 @@ watch(
     left: 0;
     width: 100%;
     height: 100%;
-    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform var(--duration-slow) var(--ease-out);
   }
 
   .task-list {

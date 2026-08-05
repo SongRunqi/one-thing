@@ -266,7 +266,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   cursor: pointer;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .usage-button:hover:not(:disabled) {

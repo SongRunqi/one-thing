@@ -37,8 +37,8 @@ describe('App container layout', () => {
     expect(app).not.toContain("const appLeftSidebarFlex = '0 0 auto'")
     expect(app).not.toContain('const appLeftSidebarRegionStyle = computed')
     expect(app).not.toContain(':sidebar-style="appLeftSidebarRegionStyle"')
-    expect(app).toContain('--app-sidebar-transition-duration: 0.3s')
-    expect(app).toContain('--app-sidebar-transition-ease: cubic-bezier(0.4, 0, 0.2, 1)')
+    expect(app).toContain('--app-sidebar-transition-duration: var(--duration-slow)')
+    expect(app).toContain('--app-sidebar-transition-ease: var(--ease-default)')
     expect(app).toContain('animating it relayouts the full message list every frame')
     // 侧栏操作按钮不再是跨分支的 fixed 浮层:Chromium 只让 drag 元素的子孙用
     // no-drag 挖洞,浮层挖不动,才逼出了顶栏那块按坐标预留的死区。按钮现在住在

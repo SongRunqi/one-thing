@@ -400,7 +400,7 @@ onMounted(async () => {
   border-radius: 0;
   background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg));
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 .prompt-search:focus-within {
@@ -613,7 +613,7 @@ onMounted(async () => {
   font-size: 13px;
   line-height: 1.45;
   padding: 8px 9px;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 .prompt-textarea {

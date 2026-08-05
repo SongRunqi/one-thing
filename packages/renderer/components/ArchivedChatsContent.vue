@@ -397,7 +397,7 @@ async function confirmDelete(session: ArchivedSession) {
   border: none;
   border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
   border-radius: 0;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 .search-input:hover,
@@ -586,7 +586,7 @@ input.search-input:focus {
   width: 7px;
   height: 1px;
   background: var(--ui-border-strong-border);
-  transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
+  transition: width var(--duration-fast) var(--ease-default), height var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .chat-row:hover::before {
@@ -669,7 +669,7 @@ input.search-input:focus {
   gap: 12px;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .chat-row:hover .chat-actions,
@@ -688,7 +688,7 @@ input.search-input:focus {
   font-size: 11px;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .text-action:hover:not(:disabled) {

@@ -138,8 +138,8 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
   transition:
-    flex-grow 0.16s ease,
-    flex-basis 0.16s ease;
+    flex-grow var(--duration-normal) var(--ease-default),
+    flex-basis var(--duration-normal) var(--ease-default);
 }
 
 :global(.splitter.is-dragging) .splitter-panel {

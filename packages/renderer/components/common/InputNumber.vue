@@ -485,9 +485,9 @@ defineExpose({
   line-height: 1;
   vertical-align: middle;
   transition:
-    border-color var(--duration-fast, 0.15s) var(--ease-default, ease),
-    box-shadow var(--duration-fast, 0.15s) var(--ease-default, ease),
-    opacity var(--duration-fast, 0.15s) var(--ease-default, ease);
+    border-color var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default);
 }
 
 .app-input-number--small {
@@ -544,9 +544,9 @@ defineExpose({
   font: inherit;
   cursor: pointer;
   transition:
-    background var(--duration-fast, 0.15s) var(--ease-default, ease),
-    color var(--duration-fast, 0.15s) var(--ease-default, ease),
-    opacity var(--duration-fast, 0.15s) var(--ease-default, ease);
+    background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default);
 }
 
 .app-input-number-control:not(:disabled):hover {

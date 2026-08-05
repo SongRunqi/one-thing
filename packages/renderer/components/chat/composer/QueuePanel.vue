@@ -344,7 +344,7 @@ function queuedFileSummary(item: QueuedMessage): string {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-xs, 4px);
-  transition: background 0.16s ease, color 0.16s ease;
+  transition: background var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default);
 }
 
 .queued-message-actions {
@@ -384,7 +384,7 @@ function queuedFileSummary(item: QueuedMessage): string {
 
 .queued-message-enter-active,
 .queued-message-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .queued-message-enter-from,

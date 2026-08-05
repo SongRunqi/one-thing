@@ -1215,7 +1215,7 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   background: transparent;
   color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: var(--type-meta-size);
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .channel-action:hover:not(:disabled),

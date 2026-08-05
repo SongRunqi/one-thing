@@ -366,8 +366,8 @@ onBeforeUnmount(() => {
 .todo-action-panel-enter-active,
 .todo-action-panel-leave-active {
   transition:
-    opacity 0.12s ease,
-    transform 0.12s ease;
+    opacity var(--duration-fast) var(--ease-default),
+    transform var(--duration-fast) var(--ease-default);
 }
 
 .todo-action-panel-enter-from,

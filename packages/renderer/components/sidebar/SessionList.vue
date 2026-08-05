@@ -431,7 +431,7 @@ onUnmounted(() => {
   margin: 0 16px;
   background: var(--ui-border-subtle-border);
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity var(--duration-slow) var(--ease-default);
   pointer-events: none;
   flex-shrink: 0;
 }
@@ -531,7 +531,7 @@ onUnmounted(() => {
   font-weight: var(--font-weight-semibold, 600);
   line-height: 1.35;
   letter-spacing: 0;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition: color var(--duration-normal) var(--ease-default), background-color var(--duration-normal) var(--ease-default);
 }
 
 /* hover 填充叠在不透明底之上（背景图层），sticky 状态下滚过的内容不会透出 */
@@ -617,7 +617,7 @@ onUnmounted(() => {
   font-size: 11px;
   text-align: left;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color var(--duration-normal) var(--ease-default);
 }
 
 .load-more-btn:hover {

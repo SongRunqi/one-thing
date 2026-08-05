@@ -131,7 +131,7 @@ watch(() => props.text, () => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  transition: background var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default), opacity var(--duration-normal) var(--ease-default);
   flex-shrink: 0;
   opacity: 0.6;
 }

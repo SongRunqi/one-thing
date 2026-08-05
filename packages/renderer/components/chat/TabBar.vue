@@ -947,7 +947,7 @@ watch(showOverflowMenu, (shown) => {
   height: 3px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity var(--duration-fast, 0.15s) var(--ease-default, ease);
+  transition: opacity var(--duration-fast) var(--ease-default);
   z-index: 2;
 }
 
@@ -1158,10 +1158,10 @@ watch(showOverflowMenu, (shown) => {
 }
 
 .header-btn.inspector-toggle {
-  transition: background 0.15s ease, color 0.15s ease,
-              opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1),
-              width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
-              margin-left 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default),
+              opacity var(--duration-slow) var(--ease-default),
+              width var(--duration-slow) var(--ease-default),
+              margin-left var(--duration-slow) var(--ease-default);
 }
 
 .inspector-toggle.hidden {

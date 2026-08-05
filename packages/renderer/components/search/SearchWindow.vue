@@ -466,7 +466,7 @@ onUnmounted(() => {
 .guide-line {
   position: absolute;
   opacity: 0;
-  transition: opacity 0.12s var(--ease-default);
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .guide-center-x {
@@ -565,8 +565,8 @@ onUnmounted(() => {
   scrollbar-width: none;
   opacity: 0;
   transition:
-    max-width 0.16s var(--ease-default),
-    opacity 0.12s var(--ease-default);
+    max-width var(--duration-normal) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default);
 }
 
 .scope-tabs::-webkit-scrollbar {
@@ -595,11 +595,11 @@ onUnmounted(() => {
   pointer-events: none;
   overflow: hidden;
   transition:
-    max-width 0.16s var(--ease-default),
-    padding 0.16s var(--ease-default),
-    opacity 0.12s var(--ease-default),
-    background 0.14s var(--ease-default),
-    color 0.14s var(--ease-default);
+    max-width var(--duration-normal) var(--ease-default),
+    padding var(--duration-normal) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default),
+    background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
 }
 
 .search-input-row:hover .scope-tabs,
@@ -661,7 +661,7 @@ onUnmounted(() => {
   opacity: 0;
   width: 0;
   overflow: hidden;
-  transition: opacity 0.14s var(--ease-default), width 0.14s var(--ease-default);
+  transition: opacity var(--duration-fast) var(--ease-default), width var(--duration-fast) var(--ease-default);
 }
 
 .scope-tabs:hover .scope-tab kbd,

@@ -295,7 +295,7 @@ function handleSave() {
   outline: none;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--duration-normal) var(--ease-default);
 }
 
 input.form-input:focus {
@@ -334,7 +334,7 @@ input.form-input:focus {
   color: var(--ui-text-muted-fg);
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default), box-shadow var(--duration-normal) var(--ease-default);
 }
 
 .api-type-btn svg {

@@ -532,8 +532,8 @@ defineExpose({
   opacity: var(--scrollbar-idle-opacity);
   pointer-events: auto;
   transition:
-    opacity 0.15s ease,
-    background 0.15s ease;
+    opacity var(--duration-normal) var(--ease-default),
+    background var(--duration-normal) var(--ease-default);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -555,8 +555,8 @@ defineExpose({
   border-radius: 999px;
   background: var(--scrollbar-thumb-bg);
   transition:
-    background 0.15s ease,
-    opacity 0.15s ease;
+    background var(--duration-normal) var(--ease-default),
+    opacity var(--duration-normal) var(--ease-default);
 }
 
 .scrollbar-thumb-vertical {

@@ -44,7 +44,7 @@ defineProps<{
   vertical-align: baseline;
   cursor: default;
   outline: none;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 .prompt-ref-card:hover,
@@ -85,7 +85,7 @@ defineProps<{
   border-radius: 8px;
   background: var(--ui-surface-panel-bg);
   color: var(--ui-text-primary-fg);
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-floating);
   z-index: var(--z-dropdown);
   white-space: normal;
 }

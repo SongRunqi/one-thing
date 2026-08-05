@@ -242,7 +242,7 @@ const subtitle = computed(() => {
   font-size: 13px;
   font-weight: 560;
   cursor: pointer;
-  transition: box-shadow 0.12s ease;
+  transition: box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .auth-button:hover:not(:disabled) {
@@ -315,7 +315,7 @@ const subtitle = computed(() => {
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 input.code-input:focus {

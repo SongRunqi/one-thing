@@ -384,7 +384,7 @@ input.evals-form-input:focus {
   font-size: 12px;
   font-weight: 520;
   cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default);
   white-space: nowrap;
 }
 
@@ -412,7 +412,7 @@ input.evals-form-input:focus {
   border-bottom: 1px solid var(--settings-rule-soft);
   padding: 10px 4px 10px 8px;
   cursor: pointer;
-  transition: box-shadow 0.12s ease;
+  transition: box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .evals-record-row:first-of-type {

@@ -628,9 +628,9 @@ defineExpose({
   cursor: pointer;
   user-select: none;
   transition:
-    background var(--duration-fast, 0.15s) var(--ease-default, ease),
-    color var(--duration-fast, 0.15s) var(--ease-default, ease),
-    box-shadow var(--duration-fast, 0.15s) var(--ease-default, ease);
+    background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .app-tabs.is-stretch:not(.is-vertical) .app-tabs-tab {
@@ -669,7 +669,7 @@ defineExpose({
   content: "";
   background: var(--app-tabs-accent);
   opacity: 0;
-  transition: opacity var(--duration-fast, 0.15s) var(--ease-default, ease);
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .app-tabs--line .app-tabs-tab.is-active::after {
@@ -839,9 +839,9 @@ defineExpose({
   outline: none;
   cursor: pointer;
   transition:
-    background var(--duration-fast, 0.15s) var(--ease-default, ease),
-    border-color var(--duration-fast, 0.15s) var(--ease-default, ease),
-    color var(--duration-fast, 0.15s) var(--ease-default, ease);
+    background var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
 }
 
 .app-tabs-close:hover,

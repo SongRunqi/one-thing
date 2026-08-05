@@ -1348,7 +1348,7 @@ onUnmounted(() => {
   font-size: 14px;
   outline: none;
   text-align: left;
-  transition: box-shadow 120ms ease, color 120ms ease;
+  transition: box-shadow var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .sidebar-entry :deep(.app-sub-menu-title:hover) {
@@ -1386,7 +1386,7 @@ onUnmounted(() => {
   flex-shrink: 0;
   color: currentColor;
   opacity: 0.45;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .sidebar-entry :deep(.app-sub-menu-chevron-hit:hover .app-sub-menu-chevron),
@@ -1427,7 +1427,7 @@ onUnmounted(() => {
   outline: none;
   text-align: left;
   justify-content: flex-start;
-  transition: box-shadow 120ms ease, color 120ms ease;
+  transition: box-shadow var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .sidebar-entry-flat :deep(.app-menu-item:hover) {
@@ -1812,9 +1812,15 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
-:deep(.form-input:focus),
-:deep(.form-textarea:focus),
-:deep(.form-select:focus),
+/* 元素前缀不是装饰:这几个类名各自骑在什么标签上,决定了裸 :focus 是"caret 场景"
+   还是"该用 :focus-visible"。已核对(全库模板扫描):
+     .form-input → <input>×45   .form-textarea → <textarea>   .form-select → 原生 select 写法
+     .row-input / .add-model-input → <Input> 组件的**外壳 div**(不可聚焦,这条本就是死规则,
+       但删它不属于本期射程,保留原样)
+     .row-select → 原生 <select>×2 与 <Select> 组件×2 混用,加元素前缀会打掉组件那半边,保留原样 */
+:deep(input.form-input:focus),
+:deep(textarea.form-textarea:focus),
+:deep(select.form-select:focus),
 :deep(.row-input:focus),
 :deep(.row-select:focus) {
   border-color: var(--settings-accent);
@@ -1840,7 +1846,7 @@ onUnmounted(() => {
   font: inherit;
   font-size: 12.5px;
   cursor: pointer;
-  transition: color 120ms ease, box-shadow 120ms ease;
+  transition: color var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default);
 }
 
 :deep(.segment-btn + .segment-btn) {
@@ -1989,28 +1995,33 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.settings-page :deep(.form-input:focus),
-.settings-page :deep(.form-input:focus-visible),
-.settings-page :deep(.form-textarea:focus),
-.settings-page :deep(.form-textarea:focus-visible),
-.settings-page :deep(.form-select:focus),
-.settings-page :deep(.form-select:focus-visible),
+/* 同上的核对结论(逐类查过真实标签)。补元素前缀的都是原生输入控件 —— 裸 :focus
+   是 caret 场景;剩下三类保留裸写法并各自说明:
+     .row-input / .add-model-input → <Input> 组件外壳 div,不可聚焦,死规则
+     .shortcut-input → 带 tabindex 的 div,录快捷键必须在鼠标点击时也亮起
+       (理由写在 components/settings/ShortcutInput.vue) */
+.settings-page :deep(input.form-input:focus),
+.settings-page :deep(input.form-input:focus-visible),
+.settings-page :deep(textarea.form-textarea:focus),
+.settings-page :deep(textarea.form-textarea:focus-visible),
+.settings-page :deep(select.form-select:focus),
+.settings-page :deep(select.form-select:focus-visible),
 .settings-page :deep(.row-input:focus),
 .settings-page :deep(.row-input:focus-visible),
 .settings-page :deep(.row-select:focus),
 .settings-page :deep(.row-select:focus-visible),
-.settings-page :deep(.prompt-input:focus),
-.settings-page :deep(.prompt-input:focus-visible),
-.settings-page :deep(.prompt-textarea:focus),
-.settings-page :deep(.prompt-textarea:focus-visible),
-.settings-page :deep(.text-input:focus),
-.settings-page :deep(.text-input:focus-visible),
+.settings-page :deep(input.prompt-input:focus),
+.settings-page :deep(input.prompt-input:focus-visible),
+.settings-page :deep(textarea.prompt-textarea:focus),
+.settings-page :deep(textarea.prompt-textarea:focus-visible),
+.settings-page :deep(input.text-input:focus),
+.settings-page :deep(input.text-input:focus-visible),
 .settings-page :deep(.shortcut-input:focus),
 .settings-page :deep(.shortcut-input:focus-visible),
 .settings-page :deep(.add-model-input:focus),
 .settings-page :deep(.add-model-input:focus-visible),
-.settings-page :deep(.model-caps-id-input:focus),
-.settings-page :deep(.model-caps-id-input:focus-visible) {
+.settings-page :deep(input.model-caps-id-input:focus),
+.settings-page :deep(input.model-caps-id-input:focus-visible) {
   outline: none;
   border-color: var(--settings-accent);
   box-shadow: none;

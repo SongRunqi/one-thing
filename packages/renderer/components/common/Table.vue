@@ -1673,8 +1673,8 @@ defineExpose({
   line-height: 0;
   transform: none;
   transition:
-    background 0.12s ease,
-    color 0.12s ease;
+    background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
 }
 
 .app-table-head-icon-button:hover {
@@ -1711,7 +1711,7 @@ defineExpose({
   border: 1px solid var(--app-table-strong-border);
   border-radius: 8px;
   background: var(--ui-surface-elevated-bg);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-floating);
   transform-origin: top center;
   overscroll-behavior: contain;
 }
@@ -1763,7 +1763,7 @@ defineExpose({
 
 .app-table-filter-menu-enter-active,
 .app-table-filter-menu-leave-active {
-  transition: opacity 0.14s ease, transform 0.14s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
 }
 
 .app-table-filter-menu-enter-from,
@@ -1847,7 +1847,7 @@ defineExpose({
   border-radius: 6px;
   color: var(--app-table-muted-fg);
   background: transparent;
-  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  transition: color var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .app-table-expand-button:hover {

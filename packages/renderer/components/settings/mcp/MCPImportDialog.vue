@@ -673,7 +673,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .close-btn:hover {
@@ -709,7 +709,7 @@ defineExpose({
   font-size: 12px;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .import-tab:hover {
@@ -750,7 +750,7 @@ defineExpose({
   font-size: 13px;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .select-file-btn:hover {
@@ -800,7 +800,7 @@ defineExpose({
   color: var(--ui-text-primary-fg);
   resize: vertical;
   line-height: 1.5;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 textarea.form-textarea:focus {
@@ -867,7 +867,7 @@ textarea.form-textarea:focus {
   font-size: 11px;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .category-btn:hover {
@@ -899,7 +899,7 @@ textarea.form-textarea:focus {
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
   cursor: pointer;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
   position: relative;
   min-width: 0;
 }
@@ -1007,7 +1007,7 @@ textarea.form-textarea:focus {
   font-size: 13px;
   background: transparent;
   color: var(--ui-text-primary-fg);
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 input.form-input:focus {
@@ -1040,7 +1040,7 @@ input.form-input:focus {
   color: var(--ui-text-muted-fg);
   cursor: pointer;
   flex-shrink: 0;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .browse-btn:hover {
@@ -1120,7 +1120,7 @@ input.form-input:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .preview-command {

@@ -302,7 +302,7 @@ function removeDirectory(index: number) {
   border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--duration-normal);
 }
 
 input.text-input:focus {
@@ -332,7 +332,7 @@ input.text-input:focus {
   border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   border-radius: 0;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: border-color var(--duration-normal), color var(--duration-normal);
   white-space: nowrap;
 }
 
@@ -383,7 +383,7 @@ input.text-input:focus {
   border-radius: 0;
   color: var(--settings-ink-4, var(--ui-text-muted-fg));
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color var(--duration-normal);
 }
 
 .remove-btn:hover {
@@ -415,7 +415,7 @@ input.text-input:focus {
   background: transparent;
   border: 0;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color var(--duration-normal);
 }
 
 .add-btn:hover {

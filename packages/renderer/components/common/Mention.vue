@@ -811,7 +811,7 @@ defineExpose({
   color: var(--ui-text-primary-fg);
   font: inherit;
   line-height: 18px;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), box-shadow var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 .app-mention-textarea {
@@ -853,7 +853,7 @@ defineExpose({
   border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
   background: var(--ui-surface-elevated-bg);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-floating);
 }
 
 /* Same row language as `Select.vue`'s option: 31px, 8px gap, 6px radius,
@@ -916,7 +916,7 @@ defineExpose({
 
 .app-mention-dropdown-enter-active,
 .app-mention-dropdown-leave-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
 }
 
 .app-mention-dropdown-enter-from,

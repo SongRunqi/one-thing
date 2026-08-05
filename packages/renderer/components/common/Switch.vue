@@ -475,10 +475,10 @@ defineExpose({
   box-sizing: border-box;
   appearance: none;
   transition:
-    background 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    opacity 0.18s ease;
+    background var(--duration-normal) var(--ease-default),
+    border-color var(--duration-normal) var(--ease-default),
+    box-shadow var(--duration-normal) var(--ease-default),
+    opacity var(--duration-normal) var(--ease-default);
 }
 
 .app-switch-core:focus-visible {
@@ -553,9 +553,9 @@ defineExpose({
     0 1px 1px rgba(15, 23, 42, 0.08);
   transform: translate(0, -50%);
   transition:
-    color 0.18s ease,
-    transform 0.18s ease,
-    box-shadow 0.18s ease;
+    color var(--duration-normal) var(--ease-default),
+    transform var(--duration-normal) var(--ease-default),
+    box-shadow var(--duration-normal) var(--ease-default);
   pointer-events: none;
 }
 
@@ -591,7 +591,7 @@ defineExpose({
   line-height: 1.25;
   white-space: nowrap;
   text-overflow: ellipsis;
-  transition: color 0.18s ease;
+  transition: color var(--duration-normal) var(--ease-default);
 }
 
 .app-switch-label.is-active {

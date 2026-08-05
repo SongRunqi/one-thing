@@ -594,7 +594,7 @@ function handleCancelRun() {
 .evals-progress-bar {
   height: 100%;
   background: color-mix(in srgb, var(--settings-accent) 24%, transparent);
-  transition: width 0.3s ease;
+  transition: width var(--duration-slow) var(--ease-default);
 }
 
 .evals-progress-label {
@@ -691,7 +691,7 @@ function handleCancelRun() {
   padding: 8px 4px 8px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft) 32%, transparent);
   cursor: pointer;
-  transition: box-shadow 0.12s ease;
+  transition: box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .evals-run-list-row:hover .evals-run-list-date {
@@ -946,7 +946,7 @@ input.evals-form-input:focus {
   font-size: 13px;
   font-weight: 520;
   cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default);
 }
 
 .evals-action-btn:hover:not(:disabled) {

@@ -671,7 +671,7 @@ async function handlePromote() {
   color: var(--settings-ink-3);
   font-size: 11px;
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .evals-small-btn:hover {
@@ -763,7 +763,7 @@ textarea.evals-form-textarea:focus {
   font-size: 13px;
   font-weight: 520;
   cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default);
 }
 
 .evals-action-btn:hover {

@@ -825,7 +825,7 @@ onBeforeUnmount(() => {
 .music-track-fill {
   transform-origin: left center;
   background: var(--ui-text-muted-fg);
-  transition: transform 0.25s linear;
+  transition: transform var(--duration-normal) linear;
 }
 
 .music-track.seekable:hover .music-track-fill {
@@ -856,7 +856,7 @@ onBeforeUnmount(() => {
   border-radius: 2px;
   padding: 3px 7px;
   cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default);
 }
 
 .music-btn:hover:not(:disabled),
@@ -915,7 +915,7 @@ onBeforeUnmount(() => {
 /* Same vocabulary as the dock rows: 0.18s, a 6px lift. */
 .music-bar-enter-active,
 .music-bar-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .music-bar-enter-from,

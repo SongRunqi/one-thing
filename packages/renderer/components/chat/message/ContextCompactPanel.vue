@@ -241,7 +241,7 @@ function formatSummarySection(label: string, value: unknown): string {
   flex: 0 0 auto;
   color: var(--ui-text-muted-fg);
   transform: rotate(-90deg);
-  transition: transform 0.16s ease, color 0.16s ease;
+  transition: transform var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default);
 }
 
 .event-chevron.expanded {
@@ -302,7 +302,7 @@ function formatSummarySection(label: string, value: unknown): string {
 
 .summary-enter-active,
 .summary-leave-active {
-  transition: opacity 0.16s ease, transform 0.16s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .summary-enter-from,

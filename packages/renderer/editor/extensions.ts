@@ -428,7 +428,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       opacity: '0',
       transform: 'scale(0.92)',
       pointerEvents: 'none',
-      transition: 'width 120ms ease, margin 120ms ease, opacity 120ms ease, transform 120ms ease, background 120ms ease, color 120ms ease',
+      transition: 'width var(--duration-fast) var(--ease-default), margin var(--duration-fast) var(--ease-default), opacity var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default)',
     },
     '.prompt-ref-widget:hover .prompt-ref-widget-close, .prompt-ref-widget:focus-within .prompt-ref-widget-close': {
       width: '16px',

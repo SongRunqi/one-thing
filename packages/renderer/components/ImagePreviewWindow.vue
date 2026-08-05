@@ -749,7 +749,7 @@ onUnmounted(() => {
   overflow: hidden;
   cursor: pointer;
   border: 2px solid transparent;
-  transition: all 0.15s ease;
+  transition: all var(--duration-normal) var(--ease-default);
   background: var(--ui-surface-elevated-bg, var(--bg-tertiary));
 }
 
@@ -799,7 +799,7 @@ onUnmounted(() => {
   max-width: none;
   max-height: none;
   object-fit: contain;
-  transition: transform 0.1s ease-out;
+  transition: transform var(--duration-fast) var(--ease-out);
   user-select: none;
   -webkit-user-drag: none;
   border-radius: 4px;
@@ -886,7 +886,7 @@ onUnmounted(() => {
   border-radius: 6px;
   color: var(--ui-text-secondary-fg);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--duration-normal) var(--ease-default);
 }
 
 .control-btn:hover:not(:disabled) {

@@ -34,7 +34,7 @@ const icon = computed(() => getToolIcon(props.toolName))
   width: 14px;
   height: 18px;
   color: var(--activity-title-fg, var(--ui-tool-text-faint-fg));
-  transition: color 0.15s ease, opacity 0.15s ease;
+  transition: color var(--duration-normal) var(--ease-default), opacity var(--duration-normal) var(--ease-default);
 }
 
 .tool-icon.icon-queued,

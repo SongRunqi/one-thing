@@ -566,7 +566,7 @@ function onFaviconError(e: Event) {
   cursor: pointer;
   outline: none;
   font-family: inherit;
-  transition: background var(--duration-fast, 0.15s) var(--ease-default), color var(--duration-fast, 0.15s) var(--ease-default);
+  transition: background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
   box-shadow: none;
 }
 
@@ -713,7 +713,7 @@ function onFaviconError(e: Event) {
   z-index: var(--z-overlay);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s ease;
+  transition: opacity var(--duration-normal) var(--ease-default);
 }
 
 .reader-backdrop.open {
@@ -733,7 +733,7 @@ function onFaviconError(e: Event) {
   box-shadow: var(--shadow-xl);
   z-index: calc(var(--z-overlay) + 1);
   transform: translateX(100%);
-  transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1), visibility 0.26s;
+  transition: transform var(--duration-slow) var(--ease-out), visibility var(--duration-slow);
   visibility: hidden;
   pointer-events: none;
   display: flex;
@@ -791,7 +791,7 @@ function onFaviconError(e: Event) {
   background: transparent;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: all var(--duration-fast, 0.15s) var(--ease-default);
+  transition: all var(--duration-fast) var(--ease-default);
 }
 
 .page-link:hover,

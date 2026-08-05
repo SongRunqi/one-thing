@@ -761,7 +761,7 @@ watch(
   color: var(--ui-text-primary-fg);
   border-color: var(--ui-accent-primary-fg);
 }
-.bp-chev { transition: transform 0.14s ease; }
+.bp-chev { transition: transform var(--duration-fast) var(--ease-default); }
 .bp-chev.flip { transform: rotate(180deg); }
 
 /* 地址条：常态无框，悬停才有底纹 */
@@ -840,7 +840,7 @@ watch(
   bottom: -1px;
   height: 1.5px;
   background: var(--ui-accent-primary-fg);
-  transition: width 0.2s linear;
+  transition: width var(--duration-normal) linear;
 }
 
 /* ② 行内提示 + 标签列表 */
@@ -938,7 +938,7 @@ watch(
   border-radius: 2px;
   color: var(--ui-text-faint-fg);
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--duration-fast);
 }
 .bp-row:hover .bp-row-close { opacity: 1; }
 .bp-row-close:hover { color: var(--ui-accent-primary-fg); }

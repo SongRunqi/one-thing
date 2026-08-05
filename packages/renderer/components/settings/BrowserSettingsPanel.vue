@@ -264,7 +264,7 @@ function onRemoveClick(id: string): void {
   font-size: 11px;
   color: var(--ui-text-faint-fg, var(--text-tertiary));
   opacity: 0;
-  transition: opacity 0.12s, color 0.12s;
+  transition: opacity var(--duration-fast), color var(--duration-fast);
 }
 .bs-row:hover .bs-remove { opacity: 1; }
 .bs-remove:hover,

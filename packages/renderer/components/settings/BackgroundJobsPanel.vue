@@ -195,7 +195,7 @@ onMounted(() => {
   color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .btn:hover:not(:disabled) {

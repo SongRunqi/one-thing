@@ -82,7 +82,7 @@ onUnmounted(() => {
   height: 100%;
   cursor: col-resize;
   background: transparent;
-  transition: background var(--duration-fast, 0.15s) ease, width var(--duration-fast, 0.15s) ease;
+  transition: background var(--duration-fast) var(--ease-default), width var(--duration-fast) var(--ease-default);
   z-index: var(--z-sticky);
 }
 

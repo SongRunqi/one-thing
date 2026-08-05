@@ -1462,7 +1462,8 @@ const markdownLivePreviewCursorLayer: Extension = [
     '.cm-content, .cm-line': {
       caretColor: 'transparent !important',
     },
-    '.cm-content :focus': {
+    // :focus-visible 在鼠标点进来时不触发,换过去光标就永远不亮。
+    '.cm-content :focus': { // caret 场景:上一条把 caret 全局藏了,这条只在焦点回来时还给它
       caretColor: 'initial !important',
     },
   }),
@@ -3228,7 +3229,7 @@ const theme = EditorView.theme({
     overflowAnchor: 'none',
   },
   '.md-live-line': {
-    transition: 'background-color 120ms ease',
+    transition: 'background-color var(--duration-fast) var(--ease-default)',
   },
   '.md-live-source-revealed': {
     color: 'var(--ui-text-muted-fg)',
@@ -3373,7 +3374,7 @@ const theme = EditorView.theme({
     cursor: 'pointer',
     opacity: '0.74',
     userSelect: 'none',
-    transition: 'background-color 120ms ease, color 120ms ease, opacity 120ms ease',
+    transition: 'background-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), opacity var(--duration-fast) var(--ease-default)',
   },
   '.md-live-fold-button:hover': {
     color: 'var(--ui-text-primary-fg)',
@@ -3861,7 +3862,7 @@ const theme = EditorView.theme({
     left: '7px',
     zIndex: '2',
     opacity: '0',
-    transition: 'opacity 120ms ease, color 120ms ease, border-color 120ms ease',
+    transition: 'opacity var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default)',
   },
   '.md-live-asset-frame:hover .md-live-asset-fold-toggle, .md-live-asset-frame:focus-within .md-live-asset-fold-toggle, .md-live-asset-frame.collapsed .md-live-asset-fold-toggle': {
     opacity: '1',
@@ -3908,7 +3909,7 @@ const theme = EditorView.theme({
     cursor: 'pointer',
     opacity: '0',
     pointerEvents: 'auto',
-    transition: 'opacity 120ms ease, color 120ms ease, border-color 120ms ease',
+    transition: 'opacity var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default)',
   },
   '.md-live-asset-frame:hover .md-live-source-toggle, .md-live-asset-frame:focus-within .md-live-source-toggle': {
     opacity: '1',

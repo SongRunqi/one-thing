@@ -307,12 +307,12 @@ defineExpose({
   text-decoration: none;
   white-space: nowrap;
   transition:
-    background 0.16s ease,
-    border-color 0.16s ease,
-    box-shadow 0.16s ease,
-    color 0.16s ease,
-    opacity 0.16s ease,
-    transform 0.08s ease;
+    background var(--duration-normal) var(--ease-default),
+    border-color var(--duration-normal) var(--ease-default),
+    box-shadow var(--duration-normal) var(--ease-default),
+    color var(--duration-normal) var(--ease-default),
+    opacity var(--duration-normal) var(--ease-default),
+    transform var(--duration-fast) var(--ease-default);
 }
 
 .app-button--small {
@@ -537,7 +537,7 @@ defineExpose({
   min-width: 0;
   max-width: 100%;
   transform: translateY(0);
-  transition: transform 0.08s ease;
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .app-button.is-unstyled .app-button-content {

@@ -1591,7 +1591,7 @@ function normalizeASRTestError(error: any) {
   color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .provider-note button:hover {
@@ -1611,7 +1611,7 @@ function normalizeASRTestError(error: any) {
   color: var(--settings-ink-2, var(--ui-text-primary-fg));
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 :deep(.setting-row-stack > .setting-row-control) {
@@ -1646,7 +1646,7 @@ function normalizeASRTestError(error: any) {
   font-size: 12px;
   color: var(--settings-ink-3, var(--ui-text-muted-fg));
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .advanced-toggle:hover {

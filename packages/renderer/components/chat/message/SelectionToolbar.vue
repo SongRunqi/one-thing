@@ -183,7 +183,7 @@ html[data-theme='light'] .toolbar-divider {
   font-weight: 500;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: all var(--duration-normal) var(--ease-default);
   white-space: nowrap;
 }
 
@@ -199,7 +199,7 @@ html[data-theme='light'] .toolbar-divider {
 
 .toolbar-btn svg {
   flex-shrink: 0;
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-normal) var(--ease-default);
 }
 
 .toolbar-btn:hover svg {

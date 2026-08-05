@@ -100,7 +100,7 @@ const label = computed(() =>
   font-size: 12px;
   line-height: 1;
   /* 120ms — well inside §3.6's 200ms ceiling, and the only motion in the row. */
-  transition: transform 120ms ease;
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .trace-caret.open {

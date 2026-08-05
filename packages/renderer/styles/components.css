@@ -47,7 +47,7 @@
   font-weight: var(--type-label-weight);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--duration-normal) var(--ease-default);
   border: none;
   line-height: var(--type-leading-control);
 }
@@ -182,10 +182,11 @@
   font-size: var(--type-body-size);
   line-height: var(--type-body-line-height);
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--duration-normal) var(--ease-default);
 }
 
-.form-input:focus {
+/* `.form-input` 全库 45 处都在 `<input>` 上:输入框 caret 场景,裸 :focus 是对的。 */
+input.form-input:focus {
   border-color: var(--ui-surface-input-focus-border, var(--ui-border-focus-border));
   box-shadow: var(--ui-focus-ring-input-shadow);
 }
@@ -225,7 +226,7 @@
   background: var(--ui-accent-primary-fg);
   border-radius: 50%;
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-normal) var(--ease-default);
 }
 
 .form-slider::-webkit-slider-thumb:hover {
@@ -340,7 +341,7 @@
 /* Toast enter/leave transitions */
 .toast-enter-active,
 .toast-leave-active {
-  transition: all 0.3s ease;
+  transition: all var(--duration-slow) var(--ease-default);
 }
 
 .toast-enter-from,

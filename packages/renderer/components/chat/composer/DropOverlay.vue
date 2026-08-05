@@ -73,7 +73,7 @@ withDefaults(defineProps<{
 
 .drop-overlay-enter-active,
 .drop-overlay-leave-active {
-  transition: opacity 120ms ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .drop-overlay-enter-from,

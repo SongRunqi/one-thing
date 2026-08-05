@@ -594,7 +594,7 @@ defineExpose({
   border: 1px solid var(--ui-border-default-border);
   background: var(--ui-surface-input-bg);
   color: var(--ui-text-primary-fg);
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), box-shadow var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 .app-input-control {

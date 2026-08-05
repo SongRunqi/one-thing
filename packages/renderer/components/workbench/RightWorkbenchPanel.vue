@@ -1259,7 +1259,7 @@ defineExpose({
 /* 关闭 ✕ 只在活动/悬停时显形,平时不吵。 */
 .right-workbench-tabs :deep(.app-tabs-tab .app-tabs-close) {
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .right-workbench-tabs :deep(.app-tabs-tab.is-active .app-tabs-close),
@@ -1336,9 +1336,9 @@ defineExpose({
   color: var(--workbench-tool-icon-color, currentColor);
   opacity: 0.92;
   transition:
-    color 0.25s ease,
-    opacity 0.25s ease,
-    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    color var(--duration-normal) var(--ease-default),
+    opacity var(--duration-normal) var(--ease-default),
+    transform var(--duration-normal) var(--ease-spring);
 }
 
 .workbench-tab-label span {
@@ -1378,7 +1378,7 @@ defineExpose({
   color: var(--ui-text-primary-fg);
   font-size: 12px;
   text-align: left;
-  transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+  transition: background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .right-workbench .picker-option:hover {
@@ -1480,9 +1480,9 @@ defineExpose({
   background: transparent;
   font-size: 12px;
   transition:
-    background 0.14s ease,
-    border-color 0.14s ease,
-    color 0.14s ease;
+    background var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
 }
 
 .right-workbench .empty-action::before {

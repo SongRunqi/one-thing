@@ -736,7 +736,7 @@ async function runMenuAction(itemId: string): Promise<void> {
   --board-focus-accent: var(--ui-accent-primary-fg);
   border-color: var(--board-focus-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--board-focus-accent) 18%, transparent);
-  transition: box-shadow 240ms ease, border-color 240ms ease;
+  transition: box-shadow var(--duration-normal) var(--ease-default), border-color var(--duration-normal) var(--ease-default);
 }
 
 .board-card {

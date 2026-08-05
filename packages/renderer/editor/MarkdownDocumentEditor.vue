@@ -464,7 +464,7 @@ defineExpose<MarkdownDocumentEditorHandle>({
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition: opacity var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default);
 }
 
 .markdown-document-editor:hover .markdown-source-toggle,

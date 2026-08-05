@@ -95,9 +95,9 @@ const borderStyle = computed<StyleValue>(() => createBorderBoxStyle(props))
   padding: var(--border-box-padding, 0);
   color: var(--ui-text-primary-fg);
   transition:
-    border-color var(--duration-fast, 0.15s) var(--ease-default, ease),
-    background var(--duration-fast, 0.15s) var(--ease-default, ease),
-    box-shadow var(--duration-fast, 0.15s) var(--ease-default, ease);
+    border-color var(--duration-fast) var(--ease-default),
+    background var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .border-box.is-interactive {

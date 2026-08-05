@@ -277,7 +277,7 @@ async function refreshThemes() {
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 .theme-trigger:hover,
@@ -424,7 +424,7 @@ async function refreshThemes() {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .action-btn:hover:not(:disabled) {
@@ -444,7 +444,7 @@ async function refreshThemes() {
 
 .theme-menu-enter-active,
 .theme-menu-leave-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
 }
 
 .theme-menu-enter-from,

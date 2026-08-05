@@ -173,7 +173,7 @@ async function handleRetire(caseId: string) {
 .evals-case-summary {
   padding: 10px 14px;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
 .evals-case-summary:hover {
@@ -270,7 +270,7 @@ async function handleRetire(caseId: string) {
   font-size: 12px;
   font-weight: 520;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: all var(--duration-fast) var(--ease-default);
 }
 
 .evals-action-btn:hover {

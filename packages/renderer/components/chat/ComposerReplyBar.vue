@@ -69,7 +69,7 @@ const emit = defineEmits<{ cancel: [] }>()
   line-height: 1;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .reply-cancel:hover {

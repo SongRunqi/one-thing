@@ -630,12 +630,12 @@ function handleContentClick(event: MouseEvent) {
   border: 1px solid var(--ui-border-default-border);
   background: var(--ui-surface-elevated-bg);
   position: relative;
-  transition: all 0.2s ease;
+  transition: all var(--duration-normal) var(--ease-default);
   box-shadow: var(--ui-message-surface-shadow, var(--shadow));
 }
 
 .bubble.editing {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all var(--duration-normal) var(--ease-default);
 }
 
 .bubble.user.editing {
@@ -734,7 +734,7 @@ html[data-theme='light'] .bubble.assistant ::selection {
 .content-wrapper {
   position: relative;
   overflow: visible;
-  transition: max-height 0.3s ease;
+  transition: max-height var(--duration-slow) var(--ease-default);
 }
 
 .content-wrapper.collapsed {
@@ -826,7 +826,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   font-weight: var(--type-meta-weight);
   line-height: var(--type-meta-line-height);
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: color var(--duration-normal) var(--ease-default);
 }
 
 .collapse-toggle:hover {
@@ -834,7 +834,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
 }
 
 .collapse-icon {
-  transition: transform 0.3s ease;
+  transition: transform var(--duration-slow) var(--ease-default);
 }
 
 .collapse-icon.rotated {
@@ -848,7 +848,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   --md-code-copy-gap: 0;
   --md-code-copy-padding: 0;
   --md-code-copy-justify-content: center;
-  --md-code-copy-transition: all 0.15s ease;
+  --md-code-copy-transition: all var(--duration-normal) var(--ease-default);
   /* copy/copied icon visibility now comes from the shared defaults in markdown.css */
   --md-code-line-height: var(--type-code-line-height-px);
   --md-code-plain-fg: var(--hg-syntax-plain-fg, var(--text-code-block));
@@ -880,7 +880,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
 
 /* Text 内容淡入 - Waiting 状态由 MessageThinking 组件处理 */
 .text-fade-enter-active {
-  transition: opacity 0.3s ease;
+  transition: opacity var(--duration-slow) var(--ease-default);
 }
 
 .text-fade-enter-from {
@@ -1124,7 +1124,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   margin: 8px 0;
   box-shadow: var(--ui-message-media-shadow, 0 4px 16px rgba(0, 0, 0, 0.2));
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform var(--duration-normal) var(--ease-default), box-shadow var(--duration-normal) var(--ease-default);
 }
 
 .content :deep(img:hover) {

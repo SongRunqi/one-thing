@@ -358,9 +358,9 @@ onBeforeUnmount(() => {
   color: var(--agent-selector-accent);
   opacity: 0.9;
   transition:
-    color 0.25s ease,
-    opacity 0.25s ease,
-    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    color var(--duration-normal) var(--ease-default),
+    opacity var(--duration-normal) var(--ease-default),
+    transform var(--duration-normal) var(--ease-spring);
 }
 
 .agent-chip-chevron {
@@ -368,8 +368,8 @@ onBeforeUnmount(() => {
   color: currentColor;
   opacity: 0.78;
   transition:
-    opacity 0.25s ease,
-    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    opacity var(--duration-normal) var(--ease-default),
+    transform var(--duration-normal) var(--ease-spring);
 }
 
 .agent-chip span {

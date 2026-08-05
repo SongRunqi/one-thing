@@ -1044,7 +1044,7 @@ defineExpose({
 
 .room-scroll-btn-enter-active,
 .room-scroll-btn-leave-active {
-  transition: opacity var(--duration-fast, 0.12s) var(--ease-default, ease);
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .room-scroll-btn-enter-from,

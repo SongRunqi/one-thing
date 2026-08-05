@@ -358,7 +358,7 @@ function confettiStyle(i: number) {
   );
   border-radius: 12px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all var(--duration-slow) var(--ease-default);
 }
 
 .card-inner {
@@ -373,7 +373,7 @@ function confettiStyle(i: number) {
   font-size: 14px;
   font-weight: 500;
   color: var(--ui-text-primary-fg);
-  transition: all 0.3s ease;
+  transition: all var(--duration-slow) var(--ease-default);
 }
 
 .suggestion-card:hover {

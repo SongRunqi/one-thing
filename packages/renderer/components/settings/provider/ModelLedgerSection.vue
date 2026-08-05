@@ -553,7 +553,7 @@ function removeTitle(row: LedgerRow): string {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default);
 }
 
 .ledger-chip:hover {
@@ -598,7 +598,7 @@ function removeTitle(row: LedgerRow): string {
   padding: 9px 2px;
   cursor: pointer;
   color: var(--settings-ink, var(--ui-text-primary-fg));
-  transition: background 0.12s ease;
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
 .ledger-row:hover {
@@ -617,7 +617,7 @@ function removeTitle(row: LedgerRow): string {
   padding: 4px;
   color: var(--settings-ink-5, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
   cursor: pointer;
-  transition: color 0.12s ease, transform 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
 }
 
 .row-star:hover {
@@ -701,7 +701,7 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .row-chevron {
-  transition: transform 0.16s ease;
+  transition: transform var(--duration-normal) var(--ease-default);
 }
 
 .row-chevron.expanded {
@@ -747,7 +747,7 @@ function removeTitle(row: LedgerRow): string {
   color: var(--settings-ink-3, var(--ui-text-muted-fg));
   font-size: 11.5px;
   cursor: pointer;
-  transition: color 0.12s ease, background 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default);
 }
 
 .seg-btn:first-child {
@@ -850,7 +850,7 @@ function removeTitle(row: LedgerRow): string {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .tune-action:hover {

@@ -665,7 +665,7 @@ onMounted(async () => {
   width: 7px;
   height: 1px;
   background: var(--ui-border-strong-border);
-  transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
+  transition: width var(--duration-fast) var(--ease-default), height var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .agent-row:hover::before {
@@ -915,7 +915,7 @@ onMounted(async () => {
   padding: 8px 12px 12px;
   box-sizing: border-box;
   transform: translateX(0);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--duration-slow) var(--ease-out);
   z-index: 1;
 }
 
@@ -928,7 +928,7 @@ onMounted(async () => {
   padding: 0 12px 12px;
   box-sizing: border-box;
   transform: translateX(100%);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--duration-slow) var(--ease-out);
   z-index: 2;
   background: var(--ui-surface-panel-bg);
 }
@@ -965,7 +965,7 @@ onMounted(async () => {
     padding: 8px 12px 12px;
     box-sizing: border-box;
     transform: translateX(0);
-    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform var(--duration-slow) var(--ease-out);
     z-index: 1;
   }
 
@@ -978,7 +978,7 @@ onMounted(async () => {
     padding: 0 12px 12px;
     box-sizing: border-box;
     transform: translateX(100%);
-    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform var(--duration-slow) var(--ease-out);
     z-index: 2;
     background: var(--ui-surface-panel-bg);
   }

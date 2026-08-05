@@ -132,8 +132,8 @@ async function handleCopyLog() {
   line-height: 1.6;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color var(--transition-fast, 0.15s) ease,
-    border-color var(--transition-fast, 0.15s) ease;
+  transition: color var(--duration-normal) var(--ease-default),
+    border-color var(--duration-normal) var(--ease-default);
 }
 
 .error-btn:hover {

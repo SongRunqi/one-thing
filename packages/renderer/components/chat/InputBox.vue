@@ -2004,7 +2004,7 @@ defineExpose({
      measured height (it floats up into exactly this gap), so growing the
      composer pushes the chat area up instead of letting the bar cover it. */
   margin-top: var(--music-bar-reserve, 0px);
-  transition: margin-top 0.18s ease;
+  transition: margin-top var(--duration-normal) var(--ease-default);
 }
 
 /* Blueprint frame tag: floats on the composer's top border like a drawing
@@ -2169,7 +2169,7 @@ defineExpose({
 
 .dock-row-enter-active,
 .dock-row-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .dock-row-enter-from,
@@ -2179,7 +2179,7 @@ defineExpose({
 }
 
 .dock-row-move {
-  transition: transform 0.18s ease;
+  transition: transform var(--duration-normal) var(--ease-default);
 }
 
 /* Transient toast floating above the composer's top edge; never affects
@@ -2224,7 +2224,7 @@ defineExpose({
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity var(--duration-normal) var(--ease-default);
 }
 
 .fade-enter-from,
@@ -2247,7 +2247,7 @@ defineExpose({
   border: 1px solid var(--composer-border);
   background: transparent;
   box-shadow: var(--ui-surface-composer-shadow, none);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), box-shadow var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
   overflow: hidden;
 }
 
@@ -2497,7 +2497,7 @@ defineExpose({
   gap: 7px;
   flex: 0 0 auto;
   font-family: var(--font-mono, monospace);
-  transition: color 0.16s ease, background 0.16s ease;
+  transition: color var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 .context-meter.is-empty {
@@ -2627,8 +2627,10 @@ defineExpose({
   border-radius: 12px;
   background: var(--inputbox-select-panel-bg);
   background-clip: padding-box;
-  box-shadow:
-    0 18px 46px rgba(0, 0, 0, 0.34),
+  /* 抬升走 --shadow-floating(浮层档位);后两层是发丝描边与内高光,不是抬升,
+     也刻意留成极淡的白 —— 亮色主题下它们本就该消失,换成 color-mix 反倒会在
+     浅底上画出一条真实的暗线。 */
+  box-shadow: var(--shadow-floating),
     0 0 0 1px rgba(255, 255, 255, 0.03),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
@@ -2651,7 +2653,7 @@ defineExpose({
   min-height: 32px;
   border-radius: 8px;
   color: var(--inputbox-select-row-fg);
-  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+  transition: background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default);
 }
 
 :global(.app-select-dropdown.inputbox-select-dropdown .app-select-option:hover),
@@ -2771,7 +2773,7 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease, border-color 0.16s ease;
+  transition: background var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default), border-color var(--duration-normal) var(--ease-default);
 }
 
 .voice-btn:hover:not(:disabled),
@@ -2842,7 +2844,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.16s ease, color 0.16s ease;
+  transition: background var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default);
   flex-shrink: 0;
   box-shadow: none;
 }

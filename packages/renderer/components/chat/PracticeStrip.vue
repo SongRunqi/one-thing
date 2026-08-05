@@ -566,7 +566,7 @@ onBeforeUnmount(() => {
   letter-spacing: 0.3em;
   color: var(--ps-muted);
   opacity: 0;
-  transition: opacity var(--duration-fast, 0.12s) var(--ease-default, ease);
+  transition: opacity var(--duration-fast) var(--ease-default);
   pointer-events: none;
 }
 
@@ -601,6 +601,8 @@ onBeforeUnmount(() => {
   height: 3px;
   border-radius: 0 1px 1px 0;
   background: var(--ps-ink);
+  /* 保留字面量:这是倒计时进度条,1s 与每秒一跳的计时器同步,linear 补上两跳之间
+     的插值。换成 --duration-* 档位(最长 300ms)会让进度条走走停停。 */
   transition: width 1s linear;
 }
 

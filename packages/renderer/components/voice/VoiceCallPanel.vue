@@ -303,7 +303,7 @@ function hangUp() {
   background: transparent;
   color: var(--ui-status-danger-fg);
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition: background var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .call-hangup:hover {
@@ -324,7 +324,7 @@ function hangUp() {
 
 .voice-call-fade-enter-active,
 .voice-call-fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .voice-call-fade-enter-from,

@@ -115,7 +115,7 @@ defineEmits<{
   );
   cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  transition: background var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .sidebar-action-btn:hover {

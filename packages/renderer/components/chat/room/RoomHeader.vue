@@ -410,7 +410,7 @@ function handleMoreSelect(id: string): void {
 /* hover 只垫一层软阴影的立体感 —— 不描色、不缩放。四处头像同一句法。 */
 .room-solo-avatar-wrap {
   border-radius: 50%;
-  transition: box-shadow 0.16s ease;
+  transition: box-shadow var(--duration-normal) var(--ease-default);
 }
 
 .room-solo-open:hover .room-solo-avatar-wrap,

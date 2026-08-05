@@ -331,7 +331,7 @@ async function commit(update: {
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 /* Picture avatars only: the emoji inherits the chip's own 13px and needs no

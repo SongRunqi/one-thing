@@ -392,11 +392,11 @@ withDefaults(defineProps<{
 }
 
 .composer-extension-enter-active {
-  transition: opacity 0.13s ease, transform 0.18s cubic-bezier(0.2, 0.82, 0.18, 1);
+  transition: opacity var(--duration-fast) var(--ease-default), transform var(--duration-normal) var(--ease-out);
 }
 
 .composer-extension-leave-active {
-  transition: opacity 0.09s ease, transform 0.09s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
 }
 
 .composer-extension-enter-from,

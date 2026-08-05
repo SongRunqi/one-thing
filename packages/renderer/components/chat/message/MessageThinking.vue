@@ -360,12 +360,12 @@ onUnmounted(() => {
 
 .thinking-fade-enter-active,
 .status-text-fade-enter-active {
-  transition: opacity 0.16s ease, transform 0.16s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .thinking-fade-leave-active,
 .status-text-fade-leave-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
 }
 
 .thinking-fade-enter-from,
@@ -378,7 +378,7 @@ onUnmounted(() => {
 
 .time-fade-enter-active,
 .time-fade-leave-active {
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .time-fade-enter-from,

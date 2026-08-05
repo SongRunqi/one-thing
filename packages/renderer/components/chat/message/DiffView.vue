@@ -667,7 +667,7 @@ onUnmounted(() => {
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--duration-normal) var(--ease-default);
 }
 
 .toolbar-btn:hover {
@@ -767,7 +767,7 @@ onUnmounted(() => {
 
 /* Smooth transitions on theme change */
 .diff-content :deep(diffs-container *) {
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background-color var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default), border-color var(--duration-normal) var(--ease-default);
 }
 
 /* ========================================
@@ -872,7 +872,7 @@ onUnmounted(() => {
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--duration-normal) var(--ease-default);
 }
 
 .diff-content :deep(.diff-header-btn:hover) {
@@ -909,7 +909,7 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--diff-hunk-text);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--duration-normal) var(--ease-default);
   user-select: none;
 }
 

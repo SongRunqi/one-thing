@@ -164,7 +164,7 @@ watch(() => expanded.value || props.solo, (open) => {
 
 .process-rail-chevron {
   flex-shrink: 0;
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-normal) var(--ease-default);
 }
 
 .process-rail.is-open .process-rail-chevron {

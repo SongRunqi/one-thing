@@ -173,7 +173,7 @@ function handleOverlayAction() {
 
 .voice-pop-enter-active,
 .voice-pop-leave-active {
-  transition: opacity 0.16s ease, transform 0.16s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .voice-pop-enter-from,

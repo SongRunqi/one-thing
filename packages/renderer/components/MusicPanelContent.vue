@@ -498,7 +498,7 @@ input.request-input:focus {
   display: flex;
   gap: 2px;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .programme-row:hover .programme-actions {

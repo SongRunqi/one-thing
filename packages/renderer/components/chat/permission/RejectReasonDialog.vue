@@ -127,7 +127,7 @@ function confirm() {
   align-items: center;
   justify-content: center;
   color: var(--ui-text-muted-fg);
-  transition: all 0.15s ease;
+  transition: all var(--duration-normal) var(--ease-default);
 }
 
 .reject-dialog-close:hover {
@@ -147,7 +147,7 @@ function confirm() {
   line-height: var(--type-body-line-height);
   resize: vertical;
   font-family: inherit;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--duration-normal) var(--ease-default);
 }
 
 .reject-reason-input::placeholder {
@@ -175,7 +175,7 @@ textarea.reject-reason-input:focus {
   font-weight: var(--type-label-weight);
   line-height: var(--type-label-line-height);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--duration-normal) var(--ease-default);
   border: 1px solid transparent;
 }
 
@@ -198,7 +198,10 @@ textarea.reject-reason-input:focus {
 .reject-dialog-btn-confirm:hover {
   background: linear-gradient(135deg, var(--ui-status-danger-fg) 0%, var(--ui-status-danger-fg) 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+  /* 不是浮层抬升,是危险按钮的 hover 阴影 —— 几何与 --shadow-md 一致(0 4px 12px),
+     直接用档位。原先那支硬编码的红色 rgba 在任何非默认主题下都跟按钮自身的
+     danger 渐变对不上;染色交给背景,阴影只管抬升。 */
+  box-shadow: var(--shadow-md);
 }
 
 .reject-dialog-btn-confirm:active {

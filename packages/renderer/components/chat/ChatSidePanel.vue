@@ -509,7 +509,7 @@ onUnmounted(() => {
   min-height: 36px;
   overflow: hidden;
   border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 38%, transparent);
-  transition: flex-grow 0.26s ease;
+  transition: flex-grow var(--duration-slow) var(--ease-default);
 }
 
 .chat-side-esec:last-of-type {
@@ -603,7 +603,7 @@ onUnmounted(() => {
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease 0.08s;
+  transition: opacity var(--duration-normal) var(--ease-default) var(--duration-fast);
 }
 
 .chat-side-esec.focus .chat-side-ebody {

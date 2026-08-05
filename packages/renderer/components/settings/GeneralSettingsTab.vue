@@ -768,7 +768,7 @@ async function chooseTodoPlanDirectory() {
   background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg));
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .reset-inline:hover {
@@ -828,7 +828,7 @@ async function chooseTodoPlanDirectory() {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .segment-btn + .segment-btn {

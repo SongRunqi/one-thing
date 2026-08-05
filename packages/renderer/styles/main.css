@@ -251,7 +251,7 @@ html[data-theme='light'] .panel {
 
 /* Status transition - for tool/step status changes */
 .status-transition {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .status-transition.exiting {
@@ -285,7 +285,7 @@ html[data-theme='light'] .panel {
 }
 
 .content-part-move {
-  transition: transform 0.3s ease;
+  transition: transform var(--duration-slow) var(--ease-default);
 }
 
 /* Responsive Utilities */

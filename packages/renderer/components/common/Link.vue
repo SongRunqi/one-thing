@@ -162,9 +162,9 @@ defineExpose({
   text-underline-offset: 0.16em;
   vertical-align: baseline;
   transition:
-    color var(--duration-fast, 0.15s) var(--ease-default, ease),
-    box-shadow var(--duration-fast, 0.15s) var(--ease-default, ease),
-    opacity var(--duration-fast, 0.15s) var(--ease-default, ease);
+    color var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default);
 }
 
 .app-link:hover:not(.is-disabled) {

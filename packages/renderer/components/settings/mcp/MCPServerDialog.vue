@@ -324,7 +324,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .close-btn:hover {
@@ -370,7 +370,7 @@ defineExpose({
   font-size: 13px;
   background: transparent;
   color: var(--ui-text-primary-fg);
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 input.form-input:focus {
@@ -416,7 +416,7 @@ input.form-input:focus {
   background: transparent;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .transport-option:hover {

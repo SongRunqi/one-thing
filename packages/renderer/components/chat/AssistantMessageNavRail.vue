@@ -430,11 +430,11 @@ onUnmounted(() => {
      scrollbar. */
   opacity: 0;
   transition:
-    opacity 0.14s ease,
-    width 0.16s ease,
-    border-color 0.16s ease,
-    background-color 0.16s ease,
-    box-shadow 0.16s ease;
+    opacity var(--duration-fast) var(--ease-default),
+    width var(--duration-normal) var(--ease-default),
+    border-color var(--duration-normal) var(--ease-default),
+    background-color var(--duration-normal) var(--ease-default),
+    box-shadow var(--duration-normal) var(--ease-default);
 }
 
 .assistant-nav-card:hover,
@@ -551,7 +551,7 @@ onUnmounted(() => {
   min-height: 24px;
   padding: 0 26px 0 10px;
   overflow: hidden;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 /* 当前条目:行首一截朱砂描线,同 SessionItem 的 active tick */
@@ -582,8 +582,8 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   transition:
-    opacity 0.12s ease,
-    visibility 0.12s ease;
+    opacity var(--duration-fast) var(--ease-default),
+    visibility var(--duration-fast) var(--ease-default);
 }
 
 .assistant-nav-card.open .assistant-nav-label {
@@ -641,10 +641,10 @@ onUnmounted(() => {
   opacity: 0.62;
   transform: translateY(-50%);
   transition:
-    width 0.12s ease,
-    background-color 0.12s ease,
-    opacity 0.12s ease,
-    box-shadow 0.12s ease;
+    width var(--duration-fast) var(--ease-default),
+    background-color var(--duration-fast) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .assistant-nav-rail.placement-side .assistant-nav-marker {
@@ -737,9 +737,9 @@ onUnmounted(() => {
   opacity: 0.42;
   pointer-events: auto;
   transition:
-    background-color 0.12s ease,
-    color 0.12s ease,
-    opacity 0.12s ease;
+    background-color var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default);
 }
 
 .assistant-nav-card.open .assistant-nav-page-cue {
@@ -770,9 +770,9 @@ onUnmounted(() => {
   opacity: 0.5;
   pointer-events: auto;
   transition:
-    background-color 0.12s ease,
-    border-color 0.12s ease,
-    opacity 0.12s ease;
+    background-color var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default);
 }
 
 .assistant-nav-rail.placement-side .assistant-nav-mode-tabs {
@@ -838,9 +838,9 @@ onUnmounted(() => {
   opacity: 0.42;
   pointer-events: auto;
   transition:
-    background-color 0.12s ease,
-    color 0.12s ease,
-    opacity 0.12s ease;
+    background-color var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default);
 }
 
 .assistant-nav-close:hover,
@@ -891,9 +891,9 @@ onUnmounted(() => {
 .assistant-nav-page-prev-enter-active,
 .assistant-nav-page-prev-leave-active {
   transition:
-    opacity 0.16s ease,
-    transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
-    filter 0.18s ease;
+    opacity var(--duration-normal) var(--ease-default),
+    transform var(--duration-normal) var(--ease-out),
+    filter var(--duration-normal) var(--ease-default);
 }
 
 .assistant-nav-page-next-enter-from {
@@ -925,7 +925,7 @@ onUnmounted(() => {
   .assistant-nav-page-next-leave-active,
   .assistant-nav-page-prev-enter-active,
   .assistant-nav-page-prev-leave-active {
-    transition: opacity 0.08s ease;
+    transition: opacity var(--duration-fast) var(--ease-default);
   }
 
   .assistant-nav-page-next-enter-from,

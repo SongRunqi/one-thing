@@ -221,8 +221,8 @@
 	box-shadow: var(--ui-content-media-shadow, 0 4px 16px rgba(0, 0, 0, 0.2));
 	cursor: pointer;
 	transition:
-		transform 0.2s ease,
-		box-shadow 0.2s ease;
+		transform var(--duration-normal) var(--ease-default),
+		box-shadow var(--duration-normal) var(--ease-default);
 }
 
 .md-body img:hover {
@@ -339,7 +339,7 @@ html[data-theme="light"] .md-body img:hover {
 	--md-code-copy-border: none;
 	--md-code-copy-fg: var(--ui-text-muted-fg);
 	--md-code-copy-opacity: 0.46;
-	--md-code-copy-transition: background 0.15s ease;
+	--md-code-copy-transition: background var(--duration-normal) var(--ease-default);
 	--md-code-copy-hover-bg: color-mix(in srgb, var(--ui-state-hover-bg) 70%, transparent);
 	--md-code-copy-hover-fg: var(--ui-text-primary-fg);
 	/* idle shows the copy icon only, copied shows the check only — these two

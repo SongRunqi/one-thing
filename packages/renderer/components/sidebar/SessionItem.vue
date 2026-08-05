@@ -237,12 +237,12 @@ function cancelRename() {
   -webkit-user-select: none;
   max-height: 44px;
   transition:
-    min-height 0.25s ease,
-    max-height 0.25s ease,
-    padding 0.25s ease,
-    margin 0.25s ease,
-    opacity 0.2s ease,
-    background-color 0.12s ease;
+    min-height var(--duration-normal) var(--ease-default),
+    max-height var(--duration-normal) var(--ease-default),
+    padding var(--duration-normal) var(--ease-default),
+    margin var(--duration-normal) var(--ease-default),
+    opacity var(--duration-normal) var(--ease-default),
+    background-color var(--duration-fast) var(--ease-default);
 }
 
 .session-item:hover {
@@ -313,7 +313,7 @@ function cancelRename() {
   border-left: 1px dotted var(--ui-border-strong-border);
   border-bottom: 1px solid var(--ui-border-strong-border);
   opacity: 0.55;
-  transition: border-color 0.12s ease, opacity 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), opacity var(--duration-fast) var(--ease-default);
 }
 
 /* 非最后子节点：T 形（延续垂直线） */
@@ -333,7 +333,7 @@ function cancelRename() {
   align-items: center;
   flex-shrink: 0;
   justify-content: flex-end;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 /* Generating indicator - 实心小圆点（v7），呼吸而非闪烁 */
@@ -345,7 +345,7 @@ function cancelRename() {
   flex-shrink: 0;
   opacity: 0;
   transform: scale(0.8);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
 .generating-dot.active {
@@ -390,7 +390,7 @@ function cancelRename() {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default);
 }
 
 .branch-badge:hover {
@@ -435,7 +435,7 @@ function cancelRename() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: color 0.15s ease;
+  transition: color var(--duration-normal) var(--ease-default);
 }
 
 .session-item:hover .session-name {
@@ -490,7 +490,7 @@ function cancelRename() {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.12s ease, background 0.15s ease, color 0.15s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), background var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default);
 }
 
 .session-item:hover .more-btn {

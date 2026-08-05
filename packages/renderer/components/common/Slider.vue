@@ -939,9 +939,9 @@ defineExpose({
   box-shadow: var(--app-slider-thumb-shadow);
   cursor: grab;
   transition:
-    transform var(--duration-fast, 0.15s) var(--ease-default, ease),
-    box-shadow var(--duration-fast, 0.15s) var(--ease-default, ease),
-    border-color var(--duration-fast, 0.15s) var(--ease-default, ease);
+    transform var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default);
 }
 
 .app-slider-thumb:hover,
@@ -973,8 +973,8 @@ defineExpose({
   pointer-events: none;
   opacity: 0;
   transition:
-    opacity var(--duration-fast, 0.15s) var(--ease-default, ease),
-    transform var(--duration-fast, 0.15s) var(--ease-default, ease);
+    opacity var(--duration-fast) var(--ease-default),
+    transform var(--duration-fast) var(--ease-default);
 }
 
 .app-slider-tooltip.is-visible {

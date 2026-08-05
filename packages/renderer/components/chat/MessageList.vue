@@ -2322,7 +2322,7 @@ defineExpose({
   color: color-mix(in srgb, var(--ui-text-secondary-fg) 78%, transparent);
   cursor: pointer;
   opacity: 0.7;
-  transition: background 0.15s ease, transform 0.15s ease, color 0.15s ease;
+  transition: background var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default);
   z-index: 4;
 }
 
@@ -2338,7 +2338,7 @@ defineExpose({
 
 .scroll-bottom-btn-enter-active,
 .scroll-bottom-btn-leave-active {
-  transition: opacity 0.15s ease, transform 0.18s ease;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 .scroll-bottom-btn-enter-from,
 .scroll-bottom-btn-leave-to {
@@ -2390,7 +2390,7 @@ defineExpose({
   font-size: var(--type-meta-size);
   line-height: var(--type-leading-control);
   overflow-anchor: none;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 .history-page-summary:hover:not(:disabled) {

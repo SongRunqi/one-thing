@@ -520,7 +520,7 @@ defineExpose({
 
 .split-zone-enter-active,
 .split-zone-leave-active {
-  transition: opacity var(--duration-fast, 0.12s) var(--ease-default, ease);
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .split-zone-enter-from,

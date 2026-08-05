@@ -127,8 +127,8 @@ function isModifiedClick(event: MouseEvent): boolean {
   white-space: nowrap;
   border-radius: 3px;
   transition:
-    color var(--duration-fast, 0.15s) var(--ease-default, ease),
-    box-shadow var(--duration-fast, 0.15s) var(--ease-default, ease);
+    color var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .app-breadcrumb-item__link {

@@ -336,10 +336,10 @@ onUnmounted(() => {
      stays the only resting scroll indicator. */
   opacity: 0;
   transition:
-    opacity 0.14s ease,
-    width 0.16s ease,
-    border-color 0.16s ease,
-    background-color 0.16s ease;
+    opacity var(--duration-fast) var(--ease-default),
+    width var(--duration-normal) var(--ease-default),
+    border-color var(--duration-normal) var(--ease-default),
+    background-color var(--duration-normal) var(--ease-default);
 }
 
 /* 主账目线：行刻度(.user-nav-marker)挂在这条线上 */
@@ -473,8 +473,8 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   transition:
-    opacity 0.12s ease,
-    visibility 0.12s ease;
+    opacity var(--duration-fast) var(--ease-default),
+    visibility var(--duration-fast) var(--ease-default);
 }
 
 .user-nav-card.open .user-nav-label {
@@ -507,9 +507,9 @@ onUnmounted(() => {
   background: var(--ui-border-strong-border);
   transform: translateY(-50%);
   transition:
-    width 0.12s ease,
-    height 0.12s ease,
-    background-color 0.12s ease;
+    width var(--duration-fast) var(--ease-default),
+    height var(--duration-fast) var(--ease-default),
+    background-color var(--duration-fast) var(--ease-default);
 }
 
 .user-nav-row:hover .user-nav-marker,
@@ -571,8 +571,8 @@ onUnmounted(() => {
   opacity: 0.42;
   pointer-events: auto;
   transition:
-    color 0.12s ease,
-    opacity 0.12s ease;
+    color var(--duration-fast) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default);
 }
 
 .user-nav-card.open .user-nav-page-cue {
@@ -603,7 +603,7 @@ onUnmounted(() => {
   background: transparent;
   opacity: 0.5;
   pointer-events: auto;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .user-nav-rail.placement-side .user-nav-mode-tabs {
@@ -669,8 +669,8 @@ onUnmounted(() => {
   opacity: 0.42;
   pointer-events: auto;
   transition:
-    color 0.12s ease,
-    opacity 0.12s ease;
+    color var(--duration-fast) var(--ease-default),
+    opacity var(--duration-fast) var(--ease-default);
 }
 
 .user-nav-close:hover,
@@ -721,9 +721,9 @@ onUnmounted(() => {
 .nav-page-prev-enter-active,
 .nav-page-prev-leave-active {
   transition:
-    opacity 0.16s ease,
-    transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
-    filter 0.18s ease;
+    opacity var(--duration-normal) var(--ease-default),
+    transform var(--duration-normal) var(--ease-out),
+    filter var(--duration-normal) var(--ease-default);
 }
 
 .nav-page-next-enter-from {
@@ -755,7 +755,7 @@ onUnmounted(() => {
   .nav-page-next-leave-active,
   .nav-page-prev-enter-active,
   .nav-page-prev-leave-active {
-    transition: opacity 0.08s ease;
+    transition: opacity var(--duration-fast) var(--ease-default);
   }
 
   .nav-page-next-enter-from,

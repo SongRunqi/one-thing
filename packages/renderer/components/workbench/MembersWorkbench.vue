@@ -305,7 +305,7 @@ function closeSpace(): void {
    四处头像共用同一句法。 */
 .member-mark-wrap.agent-open-target {
   border-radius: 50%;
-  transition: box-shadow 0.16s ease;
+  transition: box-shadow var(--duration-normal) var(--ease-default);
 }
 
 .member-row:hover .member-mark-wrap.agent-open-target {

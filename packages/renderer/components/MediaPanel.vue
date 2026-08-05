@@ -859,7 +859,7 @@ onUnmounted(() => {
   background: transparent;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 /* Active nav item hangs a tick on the rail — no fill. */
@@ -872,7 +872,7 @@ onUnmounted(() => {
   width: 2px;
   height: 0;
   background: var(--ui-accent-primary-fg);
-  transition: height 0.12s ease;
+  transition: height var(--duration-fast) var(--ease-default);
 }
 
 .nav-item:hover {
@@ -1154,7 +1154,7 @@ onUnmounted(() => {
   transform: translateZ(0);
   outline: 1px solid transparent;
   outline-offset: -1px;
-  transition: outline-color 0.12s ease;
+  transition: outline-color var(--duration-fast) var(--ease-default);
 }
 
 .media-item:hover {
@@ -1182,7 +1182,7 @@ onUnmounted(() => {
   padding: 9px;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.82));
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--duration-normal) var(--ease-default);
 }
 
 .media-item:hover .media-overlay,
@@ -1282,7 +1282,7 @@ onUnmounted(() => {
   width: 7px;
   height: 1px;
   background: var(--ui-border-strong-border);
-  transition: width 0.12s ease, background-color 0.12s ease;
+  transition: width var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .asset-row:hover::before {
@@ -1342,7 +1342,7 @@ onUnmounted(() => {
   gap: 12px;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .asset-row:hover .asset-row-actions,
@@ -1543,7 +1543,7 @@ onUnmounted(() => {
 /* Drawer slide */
 .drawer-enter-active,
 .drawer-leave-active {
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--duration-slow) var(--ease-out);
 }
 
 .drawer-enter-from,
@@ -1561,7 +1561,7 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .text-action:hover:not(:disabled) {

@@ -67,7 +67,7 @@ function emitValue(event: Event) {
   background: var(--ui-surface-input-bg);
   border: 1px solid var(--ui-border-default-border);
   border-radius: 8px;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), box-shadow var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 

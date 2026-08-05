@@ -363,7 +363,7 @@ defineExpose({
   font-weight: 650;
   line-height: 1;
   text-align: center;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  transition: border-color var(--duration-normal) var(--ease-default), box-shadow var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 .app-input-otp--small {

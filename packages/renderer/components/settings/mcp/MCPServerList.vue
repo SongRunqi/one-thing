@@ -171,7 +171,7 @@ defineEmits<Emits>()
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .import-btn svg,

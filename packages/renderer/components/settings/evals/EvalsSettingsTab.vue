@@ -79,7 +79,7 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 540;
   cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default);
 }
 
 .evals-view-btn:hover {

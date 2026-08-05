@@ -174,7 +174,7 @@ function clearShortcut() {
   background: transparent;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border));
   cursor: pointer;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
   font-size: 12px;
   gap: 8px;
 }
@@ -183,6 +183,10 @@ function clearShortcut() {
   border-color: var(--settings-ink-3, var(--ui-text-muted-fg));
 }
 
+/* ui-gate-allow 的口头版:`.shortcut-input` 是个带 tabindex 的 div,录快捷键靠的
+   就是它拿到焦点 —— 无论鼠标点还是键盘 Tab 进来都必须立刻显示"正在录制"。
+   :focus-visible 在鼠标点击时不触发,换过去等于把录制入口做瞎了。下面那条
+   :focus-visible 只额外补键盘用户的焦点环,两条是叠加不是替代。 */
 .shortcut-input:focus {
   outline: none;
   border-color: var(--settings-accent, var(--ui-accent-primary-fg));
@@ -239,7 +243,7 @@ function clearShortcut() {
   background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg));
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .clear-btn:hover {

@@ -279,7 +279,7 @@ onUnmounted(() => {
   max-width: 90vw;
   max-height: 85vh;
   object-fit: contain;
-  transition: transform 0.15s ease-out;
+  transition: transform var(--duration-normal) var(--ease-out);
   border-radius: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
@@ -305,7 +305,7 @@ onUnmounted(() => {
   border-radius: 50%;
   color: white;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--duration-normal) var(--ease-default);
 }
 
 .close-btn:hover {
@@ -339,7 +339,7 @@ onUnmounted(() => {
   border-radius: 50%;
   color: white;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--duration-normal) var(--ease-default);
 }
 
 .control-btn:hover {
@@ -371,12 +371,12 @@ onUnmounted(() => {
 /* Transition animations */
 .preview-fade-enter-active,
 .preview-fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity var(--duration-normal) var(--ease-default);
 }
 
 .preview-fade-enter-active .preview-image,
 .preview-fade-leave-active .preview-image {
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition: transform var(--duration-normal) var(--ease-default), opacity var(--duration-normal) var(--ease-default);
 }
 
 .preview-fade-enter-from,

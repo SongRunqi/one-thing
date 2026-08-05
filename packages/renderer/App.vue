@@ -1340,8 +1340,8 @@ onUnmounted(() => {
 
 <style scoped>
 .app-shell {
-  --app-sidebar-transition-duration: 0.3s;
-  --app-sidebar-transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --app-sidebar-transition-duration: var(--duration-slow);
+  --app-sidebar-transition-ease: var(--ease-default);
 
   height: 100%;
   width: 100%;
@@ -1437,7 +1437,7 @@ onUnmounted(() => {
 /* Hide only after the slide-out finishes; reappear instantly on expand. */
 .app-right-sidebar-region.is-collapsed .workbench-slide {
   visibility: hidden;
-  transition: visibility 0s linear 0.2s;
+  transition: visibility 0s linear var(--duration-normal);
 }
 
 .workspace-view-stack {

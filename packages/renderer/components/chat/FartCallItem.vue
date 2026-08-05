@@ -528,10 +528,10 @@ function maybePlayAudio() {
 
 /* Bubble entrance */
 .bubble-enter-active {
-  transition: opacity 0.18s ease-out, transform 0.22s cubic-bezier(0.32, 1.4, 0.3, 1);
+  transition: opacity var(--duration-normal) var(--ease-out), transform var(--duration-normal) var(--ease-spring);
 }
 .bubble-leave-active {
-  transition: opacity 0.18s ease-in, transform 0.18s ease-in;
+  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 .bubble-enter-from {
   opacity: 0;
@@ -595,7 +595,7 @@ function maybePlayAudio() {
     inset 0 2px 0 rgba(255, 255, 255, 0.25),
     inset 0 -2px 0 rgba(0, 0, 0, 0.3),
     0 2px 0 var(--ui-border-strong-border);
-  transition: transform 0.06s ease, box-shadow 0.06s ease;
+  transition: transform var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .arcade-btn:active {

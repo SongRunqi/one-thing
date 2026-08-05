@@ -215,7 +215,7 @@ async function submit() {
   padding: 4px 0 5px;
   font-size: 13px;
   color: var(--ui-text-primary-fg);
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 .field-input.is-mono {
@@ -247,7 +247,7 @@ input.field-input:focus {
   font-family: var(--font-mono, monospace);
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .text-action:hover:not(:disabled) {

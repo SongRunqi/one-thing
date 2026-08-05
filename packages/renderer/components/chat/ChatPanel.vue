@@ -814,7 +814,7 @@ defineExpose({
   /* Bottom margin grows by the music bar's height (var set on the container)
      so the goal bar lifts above the flyout that floats up from the composer. */
   margin: 8px var(--chat-content-column-right, auto) calc(8px + var(--goal-music-offset, 0px)) var(--chat-content-column-left, auto);
-  transition: margin-bottom 0.18s ease;
+  transition: margin-bottom var(--duration-normal) var(--ease-default);
 }
 
 /* Agent 执行会话的只读说明:占输入框的位置,走同一条测量出来的阅读列,
@@ -851,7 +851,7 @@ defineExpose({
    so live splitter drags keep tracking the cursor 1:1. The container transform
    carries the FLIP compensation for the panel-origin snap. */
 .composer-container.is-layout-animating {
-  transition: transform var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1));
+  transition: transform var(--app-sidebar-transition-duration, var(--duration-slow)) var(--app-sidebar-transition-ease, var(--ease-default));
 }
 
 .composer-container.is-layout-animating :deep(.composer-wrapper),
@@ -860,8 +860,8 @@ defineExpose({
 .composer-container.is-layout-animating :deep(.composer-reply),
 .composer-container.is-layout-animating .session-permission-panel {
   transition:
-    width var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1)),
-    margin var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1));
+    width var(--app-sidebar-transition-duration, var(--duration-slow)) var(--app-sidebar-transition-ease, var(--ease-default)),
+    margin var(--app-sidebar-transition-duration, var(--duration-slow)) var(--app-sidebar-transition-ease, var(--ease-default));
 }
 
 @media (max-width: 768px) {

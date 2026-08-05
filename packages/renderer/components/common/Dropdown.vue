@@ -231,8 +231,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleMenuKey, true)
   color: var(--ui-text-secondary-fg, var(--ui-text-muted-fg));
   cursor: pointer;
   transition:
-    background var(--duration-fast, 0.12s) var(--ease-default, ease),
-    color var(--duration-fast, 0.12s) var(--ease-default, ease);
+    background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
 }
 
 /* 悬停三管齐下:底色加深 + 字转主色 + 左缘一道朱砂 —— 单靠 menu-hover token
@@ -246,7 +246,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleMenuKey, true)
   width: 2px;
   border-radius: 2px;
   background: transparent;
-  transition: background var(--duration-fast, 0.12s) var(--ease-default, ease);
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
 .app-context-item:hover:not(:disabled),

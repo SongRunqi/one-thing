@@ -234,8 +234,8 @@ const progressStyle = computed<StyleValue>(() => ({
   background: var(--app-progress-fill);
   border-radius: inherit;
   transition:
-    width var(--duration-normal, 0.2s) var(--ease-default, ease),
-    background-color var(--duration-normal, 0.2s) var(--ease-default, ease);
+    width var(--duration-normal) var(--ease-default),
+    background-color var(--duration-normal) var(--ease-default);
 }
 
 .app-progress-text {
@@ -284,8 +284,8 @@ const progressStyle = computed<StyleValue>(() => ({
 .app-progress-radial-bar {
   stroke: var(--app-progress-fill);
   transition:
-    stroke-dashoffset var(--duration-normal, 0.2s) var(--ease-default, ease),
-    stroke var(--duration-normal, 0.2s) var(--ease-default, ease);
+    stroke-dashoffset var(--duration-normal) var(--ease-default),
+    stroke var(--duration-normal) var(--ease-default);
 }
 
 .app-progress-text--radial {

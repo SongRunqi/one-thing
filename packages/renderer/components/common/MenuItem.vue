@@ -190,7 +190,7 @@ function handleKeydown(event: KeyboardEvent) {
   text-align: left;
   cursor: pointer;
   outline: none;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .app-menu-item:hover,

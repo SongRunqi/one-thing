@@ -572,7 +572,7 @@ function formatShortDate(ms?: number): string {
   color: var(--ui-text-muted-fg);
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .text-action:hover:not(:disabled),
@@ -1027,7 +1027,7 @@ function formatShortDate(ms?: number): string {
     height: 100%;
     border-right: 0;
     transform: translateX(0);
-    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform var(--duration-slow) var(--ease-out);
     z-index: 1;
   }
 
@@ -1038,7 +1038,7 @@ function formatShortDate(ms?: number): string {
     width: 100%;
     height: 100%;
     transform: translateX(100%);
-    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform var(--duration-slow) var(--ease-out);
     z-index: 2;
     background: var(--ui-surface-app-bg);
   }

@@ -526,7 +526,7 @@ watch(() => props.disabled, (d) => {
 /* Transition */
 .tooltip-fade-enter-active,
 .tooltip-fade-leave-active {
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-normal) var(--ease-default);
 }
 
 .tooltip-fade-enter-from,

@@ -597,7 +597,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  transition: color 0.15s ease;
+  transition: color var(--duration-normal) var(--ease-default);
 }
 
 .group-icons {
@@ -749,7 +749,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   border-radius: 0;
   user-select: none;
   -webkit-user-select: none;
-  transition: color 0.15s ease;
+  transition: color var(--duration-normal) var(--ease-default);
 }
 
 /* Ledger row number (01, 02, …), counted in DOM order per timeline. */

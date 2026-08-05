@@ -868,8 +868,8 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: transparent;
   transition:
-    background-color 0.15s ease,
-    transform 0.15s ease;
+    background-color var(--duration-normal) var(--ease-default),
+    transform var(--duration-normal) var(--ease-default);
 }
 
 .splitter.layout-horizontal .splitter-resizer-line {

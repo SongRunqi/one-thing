@@ -340,7 +340,7 @@ function handleTitleKeydown(event: KeyboardEvent) {
   text-align: left;
   cursor: pointer;
   outline: none;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
 }
 
 .app-sub-menu-title:hover,
@@ -392,7 +392,7 @@ function handleTitleKeydown(event: KeyboardEvent) {
   flex: 0 0 auto;
   color: currentColor;
   opacity: 0.72;
-  transition: transform 0.14s ease;
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .app-sub-menu-chevron.is-opened {
@@ -451,10 +451,10 @@ function handleTitleKeydown(event: KeyboardEvent) {
 .app-menu-collapse-leave-active {
   overflow: hidden;
   transition:
-    height 0.18s cubic-bezier(0.4, 0, 0.2, 1),
-    margin 0.18s cubic-bezier(0.4, 0, 0.2, 1),
-    padding 0.18s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.15s ease;
+    height var(--duration-normal) var(--ease-default),
+    margin var(--duration-normal) var(--ease-default),
+    padding var(--duration-normal) var(--ease-default),
+    opacity var(--duration-normal) var(--ease-default);
 }
 
 /* Margin/padding collapse alongside height, otherwise they survive the height
@@ -477,7 +477,7 @@ function handleTitleKeydown(event: KeyboardEvent) {
 
 .app-menu-popper-enter-active,
 .app-menu-popper-leave-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
 }
 
 .app-menu-popper-enter-from,

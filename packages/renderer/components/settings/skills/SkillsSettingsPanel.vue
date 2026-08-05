@@ -399,7 +399,7 @@ onMounted(() => {
 .ledger-body {
   position: relative;
   padding-left: 16px;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-normal) var(--ease-default);
 }
 
 .ledger-body::before {
@@ -487,7 +487,7 @@ onMounted(() => {
   width: 7px;
   height: 1px;
   background: var(--ui-border-strong-border);
-  transition: width 0.12s ease, background-color 0.12s ease;
+  transition: width var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .dir-row:hover::before {
@@ -524,7 +524,7 @@ onMounted(() => {
   gap: 12px;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
 }
 
 .dir-row:hover .dir-actions,
@@ -564,7 +564,7 @@ onMounted(() => {
   font-size: 12px;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .add-row::before {
@@ -575,7 +575,7 @@ onMounted(() => {
   width: 7px;
   height: 1px;
   background: var(--ui-border-strong-border);
-  transition: width 0.12s ease, background-color 0.12s ease;
+  transition: width var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 .add-row:hover {
@@ -642,7 +642,7 @@ onMounted(() => {
   width: 7px;
   height: 1px;
   background: var(--ui-border-strong-border);
-  transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
+  transition: width var(--duration-fast) var(--ease-default), height var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
 }
 
 :deep(.skill-row:hover)::before {
@@ -725,7 +725,7 @@ onMounted(() => {
   gap: 12px;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--duration-fast) var(--ease-default);
   cursor: default;
 }
 
@@ -825,7 +825,7 @@ onMounted(() => {
   background: transparent;
   cursor: pointer;
   position: relative;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
 
 .enable-dot.is-on,
@@ -858,7 +858,7 @@ onMounted(() => {
   font-size: 11px;
   color: var(--ui-text-muted-fg);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color var(--duration-fast) var(--ease-default);
 }
 
 .text-action:hover:not(:disabled),

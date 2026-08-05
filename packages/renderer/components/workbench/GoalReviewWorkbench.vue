@@ -304,7 +304,7 @@ defineExpose({ load })
 .file-chevron {
   flex-shrink: 0;
   color: var(--ui-text-muted-fg);
-  transition: transform var(--transition-fast, 0.15s) ease;
+  transition: transform var(--duration-normal) var(--ease-default);
 }
 
 .file-chevron.open {

@@ -243,7 +243,7 @@ function rejectWithInstruction() {
   font-size: 11.5px;
   font-weight: 600;
   color: var(--ui-text-muted-fg);
-  transition: color 0.16s ease, background 0.16s ease;
+  transition: color var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 .permission-scope-btn:hover {
@@ -317,7 +317,7 @@ textarea.permission-instruction-input:focus {
   font-weight: 600;
   letter-spacing: 0.03em;
   color: var(--ui-text-muted-fg);
-  transition: background 0.16s ease;
+  transition: background var(--duration-normal) var(--ease-default);
 }
 
 .permission-btn.allow {

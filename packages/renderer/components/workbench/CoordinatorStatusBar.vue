@@ -475,7 +475,7 @@ function openDeadLetters(): void {
   border-right: 1.4px solid var(--ui-text-muted-fg);
   border-bottom: 1.4px solid var(--ui-text-muted-fg);
   transform: rotate(45deg) translate(-2px, -2px);
-  transition: transform 0.14s ease;
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .cd.is-open .cd-chev {
@@ -747,7 +747,7 @@ function openDeadLetters(): void {
   position: absolute;
   inset: 0 auto 0 0;
   background: var(--ui-text-secondary-fg, var(--ui-text-primary-fg));
-  transition: width 0.2s ease;
+  transition: width var(--duration-normal) var(--ease-default);
 }
 
 .cd-gate.is-warn .cd-gate-bar i,
