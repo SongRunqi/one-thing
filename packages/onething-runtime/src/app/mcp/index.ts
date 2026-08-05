@@ -29,7 +29,7 @@ export { DEFAULT_MCP_SETTINGS } from './types.js'
 export { MCPClient } from './client.js'
 
 // Export manager
-export { MCPManager } from './manager.js'
+export { MCPManager, configureMCPClientHost } from './manager.js'
 
 // Export bridge functions
 export {
@@ -41,5 +41,6 @@ export {
   parseMCPToolId,
   isMCPTool,
   executeMCPTool,
+  resolveMCPServerIdForToolRef,
   findMCPToolIdByShortName,
 } from './bridge.js'

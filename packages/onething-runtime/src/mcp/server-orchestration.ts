@@ -15,6 +15,7 @@ export interface OnethingMCPSettingsLike<TConfig extends OnethingMCPServerConfig
 export interface OnethingMCPServerStateLike<TConfig extends OnethingMCPServerConfigLike = OnethingMCPServerConfigLike> {
   config: TConfig
   status: string
+  error?: string
   tools: unknown[]
   resources: unknown[]
   prompts: unknown[]
@@ -180,10 +181,20 @@ export async function connectOnethingMCPServer<
   await options.manager.connectServer(config)
   await options.registerTools()
 
-  return {
-    success: true,
-    server: options.manager.getServerState(options.serverId),
+  // connectServer swallows connection errors so one bad server cannot break
+  // startup for the rest — which meant an explicit "connect" click always
+  // reported success and the real reason (bad command, 401, timeout) only
+  // reached the main-process log. Read it back off the resulting state.
+  const server = options.manager.getServerState(options.serverId)
+  if (server?.status === 'error') {
+    return {
+      success: false,
+      error: server.error || 'Failed to connect server',
+      server,
+    }
   }
+
+  return { success: true, server }
 }
 
 export async function disconnectOnethingMCPServer<

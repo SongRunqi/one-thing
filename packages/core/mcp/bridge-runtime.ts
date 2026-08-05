@@ -137,6 +137,33 @@ export class CoreMCPBridgeRuntime {
     return result
   }
 
+  /**
+   * Rebuild the sanitized-id -> {serverId, toolName} map.
+   *
+   * Must be called whenever the connected tool set changes. It used to happen
+   * only inside buildToolsForAI, whose caller became dead when the model-facing
+   * tool list moved to getMCPRouterToolDefinition — so in practice the map was
+   * always empty and parseToolId/findToolIdByShortName ran on their fallbacks
+   * (prefix splitting, parameter-shape guessing) instead of the real mapping.
+   */
+  /**
+   * Which server owns a router-facing tool reference (its `id` or bare name).
+   * Used to key permission grants per server.
+   */
+  resolveServerIdForToolRef(toolRef: string): string | undefined {
+    const refs = this.getMCPFunctionRefs()
+    const match = refs.find(ref => ref.id === toolRef)
+      ?? refs.find(ref => ref.toolName === toolRef)
+    return match?.serverId
+  }
+
+  rememberToolIds(): void {
+    this.mcpToolIdRegistry.rememberTools(
+      this.host.getAllTools(),
+      serverId => this.getServerName(serverId),
+    )
+  }
+
   planToolRegistration(existingTools: MCPRegisteredToolLike[]): MCPToolRegistrationPlan {
     return planMCPToolRegistration({
       enabled: this.host.isEnabled(),

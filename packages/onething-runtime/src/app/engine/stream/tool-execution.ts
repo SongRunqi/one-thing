@@ -7,7 +7,7 @@ import * as store from '../../store.js'
 import type { Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 import { analyzeTool, executeTool } from '../../tools/index.js'
-import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
+import { isMCPTool, executeMCPTool, resolveMCPServerIdForToolRef } from '../../mcp/index.js'
 import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '../../tools/types.js'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
 import type { StreamContext } from './stream-processor.js'
@@ -68,6 +68,7 @@ export async function executeToolDirectly(
     context,
     isMCPTool,
     executeMCPTool,
+    resolveMCPServerId: resolveMCPServerIdForToolRef,
     analyzeTool,
     executeTool,
     enforcePermission: enforcePermissionPolicy,

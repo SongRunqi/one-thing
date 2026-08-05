@@ -57,6 +57,8 @@ export interface ExecuteOnethingDirectToolOptions<
     args: OnethingDirectToolArgs,
     options: CoreDirectToolMCPExecutionOptions,
   ) => Promise<unknown>
+  /** Qualifies MCP permission grants with the owning server. */
+  resolveMCPServerId?: (toolRef: string) => string | undefined
   analyzeTool: (
     toolName: string,
     args: OnethingDirectToolArgs,
@@ -133,6 +135,7 @@ export async function executeOnethingDirectTool<
     context: options.context as CoreDirectToolExecutionContext<TMetadataUpdate, TPartialResultUpdate, TStep>,
     isMCPTool: options.isMCPTool,
     executeMCPTool: options.executeMCPTool,
+    resolveMCPServerId: options.resolveMCPServerId,
     analyzeTool: options.analyzeTool,
     executeTool: options.executeTool,
     enforcePermission: options.enforcePermission,

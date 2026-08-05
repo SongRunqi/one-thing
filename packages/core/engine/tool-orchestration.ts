@@ -669,15 +669,24 @@ export function resolveMCPPermissionResourceName(toolName: string, args: JsonObj
     : toolName
 }
 
-export function buildMCPPermissionPlan(toolName: string, args: JsonObject): CoreMCPPermissionPlan | null {
+export function buildMCPPermissionPlan(
+  toolName: string,
+  args: JsonObject,
+  options: { resolveServerId?: (toolRef: string) => string | undefined } = {},
+): CoreMCPPermissionPlan | null {
   if (isReadOnlyMCPRouterCall(toolName, args)) return null
 
   const resourceName = resolveMCPPermissionResourceName(toolName, args)
+  // Grants are keyed per server, not per bare tool name. Router tool ids stay
+  // unqualified while a name is unique across servers, so a permanent "allow
+  // search" grant would silently carry over to a different server that later
+  // exposes its own `search`. The prompt still shows the friendly name.
+  const serverId = options.resolveServerId?.(resourceName)
   return {
     resourceName,
     effects: [{
       kind: 'mcp',
-      resources: [resourceName],
+      resources: [serverId ? `mcp:${serverId}:${resourceName}` : resourceName],
       barrier: true,
       metadata: { toolName, arguments: args },
     }],

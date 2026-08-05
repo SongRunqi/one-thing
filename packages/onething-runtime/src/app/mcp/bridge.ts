@@ -165,6 +165,10 @@ export async function registerMCPTools(): Promise<void> {
     return
   }
 
+  // The connected tool set just changed — refresh the tool-id mapping that
+  // parseMCPToolId/findMCPToolIdByShortName resolve against.
+  coreMCPBridgeRuntime.rememberToolIds()
+
   // Generate the tools catalog file for AI reference
   generateToolsCatalog()
 
@@ -199,6 +203,14 @@ export function findMCPToolIdByShortName(
   args?: JsonObject
 ): string | null {
   return coreMCPBridgeRuntime.findMCPToolIdByShortName(shortName, args)
+}
+
+/**
+ * Resolve which MCP server owns a router-facing tool reference.
+ * Permission grants are keyed per server so they cannot carry across servers.
+ */
+export function resolveMCPServerIdForToolRef(toolRef: string): string | undefined {
+  return coreMCPBridgeRuntime.resolveServerIdForToolRef(toolRef)
 }
 
 /**

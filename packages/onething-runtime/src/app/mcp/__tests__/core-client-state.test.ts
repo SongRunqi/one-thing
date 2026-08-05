@@ -165,11 +165,16 @@ describe('core MCP client state helpers', () => {
     expect(normalizeMCPPromptMessages([{ role: 'user', content: 'hi' }])).toEqual([
       { role: 'user', content: 'hi' },
     ])
+    // Host env is NOT inherited wholesale — only the documented allowlist.
+    // `A` is not on it, so setting a custom var must not drag it along.
     expect(mergeMCPEnvironment({ A: '1', B: undefined }, { B: '2' })).toEqual({
-      A: '1',
       B: '2',
     })
-    expect(mergeMCPEnvironment({ A: '1' })).toBeUndefined()
+    expect(mergeMCPEnvironment({ A: '1' })).toEqual({})
+    expect(mergeMCPEnvironment({ A: '1', HTTPS_PROXY: 'http://p:1' }, { B: '2' })).toEqual({
+      HTTPS_PROXY: 'http://p:1',
+      B: '2',
+    })
     expect(mcpConnectTimeoutMs('sse')).toBe(30000)
     expect(mcpConnectTimeoutMs('stdio')).toBe(60000)
     expect(mcpConnectionTimeoutMessage(30000)).toBe('Connection timeout after 30s')
@@ -200,7 +205,72 @@ describe('core MCP client state helpers', () => {
     })
   })
 
+  it('converges to the configured target state when updating config', async () => {
+    const adapters = () => {
+      const connects: string[] = []
+      return {
+        connects,
+        adapters: {
+          createTransport: () => ({}),
+          createClient: () => ({}),
+          connectClient: async () => { connects.push('connect') },
+          refreshCapabilities: async () => ({ tools: [], resources: [], prompts: [] }),
+          closeClient: async () => {},
+          closeTransport: async () => {},
+          logger: { log: () => {}, warn: () => {}, error: () => {} },
+        },
+      }
+    }
+
+    // A client that exists but failed to connect must retry once the user
+    // fixes the config — previously only an already-connected client relinked,
+    // so a corrected command left the server stuck red.
+    const failed = adapters()
+    const fromError = await updateMCPClientConfigWithAdapters({
+      state: markMCPServerError(createMCPServerState(config), new Error('spawn ENOENT')),
+      client: null,
+      transport: null,
+      config: { ...config, command: 'fixed-command' },
+      baseEnv: {},
+      adapters: failed.adapters,
+    })
+    expect(failed.connects).toHaveLength(1)
+    expect(fromError.state.status).toBe('connected')
+
+    // Toggled off -> the disconnected client must not be reconnected.
+    const disabled = adapters()
+    const toDisabled = await updateMCPClientConfigWithAdapters({
+      state: markMCPServerDisconnected(createMCPServerState(config)),
+      client: null,
+      transport: null,
+      config: { ...config, enabled: false },
+      baseEnv: {},
+      adapters: disabled.adapters,
+    })
+    expect(disabled.connects).toHaveLength(0)
+    expect(toDisabled.state.status).toBe('disconnected')
+
+    // A failing reconnect must not throw: the caller already persisted the new
+    // config, so throwing would report "save failed" for a save that happened.
+    const broken = adapters()
+    broken.adapters.connectClient = async () => { throw new Error('still broken') }
+    const stillBroken = await updateMCPClientConfigWithAdapters({
+      state: markMCPServerError(createMCPServerState(config), new Error('spawn ENOENT')),
+      client: null,
+      transport: null,
+      config: { ...config, command: 'also-wrong' },
+      baseEnv: {},
+      adapters: broken.adapters,
+    })
+    expect(stillBroken.state.status).toBe('error')
+    expect(stillBroken.state.error).toContain('still broken')
+  })
+
   it('builds transport plans without importing MCP SDK transports', () => {
+    // PATH is supplied by the transport SDK's own safe default env; the host
+    // environment is NOT forwarded wholesale (that leaked provider keys into
+    // third-party MCP child processes). Only the documented allowlist rides
+    // along — HTTPS_PROXY here — plus the server's own declared env.
     expect(buildMCPTransportPlan({
       ...config,
       args: ['server.js'],
@@ -208,13 +278,15 @@ describe('core MCP client state helpers', () => {
       cwd: '/tmp/project',
     }, {
       PATH: '/bin',
+      ANTHROPIC_API_KEY: 'sk-should-not-leak',
+      HTTPS_PROXY: 'http://proxy:8080',
       EMPTY: undefined,
     })).toEqual({
       transport: 'stdio',
       command: 'node',
       args: ['server.js'],
       env: {
-        PATH: '/bin',
+        HTTPS_PROXY: 'http://proxy:8080',
         CUSTOM: 'yes',
       },
       cwd: '/tmp/project',

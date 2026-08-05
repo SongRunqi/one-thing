@@ -102,6 +102,8 @@ export interface ExecuteCoreDirectToolOptions<
   context: CoreDirectToolExecutionContext<TMetadataUpdate, TPartialResultUpdate, TStep>
   isMCPTool: (toolName: string) => boolean
   executeMCPTool: (toolName: string, args: JsonObject, options: CoreDirectToolMCPExecutionOptions) => Promise<unknown>
+  /** Qualifies MCP permission grants with the owning server; see buildMCPPermissionPlan. */
+  resolveMCPServerId?: (toolRef: string) => string | undefined
   analyzeTool: (toolName: string, args: JsonObject, context: TExecContext) => Promise<CoreDirectToolAnalysisLike<TEffect, TPreview>>
   executeTool: (toolName: string, args: JsonObject, context: TExecContext) => Promise<TResult>
   enforcePermission: (input: CoreDirectToolPermissionInput<TEffect, TPreview>) => Promise<void>
@@ -151,7 +153,9 @@ export async function executeCoreDirectTool<
         return cancelledResult<TResult>()
       }
 
-      const permissionPlan = buildMCPPermissionPlan(toolName, args)
+      const permissionPlan = buildMCPPermissionPlan(toolName, args, {
+        resolveServerId: options.resolveMCPServerId,
+      })
       if (permissionPlan) {
         await options.enforcePermission({
           sessionId: context.sessionId,

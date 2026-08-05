@@ -63,6 +63,11 @@ import {
 } from "@onething/app/skills/index.js";
 import { getProjectsStore as getAppProjectsStore } from "@onething/app/project-dirs/index.js";
 import {
+	MCPManager as appMCPManager,
+	configureMCPClientHost,
+	registerMCPTools as registerAppMCPTools,
+} from "@onething/app/mcp/index.js";
+import {
 	createBranchSession as createAppStoreBranchSession,
 	createSession as createAppStoreSession,
 	deleteSession as deleteAppStoreSession,
@@ -1611,9 +1616,35 @@ export async function createDevelopmentOnethingServerRuntime(
 		saveSettings: (mcpSettings: MCPSettings) =>
 			saveMCPSettingsForContext(mcpSettings, context),
 		manager: getOwnerMCPManager(mcpManagersByOwner, mcpClientFactory, context),
-		registerTools: async () => {},
+		// Regenerating the tools catalog is what makes newly connected servers
+		// visible to the model; a no-op here is why HTTP-added servers used to
+		// connect without ever reaching the engine.
+		registerTools: useAppSubsystems(context)
+			? registerAppMCPTools
+			: async () => {},
 		logger: console,
 	});
+
+	// The engine's MCP bridge is hard-bound to the @onething/app singleton
+	// manager, so the default owner MUST route through that same instance —
+	// a server-local manager would connect servers the model never sees
+	// (same class of split as the session double-repository above).
+	// Scoped owners keep their isolated server-local managers.
+	if (backend.persistsMessages) {
+		configureMCPClientHost(mcpClientFactory);
+		mcpManagersByOwner.set(
+			ownerKey(defaultRequestContext()),
+			appMCPManager as ServerMCPManager,
+		);
+		void (async () => {
+			try {
+				await appMCPManager.initialize(await getMCPSettingsForContext());
+				await registerAppMCPTools();
+			} catch (error) {
+				console.error("[ServerRuntime] MCP initialization failed:", error);
+			}
+		})();
+	}
 
 	const getACPSettingsForContext = async (
 		context = defaultRequestContext(),

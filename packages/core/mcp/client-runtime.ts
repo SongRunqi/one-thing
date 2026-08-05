@@ -99,12 +99,16 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
       this.client,
       this.adapters.logger,
     )
-    this._state = {
+    const nextState = {
       ...this._state,
       tools: capabilities.tools,
       resources: capabilities.resources,
       prompts: capabilities.prompts,
     }
+    this._state = nextState
+    // Go through onStateChange like connect/disconnect do. Mutating _state
+    // directly left every state observer on the pre-refresh capability list.
+    this.adapters.onStateChange?.(nextState)
     return capabilities
   }
 

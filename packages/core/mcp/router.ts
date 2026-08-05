@@ -256,12 +256,24 @@ export function describeMCPFunction(ref: MCPFunctionRef): string {
   return lines.join('\n')
 }
 
+/**
+ * Human-readable rendering of MCP content, for previews and progress lines.
+ *
+ * Binary parts are summarised, never serialized: `JSON.stringify` on an image
+ * part inlines its entire base64 payload, which is how screenshots from MCP
+ * servers used to end up as hundreds of KB of text.
+ *
+ * This is NOT the path model-visible results take — those keep their original
+ * parts (see executeMCPBridgeTool).
+ */
 export function mcpContentToString(content: MCPToolCallResult['content']): string {
   if (Array.isArray(content)) {
     return content
       .map(item => {
         if (item.type === 'text') return item.text ?? ''
-        return JSON.stringify(item)
+        // A resource part carrying text IS its readable content.
+        if (item.type === 'resource' && typeof item.text === 'string') return item.text
+        return `[${item.type}${item.mimeType ? `: ${item.mimeType}` : ''}]`
       })
       .join('\n')
   }
@@ -469,10 +481,37 @@ export function resolveMCPRouterReference(
   })
 }
 
-function objectArgument(value: unknown): JsonObject {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as JsonObject
-    : {}
+/**
+ * Coerce the router's `arguments` payload into a tool-call argument object.
+ *
+ * Models — openai-compatible ones especially — routinely double-encode nested
+ * objects as a JSON string. Treating anything non-object as `{}` meant those
+ * calls executed the real MCP tool with NO arguments and returned a plausible
+ * but wrong result, with nothing anywhere saying the arguments were dropped.
+ * Parse what can be parsed; refuse the rest loudly.
+ */
+function parseRouterArguments(value: unknown): { args: JsonObject } | { error: string } {
+  if (value === undefined || value === null) return { args: {} }
+
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return { args: value as JsonObject }
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return { args: {} }
+    try {
+      const parsed: unknown = JSON.parse(trimmed)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { args: parsed as JsonObject }
+      }
+      return { error: `"arguments" must be an object; got JSON ${Array.isArray(parsed) ? 'array' : typeof parsed}. Send arguments as an object, not a string.` }
+    } catch {
+      return { error: '"arguments" was a string but is not valid JSON. Send arguments as an object, not a string.' }
+    }
+  }
+
+  return { error: `"arguments" must be an object; got ${Array.isArray(value) ? 'array' : typeof value}.` }
 }
 
 export function resolveMCPRouterAction(
@@ -522,11 +561,19 @@ export function resolveMCPRouterAction(
   }
 
   if (action === 'call') {
+    const parsedArguments = parseRouterArguments(args.arguments)
+    if ('error' in parsedArguments) {
+      return {
+        kind: 'handled',
+        result: { success: false, error: parsedArguments.error },
+      }
+    }
+
     options.onPartialResult?.(`Calling MCP tool: ${ref.id}...`, 'calling')
     return {
       kind: 'call',
       ref,
-      args: objectArgument(args.arguments),
+      args: parsedArguments.args,
     }
   }
 
@@ -555,13 +602,12 @@ export async function executeMCPBridgeTool(
     )
     if (!result.success) return result
 
-    const text = mcpContentToString(result.content)
-    options.onPartialResult?.(text, 'ready')
-    return {
-      success: true,
-      content: [{ type: 'text', text }],
-      isError: result.isError,
-    }
+    // Hand the tool's own content back untouched. Collapsing it into a single
+    // text part discarded every non-text part: an image came back as
+    // JSON.stringify output, so the model never saw the picture and the base64
+    // was billed as transcript text. The preview line stays text-only.
+    options.onPartialResult?.(mcpContentToString(result.content), 'ready')
+    return result
   }
 
   const parsed = options.parseToolId(toolId)

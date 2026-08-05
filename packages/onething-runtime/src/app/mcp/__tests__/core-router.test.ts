@@ -351,6 +351,69 @@ describe('core MCP router helpers', () => {
     }
   })
 
+  it('parses double-encoded router arguments instead of silently dropping them', () => {
+    const refs = getMCPFunctionRefs(tools, serverName)
+
+    // Models (openai-compatible ones especially) double-encode nested objects.
+    // This used to coerce to {} and run the real tool with no arguments.
+    const encoded = resolveMCPRouterAction({
+      action: 'call',
+      tool: 'fetch',
+      arguments: '{"url":"https://example.com"}',
+    }, refs)
+    expect(encoded.kind).toBe('call')
+    if (encoded.kind === 'call') {
+      expect(encoded.args).toEqual({ url: 'https://example.com' })
+    }
+
+    // Genuinely absent arguments stay a legitimate no-arg call.
+    for (const empty of [undefined, null, '']) {
+      const noArgs = resolveMCPRouterAction({ action: 'call', tool: 'fetch', arguments: empty }, refs)
+      expect(noArgs.kind).toBe('call')
+      if (noArgs.kind === 'call') expect(noArgs.args).toEqual({})
+    }
+
+    // Unparseable / wrong-shaped arguments must fail loudly, never as {}.
+    for (const bad of ['not json', '[1,2]', '"text"', 42]) {
+      const rejected = resolveMCPRouterAction({ action: 'call', tool: 'fetch', arguments: bad }, refs)
+      expect(rejected.kind).toBe('handled')
+      if (rejected.kind === 'handled') {
+        expect(rejected.result.success).toBe(false)
+        expect(rejected.result.error).toContain('arguments')
+      }
+    }
+  })
+
+  it('passes non-text tool content through the router untouched', async () => {
+    const refs = getMCPFunctionRefs(tools, serverName)
+    const partials: Array<{ text: string; phase: string }> = []
+    const imageContent = [
+      { type: 'text' as const, text: 'here is the screenshot' },
+      { type: 'image' as const, data: 'AAAABBBBCCCC', mimeType: 'image/png' },
+    ]
+
+    const result = await executeMCPBridgeTool('mcp_search', {
+      action: 'call',
+      tool: 'fetch',
+      arguments: {},
+    }, {
+      refs,
+      parseToolId: () => null,
+      callTool: async () => ({ success: true, content: imageContent }),
+      onPartialResult: (text, phase) => partials.push({ text, phase }),
+    })
+
+    // The image part must survive: collapsing it to text lost the picture and
+    // inlined its base64 into the transcript.
+    expect(result.content).toEqual(imageContent)
+
+    // The preview line stays textual and must NOT carry the payload.
+    const preview = partials.find(partial => partial.phase === 'ready')?.text ?? ''
+    expect(preview).toContain('here is the screenshot')
+    expect(preview).toContain('[image: image/png]')
+    expect(preview).not.toContain('AAAABBBBCCCC')
+  })
+
   it('executes MCP bridge router and direct tool paths through core adapters', async () => {
     const refs = getMCPFunctionRefs(tools, serverName)
     const calls: Array<{ serverId: string; toolName: string; args: Record<string, unknown> }> = []

@@ -132,6 +132,29 @@ describe('MCP server orchestration', () => {
     expect(adapters.registerTools).not.toHaveBeenCalled()
   })
 
+  it('reports a failed connect instead of always succeeding', async () => {
+    const adapters = createAdapters({
+      enabled: true,
+      servers: [{ id: 'server-1', name: 'Local MCP', enabled: true }],
+    })
+    // connectServer swallows connection errors on purpose (one bad server must
+    // not break startup for the rest) — the failure only shows up in state.
+    adapters.manager.getServerState.mockReturnValue({
+      config: { id: 'server-1', name: 'Local MCP', enabled: true },
+      status: 'error',
+      error: 'spawn nonexistent-command ENOENT',
+      tools: [],
+      resources: [],
+      prompts: [],
+    })
+
+    const result = await connectOnethingMCPServer({ ...adapters, serverId: 'server-1' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('spawn nonexistent-command ENOENT')
+    expect(adapters.manager.connectServer).toHaveBeenCalled()
+  })
+
   it('removes a server after disconnecting it from the manager', async () => {
     const adapters = createAdapters({
       enabled: true,

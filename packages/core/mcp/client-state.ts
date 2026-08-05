@@ -246,13 +246,53 @@ export function filterStringEnvironment(
   )
 }
 
+/**
+ * Host variables an MCP child process may inherit.
+ *
+ * Deliberately tiny and secret-free. The transport SDK already supplies its own
+ * safe base (HOME/PATH/SHELL/TERM/USER on POSIX); these are the ones whose
+ * absence fails invisibly — a stdio server behind a corporate proxy silently
+ * cannot reach the network, with no error that points at the env.
+ *
+ * Anything else a server needs is declared per-server in its `env` config.
+ */
+export const MCP_INHERITED_ENV_VARS = [
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'all_proxy',
+  'no_proxy',
+  'LANG',
+  'LC_ALL',
+] as const
+
+export function inheritableMCPEnvironment(
+  baseEnv: Record<string, string | undefined>,
+): Record<string, string> {
+  const inherited: Record<string, string> = {}
+  for (const key of MCP_INHERITED_ENV_VARS) {
+    const value = baseEnv[key]
+    if (value !== undefined) inherited[key] = value
+  }
+  return inherited
+}
+
+/**
+ * NEVER spread the host environment wholesale here. Doing so handed every
+ * third-party MCP child process the full `process.env` — provider API keys,
+ * OAuth tokens, ONETHING_* config — and it did so only when the user happened
+ * to set one unrelated custom variable, which made the leak both total and
+ * invisible.
+ */
 export function mergeMCPEnvironment(
   baseEnv: Record<string, string | undefined>,
   customEnv?: Record<string, string>,
-): Record<string, string> | undefined {
-  if (!customEnv) return undefined
+): Record<string, string> {
   return {
-    ...filterStringEnvironment(baseEnv),
+    ...inheritableMCPEnvironment(baseEnv),
     ...customEnv,
   }
 }
@@ -384,6 +424,13 @@ export async function updateMCPClientConfigWithAdapters<TClient, TTransport>(
   options: UpdateMCPClientConfigWithAdaptersOptions<TClient, TTransport>,
 ): Promise<UpdateMCPClientConfigResult<TClient, TTransport>> {
   const wasConnected = options.state.status === 'connected'
+  // Converge to the state the config asks for, not to the one we happen to be
+  // in. Mirroring the current state meant a client that existed but was not
+  // connected never reconnected: toggling a server off and back on, or fixing a
+  // wrong command after a failed connect, left it disconnected/red until the
+  // user manually hit reconnect (the manager keeps the client in its map after
+  // a disconnect, so the "no client yet -> connect" path did not catch it).
+  const shouldConnect = options.config.enabled
   let state = options.state
   let client = options.client
   let transport = options.transport
@@ -405,20 +452,35 @@ export async function updateMCPClientConfigWithAdapters<TClient, TTransport>(
     config: options.config,
   }
 
-  if (wasConnected && options.config.enabled) {
-    const connected = await connectMCPClientWithAdapters({
-      state,
-      client,
-      transport,
-      baseEnv: options.baseEnv,
-      adapters: options.adapters,
-    })
-    return {
-      state: connected.state,
-      client: connected.client,
-      transport: connected.transport,
-      wasConnected,
-      reconnected: !connected.alreadyConnected,
+  if (shouldConnect) {
+    try {
+      const connected = await connectMCPClientWithAdapters({
+        state,
+        client,
+        transport,
+        baseEnv: options.baseEnv,
+        adapters: options.adapters,
+      })
+      return {
+        state: connected.state,
+        client: connected.client,
+        transport: connected.transport,
+        wasConnected,
+        reconnected: !connected.alreadyConnected,
+      }
+    } catch (error) {
+      // A failed reconnect must not fail the config update itself — the new
+      // config is already persisted by the caller, so throwing here would
+      // report "save failed" for a save that actually happened. Surface it as
+      // server state instead; connectMCPClientWithAdapters has already pushed
+      // the error through onStateChange.
+      return {
+        state: markMCPServerError(state, error),
+        client: null,
+        transport: null,
+        wasConnected,
+        reconnected: false,
+      }
     }
   }
 
