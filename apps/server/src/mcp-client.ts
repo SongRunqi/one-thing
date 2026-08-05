@@ -56,6 +56,17 @@ export class ServerMCPClient implements MCPClientLike {
         refreshCapabilities: (serverId, client, logger) => refreshMCPClientCapabilities(serverId, client, logger),
         closeClient: client => client.close(),
         closeTransport: transport => transport.close(),
+        observeDisconnect: (client, transport, onDisconnect) => {
+          let reported = false
+          const report = () => {
+            if (reported) return
+            reported = true
+            onDisconnect()
+          }
+          client.onclose = report
+          transport.onclose = report
+          transport.onerror = report
+        },
         logger: console,
       },
     })

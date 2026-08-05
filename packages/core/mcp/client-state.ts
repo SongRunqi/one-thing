@@ -163,10 +163,15 @@ export async function runMCPConnectedClientOperation<TClient, TResult extends { 
   return operation(client)
 }
 
-export function createMCPServerState(config: MCPServerConfig): MCPServerState {
+export function createMCPServerState(
+  config: MCPServerConfig,
+  status: MCPConnectionStatus = 'disconnected',
+  error?: string,
+): MCPServerState {
   return {
     config,
-    status: 'disconnected',
+    status,
+    error,
     tools: [],
     resources: [],
     prompts: [],

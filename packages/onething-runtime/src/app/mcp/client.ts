@@ -58,6 +58,20 @@ export class MCPClient {
         refreshCapabilities: (serverId, client, logger) => refreshMCPClientCapabilities(serverId, client, logger),
         closeClient: client => client.close(),
         closeTransport: transport => transport.close(),
+        // The SDK reports a dead connection on both objects: `onclose` when the
+        // stream ends cleanly (stdio child exited), `onerror` when it dies
+        // mid-flight. Core only needs to hear it once.
+        observeDisconnect: (client, transport, onDisconnect) => {
+          let reported = false
+          const report = () => {
+            if (reported) return
+            reported = true
+            onDisconnect()
+          }
+          client.onclose = report
+          transport.onclose = report
+          transport.onerror = report
+        },
         logger: console,
       },
     })

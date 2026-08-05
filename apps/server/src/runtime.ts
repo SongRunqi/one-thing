@@ -100,7 +100,11 @@ import {
 	type CorePluginInfo,
 	type PluginSettings,
 } from "@onething/core/plugins";
-import { HeadlessMCPManager, type MCPClientLike } from "@onething/core/mcp";
+import {
+	createMCPServerState,
+	HeadlessMCPManager,
+	type MCPClientLike,
+} from "@onething/core/mcp";
 import {
 	addOnethingMCPServerForIpc,
 	callOnethingMCPToolForIpc,
@@ -5724,6 +5728,9 @@ export async function createDevelopmentOnethingServerRuntime(
 				manager.shutdown().catch(() => {});
 			}
 			mcpManagersByOwner.clear();
+			// Release the injected client factory: it closes over this runtime's
+			// config, and the app singleton outlives us (module scope).
+			if (backend.persistsMessages) configureMCPClientHost(null);
 			for (const service of authServicesByOwner.values()) {
 				service.cleanup();
 			}
@@ -7806,20 +7813,8 @@ function projectMCPServerStates(
 	);
 }
 
-function createMCPServerState(
-	config: MCPServerConfig,
-	status: MCPServerState["status"],
-	error?: string,
-): MCPServerState {
-	return {
-		config: cloneJson(config),
-		status,
-		error,
-		tools: [],
-		resources: [],
-		prompts: [],
-	};
-}
+// createMCPServerState now comes from @onething/core/mcp — a local copy with a
+// different arity shadowed the core export and read as if core's took one arg.
 
 async function prepareMCPServerConfigForUpdate(
 	config: MCPServerConfig,

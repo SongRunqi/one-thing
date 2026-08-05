@@ -33,12 +33,33 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
   protected settings: MCPSettings = { enabled: true, servers: [] }
   protected initialized = false
 
+  /**
+   * Serializes every mutating operation.
+   *
+   * Hosts start MCP without blocking boot (desktop fires initializeMCP() and
+   * forgets; the server does the same) while their IPC/HTTP surface is already
+   * live. An "add server" arriving mid-initialize therefore interleaved with
+   * it, and the two rewrote `settings` and the client map underneath each
+   * other. Reads stay unqueued.
+   */
+  private opQueue: Promise<unknown> = Promise.resolve()
+
   constructor(private readonly createClient: MCPClientFactory<TClient>) {}
 
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.opQueue.then(operation, operation)
+    this.opQueue = result.then(() => undefined, () => undefined)
+    return result
+  }
+
   async initialize(settings: MCPSettings): Promise<void> {
+    return this.enqueue(() => this.initializeInternal(settings))
+  }
+
+  private async initializeInternal(settings: MCPSettings): Promise<void> {
     if (this.initialized) {
       console.log('[MCPManager] Already initialized, updating settings')
-      await this.updateSettings(settings)
+      await this.updateSettingsInternal(settings)
       return
     }
 
@@ -55,7 +76,7 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
     console.log(`[MCPManager] Connecting to ${enabledServers.length} servers...`)
 
     await Promise.allSettled(
-      enabledServers.map(config => this.connectServer(config)),
+      enabledServers.map(config => this.connectServerInternal(config)),
     )
 
     this.initialized = true
@@ -63,18 +84,22 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
   }
 
   async updateSettings(settings: MCPSettings): Promise<void> {
+    return this.enqueue(() => this.updateSettingsInternal(settings))
+  }
+
+  private async updateSettingsInternal(settings: MCPSettings): Promise<void> {
     const oldSettings = this.settings
     this.settings = settings
 
     if (!settings.enabled) {
-      await this.disconnectAll()
+      await this.disconnectAllInternal()
       return
     }
 
     if (!oldSettings.enabled && settings.enabled) {
       const enabledServers = settings.servers.filter(server => server.enabled)
       await Promise.allSettled(
-        enabledServers.map(config => this.connectServer(config)),
+        enabledServers.map(config => this.connectServerInternal(config)),
       )
       return
     }
@@ -84,7 +109,7 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
 
     for (const id of oldServerIds) {
       if (!newServerIds.has(id)) {
-        await this.removeServer(id)
+        await this.removeServerInternal(id)
       }
     }
 
@@ -93,7 +118,7 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
 
       if (!client) {
         if (config.enabled) {
-          await this.connectServer(config)
+          await this.connectServerInternal(config)
         }
       } else {
         const oldConfig = oldSettings.servers.find(server => server.id === config.id)
@@ -107,8 +132,12 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
   }
 
   async connectServer(config: MCPServerConfig): Promise<void> {
+    return this.enqueue(() => this.connectServerInternal(config))
+  }
+
+  private async connectServerInternal(config: MCPServerConfig): Promise<void> {
     if (this.clients.has(config.id)) {
-      await this.disconnectServer(config.id)
+      await this.disconnectServerInternal(config.id)
     }
 
     const client = this.createClient(config)
@@ -122,6 +151,10 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
   }
 
   async disconnectServer(serverId: string): Promise<void> {
+    return this.enqueue(() => this.disconnectServerInternal(serverId))
+  }
+
+  private async disconnectServerInternal(serverId: string): Promise<void> {
     const client = this.clients.get(serverId)
     if (client) {
       await client.disconnect()
@@ -129,6 +162,10 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
   }
 
   async removeServer(serverId: string): Promise<void> {
+    return this.enqueue(() => this.removeServerInternal(serverId))
+  }
+
+  private async removeServerInternal(serverId: string): Promise<void> {
     const client = this.clients.get(serverId)
     if (client) {
       await client.disconnect()
@@ -137,8 +174,12 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
   }
 
   async disconnectAll(): Promise<void> {
+    return this.enqueue(() => this.disconnectAllInternal())
+  }
+
+  private async disconnectAllInternal(): Promise<void> {
     await Promise.allSettled(
-      Array.from(this.clients.keys()).map(id => this.disconnectServer(id)),
+      Array.from(this.clients.keys()).map(id => this.disconnectServerInternal(id)),
     )
   }
 
@@ -150,34 +191,53 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
     return this.clients.get(serverId)?.state
   }
 
-  getAllTools(): MCPToolInfo[] {
-    const tools: MCPToolInfo[] = []
+  /**
+   * Stable ordering for every capability projection.
+   *
+   * The client map is keyed in connection-completion order (initialize connects
+   * with Promise.allSettled), so two boots of the same config produced the tool
+   * list in different orders — which reshuffles the generated tools catalog and
+   * the model-facing tool set, costing prompt-cache hits for no reason. The
+   * 2026-07-28 spec asks servers for deterministic `tools/list` order for the
+   * same reason; this is the client-side half of it.
+   */
+  private sortedByServerAndName<T extends { serverId: string }>(
+    items: T[],
+    nameOf: (item: T) => string,
+  ): T[] {
+    return items.sort((a, b) =>
+      a.serverId.localeCompare(b.serverId) || nameOf(a).localeCompare(nameOf(b)))
+  }
+
+  private collectConnected<T>(select: (state: MCPServerState) => T[]): T[] {
+    const collected: T[] = []
     for (const client of this.clients.values()) {
       if (client.status === 'connected') {
-        tools.push(...client.state.tools)
+        collected.push(...select(client.state))
       }
     }
-    return tools
+    return collected
+  }
+
+  getAllTools(): MCPToolInfo[] {
+    return this.sortedByServerAndName(
+      this.collectConnected(state => state.tools),
+      tool => tool.name,
+    )
   }
 
   getAllResources(): MCPResourceInfo[] {
-    const resources: MCPResourceInfo[] = []
-    for (const client of this.clients.values()) {
-      if (client.status === 'connected') {
-        resources.push(...client.state.resources)
-      }
-    }
-    return resources
+    return this.sortedByServerAndName(
+      this.collectConnected(state => state.resources),
+      resource => resource.uri,
+    )
   }
 
   getAllPrompts(): MCPPromptInfo[] {
-    const prompts: MCPPromptInfo[] = []
-    for (const client of this.clients.values()) {
-      if (client.status === 'connected') {
-        prompts.push(...client.state.prompts)
-      }
-    }
-    return prompts
+    return this.sortedByServerAndName(
+      this.collectConnected(state => state.prompts),
+      prompt => prompt.name,
+    )
   }
 
   async callTool(serverId: string, toolName: string, args: JsonObject): Promise<MCPToolCallResult> {
@@ -240,18 +300,22 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
   }
 
   async refreshServer(serverId: string): Promise<void> {
-    const client = this.clients.get(serverId)
-    if (client && client.status === 'connected') {
-      await client.refreshCapabilities()
-    }
+    return this.enqueue(async () => {
+      const client = this.clients.get(serverId)
+      if (client && client.status === 'connected') {
+        await client.refreshCapabilities()
+      }
+    })
   }
 
   async reconnectServer(serverId: string): Promise<void> {
-    const client = this.clients.get(serverId)
-    if (client) {
-      await client.disconnect()
-      await client.connect()
-    }
+    return this.enqueue(async () => {
+      const client = this.clients.get(serverId)
+      if (client) {
+        await client.disconnect()
+        await client.connect()
+      }
+    })
   }
 
   get isEnabled(): boolean {
@@ -263,9 +327,13 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
   }
 
   async shutdown(): Promise<void> {
-    console.log('[MCPManager] Shutting down...')
-    await this.disconnectAll()
-    this.initialized = false
-    console.log('[MCPManager] Shutdown complete')
+    // Queued so an in-flight connect finishes (and gets torn down) instead of
+    // resolving into a map we already cleared.
+    return this.enqueue(async () => {
+      console.log('[MCPManager] Shutting down...')
+      await this.disconnectAllInternal()
+      this.initialized = false
+      console.log('[MCPManager] Shutdown complete')
+    })
   }
 }
