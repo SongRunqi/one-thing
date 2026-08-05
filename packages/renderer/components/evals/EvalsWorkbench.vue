@@ -192,45 +192,44 @@
             class="wb-pane"
           >
             <div class="wb-replay-controls">
-              <label>次数
-                <select v-model.number="replayRuns">
-                  <option :value="1">1</option>
-                  <option :value="3">3</option>
-                  <option :value="5">5</option>
-                </select>
-              </label>
-              <label class="wb-check">
-                <input
-                  v-model="replayJudge"
-                  type="checkbox"
-                >
-                judge 判定{{ rubricHint }}
-              </label>
-              <label
+              <span class="wb-field">次数
+                <Select
+                  v-bind="PANEL_SELECT"
+                  :model-value="replayRuns"
+                  :options="RUN_COUNT_OPTIONS"
+                  aria-label="重放次数"
+                  @update:model-value="replayRuns = Number($event)"
+                />
+              </span>
+              <Checkbox
+                v-model="replayJudge"
                 class="wb-check"
+                size="small"
+                aria-label="judge 判定"
+              >
+                judge 判定{{ rubricHint }}
+              </Checkbox>
+              <Checkbox
+                v-model="replayCapturedPrompt"
+                class="wb-check"
+                size="small"
+                aria-label="用当时的提示词"
+                :disabled="!store.detail.incident.scene?.prompt || !!replayAblate"
                 :title="store.detail.incident.scene?.prompt
                   ? '用失败时刻捕获的原始提示词逐字重放;默认用当前 builder 重建(检验今天的提示词能否救回)'
                   : '该事故未捕获到提示词快照(超出捕获窗口)'"
               >
-                <input
-                  v-model="replayCapturedPrompt"
-                  type="checkbox"
-                  :disabled="!store.detail.incident.scene?.prompt || !!replayAblate"
-                >
                 用当时的提示词
-              </label>
-              <label>消融
-                <select v-model="replayAblate">
-                  <option value="">(不禁用)</option>
-                  <option
-                    v-for="name in sectionNames"
-                    :key="name"
-                    :value="name"
-                  >
-                    禁用 {{ name }}
-                  </option>
-                </select>
-              </label>
+              </Checkbox>
+              <span class="wb-field">消融
+                <Select
+                  v-bind="PANEL_SELECT"
+                  :model-value="replayAblate"
+                  :options="ablateOptions"
+                  aria-label="消融禁用的提示词段"
+                  @update:model-value="replayAblate = String($event ?? '')"
+                />
+              </span>
               <button
                 class="wb-btn primary"
                 :disabled="store.replayRunning"
@@ -368,14 +367,19 @@
 </template>
 
 <script setup lang="ts">
+import { useToast } from '@/composables/useToast'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import Checkbox from '@/components/common/Checkbox.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import StaticMarkdown from '@/components/chat/message/StaticMarkdown.vue'
 import IncidentTranscript, { type TranscriptItem } from './IncidentTranscript.vue'
 import RoundTimeline from './RoundTimeline.vue'
 import { useEvalsWorkbenchStore } from '@/stores/evalsWorkbench'
 
 const store = useEvalsWorkbenchStore()
+const toast = useToast()
 
 const tabs = [
   { id: 'scene', label: '现场' },
@@ -388,6 +392,27 @@ const replayRuns = ref(1)
 const replayJudge = ref(true)
 const replayAblate = ref('')
 const replayCapturedPrompt = ref(false)
+
+/**
+ * One spelling of "a dropdown inside the workbench".
+ *
+ * `z-layer="modal"` is load-bearing: the overlay sits at `--z-modal + 10`
+ * (see `.evals-workbench-overlay` below), so a panel left on the default
+ * dropdown stop (100 + 20) would open *behind* the sheet it belongs to.
+ * `modal + 20` = 620 clears it. `teleported` keeps the panel out of the
+ * scrolling pane.
+ */
+const PANEL_SELECT = {
+  size: 'small',
+  teleported: true,
+  zLayer: 'modal',
+} as const
+
+const RUN_COUNT_OPTIONS: SelectOptionLike[] = [
+  { value: 1, label: '1' },
+  { value: 3, label: '3' },
+  { value: 5, label: '5' },
+]
 
 // Global ESC-to-close while the overlay is mounted
 function handleGlobalKeydown(event: KeyboardEvent) {
@@ -404,6 +429,11 @@ const rubricHint = computed(() => {
 const sectionNames = computed(() =>
   Object.keys(store.detail?.incident.sectionHashes ?? {}).filter(n => n !== 'system'),
 )
+
+const ablateOptions = computed<SelectOptionLike[]>(() => [
+  { value: '', label: '(不禁用)' },
+  ...sectionNames.value.map(name => ({ value: name, label: `禁用 ${name}` })),
+])
 
 /** Context fidelity badge: does the replay history match the moment exactly? */
 const contextFidelity = computed(() => {
@@ -597,7 +627,7 @@ async function handlePromote() {
   const caseId = window.prompt('用例 ID:', suggested)
   if (!caseId) return
   const casePath = await store.promote(caseId, incident.title)
-  if (casePath) window.alert(`已生成回归用例:\n${casePath}`)
+  if (casePath) toast.success(`已生成回归用例:${casePath}`)
 }
 
 function shorten(text: string, max: number): string {
@@ -609,7 +639,9 @@ function shorten(text: string, max: number): string {
 .evals-workbench-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  /* 工作台是从设置弹层里打开的,必须盖住它 —— 所以是 modal 之上一档,
+     不是 --z-overlay(那会掉到设置弹层底下)。裁量记在 ui-system.md 层级表备注。 */
+  z-index: calc(var(--z-modal) + 10);
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(2px);
   display: flex;
@@ -907,12 +939,23 @@ function shorten(text: string, max: number): string {
   border: 1px solid var(--ui-border-default-border, var(--border));
 }
 
-.wb-replay-controls select {
-  margin-left: 6px;
+/* P3: the two dropdowns are `<Select>`; these rules only seat them next to
+   their caption. `.app-checkbox` qualifies the check rule so it outranks the
+   component's own (0,1,0) rule instead of tying with it (ui-system.md §1). */
+.wb-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.wb-check {
-  display: flex;
+/* `.app-select` is `width: 100%` by default (it is built for form fields), so
+   an inline control row has to pin it or it eats the whole line. */
+.wb-field :deep(.app-select) {
+  width: 104px;
+  flex: 0 0 auto;
+}
+
+.app-checkbox.wb-check {
   align-items: center;
   gap: 5px;
 }

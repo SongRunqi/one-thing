@@ -202,7 +202,8 @@ describe('RoomSurface 权限账页栏位', () => {
 
     await wrapper.find('.permission-btn.reject').trigger('click')
     await settle()
-    const dialog = document.querySelector('.reject-dialog') as HTMLElement | null
+    // P2: the shell is `components/common/Dialog.vue`; only the body is local.
+    const dialog = document.querySelector('.app-dialog') as HTMLElement | null
     expect(dialog).not.toBeNull()
 
     const textarea = document.querySelector('.reject-reason-input') as HTMLTextAreaElement

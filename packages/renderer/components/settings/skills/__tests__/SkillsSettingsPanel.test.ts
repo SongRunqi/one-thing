@@ -3,6 +3,8 @@ import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SkillsSettingsPanel from '../SkillsSettingsPanel.vue'
+import { confirmStack } from '@/composables/useConfirm'
+import { destroyUiOverlayHost } from '@/services/ui-overlay-host'
 import type { SkillSettings } from '@/types'
 
 const electronAPI = {
@@ -83,6 +85,8 @@ describe('SkillsSettingsPanel', () => {
   })
 
   afterEach(() => {
+    confirmStack.value = []
+    destroyUiOverlayHost()
     document.body.innerHTML = ''
   })
 
@@ -98,7 +102,8 @@ describe('SkillsSettingsPanel', () => {
     const customRow = dirRows.at(-1)!
     expect(customRow.text()).toContain('Team')
     expect(customRow.text()).toContain('/team/skills')
-    expect((customRow.find('select.agent-select').element as HTMLSelectElement).value).toBe('writer')
+    // P3: the binding is `<Select>`, so the bound value is the combobox's text.
+    expect(customRow.find('.agent-select [role="combobox"]').text()).toBe('Writer')
 
     // Skills grouped by source, agent-bound skill wears the agent chip.
     const groupTitles = wrapper.findAll('.skill-group-title').map(node => node.text())
@@ -125,14 +130,22 @@ describe('SkillsSettingsPanel', () => {
   it('assigns an agent from the expanded row detail', async () => {
     const wrapper = mount(SkillsSettingsPanel, {
       props: { settings: settingsFixture() },
+      attachTo: document.body,
     })
     await settle()
 
     await wrapper.find('.skill-rows .row-line').trigger('click')
     await settle()
 
-    const select = wrapper.find('.row-detail select.agent-select')
-    await select.setValue('writer')
+    // P3: the binding is a teleported `<Select>` — open it and click the
+    // option in document.body, where the panel lives.
+    wrapper.find('.row-detail .agent-select [role="combobox"]').element
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+
+    const option = [...document.querySelectorAll<HTMLElement>('.app-select-dropdown .app-select-option')]
+      .find(node => node.textContent?.trim() === 'Writer')!
+    option.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
 
     expect(electronAPI.setSkillAgent).toHaveBeenCalledWith('user:demo', 'writer')
@@ -148,8 +161,10 @@ describe('SkillsSettingsPanel', () => {
     await customRow.find('.text-action.is-danger').trigger('click')
     await settle()
 
-    // Confirm dialog is teleported to body.
-    const confirmButton = Array.from(document.querySelectorAll('.skill-dialog .text-action'))
+    // P2: the hand-rolled confirm is `useConfirm()`, rendered by the shared
+    // host that the service mounts on `<body>` on first use.
+    await vi.waitFor(() => expect(confirmStack.value).toHaveLength(1))
+    const confirmButton = Array.from(document.querySelectorAll('.app-dialog-actions button'))
       .find(el => el.textContent?.trim() === 'remove') as HTMLButtonElement
     expect(confirmButton).toBeTruthy()
     confirmButton.click()

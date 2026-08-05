@@ -1,67 +1,61 @@
 <template>
-  <!-- Reject Reason Dialog -->
-  <Teleport to="body">
-    <Transition name="modal-fade">
-      <div
-        v-if="visible"
-        class="reject-dialog-overlay"
-        @click.self="emit('cancel')"
+  <Dialog
+    :open="visible"
+    title="Reject reason"
+    :width="420"
+    :auto-focus="false"
+    :style="rejectDialogVars"
+    @update:open="value => { if (!value) emit('cancel') }"
+  >
+    <template #header-extra>
+      <button
+        type="button"
+        class="reject-dialog-close"
+        @click="emit('cancel')"
       >
-        <div class="reject-dialog">
-          <div class="reject-dialog-header">
-            <span class="reject-dialog-title">Reject reason</span>
-            <Button
-              unstyled
-              class="reject-dialog-close"
-              @click="emit('cancel')"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </Button>
-          </div>
-          <div class="reject-dialog-body">
-            <textarea
-              ref="rejectReasonInputRef"
-              v-model="rejectReason"
-              class="reject-reason-input"
-              placeholder="Reason for rejection (optional)..."
-              rows="3"
-              @keydown.enter.ctrl="confirm"
-              @keydown.enter.meta="confirm"
-              @keydown.escape="emit('cancel')"
-            />
-            <div class="reject-dialog-hint">
-              Ctrl+Enter to confirm · Esc to cancel
-            </div>
-          </div>
-          <div class="reject-dialog-footer">
-            <Button
-              unstyled
-              class="reject-dialog-btn reject-dialog-btn-cancel"
-              @click="emit('cancel')"
-            >
-              Cancel
-            </Button>
-            <Button
-              unstyled
-              class="reject-dialog-btn reject-dialog-btn-confirm"
-              @click="confirm"
-            >
-              Reject
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </template>
+
+    <textarea
+      ref="rejectReasonInputRef"
+      v-model="rejectReason"
+      class="reject-reason-input"
+      placeholder="Reason for rejection (optional)..."
+      rows="3"
+      @keydown.enter.ctrl="confirm"
+      @keydown.enter.meta="confirm"
+    />
+    <div class="reject-dialog-hint">
+      Ctrl+Enter to confirm · Esc to cancel
+    </div>
+
+    <template #actions>
+      <button
+        type="button"
+        class="reject-dialog-btn reject-dialog-btn-cancel"
+        @click="emit('cancel')"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="reject-dialog-btn reject-dialog-btn-confirm"
+        @click="confirm"
+      >
+        Reject
+      </button>
+    </template>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -72,10 +66,26 @@
  * 房面(`RoomSurface`)与旧壳共用一份:账页栏位上那颗 `REJECT` 打开的就是它,
  * 房里房外必须是同一个东西。
  */
-import { nextTick, ref, watch } from 'vue'
-import Button from '@/components/common/Button.vue'
+import { nextTick, ref, watch, type CSSProperties } from 'vue'
+import Dialog from '@/components/common/Dialog.vue'
 
 const props = defineProps<{ visible: boolean }>()
+
+/**
+ * Was `--z-max`; P2 puts it back on `--z-modal` with the rest of the dialogs.
+ * Nothing it has to out-stack lives above modal — the permission card it is
+ * raised from is ordinary page content (docs/design/ui-system.md §3).
+ */
+const rejectDialogVars: CSSProperties = {
+  '--app-dialog-bg': 'var(--ui-surface-panel-bg, var(--panel))',
+  // Pre-P2 this title was a `<span class="reject-dialog-title">` with no
+  // font-family, i.e. the body sans — not the display serif that the global
+  // `.dialog-header h3` convention (and therefore Dialog's default) carries.
+  '--app-dialog-title-font': 'inherit',
+  '--app-dialog-header-padding': '16px 20px',
+  '--app-dialog-body-padding': '20px',
+  '--app-dialog-actions-padding': '16px 20px',
+} as CSSProperties
 
 const emit = defineEmits<{
   confirm: [reason: string | undefined]
@@ -103,43 +113,9 @@ function confirm() {
 </script>
 
 <style scoped>
-.reject-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-max);
-}
-
-.reject-dialog {
-  background: var(--ui-surface-panel-bg, var(--panel));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 16px;
-  width: 90%;
-  max-width: 420px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-}
-
-.reject-dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.reject-dialog-title {
-  font-size: var(--type-headline-size);
-  font-weight: var(--type-headline-weight);
-  line-height: var(--type-headline-line-height);
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
+/* The overlay / panel / header / footer skeleton is Dialog's since P2; the
+   header title now comes from Dialog's own `title`, so `.reject-dialog-title`
+   went with it. */
 .reject-dialog-close {
   width: 28px;
   height: 28px;
@@ -157,10 +133,6 @@ function confirm() {
 .reject-dialog-close:hover {
   background: var(--ui-state-hover-bg, var(--hover));
   color: var(--ui-text-primary-fg, var(--text));
-}
-
-.reject-dialog-body {
-  padding: 20px;
 }
 
 .reject-reason-input {
@@ -194,14 +166,6 @@ function confirm() {
   line-height: var(--type-meta-line-height);
   color: var(--ui-text-muted-fg, var(--muted));
   text-align: right;
-}
-
-.reject-dialog-footer {
-  display: flex;
-  gap: 10px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-  justify-content: flex-end;
 }
 
 .reject-dialog-btn {
@@ -241,33 +205,4 @@ function confirm() {
   transform: translateY(0);
 }
 
-.modal-fade-enter-active,
-.modal-fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.modal-fade-enter-active .reject-dialog,
-.modal-fade-leave-active .reject-dialog {
-  transition: transform 0.2s ease, opacity 0.2s ease;
-}
-
-.modal-fade-enter-from,
-.modal-fade-leave-to {
-  opacity: 0;
-}
-
-.modal-fade-enter-from .reject-dialog,
-.modal-fade-leave-to .reject-dialog {
-  transform: scale(0.95) translateY(-10px);
-  opacity: 0;
-}
-
-/* Light theme adjustments */
-html[data-theme='light'] .reject-dialog-overlay {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-html[data-theme='light'] .reject-dialog {
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-}
 </style>

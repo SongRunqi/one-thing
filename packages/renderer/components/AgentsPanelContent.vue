@@ -285,6 +285,7 @@
 </template>
 
 <script setup lang="ts">
+import { useConfirm } from '@/composables/useConfirm'
 /**
  * Agents 管理页 —— **名册面**:新建 / 退休 / 恢复 / 通览,外加"这个人"的四面。
  *
@@ -313,6 +314,7 @@ import { formatUpdated } from '@/components/agents/use-agent-history'
 import '@/styles/agent-space.css'
 
 const agentsStore = useAgentsStore()
+const { confirm } = useConfirm()
 const sessionsStore = useSessionsStore()
 const workspaceStore = useWorkspaceStore()
 
@@ -460,11 +462,14 @@ function onFormCancel() {
 async function deleteSelectedAgent() {
   const agent = selectedAgent.value
   if (!agent || agent.id === DEFAULT_AGENT_ID) return
-  if (!window.confirm(
-    `让 ${agent.name} 退休?\n\n`
-    + 'TA 会从同事名册、群成员候选与激活链里退出,不再被指派和发言。\n'
-    + '历史消息署名、群成员条与履历全部保留 —— 从未被任何会话引用过的话,才会真删除。'
-  )) return
+  const accepted = await confirm({
+    title: `让 ${agent.name} 退休?`,
+    message: 'TA 会从同事名册、群成员候选与激活链里退出,不再被指派和发言。\n'
+      + '历史消息署名、群成员条与履历全部保留 —— 从未被任何会话引用过的话,才会真删除。',
+    confirmText: '退休',
+    danger: true,
+  })
+  if (!accepted) return
 
   saving.value = true
   lifecycleNote.value = ''

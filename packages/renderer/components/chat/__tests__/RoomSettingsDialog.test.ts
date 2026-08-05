@@ -91,7 +91,7 @@ describe('RoomSettingsDialog 花费行', () => {
     api.getCollabRoomSpend.mockResolvedValue({ success: false, error: 'ledger down' } as never)
     const wrapper = await openWithSpend()
     expect(wrapper.find('.spend-line').exists()).toBe(false)
-    expect(wrapper.find('.dialog-error').exists()).toBe(false)
+    expect(wrapper.find('.room-error').exists()).toBe(false)
     wrapper.unmount()
   })
 })
@@ -112,7 +112,7 @@ describe('RoomSettingsDialog', () => {
   it('sends only the changed items, and the roster change in one room update', async () => {
     const wrapper = await open()
     await wrapper.findAll('.member-line')[2].trigger('click') // + 小研
-    await wrapper.findAll('.text-action')[1].trigger('click') // 保存
+    await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click') // 保存
     await nextTick()
 
     expect(api.updateCollabRoom).toHaveBeenCalledTimes(1)
@@ -138,7 +138,7 @@ describe('RoomSettingsDialog', () => {
 
     await wrapper.findAll('.member-line')[2].trigger('click') // + 小研
     await wrapper.findAll('.member-line')[3].trigger('click') // 暂停房间
-    await wrapper.findAll('.text-action')[1].trigger('click') // 保存
+    await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click') // 保存
     await nextTick()
 
     expect(updateCollabRoom).toHaveBeenCalledWith('room-1', {
@@ -153,7 +153,7 @@ describe('RoomSettingsDialog', () => {
   it('drops the PM when the PM is unticked, and clears it with null', async () => {
     const wrapper = await open()
     await wrapper.findAll('.member-line')[0].trigger('click') // − 阿明 (PM)
-    await wrapper.findAll('.text-action')[1].trigger('click')
+    await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()
 
     expect(api.updateCollabRoom.mock.calls[0]).toEqual(['room-1', {
@@ -166,14 +166,14 @@ describe('RoomSettingsDialog', () => {
   it('saves the freeze switch through its own channel and closes on a no-op save', async () => {
     const wrapper = await open()
     await wrapper.findAll('.member-line')[3].trigger('click') // 暂停房间
-    await wrapper.findAll('.text-action')[1].trigger('click')
+    await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()
     expect(api.setCollabRoomFrozen).toHaveBeenCalledWith('room-1', true)
     expect(api.updateCollabRoom).not.toHaveBeenCalled()
     wrapper.unmount()
 
     const untouched = await open()
-    await untouched.findAll('.text-action')[1].trigger('click')
+    await untouched.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()
     expect(api.updateCollabRoom).not.toHaveBeenCalled()
     expect(untouched.emitted('close')).toBeTruthy()
@@ -184,16 +184,16 @@ describe('RoomSettingsDialog', () => {
     const wrapper = await open()
     await wrapper.findAll('.member-line')[0].trigger('click')
     await wrapper.findAll('.member-line')[1].trigger('click')
-    await wrapper.findAll('.text-action')[1].trigger('click')
+    await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()
     expect(api.updateCollabRoom).not.toHaveBeenCalled()
-    expect(wrapper.find('.dialog-error').text()).toBe('房间至少需要一名成员')
+    expect(wrapper.find('.room-error').text()).toBe('房间至少需要一名成员')
 
     api.updateCollabRoom.mockResolvedValueOnce({ success: false, error: 'Unknown agent: ghost' } as never)
     await wrapper.findAll('.member-line')[2].trigger('click')
-    await wrapper.findAll('.text-action')[1].trigger('click')
+    await wrapper.findAll('.app-dialog-text-btn')[1].trigger('click')
     await nextTick()
-    expect(wrapper.find('.dialog-error').text()).toBe('Unknown agent: ghost')
+    expect(wrapper.find('.room-error').text()).toBe('Unknown agent: ghost')
     expect(wrapper.emitted('close')).toBeFalsy()
     wrapper.unmount()
   })

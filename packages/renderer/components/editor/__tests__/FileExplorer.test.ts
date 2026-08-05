@@ -48,12 +48,13 @@ describe('FileExplorer', () => {
     })
     await nextTick()
 
-    const revealButton = wrapper
-      .findAll('.explorer-menu button')
-      .find(button => button.text() === 'Reveal in Finder')
+    // P2: the right-click menu is `common/ContextMenu.vue` (a coordinate-pinned
+    // Dropdown), so it teleports to <body> and carries the primitive's markup.
+    const revealButton = Array.from(document.querySelectorAll('.app-context-item'))
+      .find(button => button.textContent?.trim() === 'Reveal in Finder') as HTMLElement | undefined
 
     expect(revealButton).toBeTruthy()
-    await revealButton!.trigger('click')
+    revealButton!.click()
     await nextTick()
 
     expect(revealPath).toHaveBeenCalledWith('/repo/src/index.ts')

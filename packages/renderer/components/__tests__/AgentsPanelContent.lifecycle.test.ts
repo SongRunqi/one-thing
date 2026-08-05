@@ -15,6 +15,23 @@ import { mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AgentsPanelContent from '../AgentsPanelContent.vue'
+import { confirmStack, settleConfirm } from '@/composables/useConfirm'
+import { destroyUiOverlayHost } from '@/services/ui-overlay-host'
+
+/**
+ * P2 replaced the native `confirm()` with the promise service, so the test
+ * answers the queued ask instead of stubbing a global. The rendered dialog is
+ * covered by `composables/__tests__/useConfirm.test.ts`.
+ */
+async function answerConfirm(accepted: boolean): Promise<string> {
+  await vi.waitFor(() => expect(confirmStack.value.length).toBeGreaterThan(0))
+  const ask = confirmStack.value[confirmStack.value.length - 1]
+  const text = `${ask.options.title ?? ''}\n${ask.options.message ?? ''}`
+  settleConfirm(ask.id, accepted)
+  await nextTick()
+  await nextTick()
+  return text
+}
 
 const mocks = vi.hoisted(() => ({
   agentsStore: null as any,
@@ -108,6 +125,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  confirmStack.value = []
+  destroyUiOverlayHost()
   document.body.innerHTML = ''
   vi.clearAllMocks()
   vi.unstubAllGlobals()
@@ -116,8 +135,6 @@ afterEach(() => {
 describe('AgentsPanelContent — 退休 / 恢复入口', () => {
   it('在职的 agent 只给「退休」,点下去走的是删除通道并按 outcome 报账', async () => {
     seedStore([DEFAULT, LILY])
-    const confirm = vi.fn().mockReturnValue(true)
-    vi.stubGlobal('confirm', confirm)
     const wrapper = await mountPanel()
 
     await selectRow(wrapper, '小李')
@@ -126,35 +143,34 @@ describe('AgentsPanelContent — 退休 / 恢复入口', () => {
     const retire = headerAction(wrapper, '退休')
     expect(retire).toBeTruthy()
     await retire.trigger('click')
-    await nextTick()
 
     // 确认文案说的是退休,不是「删了就没了」。
-    expect(String(confirm.mock.calls[0]?.[0])).toContain('退休')
+    expect(await answerConfirm(true)).toContain('退休')
+    await vi.waitFor(() => expect(mocks.agentsStore.deleteAgent).toHaveBeenCalled())
     expect(mocks.agentsStore.deleteAgent).toHaveBeenCalledWith('lily')
     expect(wrapper.text()).toContain('已退休(记录保留)')
   })
 
   it('一句取消就什么都不做', async () => {
     seedStore([DEFAULT, LILY])
-    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
     const wrapper = await mountPanel()
 
     await selectRow(wrapper, '小李')
     await headerAction(wrapper, '退休').trigger('click')
+    await answerConfirm(false)
     expect(mocks.agentsStore.deleteAgent).not.toHaveBeenCalled()
   })
 
   it('从未被引用的 agent 被真删时,文案说的是删除', async () => {
     seedStore([DEFAULT, LILY])
-    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
     const wrapper = await mountPanel()
     mocks.agentsStore.deleteAgent.mockResolvedValue('deleted')
 
     await selectRow(wrapper, '小李')
     await headerAction(wrapper, '退休').trigger('click')
-    await nextTick()
+    await answerConfirm(true)
 
-    expect(wrapper.text()).toContain('已删除(从未被引用)')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已删除(从未被引用)'))
   })
 
   it('已退休的 agent:名册里灰着一行「已注销」,入口换成恢复', async () => {

@@ -49,56 +49,25 @@
       />
     </div>
 
-    <div
-      v-if="contextMenu"
-      class="explorer-menu"
-      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
-      @click.stop
-    >
-      <Button
-        v-if="contextMenu.type === 'directory'"
-        unstyled
-        @click="selectContextAction('create-file')"
-      >
-        <FilePlus :size="13" />
-        <span>New File</span>
-      </Button>
-      <Button
-        v-if="contextMenu.type === 'directory'"
-        unstyled
-        @click="selectContextAction('create-directory')"
-      >
-        <FolderPlus :size="13" />
-        <span>New Folder</span>
-      </Button>
-      <Button
-        unstyled
-        @click="selectContextAction('rename')"
-      >
-        <Pencil :size="13" />
-        <span>Rename</span>
-      </Button>
-      <Button
-        unstyled
-        @click="selectContextAction('reveal')"
-      >
-        <ExternalLink :size="13" />
-        <span>Reveal in Finder</span>
-      </Button>
-      <Button
-        unstyled
-        class="danger"
-        @click="selectContextAction('delete')"
-      >
-        <Trash2 :size="13" />
-        <span>Delete</span>
-      </Button>
-    </div>
+    <ContextMenu
+      :show="!!contextMenu"
+      :x="contextMenu?.x ?? 0"
+      :y="contextMenu?.y ?? 0"
+      :items="contextMenuItems"
+      @select="selectContextAction"
+      @close="closeContextMenu"
+    />
 
-    <div
-      v-if="nameDialog.visible"
-      class="explorer-dialog-backdrop"
-      @mousedown.self="closeNameDialog"
+    <!-- The name form spans input AND buttons, so it lives whole in the body
+         slot rather than being split across body/actions. -->
+    <Dialog
+      :open="nameDialog.visible"
+      :width="320"
+      :z-offset="1"
+      :dividers="false"
+      :auto-focus="false"
+      :style="explorerDialogVars"
+      @update:open="value => { if (!value) closeNameDialog() }"
     >
       <form
         class="explorer-dialog"
@@ -111,7 +80,6 @@
           v-model="nameDialog.value"
           type="text"
           autocomplete="off"
-          @keydown.esc.prevent="closeNameDialog"
         >
         <ErrorNote
           v-if="dialogError"
@@ -134,12 +102,15 @@
           </Button>
         </div>
       </form>
-    </div>
+    </Dialog>
 
-    <div
-      v-if="deleteDialog.path"
-      class="explorer-dialog-backdrop"
-      @mousedown.self="deleteDialog.path = ''"
+    <Dialog
+      :open="!!deleteDialog.path"
+      :width="320"
+      :z-offset="1"
+      :dividers="false"
+      :style="explorerDialogVars"
+      @update:open="value => { if (!value) deleteDialog.path = '' }"
     >
       <div class="explorer-dialog">
         <label>Delete {{ basename(deleteDialog.path) }}?</label>
@@ -167,17 +138,34 @@
           </Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   </aside>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ContextMenu from '@/components/common/ContextMenu.vue'
+import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
-import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref, type CSSProperties } from 'vue'
+import type { ContextMenuItem } from '@/components/common/context-menu'
 import { ExternalLink, FilePlus, FolderPlus, Pencil, RefreshCw, Trash2 } from 'lucide-vue-next'
 import TreeDirectory, { type TreeContextMenuPayload } from './TreeDirectory.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
+
+/**
+ * A small sidebar-toned card, not the app-wide elevated shell: these two sit
+ * over the file tree and used to be drawn by `.explorer-dialog-backdrop` /
+ * `.explorer-dialog`. `zOffset: 1` preserves the old `calc(var(--z-modal) + 1)`
+ * so they still clear a dialog the editor itself may have raised.
+ */
+const explorerDialogVars: CSSProperties = {
+  '--app-dialog-overlay-bg': 'rgb(0 0 0 / 0.18)',
+  '--app-dialog-overlay-padding': '16px',
+  '--app-dialog-radius': '8px',
+  '--app-dialog-bg': 'var(--ui-surface-sidebar-bg, var(--panel-2))',
+  '--app-dialog-body-padding': '14px',
+} as CSSProperties
 
 defineProps<{
   root: string
@@ -191,7 +179,6 @@ const emit = defineEmits<{
 const editorWorkspace = useEditorWorkspace()
 const { loadDirectory, createFile, createDirectory, renamePath, deletePath, revealPath } = editorWorkspace
 type NameDialogAction = 'create-file' | 'create-directory' | 'rename'
-type ContextAction = NameDialogAction | 'delete' | 'reveal'
 
 const nameInputId = 'file-explorer-name-input'
 const nameInputRef = ref<HTMLInputElement | null>(null)
@@ -225,7 +212,29 @@ function openContextMenu(payload: TreeContextMenuPayload) {
   contextMenu.value = payload
 }
 
-async function selectContextAction(action: ContextAction) {
+/**
+ * P1 left this menu behind: it was `position: fixed` at the raw pointer
+ * coordinates with no flip and no clamping, so a right-click near the bottom or
+ * right edge of the explorer put Rename/Delete off-screen. `ContextMenu` is the
+ * coordinate-triggered Dropdown, so viewport clamping, Esc, outside-dismissal
+ * and the click shield all come from the floating kernel.
+ */
+const contextMenuItems = computed<ContextMenuItem[]>(() => {
+  const isDirectory = contextMenu.value?.type === 'directory'
+  return [
+    ...(isDirectory
+      ? [
+          { id: 'create-file', label: 'New File', icon: FilePlus },
+          { id: 'create-directory', label: 'New Folder', icon: FolderPlus },
+        ]
+      : []),
+    { id: 'rename', label: 'Rename', icon: Pencil },
+    { id: 'reveal', label: 'Reveal in Finder', icon: ExternalLink },
+    { id: 'delete', label: 'Delete', icon: Trash2, danger: true, separatorBefore: true },
+  ]
+})
+
+async function selectContextAction(action: string) {
   const targetPath = contextMenu.value?.path
   closeContextMenu()
   if (!targetPath) return
@@ -238,7 +247,7 @@ async function selectContextAction(action: ContextAction) {
     if (!result.success) dialogError.value = result.error || 'Failed to reveal path'
     return
   }
-  openNameDialog(action, targetPath)
+  openNameDialog(action as NameDialogAction, targetPath)
 }
 
 function openNameDialog(action: NameDialogAction, targetPath: string) {
@@ -294,17 +303,6 @@ async function submitDeleteDialog() {
   deleteDialog.path = ''
 }
 
-function handleGlobalMouseDown(event: MouseEvent) {
-  const target = event.target
-  if (target instanceof Element && target.closest('.explorer-menu')) return
-  closeContextMenu()
-}
-
-window.addEventListener('mousedown', handleGlobalMouseDown)
-
-onBeforeUnmount(() => {
-  window.removeEventListener('mousedown', handleGlobalMouseDown)
-})
 </script>
 
 <style scoped>
@@ -378,61 +376,16 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-.explorer-menu {
-  position: fixed;
-  z-index: calc(var(--z-dropdown) + 10);
-  min-width: 150px;
-  padding: 5px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
-}
+/* The right-click menu is `common/ContextMenu.vue` since P2 — positioning,
+   clamping and dismissal live in the floating kernel, and the menu skin comes
+   with the primitive. */
 
-.explorer-menu button {
-  width: 100%;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
 
-.explorer-menu button:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-}
-
-.explorer-menu .danger {
-  color: var(--ui-status-danger-fg, #b3403a);
-}
-
-.explorer-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: calc(var(--z-modal) + 1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.18);
-}
-
+/* Backdrop / panel frame are Dialog's since P2 (see `explorerDialogVars`). */
 .explorer-dialog {
-  width: min(320px, calc(100vw - 32px));
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
 }
 
 .explorer-dialog label {

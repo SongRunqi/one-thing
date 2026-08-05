@@ -110,7 +110,10 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import ErrorNote from "@/components/common/ErrorNote.vue";
+import { useConfirm } from "@/composables/useConfirm";
 import { useEvalsStore } from "@/stores/evals";
+
+const { confirm, notice } = useConfirm();
 
 const store = useEvalsStore();
 const expandedCase = ref<string | null>(null);
@@ -123,10 +126,16 @@ function toggleCase(id: string) {
 }
 
 async function handleRetire(caseId: string) {
-  if (!confirm(`Move "${caseId}" to sentinel?`)) return;
+  const accepted = await confirm({
+    title: "Retire case",
+    message: `Move "${caseId}" to sentinel?`,
+    confirmText: "Retire",
+    variant: "paper",
+  });
+  if (!accepted) return;
   const res = await store.retireCase(caseId);
   if (!res.success) {
-    alert(`Failed: ${res.error}`);
+    await notice({ title: "Retire failed", message: res.error, variant: "paper" });
   }
 }
 </script>

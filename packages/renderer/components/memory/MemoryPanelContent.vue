@@ -57,21 +57,17 @@
               <strong>Notes</strong>
             </div>
             <div class="notes-header-actions">
-              <select
-                v-model="noteFilter"
+              <Select
                 class="view-select"
+                variant="underline"
+                size="small"
+                teleported
+                fit-input-width
+                :model-value="noteFilter"
+                :options="NOTE_FILTER_OPTIONS"
                 aria-label="Filter notes"
-              >
-                <option value="all">
-                  All notes
-                </option>
-                <option value="ai">
-                  AI notes
-                </option>
-                <option value="daily">
-                  Daily captures
-                </option>
-              </select>
+                @update:model-value="noteFilter = $event as NoteFilter"
+              />
 
               <div
                 v-if="selectedFile"
@@ -231,10 +227,13 @@
 </template>
 
 <script setup lang="ts">
+import { useConfirm } from '@/composables/useConfirm'
 import PageShell from '../common/PageShell.vue'
 import Badge from '../common/Badge.vue'
 import LayoutGrid from '../common/LayoutGrid.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import {
   BookOpen,
@@ -262,11 +261,19 @@ const notesMode = ref<'edit' | 'preview'>('edit')
 const autoSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 const overview = ref<MemoryOverview | null>(null)
+const { confirm } = useConfirm()
 const loading = ref(false)
 const hasLoadedMemory = ref(false)
 const savingFile = ref(false)
 const error = ref('')
 const noteFilter = ref<NoteFilter>('all')
+
+const NOTE_FILTER_OPTIONS: SelectOptionLike[] = [
+  { value: 'all', label: 'All notes' },
+  { value: 'ai', label: 'AI notes' },
+  { value: 'daily', label: 'Daily captures' },
+]
+
 const selectedPath = ref('SOUL.md')
 const selectedFile = ref<MemoryReadResponse['file'] | null>(null)
 const selectedFileText = ref('')
@@ -370,14 +377,20 @@ async function loadOverview(): Promise<void> {
 }
 
 async function selectFile(file: MemoryManagedFile): Promise<void> {
-  if (file.relativePath !== selectedPath.value && !confirmDiscardSelectedFileChanges()) return
+  if (file.relativePath !== selectedPath.value && !await confirmDiscardSelectedFileChanges()) return
   selectedPath.value = file.relativePath
   await readSelectedFile(undefined, true)
   notesDetailActive.value = true
 }
 
-function confirmDiscardSelectedFileChanges(): boolean {
-  return !selectedFileIsDirty.value || window.confirm('Discard unsaved note changes?')
+async function confirmDiscardSelectedFileChanges(): Promise<boolean> {
+  if (!selectedFileIsDirty.value) return true
+  return confirm({
+    title: 'Discard changes',
+    message: 'Discard unsaved note changes?',
+    confirmText: 'Discard',
+    danger: true,
+  })
 }
 
 async function ensureFileSelectionForTab(): Promise<void> {
@@ -715,28 +728,11 @@ function formatShortDate(ms?: number): string {
   min-width: 0;
 }
 
-/* filter select: bottom border only */
+/* P3: the notes filter is `<Select variant="underline">` — the component owns
+   the hairline, the hover ink and the caret. Footprint only here. */
 .view-select {
-  appearance: none;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
-  border-radius: 0;
-  padding: 1px 2px 2px;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  cursor: pointer;
-  outline: none;
   min-width: 0;
   max-width: 140px;
-  transition: border-color 0.12s ease, color 0.12s ease;
-}
-
-.view-select:hover,
-.view-select:focus {
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 /* save status: a small ink dot, no fills elsewhere */

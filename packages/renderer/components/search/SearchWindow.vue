@@ -83,10 +83,14 @@
       </div>
     </div>
 
-    <div
-      v-if="showPromptCreate"
-      class="prompt-dialog-backdrop"
-      @click.self="closePromptCreate"
+    <Dialog
+      :open="showPromptCreate"
+      aria-label="Create Prompt"
+      :width="500"
+      :dividers="false"
+      :auto-focus="false"
+      :style="promptDialogVars"
+      @update:open="value => { if (!value) closePromptCreate() }"
     >
       <form
         class="prompt-dialog"
@@ -148,7 +152,7 @@
           </Button>
         </footer>
       </form>
-    </div>
+    </Dialog>
 
     <div
       v-if="dragGuides.visible"
@@ -176,8 +180,9 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, type CSSProperties } from 'vue'
 import { Search } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/themes'
 import SearchResultItem from './SearchResultItem.vue'
@@ -201,6 +206,21 @@ const HIDDEN_GUIDES: SearchWindowGuideState = {
 
 const inputRef = ref<HTMLInputElement | null>(null)
 const resultsRef = ref<HTMLElement | null>(null)
+/**
+ * The sheet keeps its own compact frame; only the mechanics (teleport, fixed
+ * positioning, --z-modal, Esc, focus) move to Dialog. `autoFocus` is off because
+ * this dialog wants the title field, not the first focusable (the close button).
+ */
+const promptDialogVars: CSSProperties = {
+  '--app-dialog-overlay-bg': 'color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 66%, transparent)',
+  '--app-dialog-radius': '10px',
+  '--app-dialog-bg': 'color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel, var(--bg))) 94%, var(--ui-surface-app-bg, var(--bg)) 6%)',
+  '--app-dialog-border': 'color-mix(in srgb, var(--ui-border-default-border, var(--border)) 68%, transparent)',
+  '--app-dialog-shadow': 'var(--ui-surface-popover-shadow, var(--shadow-md))',
+  '--app-dialog-padding': '12px',
+  '--app-dialog-body-padding': '0',
+} as CSSProperties
+
 const promptTitleRef = ref<HTMLInputElement | null>(null)
 const showPromptCreate = ref(false)
 const promptForm = ref({ title: '', description: '', body: '' })
@@ -695,29 +715,15 @@ onUnmounted(() => {
   color: var(--ui-status-danger-fg, var(--danger, #d14));
 }
 
-.prompt-dialog-backdrop {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 66%, transparent);
-  z-index: 20;
-}
-
+/* The backdrop and the panel frame are `Dialog` since P2. This overlay used to
+   be `position: absolute; inset: 0` inside the search shell, so the rounded
+   window clipped it and it sat over the search field instead of above it;
+   Dialog teleports to <body> and uses `position: fixed`, which is the whole
+   point of the primitive. The form still owns its own layout below. */
 .prompt-dialog {
-  width: min(500px, 100%);
   display: flex;
   flex-direction: column;
   gap: 9px;
-  padding: 12px;
-  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 68%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel, var(--bg))) 94%, var(--ui-surface-app-bg, var(--bg)) 6%);
-  box-shadow: var(
-    --ui-surface-popover-shadow,
-    var(--shadow-md)
-  );
 }
 
 .prompt-dialog-header,

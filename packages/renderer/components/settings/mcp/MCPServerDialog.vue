@@ -1,210 +1,223 @@
 <template>
-  <Teleport to="body">
-    <div
-      v-if="show"
-      class="dialog-overlay"
-      @click.self="$emit('close')"
-    >
-      <div class="dialog">
-        <div class="dialog-header">
-          <h3>{{ editingServer ? 'Edit Server' : 'Add MCP Server' }}</h3>
+  <Dialog
+    :open="show"
+    variant="paper"
+    dividers="header"
+    :width="480"
+    :title="editingServer ? 'Edit Server' : 'Add MCP Server'"
+    @update:open="value => { if (!value) $emit('close') }"
+  >
+    <template #header-extra>
+      <button
+        type="button"
+        class="close-btn"
+        @click="$emit('close')"
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </template>
+
+    <div class="dialog-content">
+      <div class="form-group">
+        <label class="form-label">Server Name</label>
+        <input
+          v-model="form.name"
+          type="text"
+          class="form-input"
+          placeholder="My MCP Server"
+        >
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Transport Type</label>
+        <div class="transport-selector">
           <Button
             unstyled
-            class="close-btn"
-            @click="$emit('close')"
+            :class="['transport-option', { active: form.transport === 'stdio' }]"
+            @click="form.transport = 'stdio'"
           >
             <svg
-              width="18"
-              height="18"
+              width="16"
+              height="16"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="2"
             >
-              <path d="M18 6L6 18M6 6l12 12" />
+              <rect
+                x="4"
+                y="4"
+                width="16"
+                height="16"
+                rx="2"
+                ry="2"
+              />
+              <rect
+                x="9"
+                y="9"
+                width="6"
+                height="6"
+              />
+              <line
+                x1="9"
+                y1="1"
+                x2="9"
+                y2="4"
+              />
+              <line
+                x1="15"
+                y1="1"
+                x2="15"
+                y2="4"
+              />
+              <line
+                x1="9"
+                y1="20"
+                x2="9"
+                y2="23"
+              />
+              <line
+                x1="15"
+                y1="20"
+                x2="15"
+                y2="23"
+              />
             </svg>
+            <span>Stdio</span>
+            <span class="transport-desc">Local process</span>
           </Button>
-        </div>
-
-        <div class="dialog-content">
-          <div class="form-group">
-            <label class="form-label">Server Name</label>
-            <input
-              v-model="form.name"
-              type="text"
-              class="form-input"
-              placeholder="My MCP Server"
+          <Button
+            unstyled
+            :class="['transport-option', { active: form.transport === 'sse' }]"
+            @click="form.transport = 'sse'"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
             >
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Transport Type</label>
-            <div class="transport-selector">
-              <Button
-                unstyled
-                :class="['transport-option', { active: form.transport === 'stdio' }]"
-                @click="form.transport = 'stdio'"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <rect
-                    x="4"
-                    y="4"
-                    width="16"
-                    height="16"
-                    rx="2"
-                    ry="2"
-                  />
-                  <rect
-                    x="9"
-                    y="9"
-                    width="6"
-                    height="6"
-                  />
-                  <line
-                    x1="9"
-                    y1="1"
-                    x2="9"
-                    y2="4"
-                  />
-                  <line
-                    x1="15"
-                    y1="1"
-                    x2="15"
-                    y2="4"
-                  />
-                  <line
-                    x1="9"
-                    y1="20"
-                    x2="9"
-                    y2="23"
-                  />
-                  <line
-                    x1="15"
-                    y1="20"
-                    x2="15"
-                    y2="23"
-                  />
-                </svg>
-                <span>Stdio</span>
-                <span class="transport-desc">Local process</span>
-              </Button>
-              <Button
-                unstyled
-                :class="['transport-option', { active: form.transport === 'sse' }]"
-                @click="form.transport = 'sse'"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="10"
-                  />
-                  <line
-                    x1="2"
-                    y1="12"
-                    x2="22"
-                    y2="12"
-                  />
-                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-                </svg>
-                <span>SSE</span>
-                <span class="transport-desc">HTTP endpoint</span>
-              </Button>
-            </div>
-          </div>
-
-          <!-- Stdio Configuration -->
-          <template v-if="form.transport === 'stdio'">
-            <div class="form-group">
-              <label class="form-label">Command</label>
-              <input
-                v-model="form.command"
-                type="text"
-                class="form-input"
-                placeholder="npx, python, node..."
-              >
-            </div>
-            <div class="form-group">
-              <label class="form-label">Arguments</label>
-              <input
-                v-model="form.argsString"
-                type="text"
-                class="form-input"
-                placeholder="-y @modelcontextprotocol/server-everything"
-              >
-              <p class="form-hint">
-                Space-separated arguments
-              </p>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Working Directory (optional)</label>
-              <input
-                v-model="form.cwd"
-                type="text"
-                class="form-input"
-                placeholder="/path/to/working/dir"
-              >
-            </div>
-          </template>
-
-          <!-- SSE Configuration -->
-          <template v-else>
-            <div class="form-group">
-              <label class="form-label">Server URL</label>
-              <input
-                v-model="form.url"
-                type="text"
-                class="form-input"
-                placeholder="http://localhost:3000/sse"
-              >
-            </div>
-          </template>
-
-          <ErrorNote
-            v-if="error"
-            class="error-message"
-            :message="error"
-          />
-        </div>
-
-        <div class="dialog-footer">
-          <Button
-            unstyled
-            class="btn secondary"
-            @click="$emit('close')"
-          >
-            Cancel
-          </Button>
-          <Button
-            unstyled
-            class="btn primary"
-            :disabled="isSaving"
-            @click="handleSave"
-          >
-            {{ isSaving ? 'Saving...' : (editingServer ? 'Save Changes' : 'Add Server') }}
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+              />
+              <line
+                x1="2"
+                y1="12"
+                x2="22"
+                y2="12"
+              />
+              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+            </svg>
+            <span>SSE</span>
+            <span class="transport-desc">HTTP endpoint</span>
           </Button>
         </div>
       </div>
+
+      <!--
+        两个 transport 的字段区叠在同一 grid 格子里:高度恒等于较高的一档,
+        切换时对话框不再跳高(实测 504↔355 的 149px 跳动);隐藏侧只隐形不
+        卸载,顺带保住来回切换时已填的值。visibility:hidden 会把隐藏侧从
+        焦点链与可访问性树里摘掉,不需要再管 tabindex。
+      -->
+      <div class="transport-fields">
+        <!-- Stdio Configuration -->
+        <div
+          class="transport-pane"
+          :class="{ 'is-hidden': form.transport !== 'stdio' }"
+        >
+          <div class="form-group">
+            <label class="form-label">Command</label>
+            <input
+              v-model="form.command"
+              type="text"
+              class="form-input"
+              placeholder="npx, python, node..."
+            >
+          </div>
+          <div class="form-group">
+            <label class="form-label">Arguments</label>
+            <input
+              v-model="form.argsString"
+              type="text"
+              class="form-input"
+              placeholder="-y @modelcontextprotocol/server-everything"
+            >
+            <p class="form-hint">
+              Space-separated arguments
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Working Directory (optional)</label>
+            <input
+              v-model="form.cwd"
+              type="text"
+              class="form-input"
+              placeholder="/path/to/working/dir"
+            >
+          </div>
+        </div>
+
+        <!-- SSE Configuration -->
+        <div
+          class="transport-pane"
+          :class="{ 'is-hidden': form.transport !== 'sse' }"
+        >
+          <div class="form-group">
+            <label class="form-label">Server URL</label>
+            <input
+              v-model="form.url"
+              type="text"
+              class="form-input"
+              placeholder="http://localhost:3000/sse"
+            >
+          </div>
+        </div>
+      </div>
+
+      <ErrorNote
+        v-if="error"
+        class="error-message"
+        :message="error"
+      />
     </div>
-  </Teleport>
+
+    <template #actions>
+      <button
+        type="button"
+        class="app-dialog-text-btn"
+        @click="$emit('close')"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="app-dialog-text-btn is-primary"
+        :disabled="isSaving"
+        @click="handleSave"
+      >
+        {{ isSaving ? 'Saving...' : (editingServer ? 'Save Changes' : 'Add Server') }}
+      </button>
+    </template>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import { ref, watch } from 'vue'
 import type { MCPServerConfig } from '@/types'
@@ -298,50 +311,10 @@ defineExpose({
 <style scoped>
 /*
  * Paper dialog in the ledger language: hairline borders, hard ink shadow,
- * underline inputs, text-button footer. Teleported to body, so colors use
- * the --ui-* fallback chains directly.
+ * underline inputs, text-button footer. The shell (overlay, panel, header
+ * rule, section paddings) is `Dialog variant="paper"` since P2 — what remains
+ * here is only the form's own content.
  */
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-toast);
-  padding: 20px;
-  animation: fadeIn 0.15s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.dialog {
-  width: 100%;
-  max-width: 480px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  box-shadow: var(--shadow-paper);
-}
-
-.dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 18px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-family: var(--font-display, var(--font-serif, serif));
-  font-size: 15px;
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
 .close-btn {
   border: none;
   background: transparent;
@@ -358,19 +331,16 @@ defineExpose({
   color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
-.dialog-content {
-  padding: 16px 18px 4px;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 18px;
-  padding: 14px 18px 16px;
-}
 
 .form-group {
   margin-bottom: 16px;
+}
+
+/* Explicit last-child reset. Without it the scoped `.form-group` ties with the
+   global `.form-group:last-child { margin-bottom: 0 }` at (0,2,0) and the
+   trailing gap depends on stylesheet order. */
+.form-group:last-child {
+  margin-bottom: 0;
 }
 
 .form-label {
@@ -417,6 +387,21 @@ defineExpose({
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+/* 两个 transport 字段区同格叠放:高度取两者较高者,切换零跳动 */
+.transport-fields {
+  display: grid;
+}
+
+.transport-pane {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.transport-pane.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* Transport choice: square outline, accent line marks the selection */
@@ -466,36 +451,9 @@ defineExpose({
   margin-top: 16px;
 }
 
-/* Footer actions as text buttons */
-.btn {
-  appearance: none;
-  background: transparent;
-  border: none;
-  padding: 0;
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  cursor: pointer;
-  transition: color 0.12s ease;
-}
-
-.btn:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.btn.primary {
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.btn.primary:hover:not(:disabled) {
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+/* Footer buttons are `.app-dialog-text-btn` (published by Dialog.vue's
+   non-scoped block). They used to be a scoped `.btn` here, which tied with the
+   global `.btn.primary` / `.btn.secondary` at (0,2,0) and was decided by
+   stylesheet order — P2 reshuffled that order and the tie flipped to a solid
+   accent block with accent text on it. */
 </style>

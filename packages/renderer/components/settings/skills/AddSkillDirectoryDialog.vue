@@ -1,104 +1,90 @@
 <template>
-  <Teleport to="body">
-    <div
-      v-if="visible"
-      class="skill-dialog-overlay"
-      @click.self="emit('close')"
-    >
-      <div
-        class="skill-dialog"
-        role="dialog"
-        aria-label="Add skills directory"
-      >
-        <div class="dialog-header">
-          <h3>Add skills directory</h3>
-        </div>
-
-        <div class="dialog-body">
-          <label class="field">
-            <span class="field-label">Directory</span>
-            <span class="field-row">
-              <input
-                v-model="path"
-                class="field-input is-mono"
-                type="text"
-                placeholder="/absolute/path/to/skills"
-                spellcheck="false"
-              >
-              <button
-                v-if="canBrowse"
-                class="text-action"
-                type="button"
-                @click="browse"
-              >
-                browse
-              </button>
-            </span>
-            <span class="field-hint">Each skill is a folder containing a SKILL.md.</span>
-          </label>
-
-          <label class="field">
-            <span class="field-label">Label <em>optional</em></span>
-            <input
-              v-model="label"
-              class="field-input"
-              type="text"
-              placeholder="e.g. Team skills"
-            >
-          </label>
-
-          <label class="field">
-            <span class="field-label">Agent</span>
-            <select
-              v-model="agentId"
-              class="field-input"
-            >
-              <option value="">
-                All agents
-              </option>
-              <option
-                v-for="agent in agents"
-                :key="agent.id"
-                :value="agent.id"
-              >
-                {{ agent.name }}
-              </option>
-            </select>
-            <span class="field-hint">Skills from this directory only load for the chosen agent.</span>
-          </label>
-
-          <ErrorNote
-            v-if="error"
-            :message="error"
-          />
-        </div>
-
-        <div class="dialog-footer">
+  <Dialog
+    :open="visible"
+    variant="paper"
+    dividers="header"
+    title="Add skills directory"
+    :width="460"
+    @update:open="value => { if (!value) emit('close') }"
+  >
+    <div class="dialog-body">
+      <label class="field">
+        <span class="field-label">Directory</span>
+        <span class="field-row">
+          <input
+            v-model="path"
+            class="field-input is-mono"
+            type="text"
+            placeholder="/absolute/path/to/skills"
+            spellcheck="false"
+          >
           <button
+            v-if="canBrowse"
             class="text-action"
             type="button"
-            @click="emit('close')"
+            @click="browse"
           >
-            cancel
+            browse
           </button>
-          <button
-            class="text-action is-primary"
-            type="button"
-            :disabled="!path.trim() || submitting"
-            @click="submit"
-          >
-            {{ submitting ? 'adding…' : 'add directory' }}
-          </button>
-        </div>
+        </span>
+        <span class="field-hint">Each skill is a folder containing a SKILL.md.</span>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Label <em>optional</em></span>
+        <input
+          v-model="label"
+          class="field-input"
+          type="text"
+          placeholder="e.g. Team skills"
+        >
+      </label>
+
+      <div class="field">
+        <span class="field-label">Agent</span>
+        <Select
+          v-bind="SHEET_SELECT"
+          :model-value="agentId"
+          :options="agentOptions"
+          aria-label="Agent"
+          @update:model-value="agentId = String($event ?? '')"
+        />
+        <span class="field-hint">Skills from this directory only load for the chosen agent.</span>
       </div>
+
+      <ErrorNote
+        v-if="error"
+        :message="error"
+      />
     </div>
-  </Teleport>
+
+    <template #actions>
+      <button
+        class="text-action"
+        type="button"
+        @click="emit('close')"
+      >
+        cancel
+      </button>
+      <button
+        class="text-action is-primary"
+        type="button"
+        :disabled="!path.trim() || submitting"
+        @click="submit"
+      >
+        {{ submitting ? 'adding…' : 'add directory' }}
+      </button>
+    </template>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AgentDefinition } from '@/types'
+import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
 
 interface Props {
   visible: boolean
@@ -116,11 +102,29 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+/**
+ * `z-layer="modal"` is load-bearing: this is a Dialog at `--z-modal`, and a
+ * dropdown left on its default stop opens *behind* the sheet it belongs to.
+ * `teleported` then keeps the panel out of the sheet's scrolling body.
+ */
+const SHEET_SELECT = {
+  variant: 'underline',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+  zLayer: 'modal',
+} as const
+
 const path = ref('')
 const label = ref('')
 const agentId = ref('')
 const error = ref<string | null>(null)
 const submitting = ref(false)
+
+const agentOptions = computed<SelectOptionLike[]>(() => [
+  { value: '', label: 'All agents' },
+  ...props.agents.map(agent => ({ value: agent.id, label: agent.name })),
+])
 
 watch(() => props.visible, visible => {
   if (visible) {
@@ -162,41 +166,9 @@ async function submit() {
 </script>
 
 <style scoped>
-/* Paper dialog in the ledger language: hairline borders, no radii, no fills. */
-.skill-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-toast);
-  padding: 20px;
-}
-
-.skill-dialog {
-  width: 100%;
-  max-width: 460px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  box-shadow: var(--shadow-paper);
-}
-
-.dialog-header {
-  padding: 14px 18px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-family: var(--font-display, var(--font-serif, serif));
-  font-size: 15px;
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
+/* Paper dialog in the ledger language: the shell (overlay, panel, header rule,
+   section paddings) is `Dialog variant="paper"` since P2. */
 .dialog-body {
-  padding: 16px 18px 4px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -260,20 +232,10 @@ async function submit() {
   color: var(--ui-text-faint-fg, var(--muted));
 }
 
-select.field-input {
-  cursor: pointer;
-}
 
 .field-hint {
   font-size: 11px;
   color: var(--ui-text-faint-fg, var(--muted));
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 18px;
-  padding: 14px 18px 16px;
 }
 
 .text-action {

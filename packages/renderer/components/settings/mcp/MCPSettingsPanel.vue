@@ -9,14 +9,12 @@
       <div class="form-group">
         <div class="toggle-row">
           <label class="form-label">Enable MCP</label>
-          <label class="toggle">
-            <input
-              v-model="localMCPEnabled"
-              type="checkbox"
-              @change="handleEnableChange"
-            >
-            <span class="toggle-slider" />
-          </label>
+          <Switch
+            variant="ledger"
+            :model-value="localMCPEnabled"
+            aria-label="Enable MCP"
+            @update:model-value="handleEnableChange(Boolean($event))"
+          />
         </div>
         <p class="form-hint">
           Enable Model Context Protocol to connect to external tool servers
@@ -48,39 +46,7 @@
       @save="handleSaveServer"
     />
 
-    <!-- Delete Confirmation Dialog -->
-    <Teleport to="body">
-      <div
-        v-if="showDeleteDialog"
-        class="dialog-overlay"
-        @click.self="showDeleteDialog = false"
-      >
-        <div class="dialog small">
-          <div class="dialog-header">
-            <h3>Delete Server</h3>
-          </div>
-          <div class="dialog-content">
-            <p>Are you sure you want to delete this MCP server? This action cannot be undone.</p>
-          </div>
-          <div class="dialog-footer">
-            <Button
-              unstyled
-              class="btn secondary"
-              @click="showDeleteDialog = false"
-            >
-              Cancel
-            </Button>
-            <Button
-              unstyled
-              class="btn danger"
-              @click="handleDeleteServer"
-            >
-              Delete
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- Delete confirmation is `useConfirm()` (see confirmDeleteServer). -->
 
     <!-- Import Servers Dialog -->
     <MCPImportDialog
@@ -93,8 +59,9 @@
 </template>
 
 <script setup lang="ts">
-import Button from '@/components/common/Button.vue'
 import { ref, watch, onMounted } from 'vue'
+import Switch from '@/components/common/Switch.vue'
+import { useConfirm } from '@/composables/useConfirm'
 import type { MCPServerConfig, MCPSettings } from '@/types'
 import { useMCPServers, type ServerForm } from './useMCPServers'
 import MCPServerList from './MCPServerList.vue'
@@ -121,10 +88,10 @@ const importDialogRef = ref<InstanceType<typeof MCPImportDialog> | null>(null)
 
 // Dialog state
 const showServerDialog = ref(false)
-const showDeleteDialog = ref(false)
 const showImportDialog = ref(false)
 const editingServer = ref<MCPServerConfig | null>(null)
-const deletingServerId = ref<string | null>(null)
+
+const { confirm } = useConfirm()
 
 // Use MCP servers composable
 const mcpServers = useMCPServers(
@@ -145,10 +112,11 @@ onMounted(async () => {
 })
 
 // Enable/disable MCP
-function handleEnableChange() {
+function handleEnableChange(enabled: boolean) {
+  localMCPEnabled.value = enabled
   emit('update:settings', {
     ...props.settings,
-    enabled: localMCPEnabled.value,
+    enabled,
   })
 }
 
@@ -182,18 +150,17 @@ async function handleSaveServer(form: ServerForm) {
   serverDialogRef.value?.setLoading(false)
 }
 
-// Delete handlers
-function confirmDeleteServer(serverId: string) {
-  deletingServerId.value = serverId
-  showDeleteDialog.value = true
-}
-
-async function handleDeleteServer() {
-  if (!deletingServerId.value) return
-
-  await mcpServers.deleteServer(deletingServerId.value)
-  showDeleteDialog.value = false
-  deletingServerId.value = null
+// Delete handler — the hand-rolled confirm dialog is `useConfirm()` since P2.
+async function confirmDeleteServer(serverId: string) {
+  const accepted = await confirm({
+    title: 'Delete Server',
+    message: 'Are you sure you want to delete this MCP server? This action cannot be undone.',
+    danger: true,
+    confirmText: 'Delete',
+    variant: 'paper',
+  })
+  if (!accepted) return
+  await mcpServers.deleteServer(serverId)
 }
 
 // Import handlers
@@ -226,7 +193,8 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
 /*
  * MCP settings — 画线风 (ledger).
  * No background fills, no radii: state lives in the line.
- * Toggle visuals come from the SettingsPage :deep() layer (.toggle > input + .toggle-slider).
+ * The enable switch is `<Switch variant="ledger">` (P3) — it draws its own ink
+ * rule, so nothing here paints it and `.toggle-row` is layout only.
  */
 .mcp-settings {
   animation: fadeIn 0.15s ease;
@@ -260,91 +228,4 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
   margin-bottom: 0;
 }
 
-/* ---- delete confirmation: paper dialog in the ledger language ---- */
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-toast);
-  padding: 20px;
-  animation: fadeIn 0.15s ease;
-}
-
-.dialog {
-  width: 100%;
-  max-width: 480px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  box-shadow: var(--shadow-paper);
-}
-
-.dialog.small {
-  max-width: 400px;
-}
-
-.dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 18px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-family: var(--font-display, var(--font-serif, serif));
-  font-size: 15px;
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
-.dialog-content {
-  padding: 16px 18px 4px;
-}
-
-.dialog-content p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  line-height: 1.6;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 18px;
-  padding: 14px 18px 16px;
-}
-
-/* Footer actions as text buttons: mono, no fill, underline on hover */
-.btn {
-  appearance: none;
-  background: transparent;
-  border: none;
-  padding: 0;
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  cursor: pointer;
-  transition: color 0.12s ease;
-}
-
-.btn:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.btn.danger {
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-}
-
-.btn.danger:hover:not(:disabled) {
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-}
 </style>

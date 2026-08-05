@@ -88,23 +88,14 @@
               class="dir-path"
               :title="dir.path"
             >{{ dir.path }}</span>
-            <select
+            <Select
+              v-bind="ROW_SELECT"
               class="agent-select"
-              :value="dir.agentId ?? ''"
-              title="Bind skills from this directory to an agent"
-              @change="onDirectoryAgentChange(dir.id, $event)"
-            >
-              <option value="">
-                All agents
-              </option>
-              <option
-                v-for="agent in store.agents.value"
-                :key="agent.id"
-                :value="agent.id"
-              >
-                {{ agent.name }}
-              </option>
-            </select>
+              :model-value="dir.agentId ?? ''"
+              :options="agentOptions"
+              aria-label="Bind skills from this directory to an agent"
+              @update:model-value="onDirectoryAgentChange(dir.id, String($event ?? ''))"
+            />
             <span class="dir-actions">
               <button
                 class="text-action"
@@ -204,53 +195,18 @@
       @close="showAddDialog = false"
     />
 
-    <!-- Confirm dialog (delete skill / remove directory) -->
-    <Teleport to="body">
-      <div
-        v-if="confirmAction"
-        class="skill-dialog-overlay"
-        @click.self="confirmAction = null"
-      >
-        <div
-          class="skill-dialog"
-          role="alertdialog"
-          :aria-label="confirmAction.title"
-        >
-          <div class="dialog-header">
-            <h3>{{ confirmAction.title }}</h3>
-          </div>
-          <div class="dialog-body">
-            <p class="confirm-text">
-              {{ confirmAction.message }}
-            </p>
-          </div>
-          <div class="dialog-footer">
-            <button
-              class="text-action"
-              type="button"
-              @click="confirmAction = null"
-            >
-              cancel
-            </button>
-            <button
-              class="text-action is-danger"
-              type="button"
-              @click="runConfirmAction"
-            >
-              {{ confirmAction.confirmLabel }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- Delete / remove confirmations are `useConfirm()` since P2. -->
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useConfirm } from '@/composables/useConfirm'
 import type { SkillDefinition, SkillDirectoryConfig, SkillSettings, SkillSource } from '@/types'
 import { platformApi } from '@/platform'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import SkillLedgerRow from './SkillLedgerRow.vue'
 import AddSkillDirectoryDialog from './AddSkillDirectoryDialog.vue'
 import { useSkills } from './useSkills'
@@ -270,12 +226,26 @@ const store = useSkills(() => props.settings, emit)
 
 const expandedSkills = ref<Set<string>>(new Set())
 const showAddDialog = ref(false)
-const confirmAction = ref<{
-  title: string
-  message: string
-  confirmLabel: string
-  run: () => Promise<void> | void
-} | null>(null)
+
+const { confirm } = useConfirm()
+
+/**
+ * One spelling of "the agent binding dropdown on a ledger row". `underline` is
+ * what the hand-rolled `.agent-select` drew (a hairline, no frame); `teleported`
+ * is not optional because these rows live inside the settings scroll container
+ * and an in-flow panel would be clipped by it.
+ */
+const ROW_SELECT = {
+  variant: 'underline',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+} as const
+
+const agentOptions = computed<SelectOptionLike[]>(() => [
+  { value: '', label: 'All agents' },
+  ...store.agents.value.map(agent => ({ value: agent.id, label: agent.name })),
+])
 
 const canBrowse = computed(() => platformApi.environment === 'electron')
 const skillsEnabled = computed(() => props.settings.enableSkills !== false)
@@ -326,35 +296,32 @@ function toggleExpanded(skillId: string) {
   expandedSkills.value = next
 }
 
-function onDirectoryAgentChange(directoryId: string, event: Event) {
-  const value = (event.target as HTMLSelectElement).value
+function onDirectoryAgentChange(directoryId: string, value: string) {
   void store.updateDirectory({ id: directoryId, agentId: value || null })
 }
 
-function confirmDeleteSkill(skill: SkillDefinition) {
-  confirmAction.value = {
+async function confirmDeleteSkill(skill: SkillDefinition) {
+  const accepted = await confirm({
     title: 'Delete skill',
     message: `Delete "${skill.name}"? The entire skill folder is removed from disk and cannot be restored.`,
-    confirmLabel: 'delete',
-    run: () => store.deleteSkill(skill.id).then(() => undefined),
-  }
+    confirmText: 'delete',
+    danger: true,
+    variant: 'paper',
+  })
+  if (!accepted) return
+  await store.deleteSkill(skill.id)
 }
 
-function confirmRemoveDirectory(dir: SkillDirectoryConfig) {
-  confirmAction.value = {
+async function confirmRemoveDirectory(dir: SkillDirectoryConfig) {
+  const accepted = await confirm({
     title: 'Remove directory',
     message: `Stop loading skills from "${dir.label || dir.path}"? Files on disk are not touched.`,
-    confirmLabel: 'remove',
-    run: () => store.removeDirectory(dir.id),
-  }
-}
-
-async function runConfirmAction() {
-  const action = confirmAction.value
-  confirmAction.value = null
-  if (action) {
-    await action.run()
-  }
+    confirmText: 'remove',
+    danger: true,
+    variant: 'paper',
+  })
+  if (!accepted) return
+  await store.removeDirectory(dir.id)
 }
 
 onMounted(() => {
@@ -922,79 +889,12 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
+/* P3: the agent binding dropdown is `<Select variant="underline">` — it owns
+   the hairline, the hover ink and the caret. Only its footprint is set here
+   (the `:deep()` twin reaches the same control inside SkillLedgerRow). */
 .agent-select,
 :deep(.agent-select) {
-  appearance: none;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
-  border-radius: 0;
-  padding: 1px 2px 2px;
-  font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  cursor: pointer;
   max-width: 140px;
-  transition: border-color 0.12s ease, color 0.12s ease;
-}
-
-.agent-select:hover,
-.agent-select:focus,
-:deep(.agent-select:hover),
-:deep(.agent-select:focus) {
-  outline: none;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-/* ---- confirm dialog (same paper language as AddSkillDirectoryDialog) ---- */
-.skill-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-toast);
-  padding: 20px;
-}
-
-.skill-dialog {
-  width: 100%;
-  max-width: 400px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  box-shadow: var(--shadow-paper);
-}
-
-.dialog-header {
-  padding: 14px 18px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-family: var(--font-display, var(--font-serif, serif));
-  font-size: 15px;
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
-.dialog-body {
-  padding: 16px 18px 4px;
-}
-
-.confirm-text {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 18px;
-  padding: 14px 18px 16px;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,6 +1,7 @@
 import type { MarkdownAttachmentInput } from '@shared/ipc/markdown'
 import type { EditorHandle } from './types'
 import { platformApi } from '@/platform'
+import { toast } from '@/composables/useToast'
 
 function clipboardFiles(event: ClipboardEvent): File[] {
   const files = new Map<string, File>()
@@ -75,7 +76,9 @@ export async function handleMarkdownAttachmentPaste(options: {
   })
 
   if (!response.success || !response.insertText) {
-    window.alert(response.error || 'Failed to save Markdown attachment')
+    // A paste handler cannot block on a modal — the toast service is callable
+    // from plain `.ts` for exactly this reason (see composables/useToast).
+    toast.error(response.error || 'Failed to save Markdown attachment')
     return true
   }
 

@@ -1,7 +1,30 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import SchedulerPanelContent from '../SchedulerPanelContent.vue'
+
+/**
+ * P2: the task editor is `components/common/Dialog.vue`, which teleports to
+ * `<body>` — so it is queried through the document, not through the wrapper.
+ */
+function editor(): HTMLElement | null {
+  return document.querySelector('.app-dialog')
+}
+
+function editorButton(text: string): HTMLElement {
+  const match = Array.from(editor()?.querySelectorAll('button') ?? [])
+    .find(button => (button.textContent ?? '').includes(text))
+  if (!match) throw new Error(`no button matching "${text}" in the task editor`)
+  return match as HTMLElement
+}
+
+async function setEditorField(selector: string, value: string): Promise<void> {
+  const field = editor()?.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement
+  field.value = value
+  field.dispatchEvent(new Event('input'))
+  await nextTick()
+}
 
 const agentsStore = vi.hoisted(() => {
   const agent = {
@@ -29,6 +52,11 @@ vi.mock('@/stores/agents', () => ({
 }))
 
 describe('SchedulerPanelContent', () => {
+  // The teleported editor outlives the wrapper unless the body is swept.
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     agentsStore.loadAgents.mockResolvedValue(agentsStore.agents)
@@ -160,26 +188,27 @@ describe('SchedulerPanelContent', () => {
     })
 
     expect(wrapper.find('.editor-section').exists()).toBe(false)
-    expect(wrapper.find('.task-editor-dialog').exists()).toBe(false)
+    expect(editor()).toBeNull()
 
     await wrapper.findAll('button').find(button => button.text().includes('new task'))!.trigger('click')
     await vi.waitFor(() => {
-      expect(wrapper.find('.task-editor-dialog').exists()).toBe(true)
+      expect(editor()).not.toBeNull()
     })
     expect(wrapper.find('.tasks-layout').exists()).toBe(true)
     expect(wrapper.find('.editor-section').exists()).toBe(false)
 
-    await wrapper.find('.task-editor-dialog button[title="Close"]').trigger('click')
-    expect(wrapper.find('.task-editor-dialog').exists()).toBe(false)
+    editorButton('close').click()
+    await nextTick()
+    expect(editor()).toBeNull()
 
     await wrapper.findAll('button').find(button => button.text().includes('new task'))!.trigger('click')
     await vi.waitFor(() => {
-      expect(wrapper.find('.task-editor-dialog').exists()).toBe(true)
+      expect(editor()).not.toBeNull()
     })
 
-    await wrapper.find('input[aria-label="Task name"]').setValue('Morning digest')
-    await wrapper.find('textarea[aria-label="Task prompt"]').setValue('Summarize the day ahead.')
-    await wrapper.findAll('.task-editor-dialog .text-action').find(button => button.text().includes('create task'))!.trigger('click')
+    await setEditorField('input[aria-label="Task name"]', 'Morning digest')
+    await setEditorField('textarea[aria-label="Task prompt"]', 'Summarize the day ahead.')
+    editorButton('create task').click()
 
     await vi.waitFor(() => {
       expect(window.electronAPI.createSchedulerTask).toHaveBeenCalled()
@@ -204,13 +233,13 @@ describe('SchedulerPanelContent', () => {
 
     await wrapper.find('button[title="Edit"]').trigger('click')
     await vi.waitFor(() => {
-      expect(wrapper.find('.task-editor-dialog').exists()).toBe(true)
+      expect(editor()).not.toBeNull()
     })
     expect(wrapper.find('.editor-section').exists()).toBe(false)
-    expect(wrapper.find('.task-editor-dialog').text()).toContain('Edit task')
+    expect(editor()!.textContent).toContain('Edit task')
 
-    await wrapper.find('input[aria-label="Task name"]').setValue('Morning news updated')
-    await wrapper.findAll('.task-editor-dialog .text-action').find(button => button.text().includes('save changes'))!.trigger('click')
+    await setEditorField('input[aria-label="Task name"]', 'Morning news updated')
+    editorButton('save changes').click()
 
     await vi.waitFor(() => {
       expect(window.electronAPI.updateSchedulerTask).toHaveBeenCalled()

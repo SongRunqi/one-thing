@@ -80,10 +80,12 @@
     </div>
 
     <!-- Promote dialog -->
-    <div
-      v-if="showPromoteDialog"
-      class="evals-promote-overlay"
-      @click.self="showPromoteDialog = false"
+    <Dialog
+      v-model:open="showPromoteDialog"
+      variant="paper"
+      :width="520"
+      :dividers="false"
+      :style="promoteDialogVars"
     >
       <div class="evals-promote-dialog">
         <h3>Promote Fixture to Test Case</h3>
@@ -141,27 +143,27 @@
             <div class="evals-expect-group-title">
               🔧 Tool Call
             </div>
-            <label class="evals-checkbox">
-              <input
-                v-model="promoteForm.hasToolCalls"
-                type="checkbox"
-              >
+            <Checkbox
+              v-model="promoteForm.hasToolCalls"
+              class="evals-check"
+              size="small"
+              aria-label="Must make tool calls"
+            >
               Must make tool calls
               <span
                 v-if="autoSuggest.hasToolCalls"
                 class="evals-auto-badge"
               >🎯 auto</span>
-            </label>
-            <label
+            </Checkbox>
+            <Checkbox
               v-if="promotedToolNames.length > 0"
-              class="evals-checkbox"
+              v-model="promoteForm.useFirstToolCall"
+              class="evals-check"
+              size="small"
+              :aria-label="`First tool call: ${promotedToolNames[0]}`"
             >
-              <input
-                v-model="promoteForm.useFirstToolCall"
-                type="checkbox"
-              >
               First tool call: {{ promotedToolNames[0] }}
-            </label>
+            </Checkbox>
           </div>
 
           <!-- Skill -->
@@ -172,17 +174,18 @@
             <div class="evals-expect-group-title">
               🧩 Skill
             </div>
-            <label class="evals-checkbox">
-              <input
-                v-model="promoteForm.anySkillUsed"
-                type="checkbox"
-              >
+            <Checkbox
+              v-model="promoteForm.anySkillUsed"
+              class="evals-check"
+              size="small"
+              aria-label="Must use any skill"
+            >
               Must use any skill
               <span
                 v-if="autoSuggest.anySkillUsed"
                 class="evals-auto-badge"
               >🎯 auto</span>
-            </label>
+            </Checkbox>
           </div>
 
           <!-- MCP -->
@@ -193,17 +196,18 @@
             <div class="evals-expect-group-title">
               🔌 MCP
             </div>
-            <label class="evals-checkbox">
-              <input
-                v-model="promoteForm.mcpToolUsed"
-                type="checkbox"
-              >
+            <Checkbox
+              v-model="promoteForm.mcpToolUsed"
+              class="evals-check"
+              size="small"
+              aria-label="Must use MCP tools"
+            >
               Must use MCP tools
               <span
                 v-if="autoSuggest.mcpToolUsed"
                 class="evals-auto-badge"
               >🎯 auto</span>
-            </label>
+            </Checkbox>
           </div>
 
           <!-- Output -->
@@ -227,21 +231,28 @@
                 placeholder="e.g. sorry, I cannot"
               >
             </label>
-            <label class="evals-checkbox">
-              <input
+            <!-- Row, not a label: the number input is a second control and must
+                 not sit inside the checkbox's own <label>. -->
+            <div class="evals-checkbox-row">
+              <Checkbox
                 v-model="promoteForm.useMinLength"
-                type="checkbox"
+                size="small"
+                aria-label="Min output length"
               >
-              Min output length: <input
+                Min output length:
+              </Checkbox>
+              <input
                 v-model.number="promoteForm.minOutputLength"
                 type="number"
                 class="evals-num-input"
-              > chars
+                aria-label="Minimum output length in characters"
+              >
+              <span>chars</span>
               <span
                 v-if="autoSuggest.useMinLength"
                 class="evals-auto-badge"
               >🎯 auto</span>
-            </label>
+            </div>
           </div>
 
           <!-- Notes -->
@@ -287,15 +298,32 @@
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, type CSSProperties } from "vue";
+import Checkbox from "@/components/common/Checkbox.vue";
+import Dialog from "@/components/common/Dialog.vue";
 import ErrorNote from "@/components/common/ErrorNote.vue";
+import { useConfirm } from "@/composables/useConfirm";
+import { SETTINGS_DIALOG_VARS } from "@/components/settings/settings-dialog-vars";
 import { useEvalsStore } from "@/stores/evals";
 import type { EvalFixtureMeta } from "@/stores/evals";
+
+const { confirm, notice } = useConfirm();
+
+/**
+ * Teleported out of `.settings-page`, so the `--settings-*` aliases the sheet's
+ * markup is written against have to come with it (see SETTINGS_DIALOG_VARS).
+ */
+const promoteDialogVars: CSSProperties = {
+  ...SETTINGS_DIALOG_VARS,
+  "--app-dialog-bg": "var(--settings-paper)",
+  "--app-dialog-border": "var(--settings-rule)",
+  "--app-dialog-body-padding": "24px",
+} as CSSProperties;
 
 const store = useEvalsStore();
 const expandedFixture = ref<string | null>(null);
@@ -526,15 +554,18 @@ async function handlePromote() {
 
   if (res.success) {
     showPromoteDialog.value = false;
-    if (
-      confirm(
-        `Case created at ${res.casePath}.\n\nRun it once to verify it fails under the current prompt?`,
-      )
-    ) {
+    const runNow = await confirm({
+      title: "Case created",
+      message: `Case created at ${res.casePath}.\n\nRun it once to verify it fails under the current prompt?`,
+      confirmText: "Run it",
+      cancelText: "Not now",
+      variant: "paper",
+    });
+    if (runNow) {
       store.activeView = "runs";
     }
   } else {
-    alert(`Failed: ${res.error}`);
+    await notice({ title: "Promote failed", message: res.error, variant: "paper" });
   }
 }
 </script>
@@ -668,31 +699,12 @@ async function handlePromote() {
   line-height: 1.5;
 }
 
-/* Promote dialog: paper sheet, hard-offset ink shadow */
-.evals-promote-overlay {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-toast, 100);
-  padding: 20px;
-}
-
+/* Promote dialog: the paper sheet is `Dialog variant="paper"` since P2; the
+   scroll and the field stack stay here. */
 .evals-promote-dialog {
-  background: var(--settings-paper);
-  border: 1px solid var(--settings-rule);
-  border-radius: 0;
-  padding: 24px;
-  width: 100%;
-  max-width: 520px;
-  max-height: 85vh;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: var(--shadow-paper);
 }
 
 .evals-promote-dialog h3 {
@@ -850,19 +862,22 @@ async function handlePromote() {
   letter-spacing: 0.3px;
 }
 
-.evals-checkbox {
+/* P3: the marks are `<Checkbox size="small">` — these rules place them on the
+   sheet and never paint them. The `.app-checkbox` qualifier is deliberate:
+   a bare `.evals-check` ties with the component's own `.app-checkbox` rule at
+   (0,1,0) and the winner would be injection order (ui-system.md §1). */
+.app-checkbox.evals-check {
+  display: flex;
+  padding: 3px 0;
+}
+
+.evals-checkbox-row {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   color: var(--settings-ink-2);
   padding: 3px 0;
-}
-
-.evals-checkbox input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
 }
 
 .evals-auto-badge {

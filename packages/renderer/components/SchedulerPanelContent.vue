@@ -361,201 +361,200 @@
       </section>
     </div>
 
-    <div
-      v-if="editing"
-      class="task-editor-backdrop"
-      @click.self="cancelEdit"
+    <Dialog
+      :open="editing"
+      variant="paper"
+      :width="480"
+      :title="editingId ? 'Edit task' : 'Create task'"
+      :auto-focus="false"
+      :style="taskEditorVars"
+      @update:open="value => { if (!value) cancelEdit() }"
     >
-      <section
+      <template #header-extra>
+        <button
+          class="text-action"
+          type="button"
+          title="Close"
+          :disabled="saving"
+          @click="cancelEdit"
+        >
+          close
+        </button>
+      </template>
+
+      <div
         ref="editorDialogRef"
-        class="task-editor-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="scheduler-task-editor-title"
-        tabindex="-1"
-        @keydown.esc.stop.prevent="cancelEdit"
+        class="task-editor-body"
       >
-        <header class="task-editor-header">
-          <h3 id="scheduler-task-editor-title">
-            {{ editingId ? 'Edit task' : 'Create task' }}
-          </h3>
-          <button
-            class="text-action"
-            type="button"
-            title="Close"
-            :disabled="saving"
-            @click="cancelEdit"
+        <label>
+          <span>Name</span>
+          <input
+            v-model="form.name"
+            class="field"
+            type="text"
+            aria-label="Task name"
+            placeholder="Morning news brief"
           >
-            close
-          </button>
-        </header>
+        </label>
 
-        <div class="task-editor-body">
-          <label>
-            <span>Name</span>
-            <input
-              v-model="form.name"
-              class="field"
-              type="text"
-              aria-label="Task name"
-              placeholder="Morning news brief"
-            >
-          </label>
+        <div class="editor-field">
+          <span>Agent</span>
+          <!-- 定时任务的执行者是一个激活目标(agent-domain-model.md §3.2):
+               已退休的 agent 不能被选中,否则到点了那条任务只会空转。
+               kind 不在这里筛 —— service agent 有自己的后台日程。 -->
+          <Select
+            v-bind="SHEET_SELECT"
+            :model-value="form.agentId"
+            :options="agentOptions"
+            aria-label="Task agent"
+            @update:model-value="form.agentId = String($event ?? '')"
+          />
+        </div>
 
-          <label>
-            <span>Agent</span>
-            <select
-              v-model="form.agentId"
-              class="field"
-              aria-label="Task agent"
-            >
-              <!-- 定时任务的执行者是一个激活目标(agent-domain-model.md §3.2):
-                   已退休的 agent 不能被选中,否则到点了那条任务只会空转。
-                   kind 不在这里筛 —— service agent 有自己的后台日程。 -->
-              <option
-                v-for="agent in agentsStore.activeAgents"
-                :key="agent.id"
-                :value="agent.id"
-              >
-                {{ agent.name }}
-              </option>
-            </select>
-          </label>
+        <label>
+          <span>Task</span>
+          <textarea
+            v-model="form.prompt"
+            class="field textarea"
+            aria-label="Task prompt"
+            placeholder="Check the morning AI news and summarize the top 5 items with links."
+          />
+        </label>
 
-          <label>
-            <span>Task</span>
-            <textarea
-              v-model="form.prompt"
-              class="field textarea"
-              aria-label="Task prompt"
-              placeholder="Check the morning AI news and summarize the top 5 items with links."
+        <div class="schedule-grid">
+          <div class="editor-field">
+            <span>Schedule</span>
+            <Select
+              v-bind="SHEET_SELECT"
+              :model-value="form.scheduleMode"
+              :options="SCHEDULE_MODE_OPTIONS"
+              aria-label="Task schedule"
+              @update:model-value="form.scheduleMode = String($event ?? '') as ScheduleMode"
             />
-          </label>
-
-          <div class="schedule-grid">
-            <label>
-              <span>Schedule</span>
-              <select
-                v-model="form.scheduleMode"
-                class="field"
-                aria-label="Task schedule"
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="interval">Interval</option>
-                <option value="cron">Cron</option>
-              </select>
-            </label>
-
-            <label v-if="form.scheduleMode === 'daily' || form.scheduleMode === 'weekly'">
-              <span>Time</span>
-              <input
-                v-model="form.time"
-                class="field"
-                type="time"
-                aria-label="Task time"
-              >
-            </label>
-
-            <label v-if="form.scheduleMode === 'weekly'">
-              <span>Day</span>
-              <select
-                v-model="form.dayOfWeek"
-                class="field"
-                aria-label="Task day"
-              >
-                <option value="1">Monday</option>
-                <option value="2">Tuesday</option>
-                <option value="3">Wednesday</option>
-                <option value="4">Thursday</option>
-                <option value="5">Friday</option>
-                <option value="6">Saturday</option>
-                <option value="0">Sunday</option>
-              </select>
-            </label>
-
-            <label v-if="form.scheduleMode === 'interval'">
-              <span>Every minutes</span>
-              <input
-                v-model.number="form.intervalMinutes"
-                class="field"
-                type="number"
-                aria-label="Task interval minutes"
-                min="1"
-                step="1"
-              >
-            </label>
-
-            <label v-if="form.scheduleMode === 'cron'">
-              <span>Cron</span>
-              <input
-                v-model="form.cron"
-                class="field is-mono"
-                type="text"
-                aria-label="Task cron"
-                placeholder="0 9 * * *"
-              >
-            </label>
-
-            <label v-if="form.scheduleMode !== 'interval'">
-              <span>Timezone</span>
-              <input
-                v-model="form.timezone"
-                class="field"
-                type="text"
-                aria-label="Task timezone"
-                placeholder="System"
-              >
-            </label>
           </div>
 
-          <label>
-            <span>Working directory</span>
+          <label v-if="form.scheduleMode === 'daily' || form.scheduleMode === 'weekly'">
+            <span>Time</span>
             <input
-              v-model="form.workingDirectory"
-              class="field is-mono"
-              type="text"
-              aria-label="Task working directory"
-              placeholder="Optional"
+              v-model="form.time"
+              class="field"
+              type="time"
+              aria-label="Task time"
             >
           </label>
 
-          <label class="checkbox-row">
+          <div
+            v-if="form.scheduleMode === 'weekly'"
+            class="editor-field"
+          >
+            <span>Day</span>
+            <Select
+              v-bind="SHEET_SELECT"
+              :model-value="form.dayOfWeek"
+              :options="DAY_OF_WEEK_OPTIONS"
+              aria-label="Task day"
+              @update:model-value="form.dayOfWeek = String($event ?? '')"
+            />
+          </div>
+
+          <label v-if="form.scheduleMode === 'interval'">
+            <span>Every minutes</span>
             <input
-              v-model="form.enabled"
-              type="checkbox"
+              v-model.number="form.intervalMinutes"
+              class="field"
+              type="number"
+              aria-label="Task interval minutes"
+              min="1"
+              step="1"
             >
-            <span>Enabled</span>
+          </label>
+
+          <label v-if="form.scheduleMode === 'cron'">
+            <span>Cron</span>
+            <input
+              v-model="form.cron"
+              class="field is-mono"
+              type="text"
+              aria-label="Task cron"
+              placeholder="0 9 * * *"
+            >
+          </label>
+
+          <label v-if="form.scheduleMode !== 'interval'">
+            <span>Timezone</span>
+            <input
+              v-model="form.timezone"
+              class="field"
+              type="text"
+              aria-label="Task timezone"
+              placeholder="System"
+            >
           </label>
         </div>
 
-        <footer class="task-editor-footer">
-          <button
-            class="text-action"
-            type="button"
-            :disabled="saving"
-            @click="cancelEdit"
+        <label>
+          <span>Working directory</span>
+          <input
+            v-model="form.workingDirectory"
+            class="field is-mono"
+            type="text"
+            aria-label="Task working directory"
+            placeholder="Optional"
           >
-            cancel
-          </button>
-          <button
-            class="text-action is-primary"
-            type="button"
-            :disabled="saving"
-            @click="saveTask"
-          >
-            {{ saving ? 'saving…' : editingId ? 'save changes' : 'create task' }}
-          </button>
-        </footer>
-      </section>
-    </div>
+        </label>
+
+        <div class="checkbox-row">
+          <Switch
+            variant="ledger"
+            :model-value="form.enabled"
+            aria-label="Enabled"
+            @update:model-value="form.enabled = Boolean($event)"
+          />
+          <span>Enabled</span>
+        </div>
+      </div>
+
+      <template #actions>
+        <button
+          class="text-action"
+          type="button"
+          :disabled="saving"
+          @click="cancelEdit"
+        >
+          cancel
+        </button>
+        <button
+          class="text-action is-primary"
+          type="button"
+          :disabled="saving"
+          @click="saveTask"
+        >
+          {{ saving ? 'saving…' : editingId ? 'save changes' : 'create task' }}
+        </button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, shallowRef, watch, type CSSProperties } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
+import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
+import Switch from '@/components/common/Switch.vue'
+import { useConfirm } from '@/composables/useConfirm'
+
+/** The editor fills the viewport height it is given, like the old dialog did. */
+const taskEditorVars: CSSProperties = {
+  '--app-dialog-max-height': 'calc(100% - 40px)',
+  '--app-dialog-body-display': 'flex',
+  // The scroll (and its custom scrollbar skin) stays on `.task-editor-body`,
+  // so Dialog's body is a plain flex shell with no padding of its own.
+  '--app-dialog-body-padding': '0',
+  '--app-dialog-body-overflow': 'hidden',
+} as CSSProperties
 import type {
   SchedulerRunDetailDTO,
   SchedulerSchedule,
@@ -564,6 +563,7 @@ import type {
 import { platformApi } from '@/platform'
 
 const agentsStore = useAgentsStore()
+const { confirm } = useConfirm()
 const TASK_LOAD_TIMEOUT_MS = 10000
 
 const props = withDefaults(defineProps<{
@@ -609,12 +609,50 @@ const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
 
 const taskDetailActive = ref(false)
 
+type ScheduleMode = 'daily' | 'weekly' | 'interval' | 'cron'
+
+/**
+ * One spelling of "a dropdown in the task editor".
+ *
+ * `z-layer="modal"` is load-bearing: the editor is a Dialog at `--z-modal`, so
+ * a panel left on the default dropdown stop opens *behind* the sheet it belongs
+ * to. `teleported` then keeps it out of `.task-editor-body`'s scroll box.
+ */
+const SHEET_SELECT = {
+  variant: 'underline',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+  zLayer: 'modal',
+} as const
+
+const SCHEDULE_MODE_OPTIONS: SelectOptionLike[] = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'interval', label: 'Interval' },
+  { value: 'cron', label: 'Cron' },
+]
+
+const DAY_OF_WEEK_OPTIONS: SelectOptionLike[] = [
+  { value: '1', label: 'Monday' },
+  { value: '2', label: 'Tuesday' },
+  { value: '3', label: 'Wednesday' },
+  { value: '4', label: 'Thursday' },
+  { value: '5', label: 'Friday' },
+  { value: '6', label: 'Saturday' },
+  { value: '0', label: 'Sunday' },
+]
+
+const agentOptions = computed<SelectOptionLike[]>(() =>
+  agentsStore.activeAgents.map(agent => ({ value: agent.id, label: agent.name })),
+)
+
 const form = ref({
   name: '',
   prompt: '',
   agentId: 'default',
   enabled: true,
-  scheduleMode: 'daily' as 'daily' | 'weekly' | 'interval' | 'cron',
+  scheduleMode: 'daily' as ScheduleMode,
   time: '09:00',
   dayOfWeek: '1',
   intervalMinutes: 60,
@@ -830,7 +868,14 @@ async function toggleTaskEnabled(task: SchedulerTaskSnapshotDTO, value: unknown)
 }
 
 async function deleteTask(taskId: string): Promise<void> {
-  if (!confirm('Delete this scheduled task? Existing run history will stay on disk.')) return
+  const accepted = await confirm({
+    title: 'Delete task',
+    message: 'Delete this scheduled task? Existing run history will stay on disk.',
+    danger: true,
+    confirmText: 'delete',
+    variant: 'paper',
+  })
+  if (!accepted) return
   error.value = ''
   try {
     const response = await getSchedulerApi().deleteSchedulerTask({ id: taskId })
@@ -1139,8 +1184,7 @@ watch(
 .enable-dot:focus-visible,
 .history-toggle:focus-visible,
 .task-row:focus-visible,
-.run-row:focus-visible,
-.checkbox-row input[type='checkbox']:focus-visible {
+.run-row:focus-visible {
   outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
   outline-offset: 2px;
 }
@@ -1835,9 +1879,6 @@ watch(
   font-size: 11.5px;
 }
 
-select.field {
-  cursor: pointer;
-}
 
 .textarea {
   min-height: 90px;
@@ -1845,53 +1886,9 @@ select.field {
   resize: vertical;
 }
 
-/* ---- task editor: paper dialog ---- */
-.task-editor-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
-}
-
-.task-editor-dialog {
-  width: 100%;
-  max-width: 480px;
-  max-height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  box-shadow: var(--shadow-paper);
-}
-
-.task-editor-dialog:focus {
-  outline: none;
-}
-
-.task-editor-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  flex-shrink: 0;
-  padding: 14px 18px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
-}
-
-.task-editor-header h3 {
-  margin: 0;
-  min-width: 0;
-  font-family: var(--font-display, var(--font-serif, serif));
-  font-size: 15px;
-  font-weight: var(--font-weight-semibold, 600);
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
+/* ---- task editor: the paper shell is `Dialog variant="paper"` since P2 ---- */
 .task-editor-body {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   display: flex;
@@ -1901,14 +1898,19 @@ select.field {
   scrollbar-width: thin;
 }
 
-.task-editor-body label {
+/* `.editor-field` is the same column as a `<label>`, for the rows whose control
+   is a component (Select/Switch) rather than a labelable element — wrapping one
+   in a <label> would make the caption click the component's first inner input. */
+.task-editor-body label,
+.task-editor-body .editor-field {
   display: flex;
   flex-direction: column;
   gap: 5px;
   min-width: 0;
 }
 
-.task-editor-body label > span {
+.task-editor-body label > span,
+.task-editor-body .editor-field > span {
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1922,55 +1924,20 @@ select.field {
   min-width: 0;
 }
 
+/* P3: the ink-dot the old `input[type=checkbox]` was restyled into is exactly
+   `<Switch variant="ledger">`, which draws (and focuses) itself. Row only. */
 .checkbox-row {
-  flex-direction: row !important;
+  display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
 }
 
-/* Checkbox restyled as the ink-dot toggle */
-.checkbox-row input[type='checkbox'] {
-  appearance: none;
-  -webkit-appearance: none;
-  flex-shrink: 0;
-  width: 13px;
-  height: 13px;
-  margin: 0;
-  padding: 0;
-  border-radius: 50%;
-  border: 1px dashed var(--ui-border-default-border, var(--border));
-  background: transparent;
-  cursor: pointer;
-  position: relative;
-  transition: border-color 0.12s ease;
-}
-
-.checkbox-row input[type='checkbox']:hover {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.checkbox-row input[type='checkbox']:checked {
-  border-style: solid;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.checkbox-row input[type='checkbox']:checked::after {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border-radius: 50%;
-  background: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.task-editor-footer {
-  display: flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 18px;
-  flex-shrink: 0;
-  padding: 14px 18px 16px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+.checkbox-row > span {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 /* ---- narrow containers: stacked list/detail with slide ---- */

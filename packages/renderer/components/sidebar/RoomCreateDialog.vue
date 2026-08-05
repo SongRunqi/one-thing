@@ -1,134 +1,129 @@
 <template>
-  <Teleport to="body">
-    <div
-      v-if="visible"
-      class="room-dialog-overlay"
-      @click.self="emit('close')"
-    >
-      <div
-        class="room-dialog"
-        role="dialog"
-        aria-label="新建群聊"
-      >
-        <div class="dialog-header">
-          <h3>新建群聊</h3>
-        </div>
+  <Dialog
+    :open="visible"
+    title="新建群聊"
+    :width="380"
+    variant="paper"
+    dividers="header"
+    @update:open="value => { if (!value) emit('close') }"
+  >
+    <div class="room-form">
+      <label class="field">
+        <span class="field-label">房间名</span>
+        <input
+          v-model="name"
+          class="field-input"
+          type="text"
+          placeholder="例如:官网改版项目组"
+          @keydown.enter="create"
+        >
+      </label>
 
-        <div class="dialog-body">
-          <label class="field">
-            <span class="field-label">房间名</span>
-            <input
-              v-model="name"
-              class="field-input"
-              type="text"
-              placeholder="例如:官网改版项目组"
-              @keydown.enter="create"
-            >
-          </label>
-
-          <div class="field">
-            <span class="field-label">成员</span>
-            <p
-              v-if="selectableAgents.length === 0"
-              class="field-hint"
-            >
-              还没有可用的 Agent——先在「Agents」面板创建几个角色(如产品经理、工程师)。
-            </p>
-            <label
-              v-for="agent in selectableAgents"
-              :key="agent.id"
-              class="member-row"
-            >
-              <input
-                type="checkbox"
-                :checked="memberIds.includes(agent.id)"
-                @change="toggleMember(agent.id)"
-              >
-              <AgentAvatar
-                class="member-avatar"
-                :avatar="agent.avatar"
-                :avatar-image="agent.avatarImage"
-                :size="18"
-              />
-              <span class="member-name">{{ agent.name }}</span>
-              <span
-                v-if="agent.title"
-                class="member-title"
-              >{{ agent.title }}</span>
-            </label>
-          </div>
-
-          <label class="field">
-            <span class="field-label">负责人(PM) <em>可选</em></span>
-            <select
-              v-model="pmAgentId"
-              class="field-input"
-            >
-              <option value="">
-                无
-              </option>
-              <option
-                v-for="agent in selectedAgents"
-                :key="agent.id"
-                :value="agent.id"
-              >
-                {{ agent.name }}{{ agent.title ? ` · ${agent.title}` : '' }}
-              </option>
-            </select>
-            <span class="field-hint">负责评审与任务分派;群聊中更倾向主动接话(不再是唯一应答人)。</span>
-          </label>
-
-          <label class="field">
-            <span class="field-label">日预算(美元)</span>
-            <input
-              v-model.number="dailyBudget"
-              class="field-input"
-              type="number"
-              min="0"
-              step="0.5"
-            >
-            <span class="field-hint">按真实 API 花费计;填 0 表示不限额。默认 $5/天。</span>
-          </label>
-
-          <p
-            v-if="error"
-            class="dialog-error"
-          >
-            {{ error }}
-          </p>
-        </div>
-
-        <div class="dialog-footer">
-          <button
-            class="text-action"
-            type="button"
-            @click="emit('close')"
-          >
-            取消
-          </button>
-          <button
-            class="text-action is-primary"
-            type="button"
-            :disabled="creating || !canCreate"
-            @click="create"
-          >
-            {{ creating ? '创建中…' : '创建' }}
-          </button>
-        </div>
+      <div class="field field-members">
+        <span class="field-label">成员</span>
+        <p
+          v-if="selectableAgents.length === 0"
+          class="field-hint"
+        >
+          还没有可用的 Agent——先在「Agents」面板创建几个角色(如产品经理、工程师)。
+        </p>
+        <Checkbox
+          v-for="agent in selectableAgents"
+          :key="agent.id"
+          class="member-row"
+          :model-value="memberIds.includes(agent.id)"
+          @update:model-value="toggleMember(agent.id)"
+        >
+          <span class="member-line">
+            <AgentAvatar
+              class="member-avatar"
+              :avatar="agent.avatar"
+              :avatar-image="agent.avatarImage"
+              :size="18"
+            />
+            <span class="member-name">{{ agent.name }}</span>
+            <span
+              v-if="agent.title"
+              class="member-title"
+            >{{ agent.title }}</span>
+          </span>
+        </Checkbox>
       </div>
+
+      <div class="field">
+        <span class="field-label">负责人(PM) <em>可选</em></span>
+        <Select
+          v-model="pmAgentId"
+          variant="underline"
+          size="small"
+          teleported
+          fit-input-width
+          z-layer="modal"
+          :options="pmOptions"
+          aria-label="负责人"
+        />
+        <span class="field-hint">负责评审与任务分派;群聊中更倾向主动接话(不再是唯一应答人)。</span>
+      </div>
+
+      <label class="field">
+        <span class="field-label">日预算(美元)</span>
+        <input
+          v-model.number="dailyBudget"
+          class="field-input"
+          type="number"
+          min="0"
+          step="0.5"
+        >
+        <span class="field-hint">按真实 API 花费计;填 0 表示不限额。默认 $5/天。</span>
+      </label>
+
+      <p
+        v-if="error"
+        class="room-error"
+      >
+        {{ error }}
+      </p>
     </div>
-  </Teleport>
+
+    <template #actions>
+      <button
+        class="app-dialog-text-btn"
+        type="button"
+        @click="emit('close')"
+      >
+        取消
+      </button>
+      <button
+        class="app-dialog-text-btn is-primary"
+        type="button"
+        :disabled="creating || !canCreate"
+        @click="create"
+      >
+        {{ creating ? '创建中…' : '创建' }}
+      </button>
+    </template>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
+import Checkbox from '@/components/common/Checkbox.vue'
+import Dialog from '@/components/common/Dialog.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import { useAgentsStore } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ close: [] }>()
+
+// No `--app-dialog-*` overrides on purpose: the room sheets are settings-area
+// forms, so they take `variant="paper"`'s own metrics (square corners, hairline
+// frame, serif title over a header rule) exactly like `settings/mcp/
+// MCPServerDialog`. The 8px-radius card the two dialogs used to hand-roll was
+// the one thing keeping them in a different visual language.
 
 const agentsStore = useAgentsStore()
 const sessionsStore = useSessionsStore()
@@ -150,6 +145,13 @@ const selectedAgents = computed(() =>
   selectableAgents.value.filter(agent => memberIds.value.includes(agent.id)))
 const canCreate = computed(() =>
   name.value.trim().length > 0 && memberIds.value.length > 0)
+const pmOptions = computed<SelectOptionLike[]>(() => [
+  { value: '', label: '无' },
+  ...selectedAgents.value.map(agent => ({
+    value: agent.id,
+    label: `${agent.name}${agent.title ? ` · ${agent.title}` : ''}`,
+  })),
+])
 
 watch(() => props.visible, visible => {
   if (!visible) return
@@ -201,47 +203,27 @@ async function create(): Promise<void> {
 </script>
 
 <style scoped>
-.room-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-toast, 1000);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
-}
-
-.room-dialog {
-  width: 380px;
-  max-height: 80vh;
-  overflow-y: auto;
-  background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  border-radius: 8px;
-  box-shadow: var(--shadow-paper, 0 12px 32px rgb(0 0 0 / 0.14));
-  padding: 16px 18px;
-}
-
-.dialog-header h3 {
-  margin: 0 0 12px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.dialog-body {
+/* Overlay / panel / shadow / header rule are Dialog's (variant="paper"); only
+   the content inside the slots is styled here, in the settings-area ledger
+   language — 11px spaced labels over underline controls, same recipe as
+   `settings/mcp/MCPServerDialog`. */
+.room-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
+  min-width: 0;
 }
 
 .field-label {
-  font-size: 12px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
@@ -250,32 +232,82 @@ async function create(): Promise<void> {
   opacity: 0.6;
 }
 
+/* Underline controls: the line is the control (ui-system.md §设置区画线风). */
 .field-input {
+  width: 100%;
+  min-width: 0;
+  appearance: none;
   font: inherit;
   font-size: 13px;
-  padding: 6px 8px;
-  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  border-radius: 6px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  color: var(--ui-text-primary-fg, var(--text));
+  padding: 4px 0 5px;
+  border: none;
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-radius: 0;
+  background: transparent;
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  transition: border-color var(--duration-fast) var(--ease-default);
 }
+
+/* Element-qualified so the underline reads as a caret surface, not a box. */
+input.field-input:focus {
+  outline: none;
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: none;
+}
+
+.field-input::placeholder {
+  color: var(--ui-text-faint-fg, var(--muted));
+}
+
+/* P3: the PM picker is `<Select variant="underline">`. The hand-drawn chevron
+   that used to live here (a data-URI copy of SettingsPage's `:deep(select)`
+   glyph, repeated because a teleported dialog is outside that subtree) went
+   with the native `<select>` — Select ships its own. It also needs
+   `z-layer="modal"`: the default dropdown+20 is 120 and this dialog sits at
+   600 (ui-system.md §3). */
 
 .field-hint {
-  font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--muted));
 }
 
+/* The roster is the only unbounded repeater in this sheet: without a cap the
+   panel grows with the number of colleagues until it hits Dialog's max-height and
+   fills the window. Scrolling the LIST instead keeps the name field, the budget
+   field and the footer on screen no matter how many agents exist. */
+.field-members {
+  min-height: 0;
+  max-height: 34vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* `.member-row` is a `Checkbox` root — the class lands on someone else's
+   component, so it only ever sets layout (ui-system.md §1: never contest paint
+   properties from out there). The row's content lives in the default slot and
+   therefore still resolves in this file's scope. */
 .member-row {
-  display: flex;
   align-items: center;
-  gap: 8px;
   padding: 4px 2px;
   font-size: 13px;
-  cursor: pointer;
+}
+
+.member-line {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
 }
 
 .member-avatar {
   font-size: 15px;
+}
+
+.member-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .member-title {
@@ -283,36 +315,14 @@ async function create(): Promise<void> {
   font-size: 12px;
 }
 
-.dialog-error {
+.room-error {
   margin: 0;
   font-size: 12px;
   color: var(--ui-status-danger-fg, var(--text-error));
 }
 
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.text-action {
-  font: inherit;
-  font-size: 13px;
-  background: none;
-  border: none;
-  padding: 4px 6px;
-  cursor: pointer;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-}
-
-.text-action.is-primary {
-  color: var(--ui-text-primary-fg, var(--text));
-  font-weight: 600;
-}
-
-.text-action:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
+/* Footer buttons are `.app-dialog-text-btn` — the mono text button published by
+   Dialog.vue's non-scoped block. A scoped `.text-action` used to live here; it
+   was a second spelling of the same recipe, one that drifted (13px sans, bold
+   primary) from every other paper dialog's footer. */
 </style>

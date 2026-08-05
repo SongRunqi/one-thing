@@ -257,22 +257,13 @@
 
           <div class="model-row">
             <span class="model-row-label">provider</span>
-            <select
-              v-model="formModelProvider"
-              class="ledger-select"
-              @change="onModelProviderChange"
-            >
-              <option value="">
-                follow session default
-              </option>
-              <option
-                v-for="provider in providerChoices"
-                :key="provider.id"
-                :value="provider.id"
-              >
-                {{ provider.name }}
-              </option>
-            </select>
+            <Select
+              v-bind="LEDGER_SELECT"
+              :model-value="formModelProvider"
+              :options="providerOptions"
+              aria-label="Model provider"
+              @update:model-value="formModelProvider = String($event ?? ''); onModelProviderChange()"
+            />
             <button
               v-if="formModelProvider"
               class="text-action"
@@ -286,22 +277,14 @@
 
           <div class="model-row">
             <span class="model-row-label">model</span>
-            <select
-              v-model="formModelId"
-              class="ledger-select"
+            <Select
+              v-bind="LEDGER_SELECT"
+              :model-value="formModelId"
+              :options="modelOptions"
               :disabled="!formModelProvider"
-            >
-              <option value="">
-                provider default
-              </option>
-              <option
-                v-for="model in modelChoices"
-                :key="model.id"
-                :value="model.id"
-              >
-                {{ model.name }}
-              </option>
-            </select>
+              aria-label="Model"
+              @update:model-value="formModelId = String($event ?? '')"
+            />
           </div>
 
           <p
@@ -317,18 +300,13 @@
 
           <div class="model-row">
             <span class="model-row-label">approvals</span>
-            <select
-              v-model="formPermissionMode"
-              class="ledger-select"
-            >
-              <option
-                v-for="choice in permissionModeChoices"
-                :key="choice.value"
-                :value="choice.value"
-              >
-                {{ choice.label }}
-              </option>
-            </select>
+            <Select
+              v-bind="LEDGER_SELECT"
+              :model-value="formPermissionMode"
+              :options="permissionModeOptions"
+              aria-label="Approvals"
+              @update:model-value="formPermissionMode = String($event ?? '')"
+            />
           </div>
           <p class="field-hint">
             {{ permissionModeHint }}
@@ -336,18 +314,13 @@
 
           <div class="model-row">
             <span class="model-row-label">turns</span>
-            <select
-              v-model="formTurnBudget"
-              class="ledger-select"
-            >
-              <option
-                v-for="choice in turnBudgetOptions"
-                :key="choice.value"
-                :value="choice.value"
-              >
-                {{ choice.label }}
-              </option>
-            </select>
+            <Select
+              v-bind="LEDGER_SELECT"
+              :model-value="formTurnBudget"
+              :options="turnBudgetSelectOptions"
+              aria-label="Turn budget"
+              @update:model-value="formTurnBudget = String($event ?? '')"
+            />
           </div>
           <p class="field-hint">
             Model round-trips this agent may spend on one run.
@@ -390,6 +363,7 @@
 </template>
 
 <script setup lang="ts">
+import { useConfirm } from '@/composables/useConfirm'
 /**
  * Agent 配置表单 —— **唯一**一份(agent-space-workbench.md P0)。
  *
@@ -413,6 +387,8 @@ import type { PermissionMode } from '@shared/ipc'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import { AVATAR_IMAGE_MAX_PX, downscaleImageToPngDataUrl } from '@/components/common/agent-avatar'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Select from '@/components/common/Select.vue'
+import type { SelectOptionLike } from '@/components/common/select'
 import {
   AGENT_PERMISSION_MODE_CHOICES,
   enterAllowlistMode,
@@ -453,6 +429,7 @@ const emit = defineEmits<{
 const agentsStore = useAgentsStore()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
+const { confirm } = useConfirm()
 
 const saving = ref(false)
 const formName = ref('')
@@ -585,6 +562,15 @@ const permissionModeHint = computed(() =>
    tier — see turnBudgetChoices. */
 const turnBudgetOptions = computed(() => turnBudgetChoices(props.agent?.maxTurns))
 
+const permissionModeOptions: SelectOptionLike[] = permissionModeChoices.map(choice => ({
+  value: choice.value,
+  label: choice.label,
+}))
+
+const turnBudgetSelectOptions = computed<SelectOptionLike[]>(() =>
+  turnBudgetOptions.value.map(choice => ({ value: choice.value, label: choice.label }))
+)
+
 /* ---- tool allowlist ---- */
 
 const followsGlobalTools = computed(() => isFollowGlobal(formTools.value))
@@ -670,6 +656,29 @@ const modelChoices = computed(() => {
   if (formModelId.value && !ids.includes(formModelId.value)) ids.unshift(formModelId.value)
   return ids.map(id => ({ id, name: settingsStore.getModelDisplayName(id) || id }))
 })
+
+/**
+ * One spelling of "a dropdown on the agent ledger". `underline` is what
+ * `.agent-ledger .ledger-select` hand-drew (a hairline, no frame); `teleported`
+ * keeps the panel out of the form's scroll container.
+ */
+const LEDGER_SELECT = {
+  class: 'ledger-select-field',
+  variant: 'underline',
+  size: 'small',
+  teleported: true,
+  fitInputWidth: true,
+} as const
+
+const providerOptions = computed<SelectOptionLike[]>(() => [
+  { value: '', label: 'follow session default' },
+  ...providerChoices.value.map(provider => ({ value: provider.id, label: provider.name })),
+])
+
+const modelOptions = computed<SelectOptionLike[]>(() => [
+  { value: '', label: 'provider default' },
+  ...modelChoices.value.map(model => ({ value: model.id, label: model.name })),
+])
 
 const modelWarning = computed(() => {
   const providerId = formModelProvider.value
@@ -789,10 +798,16 @@ const promptTemplates = [
   }
 ]
 
-function applyTemplate(templatePrompt: string) {
-  if (!formPrompt.value.trim() || confirm('Overwrite current system prompt with this template?')) {
-    formPrompt.value = templatePrompt
+async function applyTemplate(templatePrompt: string) {
+  if (formPrompt.value.trim()) {
+    const accepted = await confirm({
+      title: 'Overwrite prompt',
+      message: 'Overwrite current system prompt with this template?',
+      confirmText: 'Overwrite',
+    })
+    if (!accepted) return
   }
+  formPrompt.value = templatePrompt
 }
 
 function wordCount(str: string): number {
@@ -890,5 +905,16 @@ defineExpose({ saving })
   flex-direction: column;
   min-height: 0;
   flex: 1;
+}
+
+/* P3: the four dropdowns are `<Select variant="underline">`, which owns the
+   hairline and the caret. This is the footprint `.agent-ledger .ledger-select`
+   used to give them — a NEW class on purpose: reusing `.ledger-select` would
+   hand the component root that rule's `appearance/border/padding` paint too,
+   and at (0,2,0) it would win over the component's own (0,1,0). The old class
+   stays in styles/agent-space.css for MemorySettingsTab, which still uses it. */
+.ledger-select-field {
+  flex: 1;
+  min-width: 0;
 }
 </style>

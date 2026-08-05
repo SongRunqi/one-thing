@@ -466,6 +466,7 @@
 </template>
 
 <script setup lang="ts">
+import { useConfirm } from '@/composables/useConfirm'
 import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
@@ -567,6 +568,7 @@ function readPanelHeight(): number {
   return clampNumber(value, TODO_PANEL_MIN_HEIGHT, TODO_PANEL_MAX_HEIGHT)
 }
 
+const { confirm } = useConfirm()
 const snapshot = ref<TodoPlanSnapshot | null>(null)
 const activeId = ref(readStorage('ActiveId'))
 const draft = ref('')
@@ -997,7 +999,13 @@ async function deleteNote() {
 async function deleteUserNote(id: string) {
   const document = snapshot.value?.userNotes.find(note => note.id === id)
   if (!document) return
-  if (!window.confirm(`Delete "${document.title}"?`)) return
+  const accepted = await confirm({
+    title: 'Delete note',
+    message: `Delete "${document.title}"?`,
+    confirmText: 'Delete',
+    danger: true,
+  })
+  if (!accepted) return
   const response = await platformApi.deleteTodoPlanNote({ id: document.id })
   if (response.success) {
     loadedDocumentId = ''
@@ -1460,7 +1468,7 @@ onUnmounted(() => {
   position: absolute;
   top: 40px;
   right: 12px;
-  z-index: calc(var(--z-dropdown, 100) + 2);
+  z-index: calc(var(--z-dropdown) + 2);
   width: min(var(--todo-plan-width), calc(100vw - var(--todo-plan-nav-gutter) - 18px));
   min-height: 220px;
   border: 1px solid var(--todo-rule);

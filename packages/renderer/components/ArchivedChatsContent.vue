@@ -172,12 +172,14 @@
 </template>
 
 <script setup lang="ts">
+import { useConfirm } from '@/composables/useConfirm'
 import Button from '@/components/common/Button.vue'
 import { ref, computed } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import type { ChatSession, ChatMessage } from '@/types'
 
 const sessionsStore = useSessionsStore()
+const { confirm } = useConfirm()
 const searchQuery = ref('')
 const groupingMode = ref<'date' | 'branch'>('date')
 const collapsedGroups = ref<Set<string>>(new Set())
@@ -357,10 +359,14 @@ async function restoreChat(session: ArchivedSession) {
 
 // Confirm and permanently delete chat
 async function confirmDelete(session: ArchivedSession) {
-  const confirmed = confirm(`Permanently delete "${session.name || 'Untitled Chat'}"? This cannot be undone.`)
-  if (confirmed) {
-    await sessionsStore.permanentlyDeleteSession(session.id)
-  }
+  const confirmed = await confirm({
+    title: 'Delete chat',
+    message: `Permanently delete "${session.name || 'Untitled Chat'}"? This cannot be undone.`,
+    confirmText: 'Delete',
+    danger: true,
+  })
+  if (!confirmed) return
+  await sessionsStore.permanentlyDeleteSession(session.id)
 }
 </script>
 

@@ -1183,8 +1183,8 @@ onMounted(async () => {
       // Per-window model metadata cache: the Settings window may have just
       // refreshed or added models. `settings.selectedModels` is synced via
       // this broadcast, but `providerModels` (the capabilities/metadata Map)
-      // is local to each renderer. Drop it so the next ModelSelectorPanel
-      // open re-fetches — main has a disk cache, so the round-trip is cheap.
+      // is local to each renderer. Drop it so the next model picker open
+      // re-fetches — main has a disk cache, so the round-trip is cheap.
       settingsStore.clearModelsCache()
 
       // Re-build `availableProviders` from the new settings so custom providers
@@ -1467,7 +1467,7 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.3);
-  z-index: 499; /* Just below floating sidebar (500) */
+  z-index: calc(var(--z-sidebar) - 1); /* just below the floating sidebar itself */
   animation: fadeIn 0.2s ease forwards;
   /* Optimize rendering */
   contain: strict;
@@ -1487,30 +1487,8 @@ html[data-theme='light'] .sidebar-floating-backdrop {
   to { opacity: 0; }
 }
 
-/* Agent Dialog Overlay */
-.agent-dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 20px;
-}
-
-.agent-dialog-container {
-  width: 100%;
-  max-width: 560px;
-  max-height: 85vh;
-  background: var(--bg);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
+/* `.agent-dialog-overlay` / `.agent-dialog-container` were removed in P2: the
+   markup they styled (CustomAgentDialog) had already been deleted, leaving a
+   hand-rolled modal skeleton with no modal. New dialogs use
+   `components/common/Dialog.vue`. */
 </style>
