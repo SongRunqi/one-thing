@@ -460,8 +460,11 @@ onUnmounted(() => {
   min-height: 0;
   min-width: 0;
   /* No top padding: the sticky group header must sit flush against the
-     scroll container's top edge, or scrolled text shows through the gap. */
-  padding: 0 10px 12px 12px;
+     scroll container's top edge, or scrolled text shows through the gap.
+     Bottom is 10px rather than 12px: the row seam (`.session-item`'s 2px
+     block-end margin, ui-system.md §1) leaks past the last row, so the panel
+     gives those 2px back and the list's outer edge stays where it was. */
+  padding: 0 10px 10px 12px;
   contain: strict;
   content-visibility: auto;
 }

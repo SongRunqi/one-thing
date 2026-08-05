@@ -223,6 +223,10 @@ function cancelRename() {
    行包装盒(.app-menu-item)带 12px 内联起点，margin 拉回后填充满宽，
    正文缩进 32px 与抽屉头标签(chevron 12 + gap 8)对齐。 */
 .session-item {
+  /* 选中底只定义一次 —— 下面「被指着的选中行」那一档要贴着静息态写,
+     两处各写一份数值早晚漂移(ui-system.md §1)。 */
+  --session-row-active-fill: var(--sidebar-row-active-fill, var(--ui-state-selected-bg));
+
   position: relative;
   box-sizing: border-box;
   display: flex;
@@ -230,7 +234,18 @@ function cancelRename() {
   gap: 8px;
   min-height: 30px;
   padding: 6px 10px 6px 32px;
-  margin: 0 0 0 -12px;
+  /* 行间 2px 呼吸缝(ui-system.md §1「列表行的两种状态不能是同一种记号」):
+     hover 与 active 都是满底色块,紧邻时各自的圆角被邻居的直边填平,两行焊成
+     一整条通板(真机报告:aikefu-bridge 组下的 active + hover 两行)。
+     只画 block-end 一侧:
+      - 行与行之间照样是 2px(A 的下边距紧邻 B 的 0 上边距);
+      - 组内第一行不带上边距 —— 分组头是 sticky 且底不透明,它下面留一条透明
+        缝就是滚过的行文透出来的通道(同一份文件里 `margin-right: 0` 那条注释
+        记的就是这个坑);
+      - 组尾多出的 2px 由 SessionList 的列表 padding-bottom 反向补回(12→10),
+        外缘几何逐像素不变。
+     折叠行把这条缝归零(见 `.hidden`),否则一枝收起的分支会留下一串 2px 空条。 */
+  margin: 0 0 2px -12px;
   border-radius: 7px;
   cursor: pointer;
   user-select: none;
@@ -250,7 +265,23 @@ function cancelRename() {
 }
 
 .session-item.active {
-  background: var(--sidebar-row-active-fill, var(--ui-state-selected-bg));
+  background: var(--session-row-active-fill);
+}
+
+/* 手指着一行已经选中的会话。
+ *
+ * 不写这条就是死区:`.session-item.active` (0,2,0) 写在 `.session-item:hover`
+ * (0,2,0) 之后,选中底把 hover 整个吞掉,指针落上去什么都不动 —— 选中不等于
+ * 这一行不再响应指针(ui-system.md §1)。
+ *
+ * 这里是面 register(圆角底色块),仅剩的通道是把选中底**加深一档**。掺的是
+ * `--ui-text-primary-fg`:它在浅色主题是深的、深色主题是浅的,所以"更深一档"
+ * 两边都成立,不用写死 alpha 或 hex;单纯抬 accent 的 alpha 在深色主题里几乎
+ * 不动。同一条规则同时服务 `:hover` 与 `:focus-visible` —— 键盘与鼠标是同一
+ * 条视觉通道。(0,3,0) 直接压过 `.active` 的 (0,2,0),不留平局。 */
+.session-item.active:hover,
+.session-item.active:focus-visible {
+  background: color-mix(in srgb, var(--session-row-active-fill) 92%, var(--ui-text-primary-fg));
 }
 
 .session-item.hidden {

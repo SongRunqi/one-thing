@@ -2009,10 +2009,19 @@ html[data-shell-mode='workbench'] .sidebar-sections {
    hover 4.5% 填充,当前项 7.5% 且转墨色。classic 那边的画线风行照旧。
    门写成 `html[...] .xxx` 而**不是** `:global(html[...]) .xxx` —— 见上面那段。 */
 html[data-shell-mode='workbench'] .sidebar-pane .sidebar-rooms {
+  /* 行间 2px 呼吸缝(ui-system.md §1):这一门里的行是满宽圆角底色块,hover 与
+     active 紧邻时圆角互相填平会焊成一整条通板。容器本来就是 flex column,缝用
+     `gap` 画 —— 它只落在行与行之间,不在首尾各多出一份,外缘几何逐像素不变
+     (行上挂 margin 反而要再补一次 padding)。classic 那边行没有填充,门外一个
+     字节不动。 */
+  gap: 2px;
   padding: 0 0 6px;
 }
 
 html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item {
+  /* 选中底只定义一次,下面加深的那一档贴着它写,免得两处数值各自漂移。 */
+  --sidebar-pane-row-active-fill: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 7.5%, transparent);
+
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2030,9 +2039,18 @@ html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item:hover {
 }
 
 html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item.is-active {
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 7.5%, transparent);
+  background: var(--sidebar-pane-row-active-fill);
   color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   font-weight: 500;
+}
+
+/* 手指着一行已经选中的房/同事。两条底色规则原本都是 (0,4,1) 的平局,`.is-active`
+   写在后面就赢,选中行成了死区 —— 选中不等于这一行不再响应指针(ui-system.md §1)。
+   面 register 只剩"加深一档"这一条通道,掺 `--ui-text-primary-fg`(浅色主题是深的、
+   深色主题是浅的)让这一档两边都成立,不写死 alpha/hex。(0,5,1) 直接压过,不留平局。 */
+html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item.is-active:hover,
+html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item.is-active:focus-visible {
+  background: color-mix(in srgb, var(--sidebar-pane-row-active-fill) 92%, var(--ui-text-primary-fg));
 }
 
 /* 样板 `.r .nm`:名字吃掉所有余量,省略号永远画在名字上。 */

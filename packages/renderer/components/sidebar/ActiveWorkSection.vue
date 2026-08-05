@@ -87,6 +87,10 @@ const openedSessionId = computed(() => sessionsStore.currentSessionId)
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  /* 行间 2px 呼吸缝(ui-system.md §1):卡是满宽圆角底色块,hover 与 active 紧邻
+     时圆角互相填平会焊成一整条通板。容器已是 flex column,缝用 `gap` 画 —— 只落
+     在卡与卡之间,首尾不多出一份,外缘几何逐像素不变。 */
+  gap: 2px;
 }
 
 /* 样板 `.sb3 .grp`:小、静、不用宽字距(Linear 不这么做)。 */

@@ -85,6 +85,9 @@ const live = computed(() =>
    于是任何主题下 当前项 > 行文 > 副文 的对比关系都成立。 */
 .work-card {
   display: flex;
+  /* 选中底只定义一次,下面加深的那一档贴着它写,免得两处数值各自漂移。 */
+  --work-card-active-fill: var(--ui-sidebar-rail-active-bg);
+
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
@@ -114,9 +117,18 @@ const live = computed(() =>
 }
 
 .work-card.is-active {
-  background: var(--ui-sidebar-rail-active-bg);
+  background: var(--work-card-active-fill);
   color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   font-weight: 500;
+}
+
+/* 手指着一张已经选中的卡。`.is-active` (0,2,0) 与 `:hover` (0,2,0) 原本平局、
+   靠书写顺序赢,选中那张成了死区 —— 选中不等于这一行不再响应指针
+   (ui-system.md §1)。面 register 只剩"加深一档",掺 `--ui-text-primary-fg`
+   让这一档在深浅两种主题下都成立,不写死 alpha/hex。(0,3,0) 压过,不留平局。 */
+.work-card.is-active:hover,
+.work-card.is-active:focus-visible {
+  background: color-mix(in srgb, var(--work-card-active-fill) 92%, var(--ui-text-primary-fg));
 }
 
 /* 样板 `.sb .st`:6px 一枚,默认灰,只有"在跑"与"待你"两种颜色。 */
