@@ -11,7 +11,7 @@ import {
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
-import { PluginStore } from './store.js'
+import { PluginStore, createPluginStorage } from './store.js'
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
@@ -114,6 +114,7 @@ export function createPluginAPI(
   >({
     pluginId,
     store,
+    storage: createPluginStorage(pluginId),
     scheduler: pluginScheduler,
     disposeCallbacks: schedulerDisposeCallbacks,
     onPluginFailure({ pluginId: id, scope, error }) {

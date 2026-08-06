@@ -75,6 +75,22 @@ export interface CorePluginManagerHost<
    */
   onRequestFailure?(pluginId: string, scope: string, error: unknown): void
   onRequestSuccess?(pluginId: string, scope: string): void
+  // ── R4:数据目录与卸载生命周期 ──
+  /** 归档插件数据目录(移进 legacy-backup)。返回失败原因而不是抛。 */
+  archivePluginData?(pluginId: string): { archived: boolean; archivePath?: string; error?: string }
+  /** 删除用户插件的源目录 `<store>/plugins/<id>/`。 */
+  removePluginSource?(definition: TDefinition): { removed: boolean; error?: string }
+  /** 清掉 plugin-settings 里该插件的 enabled/config/health 三键。 */
+  clearPluginSettings?(pluginId: string): void
+  /** 扫无主数据并归档;返回被归档的 pluginId。 */
+  archiveOrphanPluginData?(knownPluginIds: string[]): string[]
+}
+
+export interface CorePluginUninstallResult {
+  success: boolean
+  /** 数据被归档到哪儿(成功与"归档成功但后续失败"两种情况都会带上)。 */
+  archivePath?: string
+  error?: string
 }
 
 export interface CorePluginManagerOptions {
@@ -310,6 +326,56 @@ export class CorePluginManager<
     }
   }
 
+  // ── 卸载生命周期(R4) ────────────────────────
+
+  /**
+   * 真卸载 —— 在 R4 之前,"卸载"只有用户手删目录这一条路,宿主全程无感知。
+   *
+   * 顺序是 **停用(完整 dispose + 中止在飞)→ 归档数据 → 删源目录 → 清设置键**:
+   * 先归档再删源目录,任何一步失败都不会让数据先没了;设置键最后清,
+   * 因为它是"这个插件还存在过"的最后凭据。
+   *
+   * 内置插件没有卸载(它和 app 同一份构建)。
+   */
+  async uninstallPlugin(pluginId: string): Promise<CorePluginUninstallResult> {
+    const info = this.plugins.get(pluginId)
+    if (!info) {
+      return { success: false, error: `Unknown plugin "${pluginId}"` }
+    }
+    if (info.definition.source === 'builtin') {
+      return { success: false, error: `"${pluginId}" is a built-in plugin and cannot be uninstalled` }
+    }
+
+    return this.runExclusive(pluginId, async () => {
+      const definition = info.definition
+      this.disablePluginNow(pluginId)
+
+      const archive = this.host.archivePluginData?.(pluginId) ?? { archived: false }
+      if (archive.error) {
+        // 数据还在原地 —— 报出来,不要接着删源目录造成"代码没了数据还在"。
+        this.logger.error(`[PluginManager] Uninstall aborted for "${pluginId}": ${archive.error}`)
+        const failed = this.plugins.get(pluginId)
+        if (failed) failed.error = `Uninstall failed while archiving data: ${archive.error}`
+        return { success: false, error: archive.error, archivePath: archive.archivePath }
+      }
+
+      const removal = this.host.removePluginSource?.(definition) ?? { removed: false }
+      if (removal.error) {
+        this.logger.error(`[PluginManager] Uninstall could not remove source for "${pluginId}": ${removal.error}`)
+        const failed = this.plugins.get(pluginId)
+        if (failed) failed.error = `Uninstall failed while removing the plugin directory: ${removal.error}`
+        return { success: false, error: removal.error, archivePath: archive.archivePath }
+      }
+
+      this.host.clearPluginSettings?.(pluginId)
+      this.plugins.delete(pluginId)
+      this.reloadTokens.delete(pluginId)
+      this.logger.log(`[PluginManager] Uninstalled plugin: ${pluginId}`)
+
+      return { success: true, archivePath: archive.archivePath }
+    })
+  }
+
   abortRequest(requestId: string): boolean {
     return this.requests.abort(requestId)
   }
@@ -356,6 +422,17 @@ export class CorePluginManager<
 
     for (const def of definitions) {
       this.plugins.set(def.id, { definition: def, loaded: false, commands: [] })
+    }
+
+    // 孤儿数据在加载之前扫:手删 `<store>/plugins/<id>/` 是真实存在的卸载路径,
+    // 宿主对它零感知,数据就永远躺在 plugin-data 里。
+    try {
+      const archived = this.host.archiveOrphanPluginData?.(definitions.map(def => def.id)) ?? []
+      if (archived.length > 0) {
+        this.logger.log(`[PluginManager] Archived orphaned plugin data: ${archived.join(', ')}`)
+      }
+    } catch (error) {
+      this.logger.error('[PluginManager] Orphan plugin data scan failed:', error)
     }
 
     await Promise.all(definitions.map(def => this.loadPlugin(def, generation)))

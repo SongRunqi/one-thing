@@ -1,4 +1,5 @@
 import type { CorePluginRequestHandler } from './request-channel.js'
+import type { CorePluginStorage } from './storage.js'
 
 /**
  * 声明先于代码(设计文档 §4.2 宪法第 3 条)。
@@ -213,6 +214,7 @@ export interface CorePluginAPI<
   TScheduler,
   TUI = MinimalCorePluginUI,
   TRequestHandler = CorePluginRequestHandler,
+  TStorage = CorePluginStorage,
 > {
   readonly id: string
   registerTool(tool: TTool): void
@@ -247,6 +249,15 @@ export interface CorePluginAPI<
   }
   onDispose(callback: () => void): void
   store: TStore
+  /**
+   * 插件的数据目录(R4)。作用域是**全局 per-plugin**:
+   * `<store>/plugin-data/<pluginId>/`,要按 agent 分自己在里面建子结构。
+   *
+   * name 只接受单段文件名(路径穿越被拒);写入的值必须 JSON-可序列化。
+   * 插件的全部落盘足迹 = 这个目录 + plugin-settings 里的几个键 ——
+   * 卸载与孤儿归档都建立在这条契约上。
+   */
+  storage: TStorage
   scheduler: TScheduler
   ui: TUI
 }

@@ -33,6 +33,52 @@ async function loadModules() {
   return { loader, api, tools, promptContext, skillRoots, lifecycle, scheduler, variables }
 }
 
+/**
+ * 游离定时器计数(§5.1 第 10 条:数据/资源侧足迹)。
+ *
+ * 注册表快照看不见"插件启用期间起了一个 setInterval 却没在 dispose 里清掉" ——
+ * log-monitor 的 flush 定时器就是这一类的活样本(R0 期抓到过它的 WriteStream)。
+ * 这里数的是**净增的活句柄**:enable 期间创建、dispose 之后仍未清除的那些。
+ */
+function trackLiveTimers() {
+  const live = new Set<unknown>()
+  const realSetInterval = globalThis.setInterval
+  const realClearInterval = globalThis.clearInterval
+  const realSetTimeout = globalThis.setTimeout
+  const realClearTimeout = globalThis.clearTimeout
+
+  globalThis.setInterval = ((...args: Parameters<typeof setInterval>) => {
+    const handle = realSetInterval(...args)
+    live.add(handle)
+    return handle
+  }) as typeof setInterval
+  globalThis.clearInterval = ((handle: Parameters<typeof clearInterval>[0]) => {
+    live.delete(handle)
+    return realClearInterval(handle)
+  }) as typeof clearInterval
+  globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+    const handle = realSetTimeout(...args)
+    live.add(handle)
+    return handle
+  }) as typeof setTimeout
+  globalThis.clearTimeout = ((handle: Parameters<typeof clearTimeout>[0]) => {
+    live.delete(handle)
+    return realClearTimeout(handle)
+  }) as typeof clearTimeout
+
+  return {
+    liveCount: () => live.size,
+    restore: () => {
+      for (const handle of live) realClearTimeout(handle as Parameters<typeof clearTimeout>[0])
+      live.clear()
+      globalThis.setInterval = realSetInterval
+      globalThis.clearInterval = realClearInterval
+      globalThis.setTimeout = realSetTimeout
+      globalThis.clearTimeout = realClearTimeout
+    },
+  }
+}
+
 interface RegistrySnapshot {
   toolIds: string[]
   promptContextProviders: number
@@ -166,6 +212,46 @@ describe('built-in plugin teardown leaves no residue', () => {
       const after = snapshot(modules, eventBus)
       expect(after, `built-in plugin "${definition.id}" left residue after dispose`).toEqual(before)
       expect(state.commands.size).toBe(0)
+    }
+  })
+
+  /**
+   * 数据/资源侧足迹(§5.1 第 10 条)。
+   *
+   * 插件启用期间经 api.storage 写盘、并可能起定时器;dispose 之后:
+   *  - 它写的数据**留在原地**(停用保留数据,只有卸载才归档);
+   *  - 它起的定时器一个不剩(否则就是一个没人能停的游离句柄)。
+   */
+  it('leaves plugin data on disk but no live timers after dispose', async () => {
+    const builtins = modules.loader.scanPlugins().filter(def => def.source === 'builtin')
+    const timers = trackLiveTimers()
+    try {
+      for (const definition of builtins) {
+        const baseline = timers.liveCount()
+        const { api, state } = modules.api.createPluginAPI(
+          definition.id,
+          eventBus as never,
+          createStreamEngineStub() as never,
+        )
+        await definition.entry!(api)
+
+        // 插件在启用期间写一份自己的数据。
+        api.storage.writeJson('teardown-probe.json', { wrote: definition.id })
+        const dataFile = path.join(api.storage.dir(), 'teardown-probe.json')
+        expect(fs.existsSync(dataFile)).toBe(true)
+
+        modules.api.disposePlugin(state)
+
+        // 停用保留数据 —— 归档是卸载的语义,不是停用的。
+        expect(fs.existsSync(dataFile), `${definition.id} data must survive disable`).toBe(true)
+        // 净增的活定时器必须归零。
+        expect(
+          timers.liveCount(),
+          `built-in plugin "${definition.id}" left a live timer after dispose`,
+        ).toBeLessThanOrEqual(baseline)
+      }
+    } finally {
+      timers.restore()
     }
   })
 })

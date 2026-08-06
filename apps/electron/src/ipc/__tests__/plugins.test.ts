@@ -21,6 +21,7 @@ describe('electron plugins IPC host', () => {
     const abortPluginRequest = vi.fn().mockReturnValue({ success: true, aborted: true })
     const getPluginConfig = vi.fn().mockReturnValue({ success: true, config: { a: 1 } })
     const setPluginConfig = vi.fn().mockReturnValue({ success: true, config: { a: 2 } })
+    const uninstallPlugin = vi.fn().mockResolvedValue({ success: true, archivePath: '/backup/notes-2026-08-07' })
 
     registerElectronPluginsIpcHandlers({
       channels: {
@@ -34,6 +35,7 @@ describe('electron plugins IPC host', () => {
         abortRequest: 'plugins:request-abort',
         configGet: 'plugins:config-get',
         configSet: 'plugins:config-set',
+        uninstall: 'plugins:uninstall',
       },
       listPlugins,
       enablePlugin,
@@ -45,10 +47,11 @@ describe('electron plugins IPC host', () => {
       abortPluginRequest,
       getPluginConfig,
       setPluginConfig,
+      uninstallPlugin,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(10)
+    expect(handle).toHaveBeenCalledTimes(11)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'plugins:list',
       'plugins:enable',
@@ -60,6 +63,7 @@ describe('electron plugins IPC host', () => {
       'plugins:request-abort',
       'plugins:config-get',
       'plugins:config-set',
+      'plugins:uninstall',
     ])
 
     const toggleRequest = { pluginId: 'notes' }
@@ -94,7 +98,11 @@ describe('electron plugins IPC host', () => {
       .toEqual({ success: true, config: { a: 2 } })
 
     expect(abortPluginRequest).toHaveBeenCalledWith({ requestId: 'r1' })
+    await expect(handle.mock.calls[10][1]({}, { pluginId: 'notes' }))
+      .resolves.toEqual({ success: true, archivePath: '/backup/notes-2026-08-07' })
+
     expect(getPluginConfig).toHaveBeenCalledWith({ pluginId: 'notes' })
+    expect(uninstallPlugin).toHaveBeenCalledWith({ pluginId: 'notes' })
     expect(setPluginConfig).toHaveBeenCalledWith({ pluginId: 'notes', config: { a: 2 } })
   })
 })

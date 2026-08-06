@@ -274,6 +274,7 @@ import type {
 	PluginRequestResult,
 	PluginConfigResponse,
 	SetPluginConfigResponse,
+	UninstallPluginResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -628,6 +629,7 @@ export type {
 	PluginRequestResult,
 	PluginConfigResponse,
 	SetPluginConfigResponse,
+	UninstallPluginResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -1212,6 +1214,11 @@ export interface ElectronAPI {
 		pluginId: string,
 		config: Record<string, unknown>,
 	) => Promise<SetPluginConfigResponse>;
+
+	/**
+	 * 真卸载(R4)。数据被归档而不是删除;仅用户插件,web 端不提供。
+	 */
+	uninstallPlugin: (pluginId: string) => Promise<UninstallPluginResponse>;
 
 	/**
 	 * 插件通知(api.ui.notify + 熔断自动禁用告警 + 配置变更同步信号)。

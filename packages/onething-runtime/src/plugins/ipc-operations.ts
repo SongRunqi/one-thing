@@ -45,6 +45,7 @@ export interface OnethingPluginIpcManagerLike<
   getPluginCommands(): OnethingPluginCommandsLike<TCommandInfo>
   getCommandHandler(commandName: string): MaybePromise<TCommand | undefined>
   /** 统一请求通道(R2)。分发逻辑在 core,这里只是宿主的转发面。 */
+  uninstallPlugin?(pluginId: string): Promise<{ success: boolean; archivePath?: string; error?: string }>
   handleRequest?(input: CorePluginRequestInput): Promise<CorePluginRequestResult>
   abortRequest?(requestId: string): boolean
   getRequestActions?(pluginId: string): string[]
@@ -131,6 +132,36 @@ export async function disableOnethingPluginForIpc<
     return { success: true }
   } catch (error) {
     return pluginIpcError(options.logger, `disable ${options.pluginId}`, error, 'Failed to disable plugin')
+  }
+}
+
+export type UninstallOnethingPluginForIpcResult = {
+  success: boolean
+  archivePath?: string
+  error?: string
+}
+
+/**
+ * 卸载的宿主转发面(R4)。
+ *
+ * 生命周期本身在 core 的 manager.uninstallPlugin;这里只负责把结果原样带出去
+ * (含 archivePath —— 用户要知道自己的数据被搬去了哪)。
+ */
+export async function uninstallOnethingPluginForIpc<
+  TPlugin extends OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext>,
+>(
+  options: OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand> & { pluginId: string },
+): Promise<UninstallOnethingPluginForIpcResult> {
+  try {
+    const manager = requireOnethingPluginManager(options.manager)
+    if (!manager.uninstallPlugin) {
+      return { success: false, error: 'Plugin uninstall is unavailable on this host' }
+    }
+    return await manager.uninstallPlugin(options.pluginId)
+  } catch (error) {
+    return pluginIpcError(options.logger, `uninstall ${options.pluginId}`, error, 'Failed to uninstall plugin')
   }
 }
 

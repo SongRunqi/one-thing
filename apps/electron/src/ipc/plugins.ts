@@ -7,6 +7,8 @@ import type {
   PluginRequestResult,
   SetPluginConfigRequest,
   SetPluginConfigResponse,
+  UninstallPluginRequest,
+  UninstallPluginResponse,
 } from '@shared/ipc/plugins.js'
 
 export interface ElectronIpcMainLike {
@@ -27,6 +29,7 @@ export interface ElectronPluginsIpcChannels {
   abortRequest: string
   configGet: string
   configSet: string
+  uninstall: string
 }
 
 export interface ElectronPluginToggleRequest {
@@ -73,6 +76,7 @@ export interface RegisterElectronPluginsIpcHandlersOptions {
   abortPluginRequest(request: ElectronPluginAbortRequestPayload): AbortPluginRequestResult
   getPluginConfig(request: PluginConfigRequest): PluginConfigResponse
   setPluginConfig(request: SetPluginConfigRequest): SetPluginConfigResponse
+  uninstallPlugin(request: UninstallPluginRequest): Promise<UninstallPluginResponse> | UninstallPluginResponse
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -121,5 +125,9 @@ export function registerElectronPluginsIpcHandlers(
 
   host.handle(options.channels.configSet, (_event, request: SetPluginConfigRequest) => {
     return options.setPluginConfig(request)
+  })
+
+  host.handle(options.channels.uninstall, (_event, request: UninstallPluginRequest) => {
+    return options.uninstallPlugin(request)
   })
 }

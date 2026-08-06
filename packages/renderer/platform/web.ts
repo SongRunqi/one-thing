@@ -14,6 +14,7 @@ import type {
 	PluginRequestPayload,
 	PluginRequestResult,
 	SetPluginConfigResponse,
+	UninstallPluginResponse,
 } from "@shared/ipc/plugins.js";
 import type { PlatformApi, PlatformCapabilities } from "./types";
 
@@ -1223,6 +1224,13 @@ const webApi = {
 			};
 		}
 	},
+
+	// 方案 A:插件只在桌面执行,卸载(删源目录 + 归档数据)自然也只在桌面。
+	uninstallPlugin: async (): Promise<UninstallPluginResponse> => ({
+		success: false,
+		error:
+			"Plugins are installed and uninstalled on the desktop host only; this server mirrors the plugin catalog read-only.",
+	}),
 
 	setPluginConfig: async (): Promise<SetPluginConfigResponse> => ({
 		success: false,

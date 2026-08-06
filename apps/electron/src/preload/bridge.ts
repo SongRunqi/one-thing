@@ -53,6 +53,7 @@ import type {
 	PluginRequestResult,
 	PluginConfigResponse,
 	SetPluginConfigResponse,
+	UninstallPluginResponse,
 } from "@shared/ipc.js";
 
 /**
@@ -566,6 +567,10 @@ const electronAPI = {
 		config: Record<string, unknown>,
 	): Promise<SetPluginConfigResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_CONFIG_SET, { pluginId, config }),
+
+	// 真卸载(R4):停用 → 归档数据 → 删源目录 → 清设置键。仅用户插件。
+	uninstallPlugin: (pluginId: string): Promise<UninstallPluginResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_UNINSTALL, { pluginId }),
 
 	onPluginNotification: (
 		callback: (payload: PluginNotificationPayload) => void,

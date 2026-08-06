@@ -92,6 +92,26 @@ export {
 } from './api-state.js'
 export { deepFreezeCorePluginValue } from './freeze.js'
 export {
+  PLUGIN_DATA_LEGACY_BACKUP_DIR,
+  PLUGIN_KV_FILE_NAME,
+  archiveCorePluginData,
+  assertSafePluginFileName,
+  createCorePluginStorage,
+  findCorePluginDataOrphans,
+  getCorePluginDataDir,
+  getCorePluginDataFootprint,
+  getCorePluginKvPath,
+  getCorePluginLegacyKvPath,
+  migrateLegacyPluginKv,
+} from './storage.js'
+export type {
+  ArchiveCorePluginDataResult,
+  CorePluginDataFootprint,
+  CorePluginDataOrphan,
+  CorePluginStorage,
+  CreateCorePluginStorageOptions,
+} from './storage.js'
+export {
   createCorePluginAPI,
   executeCorePluginTool,
 } from './api-builder.js'

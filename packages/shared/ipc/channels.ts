@@ -351,6 +351,9 @@ export const IPC_CHANNELS = {
 	// 所以未启用的插件也能读写配置 —— 这两条通道不碰任何插件代码。
 	PLUGINS_CONFIG_GET: "plugins:config-get",
 	PLUGINS_CONFIG_SET: "plugins:config-set",
+	// 真卸载(R4):停用 → 归档数据 → 删源目录 → 清 plugin-settings 三键。
+	// 仅用户插件;内置插件与 app 同一份构建,没有卸载可言。
+	PLUGINS_UNINSTALL: "plugins:uninstall",
 
 	// Generic scheduler
 	SCHEDULER_LIST: "scheduler:list",

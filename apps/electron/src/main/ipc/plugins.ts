@@ -4,7 +4,11 @@
  * Bridges the renderer (Settings UI) to the PluginManager in the main process.
  */
 
-import type { PluginConfigRequest, SetPluginConfigRequest } from '@shared/ipc/plugins.js'
+import type {
+  PluginConfigRequest,
+  SetPluginConfigRequest,
+  UninstallPluginRequest,
+} from '@shared/ipc/plugins.js'
 import { createPluginConfigAccess } from '@onething/app/plugins/config-access.js'
 import {
   registerElectronPluginsIpcHandlers,
@@ -18,6 +22,7 @@ import {
   disableOnethingPluginForIpc,
   getOnethingPluginConfigForIpc,
   setOnethingPluginConfigForIpc,
+  uninstallOnethingPluginForIpc,
   enableOnethingPluginForIpc,
   handleOnethingPluginRequestForIpc,
   executeOnethingPluginCommandForIpc,
@@ -110,6 +115,7 @@ export function registerPluginHandlers(): void {
       abortRequest: IPC_CHANNELS.PLUGINS_REQUEST_ABORT,
       configGet: IPC_CHANNELS.PLUGINS_CONFIG_GET,
       configSet: IPC_CHANNELS.PLUGINS_CONFIG_SET,
+      uninstall: IPC_CHANNELS.PLUGINS_UNINSTALL,
     },
     listPlugins: () => {
       return listOnethingPluginsForIpc({
@@ -176,6 +182,13 @@ export function registerPluginHandlers(): void {
     getPluginConfig: (request: PluginConfigRequest) => {
       return getOnethingPluginConfigForIpc({
         access: pluginConfigAccess,
+        pluginId: request.pluginId,
+        logger: console,
+      })
+    },
+    uninstallPlugin: (request: UninstallPluginRequest) => {
+      return uninstallOnethingPluginForIpc({
+        manager: getPluginManager(),
         pluginId: request.pluginId,
         logger: console,
       })

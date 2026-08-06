@@ -285,6 +285,16 @@
               :aria-label="`Enable ${plugin.name}`"
               @update:model-value="togglePlugin(plugin)"
             />
+            <!-- 仅用户插件可卸载:内置插件与 app 同一份构建,没有"源目录"可删。 -->
+            <Button
+              v-if="canUninstall(plugin)"
+              unstyled
+              class="btn-sm uninstall-btn"
+              :disabled="uninstallingPlugins.has(plugin.id)"
+              @click="confirmUninstall(plugin)"
+            >
+              {{ uninstallingPlugins.has(plugin.id) ? 'Uninstalling…' : 'Uninstall' }}
+            </Button>
           </div>
         </div>
       </div>
@@ -320,6 +330,8 @@ import type { PluginConfigErrorDetail, PluginConfigFieldDescriptor } from '@shar
 import { ref, onBeforeUnmount, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
+import { useConfirm } from '@/composables/useConfirm'
+import { toast } from '@/composables/useToast'
 
 interface PluginInfo {
   id: string
@@ -498,6 +510,48 @@ async function saveConfig(plugin: PluginInfo): Promise<void> {
     }
   } finally {
     savingPlugins.value = withoutId(savingPlugins.value, plugin.id)
+  }
+}
+
+const uninstallingPlugins = ref<Set<string>>(new Set())
+const { confirm } = useConfirm()
+
+/** 内置插件没有卸载;web 端(方案 A)也不提供。 */
+function canUninstall(plugin: PluginInfo): boolean {
+  return plugin.source === 'user' && platformApi.environment !== 'web'
+}
+
+/**
+ * 卸载 —— 措辞必须把"停用 vs 卸载"的差别说清楚:
+ * 停用保留数据原地,卸载归档数据并删掉插件代码。
+ */
+async function confirmUninstall(plugin: PluginInfo): Promise<void> {
+  const accepted = await confirm({
+    title: 'Uninstall plugin',
+    message: `Uninstall "${plugin.name}"? Its folder under ~/.onething/plugins/ is removed and its data is `
+      + 'archived to ~/.onething/plugin-data/legacy-backup/. Disabling instead keeps both in place.',
+    confirmText: 'uninstall',
+    danger: true,
+    variant: 'paper',
+  })
+  if (!accepted) return
+
+  uninstallingPlugins.value = withId(uninstallingPlugins.value, plugin.id)
+  try {
+    const result = await platformApi.uninstallPlugin(plugin.id)
+    if (result?.success) {
+      toast.success(result.archivePath
+        ? `Uninstalled ${plugin.name}. Data archived to ${result.archivePath}`
+        : `Uninstalled ${plugin.name}`)
+      await loadPlugins()
+      emit('plugins-changed')
+    } else {
+      toast.error(result?.error || `Failed to uninstall ${plugin.name}`)
+    }
+  } catch (e: any) {
+    toast.error(e?.message || `Failed to uninstall ${plugin.name}`)
+  } finally {
+    uninstallingPlugins.value = withoutId(uninstallingPlugins.value, plugin.id)
   }
 }
 
@@ -737,8 +791,23 @@ onBeforeUnmount(() => {
 
 .plugin-toggle {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
   margin-left: 14px;
   margin-top: 4px;
+}
+
+.uninstall-btn {
+  margin-top: 0 !important;
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
+.uninstall-btn:hover {
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
+  color: var(--ui-status-danger-fg);
 }
 
 .plugin-header {

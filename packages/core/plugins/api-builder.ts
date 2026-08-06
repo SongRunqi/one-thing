@@ -1,5 +1,6 @@
 import type { CorePluginAPIState } from './api-state.js'
 import { deepFreezeCorePluginValue } from './freeze.js'
+import type { CorePluginStorage } from './storage.js'
 import {
   assertPluginPayloadSerializable,
   normalizePluginRequestAction,
@@ -65,6 +66,8 @@ export interface CreateCorePluginAPIOptions<
 > {
   pluginId: string
   store: TStore
+  /** 插件数据目录访问面(R4);路径/序列化守卫在 core 的 storage.ts。 */
+  storage?: CorePluginStorage
   scheduler: TScheduler
   disposeCallbacks?: Array<() => void>
   host: CorePluginAPIHost<
@@ -180,6 +183,28 @@ export function createCorePluginAPI<
   // 十分钟后它恢复过来照样能调 api.registerTool,而这份 state 已经不在
   // pluginStates 里,disposeAll() 永远摸不到它:那个工具就是个永久孤儿。
   // 置位后所有注册入口 no-op,并按插件归因 warn 一次。
+  const requireStorage = (): CorePluginStorage => {
+    if (!options.storage) {
+      throw new Error(`Plugin "${pluginId}" has no storage surface on this host`)
+    }
+    return options.storage
+  }
+  /**
+   * 存储失败一律进熔断账(scope `storage`),然后**继续抛给插件** ——
+   * 路径穿越这类错误必须让插件当场知道自己写错了,静默吞掉只会让它以为写成功了。
+   */
+  const withStorageFailureReport = <T>(what: string, run: () => T): T => {
+    try {
+      const result = run()
+      options.onPluginSuccess?.({ pluginId, scope: 'storage' })
+      return result
+    } catch (error) {
+      logger.error(`[Plugin:${pluginId}] storage.${what} failed:`, error)
+      reportFailure('storage', error)
+      throw error
+    }
+  }
+
   const requestHandlers = new Map<string, CorePluginRequestHandler>()
   const configUnsubs: Array<() => void> = []
 
@@ -387,6 +412,28 @@ export function createCorePluginAPI<
     },
 
     store,
+    /**
+     * 目录访问面。路径穿越与序列化守卫在 createCorePluginStorage 里(它会抛),
+     * 这一层只加两件宿主的事:disposed 闩 + 把失败记进熔断账(scope `storage`)。
+     */
+    storage: {
+      dir(): string {
+        if (rejectLateCall('storage.dir')) return ''
+        return withStorageFailureReport('dir', () => requireStorage().dir())
+      },
+      readJson<T = unknown>(name: string, fallback?: T): T | undefined {
+        if (rejectLateCall('storage.readJson')) return fallback
+        return withStorageFailureReport('readJson', () => requireStorage().readJson<T>(name, fallback))
+      },
+      writeJson(name: string, value: unknown): void {
+        if (rejectLateCall('storage.writeJson')) return
+        withStorageFailureReport('writeJson', () => requireStorage().writeJson(name, value))
+      },
+      exists(name: string): boolean {
+        if (rejectLateCall('storage.exists')) return false
+        return withStorageFailureReport('exists', () => requireStorage().exists(name))
+      },
+    },
     scheduler,
     ui: {
       notify(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {

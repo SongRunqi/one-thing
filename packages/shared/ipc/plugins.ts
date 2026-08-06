@@ -126,6 +126,33 @@ export interface SetPluginConfigResponse {
 	error?: string;
 }
 
+/**
+ * 卸载(R4)。数据被**归档**而不是删除 —— 停用保留数据、卸载归档数据,
+ * 两者的差别要在对话框里说清楚。
+ */
+export interface UninstallPluginRequest {
+	pluginId: string;
+}
+
+export interface UninstallPluginResponse {
+	success: boolean;
+	/** 数据归档到了哪儿(用于告诉用户"你的东西还在这")。 */
+	archivePath?: string;
+	error?: string;
+}
+
+/** 一个插件的全部落盘足迹(宪法第 6 条数据侧)。 */
+export interface PluginDataFootprint {
+	pluginId: string;
+	dataDir: string;
+	dataDirExists: boolean;
+	entries: string[];
+	legacyKvPath: string;
+	legacyKvExists: boolean;
+	/** plugin-settings 里为它保留的键。 */
+	settingsKeys: string[];
+}
+
 export interface PluginCommandInfo {
   id: string
   name: string

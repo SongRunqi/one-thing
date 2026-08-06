@@ -7,8 +7,10 @@
  * On install/first-load, `npm install` is run inside the plugin directory.
  */
 
+import fs from 'fs'
+import path from 'path'
 import { spawn } from 'child_process'
-import { getOnethingStorePath } from '@onething/runtime/storage'
+import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/runtime/storage'
 import { pathExists } from '@onething/core/storage'
 import {
   createBuiltinPluginDefinitions,
@@ -70,6 +72,46 @@ export function persistPluginHealth(pluginId: string, health: PersistedPluginHea
 
 export function loadPersistedPluginHealth(): Array<{ pluginId: string; health: PersistedPluginHealth }> {
   return listPluginHealthFromSettings(readPluginSettings())
+}
+
+/** plugin-data 的根目录 —— 插件数据作用域是**全局 per-plugin**(R4 拍板)。 */
+export function getPluginDataRoot(): string {
+  return getOnethingPluginDataDir({ storePath: getOnethingStorePath() })
+}
+
+/**
+ * 删除用户插件的源目录。
+ *
+ * 只删 `<store>/plugins/<id>/` 下的东西,且要求 dirPath 真的落在插件根里 ——
+ * 一个手写坏了的 definition 不该把 rm -rf 指到别处。
+ */
+export function removePluginSourceDir(dirPath: string, pluginId: string): { removed: boolean; error?: string } {
+  const pluginsDir = getPluginsDir()
+  const expected = path.join(pluginsDir, pluginId)
+  const resolved = path.resolve(dirPath)
+  if (resolved !== path.resolve(expected)) {
+    return { removed: false, error: `Refusing to remove "${resolved}": it is not ${expected}` }
+  }
+  if (!fs.existsSync(resolved)) return { removed: true }
+  try {
+    fs.rmSync(resolved, { recursive: true, force: true })
+    return { removed: true }
+  } catch (error) {
+    return { removed: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/** 清掉 plugin-settings 里该插件的 enabled / config / health 三键。 */
+export function clearPluginSettingsKeys(pluginId: string): void {
+  const settings = readPluginSettings()
+  const enabled = { ...settings.enabled }
+  delete enabled[pluginId]
+  let next: PluginSettings = Object.keys(enabled).length > 0
+    ? { ...settings, enabled }
+    : (({ enabled: _dropped, ...rest }) => rest)(settings)
+  next = setPluginConfigInSettings(next, pluginId, null)
+  next = setPluginHealthInSettings(next, pluginId, null)
+  writePluginSettings(next)
 }
 
 /** 插件自有配置的原始值(未校验);校验与默认值填充在 config.ts。 */
