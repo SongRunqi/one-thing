@@ -106,10 +106,13 @@ export function createCoreLogMonitorFileDiskAdapters(
   }
 }
 
+/** 配置项可以是常量,也可以是**取值器** —— 后者让配置改动即时生效,不必重装插件。 */
+export type CoreLogMonitorNumberOption = number | (() => number)
+
 export interface CoreLogMonitorDiskWriterOptions {
-  flushIntervalMs?: number
+  flushIntervalMs?: CoreLogMonitorNumberOption
   retryFlushIntervalMs?: number
-  retentionDays?: number
+  retentionDays?: CoreLogMonitorNumberOption
   cleanupChance?: number
   now?: () => Date
   random?: () => number
@@ -155,6 +158,10 @@ export interface CoreLogMonitorPluginApi<TToolParameters> {
     notify(message: string, level?: 'info' | 'warn' | 'error'): void
   }
   onDispose?(callback: () => void): void
+  /** 插件自有配置的访问面(R3);宿主注入,插件只读快照。 */
+  settings?: {
+    get<T = Record<string, unknown>>(): T
+  }
 }
 
 export interface CoreLogMonitorPluginOptions<TToolParameters> {
@@ -164,6 +171,8 @@ export interface CoreLogMonitorPluginOptions<TToolParameters> {
   diskWriter?: CoreLogMonitorDiskWriter
   diskWriterOptions?: CoreLogMonitorDiskWriterOptions
   ensureLogDir?: () => void
+  /** 是否在错误事件上弹通知;取值器让配置改动即时生效。 */
+  shouldNotify?: () => boolean
   logger?: {
     log?(message: string): void
   }
@@ -437,9 +446,9 @@ export class CoreLogMonitorBuffer {
 }
 
 export class CoreLogMonitorDiskWriter {
-  private readonly flushIntervalMs: number
+  private readonly flushIntervalMsOption: CoreLogMonitorNumberOption
   private readonly retryFlushIntervalMs: number
-  private readonly retentionDays: number
+  private readonly retentionDaysOption: CoreLogMonitorNumberOption
   private readonly cleanupChance: number
   private readonly now: () => Date
   private readonly random: () => number
@@ -452,13 +461,25 @@ export class CoreLogMonitorDiskWriter {
   private dropped = 0
 
   constructor(options: CoreLogMonitorDiskWriterOptions) {
-    this.flushIntervalMs = options.flushIntervalMs ?? 1000
+    this.flushIntervalMsOption = options.flushIntervalMs ?? 1000
     this.retryFlushIntervalMs = options.retryFlushIntervalMs ?? 100
-    this.retentionDays = options.retentionDays ?? 7
+    this.retentionDaysOption = options.retentionDays ?? 7
     this.cleanupChance = options.cleanupChance ?? 0.05
     this.now = options.now ?? (() => new Date())
     this.random = options.random ?? Math.random
     this.adapters = options.adapters
+  }
+
+  private get flushIntervalMs(): number {
+    return typeof this.flushIntervalMsOption === 'function'
+      ? this.flushIntervalMsOption()
+      : this.flushIntervalMsOption
+  }
+
+  private get retentionDays(): number {
+    return typeof this.retentionDaysOption === 'function'
+      ? this.retentionDaysOption()
+      : this.retentionDaysOption
   }
 
   get currentFileName(): string {
@@ -578,7 +599,7 @@ export function registerCoreLogMonitorPlugin<TToolParameters>(
       diskWriter.push(line)
     }
 
-    if (result.notify) {
+    if (result.notify && (options.shouldNotify?.() ?? true)) {
       api.ui.notify(`[AgentLog] ${result.entry.summary}`, 'error')
     }
   }

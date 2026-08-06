@@ -51,6 +51,8 @@ import type {
 	PluginRequestPayload,
 	PluginRequestProgressPayload,
 	PluginRequestResult,
+	PluginConfigResponse,
+	SetPluginConfigResponse,
 } from "@shared/ipc.js";
 
 /**
@@ -554,6 +556,16 @@ const electronAPI = {
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, listener);
 	},
+
+	// 插件自有配置(R3)。不碰插件代码 —— 未启用的插件也能读写。
+	getPluginConfig: (pluginId: string): Promise<PluginConfigResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_CONFIG_GET, { pluginId }),
+
+	setPluginConfig: (
+		pluginId: string,
+		config: Record<string, unknown>,
+	): Promise<SetPluginConfigResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_CONFIG_SET, { pluginId, config }),
 
 	onPluginNotification: (
 		callback: (payload: PluginNotificationPayload) => void,

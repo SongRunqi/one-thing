@@ -142,15 +142,123 @@
                 >{{ item }}</span>
               </div>
             </div>
-          </div>
 
-          <div class="plugin-toggle">
-            <Switch
-              variant="ledger"
-              :model-value="plugin.enabled"
-              :aria-label="`Enable ${plugin.name}`"
-              @update:model-value="togglePlugin(plugin)"
-            />
+            <!-- 配置区(R3)。schema 单源在 manifest,存储与校验在宿主 ——
+               所以**未启用的插件也能配**,这一块不依赖插件代码跑起来。 -->
+            <div
+              v-if="hasConfigArea(plugin)"
+              class="plugin-config"
+            >
+              <div class="plugin-config-head">
+                <span class="plugin-config-title">{{ plugin.configTitle || 'Configuration' }}</span>
+                <span
+                  v-if="!configEditable"
+                  class="meta-tag readonly"
+                >read-only on web</span>
+              </div>
+
+              <ErrorNote
+                v-if="plugin.configUnsupportedReasons?.length"
+                size="sm"
+                :message="`This plugin's settings schema is not supported: ${plugin.configUnsupportedReasons.join('; ')}`"
+              />
+
+              <SettingsGroup v-else>
+                <SettingsField
+                  v-for="field in plugin.configFields"
+                  :key="field.key"
+                  :label="field.label"
+                  :hint="field.hint"
+                >
+                  <Switch
+                    v-if="field.control === 'switch'"
+                    variant="ledger"
+                    :model-value="Boolean(draftFor(plugin)[field.key])"
+                    :disabled="!configEditable"
+                    :aria-label="field.label"
+                    @update:model-value="setDraft(plugin, field.key, Boolean($event))"
+                  />
+                  <InputNumber
+                    v-else-if="field.control === 'number'"
+                    :model-value="Number(draftFor(plugin)[field.key])"
+                    :min="field.minimum"
+                    :max="field.maximum"
+                    :step="field.integer ? 1 : undefined"
+                    :disabled="!configEditable"
+                    :aria-label="field.label"
+                    @update:model-value="setDraft(plugin, field.key, Number($event))"
+                  />
+                  <Select
+                    v-else-if="field.control === 'select'"
+                    variant="ledger"
+                    size="small"
+                    teleported
+                    fit-input-width
+                    :model-value="String(draftFor(plugin)[field.key] ?? '')"
+                    :options="field.options || []"
+                    :disabled="!configEditable"
+                    :aria-label="field.label"
+                    @update:model-value="setDraft(plugin, field.key, String($event))"
+                  />
+                  <Input
+                    v-else-if="field.control === 'string-list'"
+                    :model-value="stringListText(draftFor(plugin)[field.key])"
+                    :disabled="!configEditable"
+                    :aria-label="field.label"
+                    placeholder="Comma separated"
+                    @update:model-value="setDraft(plugin, field.key, parseStringList(String($event)))"
+                  />
+                  <Input
+                    v-else
+                    :model-value="String(draftFor(plugin)[field.key] ?? '')"
+                    :disabled="!configEditable"
+                    :aria-label="field.label"
+                    @update:model-value="setDraft(plugin, field.key, String($event))"
+                  />
+                </SettingsField>
+              </SettingsGroup>
+
+              <ErrorNote
+                v-if="configErrors[plugin.id]?.length"
+                size="sm"
+                :message="configErrors[plugin.id].join('; ')"
+              />
+
+              <div
+                v-if="configEditable && plugin.configFields?.length"
+                class="plugin-config-actions"
+              >
+                <Button
+                  unstyled
+                  class="btn-sm"
+                  :disabled="!isDirty(plugin) || savingPluginId === plugin.id"
+                  @click="saveConfig(plugin)"
+                >
+                  {{ savingPluginId === plugin.id ? 'Saving…' : 'Save' }}
+                </Button>
+                <Button
+                  v-if="isDirty(plugin)"
+                  unstyled
+                  class="btn-sm"
+                  @click="resetDraft(plugin)"
+                >
+                  Reset
+                </Button>
+                <span
+                  v-if="savedPluginId === plugin.id && !isDirty(plugin)"
+                  class="plugin-config-saved"
+                >Saved</span>
+              </div>
+            </div>
+
+            <div class="plugin-toggle">
+              <Switch
+                variant="ledger"
+                :model-value="plugin.enabled"
+                :aria-label="`Enable ${plugin.name}`"
+                @update:model-value="togglePlugin(plugin)"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -177,8 +285,14 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Input from '@/components/common/Input.vue'
+import InputNumber from '@/components/common/InputNumber.vue'
+import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
-import { ref, onBeforeUnmount, onMounted } from 'vue'
+import SettingsField from './SettingsField.vue'
+import SettingsGroup from './SettingsGroup.vue'
+import type { PluginConfigFieldDescriptor } from '@shared/ipc/plugins.js'
+import { computed, ref, onBeforeUnmount, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 
@@ -206,6 +320,87 @@ interface PluginInfo {
     hasSettingsSchema?: boolean
     permissions?: string[]
     activationEvents?: string[]
+  }
+  configFields?: PluginConfigFieldDescriptor[]
+  configTitle?: string
+  configValues?: Record<string, unknown>
+  configUnsupportedReasons?: string[]
+}
+
+/**
+ * 配置区草稿。
+ *
+ * 编辑先落在本地草稿上、Save 才过 IPC ——「保存即生效」而不是「每敲一个字符就
+ * 写一次盘并推一遍 onChange」。
+ */
+const drafts = ref<Record<string, Record<string, unknown>>>({})
+const configErrors = ref<Record<string, string[]>>({})
+const savingPluginId = ref('')
+const savedPluginId = ref('')
+
+/** 方案 A:插件只在桌面执行,配置也只在桌面可编辑。 */
+const configEditable = computed(() => platformApi.environment !== 'web')
+
+function hasConfigArea(plugin: PluginInfo): boolean {
+  return Boolean(plugin.configFields?.length) || Boolean(plugin.configUnsupportedReasons?.length)
+}
+
+function baselineFor(plugin: PluginInfo): Record<string, unknown> {
+  return plugin.configValues ?? {}
+}
+
+function draftFor(plugin: PluginInfo): Record<string, unknown> {
+  return drafts.value[plugin.id] ?? baselineFor(plugin)
+}
+
+function setDraft(plugin: PluginInfo, key: string, value: unknown): void {
+  drafts.value = {
+    ...drafts.value,
+    [plugin.id]: { ...draftFor(plugin), [key]: value },
+  }
+  savedPluginId.value = ''
+}
+
+function resetDraft(plugin: PluginInfo): void {
+  const { [plugin.id]: _dropped, ...rest } = drafts.value
+  drafts.value = rest
+  configErrors.value = { ...configErrors.value, [plugin.id]: [] }
+}
+
+function isDirty(plugin: PluginInfo): boolean {
+  const draft = drafts.value[plugin.id]
+  if (!draft) return false
+  return JSON.stringify(draft) !== JSON.stringify(baselineFor(plugin))
+}
+
+function stringListText(value: unknown): string {
+  return Array.isArray(value) ? value.join(', ') : ''
+}
+
+function parseStringList(value: string): string[] {
+  return value.split(',').map(item => item.trim()).filter(Boolean)
+}
+
+async function saveConfig(plugin: PluginInfo): Promise<void> {
+  savingPluginId.value = plugin.id
+  configErrors.value = { ...configErrors.value, [plugin.id]: [] }
+  try {
+    const result = await platformApi.setPluginConfig(plugin.id, draftFor(plugin) as Record<string, unknown>)
+    if (result?.success) {
+      plugin.configValues = result.config ?? draftFor(plugin)
+      resetDraft(plugin)
+      savedPluginId.value = plugin.id
+      emit('plugins-changed')
+    } else {
+      configErrors.value = {
+        ...configErrors.value,
+        [plugin.id]: result?.errors?.length ? result.errors : [result?.error || 'Failed to save plugin config'],
+      }
+    }
+  } catch (e: any) {
+    configErrors.value = { ...configErrors.value, [plugin.id]: [e?.message || 'Failed to save plugin config'] }
+  } finally {
+    savingPluginId.value = ''
   }
 }
 
@@ -534,6 +729,47 @@ onBeforeUnmount(() => {
 /* 声明摘要:比运行态更轻的一行,读起来像清单而不是状态。 */
 .plugin-meta.contributes {
   margin-top: 0;
+}
+
+.plugin-config {
+  margin-top: 12px;
+  padding: 12px 0 2px 14px;
+  border-left: 1px solid color-mix(in srgb, var(--settings-rule, var(--ui-border-default-border)) 60%, transparent);
+}
+
+.plugin-config-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.plugin-config-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
+}
+
+.plugin-config-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.plugin-config-saved {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--ui-status-success-fg);
+}
+
+.meta-tag.readonly {
+  padding: 1px 7px;
+  border: 1px dashed var(--settings-rule, var(--ui-border-default-border));
+  border-radius: 999px;
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
 }
 
 .meta-tag.declares {

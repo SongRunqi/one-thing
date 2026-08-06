@@ -129,6 +129,29 @@ export function setPluginHealthInSettings(
   return { ...settings, health: next }
 }
 
+export function getPluginConfigFromSettings(
+  settings: PluginSettings,
+  pluginId: string,
+): Record<string, unknown> {
+  return settings.config?.[pluginId] ?? {}
+}
+
+export function setPluginConfigInSettings(
+  settings: PluginSettings,
+  pluginId: string,
+  config: Record<string, unknown> | null,
+): PluginSettings {
+  const next = { ...settings.config }
+  if (config && Object.keys(config).length > 0) next[pluginId] = config
+  else delete next[pluginId]
+
+  if (Object.keys(next).length === 0) {
+    const { config: _dropped, ...rest } = settings
+    return rest
+  }
+  return { ...settings, config: next }
+}
+
 export interface CorePluginSettingsStorageAdapters {
   readSettings(): PluginSettings
   writeSettings(settings: PluginSettings): void
@@ -309,6 +332,17 @@ export function validatePluginContributes(raw: unknown): string | null {
       }
       const schemaError = validateSettingsSchemaShape(settings.schema)
       if (schemaError) return schemaError
+    }
+    if (settings.ui !== undefined) {
+      if (!isPlainRecord(settings.ui)) return 'contributes.settings.ui must be an object'
+      for (const [key, hint] of Object.entries(settings.ui)) {
+        if (!isPlainRecord(hint)) return `contributes.settings.ui.${key} must be an object`
+        for (const field of ['label', 'hint', 'control'] as const) {
+          if (hint[field] !== undefined && typeof hint[field] !== 'string') {
+            return `contributes.settings.ui.${key}.${field} must be a string`
+          }
+        }
+      }
     }
   }
 

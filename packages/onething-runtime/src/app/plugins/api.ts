@@ -17,6 +17,10 @@ import {
   reportPluginRuntimeSuccess,
 } from './health.js'
 import {
+  getEffectivePluginConfig,
+  subscribePluginConfigChange,
+} from './config.js'
+import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
 } from '../skills/plugin-roots.js'
@@ -186,6 +190,8 @@ export function createPluginAPI(
           level,
         })
       },
+      getPluginConfig: getEffectivePluginConfig,
+      onPluginConfigChange: subscribePluginConfigChange,
       registerPromptContextProvider: registerPromptContextProvider,
       registerBeforeContextCompactHook,
       registerAfterAssistantResponseHook,

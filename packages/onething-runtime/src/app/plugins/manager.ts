@@ -15,8 +15,11 @@ import {
   ensurePluginDirs,
   loadPersistedPluginHealth,
   persistPluginHealth,
+  readPluginConfig,
   setPluginEnabled,
+  writePluginConfig,
 } from './loader.js'
+import { configurePluginConfigHost } from './config.js'
 import {
   configurePluginHealthHost,
   getPluginRuntimeHealth,
@@ -92,6 +95,15 @@ export class PluginManager extends CorePluginManager<
       },
       persistHealth: persistPluginHealth,
       loadPersistedHealth: loadPersistedPluginHealth,
+    })
+    // 配置的 schema 单源是 manifest —— 这里把"去哪儿读 manifest / 去哪儿读写盘"
+    // 两件宿主事实接给 config 层,它才不必认识 loader 或 manager。
+    configurePluginConfigHost({
+      getSettingsContribution: pluginId => this.getPlugins()
+        .find(info => info.definition.id === pluginId)
+        ?.definition.manifest.contributes?.settings,
+      readConfig: readPluginConfig,
+      writeConfig: writePluginConfig,
     })
     // 回灌必须在扫描/加载之前:上一轮被熔断禁用的插件,这次启动要带着原因出现。
     restorePluginRuntimeHealth()

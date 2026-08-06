@@ -1,7 +1,9 @@
 export {
+  ONETHING_LOG_MONITOR_DEFAULT_CONFIG,
   ONETHING_LOG_MONITOR_MANIFEST,
   createOnethingLogMonitorSearchToolParameters,
   registerOnethingLogMonitorPlugin,
+  resolveOnethingLogMonitorConfig,
 } from './log-monitor.js'
 export {
   ONETHING_NOTE_SKILLS_MANIFEST,
@@ -19,7 +21,9 @@ export * from './plugin-command-execution.js'
 export * from './ipc-operations.js'
 export * from './plugin-list.js'
 export * from './soul-memory.js'
+export * from './config-schema.js'
 export type {
+  OnethingLogMonitorConfig,
   OnethingLogMonitorPluginApi,
   OnethingLogMonitorSearchToolParameters,
   RegisterOnethingLogMonitorPluginOptions,

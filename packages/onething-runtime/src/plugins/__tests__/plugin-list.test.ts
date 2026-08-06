@@ -20,7 +20,13 @@ describe('projectOnethingPluginsForRenderer', () => {
             contributes: {
               commands: [{ name: '/demo' }],
               panels: [{ id: 'demo-panel', label: 'Demo' }],
-              settings: { schema: { type: 'object' } },
+              settings: {
+                title: 'Demo settings',
+                schema: {
+                  type: 'object',
+                  properties: { verbose: { type: 'boolean', default: false } },
+                },
+              },
               permissions: ['files:read'],
               activation: { events: ['onCommand:/demo'] },
             },
@@ -40,7 +46,10 @@ describe('projectOnethingPluginsForRenderer', () => {
           disabledReason: '3 consecutive failures (last: promptContext:notes — boom)',
         },
       },
-    ], { getRequestActions: () => ['search'] })).toEqual([
+    ], {
+      getRequestActions: () => ['search'],
+      getConfig: () => ({ verbose: true }),
+    })).toEqual([
       {
         id: 'demo',
         source: 'builtin',
@@ -62,6 +71,17 @@ describe('projectOnethingPluginsForRenderer', () => {
           activationEvents: ['onCommand:/demo'],
         },
         requestActions: ['search'],
+        configFields: [{
+          key: 'verbose',
+          control: 'switch',
+          label: 'Verbose',
+          hint: undefined,
+          required: false,
+          defaultValue: false,
+        }],
+        configTitle: 'Demo settings',
+        configValues: { verbose: true },
+        configUnsupportedReasons: [],
         minAppVersion: '1.0.0',
         healthStatus: 'disabled',
         healthFailures: 3,
@@ -132,6 +152,10 @@ describe('projectOnethingPluginsForRenderer', () => {
           activationEvents: [],
         },
         requestActions: [],
+        configFields: [],
+        configTitle: '',
+        configValues: {},
+        configUnsupportedReasons: [],
         minAppVersion: '',
         healthStatus: 'healthy',
         healthFailures: 0,

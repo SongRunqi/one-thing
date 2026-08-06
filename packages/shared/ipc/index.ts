@@ -456,6 +456,11 @@ export type {
 	PluginRequestProgressPayload,
 	AbortPluginRequestResult,
 	PluginNotificationPayload,
+	PluginConfigFieldDescriptor,
+	PluginConfigRequest,
+	PluginConfigResponse,
+	SetPluginConfigRequest,
+	SetPluginConfigResponse,
 } from "./plugins.js";
 
 // Memory panel types

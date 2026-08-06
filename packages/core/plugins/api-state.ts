@@ -10,6 +10,8 @@ export interface CorePluginAPIState<TApi = unknown, TCommand = unknown> {
   skillRootUnsubs: Array<() => void>
   promptContextUnsubs: Array<() => void>
   lifecycleUnsubs: Array<() => void>
+  /** api.settings.onChange 的退订(R3)。 */
+  configUnsubs: Array<() => void>
   disposeCallbacks: Array<() => void>
   /**
    * 晚到注册闸(由 disposeCorePluginState 置位)。
@@ -58,6 +60,7 @@ export function disposeCorePluginState<TApi, TCommand>(
   drainCallbacks(state.promptContextUnsubs)
   drainCallbacks(state.lifecycleUnsubs)
   drainCallbacks(state.skillRootUnsubs)
+  drainCallbacks(state.configUnsubs)
   drainCallbacks(state.unsubs)
 
   state.commands.clear()

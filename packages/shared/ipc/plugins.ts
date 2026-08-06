@@ -51,6 +51,62 @@ export interface PluginNotificationPayload {
 	level: "info" | "warn" | "error";
 }
 
+/**
+ * 插件自有配置的过线形状(R3)。
+ *
+ * schema 的唯一事实源是 manifest 的 contributes.settings.schema;这里过线的是
+ * 宿主已经归约好的**字段表**(控件、标签、默认值),renderer 因此不必自己解
+ * JSON Schema —— 两端各写一份解析器就是形状漂移的开始。
+ */
+export interface PluginConfigFieldDescriptor {
+	key: string;
+	control: "switch" | "text" | "number" | "select" | "string-list";
+	label: string;
+	hint?: string;
+	required: boolean;
+	options?: string[];
+	minimum?: number;
+	maximum?: number;
+	integer?: boolean;
+	defaultValue: unknown;
+}
+
+export interface PluginConfigRequest {
+	pluginId: string;
+}
+
+export interface PluginConfigResponse {
+	success: boolean;
+	/** schema 声明的字段表;schema 不受支持时为空数组。 */
+	fields?: PluginConfigFieldDescriptor[];
+	/** 已校验、已填默认值的当前值。 */
+	config?: Record<string, unknown>;
+	title?: string;
+	/** 该插件是否声明了 settings schema。 */
+	declared?: boolean;
+	/** schema 超出宿主控件集时的逐条原因(不崩,照实说)。 */
+	unsupportedReasons?: string[];
+	/** 本宿主是否允许编辑(方案 A 下 web 永远 false)。 */
+	editable?: boolean;
+	/** editable=false 时的解释。 */
+	readOnlyReason?: string;
+	error?: string;
+}
+
+export interface SetPluginConfigRequest {
+	pluginId: string;
+	config: Record<string, unknown>;
+}
+
+export interface SetPluginConfigResponse {
+	success: boolean;
+	/** 落盘后的有效值(已剥未知键、已填默认)。 */
+	config?: Record<string, unknown>;
+	/** 校验未通过的逐条原因。 */
+	errors?: string[];
+	error?: string;
+}
+
 export interface PluginCommandInfo {
   id: string
   name: string

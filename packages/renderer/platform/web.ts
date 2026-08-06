@@ -10,8 +10,10 @@ import type {
 import type { SessionEventEnvelope } from "@shared/events";
 import type {
 	AbortPluginRequestResult,
+	PluginConfigResponse,
 	PluginRequestPayload,
 	PluginRequestResult,
+	SetPluginConfigResponse,
 } from "@shared/ipc/plugins.js";
 import type { PlatformApi, PlatformCapabilities } from "./types";
 
@@ -1180,6 +1182,53 @@ const webApi = {
 			};
 		}
 	},
+
+	/**
+	 * 配置读取:方案 A 下 web 端是**只读**的。
+	 *
+	 * 值与字段表都从 `/api/plugins` 的列表投影里取(schema 单源在 manifest,
+	 * 归约在产品层)——不新开路由,也不假装 server 上有一份可写的配置:
+	 * server 写 plugin-settings 会与桌面那份文件分叉,那是比"不能编辑"糟糕得多的
+	 * 结果。
+	 */
+	getPluginConfig: async (pluginId: string): Promise<PluginConfigResponse> => {
+		try {
+			const listed = (await requestJson("/api/plugins")) as {
+				success?: boolean;
+				plugins?: Array<Record<string, unknown>>;
+			};
+			const plugin = listed?.plugins?.find((item) => item.id === pluginId);
+			if (!plugin) {
+				return { success: false, error: `Unknown plugin "${pluginId}"` };
+			}
+			const fields = (plugin.configFields ??
+				[]) as PluginConfigResponse["fields"];
+			return {
+				success: true,
+				declared: Boolean(fields?.length) ||
+					Boolean((plugin.configUnsupportedReasons as string[])?.length),
+				fields,
+				title: (plugin.configTitle as string) || undefined,
+				config: (plugin.configValues as Record<string, unknown>) ?? {},
+				unsupportedReasons:
+					(plugin.configUnsupportedReasons as string[]) ?? [],
+				editable: false,
+				readOnlyReason:
+					"Plugin configuration is editable on the desktop host only.",
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	},
+
+	setPluginConfig: async (): Promise<SetPluginConfigResponse> => ({
+		success: false,
+		error:
+			"Plugin configuration is editable on the desktop host only; this server mirrors the plugin catalog read-only.",
+	}),
 
 	// abort/progress 需要一条活的双向通道;方案 A 下 web 端根本没有执行面,
 	// 所以这两个是诚实的空实现,而不是假装能取消。

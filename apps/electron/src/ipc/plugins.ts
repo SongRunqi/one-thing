@@ -1,8 +1,12 @@
 import { ipcMain } from 'electron'
 import type {
   AbortPluginRequestResult,
+  PluginConfigRequest,
+  PluginConfigResponse,
   PluginRequestPayload,
   PluginRequestResult,
+  SetPluginConfigRequest,
+  SetPluginConfigResponse,
 } from '@shared/ipc/plugins.js'
 
 export interface ElectronIpcMainLike {
@@ -21,6 +25,8 @@ export interface ElectronPluginsIpcChannels {
   executeCommand: string
   request: string
   abortRequest: string
+  configGet: string
+  configSet: string
 }
 
 export interface ElectronPluginToggleRequest {
@@ -65,6 +71,8 @@ export interface RegisterElectronPluginsIpcHandlersOptions {
     sender: ElectronPluginRequestSender | undefined,
   ): Promise<PluginRequestResult> | PluginRequestResult
   abortPluginRequest(request: ElectronPluginAbortRequestPayload): AbortPluginRequestResult
+  getPluginConfig(request: PluginConfigRequest): PluginConfigResponse
+  setPluginConfig(request: SetPluginConfigRequest): SetPluginConfigResponse
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -105,5 +113,13 @@ export function registerElectronPluginsIpcHandlers(
 
   host.handle(options.channels.abortRequest, (_event, request: ElectronPluginAbortRequestPayload) => {
     return options.abortPluginRequest(request)
+  })
+
+  host.handle(options.channels.configGet, (_event, request: PluginConfigRequest) => {
+    return options.getPluginConfig(request)
+  })
+
+  host.handle(options.channels.configSet, (_event, request: SetPluginConfigRequest) => {
+    return options.setPluginConfig(request)
   })
 }

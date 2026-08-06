@@ -30,6 +30,73 @@ describe('createWebPlatformApi', () => {
     })
   })
 
+  /**
+   * 方案 A(设计文档 §6):插件只在 Electron 桌面宿主执行,配置也只在桌面可编辑。
+   * web 端要**读得到、改不了**,而且改不了的时候要说人话。
+   */
+  it('serves plugin config read-only from the plugin catalog', async () => {
+    vi.stubGlobal('navigator', {})
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      success: true,
+      plugins: [{
+        id: 'log-monitor',
+        configTitle: 'Log monitor',
+        configFields: [{
+          key: 'retentionDays',
+          control: 'number',
+          label: 'Log retention (days)',
+          required: false,
+          defaultValue: 7,
+        }],
+        configValues: { retentionDays: 7 },
+        configUnsupportedReasons: [],
+      }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })))
+
+    const { createWebPlatformApi } = await import('../web.js')
+    const api = createWebPlatformApi()
+
+    const result = await api.getPluginConfig('log-monitor')
+    expect(result).toMatchObject({
+      success: true,
+      declared: true,
+      title: 'Log monitor',
+      config: { retentionDays: 7 },
+      editable: false,
+    })
+    expect(result.fields?.[0]).toMatchObject({ key: 'retentionDays', control: 'number' })
+    expect(result.readOnlyReason).toContain('desktop host only')
+  })
+
+  it('refuses plugin config writes with a readable reason instead of forking the file', async () => {
+    vi.stubGlobal('navigator', {})
+    vi.stubGlobal('fetch', vi.fn())
+
+    const { createWebPlatformApi } = await import('../web.js')
+    const api = createWebPlatformApi()
+
+    const result = await api.setPluginConfig('log-monitor', { retentionDays: 1 })
+    expect(result.success).toBe(false)
+    // server 写 plugin-settings 会与桌面那份文件分叉 —— 那比"不能编辑"糟得多。
+    expect(result.error).toContain('desktop host only')
+  })
+
+  it('reports an unknown plugin instead of pretending the config is empty', async () => {
+    vi.stubGlobal('navigator', {})
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      success: true,
+      plugins: [],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })))
+
+    const { createWebPlatformApi } = await import('../web.js')
+    const api = createWebPlatformApi()
+
+    await expect(api.getPluginConfig('ghost')).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining('Unknown plugin'),
+    })
+  })
+
   it('refreshes capabilities from the server while preserving browser clipboard detection', async () => {
     const writeText = vi.fn()
     vi.stubGlobal('navigator', {

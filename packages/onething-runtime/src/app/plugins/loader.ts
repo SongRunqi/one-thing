@@ -15,6 +15,7 @@ import {
   ensureCorePluginsDir,
   getCorePluginSettingsPath,
   getCorePluginsDir,
+  getPluginConfigFromSettings,
   getPluginEnabledWithAdapters,
   buildPluginEntryImportSpecifier,
   installCorePluginDependenciesAsync,
@@ -22,6 +23,7 @@ import {
   loadCorePluginEntry,
   readPluginSettingsFile,
   scanCorePlugins,
+  setPluginConfigInSettings,
   setPluginEnabledWithAdapters,
   setPluginHealthInSettings,
   writePluginSettingsFile,
@@ -68,6 +70,15 @@ export function persistPluginHealth(pluginId: string, health: PersistedPluginHea
 
 export function loadPersistedPluginHealth(): Array<{ pluginId: string; health: PersistedPluginHealth }> {
   return listPluginHealthFromSettings(readPluginSettings())
+}
+
+/** 插件自有配置的原始值(未校验);校验与默认值填充在 config.ts。 */
+export function readPluginConfig(pluginId: string): Record<string, unknown> {
+  return getPluginConfigFromSettings(readPluginSettings(), pluginId)
+}
+
+export function writePluginConfig(pluginId: string, config: Record<string, unknown> | null): void {
+  writePluginSettings(setPluginConfigInSettings(readPluginSettings(), pluginId, config))
 }
 
 export function setPluginEnabled(pluginId: string, enabled: boolean): void {

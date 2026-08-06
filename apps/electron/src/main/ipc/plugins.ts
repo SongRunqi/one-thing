@@ -4,6 +4,8 @@
  * Bridges the renderer (Settings UI) to the PluginManager in the main process.
  */
 
+import type { PluginConfigRequest, SetPluginConfigRequest } from '@shared/ipc/plugins.js'
+import { createPluginConfigAccess } from '@onething/app/plugins/config-access.js'
 import {
   registerElectronPluginsIpcHandlers,
   type ElectronPluginAbortRequestPayload,
@@ -14,6 +16,8 @@ import {
 import {
   abortOnethingPluginRequestForIpc,
   disableOnethingPluginForIpc,
+  getOnethingPluginConfigForIpc,
+  setOnethingPluginConfigForIpc,
   enableOnethingPluginForIpc,
   handleOnethingPluginRequestForIpc,
   executeOnethingPluginCommandForIpc,
@@ -91,6 +95,8 @@ function executePluginCommand(request: ElectronPluginExecuteCommandRequest) {
   })
 }
 
+const pluginConfigAccess = createPluginConfigAccess()
+
 export function registerPluginHandlers(): void {
   registerElectronPluginsIpcHandlers({
     channels: {
@@ -102,11 +108,15 @@ export function registerPluginHandlers(): void {
       executeCommand: IPC_CHANNELS.PLUGINS_EXECUTE_COMMAND,
       request: IPC_CHANNELS.PLUGINS_REQUEST,
       abortRequest: IPC_CHANNELS.PLUGINS_REQUEST_ABORT,
+      configGet: IPC_CHANNELS.PLUGINS_CONFIG_GET,
+      configSet: IPC_CHANNELS.PLUGINS_CONFIG_SET,
     },
     listPlugins: () => {
       return listOnethingPluginsForIpc({
         manager: getPluginManager(),
         logger: console,
+        // 设置页从列表一次拿全配置材料(字段表 + 当前值),不必逐插件再问一轮。
+        getPluginConfig: pluginConfigAccess.read,
       })
     },
     enablePlugin: (request: ElectronPluginToggleRequest) => {
@@ -158,6 +168,23 @@ export function registerPluginHandlers(): void {
       return abortOnethingPluginRequestForIpc({
         manager: getPluginManager(),
         requestId: request.requestId,
+        logger: console,
+      })
+    },
+    // 配置读写不碰插件代码:schema 在 manifest,存储与校验在宿主 ——
+    // 所以未启用(甚至从没加载过)的插件也能配。
+    getPluginConfig: (request: PluginConfigRequest) => {
+      return getOnethingPluginConfigForIpc({
+        access: pluginConfigAccess,
+        pluginId: request.pluginId,
+        logger: console,
+      })
+    },
+    setPluginConfig: (request: SetPluginConfigRequest) => {
+      return setOnethingPluginConfigForIpc({
+        access: pluginConfigAccess,
+        pluginId: request.pluginId,
+        config: request.config,
         logger: console,
       })
     },

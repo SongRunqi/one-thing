@@ -38,6 +38,17 @@ export interface CorePluginAPIHost<
    * 命名空间不由插件自己保证,否则两个插件迟早撞名。
    */
   emitPluginEvent?(pluginId: string, eventName: string, payload: unknown): void
+  /**
+   * 插件自有配置的访问面(R3)。
+   *
+   * 宿主全权管理存储与校验;插件只读快照 —— 没有 registerSettings,
+   * schema 的唯一事实源是 manifest 的 contributes.settings.schema。
+   */
+  getPluginConfig?(pluginId: string): Record<string, unknown>
+  onPluginConfigChange?(
+    pluginId: string,
+    callback: (config: Record<string, unknown>) => void,
+  ): () => void
 }
 
 export interface CreateCorePluginAPIOptions<
@@ -169,6 +180,7 @@ export function createCorePluginAPI<
   // pluginStates 里,disposeAll() 永远摸不到它:那个工具就是个永久孤儿。
   // 置位后所有注册入口 no-op,并按插件归因 warn 一次。
   const requestHandlers = new Map<string, CorePluginRequestHandler>()
+  const configUnsubs: Array<() => void> = []
 
   const state: CorePluginAPIState<TApi, TCommand> = {
     api: undefined as unknown as TApi,
@@ -179,6 +191,7 @@ export function createCorePluginAPI<
     skillRootUnsubs,
     promptContextUnsubs,
     lifecycleUnsubs,
+    configUnsubs,
     disposeCallbacks,
     disposed: false,
   }
@@ -316,6 +329,20 @@ export function createCorePluginAPI<
       }
       requestHandlers.set(normalized, handler)
       logger.log(`[Plugin:${pluginId}] Registered request handler: ${normalized}`)
+    },
+
+    settings: {
+      get<T = Record<string, unknown>>(): T {
+        // 冻结快照,不是活引用:插件改它不该影响宿主的那一份,
+        // 而且 H 线把插件搬进子进程之后"同步读一个远端对象"根本不成立。
+        return Object.freeze({ ...(host.getPluginConfig?.(pluginId) ?? {}) }) as T
+      },
+      onChange(callback: (config: Record<string, unknown>) => void): () => void {
+        if (rejectLateCall('settings.onChange')) return () => {}
+        const unsub = host.onPluginConfigChange?.(pluginId, callback) ?? (() => {})
+        configUnsubs.push(unsub)
+        return unsub
+      },
     },
 
     events: {

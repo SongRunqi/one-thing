@@ -272,6 +272,8 @@ import type {
 	PluginRequestPayload,
 	PluginRequestProgressPayload,
 	PluginRequestResult,
+	PluginConfigResponse,
+	SetPluginConfigResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -624,6 +626,8 @@ export type {
 	PluginRequestPayload,
 	PluginRequestProgressPayload,
 	PluginRequestResult,
+	PluginConfigResponse,
+	SetPluginConfigResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -1202,6 +1206,17 @@ export interface ElectronAPI {
 	 * 插件通知(api.ui.notify + 熔断自动禁用告警)。
 	 * 仅 Electron 桌面宿主真会推 —— 插件只在桌面执行(设计文档 §6 方案 A)。
 	 */
+	/**
+	 * 插件自有配置(R3)。schema 单源在 manifest,存储与校验全在宿主,
+	 * 所以未启用的插件也能配。web 端只读(方案 A)。
+	 */
+	getPluginConfig: (pluginId: string) => Promise<PluginConfigResponse>;
+
+	setPluginConfig: (
+		pluginId: string,
+		config: Record<string, unknown>,
+	) => Promise<SetPluginConfigResponse>;
+
 	onPluginNotification: (
 		callback: (payload: PluginNotificationPayload) => void,
 	) => () => void;

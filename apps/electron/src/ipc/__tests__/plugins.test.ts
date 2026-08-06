@@ -19,6 +19,8 @@ describe('electron plugins IPC host', () => {
     const executeCommand = vi.fn().mockResolvedValue({ success: true, message: 'ok' })
     const pluginRequest = vi.fn().mockResolvedValue({ success: true, requestId: 'r1', result: { ok: true } })
     const abortPluginRequest = vi.fn().mockReturnValue({ success: true, aborted: true })
+    const getPluginConfig = vi.fn().mockReturnValue({ success: true, config: { a: 1 } })
+    const setPluginConfig = vi.fn().mockReturnValue({ success: true, config: { a: 2 } })
 
     registerElectronPluginsIpcHandlers({
       channels: {
@@ -30,6 +32,8 @@ describe('electron plugins IPC host', () => {
         executeCommand: 'plugins:execute-command',
         request: 'plugins:request',
         abortRequest: 'plugins:request-abort',
+        configGet: 'plugins:config-get',
+        configSet: 'plugins:config-set',
       },
       listPlugins,
       enablePlugin,
@@ -39,10 +43,12 @@ describe('electron plugins IPC host', () => {
       executeCommand,
       pluginRequest,
       abortPluginRequest,
+      getPluginConfig,
+      setPluginConfig,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(8)
+    expect(handle).toHaveBeenCalledTimes(10)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'plugins:list',
       'plugins:enable',
@@ -52,6 +58,8 @@ describe('electron plugins IPC host', () => {
       'plugins:execute-command',
       'plugins:request',
       'plugins:request-abort',
+      'plugins:config-get',
+      'plugins:config-set',
     ])
 
     const toggleRequest = { pluginId: 'notes' }
@@ -80,6 +88,13 @@ describe('electron plugins IPC host', () => {
 
     expect(executeCommand).toHaveBeenCalledWith(executeRequest)
     expect(pluginRequest).toHaveBeenCalledWith(channelRequest, sender)
+    expect(handle.mock.calls[8][1]({}, { pluginId: 'notes' }))
+      .toEqual({ success: true, config: { a: 1 } })
+    expect(handle.mock.calls[9][1]({}, { pluginId: 'notes', config: { a: 2 } }))
+      .toEqual({ success: true, config: { a: 2 } })
+
     expect(abortPluginRequest).toHaveBeenCalledWith({ requestId: 'r1' })
+    expect(getPluginConfig).toHaveBeenCalledWith({ pluginId: 'notes' })
+    expect(setPluginConfig).toHaveBeenCalledWith({ pluginId: 'notes', config: { a: 2 } })
   })
 })

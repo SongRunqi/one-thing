@@ -347,6 +347,10 @@ export const IPC_CHANNELS = {
 	PLUGINS_REQUEST: "plugins:request",
 	PLUGINS_REQUEST_ABORT: "plugins:request-abort",
 	PLUGINS_REQUEST_PROGRESS: "plugins:request-progress",
+	// 插件自有配置(R3):schema 单源在 manifest,存储与校验全在宿主,
+	// 所以未启用的插件也能读写配置 —— 这两条通道不碰任何插件代码。
+	PLUGINS_CONFIG_GET: "plugins:config-get",
+	PLUGINS_CONFIG_SET: "plugins:config-set",
 
 	// Generic scheduler
 	SCHEDULER_LIST: "scheduler:list",

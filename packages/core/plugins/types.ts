@@ -21,10 +21,25 @@ export interface PluginContributionPanel {
   icon?: string
 }
 
+/** 呈现提示:不给则由 schema 推导控件。 */
+export interface PluginContributionSettingsUiHint {
+  label?: string
+  hint?: string
+  /** 覆盖由 schema 推导出的控件;超出宿主控件集的值会被拒。 */
+  control?: string
+}
+
 export interface PluginContributionSettings {
   title?: string
-  /** JSON Schema(不是 zod)—— 过线皆 JSON Schema,zod 只是插件侧书写糖。 */
+  /**
+   * JSON Schema(不是 zod)—— 过线皆 JSON Schema,zod 只是插件侧书写糖。
+   *
+   * **它是这个插件配置的唯一事实源**(R3 裁决):没有运行期 registerSettings。
+   * 宿主只读清单就能渲染配置区、校验、填默认值,一行插件代码都不执行 ——
+   * 于是**未启用的插件也能配**。
+   */
   schema?: Record<string, unknown>
+  ui?: Record<string, PluginContributionSettingsUiHint>
 }
 
 export interface PluginContributionActivation {
@@ -89,6 +104,13 @@ export interface PersistedPluginHealth {
 export interface PluginSettings {
   enabled?: Record<string, boolean>
   health?: Record<string, PersistedPluginHealth>
+  /**
+   * 插件自有配置,与 enabled/health 平级住在同一个 plugin-settings 文件里。
+   *
+   * 存的是**原始值**;读取路径做校验 + 默认值填充,写入路径做校验 + 剥未知键。
+   * 存量非法值回退默认并 warn(zod .catch 语义)—— 不发明迁移框架。
+   */
+  config?: Record<string, Record<string, unknown>>
 }
 
 export interface CorePluginStoreData {
@@ -211,6 +233,17 @@ export interface CorePluginAPI<
   /** 插件自定义事件。投递名 = `plugin:<pluginId>:<name>`。 */
   events: {
     emit(eventName: string, payload?: unknown): void
+  }
+  /**
+   * 插件自有配置的**访问面**(R3 裁决:不是注册面)。
+   *
+   * schema 的唯一事实源是 manifest 的 `contributes.settings.schema`;
+   * 这里拿到的是宿主已校验、已填默认值的**冻结快照**(而不是活引用 ——
+   * 同步跨进程读取在 H 线硬隔离后不可能成立,快照语义现在就定死)。
+   */
+  settings: {
+    get<T = Record<string, unknown>>(): T
+    onChange(callback: (config: Record<string, unknown>) => void): () => void
   }
   onDispose(callback: () => void): void
   store: TStore

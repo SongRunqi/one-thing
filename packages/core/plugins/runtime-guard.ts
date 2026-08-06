@@ -12,6 +12,13 @@
 export const CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS = 5_000
 /** 上下文压缩 / 回合结束钩子。 */
 export const CORE_PLUGIN_LIFECYCLE_HOOK_TIMEOUT_MS = 5_000
+/**
+ * api.settings.onChange 回调(R3)。
+ *
+ * 它是插件代码,挂起不能影响配置保存本身 —— 保存在推送之前就完成了,
+ * 这个预算只保证宿主不会为了等一个回调而卡住推送队列。
+ */
+export const CORE_PLUGIN_SETTINGS_HOOK_TIMEOUT_MS = 5_000
 /** 插件 entry(api):注册期可以慢一点,但不能无限。 */
 export const CORE_PLUGIN_ENTRY_TIMEOUT_MS = 10_000
 /** npm install 那一段的独立预算(装依赖本来就是分钟级的事)。 */
