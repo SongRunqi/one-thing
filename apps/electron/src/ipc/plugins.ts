@@ -1,9 +1,14 @@
 import { ipcMain } from 'electron'
+import type {
+  AbortPluginRequestResult,
+  PluginRequestPayload,
+  PluginRequestResult,
+} from '@shared/ipc/plugins.js'
 
 export interface ElectronIpcMainLike {
   handle<TArgs extends unknown[]>(
     channel: string,
-    listener: (event: unknown, ...args: TArgs) => unknown,
+    listener: (event: any, ...args: TArgs) => unknown,
   ): void
 }
 
@@ -28,15 +33,23 @@ export interface ElectronPluginExecuteCommandRequest {
   sessionId: string
 }
 
-export interface ElectronPluginRequestPayload {
-  pluginId: string
-  action: string
-  payload?: unknown
-  requestId?: string
-}
+/** 形状是共享契约,这里只做别名 —— 四处手写副本没有任何编译期防护。 */
+export type ElectronPluginRequestPayload = PluginRequestPayload
 
 export interface ElectronPluginAbortRequestPayload {
   requestId: string
+}
+
+/**
+ * 发起这次 invoke 的 renderer。
+ *
+ * progress 必须定向回送给它,不能广播给"主窗口" —— 设置窗是独立 BrowserWindow,
+ * 而它恰好是 R3 插件设置 UI 的宿主;走主窗单 sender 的话,设置窗发起的请求
+ * 永远收不到进度,主窗关掉时更是全丢。
+ */
+export interface ElectronPluginRequestSender {
+  isDestroyed(): boolean
+  send(channel: string, payload: unknown): void
 }
 
 export interface RegisterElectronPluginsIpcHandlersOptions {
@@ -47,8 +60,11 @@ export interface RegisterElectronPluginsIpcHandlersOptions {
   refreshPlugins(): unknown
   listCommands(): unknown
   executeCommand(request: ElectronPluginExecuteCommandRequest): unknown
-  pluginRequest(request: ElectronPluginRequestPayload): unknown
-  abortPluginRequest(request: ElectronPluginAbortRequestPayload): unknown
+  pluginRequest(
+    request: ElectronPluginRequestPayload,
+    sender: ElectronPluginRequestSender | undefined,
+  ): Promise<PluginRequestResult> | PluginRequestResult
+  abortPluginRequest(request: ElectronPluginAbortRequestPayload): AbortPluginRequestResult
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -81,8 +97,10 @@ export function registerElectronPluginsIpcHandlers(
     return options.executeCommand(request)
   })
 
-  host.handle(options.channels.request, (_event, request: ElectronPluginRequestPayload) => {
-    return options.pluginRequest(request)
+  host.handle(options.channels.request, (event, request: ElectronPluginRequestPayload) => {
+    // event.sender 一路透传下去:progress 的收件人就是发起这次调用的那个窗口。
+    const sender = (event as { sender?: ElectronPluginRequestSender } | undefined)?.sender
+    return options.pluginRequest(request, sender)
   })
 
   host.handle(options.channels.abortRequest, (_event, request: ElectronPluginAbortRequestPayload) => {

@@ -46,6 +46,38 @@ import {
 
 export interface PluginState extends CorePluginAPIState<PluginAPI, PluginCommandDefinition> {}
 
+/**
+ * 走全局总线(EventBus.emitGlobal / onGlobal)的事件名单。
+ *
+ * 与 `packages/shared/events/global-events.ts` 的 GlobalEvent 联合一一对应 ——
+ * 那边加一个成员,这里就要加一个,否则插件订阅它会被静默挂到会话面上。
+ * 插件自定义事件(`plugin:<id>:<name>`)按前缀归入同一面。
+ */
+export const GLOBAL_PLUGIN_EVENT_TYPES = new Set([
+  'app:initialized',
+  'app:quitting',
+  'settings:changed',
+  'session:created',
+  'session:switched',
+  'session:deleted',
+  'mcp:server-connected',
+  'mcp:server-disconnected',
+  'mcp:server-error',
+  'plugin:loaded',
+  'plugin:error',
+  'plugin:notification',
+])
+
+/** 插件自定义事件:`plugin:<pluginId>:<name>`,三段以上。 */
+const CUSTOM_PLUGIN_EVENT = /^plugin:[^:]+:.+$/
+
+export function isGlobalPluginEventType(eventType: string): boolean {
+  return GLOBAL_PLUGIN_EVENT_TYPES.has(eventType) || CUSTOM_PLUGIN_EVENT.test(eventType)
+}
+
+/** 会话事件都带冒号命名空间;不符合的多半是拼错了,值得吼一声。 */
+const KNOWN_SESSION_EVENT_HINT = /^[a-z][\w-]*:[\w:-]+$/i
+
 export function createPluginAPI(
   pluginId: string,
   eventBus: EventBus,
@@ -111,11 +143,20 @@ export function createPluginAPI(
         )
       },
       subscribeEvent(id, eventType, handler) {
-        // 插件自定义事件是**全局**事件(它不属于任何一次会话),会话事件走
-        // per-session 环形缓冲 —— 两条投递面不同,订阅口必须按前缀分流,
-        // 否则 api.on('plugin:x:y') 永远收不到东西。
-        if (eventType.startsWith('plugin:')) {
+        // 会话事件走 per-session 环形缓冲,全局事件走 globalHandlers —— 两条投递面
+        // 不同,订阅口必须分流,否则订阅了却永远收不到东西,而且零告警。
+        //
+        // 判据是**显式的全局事件名单**,不是 startsWith('plugin:'):按前缀分的话,
+        // 插件订阅 settings:changed / session:created / mcp:server-* 这些真·全局
+        // 事件会被误挂到会话面上,同样永远收不到。
+        if (isGlobalPluginEventType(eventType)) {
           return eventBus.onGlobal(eventType as any, handler as any)
+        }
+        if (!KNOWN_SESSION_EVENT_HINT.test(eventType)) {
+          console.warn(
+            `[Plugin:${id}] Subscribing to unrecognized event "${eventType}"; `
+            + 'treating it as a session event. Global events must be listed in GLOBAL_PLUGIN_EVENT_TYPES.',
+          )
         }
         return eventBus.onAnySession(
           eventType as any,

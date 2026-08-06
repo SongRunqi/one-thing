@@ -198,19 +198,73 @@ export function compareCoreSemver(a: string, b: string): number {
   return 0
 }
 
-/** 宿主版本未知(没配)时一律放行 —— 拿不到版本不是拒绝加载的理由。 */
+/**
+ * 宿主版本未知(没配)时一律放行 —— 拿不到版本不是拒绝加载的理由。
+ *
+ * 但那也意味着这道闸此刻是**关着的**:插件声明了 minAppVersion 而我们无从比对。
+ * 静默放行会让人以为闸在工作,所以吼一声。
+ */
 export function checkPluginMinAppVersion(
   manifest: Pick<PluginManifest, 'minAppVersion'>,
   appVersion?: string,
+  logger: Pick<CorePluginLoaderLogger, 'warn'> = console,
 ): string | null {
   const required = manifest.minAppVersion?.trim()
-  if (!required || !appVersion) return null
+  if (!required) return null
+  if (!appVersion) {
+    logger.warn?.(
+      `[PluginLoader] Plugin declares minAppVersion "${required}" but the host version is not configured; `
+      + 'the version gate is inactive (call configurePluginAppVersion at boot).',
+    )
+    return null
+  }
   if (compareCoreSemver(appVersion, required) >= 0) return null
   return `requires app >= ${required} (current ${appVersion})`
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+const JSON_SCHEMA_TYPES = new Set([
+  'object', 'array', 'string', 'number', 'integer', 'boolean', 'null',
+])
+
+/**
+ * settings.schema 的最低形状校验。
+ *
+ * 不做完整的 JSON Schema 元校验(那要引依赖,core 是零依赖层),但要挡住
+ * `{"type": 42}` 这种一眼就坏的东西 —— R3 的设置页会拿它去渲染表单,
+ * 到那时候才炸就是在错误的层报错。
+ */
+function validateSettingsSchemaShape(schema: Record<string, unknown>): string | null {
+  if (schema.type !== undefined) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type]
+    for (const type of types) {
+      if (typeof type !== 'string' || !JSON_SCHEMA_TYPES.has(type)) {
+        return `contributes.settings.schema.type must be one of ${[...JSON_SCHEMA_TYPES].join('/')}`
+      }
+    }
+  }
+
+  if (schema.properties !== undefined) {
+    if (!isPlainRecord(schema.properties)) {
+      return 'contributes.settings.schema.properties must be an object'
+    }
+    for (const [key, value] of Object.entries(schema.properties)) {
+      if (!isPlainRecord(value)) {
+        return `contributes.settings.schema.properties.${key} must be an object`
+      }
+    }
+  }
+
+  if (schema.required !== undefined) {
+    if (!Array.isArray(schema.required) || schema.required.some(item => typeof item !== 'string')) {
+      return 'contributes.settings.schema.required must be an array of strings'
+    }
+  }
+
+  return null
 }
 
 /**
@@ -249,8 +303,12 @@ export function validatePluginContributes(raw: unknown): string | null {
   const settings = raw.settings
   if (settings !== undefined) {
     if (!isPlainRecord(settings)) return 'contributes.settings must be an object'
-    if (settings.schema !== undefined && !isPlainRecord(settings.schema)) {
-      return 'contributes.settings.schema must be a JSON Schema object'
+    if (settings.schema !== undefined) {
+      if (!isPlainRecord(settings.schema)) {
+        return 'contributes.settings.schema must be a JSON Schema object'
+      }
+      const schemaError = validateSettingsSchemaShape(settings.schema)
+      if (schemaError) return schemaError
     }
   }
 

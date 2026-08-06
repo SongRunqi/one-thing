@@ -267,6 +267,11 @@ import type {
 	MemoryReadResponse,
 	MemorySaveFileRequest,
 	MemorySaveFileResponse,
+	AbortPluginRequestResult,
+	PluginNotificationPayload,
+	PluginRequestPayload,
+	PluginRequestProgressPayload,
+	PluginRequestResult,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -614,6 +619,11 @@ export type {
 	MemoryReadResponse,
 	MemorySaveFileRequest,
 	MemorySaveFileResponse,
+	AbortPluginRequestResult,
+	PluginNotificationPayload,
+	PluginRequestPayload,
+	PluginRequestProgressPayload,
+	PluginRequestResult,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -1180,30 +1190,12 @@ export interface ElectronAPI {
 	 * 统一插件请求通道(R2)。payload / result 必须 JSON-可序列化。
 	 * server 端按方案 A 返回 501:插件只在 Electron 桌面宿主执行。
 	 */
-	pluginRequest: (request: {
-		pluginId: string;
-		action: string;
-		payload?: unknown;
-		requestId?: string;
-	}) => Promise<{
-		success: boolean;
-		requestId: string;
-		result?: unknown;
-		error?: string;
-		aborted?: boolean;
-	}>;
+	pluginRequest: (request: PluginRequestPayload) => Promise<PluginRequestResult>;
 
-	abortPluginRequest: (
-		requestId: string,
-	) => Promise<{ success: boolean; aborted: boolean; error?: string }>;
+	abortPluginRequest: (requestId: string) => Promise<AbortPluginRequestResult>;
 
 	onPluginRequestProgress: (
-		callback: (payload: {
-			requestId: string;
-			pluginId: string;
-			action: string;
-			payload: unknown;
-		}) => void,
+		callback: (payload: PluginRequestProgressPayload) => void,
 	) => () => void;
 
 	/**
@@ -1211,11 +1203,7 @@ export interface ElectronAPI {
 	 * 仅 Electron 桌面宿主真会推 —— 插件只在桌面执行(设计文档 §6 方案 A)。
 	 */
 	onPluginNotification: (
-		callback: (payload: {
-			pluginId: string;
-			message: string;
-			level: "info" | "warn" | "error";
-		}) => void,
+		callback: (payload: PluginNotificationPayload) => void,
 	) => () => void;
 	// Project directories — independent module
 	projectDirsList: () => Promise<ProjectDirsListResponse>;

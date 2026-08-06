@@ -175,6 +175,7 @@ describe('R2 request channel — round trip', () => {
 
     await expect(pending).resolves.toEqual({
       success: false,
+      requestId: 'req-abort',
       error: PLUGIN_REQUEST_ABORTED_ERROR,
       aborted: true,
     })
@@ -224,6 +225,175 @@ describe('R2 request channel — round trip', () => {
     expect(describeNonSerializable({ m: new Map() })).toContain('Map')
     expect(describeNonSerializable({ s: new Set() })).toContain('Set')
     expect(describeNonSerializable(new (class Thing {})())).toContain('class instance')
+  })
+})
+
+describe('R2 review fixes — requestId / hang / health / teardown', () => {
+  it('refuses a second request that reuses an in-flight requestId', async () => {
+    const { manager } = createManager([definition('slow', api => {
+      api.registerRequestHandler('wait', (_p, ctx: CorePluginRequestContext) => new Promise(resolve => {
+        ctx.abortSignal.addEventListener('abort', () => resolve(null))
+      }))
+    })])
+    await manager.initialize({ ready: true })
+
+    const first = manager.handleRequest({ pluginId: 'slow', action: 'wait', requestId: 'dup' })
+    await Promise.resolve()
+    // 撞号必须被拒:Map.set 静默覆盖会让第一条的 AbortController 失联,
+    // 而先 settle 的一方会把另一条的登记也删掉。
+    await expect(manager.handleRequest({ pluginId: 'slow', action: 'wait', requestId: 'dup' }))
+      .resolves.toMatchObject({ success: false, error: expect.stringContaining('already in flight') })
+
+    manager.abortRequest('dup')
+    await expect(first).resolves.toMatchObject({ aborted: true })
+  })
+
+  it('generates unique ids for same-tick concurrent requests and returns them to the caller', async () => {
+    const { manager } = createManager([definition('echo', api => {
+      api.registerRequestHandler('id', (_p, ctx: CorePluginRequestContext) => ctx.requestId)
+    })])
+    await manager.initialize({ ready: true })
+
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => manager.handleRequest({ pluginId: 'echo', action: 'id' })),
+    )
+    const ids = results.map(result => result.requestId)
+    // 回传的 id 就是 handler 看到的那个,而且 20 个同 tick 请求两两不同。
+    expect(new Set(ids).size).toBe(20)
+    for (const result of results) {
+      expect(result).toMatchObject({ success: true, result: result.requestId })
+    }
+  })
+
+  it('returns a timeout result when the handler ignores abortSignal and never settles', async () => {
+    const { manager } = createManager(
+      [definition('stubborn', api => {
+        api.registerRequestHandler('hang', () => new Promise(() => {}))
+      })],
+    )
+    ;(manager as unknown as { options: { requestTimeoutMs: number } }).options.requestTimeoutMs = 25
+    await manager.initialize({ ready: true })
+
+    // 关键断言:这个 await 会返回。无条件 await handler 的话 renderer 的 invoke
+    // 永远 pending,登记簿条目也永久滞留。
+    const result = await manager.handleRequest({ pluginId: 'stubborn', action: 'hang' })
+    expect(result).toMatchObject({
+      success: false,
+      timedOut: true,
+      error: expect.stringContaining('exceeded 25ms'),
+    })
+    // 登记必须已经注销,不能因为 handler 还在跑就滞留。
+    expect(manager.abortRequest(result.requestId)).toBe(false)
+  })
+
+  it('feeds request failures and successes into the R1 breaker ledger', async () => {
+    const failures: Array<{ pluginId: string; scope: string }> = []
+    const successes: Array<{ pluginId: string; scope: string }> = []
+    const { manager } = createManager([definition('flaky', api => {
+      api.registerRequestHandler('boom', () => {
+        throw new Error('handler exploded')
+      })
+      api.registerRequestHandler('fine', () => 'ok')
+    })], {
+      onRequestFailure: (pluginId, scope) => failures.push({ pluginId, scope }),
+      onRequestSuccess: (pluginId, scope) => successes.push({ pluginId, scope }),
+    })
+    await manager.initialize({ ready: true })
+
+    await manager.handleRequest({ pluginId: 'flaky', action: 'boom' })
+    await manager.handleRequest({ pluginId: 'flaky', action: 'fine' })
+
+    // scope 按 action 分车道,与 promptContext / 生命周期钩子各记各的账。
+    expect(failures).toEqual([{ pluginId: 'flaky', scope: 'request:boom' }])
+    expect(successes).toEqual([{ pluginId: 'flaky', scope: 'request:fine' }])
+  })
+
+  it('drops progress emitted after the request was aborted', async () => {
+    let emitAfterAbort: (() => void) | undefined
+    const { manager } = createManager([definition('chatty', api => {
+      api.registerRequestHandler('run', (_p, ctx: CorePluginRequestContext) => new Promise(resolve => {
+        ctx.progress({ step: 'before' })
+        emitAfterAbort = () => {
+          ctx.progress({ step: 'after' })
+          resolve('done')
+        }
+      }))
+    })])
+    await manager.initialize({ ready: true })
+
+    const progress: Array<{ payload: unknown }> = []
+    const pending = manager.handleRequest({
+      pluginId: 'chatty',
+      action: 'run',
+      requestId: 'req-progress',
+      onProgress: input => progress.push({ payload: input.payload }),
+    })
+    await Promise.resolve()
+    manager.abortRequest('req-progress')
+    emitAfterAbort?.()
+
+    await expect(pending).resolves.toMatchObject({ aborted: true })
+    // abort 之后的 progress 不许再投:调用方那边已经收到终局结果了。
+    expect(progress).toEqual([{ payload: { step: 'before' } }])
+  })
+
+  it('aborts in-flight requests on refresh and shutdown, not only on disable', async () => {
+    let aborts = 0
+    const { manager } = createManager([definition('slow', api => {
+      api.registerRequestHandler('wait', (_p, ctx: CorePluginRequestContext) => new Promise(resolve => {
+        ctx.abortSignal.addEventListener('abort', () => {
+          aborts += 1
+          resolve(null)
+        })
+      }))
+    })])
+    await manager.initialize({ ready: true })
+
+    const pending = manager.handleRequest({ pluginId: 'slow', action: 'wait' })
+    await Promise.resolve()
+    await manager.refreshPlugins()
+
+    await expect(pending).resolves.toMatchObject({ aborted: true })
+    expect(aborts).toBe(1)
+  })
+
+  it('keeps the declaration-level block reason visible after a manual disable', async () => {
+    const blocked = definition('blocked', () => {}, {
+      loadBlockedReason: 'requires app >= 99.0.0 (current 1.1.0)',
+    })
+    const { manager } = createManager([blocked])
+    await manager.initialize({ ready: true })
+    expect(manager.getPlugins()[0].error).toContain('requires app >= 99.0.0')
+
+    await manager.disablePlugin('blocked')
+    // 阻断原因不是"上一次运行的错误",而是它当前为什么装不上 —— 不该被停用抹掉。
+    expect(manager.getPlugins()[0].error).toContain('requires app >= 99.0.0')
+  })
+
+  it('does not resurrect a plugin disabled while a refresh was in flight', async () => {
+    let releaseLoad: (() => void) | undefined
+    const gate = new Promise<void>(resolve => {
+      releaseLoad = resolve
+    })
+    const def = definition('racy', () => {})
+    const { manager } = createManager([def], {
+      loadPluginEntry: async definitionInput => {
+        await gate
+        return definitionInput.entry ?? null
+      },
+    })
+
+    const refreshing = manager.initialize({ ready: true })
+    await Promise.resolve()
+    await manager.disablePlugin('racy')
+    releaseLoad?.()
+    await refreshing
+
+    const info = manager.getPlugins()[0]
+    // 这一轮 refresh 期间用户把它关了:落表前复查,不能得到 enabled=false 却
+    // loaded=true 的插件。
+    expect(info.definition.enabled).toBe(false)
+    expect(info.loaded).toBe(false)
   })
 })
 

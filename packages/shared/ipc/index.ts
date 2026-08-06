@@ -451,6 +451,11 @@ export type {
 	GetPluginCommandsResponse,
 	ExecutePluginCommandRequest,
 	ExecutePluginCommandResponse,
+	PluginRequestPayload,
+	PluginRequestResult,
+	PluginRequestProgressPayload,
+	AbortPluginRequestResult,
+	PluginNotificationPayload,
 } from "./plugins.js";
 
 // Memory panel types

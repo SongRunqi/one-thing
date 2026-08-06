@@ -46,6 +46,11 @@ import type {
 	PracticeSummaryResult,
 	PermissionMode,
 	InteractionRespondRequest,
+	AbortPluginRequestResult,
+	PluginNotificationPayload,
+	PluginRequestPayload,
+	PluginRequestProgressPayload,
+	PluginRequestResult,
 } from "@shared/ipc.js";
 
 /**
@@ -533,24 +538,16 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.PRACTICE_EVENT, listener);
 	},
 
-	// 统一请求通道(R2)。requestId 由调用方带下来,abort 与 progress 都按它寻址。
-	pluginRequest: (request: {
-		pluginId: string;
-		action: string;
-		payload?: unknown;
-		requestId?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REQUEST, request),
+	// 统一请求通道(R2)。requestId 缺省由 core 生成并随结果回传;abort 与
+	// progress 都按它寻址。形状走 @shared/ipc 的共享契约,不在这里手写。
+	pluginRequest: (request: PluginRequestPayload): Promise<PluginRequestResult> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REQUEST, request),
 
-	abortPluginRequest: (requestId: string) =>
+	abortPluginRequest: (requestId: string): Promise<AbortPluginRequestResult> =>
 		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REQUEST_ABORT, { requestId }),
 
 	onPluginRequestProgress: (
-		callback: (payload: {
-			requestId: string;
-			pluginId: string;
-			action: string;
-			payload: unknown;
-		}) => void,
+		callback: (payload: PluginRequestProgressPayload) => void,
 	) => {
 		const listener = (_event: any, payload: any) => callback(payload);
 		ipcRenderer.on(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, listener);
@@ -559,11 +556,7 @@ const electronAPI = {
 	},
 
 	onPluginNotification: (
-		callback: (payload: {
-			pluginId: string;
-			message: string;
-			level: "info" | "warn" | "error";
-		}) => void,
+		callback: (payload: PluginNotificationPayload) => void,
 	) => {
 		const listener = (_event: any, payload: any) => callback(payload);
 		ipcRenderer.on(IPC_CHANNELS.PLUGINS_NOTIFICATION, listener);

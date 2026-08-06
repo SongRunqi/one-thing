@@ -52,6 +52,18 @@ export interface CreateScopedPluginSchedulerOptions<
   isDisposed?(): boolean
 }
 
+/** 与 api 注册入口的 rejectLateCall 同一风格:按插件归因,每个插件只吼一次。 */
+const lateSchedulerWarned = new Set<string>()
+
+function warnLateSchedulerCall(pluginId: string, taskId: string): void {
+  if (lateSchedulerWarned.has(pluginId)) return
+  lateSchedulerWarned.add(pluginId)
+  console.error(
+    `[Plugin:${pluginId}] Ignoring scheduler.register("${taskId}") after dispose — the plugin resumed `
+    + 'past its teardown. Further late scheduler calls are silently dropped.',
+  )
+}
+
 export function scopePluginTaskId(pluginId: string, id: string): string {
   return `plugin:${pluginId}:${id}`
 }
@@ -110,12 +122,17 @@ export function createScopedPluginScheduler<
       if (options.isDisposed?.()) {
         // 惰性 handle:插件拿到的对象照常可用,只是什么也不做 —— 让晚到的注册
         // 静默失效,而不是让插件在 undefined 上崩一次。
+        //
+        // 全部方法语义统一为"无操作":runNow 早先是裸 Promise.reject,
+        // 而插件通常不 await 它 —— 那会变成一条 unhandledRejection,
+        // 用一个进程级噪音去报告一件已经被有意忽略的事。
+        warnLateSchedulerCall(pluginId, pluginTaskId)
         return {
           id: pluginTaskId,
           unregister: () => {},
           refresh: () => undefined,
           getStatus: () => undefined,
-          runNow: () => Promise.reject(new Error(`Plugin "${pluginId}" was disposed`)),
+          runNow: () => Promise.resolve(undefined as unknown as TRunRecord),
           setEnabled: () => undefined,
         }
       }

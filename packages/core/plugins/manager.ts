@@ -2,6 +2,7 @@ import type { CorePluginDefinition } from './types.js'
 import {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
   CORE_PLUGIN_INSTALL_TIMEOUT_MS,
+  CORE_PLUGIN_REQUEST_TIMEOUT_MS,
   runWithPluginTimeout,
   type CorePluginRuntimeHealth,
 } from './runtime-guard.js'
@@ -67,11 +68,20 @@ export interface CorePluginManagerHost<
   setPluginEnabled(pluginId: string, enabled: boolean): void
   /** 运行期健康(app 层持有);getPlugins() 只是把它贴到插件信息上。 */
   getPluginHealth?(pluginId: string): CorePluginRuntimeHealth | undefined
+  /**
+   * 请求通道的失败/成功上报 —— 接 R1 的失败计数熔断。
+   * scope 形如 `request:<action>`:同一个 action 连败达阈才熔断,
+   * 与 promptContext / 生命周期钩子各记各的账。
+   */
+  onRequestFailure?(pluginId: string, scope: string, error: unknown): void
+  onRequestSuccess?(pluginId: string, scope: string): void
 }
 
 export interface CorePluginManagerOptions {
   /** entry(api) 的超时预算;<=0 关闭。 */
   entryTimeoutMs?: number
+  /** 一次插件请求的超时预算;<=0 关闭(仅测试用)。 */
+  requestTimeoutMs?: number
 }
 
 export class CorePluginManager<
@@ -136,7 +146,9 @@ export class CorePluginManager<
       info.definition.enabled = false
       info.loaded = false
       info.commands = []
-      info.error = undefined
+      // 声明层的阻断原因(minAppVersion / 非法 contributes)不随手动停用消失:
+      // 那不是"上一次运行的错误",而是这个插件当前**为什么装不上**。
+      info.error = info.definition.loadBlockedReason
     }
 
     this.host.setPluginEnabled(pluginId, false)
@@ -171,38 +183,55 @@ export class CorePluginManager<
    */
   async handleRequest(input: CorePluginRequestInput): Promise<CorePluginRequestResult> {
     const action = normalizePluginRequestAction(input.action)
+    // requestId 由 core 统一生成(带单调序列号)。宿主预生成的 `Date.now()` 在
+    // 同毫秒并发下会撞号,而撞号意味着两个请求共用一个 AbortController 地址。
     const requestId = input.requestId || this.requests.nextRequestId(input.pluginId)
+    const scope = `request:${action}`
+
+    const fail = (error: string, extra: { aborted?: boolean; timedOut?: boolean } = {}): CorePluginRequestResult => ({
+      success: false,
+      requestId,
+      error,
+      ...extra,
+    })
 
     const state = this.pluginStates.get(input.pluginId)
     if (!state) {
       const info = this.plugins.get(input.pluginId)
-      return {
-        success: false,
-        error: info
-          ? `Plugin "${input.pluginId}" is not active${info.error ? ` (${info.error})` : ''}`
-          : `Unknown plugin "${input.pluginId}"`,
-      }
+      return fail(info
+        ? `Plugin "${input.pluginId}" is not active${info.error ? ` (${info.error})` : ''}`
+        : `Unknown plugin "${input.pluginId}"`)
     }
 
     const handler = state.requestHandlers?.get(action)
     if (!handler) {
-      return {
-        success: false,
-        error: `Plugin "${input.pluginId}" has no request handler for action "${action}"`,
-      }
+      return fail(`Plugin "${input.pluginId}" has no request handler for action "${action}"`)
     }
 
     try {
       assertPluginPayloadSerializable(input.payload, 'request payload')
     } catch (error) {
-      return { success: false, error: pluginRequestErrorMessage(error) }
+      return fail(pluginRequestErrorMessage(error))
     }
 
     const controller = this.requests.begin(requestId, input.pluginId)
+    if (!controller) {
+      return fail(`Request id "${requestId}" is already in flight`)
+    }
+
+    // 失败要进 R1 的熔断账。没有这一步的话,R3/R5 的 UI 轮询一个必败 action
+    // 会无限连败而插件永远显示 Active —— 那正是 R1 要治的"运行期错误不可见"。
+    const reportFailure = (error: unknown): void => {
+      this.host.onRequestFailure?.(input.pluginId, scope, error)
+    }
+
     const ctx: CorePluginRequestContext = {
       requestId,
       abortSignal: controller.signal,
       progress: payload => {
+        // 撤销之后(或登记已被清掉之后)再报进度,调用方那边已经收到终局结果 ——
+        // 继续投递等于给一个已经结束的 requestId 发消息。静默丢弃。
+        if (controller.signal.aborted || !this.requests.has(requestId)) return
         try {
           assertPluginPayloadSerializable(payload, 'progress payload')
         } catch (error) {
@@ -213,21 +242,71 @@ export class CorePluginManager<
       },
     }
 
+    const timeoutMs = this.options.requestTimeoutMs ?? CORE_PLUGIN_REQUEST_TIMEOUT_MS
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    /**
+     * 不配合的 handler 兜底。
+     *
+     * 无条件 `await handler(...)` 的话,一个写了 `await new Promise(()=>{})`
+     * 又不理 abortSignal 的 handler 会让 renderer 的 invoke 永远 pending。
+     * 这里用 race:abort 或超时一到就**立刻**给调用方终局结果并注销登记,
+     * handler 那侧继续跑到底(JS 杀不掉它),它晚到的结果被丢弃并记一次日志。
+     */
+    const settleEarly = new Promise<CorePluginRequestResult>(resolve => {
+      const onAbort = (): void => {
+        settled = true
+        this.requests.end(requestId)
+        resolve(fail(PLUGIN_REQUEST_ABORTED_ERROR, { aborted: true }))
+      }
+      if (controller.signal.aborted) onAbort()
+      else controller.signal.addEventListener('abort', onAbort, { once: true })
+
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => {
+          if (settled) return
+          settled = true
+          this.requests.end(requestId)
+          const message = `Plugin request "${input.pluginId}/${action}" exceeded ${timeoutMs}ms`
+          this.logger.error(`[PluginManager] ${message}`, undefined)
+          reportFailure(new Error(message))
+          resolve(fail(message, { timedOut: true }))
+        }, timeoutMs)
+        ;(timer as unknown as { unref?: () => void }).unref?.()
+      }
+    })
+
+    const run = (async (): Promise<CorePluginRequestResult> => {
+      try {
+        const result = await handler(input.payload, ctx)
+        if (settled || controller.signal.aborted) {
+          this.logger.log(`[PluginManager] Dropping late result for "${input.pluginId}/${action}" (${requestId})`)
+          return fail(PLUGIN_REQUEST_ABORTED_ERROR, { aborted: true })
+        }
+        assertPluginPayloadSerializable(result, 'request result')
+        this.host.onRequestSuccess?.(input.pluginId, scope)
+        return { success: true, requestId, result: result ?? null }
+      } catch (error) {
+        if (settled || controller.signal.aborted) {
+          this.logger.log(`[PluginManager] Dropping late failure for "${input.pluginId}/${action}" (${requestId})`)
+          return fail(PLUGIN_REQUEST_ABORTED_ERROR, { aborted: true })
+        }
+        this.logger.error(`[PluginManager] Request "${input.pluginId}/${action}" failed:`, error)
+        reportFailure(error)
+        return fail(pluginRequestErrorMessage(error))
+      } finally {
+        settled = true
+        this.requests.end(requestId)
+      }
+    })()
+    // handler 那侧可能永远不 settle;race 输掉的一方不能变成 unhandled rejection。
+    run.catch(() => undefined)
+
     try {
-      const result = await handler(input.payload, ctx)
-      if (controller.signal.aborted) {
-        return { success: false, error: PLUGIN_REQUEST_ABORTED_ERROR, aborted: true }
-      }
-      assertPluginPayloadSerializable(result, 'request result')
-      return { success: true, result: result ?? null }
-    } catch (error) {
-      if (controller.signal.aborted) {
-        return { success: false, error: PLUGIN_REQUEST_ABORTED_ERROR, aborted: true }
-      }
-      this.logger.error(`[PluginManager] Request "${input.pluginId}/${action}" failed:`, error)
-      return { success: false, error: pluginRequestErrorMessage(error) }
+      return await Promise.race([run, settleEarly])
     } finally {
-      this.requests.end(requestId)
+      if (timer) clearTimeout(timer)
     }
   }
 
@@ -420,6 +499,15 @@ export class CorePluginManager<
         this.host.disposePlugin(state)
         return
       }
+      // 落表前复查最新的启停意图:这一轮 refresh 在飞期间用户可能把它关了,
+      // 直接落表会得到一个 enabled=false 却 loaded=true 的插件。
+      // 注意读的是表里那份 info(可能与 def 是同一个对象,也可能已被替换),
+      // 不是函数入口处那个已被 TS 收窄为 true 的 def.enabled。
+      if (this.plugins.get(def.id)?.definition.enabled === false) {
+        this.logger.log(`[PluginManager] Plugin "${def.id}" was disabled while loading; dropping the load`)
+        this.host.disposePlugin(state)
+        return
+      }
 
       this.pluginStates.set(def.id, state)
       this.plugins.set(def.id, {
@@ -449,6 +537,13 @@ export class CorePluginManager<
   }
 
   private disposeAll(): void {
+    // refresh / shutdown 也要清登记簿:否则在飞请求会在一个已经被拆掉的插件里
+    // 跑完,再把结果发回给调用方(disablePlugin 那条路径早就 abortForPlugin 了,
+    // 这条路径此前是漏的)。
+    const aborted = this.requests.abortAll()
+    if (aborted > 0) {
+      this.logger.log(`[PluginManager] Aborted ${aborted} in-flight plugin request(s) during teardown`)
+    }
     for (const [id, state] of this.pluginStates) {
       try {
         this.host.disposePlugin(state)

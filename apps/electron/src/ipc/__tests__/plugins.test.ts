@@ -69,14 +69,17 @@ describe('electron plugins IPC host', () => {
     expect(disablePlugin).toHaveBeenCalledWith(toggleRequest)
     expect(refreshPlugins).toHaveBeenCalledWith()
     expect(listCommands).toHaveBeenCalledWith()
+    // progress 的收件人是发起这次 invoke 的窗口 —— event.sender 必须透传下去,
+    // 否则设置窗(独立 BrowserWindow)发起的请求永远收不到进度。
+    const sender = { isDestroyed: () => false, send: vi.fn() }
     const channelRequest = { pluginId: 'notes', action: 'search', payload: { q: 'x' } }
-    await expect(handle.mock.calls[6][1]({}, channelRequest))
+    await expect(handle.mock.calls[6][1]({ sender }, channelRequest))
       .resolves.toEqual({ success: true, requestId: 'r1', result: { ok: true } })
     expect(handle.mock.calls[7][1]({}, { requestId: 'r1' }))
       .toEqual({ success: true, aborted: true })
 
     expect(executeCommand).toHaveBeenCalledWith(executeRequest)
-    expect(pluginRequest).toHaveBeenCalledWith(channelRequest)
+    expect(pluginRequest).toHaveBeenCalledWith(channelRequest, sender)
     expect(abortPluginRequest).toHaveBeenCalledWith({ requestId: 'r1' })
   })
 })

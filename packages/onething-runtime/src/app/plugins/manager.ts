@@ -20,6 +20,8 @@ import {
 import {
   configurePluginHealthHost,
   getPluginRuntimeHealth,
+  reportPluginRuntimeFailure,
+  reportPluginRuntimeSuccess,
   restorePluginRuntimeHealth,
 } from './health.js'
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './types.js'
@@ -49,6 +51,10 @@ function createHost(): CorePluginManagerHost<
     disposePlugin,
     setPluginEnabled,
     getPluginHealth: getPluginRuntimeHealth,
+    // 请求通道的失败/成功进 R1 的熔断账(scope = `request:<action>`)。
+    // 少了这条线,R3/R5 的 UI 轮询一个必败 action 会无限连败而插件永远 Active。
+    onRequestFailure: reportPluginRuntimeFailure,
+    onRequestSuccess: reportPluginRuntimeSuccess,
   }
 }
 

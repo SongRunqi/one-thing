@@ -8,6 +8,11 @@ import type {
 	PracticeSummaryRequest,
 } from "@/types";
 import type { SessionEventEnvelope } from "@shared/events";
+import type {
+	AbortPluginRequestResult,
+	PluginRequestPayload,
+	PluginRequestResult,
+} from "@shared/ipc/plugins.js";
 import type { PlatformApi, PlatformCapabilities } from "./types";
 
 function browserClipboardWriteCapability(): boolean {
@@ -1117,13 +1122,15 @@ const webApi = {
 	 * **不是静默无应答**:调用方拿到的是一条能读懂的错误,而不是一个永远
 	 * pending 的 promise。将来 server 真跑插件时,这一侧一行都不用改。
 	 */
-	pluginRequest: async (request: {
-		pluginId: string;
-		action: string;
-		payload?: unknown;
-		requestId?: string;
-	}) => {
-		const requestId = request.requestId || `web-${Date.now().toString(36)}`;
+	pluginRequest: async (
+		request: PluginRequestPayload,
+	): Promise<PluginRequestResult> => {
+		// 随机分量不是装饰:纯时间戳在同毫秒并发下会撞号,而 requestId 是 abort
+		// 的唯一地址。桌面侧由 core 统一生成(带序列号),web 这边没有那个 registry,
+		// 所以自己保证唯一。
+		const requestId =
+			request.requestId ||
+			`web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 		// 直接 fetch 而不是 requestJson:后者对 !ok 只抛
 		// "Request failed: 501 Not Implemented",把服务端写好的解释丢了 ——
 		// 而这条错误的全部价值就在那句解释里。
@@ -1136,12 +1143,9 @@ const webApi = {
 					body: JSON.stringify({ payload: request.payload, requestId }),
 				},
 			);
-			const body = (await response.json().catch(() => null)) as {
-				success?: boolean;
-				result?: unknown;
-				error?: string;
-				aborted?: boolean;
-			} | null;
+			const body = (await response
+				.json()
+				.catch(() => null)) as Partial<PluginRequestResult> | null;
 			if (!response.ok) {
 				return {
 					success: false,
@@ -1151,12 +1155,22 @@ const webApi = {
 						`Request failed: ${response.status} ${response.statusText}`,
 				};
 			}
+			// 200 但没有可解析的正文不是成功:`success: body?.success !== false`
+			// 会把一个空体误判成 success 并把 result 当成 undefined 递给调用方。
+			if (!body) {
+				return {
+					success: false,
+					requestId,
+					error: "Plugin request returned an empty response body",
+				};
+			}
 			return {
-				success: body?.success !== false,
-				requestId,
-				result: body?.result,
-				error: body?.error,
-				aborted: body?.aborted,
+				success: body.success !== false,
+				requestId: body.requestId || requestId,
+				result: body.result,
+				error: body.error,
+				aborted: body.aborted,
+				timedOut: body.timedOut,
 			};
 		} catch (error) {
 			return {
@@ -1169,7 +1183,7 @@ const webApi = {
 
 	// abort/progress 需要一条活的双向通道;方案 A 下 web 端根本没有执行面,
 	// 所以这两个是诚实的空实现,而不是假装能取消。
-	abortPluginRequest: async () => ({
+	abortPluginRequest: async (): Promise<AbortPluginRequestResult> => ({
 		success: false,
 		aborted: false,
 		error: "Plugins execute on the desktop host only",

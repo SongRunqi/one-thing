@@ -28,14 +28,20 @@ export type CorePluginRequestHandler = (
 ) => unknown | Promise<unknown>
 
 export type CorePluginRequestResult =
-  | { success: true; result: unknown }
-  | { success: false; error: string; aborted?: boolean }
+  | { success: true; requestId: string; result: unknown }
+  | { success: false; requestId: string; error: string; aborted?: boolean; timedOut?: boolean }
 
 export interface CorePluginRequestInput {
   pluginId: string
   action: string
   payload?: unknown
-  /** 省略时由宿主生成。 */
+  /**
+   * 省略时**由 core 生成**(registry.nextRequestId,带单调序列号)。
+   *
+   * 宿主不要自己预生成:`Date.now()` 毫秒精度在同毫秒并发下会撞号,而撞号的
+   * 代价是先到的 AbortController 失联、先 settle 的一方把另一方的登记也删掉。
+   * 生成的 id 随结果回传(CorePluginRequestResult.requestId),调用方拿它 abort。
+   */
   requestId?: string
   /** 进度上报的出口(宿主决定投到哪条通道)。 */
   onProgress?(input: { requestId: string; pluginId: string; action: string; payload: unknown }): void
@@ -46,13 +52,26 @@ export const PLUGIN_REQUEST_ABORTED_ERROR = 'Plugin request aborted'
 /**
  * 浅校验"能不能过线"。
  *
- * 只走有限深度:这条路径在每次插件调用上,深度遍历一棵大对象是白付的代价。
- * 目标是**当场挡住形状错误**(函数、Symbol、类实例、循环),不是做完备的
- * JSON 等价证明。
+ * **它保证什么**:深度 4 层以内的形状错误(函数、Symbol、BigInt、Map/Set、
+ * Promise、TypedArray、类实例、非有限数)当场被拒;循环引用**无论多深**都能抓到
+ * (WeakSet 已访问集,O(n),与深度无关)。
+ *
+ * **它不保证什么**:超过 4 层的形状错误会逃逸 —— 这条路径在每次插件调用上,
+ * 完备遍历一棵大对象是白付的代价。H 线把插件搬进子进程、边界变成真 RPC 时,
+ * 序列化会由结构化克隆强制,届时重估这个折中。
+ *
+ * **Date 的语义差异**:这里放行 Date,但它过 IPC(structured clone)会保持 Date,
+ * 过 HTTP(JSON.stringify)会变成 ISO 字符串。两个宿主拿到的类型不同 ——
+ * 插件要跨端一致的话,自己转成字符串或时间戳。
  */
 const JSON_CHECK_MAX_DEPTH = 4
 
-export function describeNonSerializable(value: unknown, path = 'value', depth = 0): string | null {
+export function describeNonSerializable(
+  value: unknown,
+  path = 'value',
+  depth = 0,
+  seen: WeakSet<object> = new WeakSet(),
+): string | null {
   if (value === null) return null
   const kind = typeof value
   if (kind === 'string' || kind === 'number' || kind === 'boolean') {
@@ -69,11 +88,15 @@ export function describeNonSerializable(value: unknown, path = 'value', depth = 
   if (kind === 'symbol') return `${path} is a symbol`
   if (kind === 'bigint') return `${path} is a bigint`
 
-  if (depth >= JSON_CHECK_MAX_DEPTH) return null
+  // 循环检测独立于深度上限:一个 5 层深的自引用照样会让 JSON.stringify 抛,
+  // 深度先返回的话就漏了。
+  if (seen.has(value as object)) return `${path} is a circular reference`
+  seen.add(value as object)
 
   if (Array.isArray(value)) {
+    if (depth >= JSON_CHECK_MAX_DEPTH) return null
     for (let index = 0; index < value.length; index += 1) {
-      const found = describeNonSerializable(value[index], `${path}[${index}]`, depth + 1)
+      const found = describeNonSerializable(value[index], `${path}[${index}]`, depth + 1, seen)
       if (found) return found
     }
     return null
@@ -92,8 +115,10 @@ export function describeNonSerializable(value: unknown, path = 'value', depth = 
     return `${path} is a class instance (${(value as object).constructor?.name || 'unknown'}); pass a plain object`
   }
 
+  if (depth >= JSON_CHECK_MAX_DEPTH) return null
+
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    const found = describeNonSerializable(child, `${path}.${key}`, depth + 1)
+    const found = describeNonSerializable(child, `${path}.${key}`, depth + 1, seen)
     if (found) return found
   }
   return null
@@ -130,10 +155,22 @@ export class CorePluginRequestRegistry {
     return `${pluginId}#${Date.now().toString(36)}-${this.sequence}`
   }
 
-  begin(requestId: string, pluginId: string): AbortController {
+  /**
+   * 登记一次在飞请求。
+   *
+   * 撞号**直接拒绝**而不是覆盖:Map.set 静默覆盖会让先到的 AbortController
+   * 失联(再也 abort 不掉),并且先 settle 的一方会把另一方的登记一起删掉。
+   * 宁可让这一次请求失败,也不要两个请求共用一个地址。
+   */
+  begin(requestId: string, pluginId: string): AbortController | null {
+    if (this.inFlight.has(requestId)) return null
     const controller = new AbortController()
     this.inFlight.set(requestId, { controller, pluginId })
     return controller
+  }
+
+  has(requestId: string): boolean {
+    return this.inFlight.has(requestId)
   }
 
   end(requestId: string): void {
@@ -156,6 +193,17 @@ export class CorePluginRequestRegistry {
       this.inFlight.delete(requestId)
       aborted += 1
     }
+    return aborted
+  }
+
+  /** refresh / shutdown 的整树拆除 —— 一个都不许留在真空里跑完。 */
+  abortAll(): number {
+    let aborted = 0
+    for (const [, entry] of this.inFlight) {
+      entry.controller.abort()
+      aborted += 1
+    }
+    this.inFlight.clear()
     return aborted
   }
 

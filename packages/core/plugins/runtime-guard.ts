@@ -16,6 +16,14 @@ export const CORE_PLUGIN_LIFECYCLE_HOOK_TIMEOUT_MS = 5_000
 export const CORE_PLUGIN_ENTRY_TIMEOUT_MS = 10_000
 /** npm install 那一段的独立预算(装依赖本来就是分钟级的事)。 */
 export const CORE_PLUGIN_INSTALL_TIMEOUT_MS = 120_000
+/**
+ * 一次插件请求(UI → 插件)的预算。
+ *
+ * 比钩子宽松得多:请求是用户主动发起的产品级操作(搜一次、跑一次导出),
+ * 秒级是正常的;但不能没有上界 —— 一个不理 abortSignal 又永不 resolve 的
+ * handler 会让 renderer 的 invoke 永远 pending,登记簿条目也永久滞留。
+ */
+export const CORE_PLUGIN_REQUEST_TIMEOUT_MS = 30_000
 /** 连续失败到这个数就自动禁用。 */
 export const CORE_PLUGIN_FAILURE_THRESHOLD = 3
 

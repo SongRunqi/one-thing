@@ -26,7 +26,6 @@ import type { GatewayCommandProvider } from '@onething/gateway'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getPluginManager } from '@onething/app/plugins/index.js'
 import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
-import { getIPCBridge } from '../bridges/ipc-bridge-lifecycle.js'
 import { getEventBus } from '@onething/app/events/index.js'
 import * as store from '@onething/app/store.js'
 
@@ -134,15 +133,23 @@ export function registerPluginHandlers(): void {
     },
     // 统一请求通道:分发与序列化判断全在 core 的 manager.handleRequest,
     // 这里只把 progress 接到 renderer 的推送通道上(@main 只做薄接线)。
-    pluginRequest: (request: ElectronPluginRequestPayload) => {
+    pluginRequest: (request: ElectronPluginRequestPayload, sender) => {
       return handleOnethingPluginRequestForIpc({
         manager: getPluginManager(),
         pluginId: request.pluginId,
         action: request.action,
         payload: request.payload,
         requestId: request.requestId,
+        // 定向回送给发起这次 invoke 的窗口。走 IPCBridge 的话只投主窗单 sender:
+        // 设置窗(独立 BrowserWindow,R3 插件设置 UI 的宿主)发起的请求进度会
+        // 永远静默,主窗关闭时更是全丢。
         onProgress: progress => {
-          getIPCBridge()?.sendToRenderer(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, progress)
+          if (!sender || sender.isDestroyed()) return
+          try {
+            sender.send(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, progress)
+          } catch (error) {
+            console.warn('[PluginIPC] progress send failed (window likely closed):', error)
+          }
         },
         logger: console,
       })
