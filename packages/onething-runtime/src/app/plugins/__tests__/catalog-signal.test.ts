@@ -22,8 +22,9 @@ afterAll(async () => {
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
   // dispose 里那次收尾 flush 是异步的;删目录太早会撞出一条对着已删路径的
-  // unhandled ENOENT。让出几轮事件循环等它落完 —— 比 `setTimeout(100)` 诚实:
-  // 那是在猜时长,而这里等的是"宏任务队列排空"这件确定的事。
+  // unhandled ENOENT。这里**让出若干轮事件循环**让它有机会落完 —— 比
+  // `setTimeout(100)` 少一点猜测,但仍是启发式,不是保证。
+  // 根治项:PluginStore / diskWriter 暴露一个 flush() 让收尾可等待。
   for (let i = 0; i < 5; i += 1) await new Promise(resolve => setImmediate(resolve))
   fs.rmSync(storeRoot, { recursive: true, force: true })
 })

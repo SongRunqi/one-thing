@@ -57,6 +57,8 @@ export interface CorePluginAPIHost<
    * 宿主负责把它接到会话总线上;core 只管账与清扫语义。
    */
   emitPluginStatus?(pluginId: string, sessionId: string, part: CorePluginStatusPart): void
+  /** 有被合并窗压住的状态变化 —— 宿主据此排一次 trailing flush。 */
+  notePluginStatusPending?(): void
   /**
    * 插件自有配置的访问面(R3)。
    *
@@ -583,24 +585,32 @@ export function createCorePluginAPI<
         if (rejectLateCall('status.show')) return
         const registry = options.statusRegistry
         if (!registry) return
+        // 地址与账本键用**同一份** trim 过的值:一边 trim 一边不 trim 的话,
+        // 状态会 show 到一个地址、clear 到另一个,谁也撤不下来。
+        const address = String(sessionId ?? '').trim()
         const part = registry.show({
           pluginId,
-          sessionId: String(sessionId ?? ''),
+          sessionId: address,
           id: String(status?.id ?? ''),
           label: String(status?.label ?? ''),
         })
-        // 输入不合法或超限:registry 返回 null 而不抛 —— 一个写错 label 的插件
-        // 不该让它正在跑的那次调用失败。
-        if (!part) return
-        host.emitPluginStatus?.(pluginId, String(sessionId), part)
+        // null 表示"不必投递":被拒(不合法/不在流内/超配额)或纯粹没变化(频控)。
+        // 一律不抛 —— 一个写错 label 的插件不该让它正在跑的那次调用失败。
+        if (!part) {
+          // 被合并窗压住的变化要让宿主排一次补发,否则最终状态会丢。
+          host.notePluginStatusPending?.()
+          return
+        }
+        host.emitPluginStatus?.(pluginId, address, part)
       },
       clear(sessionId: string, id: string): void {
         if (rejectLateCall('status.clear')) return
         const registry = options.statusRegistry
         if (!registry) return
-        const part = registry.clear({ pluginId, sessionId: String(sessionId ?? ''), id: String(id ?? '') })
+        const address = String(sessionId ?? '').trim()
+        const part = registry.clear({ pluginId, sessionId: address, id: String(id ?? '') })
         if (!part) return
-        host.emitPluginStatus?.(pluginId, String(sessionId), part)
+        host.emitPluginStatus?.(pluginId, address, part)
       },
     },
 

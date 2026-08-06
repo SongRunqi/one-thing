@@ -35,6 +35,7 @@
  * their turns simply stay quiet: a missing signal degrades to the old silence,
  * never to a stuck light.
  */
+import { SESSION_STREAM_TERMINAL_EVENTS } from '@shared/events/session-events.js'
 import {
   isCollabSendCall,
   isCollabSendIntoRoom,
@@ -100,7 +101,7 @@ function argsOf(signal: CollabTypingSignal): CollabSendArgsLike | undefined {
 /** Stream terminals extinguish unconditionally: no stream, nobody typing. A
  *  turn that dies mid-arguments never sends input-end, and without this the
  *  light would ride to the end of the activation window. */
-const TERMINAL_TYPES = new Set(['stream:complete', 'stream:error', 'stream:aborted'])
+const TERMINAL_TYPES: ReadonlySet<string> = new Set(SESSION_STREAM_TERMINAL_EVENTS)
 
 export function createCollabTypingTracker(
   options: CollabTypingTrackerOptions = {},

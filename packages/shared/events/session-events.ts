@@ -72,6 +72,34 @@ export interface StreamAbortedEvent {
   reason?: string
 }
 
+/**
+ * 流的三种终止事件 —— **单一权威**。
+ *
+ * 这份名单此前被手抄在五处(collab typing / voice store / stream-coalescer /
+ * server runtime / plugin status sweep)。手抄的代价不是重复,是**加第四种终止
+ * 事件时只有一处会被改**,而漏掉的那几处会安静地少扫一类残留。
+ * 它与 `StreamCompleteEvent | StreamErrorEvent | StreamAbortedEvent` 三个接口
+ * 由下面的类型断言绑死:加一个终止事件接口却忘了进名单,typecheck 就会红。
+ */
+export const SESSION_STREAM_TERMINAL_EVENTS = ['stream:complete', 'stream:error', 'stream:aborted'] as const
+
+export type SessionStreamTerminalEventType = (typeof SESSION_STREAM_TERMINAL_EVENTS)[number]
+
+// 名单必须与三个终止事件接口的 type 字段**完全**一致(双向):少一个或多一个
+// 都在这里编译不过。这就是"补集写法"的替代品 —— 判据来自类型,不是人的记性。
+type TerminalEventTypeFromInterfaces =
+  | StreamCompleteEvent['type']
+  | StreamErrorEvent['type']
+  | StreamAbortedEvent['type']
+const _terminalListIsExhaustive: SessionStreamTerminalEventType extends TerminalEventTypeFromInterfaces
+  ? TerminalEventTypeFromInterfaces extends SessionStreamTerminalEventType ? true : never
+  : never = true
+void _terminalListIsExhaustive
+
+export function isSessionStreamTerminalEvent(type: string): type is SessionStreamTerminalEventType {
+  return (SESSION_STREAM_TERMINAL_EVENTS as readonly string[]).includes(type)
+}
+
 // ── Tool lifecycle ──────────────────────────────
 
 export interface ToolCallEvent {

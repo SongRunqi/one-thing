@@ -143,21 +143,28 @@ export function registerOnethingLogMonitorPlugin(
   })
 
   registerOnethingLogMonitorPanel(api, { logDir, readConfig, runtime })
-  registerOnethingLogMonitorStatusDemo(api, { logDir })
+  // api 的静态类型是 core 的窄接口(只声明了 log-monitor 用到的那几个成员);
+  // 真正传进来的是完整的 PluginAPI,带 registerTool 与 status。
+  registerOnethingLogMonitorStatusDemo(api as unknown as OnethingLogMonitorStatusApi, { logDir })
 
   return runtime
 }
 
 // ── 示范:流状态(R6 验收主体) ─────────────────
 //
-// 一次真的耗时操作(逐个文件统计日志目录)。插件只做两件事:开始时 show,
-// 结束时 clear —— 而**即使它不 clear**(抛错、超时、被熔断、被停用),宿主也会
-// 在流结束时把状态扫掉。正确性不建立在插件守规矩上,这是本期的全部要点。
+// 状态**只在流内有意义** —— 它是气泡里的一行临时指示器,没有正在跑的流就没有
+// 气泡。所以示范挂在**工具**上而不是斜杠命令上:斜杠命令走 executePluginCommand
+// 直调 IPC,根本不在任何 stream 里,那条 content:part 到了 renderer 会因为解析
+// 不出 messageId 而落进待发队列,并在下一次流开始时贴到一条毫不相干的新消息上。
+// 工具执行天然发生在流内,ctx.sessionId 就是当前那条气泡的会话。
 
 export interface OnethingLogMonitorStatusApi {
-  registerCommand(name: string, options: {
+  registerTool(tool: {
+    name: string
     description: string
-    handler(args: string, ctx: { sessionId: string; notify(message: string, level?: string): void }): Promise<void>
+    parameters: unknown
+    permissionGuard: string
+    execute(args: unknown, ctx: { sessionId: string }): Promise<{ title: string; output: string; metadata: unknown }>
   }): void
   status?: {
     show(sessionId: string, status: { id: string; label: string }): void
@@ -169,11 +176,14 @@ export function registerOnethingLogMonitorStatusDemo(
   api: OnethingLogMonitorStatusApi,
   options: { logDir: string },
 ): void {
-  if (typeof api.registerCommand !== 'function') return
+  if (typeof api.registerTool !== 'function') return
 
-  api.registerCommand('/log-scan', {
-    description: 'Scan the log directory and report per-file sizes',
-    async handler(_args, ctx) {
+  api.registerTool({
+    name: 'scan_log_files',
+    description: 'Scan the agent log directory and report per-file sizes.',
+    parameters: z.object({}),
+    permissionGuard: 'safe',
+    async execute(_args, ctx) {
       const statusId = 'scan'
       api.status?.show(ctx.sessionId, { id: statusId, label: 'Scanning log files…' })
       try {
@@ -181,7 +191,7 @@ export function registerOnethingLogMonitorStatusDemo(
         let total = 0
         for (const [index, name] of names.entries()) {
           // 同一个 id 反复 show 是**更新 label**,不是再堆一条 —— 进度汇报因此
-          // 天然安全,不会在气泡里堆出几百行。
+          // 天然安全。account 层还会把没变化的调用与窗口内的连发合并掉。
           api.status?.show(ctx.sessionId, { id: statusId, label: `Scanning ${index + 1}/${names.length}: ${name}` })
           try {
             total += fs.statSync(path.join(options.logDir, name)).size
@@ -189,9 +199,13 @@ export function registerOnethingLogMonitorStatusDemo(
             // 单个文件读不到不该中断整次扫描。
           }
         }
-        ctx.notify(`Scanned ${names.length} log file(s), ${(total / 1024).toFixed(1)} KB total.`)
+        return {
+          title: `Scanned ${names.length} log file(s)`,
+          output: `${names.length} log file(s), ${(total / 1024).toFixed(1)} KB total.`,
+          metadata: { files: names.length, bytes: total },
+        }
       } finally {
-        // 好公民路径。**不写这一行也不会留下残留** —— 宿主在流结束时强制清扫。
+        // 好公民路径。**不写这一行也不会留下残留** —— 宿主在终止事件之前强制清扫。
         api.status?.clear(ctx.sessionId, statusId)
       }
     },

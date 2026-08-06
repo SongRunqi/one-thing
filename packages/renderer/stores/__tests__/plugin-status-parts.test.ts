@@ -13,7 +13,11 @@ import {
   removeTransientIndicators,
   pushWaiting,
 } from '../helpers/content-parts'
-import { isTransientPart } from '@shared/ipc/chat'
+import {
+  isPlaceholderTransientPart,
+  isStreamScopedTransientPart,
+  isTransientPart,
+} from '@shared/ipc/chat'
 import type { ContentPart } from '@/types'
 
 const status = (pluginId: string, id: string, label: string) => ({ pluginId, id, label })
@@ -45,11 +49,19 @@ describe('plugin-status content part', () => {
     expect(parts).toHaveLength(3)
   })
 
-  it('removes the matching cell on a cleared part, and ignores an unknown one', () => {
-    const parts: ContentPart[] = []
+  it('marks a cleared cell in place instead of splicing it out', () => {
+    const parts: ContentPart[] = [{ type: 'text', content: 'before', turnIndex: 0 }]
     applyPluginStatus(parts, status('p', 'x', 'l'))
+    parts.push({ type: 'text', content: 'after', turnIndex: 0 })
+
     expect(applyPluginStatus(parts, { ...status('p', 'x', 'l'), cleared: true })).toBe(true)
-    expect(parts).toEqual([])
+
+    // **不 splice**:流式期间 contentParts 只追加,渲染层的 key 依赖 sourceIndex
+    // 稳定;中途摘一项会让它后面所有正文的 key 平移,Vue 把它们全部重挂。
+    expect(parts).toHaveLength(3)
+    expect(parts[1]).toMatchObject({ type: 'plugin-status', cleared: true })
+    expect(parts[2]).toMatchObject({ type: 'text', content: 'after' })
+
     // 重复的撤下是无操作 —— 不该报告"改动了"从而触发一次空重渲染。
     expect(applyPluginStatus(parts, { ...status('p', 'x', 'l'), cleared: true })).toBe(false)
   })
@@ -64,22 +76,44 @@ describe('plugin-status content part', () => {
     expect(parts.map(part => part.type)).toEqual(['waiting', 'plugin-status'])
   })
 
-  it('counts as transient in both mirrors', () => {
-    const part: ContentPart = { type: 'plugin-status', pluginId: 'p', id: 'x', label: 'l' }
-    // shared 侧
-    expect(isTransientPart(part)).toBe(true)
-    // renderer 侧(两份镜像必须同时认它,否则一端扫得掉另一端扫不掉)
-    const parts: ContentPart[] = [part]
+  it('is stream-scoped transient, not placeholder transient', () => {
+    const status: ContentPart = { type: 'plugin-status', pluginId: 'p', id: 'x', label: 'l' }
+    const waiting: ContentPart = { type: 'waiting', turnIndex: 0 }
+
+    expect(isStreamScopedTransientPart(status)).toBe(true)
+    expect(isPlaceholderTransientPart(status)).toBe(false)
+    expect(isPlaceholderTransientPart(waiting)).toBe(true)
+    // 流结束时两类一起收走。
+    expect(isTransientPart(status)).toBe(true)
+    expect(isTransientPart(waiting)).toBe(true)
+
+    const parts: ContentPart[] = [status]
     expect(removeTransientIndicators(parts)).toBe(true)
     expect(parts).toEqual([])
   })
 
-  it('is popped by the trailing-transient rule when real text arrives last', () => {
+  it('survives streamed text — it is stream-scoped, not a placeholder', () => {
     const parts: ContentPart[] = []
     applyPluginStatus(parts, status('p', 'x', 'Working'))
     popTrailingTransient(parts)
     appendOrMergeText(parts, 'answer', 0)
 
+    // 这条用例上一版把**错误行为**钉住了(断言状态被正文顶掉)。真实后果:
+    // 模型吐出第一个 token 状态就消失,插件还在干活;它下一次 show 同 id 又把
+    // 状态推回来 —— 于是按 delta 的频率闪烁。而且弹掉之后宿主账本仍持有记录,
+    // 后续 clear 在渲染侧成了 no-op。
+    expect(parts).toEqual([
+      { type: 'plugin-status', pluginId: 'p', id: 'x', label: 'Working' },
+      { type: 'text', content: 'answer', turnIndex: 0 },
+    ])
+  })
+
+  it('still lets a placeholder indicator be popped by real content', () => {
+    const parts: ContentPart[] = []
+    pushWaiting(parts, 0)
+    popTrailingTransient(parts)
+    appendOrMergeText(parts, 'answer', 0)
+    // 占位型的语义不变 —— 拆分不是把所有 transient 都变成常驻。
     expect(parts).toEqual([{ type: 'text', content: 'answer', turnIndex: 0 }])
   })
 

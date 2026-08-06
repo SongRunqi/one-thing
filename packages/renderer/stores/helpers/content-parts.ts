@@ -6,25 +6,20 @@
  */
 
 import type { ContentPart, ToolCall } from '@/types'
+import { isPlaceholderTransientPart, isTransientPart } from '@shared/ipc/chat'
 import { mergeToolCall } from './tool-calls'
 
 type TurnTextPart = Extract<ContentPart, { type: 'text' | 'reasoning' }>
 
-/**
- * Transient indicators that should be popped when real content arrives.
- *
- * 与 shared 契约里的 `isTransientPart` 是两份镜像 —— 加一种 transient 类型
- * 必须两边同改(R6 的 plugin-status 就是新的一种)。
- */
-function isTransient(part: ContentPart): boolean {
-  return part.type === 'waiting' || part.type === 'loading-memory' || part.type === 'image-loading'
-    || part.type === 'plugin-status'
-}
+// 判据直接用 shared 契约那一份 —— 这里曾经是一份**手抄镜像**,而 shared 那份
+// 当时零消费者,于是"两份必须同改"的守卫其实是在给死代码对账。现在只有一份。
 
-/** Pop the trailing transient indicator (waiting / loading-memory) if any. */
+/** Pop the trailing placeholder indicator (waiting / loading-memory) if any. */
 export function popTrailingTransient(parts: ContentPart[]): void {
   const last = parts[parts.length - 1]
-  if (last && isTransient(last)) {
+  // **只弹占位型**。流内型(plugin-status)要活到流结束:插件还在干活时,
+  // 模型吐一个 token 不该把它的状态抹掉。
+  if (last && isPlaceholderTransientPart(last)) {
     parts.pop()
   }
 }
@@ -33,7 +28,7 @@ export function popTrailingTransient(parts: ContentPart[]): void {
 export function removeTransientIndicators(parts: ContentPart[]): boolean {
   const originalLength = parts.length
   for (let i = parts.length - 1; i >= 0; i--) {
-    if (isTransient(parts[i])) {
+    if (isTransientPart(parts[i])) {
       parts.splice(i, 1)
     }
   }
@@ -186,13 +181,20 @@ export function applyPluginStatus(
 
   if (status.cleared) {
     if (index < 0) return false
-    parts.splice(index, 1)
+    const existing = parts[index]
+    if (existing.type !== 'plugin-status' || existing.cleared) return false
+    // **不 splice**:流式期间 contentParts 是只追加的,渲染层的 key 依赖
+    // sourceIndex 稳定(MessageBubble.getOtherPartKey 明文写着这个前提)。
+    // 中途摘一项会让它后面所有正文的 key 整体平移 —— Vue 把它们全部重挂,
+    // 展开的思考块闭合、滚动位置跳。改成原地标记,渲染层跳过,
+    // 流结束时由 removeTransientIndicators 统一收走。
+    parts[index] = { ...existing, cleared: true }
     return true
   }
 
   if (index >= 0) {
     const existing = parts[index]
-    if (existing.type === 'plugin-status' && existing.label === status.label) return false
+    if (existing.type === 'plugin-status' && existing.label === status.label && !existing.cleared) return false
     parts[index] = { type: 'plugin-status', pluginId: status.pluginId, id: status.id, label: status.label }
     return true
   }

@@ -94,17 +94,20 @@ export {
 } from './api-state.js'
 export { deepFreezeCorePluginValue } from './freeze.js'
 export {
+  CORE_PLUGIN_STATUS_MAX_ID,
   CORE_PLUGIN_STATUS_MAX_LABEL,
-  CORE_PLUGIN_STATUS_MAX_PER_SESSION,
-  CORE_PLUGIN_STATUS_SWEEP_EVENTS,
+  CORE_PLUGIN_STATUS_MAX_PER_PLUGIN,
+  CORE_PLUGIN_STATUS_MAX_PLUGINS_PER_SESSION,
+  CORE_PLUGIN_STATUS_MAX_SESSIONS,
+  CORE_PLUGIN_STATUS_THROTTLE_MS,
   CorePluginStatusRegistry,
   PLUGIN_STATUS_PART_TYPE,
-  isPluginStatusSweepEvent,
 } from './status.js'
 export type {
   CorePluginStatusKey,
   CorePluginStatusPart,
   CorePluginStatusRecord,
+  CorePluginStatusRegistryOptions,
 } from './status.js'
 export type { CorePluginStatusAPI } from './types.js'
 export {

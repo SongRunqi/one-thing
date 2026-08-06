@@ -16,6 +16,7 @@ import { getDeclaredPanelIds } from './loader.js'
 import {
   emitPluginStatusPart,
   getPluginStatusRegistry,
+  notePluginStatusPending,
   sweepPluginStatusForPlugin,
 } from './status.js'
 import {
@@ -111,6 +112,21 @@ const panelRefreshWindows = new Map<string, PanelRefreshWindow>()
  * 但那是另一层的巧合:换一个消费者(或 renderer 改了策略)就会漏刷新。
  * 现在窗口关闭时若期间有过调用,补发一条。
  */
+/**
+ * 拆除一个插件时取消它还没到点的补发。
+ *
+ * 不取消的话,已经被停用的插件仍会在 200ms 后广播一次 panel-refresh ——
+ * 一个已经不存在的面板要求重画自己。
+ */
+function cancelPanelRefreshWindows(pluginId: string): void {
+  const prefix = `${pluginId}::`
+  for (const [key, window] of [...panelRefreshWindows]) {
+    if (!key.startsWith(prefix)) continue
+    clearTimeout(window.timer)
+    panelRefreshWindows.delete(key)
+  }
+}
+
 function requestPanelRefresh(pluginId: string, panelId: string, emit: () => void): void {
   const key = `${pluginId}::${panelId}`
   const window = panelRefreshWindows.get(key)
@@ -249,6 +265,9 @@ export function createPluginAPI(
       emitPluginStatus(_id, sessionId, part) {
         emitPluginStatusPart(sessionId, part)
       },
+      notePluginStatusPending() {
+        notePluginStatusPending()
+      },
       emitPluginEvent(id, eventName, payload) {
         // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast
         // 是有意的(与 panel-refresh 不同,后者已经收进联合)。
@@ -295,6 +314,9 @@ export function disposePlugin(state: PluginState): void {
   disposeCorePluginState(state, {
     unregisterTool: unregisterToolInRegistry,
   })
+  // R5 携带项:还没到点的面板刷新补发一并取消 —— 否则一个已停用的插件会在
+  // 200ms 后要求重画一个已经不存在的面板。
+  if (state.api?.id) cancelPanelRefreshWindows(state.api.id)
   // R6:拆除的插件在**所有**会话里挂着的状态一起撤下。
   // 只等流结束是不够的 —— 被熔断禁用的插件,它挂在别的会话上的状态没人再会来
   // 清,而那些会话可能几小时后才结束。api 的 disposed 闩只挡住新的 show,

@@ -12,12 +12,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  CORE_PLUGIN_STATUS_MAX_PER_SESSION,
-  CORE_PLUGIN_STATUS_SWEEP_EVENTS,
+  CORE_PLUGIN_STATUS_MAX_PER_PLUGIN,
+  CORE_PLUGIN_STATUS_MAX_SESSIONS,
+  CORE_PLUGIN_STATUS_THROTTLE_MS,
   CorePluginStatusRegistry,
   PLUGIN_STATUS_PART_TYPE,
-  isPluginStatusSweepEvent,
 } from '@onething/core/plugins'
+import { SESSION_STREAM_TERMINAL_EVENTS, isSessionStreamTerminalEvent } from '@shared/events/session-events'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-status-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -30,11 +31,25 @@ afterAll(async () => {
   fs.rmSync(storeRoot, { recursive: true, force: true })
 })
 
+/**
+ * 内置插件 id —— 从装配层的注册处现取(与 R0 守卫同一个事实源)。
+ */
+function listBuiltinPluginIds(): string[] {
+  const loaderPath = fileURLToPath(new URL('../builtin/index.ts', import.meta.url))
+  const dir = path.dirname(loaderPath)
+  return fs.readdirSync(dir)
+    .filter(name => name.endsWith('.ts') && name !== 'index.ts')
+    .map(name => name.replace(/\.ts$/, ''))
+}
+
 describe('R6 status registry — 格子语义与清扫', () => {
   let registry: CorePluginStatusRegistry
+  let clock: number
 
   beforeEach(() => {
-    registry = new CorePluginStatusRegistry()
+    clock = 1_000_000
+    // 频控按时间判定 —— 用可控时钟,不靠真实等待。
+    registry = new CorePluginStatusRegistry({ now: () => clock })
   })
 
   it('treats (pluginId, id) as a cell: a repeat show updates the label', () => {
@@ -44,7 +59,7 @@ describe('R6 status registry — 格子语义与清扫', () => {
     registry.show({ pluginId: 'p', sessionId: 's', id: 'scan', label: 'Scanning 3/40' })
 
     // 一个每秒汇报进度的插件不该在气泡里堆出几百行。
-    expect(registry.list('s')).toEqual([
+    expect(registry.list('s')).toMatchObject([
       { pluginId: 'p', sessionId: 's', id: 'scan', label: 'Scanning 3/40' },
     ])
   })
@@ -64,16 +79,84 @@ describe('R6 status registry — 格子语义与清扫', () => {
     expect(registry.size()).toBe(0)
   })
 
-  it('caps new entries per session but always lets an existing one update', () => {
-    for (let i = 0; i < CORE_PLUGIN_STATUS_MAX_PER_SESSION; i += 1) {
-      expect(registry.show({ pluginId: 'p', sessionId: 's', id: `i${i}`, label: 'x' })).not.toBeNull()
+  it('quotas per plugin, not per session — one runaway plugin must not lock the others out', () => {
+    for (let i = 0; i < CORE_PLUGIN_STATUS_MAX_PER_PLUGIN; i += 1) {
+      clock += CORE_PLUGIN_STATUS_THROTTLE_MS
+      expect(registry.show({ pluginId: 'greedy', sessionId: 's', id: `i${i}`, label: 'x' })).not.toBeNull()
     }
-    // 到顶之后新增被挡。
-    expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'overflow', label: 'x' })).toBeNull()
-    // 但已挂着的更新永远放行 —— 否则到顶的会话里状态会卡在旧文案上,
-    // 比"新的挂不上"更让人困惑。
-    expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'i0', label: 'updated' })).not.toBeNull()
+    // 到顶之后这个插件的新增被挡。
+    expect(registry.show({ pluginId: 'greedy', sessionId: 's', id: 'overflow', label: 'x' })).toBeNull()
+
+    // **别的插件照样挂得上** —— 按会话配额的话它一条也挂不上,而 show 只返回
+    // null 不抛,受害的插件根本无从感知。
+    clock += CORE_PLUGIN_STATUS_THROTTLE_MS
+    expect(registry.show({ pluginId: 'polite', sessionId: 's', id: 'x', label: 'x' })).not.toBeNull()
+
+    // 已挂着的更新永远放行。
+    clock += CORE_PLUGIN_STATUS_THROTTLE_MS
+    expect(registry.show({ pluginId: 'greedy', sessionId: 's', id: 'i0', label: 'updated' })).not.toBeNull()
     expect(registry.list('s').find(record => record.id === 'i0')?.label).toBe('updated')
+  })
+
+  it('refuses a session with no running stream — status lives inside a bubble', () => {
+    const warnings: string[] = []
+    const gated = new CorePluginStatusRegistry({
+      isStreaming: sessionId => sessionId === 'live',
+      warn: message => warnings.push(message),
+      now: () => clock,
+    })
+
+    expect(gated.show({ pluginId: 'p', sessionId: 'live', id: 'x', label: 'l' })).not.toBeNull()
+    // 没有流 = 没有气泡。放行的话,那条 content:part 在 renderer 侧解析不出
+    // messageId,会落进待发队列并贴到**下一条**毫不相干的消息上。
+    expect(gated.show({ pluginId: 'p', sessionId: 'idle', id: 'x', label: 'l' })).toBeNull()
+    expect(gated.size()).toBe(1)
+    // 一次性告警,不刷屏。
+    expect(warnings.filter(w => w.includes('no active stream'))).toHaveLength(1)
+    gated.show({ pluginId: 'p', sessionId: 'idle', id: 'y', label: 'l' })
+    expect(warnings.filter(w => w.includes('no active stream'))).toHaveLength(1)
+  })
+
+  it('caps the number of tracked sessions so show(randomUUID()) cannot grow it without bound', () => {
+    for (let i = 0; i < CORE_PLUGIN_STATUS_MAX_SESSIONS; i += 1) {
+      expect(registry.show({ pluginId: 'p', sessionId: `s${i}`, id: 'x', label: 'l' })).not.toBeNull()
+    }
+    // 每一个新会话 id 还会在 EventBus 里长出一个永不回收的环形缓冲。
+    expect(registry.show({ pluginId: 'p', sessionId: 'one-too-many', id: 'x', label: 'l' })).toBeNull()
+    expect(registry.sessionCount()).toBe(CORE_PLUGIN_STATUS_MAX_SESSIONS)
+  })
+
+  it('rejects ids that are unusable as a ledger key, a DOM key, or a payload', () => {
+    expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'a b', label: 'l' })).toBeNull()
+    expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'x'.repeat(200), label: 'l' })).toBeNull()
+    expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'ok.id:1-2_x', label: 'l' })).not.toBeNull()
+  })
+
+  it('emits nothing when the label has not changed (pure dedupe)', () => {
+    expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'x', label: 'same' })).not.toBeNull()
+    clock += 10_000
+    // 汇报进度的插件绝大多数调用其实是同一句话 —— 每一句都发就会冲掉
+    // EventBus 的环形缓冲,而 SSE 断线重连正是拿它做 ?after= 重放。
+    expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'x', label: 'same' })).toBeNull()
+  })
+
+  it('merges a burst and still delivers the final label (leading + trailing)', () => {
+    expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'x', label: '1/40' })).not.toBeNull()
+
+    // 窗口内的变化只更账不投递。
+    for (const label of ['2/40', '3/40', '4/40']) {
+      clock += 10
+      expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'x', label })).toBeNull()
+    }
+    expect(registry.hasPending()).toBe(true)
+
+    // trailing flush 把**最后一条**补出去 —— 最终状态是唯一必须送达的那条
+    // (R5 的 panel-refresh 犯过同一个错,这里不再犯第二次)。
+    clock += CORE_PLUGIN_STATUS_THROTTLE_MS
+    const flushed = registry.flushPending()
+    expect(flushed).toHaveLength(1)
+    expect(flushed[0]).toMatchObject({ sessionId: 's', part: { label: '4/40' } })
+    expect(registry.hasPending()).toBe(false)
   })
 
   it('clear returns a cleared part once, and nothing the second time', () => {
@@ -102,18 +185,29 @@ describe('R6 status registry — 格子语义与清扫', () => {
     const swept = registry.clearPlugin('a')
     // 撤下事件必须投回**原会话** —— 过线的 part 里没有会话地址,所以这里要带上。
     expect(swept.map(entry => entry.sessionId).sort()).toEqual(['s1', 's2'])
-    expect(registry.list('s1')).toEqual([
+    expect(registry.list('s1')).toMatchObject([
       { pluginId: 'b', sessionId: 's1', id: 'z', label: 'l' },
     ])
   })
 
-  it('sweeps on all three stream endings — error and aborted are where clear gets skipped', () => {
-    expect([...CORE_PLUGIN_STATUS_SWEEP_EVENTS]).toEqual(['stream:complete', 'stream:error', 'stream:aborted'])
-    for (const type of CORE_PLUGIN_STATUS_SWEEP_EVENTS) {
-      expect(isPluginStatusSweepEvent(type)).toBe(true)
+  it('takes the terminal-event list from the single shared authority', () => {
+    // 这份名单曾被手抄在五处。上一版的守卫是同义反复(把常量钉在它自己的字面量
+    // 上),加第四种终止事件时它照样是绿的 —— 那正是 §5.5 第 6 条刚立规矩要禁的
+    // "白名单补集"。现在名单只有一份,且与三个终止事件接口由类型断言绑死。
+    expect([...SESSION_STREAM_TERMINAL_EVENTS]).toEqual(['stream:complete', 'stream:error', 'stream:aborted'])
+    for (const type of SESSION_STREAM_TERMINAL_EVENTS) expect(isSessionStreamTerminalEvent(type)).toBe(true)
+    expect(isSessionStreamTerminalEvent('stream:start')).toBe(false)
+
+    // 跨文件:曾经的手抄点现在都必须从 shared 取,不许再出现字面量三连。
+    const handCopied = /'stream:complete'\s*,\s*'stream:error'\s*,\s*'stream:aborted'|'stream:complete'\s*\|\|[^\n]*'stream:aborted'/
+    for (const relative of [
+      '../../../collab/typing.ts',
+      '../../../../../renderer/stores/voice.ts',
+    ]) {
+      const source = fs.readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf-8')
+      expect(source, `${relative} must not re-list the terminal events`).not.toMatch(handCopied)
+      expect(source, `${relative} must derive from the shared authority`).toMatch(/SESSION_STREAM_TERMINAL_EVENTS|isSessionStreamTerminalEvent/)
     }
-    expect(isPluginStatusSweepEvent('stream:start')).toBe(false)
-    expect(isPluginStatusSweepEvent('content:part')).toBe(false)
   })
 })
 
@@ -146,28 +240,28 @@ describe('R6 status — 装配层接线', () => {
     registry.show({ pluginId: 'q', sessionId: 's', id: 'b', label: 'l' })
     emitted.length = 0
 
-    module.sweepPluginStatusForSession('s')
+    await module.sweepPluginStatusForSession('s')
 
     expect(emitted).toHaveLength(2)
     expect(emitted.every(entry => entry.event.part.cleared)).toBe(true)
     expect(registry.size()).toBe(0)
   })
 
-  it('sweeps on stream end via the bus — the plugin never has to be well behaved', async () => {
+  it('sweeps BEFORE the terminal event is committed — otherwise cleared lands nowhere', async () => {
     const { module, emitted } = await loadStatus()
-    const handlers: Array<(envelope: any) => void> = []
+    const interceptors: Array<(event: any, sessionId: string) => Promise<any>> = []
     const unsubscribe = module.subscribePluginStatusSweep({
-      onAnySessionAny: (handler: (envelope: any) => void) => {
-        handlers.push(handler)
-        return () => {}
-      },
+      intercept: (handler: any) => { interceptors.push(handler); return () => {} },
     })
 
     module.getPluginStatusRegistry().show({ pluginId: 'p', sessionId: 's', id: 'x', label: 'Working' })
     emitted.length = 0
 
     // 插件在 show 之后抛错,永远没走到 clear。
-    handlers.forEach(handler => handler({ sessionId: 's', event: { type: 'stream:error' } }))
+    // 拦截器跑在 commit 与 fan-out **之前** —— 等它 resolve 时 cleared 已经过线,
+    // 而终止事件还没有。事后观察者做不到这一点:终止事件先到,renderer 自己把
+    // transient 扫干净,后到的 cleared 落在一条已经收尾的消息上,宿主清扫空转。
+    for (const intercept of interceptors) await intercept({ type: 'stream:error' }, 's')
 
     expect(emitted).toHaveLength(1)
     expect(emitted[0].event.part).toMatchObject({ id: 'x', cleared: true })
@@ -177,18 +271,54 @@ describe('R6 status — 装配层接线', () => {
 
   it('ignores non-terminal events so a mid-stream chunk does not wipe live statuses', async () => {
     const { module, emitted } = await loadStatus()
-    const handlers: Array<(envelope: any) => void> = []
+    const interceptors: Array<(event: any, sessionId: string) => Promise<any>> = []
     module.subscribePluginStatusSweep({
-      onAnySessionAny: (handler: (envelope: any) => void) => { handlers.push(handler); return () => {} },
+      intercept: (handler: any) => { interceptors.push(handler); return () => {} },
     })
     module.getPluginStatusRegistry().show({ pluginId: 'p', sessionId: 's', id: 'x', label: 'Working' })
     emitted.length = 0
 
-    handlers.forEach(handler => handler({ sessionId: 's', event: { type: 'content:part' } }))
-    handlers.forEach(handler => handler({ sessionId: 's', event: { type: 'stream:start' } }))
+    for (const intercept of interceptors) {
+      await intercept({ type: 'content:part' }, 's')
+      await intercept({ type: 'stream:start' }, 's')
+    }
 
     expect(emitted).toHaveLength(0)
     expect(module.getPluginStatusRegistry().size()).toBe(1)
+  })
+
+  it('sweeps a deleted session — it may never reach a stream ending at all', async () => {
+    const { module, emitted } = await loadStatus()
+    const globals = new Map<string, (envelope: any) => void>()
+    module.subscribePluginStatusSweep({
+      intercept: () => () => {},
+      onGlobal: (type: string, handler: (envelope: any) => void) => {
+        globals.set(type, handler)
+        return () => {}
+      },
+    })
+    module.getPluginStatusRegistry().show({ pluginId: 'p', sessionId: 's', id: 'x', label: 'Working' })
+    emitted.length = 0
+
+    globals.get('session:deleted')?.({ event: { type: 'session:deleted', sessionId: 's' } })
+    await new Promise(resolve => setImmediate(resolve))
+
+    expect(module.getPluginStatusRegistry().size()).toBe(0)
+  })
+
+  it('unsubscribes everything on detach so a restart does not stack interceptors', async () => {
+    const { module } = await loadStatus()
+    let interceptorCount = 0
+    let globalCount = 0
+    const detach = module.subscribePluginStatusSweep({
+      intercept: () => { interceptorCount += 1; return () => { interceptorCount -= 1 } },
+      onGlobal: () => { globalCount += 1; return () => { globalCount -= 1 } },
+    })
+    expect(interceptorCount).toBe(1)
+    expect(globalCount).toBe(1)
+    detach()
+    expect(interceptorCount).toBe(0)
+    expect(globalCount).toBe(0)
   })
 })
 
@@ -259,14 +389,18 @@ describe('R6 验收口径 — 新增插件状态零改动 shared 契约', () => 
       .split('\n')
       .filter(line => !line.trimStart().startsWith('*') && !line.trimStart().startsWith('//'))
       .join('\n')
-    for (const pluginId of ['log-monitor', 'note-skills', 'soul-memory']) {
-      expect(codeLines, `@shared/ipc/chat.ts must not know "${pluginId}"`).not.toContain(pluginId)
+    // 名单从**内置插件目录**现取,不写死 —— 写死的话新增一个内置插件时守卫
+    // 照样是绿的,而它守的恰恰是"契约不得认识任何具体插件"。
+    for (const pluginId of listBuiltinPluginIds()) {
+      expect(codeLines, `the shared ContentPart contract must not know "${pluginId}"`).not.toContain(pluginId)
     }
+    // 已退役的名字同样不许回潮。
+    expect(codeLines).not.toContain('soul-memory')
   })
 })
 
-describe('R6 验收 — log-monitor 示范', () => {
-  it('shows progress under one id and clears in finally', async () => {
+describe('R6 验收 — log-monitor 示范(流内形态)', () => {
+  it('shows progress from inside a tool, under one id, and clears in finally', async () => {
     const { registerOnethingLogMonitorStatusDemo } = await import('@onething/runtime/plugins')
 
     const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-status-demo-'))
@@ -275,36 +409,33 @@ describe('R6 验收 — log-monitor 示范', () => {
     fs.writeFileSync(path.join(logDir, 'notes.txt'), 'ignored')
 
     try {
-      const commands = new Map<string, any>()
+      const tools = new Map<string, any>()
       const shown: Array<{ id: string; label: string }> = []
       const cleared: string[] = []
-      const notices: string[] = []
 
       registerOnethingLogMonitorStatusDemo({
-        registerCommand: (name, options) => commands.set(name, options),
+        registerTool: (tool: any) => tools.set(tool.name, tool),
         status: {
-          show: (_sessionId, status) => shown.push(status),
-          clear: (_sessionId, id) => cleared.push(id),
+          show: (_sessionId: string, status: { id: string; label: string }) => shown.push(status),
+          clear: (_sessionId: string, id: string) => cleared.push(id),
         },
-      }, { logDir })
+      } as never, { logDir })
 
-      await commands.get('/log-scan').handler('', {
-        sessionId: 's1',
-        notify: (message: string) => notices.push(message),
-      })
+      // 工具执行**天然发生在流内** —— 这正是把示范从斜杠命令挪过来的理由:
+      // 斜杠命令走 executePluginCommand 直调 IPC,不在任何 stream 里。
+      const result = await tools.get('scan_log_files').execute({}, { sessionId: 's1' })
 
-      // 全程只用一个 id —— 进度汇报是"更新格子",不是追加。
       expect(new Set(shown.map(entry => entry.id))).toEqual(new Set(['scan']))
       expect(shown.length).toBeGreaterThan(1)
       expect(shown[shown.length - 1].label).toContain('2/2')
       expect(cleared).toEqual(['scan'])
-      expect(notices[0]).toContain('Scanned 2 log file(s)')
+      expect(result.title).toContain('Scanned 2 log file(s)')
     } finally {
       fs.rmSync(logDir, { recursive: true, force: true })
     }
   })
 
-  it('leaves no residue when the operation throws before clear', async () => {
+  it('leaves no residue when the tool throws before clear', async () => {
     const { registerOnethingLogMonitorStatusDemo } = await import('@onething/runtime/plugins')
     const status = await import('../status.js')
     status.resetPluginStatusHostForTests()
@@ -313,27 +444,26 @@ describe('R6 验收 — log-monitor 示范', () => {
       emitSessionEvent: (sessionId, event) => { emitted.push({ sessionId, event }) },
     })
 
-    const commands = new Map<string, any>()
+    const tools = new Map<string, any>()
     const registry = status.getPluginStatusRegistry()
     registerOnethingLogMonitorStatusDemo({
-      registerCommand: (name, options) => commands.set(name, options),
+      registerTool: (tool: any) => tools.set(tool.name, tool),
       status: {
-        show: (sessionId, entry) => {
+        show: (sessionId: string, entry: { id: string; label: string }) => {
           const part = registry.show({ pluginId: 'log-monitor', sessionId, ...entry })
           if (part) status.emitPluginStatusPart(sessionId, part)
         },
         // 故意**不实现** clear:模拟"插件挂了/忘了收尾"。
         clear: () => {},
       },
-    }, { logDir: '/no/such/dir' })
+    } as never, { logDir: '/no/such/dir' })
 
     // 目录不存在 → readdirSync 抛 → finally 里那次 clear 是 no-op。
-    await expect(commands.get('/log-scan').handler('', { sessionId: 's1', notify: vi.fn() }))
-      .rejects.toThrow()
+    await expect(tools.get('scan_log_files').execute({}, { sessionId: 's1' })).rejects.toThrow()
     expect(registry.size()).toBe(1)
 
-    // 宿主在流结束时强制清扫 —— 这就是 R6 的全部要点。
-    status.sweepPluginStatusForSession('s1')
+    // 宿主在终止事件之前强制清扫 —— 这就是 R6 的全部要点。
+    await status.sweepPluginStatusForSession('s1')
     expect(registry.size()).toBe(0)
     expect(emitted[emitted.length - 1].event.part).toMatchObject({ cleared: true })
   })

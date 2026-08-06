@@ -9578,6 +9578,37 @@ function checkCoreKnowsNoConcreteFeatures(): void {
  * typecheck 永远不会报死 alias —— 10 条死 alias 就是这么潜伏下来的,只在
  * build/run 时才炸。
  */
+/**
+ * 源码里不许出现**裸控制字符**(0x00-0x08 / 0x0b / 0x0c / 0x0e-0x1f)。
+ *
+ * 起因是一次真事故:R6 的状态账本用了一个裸 NUL 做 Map 键的分隔符,git 据此把
+ * 整个文件判成二进制 —— 那一期最核心的 188 行在 diff 里**完全不可审**,评审只能
+ * 看到 `Bin 0 -> 7524 bytes`。代码看起来完全正常,测试全绿,而审查这一环被静默
+ * 掐掉了。这条守卫上线当天就在 collab 的 envelope-fold.ts 里抓到同一个病
+ * (`Bin 0 -> 10439 bytes`,10KB 核心逻辑同样从未被审过)。
+ *
+ * 需要控制字符时写转义(`\u0000`),不要把字节本身放进文件。
+ * 制表符/换行/回车(0x09/0x0a/0x0d)照常放行。
+ */
+function checkNoRawControlCharacters(): void {
+  const offenders: string[] = []
+  const roots = ['packages', 'apps', 'scripts']
+  for (const dirName of roots) {
+    for (const filePath of walkFiles(path.join(root, dirName), [], { includeTests: true })) {
+      const buffer = fs.readFileSync(filePath)
+      for (let i = 0; i < buffer.length; i += 1) {
+        const byte = buffer[i]
+        const isControl = byte < 0x09 || byte === 0x0b || byte === 0x0c || (byte >= 0x0e && byte <= 0x1f)
+        if (!isControl) continue
+        const line = buffer.subarray(0, i).toString('utf-8').split('\n').length
+        offenders.push(`${rel(filePath)}:${line}: raw control character 0x${byte.toString(16).padStart(2, '0')} (write an escape instead)`)
+        break
+      }
+    }
+  }
+  assertNoMatches('source files carry no raw control characters', offenders)
+}
+
 function checkAliasTargetsExist(): void {
   const aliasFile = path.join(root, 'onething.aliases.ts')
   if (!fs.existsSync(aliasFile)) {
@@ -12131,6 +12162,7 @@ checkPluginLogicStaysOutOfHostAssembly()
 checkPluginsOnlyUseInjectedApi()
 checkCoreKnowsNoConcreteFeatures()
 checkAliasTargetsExist()
+checkNoRawControlCharacters()
 checkRuntimeOwnsSkillsRuntimeCache()
 checkRuntimeOwnsSkillsIpcOperations()
 checkRuntimeOwnsSkillManageOperations()

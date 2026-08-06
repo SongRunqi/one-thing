@@ -341,6 +341,11 @@ const otherPartEntries = computed(() => {
     if (p.type === 'loading-memory' || p.type === 'provider-data') {
       return
     }
+    // 已撤下的插件状态留在数组里(保持 append-only,见 applyPluginStatus),
+    // 但不渲染 —— 流结束时会被 removeTransientIndicators 统一收走。
+    if (p.type === 'plugin-status' && p.cleared) {
+      return
+    }
 
     if (p.type === 'reasoning' && !hasVisibleReasoningContent(p.content)) {
       return

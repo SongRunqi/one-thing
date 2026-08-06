@@ -216,6 +216,16 @@ export class GatewayBridge {
       }
     }, GATEWAY_STREAM_FLUSH_INTERVAL_MS)
 
+    // 网关只订阅 **streamChannel**(文本分片),不订阅会话事件总线 ——
+    // 这是**有意的降级面**,不是遗漏。ContentPart(图片骨架、waiting 指示器、
+    // R6 的插件流状态)全部走会话事件,因此在微信/TG 这类纯文本渠道上静默丢失。
+    //
+    // 对状态而言这个降级尤其站得住脚:一行"我正在做什么"的价值恰恰在于它**会消失**,
+    // 而 IM 消息是不可撤回的追加。把它翻译成消息,得到的是刷屏 —— 用户会收到
+    // "正在扫描 1/40""正在扫描 2/40"…… 四十条。宁可不显示。
+    //
+    // 将来若要在 IM 上表达进度,正确的形态是渠道自己的原生能力(Telegram 的
+    // editMessageText、"正在输入"指示器),而不是把 ContentPart 逐条翻译过去。
     const unsubscribe = this.options.runtime.streamChannel.subscribe(session.coreSessionId, (chunk) => {
       if (!isCoreTextStreamChunk(chunk)) return
       buffer.append(chunk.text)

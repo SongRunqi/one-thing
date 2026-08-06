@@ -114,19 +114,6 @@ export interface CoreConversationRuntimeFactoryOptions<
   eventBus?: Partial<CoreConversationEventBusLike>
 }
 
-/**
- * 网关只认文本流块 —— 这是**有意的降级面**,不是遗漏。
- *
- * 微信/Telegram 这类纯文本渠道不消费 ContentPart,于是所有富内容在那里静默丢失:
- * 图片骨架、waiting 指示器,以及 R6 的插件流状态(`plugin-status`)。
- *
- * 对状态而言这个降级尤其站得住脚:一行"我正在做什么"的价值恰恰在于它**会消失**,
- * 而 IM 消息是不可撤回的追加。把它翻译成消息,得到的是刷屏 —— 用户会收到
- * "正在扫描 1/40""正在扫描 2/40"…… 四十条。宁可不显示。
- *
- * 若将来要在 IM 上表达进度,正确的形态是渠道自己的原生能力(Telegram 的
- * editMessageText、"正在输入"指示器),而不是把 ContentPart 逐条翻译过去。
- */
 export function isCoreTextStreamChunk(chunk: unknown): chunk is CoreTextStreamChunk {
   if (!chunk || typeof chunk !== 'object') return false
   const candidate = chunk as Partial<CoreTextStreamChunk>

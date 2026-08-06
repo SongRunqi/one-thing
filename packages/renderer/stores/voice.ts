@@ -1,3 +1,4 @@
+import { isSessionStreamTerminalEvent } from '@shared/events/session-events'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { SessionEventEnvelope } from '@shared/events/index.js'
@@ -126,7 +127,7 @@ export const useVoiceStore = defineStore('voice', () => {
       turn.assistantMessageId = event.message.id
       return
     }
-    if (event.type === 'stream:complete' || event.type === 'stream:aborted' || event.type === 'stream:error') {
+    if (isSessionStreamTerminalEvent(event.type)) {
       turn.active = false
       activeTurn.value = null
     }

@@ -299,8 +299,9 @@ export interface CorePluginAPI<
   /**
    * 流状态(R6):在会话气泡里说一句"我正在做什么"。
    *
-   * 投递走既有的 `content:part` 会话事件,所以 desktop(IPCBridge)与
-   * web(SSE)都是免费的 —— 没有为它新开轨道。
+   * 投递复用**双端共有的既有轨道**(`content:part` 会话事件):desktop 走
+   * IPCBridge,web 走 SSE。措辞上要诚实 —— 轨道属实,但 web 端今天没有生产者
+   * (方案 A 下 server 的插件入口全是 noop),真正跑起来要等 H 线。
    *
    * **网关是有意的降级面**:微信/Telegram 这类纯文本渠道不消费 ContentPart,
    * 于是插件状态在那里静默丢失。这是设计选择而不是缺陷 —— 把一行转圈状态翻译成

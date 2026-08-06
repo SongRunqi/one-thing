@@ -175,6 +175,18 @@ export class PluginManager extends CorePluginManager<
     this.emitCatalogChanged(pluginId)
   }
 
+  /**
+   * 拆掉本管理器接到宿主上的线。
+   *
+   * 不解绑的话,重启插件系统会叠加一个拦截器,而旧那个还指着上一次的 EventBus ——
+   * 每次重启多一份空转,dev 热重载下可观察。
+   */
+  detachHostSubscriptions(): void {
+    this.unsubscribeStatusSweep?.()
+    this.unsubscribeStatusSweep = undefined
+    this.eventBus = null
+  }
+
   async refreshPlugins(): Promise<void> {
     // 刷新就是"重新看盘上有什么" —— 缓存的清单先作废。
     invalidateDeclaredPanelIdsCache()
@@ -217,16 +229,18 @@ export class PluginManager extends CorePluginManager<
     })
     // R6:插件流状态的投递口 + 流结束强制清扫。
     //
-    // 清扫**观察总线**而不是挂进引擎:三种结束事件(complete / error / aborted)
-    // 都从总线上过,而插件最可能漏掉 clear 的恰恰是 error 与 aborted 两条路径。
-    // 观察者写法也让这条兜底与引擎内部实现解耦 —— 引擎改结束路径不会悄悄漏掉它。
+    // 清扫挂在 EventBus 的 **interceptor** 相位(commit 与 fan-out 之前),
+    // 不是事后观察者:终止事件一旦过线,renderer 会自己把 transient 扫干净,
+    // 后到的 cleared 就落在一条已经收尾的消息上,宿主清扫成了空转。
+    // 与引擎内部实现仍然解耦 —— 判据是总线上的事件名,不是引擎的结束路径。
     configurePluginStatusHost({
-      emitSessionEvent: (sessionId, event) => {
-        void context.eventBus?.emit?.(sessionId, event)
-      },
+      emitSessionEvent: (sessionId, event) => context.eventBus?.emit?.(sessionId, event),
+      // 状态只在流内有意义:没有正在跑的流,那条 content:part 在 renderer 侧
+      // 解析不出 messageId,会落进待发队列并贴到**下一条**毫不相干的消息上。
+      isStreaming: (sessionId: string) => Boolean(context.streamEngine?.getController?.(sessionId)),
     })
     this.unsubscribeStatusSweep?.()
-    this.unsubscribeStatusSweep = context.eventBus?.onAnySessionAny
+    this.unsubscribeStatusSweep = context.eventBus
       ? subscribePluginStatusSweep(context.eventBus)
       : undefined
 

@@ -69,17 +69,37 @@ export type ContentPart =
    */
   | { type: 'plugin-status'; pluginId: string; id: string; label: string; cleared?: boolean; turnIndex?: number }
 
-// Helper: parts whose presence/absence affects subsequent content layout.
-// Used by the chunk reducer to pop trailing transient indicators when real
-// content arrives.
-//
-// plugin-status 是 transient 的:真内容到达时它让位,流结束时被扫掉。
-// 注意这只是**呈现侧**的兜底 —— 真正的生命周期保证在宿主(core 的
-// CorePluginStatusRegistry 在流结束时强制清扫并投递撤下事件),否则 web 端
-// 与桌面端会对"还挂着什么"给出不同答案。
-export function isTransientPart(part: ContentPart): boolean {
+/**
+ * **占位型** transient:真内容一到就让位。
+ *
+ * 它们表达的是"还没有内容",所以内容到达即失效 —— 归约器每次追加正文前会把
+ * 末尾的这类 part 弹掉。
+ */
+export function isPlaceholderTransientPart(part: ContentPart): boolean {
   return part.type === 'waiting' || part.type === 'loading-memory' || part.type === 'image-loading'
-    || part.type === 'plugin-status'
+}
+
+/**
+ * **流内型** transient:活到流结束,不被正文顶掉。
+ *
+ * plugin-status 属于这一类。把它混进占位型是个真 bug:模型吐出第一个 token
+ * 状态就消失,而插件还在干活;插件下一次 show 同 id 又把它推回来,于是它按
+ * delta 的频率闪烁。更糟的是弹掉之后宿主账本仍持有记录,后续 clear 在渲染侧
+ * 成了 no-op。
+ */
+export function isStreamScopedTransientPart(part: ContentPart): boolean {
+  return part.type === 'plugin-status'
+}
+
+/**
+ * 流结束时要一并清掉的全部 transient。
+ *
+ * 注意这只是**呈现侧**的兜底 —— 真正的生命周期保证在宿主(core 的
+ * CorePluginStatusRegistry 在终止事件**之前**强制清扫并投递撤下事件),
+ * 否则 web 端与桌面端会对"还挂着什么"给出不同答案。
+ */
+export function isTransientPart(part: ContentPart): boolean {
+  return isPlaceholderTransientPart(part) || isStreamScopedTransientPart(part)
 }
 
 // Step types for showing AI reasoning process
