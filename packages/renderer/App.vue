@@ -246,6 +246,10 @@ import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/
 import { platformApi } from '@/platform'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import {
+  workspacePanelWindowEvent,
+  type OpenableWorkspacePanelId,
+} from '@/workspace/panel-registry'
+import {
   AGENT_OPEN_WORKSPACE_EVENT,
   AGENT_OPEN_SPACE_EVENT,
   useAgentsStore,
@@ -367,15 +371,16 @@ function clampSidebarWidth(width: number): number {
 const sidebarWidth = ref(clampSidebarWidth(parseInt(localStorage.getItem('sidebarWidth') || '300', 10)))
 const sidebarResizing = ref(false)
 
-type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks' | 'music' | 'practice'
+// 面板 id 从注册表派生 —— 这条联合原先是 ≥6 处手抄之一。
+type WorkspacePanel = OpenableWorkspacePanelId
 type TodoPlanWebWindowActionDetail = {
   action?: 'open' | 'hide' | 'toggle' | 'pin'
 }
 
-const TODO_PLAN_WEB_WINDOW_EVENT = 'todo-plan:web-window-action'
-// Fired by PracticeStrip's menu (「参数与账页」/「查看进度」) — same pattern as
-// the todo-plan window event: deep components reach App through a window event.
-const PRACTICE_OPEN_WORKSPACE_EVENT = 'practice:open-workspace'
+// 事件名从注册表取:面板"有几条进入路径"这件事现在有唯一一处可查
+// (deep components reach App through a window event —— 与 todo-plan 同款)。
+const TODO_PLAN_WEB_WINDOW_EVENT = workspacePanelWindowEvent('tasks')
+const PRACTICE_OPEN_WORKSPACE_EVENT = workspacePanelWindowEvent('practice')
 
 // Main workspace panel state. These panels are launched from the sidebar
 // actions area and occupy the main content region instead of expanding from

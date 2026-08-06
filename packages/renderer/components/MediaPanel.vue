@@ -387,15 +387,6 @@
         </section>
 
         <section
-          v-if="hasMountedNav('memory')"
-          v-show="activeNav === 'memory'"
-          class="workspace-panel-view workspace-panel-content-view"
-          data-workspace-panel-view="memory"
-        >
-          <MemoryPanelContent />
-        </section>
-
-        <section
           v-if="hasMountedNav('agents')"
           v-show="activeNav === 'agents'"
           class="workspace-panel-view workspace-panel-content-view"
@@ -454,27 +445,25 @@ import MusicPanelContent from './MusicPanelContent.vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
 import FilterSearchInput from './common/FilterSearchInput.vue'
 import Select from './common/Select.vue'
-import MemoryPanelContent from './memory/MemoryPanelContent.vue'
 import SchedulerPanelContent from './SchedulerPanelContent.vue'
 import PracticePanelContent from './PracticePanelContent.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { useMediaStore } from '@/stores/media'
 import type { MediaAsset, MediaKind, MediaSource } from '@/types'
 import {
-  Activity,
-  Archive,
-  Bot,
-  Brain,
-  CalendarClock,
   FileText,
   Images,
   Music,
-  Radio,
   Video,
 } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
+import {
+  WORKSPACE_NAV_PANELS,
+  isWorkspacePanelId,
+  type WorkspacePanelId,
+} from '@/workspace/panel-registry'
 
-type WorkspacePanelNav = 'media' | 'memory' | 'agents' | 'tasks' | 'music' | 'practice' | 'archive'
+type WorkspacePanelNav = WorkspacePanelId
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -508,21 +497,13 @@ const mountedNavs = ref<WorkspacePanelNav[]>([activeNav.value])
 const activeKind = ref<MediaKind>('image')
 const activeSource = ref<SourceFilter>('all')
 
-const navItems: Array<{ id: WorkspacePanelNav; label: string; icon: Component }> = [
-  { id: 'media', label: 'Media', icon: Images },
-  { id: 'memory', label: 'Memory', icon: Brain },
-  { id: 'agents', label: 'Agents', icon: Bot },
-  { id: 'tasks', label: 'Tasks', icon: CalendarClock },
-  { id: 'music', label: 'Music', icon: Radio },
-  { id: 'practice', label: 'Practice', icon: Activity },
-  { id: 'archive', label: 'Archived Chats', icon: Archive },
-]
+// 导航条直接吃注册表 —— 抄第二份清单就是漂移的起点(`archive` 曾经只在这里
+// 存在,别处的联合都没有它)。
+const navItems: Array<{ id: WorkspacePanelNav; label: string; icon: Component }> = WORKSPACE_NAV_PANELS
+  .map(panel => ({ id: panel.id, label: panel.label, icon: panel.icon }))
 
 function normalizeNav(tab?: string | null): WorkspacePanelNav | null {
-  if (tab === 'media' || tab === 'memory' || tab === 'agents' || tab === 'tasks' || tab === 'music' || tab === 'practice' || tab === 'archive') {
-    return tab
-  }
-  return null
+  return isWorkspacePanelId(tab) ? tab : null
 }
 
 function markNavMounted(nav: WorkspacePanelNav) {

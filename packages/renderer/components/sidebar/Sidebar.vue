@@ -631,7 +631,12 @@ import Tooltip from '@/components/common/Tooltip.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
-import { Bot, Brain, CalendarClock, Check, ChevronDown, Images, MoreVertical, Pencil, Pin, Plus, Radio, Settings, X } from 'lucide-vue-next'
+import { Check, ChevronDown, MoreVertical, Pencil, Pin, Plus, Settings, X } from 'lucide-vue-next'
+import {
+  WORKSPACE_MENU_PANELS,
+  isOpenableWorkspacePanelId,
+  type OpenableWorkspacePanelId,
+} from '@/workspace/panel-registry'
 import { buildRoomMemberEntries, type RoomMemberEntry } from '@/components/chat/room-member-strip'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarActionGroup from './SidebarActionGroup.vue'
@@ -669,11 +674,13 @@ interface Props {
   floatingClosing?: boolean
   noTransition?: boolean
   mediaPanelOpen?: boolean
-  activeWorkspacePanel?: 'memory' | 'media' | 'agents' | 'tasks' | 'music' | 'practice' | null
+  // 这里曾经残留一个死成员 'memory'(同文件的本地联合早就没有它了)——
+  // 手抄清单的典型下场。现在两处都从注册表派生。
+  activeWorkspacePanel?: OpenableWorkspacePanelId | null
   width?: number
 }
 
-type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks' | 'music' | 'practice'
+type WorkspacePanel = OpenableWorkspacePanelId
 
 const props = withDefaults(defineProps<Props>(), {
   collapsed: false,
@@ -1095,13 +1102,8 @@ onUnmounted(() => {
   if (contactErrorTimer) clearTimeout(contactErrorTimer)
 })
 
-const workspaceActions = [
-  { id: 'memory' as const, label: 'Memory', icon: Brain },
-  { id: 'media' as const, label: 'Media', icon: Images },
-  { id: 'agents' as const, label: 'Agents', icon: Bot },
-  { id: 'tasks' as const, label: 'Tasks', icon: CalendarClock },
-  { id: 'music' as const, label: 'Music', icon: Radio },
-]
+// 直接吃注册表:这份清单漏一项就是少一个进得去的面板,而编译器不会提醒。
+const workspaceActions = WORKSPACE_MENU_PANELS
 
 // ── 「⋯」工作区面板菜单(R4,用户真机走查要求 4)──────────────────────────
 // 平铺的一排 dock 图标在 workbench 下撤掉了,但那是这五个面板**唯一**的入口 ——
@@ -1128,7 +1130,7 @@ function openWorkspaceMenu(event: MouseEvent): void {
 function onWorkspaceMenuSelect(id: string): void {
   workspaceMenu.value = null
   const action = workspaceActions.find(candidate => candidate.id === id)
-  if (!action) return
+  if (!action || !isOpenableWorkspacePanelId(action.id)) return
   emit('open-workspace-panel', action.id)
 }
 

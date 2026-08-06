@@ -426,16 +426,19 @@ describe('App container layout', () => {
     expect(app).toContain('v-show="activeWorkspaceView === \'chat\'"')
     expect(app).toContain('v-show="workspacePanelOpen"')
     expect(mediaPanel).toContain('v-show="visible"')
-    expect(mediaPanel).toContain("type WorkspacePanelNav = 'media' | 'memory' | 'agents' | 'tasks' | 'music' | 'practice' | 'archive'")
+    // 面板清单收编进注册表之后,这里不再钉住手抄的联合字面量 ——
+    // 钉住它等于把"必须手抄"写成契约。改为断言它确实从注册表派生。
+    expect(mediaPanel).toContain('type WorkspacePanelNav = WorkspacePanelId')
+    expect(mediaPanel).toContain("from '@/workspace/panel-registry'")
     expect(mediaPanel).toContain('const mountedNavs = ref<WorkspacePanelNav[]>([activeNav.value])')
     expect(mediaPanel).toContain('function hasMountedNav(nav: WorkspacePanelNav): boolean')
-    expect(mediaPanel).toContain('v-if="hasMountedNav(\'memory\')"')
-    expect(mediaPanel).toContain('data-workspace-panel-view="memory"')
+    expect(mediaPanel).toContain('v-if="hasMountedNav(\'agents\')"')
+    expect(mediaPanel).toContain('data-workspace-panel-view="agents"')
     expect(mediaPanel).toContain('.workspace-panel-views {')
     expect(mediaPanel).toContain('.workspace-panel-view {')
     expect(mediaPanel).not.toContain('<Transition name="media-panel">')
     expect(mediaPanel).not.toContain('media-panel-enter-active')
-    expect(mediaPanel).not.toContain('v-else-if="activeNav === \'memory\'"')
+    expect(mediaPanel).not.toContain('v-else-if="activeNav === \'agents\'"')
   })
 
   it('drives sidebar panels and sessions through one Menu active index', () => {
