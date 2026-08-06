@@ -93,12 +93,78 @@ R5 评审修复提交已把这句话改写到位,涉及三处:
 这两个同类文件;而全量测试跑在**工作树**上(那里 memory 断言已被退役工作删掉),
 于是绿灯掩盖了红的 HEAD。
 
-同一次复验也划清了边界:`prompt-golden` 与 `system-prompt.baseline` 的 7 个失败在
-`a962c828~1` 上**就已经是红的**(soul-memory 提示词内容尚未提交),不属于这条线。
-
 教训很具体:**"全量测试通过"是对工作树的陈述,不是对提交的陈述**。做窄例外携带时,
 自检必须落在提交上 —— `git worktree add --detach <tmp> HEAD` 然后在那里跑测试与
 typecheck。逐文件比对 `git show HEAD:<file>` 只能证明"没多删",证明不了"树是绿的"。
+
+---
+
+## 勘误:那 7 条 prompt 失败是**假红**,不是预存红
+
+本文件上一版把同一次 worktree 复验里的 7 条失败(`prompt-golden` ×2、
+`system-prompt.baseline` ×5)归因为"soul-memory 提示词内容尚未提交造成的预存红",
+并据此说它们在 `a962c828~1` 上就已经是红的。**这个归因是错的。**
+
+真正的成因是**绝对路径快照**:这两个套件的期望值里写死了仓库的绝对路径,而
+worktree 的路径不同,于是每条 diff 都只是一次路径替换。
+
+证据(在主树上直接可查):
+
+```
+$ grep -n "start-electron" packages/onething-runtime/src/app/engine/prompt/__tests__/__snapshots__/system-prompt.baseline.test.ts.snap
+51: Detailed examples and syntax: /Users/…/start-electron/resources/docs/macos-automation.md
+…（5 处,对应 5 个失败用例）
+
+$ grep -n "start-electron" packages/onething-runtime/src/prompts/__tests__/golden/{agents-md,codex-split}.md
+Current work directory: /Users/…/start-electron/packages/onething-runtime/src/prompts/__tests__/fixtures/…
+…（2 个文件,对应 2 个失败用例）
+
+$ npx vitest run …/prompt-golden.test.ts …/system-prompt.baseline.test.ts     # 主树
+Tests  17 passed (17)
+```
+
+5 + 2 = 7,与失败数逐条对上。独立复验进一步在**全部 13 个提交**的快照上跑了全量
+测试,这 7 条在**每一个**提交上都出现,包括 R0 的 `a3114b48` —— 那远早于任何
+soul-memory 提示词工作,预存红的说法在时间上就不成立。
+
+### 由此得到的第二条教训(与第一条方向相反)
+
+**快照验证会双向说谎。**
+
+- 它能揭露**假绿**:工作树里已经修好的东西,掩盖了提交里还没修的 —— 这正是
+  `a962c828` 那两个测试的情形,也是本文件上半部分要教的陷阱;
+- 它也会制造**假红**:把仓库搬到另一个路径下跑,任何写死绝对路径的期望值都会失败,
+  而失败信息看起来和真缺陷一模一样。
+
+一条教训写进文档时若只看见其中一面,就会像这次一样 —— 本意是教前一个陷阱,却把后
+一个陷阱当成事实写了进去。
+
+### 正确用法
+
+1. 在 clean worktree 上跑,用来验**提交快照**是不是真绿;
+2. 但对**含绝对路径快照的用例**,先回主树复核一遍再下结论 —— 主树绿而 worktree 红,
+   且 diff 只有路径差异,那就是假红;
+3. 根治办法是让快照不含绝对路径(相对化,或在断言前把仓库根替换成占位符)。
+   在此之前,这两个套件必须在仓库根跑。
+
+### 逐提交验证账本(由独立复验产出)
+
+插件系统改造链共 13 个提交(`a3114b48` … `0eab2ab0`)。在每个提交的快照上跑全量测试:
+
+| 期 | 提交 | 真实红 |
+| --- | --- | --- |
+| R0 | `a3114b48` `154d2218` | 无(`a3114b48` 上那条 collab room-config 是时序 flake —— 隔离重跑 3×17 全绿) |
+| R1 | `888a25e8` `ec148d1f` | 无 |
+| R2 | `806c390d` `45064894` | 无 |
+| R3 | `f39011fa` `b3958f76` | 无 |
+| R4 | `c4025db1` `7685503c` `2188059b` | 无 |
+| R5 | `a962c828` | **2 个文件真红**(`MediaPanel.test.ts` / `Sidebar.workbench.test.ts`) |
+| R5 | `1dd1cfb1` `0eab2ab0` | 无(`0eab2ab0` 已修好 `a962c828` 的两条) |
+
+上述 7 条路径快照假红在**每一行**都出现,不计入"真实红"。
+
+结论:**"工作树绿掩盖提交红"在整条链上只发生过一次,就是 `a962c828`** —— 它也是
+唯一一个从脏工作树做窄携带的提交。风险不来自"提交多",来自"从脏树里挑行提交"。
 
 ### 修复
 
