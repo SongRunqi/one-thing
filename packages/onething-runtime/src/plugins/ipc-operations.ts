@@ -1,6 +1,8 @@
 import type {
   CorePluginCommandContext,
   CorePluginCommandDefinition,
+  CorePluginRequestInput,
+  CorePluginRequestResult,
 } from '@onething/core/plugins'
 import {
   executeOnethingPluginCommand,
@@ -41,6 +43,10 @@ export interface OnethingPluginIpcManagerLike<
   refreshPlugins(): MaybePromise<unknown>
   getPluginCommands(): OnethingPluginCommandsLike<TCommandInfo>
   getCommandHandler(commandName: string): MaybePromise<TCommand | undefined>
+  /** 统一请求通道(R2)。分发逻辑在 core,这里只是宿主的转发面。 */
+  handleRequest?(input: CorePluginRequestInput): Promise<CorePluginRequestResult>
+  abortRequest?(requestId: string): boolean
+  getRequestActions?(pluginId: string): string[]
 }
 
 interface OnethingPluginIpcOperationOptions<
@@ -68,7 +74,9 @@ export async function listOnethingPluginsForIpc<
     const manager = requireOnethingPluginManager(options.manager)
     return {
       success: true,
-      plugins: projectOnethingPluginsForRenderer(manager.getPlugins()),
+      plugins: projectOnethingPluginsForRenderer(manager.getPlugins(), {
+        getRequestActions: pluginId => manager.getRequestActions?.(pluginId) ?? [],
+      }),
     }
   } catch (error) {
     return pluginIpcError(options.logger, 'list', error, 'Failed to list plugins')
@@ -184,6 +192,79 @@ export async function executeOnethingPluginCommandForIpc<
     })
   } catch (error) {
     return pluginIpcError(logger, 'execute command', error, 'Failed to execute plugin command')
+  }
+}
+
+/**
+ * 统一请求通道的宿主转发面(设计文档 §5 R2)。
+ *
+ * 这里刻意**不**做任何分发/序列化判断 —— 那些都在 core 的 manager.handleRequest
+ * 里,四个宿主共用同一份语义;@main / http 只负责把参数递进来、把结果递出去。
+ */
+export type OnethingPluginRequestForIpcResult =
+  | { success: true; requestId: string; result: unknown }
+  | { success: false; requestId: string; error: string; aborted?: boolean }
+
+export interface OnethingPluginRequestForIpcOptions<
+  TPlugin extends OnethingPluginListItemLike = OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike = OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext> =
+    CorePluginCommandDefinition<CorePluginCommandContext>,
+> extends OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand> {
+  pluginId: string
+  action: string
+  payload?: unknown
+  requestId?: string
+  onProgress?: CorePluginRequestInput['onProgress']
+}
+
+export async function handleOnethingPluginRequestForIpc<
+  TPlugin extends OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext>,
+>(
+  options: OnethingPluginRequestForIpcOptions<TPlugin, TCommandInfo, TCommand>,
+): Promise<OnethingPluginRequestForIpcResult> {
+  const requestId = options.requestId || `${options.pluginId}#${Date.now().toString(36)}`
+  try {
+    const manager = requireOnethingPluginManager(options.manager)
+    if (!manager.handleRequest) {
+      return { success: false, requestId, error: 'Plugin request channel is unavailable on this host' }
+    }
+    const result = await manager.handleRequest({
+      pluginId: options.pluginId,
+      action: options.action,
+      payload: options.payload,
+      requestId,
+      onProgress: options.onProgress,
+    })
+    return result.success
+      ? { success: true, requestId, result: result.result }
+      : { success: false, requestId, error: result.error, aborted: result.aborted }
+  } catch (error) {
+    const projected = pluginIpcError(
+      options.logger,
+      `request ${options.pluginId}/${options.action}`,
+      error,
+      'Plugin request failed',
+    )
+    return { success: false, requestId, error: projected.error }
+  }
+}
+
+export function abortOnethingPluginRequestForIpc<
+  TPlugin extends OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext>,
+>(
+  options: OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand> & { requestId: string },
+): { success: boolean; aborted: boolean; error?: string } {
+  try {
+    const manager = requireOnethingPluginManager(options.manager)
+    return { success: true, aborted: manager.abortRequest?.(options.requestId) ?? false }
+  } catch (error) {
+    const projected = pluginIpcError(options.logger, 'abort request', error, 'Failed to abort plugin request')
+    return { success: false, aborted: false, error: projected.error }
   }
 }
 

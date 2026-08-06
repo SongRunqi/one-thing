@@ -1,10 +1,54 @@
+import type { CorePluginRequestHandler } from './request-channel.js'
+
+/**
+ * 声明先于代码(设计文档 §4.2 宪法第 3 条)。
+ *
+ * `contributes` 是插件的**静态存在感**:宿主只读清单就能知道它会贡献什么,
+ * 一行插件代码都不必执行。R2 只建类型与解析/校验/透出管道 —— 消费者在
+ * R3(settings)与 R5(panels)。今天先立住形状,后面几期才不用回头改协议。
+ *
+ * 全段必须 JSON-可序列化(宪法第 2 条):它就住在 plugin.json 里。
+ */
+export interface PluginContributionCommand {
+  name: string
+  description?: string
+  usage?: string
+}
+
+export interface PluginContributionPanel {
+  id: string
+  label: string
+  icon?: string
+}
+
+export interface PluginContributionSettings {
+  title?: string
+  /** JSON Schema(不是 zod)—— 过线皆 JSON Schema,zod 只是插件侧书写糖。 */
+  schema?: Record<string, unknown>
+}
+
+export interface PluginContributionActivation {
+  /** 懒激活的触发条件;R2 只解析不消费。 */
+  events?: string[]
+}
+
+export interface PluginContributes {
+  commands?: PluginContributionCommand[]
+  panels?: PluginContributionPanel[]
+  settings?: PluginContributionSettings
+  permissions?: string[]
+  activation?: PluginContributionActivation
+}
+
 export interface PluginManifest {
   name: string
   version: string
   description?: string
   entry?: string
   author?: string
+  /** 语义化版本下界;低于它的宿主拒绝加载(R2 起真正生效)。 */
   minAppVersion?: string
+  contributes?: PluginContributes
 }
 
 export type PluginSource = 'builtin' | 'user'
@@ -19,6 +63,12 @@ export interface CorePluginDefinition<TEntry = unknown> {
   enabled: boolean
   needsInstall?: boolean
   error?: string
+  /**
+   * 扫描期就判定的"不该加载"原因:非法 contributes、minAppVersion 不满足。
+   * 置位后 manager 直接把插件放进 error 态,**不执行任何插件代码** ——
+   * 声明层的问题不该等到运行期才发作。
+   */
+  loadBlockedReason?: string
 }
 
 /**
@@ -140,6 +190,7 @@ export interface CorePluginAPI<
   TStore,
   TScheduler,
   TUI = MinimalCorePluginUI,
+  TRequestHandler = CorePluginRequestHandler,
 > {
   readonly id: string
   registerTool(tool: TTool): void
@@ -151,6 +202,16 @@ export interface CorePluginAPI<
   beforeContextCompact(id: string, hook: TBeforeContextCompactHook): void
   afterAssistantResponse(id: string, hook: TAfterAssistantResponseHook): void
   registerSkillRoot(provider: TSkillRootProvider): void
+  /**
+   * 统一请求通道:UI 侧 `platformApi.pluginRequest(pluginId, action, payload)`
+   * 落到这里。payload 与返回值都必须 JSON-可序列化(宪法第 2 条),
+   * 它们过的是一条将来会变成 RPC 的边界。
+   */
+  registerRequestHandler(action: string, handler: TRequestHandler): void
+  /** 插件自定义事件。投递名 = `plugin:<pluginId>:<name>`。 */
+  events: {
+    emit(eventName: string, payload?: unknown): void
+  }
   onDispose(callback: () => void): void
   store: TStore
   scheduler: TScheduler

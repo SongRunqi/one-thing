@@ -1,4 +1,9 @@
 import type { CorePluginAPIState } from './api-state.js'
+import {
+  assertPluginPayloadSerializable,
+  normalizePluginRequestAction,
+  type CorePluginRequestHandler,
+} from './request-channel.js'
 import type {
   CorePluginToolContext,
   CorePluginToolDefinition,
@@ -28,6 +33,11 @@ export interface CorePluginAPIHost<
   registerAfterAssistantResponseHook(pluginId: string, id: string, hook: TAfterAssistantResponseHook): () => void
   registerSkillRoot(pluginId: string, provider: TSkillRootProvider): () => void
   invalidateSkillsCache?(): void | Promise<void>
+  /**
+   * 插件自定义事件出口。事件名由宿主统一加 `plugin:<pluginId>:` 前缀 ——
+   * 命名空间不由插件自己保证,否则两个插件迟早撞名。
+   */
+  emitPluginEvent?(pluginId: string, eventName: string, payload: unknown): void
 }
 
 export interface CreateCorePluginAPIOptions<
@@ -158,10 +168,13 @@ export function createCorePluginAPI<
   // 十分钟后它恢复过来照样能调 api.registerTool,而这份 state 已经不在
   // pluginStates 里,disposeAll() 永远摸不到它:那个工具就是个永久孤儿。
   // 置位后所有注册入口 no-op,并按插件归因 warn 一次。
+  const requestHandlers = new Map<string, CorePluginRequestHandler>()
+
   const state: CorePluginAPIState<TApi, TCommand> = {
     api: undefined as unknown as TApi,
     unsubs,
     commands,
+    requestHandlers,
     toolIds,
     skillRootUnsubs,
     promptContextUnsubs,
@@ -283,6 +296,54 @@ export function createCorePluginAPI<
       skillRootUnsubs.push(unsub)
       Promise.resolve(host.invalidateSkillsCache?.()).catch(() => undefined)
       logger.log(`[Plugin:${pluginId}] Registered skill root provider`)
+    },
+
+    /**
+     * 统一请求通道的插件侧登记口(设计文档 §5 R2)。
+     *
+     * handler 拿到的 ctx 带 requestId / abortSignal / progress —— 与宿主工具
+     * 执行上下文同构,长任务从第一天就有取消与中间态。
+     */
+    registerRequestHandler(action: string, handler: CorePluginRequestHandler): void {
+      if (rejectLateCall('registerRequestHandler')) return
+      const normalized = normalizePluginRequestAction(action)
+      if (!normalized) {
+        logger.error(`[Plugin:${pluginId}] registerRequestHandler needs a non-empty action`, undefined)
+        return
+      }
+      if (requestHandlers.has(normalized)) {
+        logger.error(`[Plugin:${pluginId}] Duplicate request handler for action "${normalized}" (replacing)`, undefined)
+      }
+      requestHandlers.set(normalized, handler)
+      logger.log(`[Plugin:${pluginId}] Registered request handler: ${normalized}`)
+    },
+
+    events: {
+      /**
+       * 发一条命名空间事件。投递名 = `plugin:<pluginId>:<name>`,
+       * 任何插件都能用 api.on 订阅它。payload 过线,必须 JSON-可序列化。
+       */
+      emit(eventName: string, payload?: unknown): void {
+        if (rejectLateCall('events.emit')) return
+        const name = String(eventName || '').trim()
+        if (!name) {
+          logger.error(`[Plugin:${pluginId}] events.emit needs a non-empty event name`, undefined)
+          return
+        }
+        try {
+          assertPluginPayloadSerializable(payload, `plugin event "${name}" payload`)
+        } catch (error) {
+          logger.error(`[Plugin:${pluginId}] events.emit rejected:`, error)
+          reportFailure(`events.emit:${name}`, error)
+          return
+        }
+        try {
+          host.emitPluginEvent?.(pluginId, name, payload)
+        } catch (error) {
+          logger.error(`[Plugin:${pluginId}] events.emit failed:`, error)
+          reportFailure(`events.emit:${name}`, error)
+        }
+      },
     },
 
     onDispose(callback: () => void): void {

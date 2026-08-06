@@ -5,6 +5,17 @@ import {
   runWithPluginTimeout,
   type CorePluginRuntimeHealth,
 } from './runtime-guard.js'
+import {
+  CorePluginRequestRegistry,
+  PLUGIN_REQUEST_ABORTED_ERROR,
+  assertPluginPayloadSerializable,
+  normalizePluginRequestAction,
+  pluginRequestErrorMessage,
+  type CorePluginRequestContext,
+  type CorePluginRequestHandler,
+  type CorePluginRequestInput,
+  type CorePluginRequestResult,
+} from './request-channel.js'
 
 export interface CorePluginInfo<
   TEntry = unknown,
@@ -20,6 +31,8 @@ export interface CorePluginInfo<
 
 export interface CorePluginStateLike<TCommand = unknown> {
   commands: Map<string, TCommand>
+  /** 统一请求通道的分发表。宿主适配器由 createCorePluginAPI 提供。 */
+  requestHandlers?: Map<string, CorePluginRequestHandler>
 }
 
 export interface CorePluginManagerLogger {
@@ -44,7 +57,11 @@ export interface CorePluginManagerHost<
 > {
   ensurePluginDirs(): void
   scanPlugins(): TDefinition[]
-  loadPluginEntry(definition: TDefinition): Promise<TEntry | null>
+  /**
+   * `reloadToken` 每次 enable 递增 —— 宿主拿它给 ESM 说明符加 cache-buster,
+   * 于是 disable→enable 拿到的是新模块(热重载)。
+   */
+  loadPluginEntry(definition: TDefinition, reloadToken?: number): Promise<TEntry | null>
   createPluginAPI(pluginId: string, context: TContext): { api: TApi; state: TState }
   disposePlugin(state: TState): void
   setPluginEnabled(pluginId: string, enabled: boolean): void
@@ -70,6 +87,9 @@ export class CorePluginManager<
   private context: TContext | null = null
   private refreshInFlight: Promise<void> | null = null
   private generation = 0
+  private readonly toggleQueues = new Map<string, Promise<void>>()
+  private readonly reloadTokens = new Map<string, number>()
+  private readonly requests = new CorePluginRequestRegistry()
 
   constructor(
     private readonly host: CorePluginManagerHost<TDefinition, TEntry, TApi, TState, TCommand, TContext>,
@@ -82,7 +102,29 @@ export class CorePluginManager<
     await this.refreshPlugins()
   }
 
+  /**
+   * per-plugin 串行化。
+   *
+   * 熔断的自动禁用是 fire-and-forget,用户手上的开关是另一条线 —— 两者撞在一起
+   * 时,"先 dispose 后 load" 与 "先 load 后 dispose" 结果完全不同(后者留下一个
+   * 已注册但被标记为关闭的插件)。同一个插件的 enable/disable 排成一队。
+   */
+  private runExclusive<T>(pluginId: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.toggleQueues.get(pluginId) ?? Promise.resolve()
+    const next = previous.then(task, task)
+    // 队列只用于排序,不传播失败:一次失败的 disable 不该毒死后续所有操作。
+    this.toggleQueues.set(pluginId, next.then(() => undefined, () => undefined))
+    return next
+  }
+
   async disablePlugin(pluginId: string): Promise<void> {
+    return this.runExclusive(pluginId, async () => this.disablePluginNow(pluginId))
+  }
+
+  private disablePluginNow(pluginId: string): void {
+    // 该插件名下所有在飞请求先中止 —— 否则它们会在一个已经被拆掉的插件里跑完。
+    this.requests.abortForPlugin(pluginId)
+
     const state = this.pluginStates.get(pluginId)
     if (state) {
       this.host.disposePlugin(state)
@@ -102,12 +144,100 @@ export class CorePluginManager<
   }
 
   async enablePlugin(pluginId: string): Promise<void> {
-    const info = this.plugins.get(pluginId)
-    if (!info) return
-    if (info.loaded) await this.disablePlugin(pluginId)
-    info.definition.enabled = true
-    this.host.setPluginEnabled(pluginId, true)
-    await this.loadPlugin(info.definition)
+    return this.runExclusive(pluginId, async () => {
+      const info = this.plugins.get(pluginId)
+      if (!info) return
+      if (info.loaded) this.disablePluginNow(pluginId)
+      info.definition.enabled = true
+      this.host.setPluginEnabled(pluginId, true)
+      // 重新启用要拿新模块:改完插件代码 disable→enable 就该生效,不必重启 app。
+      this.reloadTokens.set(pluginId, (this.reloadTokens.get(pluginId) ?? 0) + 1)
+      await this.loadPlugin(info.definition)
+    })
+  }
+
+  /** 热重载令牌 —— 宿主的 importEntry 拿它做 ESM cache-buster。 */
+  getReloadToken(pluginId: string): number {
+    return this.reloadTokens.get(pluginId) ?? 0
+  }
+
+  // ── 统一请求通道 ──────────────────────────────
+
+  /**
+   * 按 pluginId + action 分发一次请求。
+   *
+   * 分发逻辑住在 core:四个宿主(Electron / server / CLI daemon / 将来的子进程)
+   * 共用同一份寻址与序列化语义,@main 只做薄接线。
+   */
+  async handleRequest(input: CorePluginRequestInput): Promise<CorePluginRequestResult> {
+    const action = normalizePluginRequestAction(input.action)
+    const requestId = input.requestId || this.requests.nextRequestId(input.pluginId)
+
+    const state = this.pluginStates.get(input.pluginId)
+    if (!state) {
+      const info = this.plugins.get(input.pluginId)
+      return {
+        success: false,
+        error: info
+          ? `Plugin "${input.pluginId}" is not active${info.error ? ` (${info.error})` : ''}`
+          : `Unknown plugin "${input.pluginId}"`,
+      }
+    }
+
+    const handler = state.requestHandlers?.get(action)
+    if (!handler) {
+      return {
+        success: false,
+        error: `Plugin "${input.pluginId}" has no request handler for action "${action}"`,
+      }
+    }
+
+    try {
+      assertPluginPayloadSerializable(input.payload, 'request payload')
+    } catch (error) {
+      return { success: false, error: pluginRequestErrorMessage(error) }
+    }
+
+    const controller = this.requests.begin(requestId, input.pluginId)
+    const ctx: CorePluginRequestContext = {
+      requestId,
+      abortSignal: controller.signal,
+      progress: payload => {
+        try {
+          assertPluginPayloadSerializable(payload, 'progress payload')
+        } catch (error) {
+          this.logger.error(`[PluginManager] Dropping non-serializable progress from "${input.pluginId}":`, error)
+          return
+        }
+        input.onProgress?.({ requestId, pluginId: input.pluginId, action, payload })
+      },
+    }
+
+    try {
+      const result = await handler(input.payload, ctx)
+      if (controller.signal.aborted) {
+        return { success: false, error: PLUGIN_REQUEST_ABORTED_ERROR, aborted: true }
+      }
+      assertPluginPayloadSerializable(result, 'request result')
+      return { success: true, result: result ?? null }
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return { success: false, error: PLUGIN_REQUEST_ABORTED_ERROR, aborted: true }
+      }
+      this.logger.error(`[PluginManager] Request "${input.pluginId}/${action}" failed:`, error)
+      return { success: false, error: pluginRequestErrorMessage(error) }
+    } finally {
+      this.requests.end(requestId)
+    }
+  }
+
+  abortRequest(requestId: string): boolean {
+    return this.requests.abort(requestId)
+  }
+
+  /** 某插件当前登记的 action 列表(设置页/调试用)。 */
+  getRequestActions(pluginId: string): string[] {
+    return [...(this.pluginStates.get(pluginId)?.requestHandlers?.keys() ?? [])]
   }
 
   /**
@@ -208,6 +338,18 @@ export class CorePluginManager<
       return
     }
 
+    // 声明层闸门:非法 contributes / minAppVersion 不满足 —— 一行插件代码都不跑。
+    if (def.loadBlockedReason) {
+      this.logger.error(`[PluginManager] Plugin "${def.id}" blocked: ${def.loadBlockedReason}`)
+      this.plugins.set(def.id, {
+        definition: def,
+        loaded: false,
+        commands: [],
+        error: def.loadBlockedReason,
+      })
+      return
+    }
+
     this.logger.log(`[PluginManager] Loading plugin: ${def.id}`)
 
     const entryTimeoutMs = this.options.entryTimeoutMs ?? CORE_PLUGIN_ENTRY_TIMEOUT_MS
@@ -228,7 +370,7 @@ export class CorePluginManager<
       entry = await runWithPluginTimeout(
         `load:${def.id}`,
         loadBudgetMs,
-        () => this.host.loadPluginEntry(def),
+        () => this.host.loadPluginEntry(def, this.reloadTokens.get(def.id) ?? 0),
       )
     } catch (error) {
       if (stale()) return

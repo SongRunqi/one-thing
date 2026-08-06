@@ -42,7 +42,7 @@ function createHost(): CorePluginManagerHost<
   return {
     ensurePluginDirs,
     scanPlugins,
-    loadPluginEntry,
+    loadPluginEntry: (definition, reloadToken) => loadPluginEntry(definition, reloadToken),
     createPluginAPI(pluginId, context) {
       return createPluginAPI(pluginId, context.eventBus, context.streamEngine)
     },

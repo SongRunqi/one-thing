@@ -533,6 +533,31 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.PRACTICE_EVENT, listener);
 	},
 
+	// 统一请求通道(R2)。requestId 由调用方带下来,abort 与 progress 都按它寻址。
+	pluginRequest: (request: {
+		pluginId: string;
+		action: string;
+		payload?: unknown;
+		requestId?: string;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REQUEST, request),
+
+	abortPluginRequest: (requestId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_REQUEST_ABORT, { requestId }),
+
+	onPluginRequestProgress: (
+		callback: (payload: {
+			requestId: string;
+			pluginId: string;
+			action: string;
+			payload: unknown;
+		}) => void,
+	) => {
+		const listener = (_event: any, payload: any) => callback(payload);
+		ipcRenderer.on(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, listener);
+	},
+
 	onPluginNotification: (
 		callback: (payload: {
 			pluginId: string;

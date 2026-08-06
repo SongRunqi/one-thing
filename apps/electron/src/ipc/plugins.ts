@@ -14,6 +14,8 @@ export interface ElectronPluginsIpcChannels {
   refresh: string
   commands: string
   executeCommand: string
+  request: string
+  abortRequest: string
 }
 
 export interface ElectronPluginToggleRequest {
@@ -26,6 +28,17 @@ export interface ElectronPluginExecuteCommandRequest {
   sessionId: string
 }
 
+export interface ElectronPluginRequestPayload {
+  pluginId: string
+  action: string
+  payload?: unknown
+  requestId?: string
+}
+
+export interface ElectronPluginAbortRequestPayload {
+  requestId: string
+}
+
 export interface RegisterElectronPluginsIpcHandlersOptions {
   channels: ElectronPluginsIpcChannels
   listPlugins(): unknown
@@ -34,6 +47,8 @@ export interface RegisterElectronPluginsIpcHandlersOptions {
   refreshPlugins(): unknown
   listCommands(): unknown
   executeCommand(request: ElectronPluginExecuteCommandRequest): unknown
+  pluginRequest(request: ElectronPluginRequestPayload): unknown
+  abortPluginRequest(request: ElectronPluginAbortRequestPayload): unknown
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -64,5 +79,13 @@ export function registerElectronPluginsIpcHandlers(
 
   host.handle(options.channels.executeCommand, (_event, request: ElectronPluginExecuteCommandRequest) => {
     return options.executeCommand(request)
+  })
+
+  host.handle(options.channels.request, (_event, request: ElectronPluginRequestPayload) => {
+    return options.pluginRequest(request)
+  })
+
+  host.handle(options.channels.abortRequest, (_event, request: ElectronPluginAbortRequestPayload) => {
+    return options.abortPluginRequest(request)
   })
 }

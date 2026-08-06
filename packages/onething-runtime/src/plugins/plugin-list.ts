@@ -3,6 +3,14 @@ export interface OnethingPluginListManifestLike {
   version: string
   description?: string
   author?: string
+  minAppVersion?: string
+  contributes?: {
+    commands?: Array<{ name: string }>
+    panels?: Array<{ id: string; label: string }>
+    settings?: { title?: string; schema?: Record<string, unknown> }
+    permissions?: string[]
+    activation?: { events?: string[] }
+  }
 }
 
 export interface OnethingPluginListDefinitionLike {
@@ -32,6 +40,11 @@ export interface OnethingPluginListItemLike {
   health?: OnethingPluginRuntimeHealthLike
 }
 
+export interface ProjectOnethingPluginsOptions {
+  /** 每个插件当前登记的请求 action(来自 manager 的活状态,不是 manifest)。 */
+  getRequestActions?(pluginId: string): string[]
+}
+
 export interface OnethingRendererPluginInfo {
   id: string
   source: string
@@ -45,6 +58,20 @@ export interface OnethingRendererPluginInfo {
   error: string
   dirPath: string
   needsInstall: boolean
+  /**
+   * manifest 声明的贡献点摘要(宪法第 3 条:声明先于代码)。
+   * R2 只把它透出到设置页,消费者在 R3(settings)/R5(panels)。
+   */
+  contributes: {
+    commands: string[]
+    panels: Array<{ id: string; label: string }>
+    hasSettingsSchema: boolean
+    permissions: string[]
+    activationEvents: string[]
+  }
+  /** 插件登记的请求通道 action 列表。 */
+  requestActions: string[]
+  minAppVersion: string
   /** 'healthy' | 'installing' | 'degraded' | 'disabled';无健康记录时为 'healthy'。 */
   healthStatus: string
   healthFailures: number
@@ -67,6 +94,7 @@ export interface OnethingRendererPluginCommandInfo {
 
 export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPluginListItemLike>(
   plugins: TPlugin[],
+  options: ProjectOnethingPluginsOptions = {},
 ): OnethingRendererPluginInfo[] {
   return plugins.map(plugin => ({
     id: plugin.definition.id,
@@ -81,6 +109,18 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
     error: plugin.error || '',
     dirPath: plugin.definition.dirPath,
     needsInstall: plugin.definition.needsInstall || false,
+    contributes: {
+      commands: (plugin.definition.manifest.contributes?.commands ?? []).map(command => command.name),
+      panels: (plugin.definition.manifest.contributes?.panels ?? []).map(panel => ({
+        id: panel.id,
+        label: panel.label,
+      })),
+      hasSettingsSchema: Boolean(plugin.definition.manifest.contributes?.settings?.schema),
+      permissions: plugin.definition.manifest.contributes?.permissions ?? [],
+      activationEvents: plugin.definition.manifest.contributes?.activation?.events ?? [],
+    },
+    requestActions: options.getRequestActions?.(plugin.definition.id) ?? [],
+    minAppVersion: plugin.definition.manifest.minAppVersion || '',
     healthStatus: plugin.health?.status || 'healthy',
     healthFailures: plugin.health?.consecutiveFailures || 0,
     healthReason: plugin.health?.disabledReason

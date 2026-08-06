@@ -53,10 +53,14 @@ export function createPluginAPI(
 ): { api: PluginAPI; state: PluginState } {
   const store = new PluginStore(pluginId)
   const schedulerDisposeCallbacks: Array<() => void> = []
+  // 拆除闸要能被 scheduler 看到,而 state 是 createCorePluginAPI 的返回值 ——
+  // 用一个后填的引用把两者接上(register 只在调用时读它)。
+  const stateRef: { current: PluginState | null } = { current: null }
   const pluginScheduler = createScopedPluginScheduler({
     pluginId,
     scheduler: getScheduler(),
     disposeCallbacks: schedulerDisposeCallbacks,
+    isDisposed: () => Boolean(stateRef.current?.disposed),
   }) as PluginSchedulerAPI
 
   const result = createCorePluginAPI<
@@ -107,11 +111,25 @@ export function createPluginAPI(
         )
       },
       subscribeEvent(id, eventType, handler) {
+        // 插件自定义事件是**全局**事件(它不属于任何一次会话),会话事件走
+        // per-session 环形缓冲 —— 两条投递面不同,订阅口必须按前缀分流,
+        // 否则 api.on('plugin:x:y') 永远收不到东西。
+        if (eventType.startsWith('plugin:')) {
+          return eventBus.onGlobal(eventType as any, handler as any)
+        }
         return eventBus.onAnySession(
           eventType as any,
           handler as any,
           `Plugin:${id}`,
         )
+      },
+      emitPluginEvent(id, eventName, payload) {
+        eventBus.emitGlobal({
+          type: `plugin:${id}:${eventName}`,
+          pluginId: id,
+          name: eventName,
+          payload,
+        } as any)
       },
       steer(_, sessionId, content) {
         streamEngine.steerMessage(sessionId, content, pluginId)
@@ -139,6 +157,7 @@ export function createPluginAPI(
     },
   })
 
+  stateRef.current = result.state
   return result
 }
 

@@ -1,6 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { pathToFileURL } from 'url'
 import type {
   CorePluginDefinition,
   PersistedPluginHealth,
@@ -176,12 +177,110 @@ export function checkPluginNeedsInstall(dirPath: string): boolean {
   return false
 }
 
+/**
+ * 轻量 semver 比较(不引依赖 —— core 是零依赖层)。
+ *
+ * 只认 `major.minor.patch` 前缀,预发布后缀(`-beta.1`)被忽略:minAppVersion
+ * 想表达的是"宿主至少要有这个能力面",预发布次序不值得为它引一个依赖。
+ * 返回 <0 / 0 / >0。
+ */
+export function compareCoreSemver(a: string, b: string): number {
+  const parse = (value: string): number[] => {
+    const core = String(value).trim().replace(/^[vV]/, '').split(/[-+]/)[0]
+    const parts = core.split('.').map(part => Number.parseInt(part, 10))
+    return [parts[0] || 0, parts[1] || 0, parts[2] || 0]
+  }
+  const left = parse(a)
+  const right = parse(b)
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index]
+  }
+  return 0
+}
+
+/** 宿主版本未知(没配)时一律放行 —— 拿不到版本不是拒绝加载的理由。 */
+export function checkPluginMinAppVersion(
+  manifest: Pick<PluginManifest, 'minAppVersion'>,
+  appVersion?: string,
+): string | null {
+  const required = manifest.minAppVersion?.trim()
+  if (!required || !appVersion) return null
+  if (compareCoreSemver(appVersion, required) >= 0) return null
+  return `requires app >= ${required} (current ${appVersion})`
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * contributes 段校验。
+ *
+ * 返回错误字符串而不是抛 —— 非法声明让插件进 error 态,不能把整轮扫描带崩
+ * (一个手写坏了的 plugin.json 不该让其余插件全部消失)。
+ */
+export function validatePluginContributes(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null
+  if (!isPlainRecord(raw)) return 'contributes must be an object'
+
+  const commands = raw.commands
+  if (commands !== undefined) {
+    if (!Array.isArray(commands)) return 'contributes.commands must be an array'
+    for (const [index, command] of commands.entries()) {
+      if (!isPlainRecord(command) || typeof command.name !== 'string' || !command.name.trim()) {
+        return `contributes.commands[${index}].name must be a non-empty string`
+      }
+    }
+  }
+
+  const panels = raw.panels
+  if (panels !== undefined) {
+    if (!Array.isArray(panels)) return 'contributes.panels must be an array'
+    for (const [index, panel] of panels.entries()) {
+      if (!isPlainRecord(panel) || typeof panel.id !== 'string' || !panel.id.trim()) {
+        return `contributes.panels[${index}].id must be a non-empty string`
+      }
+      if (typeof panel.label !== 'string' || !panel.label.trim()) {
+        return `contributes.panels[${index}].label must be a non-empty string`
+      }
+    }
+  }
+
+  const settings = raw.settings
+  if (settings !== undefined) {
+    if (!isPlainRecord(settings)) return 'contributes.settings must be an object'
+    if (settings.schema !== undefined && !isPlainRecord(settings.schema)) {
+      return 'contributes.settings.schema must be a JSON Schema object'
+    }
+  }
+
+  const permissions = raw.permissions
+  if (permissions !== undefined) {
+    if (!Array.isArray(permissions) || permissions.some(item => typeof item !== 'string')) {
+      return 'contributes.permissions must be an array of strings'
+    }
+  }
+
+  const activation = raw.activation
+  if (activation !== undefined) {
+    if (!isPlainRecord(activation)) return 'contributes.activation must be an object'
+    if (activation.events !== undefined
+      && (!Array.isArray(activation.events) || activation.events.some(item => typeof item !== 'string'))) {
+      return 'contributes.activation.events must be an array of strings'
+    }
+  }
+
+  return null
+}
+
 export function parsePluginDirectory<TEntry = unknown>(input: {
   id: string
   dirPath: string
   enabled: boolean
   source?: PluginSource
   defaultEntry?: string
+  /** 宿主版本;用于 minAppVersion 判定。省略 = 跳过判定。 */
+  appVersion?: string
 }): CorePluginDefinition<TEntry> | null {
   const manifestPath = path.join(input.dirPath, 'plugin.json')
   let manifest: CorePluginDefinition<TEntry>['manifest'] | null = null
@@ -206,6 +305,15 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
     return null
   }
 
+  // 声明层的两道闸,都在扫描期判完:非法 contributes 与宿主版本不够。
+  // 判定结果只标记,不抛 —— 一个坏 plugin.json 不该让整轮扫描消失。
+  const contributesError = validatePluginContributes((manifest as { contributes?: unknown }).contributes)
+  if (contributesError) {
+    console.warn(`[PluginLoader] Plugin "${input.id}" has invalid contributes: ${contributesError}`)
+    manifest = { ...manifest, contributes: undefined }
+  }
+  const versionError = checkPluginMinAppVersion(manifest, input.appVersion)
+
   return {
     id: input.id,
     source: input.source,
@@ -214,6 +322,8 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
     entryPath,
     enabled: input.enabled,
     needsInstall: checkPluginNeedsInstall(input.dirPath),
+    loadBlockedReason: versionError
+      ?? (contributesError ? `invalid plugin.json: ${contributesError}` : undefined),
   }
 }
 
@@ -221,6 +331,7 @@ export function scanPluginDirectories<TEntry = unknown>(input: {
   pluginsDir: string
   seenIds?: Set<string>
   getEnabled: (pluginId: string) => boolean
+  appVersion?: string
 }): CorePluginDefinition<TEntry>[] {
   if (!fs.existsSync(input.pluginsDir)) {
     return []
@@ -243,6 +354,7 @@ export function scanPluginDirectories<TEntry = unknown>(input: {
       dirPath,
       enabled: input.getEnabled(entry.name),
       source: 'user',
+      appVersion: input.appVersion,
     })
     if (definition) {
       plugins.push(definition)
@@ -257,6 +369,8 @@ export function scanCorePlugins<TEntry = unknown>(input: {
   builtinPlugins: Array<CorePluginDefinition<TEntry>>
   pluginsDir: string
   getEnabled: (pluginId: string) => boolean
+  /** 宿主版本 —— 只对用户插件生效:内置插件与 app 同一份构建,永远匹配。 */
+  appVersion?: string
 }): Array<CorePluginDefinition<TEntry>> {
   const seen = new Set(input.builtinPlugins.map(plugin => plugin.id))
   return [
@@ -265,6 +379,7 @@ export function scanCorePlugins<TEntry = unknown>(input: {
       pluginsDir: input.pluginsDir,
       seenIds: seen,
       getEnabled: input.getEnabled,
+      appVersion: input.appVersion,
     }),
   ]
 }
@@ -287,6 +402,24 @@ export interface CorePluginDependencyInstallAsyncAdapters {
   logger?: CorePluginLoaderLogger
   onInstallStart?(dirPath: string): void
   onInstallEnd?(dirPath: string, error: string | null): void
+}
+
+/**
+ * 热重载:给 ESM 说明符加 cache-buster。
+ *
+ * 裸 `import(entryPath)` 会命中 ESM 模块缓存 —— 改一行插件代码要重启整个 app,
+ * 那是平台开发体验的地板以下(对照 VS Code 的 F5 Extension Development Host)。
+ * 加一个 query 就得到新的模块记录;顺带把绝对路径转成 file:// URL,
+ * 这也是 Windows 上 `import('C:\\...')` 唯一能工作的形式。
+ */
+export function buildPluginEntryImportSpecifier(entryPath: string, reloadToken?: string | number): string {
+  const isUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(entryPath)
+  let specifier = entryPath
+  if (!isUrl && path.isAbsolute(entryPath)) {
+    specifier = pathToFileURL(entryPath).href
+  }
+  if (reloadToken === undefined || reloadToken === null || reloadToken === '') return specifier
+  return `${specifier}${specifier.includes('?') ? '&' : '?'}v=${encodeURIComponent(String(reloadToken))}`
 }
 
 export interface CorePluginEntryModule<TEntry = unknown> {

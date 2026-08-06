@@ -16,6 +16,7 @@ import {
   getCorePluginSettingsPath,
   getCorePluginsDir,
   getPluginEnabledWithAdapters,
+  buildPluginEntryImportSpecifier,
   installCorePluginDependenciesAsync,
   listPluginHealthFromSettings,
   loadCorePluginEntry,
@@ -26,6 +27,7 @@ import {
   writePluginSettingsFile,
 } from '@onething/core/plugins'
 import type { PersistedPluginHealth } from '@onething/core/plugins'
+import { getPluginAppVersion } from './app-version.js'
 import {
   clearPluginRuntimeHealth,
   markPluginInstalling,
@@ -107,6 +109,7 @@ export function scanPlugins(): PluginDefinition[] {
     builtinPlugins: getBuiltinPlugins(),
     pluginsDir: getPluginsDir(),
     getEnabled: pluginId => getPluginEnabled(pluginId),
+    appVersion: getPluginAppVersion(),
   }) as PluginDefinition[]
 }
 
@@ -195,11 +198,20 @@ export function installPluginDeps(dirPath: string, pluginId?: string): Promise<s
   return install
 }
 
-/** Load a plugin's entry module dynamically */
-export async function loadPluginEntry(def: PluginDefinition): Promise<PluginEntry | null> {
+/**
+ * Load a plugin's entry module dynamically.
+ *
+ * `reloadToken` 走 ESM cache-buster:裸 import 会命中模块缓存,改一行插件代码
+ * 就得重启整个 app。manager 每次 enable 递增它,于是 disable→enable 拿到的是
+ * **新模块**。
+ */
+export async function loadPluginEntry(
+  def: PluginDefinition,
+  reloadToken?: string | number,
+): Promise<PluginEntry | null> {
   return loadCorePluginEntry(def, {
     installDependencies: dirPath => installPluginDeps(dirPath, def.id),
-    importEntry: entryPath => import(entryPath),
+    importEntry: entryPath => import(buildPluginEntryImportSpecifier(entryPath, reloadToken)),
     logger: console,
   })
 }

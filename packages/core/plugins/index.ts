@@ -22,7 +22,11 @@ export { CorePluginStore } from './store.js'
 export type { PluginStoreOptions } from './store.js'
 export {
   DEFAULT_PLUGIN_ENTRY,
+  buildPluginEntryImportSpecifier,
+  checkPluginMinAppVersion,
   checkPluginNeedsInstall,
+  compareCoreSemver,
+  validatePluginContributes,
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,
   getCorePluginSettingsPath,
@@ -90,6 +94,20 @@ export type {
   CorePluginHostToolContext,
   CorePluginHostToolResult,
 } from './api-builder.js'
+export {
+  CorePluginRequestRegistry,
+  PLUGIN_REQUEST_ABORTED_ERROR,
+  assertPluginPayloadSerializable,
+  describeNonSerializable,
+  normalizePluginRequestAction,
+  pluginRequestErrorMessage,
+} from './request-channel.js'
+export type {
+  CorePluginRequestContext,
+  CorePluginRequestHandler,
+  CorePluginRequestInput,
+  CorePluginRequestResult,
+} from './request-channel.js'
 export {
   createScopedPluginScheduler,
   isPluginTaskSnapshot,

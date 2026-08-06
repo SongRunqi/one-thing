@@ -1105,6 +1105,56 @@ describe('createOnethingHttpServer', () => {
     })
   })
 
+  /**
+   * 方案 A(设计文档 §6):插件只在 Electron 桌面宿主执行,server 的插件目录是
+   * 只读镜像。带参路由存在的意义就是**不静默** —— 调用方要拿到一条说明了原因的
+   * 501,而不是 404 或者一个永远 pending 的请求。
+   */
+  it('answers the parameterized plugin request route with a readable 501', async () => {
+    const dataRoot = await createTempDir('onething-plugin-request-data-')
+    const workspaceRoot = await createTempDir('onething-plugin-request-workspace-')
+    const serverRuntime = await createTestServerRuntime({ dataRoot, workspaceRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const headers = { ...contextHeaders('alice', 'plugin-workspace'), 'content-type': 'application/json' }
+
+    const response = await fetch(`${baseUrlValue}/api/plugins/note-skills/search`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ payload: { q: 'hello' }, requestId: 'req-1' }),
+    })
+    expect(response.status).toBe(501)
+    const body = await response.json() as {
+      success: boolean
+      error: string
+      pluginId: string
+      action: string
+      host: string
+    }
+    expect(body.success).toBe(false)
+    expect(body.error).toContain('desktop host only')
+    expect(body).toMatchObject({ pluginId: 'note-skills', action: 'search', host: 'server' })
+
+    // 参数化不能吃掉既有的精确路由 —— /api/plugins/enable 长得就像 :id。
+    await expect(fetchJson(`${baseUrlValue}/api/plugins/enable`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ pluginId: 'note-skills' }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/plugins/refresh`, {
+      method: 'POST',
+      headers,
+    })).resolves.toEqual({ success: true })
+    const commands = await fetchJson(`${baseUrlValue}/api/plugins/commands`, {
+      headers: contextHeaders('alice', 'plugin-workspace'),
+    })
+    expect(commands.success).toBe(true)
+  })
+
   it('routes scheduler requests through the runtime facade with owner context', async () => {
     const listTasks = vi.fn(async () => ({ success: true, tasks: [] }))
     const getTask = vi.fn(async request => ({ success: true, task: { id: request.id } }))

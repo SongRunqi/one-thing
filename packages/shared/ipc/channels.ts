@@ -342,6 +342,11 @@ export const IPC_CHANNELS = {
 	// 在此之前 'plugin:notification' 只被 emitGlobal 到全局总线上,而全局总线
 	// 在 core/events 之外零订阅者 —— 插件的唯一 UI 触点其实从未接通。
 	PLUGINS_NOTIFICATION: "plugins:notification",
+	// 统一请求通道(R2):UI → 插件的唯一通路,按 pluginId + action 分发。
+	// 三条语义从第一天就在:requestId(可寻址)、abort(真取消)、progress(中间态)。
+	PLUGINS_REQUEST: "plugins:request",
+	PLUGINS_REQUEST_ABORT: "plugins:request-abort",
+	PLUGINS_REQUEST_PROGRESS: "plugins:request-progress",
 
 	// Generic scheduler
 	SCHEDULER_LIST: "scheduler:list",

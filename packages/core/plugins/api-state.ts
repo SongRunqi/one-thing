@@ -1,7 +1,11 @@
+import type { CorePluginRequestHandler } from './request-channel.js'
+
 export interface CorePluginAPIState<TApi = unknown, TCommand = unknown> {
   api: TApi
   unsubs: Array<() => void>
   commands: Map<string, TCommand>
+  /** action → handler(统一请求通道的分发表,按插件私有)。 */
+  requestHandlers: Map<string, CorePluginRequestHandler>
   toolIds: string[]
   skillRootUnsubs: Array<() => void>
   promptContextUnsubs: Array<() => void>
@@ -57,4 +61,5 @@ export function disposeCorePluginState<TApi, TCommand>(
   drainCallbacks(state.unsubs)
 
   state.commands.clear()
+  state.requestHandlers.clear()
 }

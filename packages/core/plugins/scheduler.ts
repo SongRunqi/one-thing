@@ -42,6 +42,14 @@ export interface CreateScopedPluginSchedulerOptions<
   pluginId: string
   scheduler: CorePluginSchedulerHost<TTask, TSnapshot, TRunOptions, TRunRecord>
   disposeCallbacks?: Array<() => void>
+  /**
+   * 拆除闸(与 api 的注册入口同源)。
+   *
+   * dispose 只撤销**已注册**的任务;超时后恢复的 entry 再调 scheduler.register
+   * 会注册进全局调度器,而 disposeCallbacks 已经排空 —— 那是一个没有人能停掉的
+   * 孤儿定时任务。
+   */
+  isDisposed?(): boolean
 }
 
 export function scopePluginTaskId(pluginId: string, id: string): string {
@@ -99,6 +107,18 @@ export function createScopedPluginScheduler<
   return {
     register(task) {
       const pluginTaskId = task.id.trim()
+      if (options.isDisposed?.()) {
+        // 惰性 handle:插件拿到的对象照常可用,只是什么也不做 —— 让晚到的注册
+        // 静默失效,而不是让插件在 undefined 上崩一次。
+        return {
+          id: pluginTaskId,
+          unregister: () => {},
+          refresh: () => undefined,
+          getStatus: () => undefined,
+          runNow: () => Promise.reject(new Error(`Plugin "${pluginId}" was disposed`)),
+          setEnabled: () => undefined,
+        }
+      }
       const scopedTaskId = scopePluginTaskId(pluginId, pluginTaskId)
       const handle = scheduler.register({
         ...task,

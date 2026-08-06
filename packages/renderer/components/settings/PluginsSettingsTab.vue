@@ -129,6 +129,18 @@
                 </span>
                 <span class="meta-tag path">{{ plugin.id }}</span>
               </div>
+              <!-- 声明先于代码:manifest 的 contributes 摘要。宿主不执行一行
+                   插件代码就能说出它要贡献什么(消费者在 R3/R5)。 -->
+              <div
+                v-if="contributesSummary(plugin).length"
+                class="plugin-meta contributes"
+              >
+                <span
+                  v-for="item in contributesSummary(plugin)"
+                  :key="item"
+                  class="meta-tag declares"
+                >{{ item }}</span>
+              </div>
             </div>
           </div>
 
@@ -186,6 +198,42 @@ interface PluginInfo {
   healthStatus?: string
   healthFailures?: number
   healthReason?: string
+  minAppVersion?: string
+  requestActions?: string[]
+  contributes?: {
+    commands?: string[]
+    panels?: Array<{ id: string; label: string }>
+    hasSettingsSchema?: boolean
+    permissions?: string[]
+    activationEvents?: string[]
+  }
+}
+
+/**
+ * manifest 声明的贡献点摘要 —— 一行标签,不是 UI 工程。
+ * R2 只让它可见;渲染面板、渲染设置表单分别是 R5 与 R3 的事。
+ */
+function contributesSummary(plugin: PluginInfo): string[] {
+  const contributes = plugin.contributes
+  const summary: string[] = []
+  if (contributes?.panels?.length) {
+    summary.push(`declares ${contributes.panels.length} panel${contributes.panels.length > 1 ? 's' : ''}`)
+  }
+  if (contributes?.commands?.length) {
+    summary.push(`declares ${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)
+  }
+  if (contributes?.hasSettingsSchema) summary.push('declares settings')
+  if (contributes?.permissions?.length) {
+    summary.push(`permissions: ${contributes.permissions.join(', ')}`)
+  }
+  if (contributes?.activationEvents?.length) {
+    summary.push(`activation: ${contributes.activationEvents.join(', ')}`)
+  }
+  if (plugin.requestActions?.length) {
+    summary.push(`actions: ${plugin.requestActions.join(', ')}`)
+  }
+  if (plugin.minAppVersion) summary.push(`needs app >= ${plugin.minAppVersion}`)
+  return summary
 }
 
 /** 运行期故障文案:熔断说明优先,其次最后一次失败。'' = 没有故障。 */
@@ -481,6 +529,19 @@ onBeforeUnmount(() => {
 
 .meta-tag.path {
   color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
+}
+
+/* 声明摘要:比运行态更轻的一行,读起来像清单而不是状态。 */
+.plugin-meta.contributes {
+  margin-top: 0;
+}
+
+.meta-tag.declares {
+  padding: 1px 7px;
+  border: 1px dashed var(--settings-rule, var(--ui-border-default-border));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
 }
 
 .meta-tag.needs-install {

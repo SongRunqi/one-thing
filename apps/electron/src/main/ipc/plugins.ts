@@ -6,12 +6,16 @@
 
 import {
   registerElectronPluginsIpcHandlers,
+  type ElectronPluginAbortRequestPayload,
   type ElectronPluginExecuteCommandRequest,
+  type ElectronPluginRequestPayload,
   type ElectronPluginToggleRequest,
 } from '@onething/electron-host/ipc/plugins'
 import {
+  abortOnethingPluginRequestForIpc,
   disableOnethingPluginForIpc,
   enableOnethingPluginForIpc,
+  handleOnethingPluginRequestForIpc,
   executeOnethingPluginCommandForIpc,
   type ListOnethingPluginCommandsForIpcResult,
   listOnethingPluginCommandsForIpc,
@@ -22,6 +26,7 @@ import type { GatewayCommandProvider } from '@onething/gateway'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getPluginManager } from '@onething/app/plugins/index.js'
 import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
+import { getIPCBridge } from '../bridges/ipc-bridge-lifecycle.js'
 import { getEventBus } from '@onething/app/events/index.js'
 import * as store from '@onething/app/store.js'
 
@@ -96,6 +101,8 @@ export function registerPluginHandlers(): void {
       refresh: IPC_CHANNELS.PLUGINS_REFRESH,
       commands: IPC_CHANNELS.PLUGINS_COMMANDS,
       executeCommand: IPC_CHANNELS.PLUGINS_EXECUTE_COMMAND,
+      request: IPC_CHANNELS.PLUGINS_REQUEST,
+      abortRequest: IPC_CHANNELS.PLUGINS_REQUEST_ABORT,
     },
     listPlugins: () => {
       return listOnethingPluginsForIpc({
@@ -122,6 +129,28 @@ export function registerPluginHandlers(): void {
     refreshPlugins: () => {
       return refreshOnethingPluginsForIpc({
         manager: getPluginManager(),
+        logger: console,
+      })
+    },
+    // 统一请求通道:分发与序列化判断全在 core 的 manager.handleRequest,
+    // 这里只把 progress 接到 renderer 的推送通道上(@main 只做薄接线)。
+    pluginRequest: (request: ElectronPluginRequestPayload) => {
+      return handleOnethingPluginRequestForIpc({
+        manager: getPluginManager(),
+        pluginId: request.pluginId,
+        action: request.action,
+        payload: request.payload,
+        requestId: request.requestId,
+        onProgress: progress => {
+          getIPCBridge()?.sendToRenderer(IPC_CHANNELS.PLUGINS_REQUEST_PROGRESS, progress)
+        },
+        logger: console,
+      })
+    },
+    abortPluginRequest: (request: ElectronPluginAbortRequestPayload) => {
+      return abortOnethingPluginRequestForIpc({
+        manager: getPluginManager(),
+        requestId: request.requestId,
         logger: console,
       })
     },

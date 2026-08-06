@@ -18,6 +18,7 @@ import { flushAllPendingSaves } from "@onething/app/store.js";
 import { getSettings } from "@onething/app/stores/settings.js";
 import { startTodoPlanWatcher } from "@onething/app/todo-plan/store.js";
 import { configureSandboxHost } from "@onething/app/tools/core/sandbox.js";
+import { configurePluginAppVersion } from "@onething/app/plugins/app-version.js";
 import {
 	getConversationRuntime,
 	getStreamEngine,
@@ -83,6 +84,7 @@ import {
 import { configureSkillsEnvironmentHost } from "@onething/app/skills/loader.js";
 import {
 	getElectronAppIsPackaged,
+	getElectronAppVersion,
 	getElectronResourcesPath,
 } from "@onething/electron-host/skills/environment";
 import { configureAuthHost } from "@onething/app/auth/host-ports.js";
@@ -341,6 +343,9 @@ export function startOnethingElectronMain(): void {
 		updateTray: updateVoiceTray,
 	});
 	initializeAppLogging();
+	// 宿主版本是 minAppVersion 判定的唯一输入 —— 只有宿主自己知道它
+	// (打包后 package.json 不在可预测的相对位置)。没配 = 判定跳过。
+	configurePluginAppVersion(getElectronAppVersion());
 
 	// Suppress security warnings in development mode. Vite HMR needs unsafe-eval;
 	// production builds use strict CSP and do not show these warnings.

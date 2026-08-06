@@ -1177,6 +1177,36 @@ export interface ElectronAPI {
 	onPracticeEvent: (callback: (payload: PracticeEventPayload) => void) => () => void;
 
 	/**
+	 * 统一插件请求通道(R2)。payload / result 必须 JSON-可序列化。
+	 * server 端按方案 A 返回 501:插件只在 Electron 桌面宿主执行。
+	 */
+	pluginRequest: (request: {
+		pluginId: string;
+		action: string;
+		payload?: unknown;
+		requestId?: string;
+	}) => Promise<{
+		success: boolean;
+		requestId: string;
+		result?: unknown;
+		error?: string;
+		aborted?: boolean;
+	}>;
+
+	abortPluginRequest: (
+		requestId: string,
+	) => Promise<{ success: boolean; aborted: boolean; error?: string }>;
+
+	onPluginRequestProgress: (
+		callback: (payload: {
+			requestId: string;
+			pluginId: string;
+			action: string;
+			payload: unknown;
+		}) => void,
+	) => () => void;
+
+	/**
 	 * 插件通知(api.ui.notify + 熔断自动禁用告警)。
 	 * 仅 Electron 桌面宿主真会推 —— 插件只在桌面执行(设计文档 §6 方案 A)。
 	 */

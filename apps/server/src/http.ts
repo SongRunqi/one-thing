@@ -383,6 +383,14 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
     return withRequestId(permissionMatch[1], handlePermissionResponse)
   }
 
+  // 统一插件请求通道(R2)。方案 A 下 server 上没有插件执行面,这条路由存在的
+  // 唯一目的就是**不静默**:调用方拿到一条能读懂的 501,而不是 404 或者一个
+  // 永远 pending 的请求。将来 server 真跑插件时,替换 handler 即可,协议不变。
+  const pluginRequestMatch = pathname.match(/^\/api\/plugins\/([^/]+)\/([^/]+)$/)
+  if (pluginRequestMatch && method === 'POST') {
+    return withPluginRequestTarget(pluginRequestMatch[1], pluginRequestMatch[2], handlePluginRequest)
+  }
+
   const mediaFileMatch = pathname.match(/^\/api\/media\/file\/([^/]+)$/)
   if (mediaFileMatch && method === 'GET') {
     return withMediaFileName(mediaFileMatch[1], handleReadMediaFile)
@@ -443,6 +451,18 @@ function withPromptId(encodedPromptId: string, handler: RouteHandler): RouteHand
 function withSkillId(encodedSkillId: string, handler: RouteHandler): RouteHandler {
   return (context) => {
     context.url.searchParams.set('skillId', decodeURIComponent(encodedSkillId))
+    return handler(context)
+  }
+}
+
+function withPluginRequestTarget(
+  encodedPluginId: string,
+  encodedAction: string,
+  handler: RouteHandler,
+): RouteHandler {
+  return (context) => {
+    context.url.searchParams.set('pluginId', decodeURIComponent(encodedPluginId))
+    context.url.searchParams.set('action', decodeURIComponent(encodedAction))
     return handler(context)
   }
 }
@@ -1135,6 +1155,25 @@ async function handleExecutePluginCommand(context: RouteContext): Promise<void> 
   const adapter = context.runtime.plugins
   if (!adapter?.executeCommand) return sendNotImplemented(context, 'plugins.executeCommand')
   sendJson(context.response, 200, await adapter.executeCommand(await readJson(context.request), context.requestContext), context.corsOrigin)
+}
+
+/**
+ * 插件请求通道 —— 桌面-only(设计文档 §6 已拍板的方案 A)。
+ *
+ * apps/server 的插件目录是只读镜像:ServerPluginCatalogManager 的 entry 全是
+ * noop,插件代码在 server 上从不执行。所以这里返回一条**说明了原因**的 501,
+ * 而不是让请求悄无声息地消失。
+ */
+async function handlePluginRequest(context: RouteContext): Promise<void> {
+  const pluginId = context.url.searchParams.get('pluginId') || ''
+  const action = context.url.searchParams.get('action') || ''
+  sendJson(context.response, 501, {
+    success: false,
+    error: 'Plugins execute on the desktop host only; this server mirrors the plugin catalog read-only.',
+    pluginId,
+    action,
+    host: 'server',
+  }, context.corsOrigin)
 }
 
 async function handleOAuthStart(context: RouteContext): Promise<void> {

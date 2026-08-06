@@ -1110,6 +1110,72 @@ const webApi = {
 	// plugin:notification。这是有意降级,不是漏接。
 	onPluginNotification: () => () => {},
 
+	/**
+	 * 统一请求通道的 web 实现。
+	 *
+	 * 打的是真路由(`/api/plugins/:id/:action`),server 按方案 A 回 501 ——
+	 * **不是静默无应答**:调用方拿到的是一条能读懂的错误,而不是一个永远
+	 * pending 的 promise。将来 server 真跑插件时,这一侧一行都不用改。
+	 */
+	pluginRequest: async (request: {
+		pluginId: string;
+		action: string;
+		payload?: unknown;
+		requestId?: string;
+	}) => {
+		const requestId = request.requestId || `web-${Date.now().toString(36)}`;
+		// 直接 fetch 而不是 requestJson:后者对 !ok 只抛
+		// "Request failed: 501 Not Implemented",把服务端写好的解释丢了 ——
+		// 而这条错误的全部价值就在那句解释里。
+		try {
+			const response = await fetch(
+				`/api/plugins/${encodeURIComponent(request.pluginId)}/${encodeURIComponent(request.action)}`,
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ payload: request.payload, requestId }),
+				},
+			);
+			const body = (await response.json().catch(() => null)) as {
+				success?: boolean;
+				result?: unknown;
+				error?: string;
+				aborted?: boolean;
+			} | null;
+			if (!response.ok) {
+				return {
+					success: false,
+					requestId,
+					error:
+						body?.error ||
+						`Request failed: ${response.status} ${response.statusText}`,
+				};
+			}
+			return {
+				success: body?.success !== false,
+				requestId,
+				result: body?.result,
+				error: body?.error,
+				aborted: body?.aborted,
+			};
+		} catch (error) {
+			return {
+				success: false,
+				requestId,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	},
+
+	// abort/progress 需要一条活的双向通道;方案 A 下 web 端根本没有执行面,
+	// 所以这两个是诚实的空实现,而不是假装能取消。
+	abortPluginRequest: async () => ({
+		success: false,
+		aborted: false,
+		error: "Plugins execute on the desktop host only",
+	}),
+	onPluginRequestProgress: () => () => {},
+
 	projectDirsList: () => requestJson("/api/project-dirs"),
 	projectDirsGet: (path: string) => postJson("/api/project-dirs/get", { path }),
 	projectDirsAdd: (path: string, description?: string) =>

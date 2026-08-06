@@ -17,6 +17,8 @@ describe('electron plugins IPC host', () => {
     const refreshPlugins = vi.fn().mockResolvedValue({ success: true })
     const listCommands = vi.fn().mockResolvedValue({ success: true, commands: [] })
     const executeCommand = vi.fn().mockResolvedValue({ success: true, message: 'ok' })
+    const pluginRequest = vi.fn().mockResolvedValue({ success: true, requestId: 'r1', result: { ok: true } })
+    const abortPluginRequest = vi.fn().mockReturnValue({ success: true, aborted: true })
 
     registerElectronPluginsIpcHandlers({
       channels: {
@@ -26,6 +28,8 @@ describe('electron plugins IPC host', () => {
         refresh: 'plugins:refresh',
         commands: 'plugins:commands',
         executeCommand: 'plugins:execute-command',
+        request: 'plugins:request',
+        abortRequest: 'plugins:request-abort',
       },
       listPlugins,
       enablePlugin,
@@ -33,10 +37,12 @@ describe('electron plugins IPC host', () => {
       refreshPlugins,
       listCommands,
       executeCommand,
+      pluginRequest,
+      abortPluginRequest,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(6)
+    expect(handle).toHaveBeenCalledTimes(8)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'plugins:list',
       'plugins:enable',
@@ -44,6 +50,8 @@ describe('electron plugins IPC host', () => {
       'plugins:refresh',
       'plugins:commands',
       'plugins:execute-command',
+      'plugins:request',
+      'plugins:request-abort',
     ])
 
     const toggleRequest = { pluginId: 'notes' }
@@ -61,6 +69,14 @@ describe('electron plugins IPC host', () => {
     expect(disablePlugin).toHaveBeenCalledWith(toggleRequest)
     expect(refreshPlugins).toHaveBeenCalledWith()
     expect(listCommands).toHaveBeenCalledWith()
+    const channelRequest = { pluginId: 'notes', action: 'search', payload: { q: 'x' } }
+    await expect(handle.mock.calls[6][1]({}, channelRequest))
+      .resolves.toEqual({ success: true, requestId: 'r1', result: { ok: true } })
+    expect(handle.mock.calls[7][1]({}, { requestId: 'r1' }))
+      .toEqual({ success: true, aborted: true })
+
     expect(executeCommand).toHaveBeenCalledWith(executeRequest)
+    expect(pluginRequest).toHaveBeenCalledWith(channelRequest)
+    expect(abortPluginRequest).toHaveBeenCalledWith({ requestId: 'r1' })
   })
 })
