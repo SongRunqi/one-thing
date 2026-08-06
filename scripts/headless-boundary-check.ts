@@ -1717,11 +1717,20 @@ const BUILTIN_PLUGIN_FACADE_FORBIDDEN_PATTERNS: RegExp[] = [
   // 参数 schema 属于插件实现(它才是被模型调用的那一侧)。
   /from\s+['"]zod['"]/,
   // Node I/O / 子进程:插件能力,必须经运行时实现或注入的适配器。
+  // 三种取模块的写法都要堵:静态 import、require、动态 import(含 await 与裸用)。
   /from\s+['"](?:node:)?(?:fs|fs\/promises|os|path|child_process|http|https|net|readline|worker_threads)['"]/,
-  /\brequire\(\s*['"](?:node:)?(?:fs|fs\/promises|os|path|child_process|http|https|net)['"]\s*\)/,
-  // 直接往注入的 api 对象上挂东西 = 插件逻辑长在装配层。
-  /\bapi\s*\.\s*(?:registerTool|registerCommand|registerPromptContextProvider|registerSkillRoot|beforeContextCompact|afterAssistantResponse|onDispose|steer|followUp|store|scheduler|ui)\b/,
-  /\bapi\s*\.\s*on\s*\(/,
+  /\brequire\(\s*['"](?:node:)?(?:fs|fs\/promises|os|path|child_process|http|https|net|readline|worker_threads)['"]\s*\)/,
+  /\bimport\(\s*['"](?:node:)?(?:fs|fs\/promises|os|path|child_process|http|https|net|readline|worker_threads)['"]\s*\)/,
+  // **开放式**禁令:碰 api 的任何成员都是插件逻辑长在装配层。插座唯一合法的
+  // 形状是把 api 整个转交下去(`registerOnething*Plugin(api, { … })`)——那条
+  // 形状里不出现 `api.`,所以不需要成员白名单。逐个点名成员的旧写法漏掉的正是
+  // "下次新增的那个成员"。
+  /\bapi\s*\./,
+  // 解构 / 重命名入口参数 = 绕开上面那条的等价写法(`function p({ registerTool })`
+  // 之后就再也看不见 `api.` 了)。
+  /\bfunction\s*\w*\s*\(\s*\{/,
+  /\(\s*\{[^)]*\}\s*(?::\s*[^)]*)?\)\s*=>/,
+  /\b(?:const|let|var)\s+(?:\{[^}]*\}|\w+)\s*=\s*api\b/,
   // 控制流 = 行为,不是接线。
   /^\s*(?:if|for|while|switch|do)\s*[({]/,
   /^\s*(?:try|catch|finally)\b/,
@@ -2800,6 +2809,44 @@ function matchingLines(filePath: string, patterns: RegExp[]): string[] {
     .map((line, index) => ({ line, lineNo: index + 1 }))
     .filter(({ line }) => patterns.some(pattern => pattern.test(line)))
     .map(({ line, lineNo }) => `${rel(filePath)}:${lineNo}: ${line.trim()}`)
+}
+
+/**
+ * 逐行剥掉注释后的代码视图。
+ *
+ * 形状类规则(禁 api.*、禁控制流…)如果拿原始行去匹配,注释里随手写一句
+ * `// 这里不要 api.registerTool` 就会打出假红,而假红会逼人放宽规则 —— 棘轮
+ * 就是这么被磨钝的。
+ */
+function codeOnlyLines(content: string): Array<{ raw: string; code: string; lineNo: number }> {
+  let inBlockComment = false
+  return content.split(/\r?\n/).map((raw, index) => {
+    let code = raw
+    if (inBlockComment) {
+      const end = code.indexOf('*/')
+      if (end === -1) {
+        code = ''
+      } else {
+        code = ' '.repeat(end + 2) + code.slice(end + 2)
+        inBlockComment = false
+      }
+    }
+    code = code.replace(/\/\*[\s\S]*?\*\//g, ' ')
+    const blockStart = code.indexOf('/*')
+    if (blockStart !== -1) {
+      inBlockComment = true
+      code = code.slice(0, blockStart)
+    }
+    // `[^:]` 挡住 `https://…` 这类协议分隔符被误当行注释。
+    code = code.replace(/(^|[^:])\/\/.*$/, '$1')
+    return { raw, code, lineNo: index + 1 }
+  })
+}
+
+function matchingCodeLines(filePath: string, patterns: RegExp[]): string[] {
+  return codeOnlyLines(fs.readFileSync(filePath, 'utf-8'))
+    .filter(({ code }) => code.trim().length > 0 && patterns.some(pattern => pattern.test(code)))
+    .map(({ raw, lineNo }) => `${rel(filePath)}:${lineNo}: ${raw.trim()}`)
 }
 
 function matchingTextLines(label: string, content: string, patterns: RegExp[], lineOffset = 0): string[] {
@@ -9296,6 +9343,8 @@ const BUILTIN_PLUGIN_FACADE_DIR = 'packages/onething-runtime/src/app/plugins/bui
 const BUILTIN_PLUGIN_RUNTIME_DIR = 'packages/onething-runtime/src/plugins'
 const BUILTIN_PLUGIN_FACADE_MAX_LINES = 60
 
+const BUILTIN_PLUGIN_LOADER_FILE = 'packages/onething-runtime/src/app/plugins/loader.ts'
+
 /** 内置插件的 id 列表 = 插座目录的文件名。加一个插件就自动进入所有规则。 */
 function listBuiltinPluginIds(): string[] {
   const dir = path.join(root, BUILTIN_PLUGIN_FACADE_DIR)
@@ -9306,6 +9355,23 @@ function listBuiltinPluginIds(): string[] {
     .sort()
 }
 
+/**
+ * loader 眼中的内置插件:`getBuiltinPlugins()` 里的 id 字面量 + 它从 builtin/
+ * 目录 import 的模块名。这是**运行时**的那份权威。
+ */
+function listRegisteredBuiltinPluginIds(): { ids: string[]; imports: string[] } | null {
+  const loaderFile = path.join(root, BUILTIN_PLUGIN_LOADER_FILE)
+  if (!fs.existsSync(loaderFile)) return null
+  const content = fs.readFileSync(loaderFile, 'utf-8')
+
+  const body = /function\s+getBuiltinPlugins\s*\([^)]*\)\s*:[^{]*\{([\s\S]*?)\n\}/.exec(content)
+  if (!body) return null
+
+  const ids = [...body[1].matchAll(/\bid:\s*'([^']+)'/g)].map(match => match[1]).sort()
+  const imports = [...content.matchAll(/\bfrom\s+'\.\/builtin\/([\w.-]+?)(?:\.js)?'/g)].map(match => match[1]).sort()
+  return { ids, imports }
+}
+
 function checkPluginLogicStaysOutOfHostAssembly(): void {
   const pluginIds = listBuiltinPluginIds()
   const runtimeIndexFile = path.join(root, BUILTIN_PLUGIN_RUNTIME_DIR, 'index.ts')
@@ -9314,6 +9380,35 @@ function checkPluginLogicStaysOutOfHostAssembly(): void {
 
   if (pluginIds.length === 0) {
     lines.push(`${BUILTIN_PLUGIN_FACADE_DIR}: no built-in plugin facades found`)
+  }
+
+  // 0) 两份权威必须闭合。
+  //
+  // 本文件的全部规则以**目录**为权威(builtin/*.ts),拆除测试以 loader 的
+  // getBuiltinPlugins() 为权威。两边不做交叉断言的话,一个绕开 builtin/ 目录
+  // 直接注册的插件就同时逃过四条规则和拆除测试 —— 谁都没觉得自己漏了。
+  const registered = listRegisteredBuiltinPluginIds()
+  if (!registered) {
+    lines.push(`${BUILTIN_PLUGIN_LOADER_FILE}: getBuiltinPlugins() could not be parsed — the two builtin-plugin authorities can no longer be cross-checked`)
+  } else {
+    for (const id of registered.ids) {
+      if (!pluginIds.includes(id)) {
+        lines.push(`${BUILTIN_PLUGIN_LOADER_FILE}: built-in plugin "${id}" is registered but has no facade in ${BUILTIN_PLUGIN_FACADE_DIR}/`)
+      }
+    }
+    for (const id of pluginIds) {
+      if (!registered.ids.includes(id)) {
+        lines.push(`${BUILTIN_PLUGIN_FACADE_DIR}/${id}.ts: facade exists but "${id}" is not registered in getBuiltinPlugins()`)
+      }
+      if (!registered.imports.includes(id)) {
+        lines.push(`${BUILTIN_PLUGIN_LOADER_FILE}: missing import of ./builtin/${id}.js`)
+      }
+    }
+    for (const name of registered.imports) {
+      if (!pluginIds.includes(name)) {
+        lines.push(`${BUILTIN_PLUGIN_LOADER_FILE}: imports ./builtin/${name}.js which is not a facade file`)
+      }
+    }
   }
 
   for (const pluginId of pluginIds) {
@@ -9349,30 +9444,35 @@ function checkPluginLogicStaysOutOfHostAssembly(): void {
     if (facadeLines.length > BUILTIN_PLUGIN_FACADE_MAX_LINES) {
       lines.push(`${rel(facadeFile)}: built-in plugin facade must stay thin (${facadeLines.length} > ${BUILTIN_PLUGIN_FACADE_MAX_LINES} lines)`)
     }
-    lines.push(...matchingLines(facadeFile, BUILTIN_PLUGIN_FACADE_FORBIDDEN_PATTERNS))
-    lines.push(...facadeContent
-      .split(/\r?\n/)
-      .map((line, index) => ({ line, lineNo: index + 1 }))
-      .filter(({ line }) => !/^\s*(?:\*|\/\/|\/\*)/.test(line)
-        && !/\bfrom\s+['"]/.test(line)
-        && !/\bimport\s*\(/.test(line)
-        && BUILTIN_PLUGIN_FACADE_LONG_LITERAL.test(line))
-      .map(({ line, lineNo }) => `${rel(facadeFile)}:${lineNo}: ${line.trim()}`))
+    lines.push(...matchingCodeLines(facadeFile, BUILTIN_PLUGIN_FACADE_FORBIDDEN_PATTERNS))
+    lines.push(...codeOnlyLines(facadeContent)
+      .filter(({ code }) => !/\bfrom\s+['"]/.test(code)
+        && !/\bimport\s*\(/.test(code)
+        && BUILTIN_PLUGIN_FACADE_LONG_LITERAL.test(code))
+      .map(({ raw, lineNo }) => `${rel(facadeFile)}:${lineNo}: ${raw.trim()}`))
+  }
 
-    // 3) 插件行为的测试跟着实现走;装配层的 __tests__ 只留 core 原语测试。
-    for (const candidate of [`${pluginId}.test.ts`, `core-${pluginId}.test.ts`]) {
-      const parked = path.join(root, BUILTIN_PLUGIN_FACADE_DIR, '..', '__tests__', candidate)
-      if (!fs.existsSync(parked)) continue
-      const parkedContent = fs.readFileSync(parked, 'utf-8')
-      const nonCoreImports = parkedContent
-        .split(/\r?\n/)
-        .map((line, index) => ({ line, lineNo: index + 1 }))
-        .filter(({ line }) => /\bfrom\s+['"]/.test(line)
-          && !/from\s+['"](?:node:)?(?:fs|fs\/promises|os|path|crypto|util)['"]/.test(line)
-          && !/from\s+['"]vitest['"]/.test(line)
-          && !/from\s+['"]@onething\/core(?:\/|['"])/.test(line))
-        .map(({ line, lineNo }) => `${rel(parked)}:${lineNo}: plugin-behaviour test belongs next to the implementation — ${line.trim()}`)
-      lines.push(...nonCoreImports)
+  // 3) 插件**行为**的测试跟着实现走。装配层的两个 __tests__ 目录只留装配测试:
+  //    core 原语、插座接线、拆除快照。判据是 import 白名单 —— 只要伸手去
+  //    @onething/runtime/*(插件实现所在的产品层),这个测试就站错了树。
+  //    按目录全扫,不再只探两个候选文件名(那样改个文件名就绕过去了)。
+  for (const testDir of [
+    path.join(root, BUILTIN_PLUGIN_FACADE_DIR, '..', '__tests__'),
+    path.join(root, BUILTIN_PLUGIN_FACADE_DIR, '__tests__'),
+  ]) {
+    if (!fs.existsSync(testDir)) continue
+    for (const entry of fs.readdirSync(testDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.test.ts')) continue
+      const parked = path.join(testDir, entry.name)
+      lines.push(...codeOnlyLines(fs.readFileSync(parked, 'utf-8'))
+        .filter(({ code }) => /\bfrom\s+['"]/.test(code)
+          && !/from\s+['"](?:node:)?(?:fs|fs\/promises|os|path|crypto|util|url|events)['"]/.test(code)
+          && !/from\s+['"]vitest['"]/.test(code)
+          && !/from\s+['"]@onething\/core(?:\/|['"])/.test(code)
+          && !/from\s+['"]@onething\/app(?:\/|['"])/.test(code)
+          && !/from\s+['"]@shared(?:\/|['"])/.test(code)
+          && !/from\s+['"]\.{1,2}\//.test(code))
+        .map(({ raw, lineNo }) => `${rel(parked)}:${lineNo}: assembly-tree test must not import the product layer — plugin-behaviour tests belong next to the implementation — ${raw.trim()}`))
     }
   }
 
@@ -9388,20 +9488,7 @@ const RETIRED_FEATURE_TOKENS = [
   'activeMemory',
 ]
 
-function featureTokenVariants(token: string): string[] {
-  const words = token.split(/[-_\s]+/).filter(Boolean)
-  const lower = words.map(word => word.toLowerCase())
-  const pascal = lower.map(word => word[0].toUpperCase() + word.slice(1)).join('')
-  return Array.from(new Set([
-    token,
-    lower.join('-'),
-    lower.join('_'),
-    lower.join(''),
-    pascal,
-    pascal[0].toLowerCase() + pascal.slice(1),
-  ]))
-}
-
+/** 归一化后 kebab/camel/snake/pascal 全部相等,所以不需要生成变体。 */
 function normalizeFeatureToken(value: string): string {
   return value.replace(/[^A-Za-z0-9]/g, '').toLowerCase()
 }
@@ -9409,44 +9496,76 @@ function normalizeFeatureToken(value: string): string {
 /**
  * core 不认识任何具体功能。
  *
- * 扫的是**字符串字面量与属性名**(不是标识符):`name: 'log-monitor'`、
+ * **覆盖范围(有意为之的有限集)**:token 集 = 内置插件 id(builtin/ 目录)+
+ * RETIRED_FEATURE_TOKENS 退役名单。它抓的是"已知功能名泄漏进 core",不是
+ * 一个通用的领域词检测器 —— 一个从没在这两处登记过的新功能名不会被抓到,
+ * 加内置插件时目录会自动带上,退役功能要手工进名单。
+ *
+ * **扫描面**:字符串字面量(含**模板串**,`${…}` 段剔除;跨行模板做文件级
+ * 配对粗扫)与属性名 —— `name: 'log-monitor'`、`` `[LogMonitor] …` ``、
  * `settings.general.soulMemory.x`、`data['note-skills']` 全部算红。
- * 模块说明符(import/export 的路径)被排除 —— 它是文件布局问题,不是知识泄漏,
- * 由分层检查另管。
+ * 标识符本身不算(`CORE_LOG_MONITOR_MAX` 这类符号名属文件布局问题);
+ * import/export 的模块说明符同样排除,由分层检查另管。
  */
 function checkCoreKnowsNoConcreteFeatures(): void {
-  const tokens = new Set<string>()
-  for (const raw of [...listBuiltinPluginIds(), ...RETIRED_FEATURE_TOKENS]) {
-    for (const variant of featureTokenVariants(raw)) {
-      tokens.add(normalizeFeatureToken(variant))
-    }
-  }
-  const known = [...tokens].filter(Boolean)
+  const known = [...new Set(
+    [...listBuiltinPluginIds(), ...RETIRED_FEATURE_TOKENS].map(normalizeFeatureToken),
+  )].filter(Boolean)
 
-  const stringLiteral = /(['"])((?:\\.|(?!\1)[^\\])*)\1/g
-  const moduleSpecifier = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)(['"])(?:\\.|(?!\1)[^\\])*\1/g
+  // 反引号进字符类:`[LogMonitor] ${x}` 这类模板串正是活样本的逃逸口。
+  const stringLiteral = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g
+  const moduleSpecifier = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(\s*|\bimport\s+)(['"])(?:\\.|(?!\1)[^\\])*\1/g
   const memberAccess = /\.\s*([A-Za-z_$][\w$]*)/g
   const objectKey = /(?:^|[{,;])\s*([A-Za-z_$][\w$]*)\s*:/g
+  const multilineTemplate = /`(?:\\[\s\S]|[^`\\])*`/g
+
+  const hitToken = (value: string): string | undefined => {
+    const normalized = normalizeFeatureToken(value)
+    return normalized.length > 0 && known.some(token => normalized.includes(token))
+      ? normalized
+      : undefined
+  }
+  // 插值段剔除:它是变量,不是 core 写下的知识。
+  const withoutInterpolation = (value: string): string => value.replace(/\$\{[^}]*\}/g, ' ')
 
   const lines: string[] = []
   for (const file of walkFiles(path.join(root, 'packages/core'), [], { includeTests: true })) {
     if (!/\.(ts|tsx|js|mjs|cjs)$/.test(file)) continue
     const content = fs.readFileSync(file, 'utf-8')
-    content.split(/\r?\n/).forEach((rawLine, index) => {
+    const reported = new Set<number>()
+    const report = (lineNo: number, hit: string, raw: string): void => {
+      if (reported.has(lineNo)) return
+      reported.add(lineNo)
+      lines.push(`${rel(file)}:${lineNo}: core must not know concrete feature "${hit}" — ${raw.trim()}`)
+    }
+
+    const rawLines = content.split(/\r?\n/)
+    rawLines.forEach((rawLine, index) => {
       if (/^\s*(?:\*|\/\/|\/\*)/.test(rawLine)) return
       const line = rawLine.replace(moduleSpecifier, ' ')
       const candidates: string[] = []
-      for (const match of line.matchAll(stringLiteral)) candidates.push(match[2])
+      for (const match of line.matchAll(stringLiteral)) candidates.push(withoutInterpolation(match[2]))
       for (const match of line.matchAll(memberAccess)) candidates.push(match[1])
       for (const match of line.matchAll(objectKey)) candidates.push(match[1])
 
-      const hit = candidates
-        .map(normalizeFeatureToken)
-        .find(value => value.length > 0 && known.some(token => value.includes(token)))
-      if (hit) {
-        lines.push(`${rel(file)}:${index + 1}: core must not know concrete feature "${hit}" — ${rawLine.trim()}`)
+      for (const candidate of candidates) {
+        const hit = hitToken(candidate)
+        if (hit) {
+          report(index + 1, hit, rawLine)
+          return
+        }
       }
     })
+
+    // 跨行模板串逐行扫不到(单行正则配不上首尾反引号)。文件级配对粗扫补上。
+    for (const match of content.matchAll(multilineTemplate)) {
+      const body = match[0]
+      if (!body.includes('\n')) continue
+      const hit = hitToken(withoutInterpolation(body.slice(1, -1)))
+      if (!hit) continue
+      const lineNo = content.slice(0, match.index ?? 0).split('\n').length
+      report(lineNo, hit, rawLines[lineNo - 1] ?? body.slice(0, 80))
+    }
   }
 
   assertNoMatches('packages/core knows no concrete plugin or feature names', lines)
@@ -9476,9 +9595,15 @@ function checkAliasTargetsExist(): void {
     const find = match[1]
     const target = match[2]
     // 正则 alias 的 replacement 带 $1 捕获,能验证的是它的落点目录。
-    const probe = target.includes('$')
-      ? path.dirname(path.join(root, target.slice(0, target.indexOf('$'))))
-      : path.join(root, target)
+    // `…/sessions/$1.ts` 截出来是 `…/sessions/`,已经就是目录 —— 再 dirname
+    // 一次会退到 `src/`,那就等于什么也没验。
+    let probe: string
+    if (target.includes('$')) {
+      const prefix = target.slice(0, target.indexOf('$'))
+      probe = path.join(root, prefix.endsWith('/') ? prefix.slice(0, -1) : path.dirname(prefix))
+    } else {
+      probe = path.join(root, target)
+    }
     if (!fs.existsSync(probe)) {
       const lineNo = content.slice(0, match.index ?? 0).split('\n').length
       lines.push(`onething.aliases.ts:${lineNo}: alias ${find} points at a missing target ${target}`)
@@ -9495,18 +9620,19 @@ function checkAliasTargetsExist(): void {
 // 宪法第 1 条:插件的全部权力 = 注入的 api 对象。
 // 插件代码(用户插件样例 + 内置插件实现)只准吃 Node 内置、zod、@onething/core;
 // 任何指向宿主 bundle 的 import 都是把"通道"变回"整个进程"。
-const PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [
-  /^\s*import\s[^'"]*from\s+['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron)/,
-  /^\s*import\s+['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron)/,
-  /\brequire\(\s*['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron)/,
-  /\bawait\s+import\(\s*['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron)/,
-]
+//
+// 按**模块说明符**匹配,不按语句形状:`import x from`、`import 'x'`、
+// `export … from`、`require()`、`await import()`、裸 `import()`、
+// `const m = await import()` —— 取模块的写法太多,逐个枚举语句形状必漏
+// (旧写法就漏了 export-from 与不带 await 的动态 import)。
+const PLUGIN_HOST_MODULE_SPECIFIER = /['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron['"]|electron\/)/
+const PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [PLUGIN_HOST_MODULE_SPECIFIER]
 
 const USER_PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [
   ...PLUGIN_HOST_IMPORT_PATTERNS,
-  // 用户插件住在 <store>/plugins/<id>/,爬出插件目录去 import 宿主源码同样禁止。
-  /^\s*import\s[^'"]*from\s+['"]\.\.\/\.\./,
-  /\brequire\(\s*['"]\.\.\/\.\./,
+  // 用户插件住在 <store>/plugins/<id>/,爬出插件目录去 import 宿主源码同样禁止
+  // (同样按说明符匹配,静态/动态/require 一网打尽)。
+  /['"]\.\.\/\.\./,
 ]
 
 function checkPluginsOnlyUseInjectedApi(): void {
@@ -9516,20 +9642,18 @@ function checkPluginsOnlyUseInjectedApi(): void {
   for (const pluginId of listBuiltinPluginIds()) {
     const implFile = path.join(root, BUILTIN_PLUGIN_RUNTIME_DIR, `${pluginId}.ts`)
     if (!fs.existsSync(implFile)) continue
-    lines.push(...matchingLines(implFile, PLUGIN_HOST_IMPORT_PATTERNS))
-    lines.push(...fs.readFileSync(implFile, 'utf-8')
-      .split(/\r?\n/)
-      .map((line, index) => ({ line, lineNo: index + 1 }))
-      .filter(({ line }) => /^\s*import\s[^'"]*from\s+['"]\.\.?\//.test(line))
-      .map(({ line, lineNo }) => `${rel(implFile)}:${lineNo}: plugin implementation must not reach into sibling host modules — ${line.trim()}`))
+    lines.push(...matchingCodeLines(implFile, PLUGIN_HOST_IMPORT_PATTERNS))
+    lines.push(...codeOnlyLines(fs.readFileSync(implFile, 'utf-8'))
+      .filter(({ code }) => /(?:\bfrom\s+|\brequire\(\s*|\bimport\(\s*|\bimport\s+)['"]\.{1,2}\//.test(code))
+      .map(({ raw, lineNo }) => `${rel(implFile)}:${lineNo}: plugin implementation must not reach into sibling host modules — ${raw.trim()}`))
   }
 
   // (b) 用户插件形态的样例:它们是这条宪法唯一的可执行说明书。
   const samplesDir = path.join(root, 'sample-plugins')
   if (fs.existsSync(samplesDir)) {
     for (const file of walkFiles(samplesDir)) {
-      if (!/\.(ts|js|mjs|cjs)$/.test(file)) continue
-      lines.push(...matchingLines(file, USER_PLUGIN_HOST_IMPORT_PATTERNS))
+      if (!/\.(tsx?|jsx?|mjs|cjs)$/.test(file)) continue
+      lines.push(...matchingCodeLines(file, USER_PLUGIN_HOST_IMPORT_PATTERNS))
     }
   }
 

@@ -487,7 +487,7 @@ export class CoreLogMonitorDiskWriter {
     this.writeStream.onDrain(() => {
       this.backpressure = false
     })
-    this.adapters.log?.(`[LogMonitor] Rotated to ${nextLogFileName}`)
+    this.adapters.log?.(`[AgentLog] Rotated to ${nextLogFileName}`)
   }
 
   cleanupOldLogs(): void {
@@ -548,6 +548,12 @@ export class CoreLogMonitorDiskWriter {
       clearTimeout(this.flushTimer)
       this.flushTimer = null
     }
+    // 先把缓冲写出去再收流:flush 间隔是 1s,直接 end() 等于把禁用前最后一秒的
+    // 日志丢掉 —— 而那一秒往往正是用户要禁用它的原因。
+    const pending = this.writeBuffer.splice(0)
+    if (pending.length > 0 && this.writeStream && !this.writeStream.destroyed) {
+      this.writeStream.write(pending.join('\n') + '\n')
+    }
     this.writeStream?.end()
     this.writeStream = null
   }
@@ -573,7 +579,7 @@ export function registerCoreLogMonitorPlugin<TToolParameters>(
     }
 
     if (result.notify) {
-      api.ui.notify(`[LogMonitor] ${result.entry.summary}`, 'error')
+      api.ui.notify(`[AgentLog] ${result.entry.summary}`, 'error')
     }
   }
 
@@ -644,7 +650,7 @@ export function registerCoreLogMonitorPlugin<TToolParameters>(
 
   options.ensureLogDir?.()
   diskWriter.rotateIfNeeded()
-  options.logger?.log?.(`[LogMonitor] Initialized. Buffer: ${maxBuffer}.`)
+  options.logger?.log?.(`[AgentLog] Initialized. Buffer: ${maxBuffer}.`)
 
   return {
     buffer: logBuffer,

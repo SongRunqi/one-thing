@@ -19,11 +19,6 @@ import {
   type CorePluginManagerHost,
   type CorePluginStateLike,
 } from '@onething/core/plugins'
-import {
-  clearAllPromptContextProviders,
-  collectPluginPromptContext,
-  registerPromptContextProvider,
-} from '@onething/runtime/prompts'
 
 interface TestAPI {
   registerCommand(name: string): void
@@ -66,10 +61,6 @@ function createManagerHost(definitions: TestDefinition[]) {
   }
   return { host, disposed, states }
 }
-
-afterEach(() => {
-  clearAllPromptContextProviders()
-})
 
 describe('R1 soft isolation — timeout budget', () => {
   it('rejects with a timeout error instead of hanging forever', async () => {
@@ -148,25 +139,8 @@ describe('R1 soft isolation — one bad plugin does not stall the queue', () => 
   })
 })
 
-describe('R1 soft isolation — prompt assembly never waits forever', () => {
-  it('drops a hanging provider and still returns the other fragments', async () => {
-    registerPromptContextProvider('hanging-plugin', 'stuck', () => new Promise(() => {}))
-    registerPromptContextProvider('good-plugin', 'fast', () => 'fast fragment')
-
-    const failures: Array<{ pluginId: string; timedOut: boolean }> = []
-    const fragments = await collectPluginPromptContext({ hasTools: true, skills: [] }, {
-      timeoutMs: 25,
-      onProviderFailure: failure => failures.push({ pluginId: failure.pluginId, timedOut: failure.timedOut }),
-    })
-
-    expect(fragments).toEqual([{
-      role: 'developer',
-      source: 'plugins/good-plugin/fast',
-      content: 'fast fragment',
-    }])
-    expect(failures).toEqual([{ pluginId: 'hanging-plugin', timedOut: true }])
-  })
-})
+// promptContextProvider 的超时验收住在产品层:
+// packages/onething-runtime/src/prompts/__tests__/plugin-context-timeout.test.ts
 
 describe('R1 soft isolation — lifecycle hooks are budgeted', () => {
   it('times out a hanging beforeContextCompact hook and keeps going', async () => {

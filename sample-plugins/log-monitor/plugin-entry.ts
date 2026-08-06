@@ -17,7 +17,11 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { z } from 'zod'
 
-/** @param {import('../../apps/electron/src/main/plugins/types').PluginAPI} api */
+/**
+ * @param api The injected plugin API — a user plugin's entire power surface.
+ *   It is never imported: the host passes it in. (See the boundary guard
+ *   "plugins reach the host only through the injected api object".)
+ */
 export default function logMonitorPlugin(api) {
   // ── Configuration ──────────────────────────────────
   const MAX_BUFFER = 500

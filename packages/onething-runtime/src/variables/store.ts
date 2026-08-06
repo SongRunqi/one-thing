@@ -103,6 +103,16 @@ export class VariablesStore {
     return () => this.listeners.delete(callback)
   }
 
+  /**
+   * 订阅数 —— 拆除测试的快照项之一。
+   *
+   * note-skills 经 onVariableChange 在这里挂了一条真订阅;它是"注册表之外的
+   * 残留"的活样本,不进快照的话,删掉实现里的 onDispose(unsubscribe) 测试照样绿。
+   */
+  listenerCount(): number {
+    return this.listeners.size
+  }
+
   hydrateForTests(state: VariablesFile): void {
     this.state = state
     this.initialized = true

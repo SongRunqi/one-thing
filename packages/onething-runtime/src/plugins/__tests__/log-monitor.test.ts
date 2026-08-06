@@ -70,7 +70,7 @@ describe('runtime log-monitor plugin', () => {
       expect(runtime.buffer.entries).toHaveLength(1)
       expect(runtime.diskWriter.pendingLineCount).toBe(1)
       expect(notifications).toEqual([
-        { message: '[LogMonitor] Stream error: boom', level: 'error' },
+        { message: '[AgentLog] Stream error: boom', level: 'error' },
       ])
     } finally {
       runtime.diskWriter.flush()

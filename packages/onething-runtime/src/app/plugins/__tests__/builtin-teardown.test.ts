@@ -20,7 +20,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>
 
 async function loadModules() {
-  const [loader, api, tools, promptContext, skillRoots, lifecycle, scheduler] = await Promise.all([
+  const [loader, api, tools, promptContext, skillRoots, lifecycle, scheduler, variables] = await Promise.all([
     import('../loader.js'),
     import('../api.js'),
     import('../../tools/index.js'),
@@ -28,8 +28,9 @@ async function loadModules() {
     import('../../skills/plugin-roots.js'),
     import('../lifecycle.js'),
     import('../../scheduler/index.js'),
+    import('../../variables/index.js'),
   ])
-  return { loader, api, tools, promptContext, skillRoots, lifecycle, scheduler }
+  return { loader, api, tools, promptContext, skillRoots, lifecycle, scheduler, variables }
 }
 
 interface RegistrySnapshot {
@@ -39,6 +40,8 @@ interface RegistrySnapshot {
   lifecycleHooks: { beforeContextCompact: number; afterAssistantResponse: number }
   eventSubscriptions: number
   schedulerTaskIds: string[]
+  /** 注册表之外的残留:note-skills 经 onVariableChange 挂的真订阅。 */
+  variableSubscriptions: number
 }
 
 /** Counting EventBus stand-in: subscriptions are a registry too, and a leaked
@@ -80,6 +83,12 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
   } catch {
     schedulerTaskIds = []
   }
+  let variableSubscriptions = 0
+  try {
+    variableSubscriptions = mods.variables.getVariablesStore().listenerCount()
+  } catch {
+    variableSubscriptions = 0
+  }
   return {
     toolIds: mods.tools.getAllTools().map((tool: { id: string }) => tool.id).sort(),
     promptContextProviders: mods.promptContext.getPromptContextProviderCount(),
@@ -87,6 +96,7 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
     lifecycleHooks: mods.lifecycle.getLifecycleHookCounts(),
     eventSubscriptions: bus.subscriptionCount,
     schedulerTaskIds,
+    variableSubscriptions,
   }
 }
 
@@ -135,6 +145,7 @@ describe('built-in plugin teardown leaves no residue', () => {
         afterAssistantResponse: during.lifecycleHooks.afterAssistantResponse - before.lifecycleHooks.afterAssistantResponse,
         eventSubscriptions: during.eventSubscriptions - before.eventSubscriptions,
         schedulerTasks: during.schedulerTaskIds.filter(id => !before.schedulerTaskIds.includes(id)),
+        variableSubscriptions: during.variableSubscriptions - before.variableSubscriptions,
       }
       const totalFootprint = footprint.tools.length
         + footprint.commands.length
@@ -144,6 +155,7 @@ describe('built-in plugin teardown leaves no residue', () => {
         + footprint.afterAssistantResponse
         + footprint.eventSubscriptions
         + footprint.schedulerTasks.length
+        + footprint.variableSubscriptions
       expect(
         totalFootprint,
         `built-in plugin "${definition.id}" registered nothing — the teardown assertion would be vacuous`,
