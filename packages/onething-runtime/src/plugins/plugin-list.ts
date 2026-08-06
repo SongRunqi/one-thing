@@ -1,4 +1,4 @@
-import { describePluginConfigSchema } from './config-schema.js'
+import { describePluginConfigSchema, type PluginConfigField } from './config-schema.js'
 
 export interface OnethingPluginListManifestLike {
   name: string
@@ -83,11 +83,19 @@ export interface OnethingRendererPluginInfo {
    * 配置区的渲染材料(R3)。schema 单源在 manifest,归约成控件表在产品层 ——
    * renderer 不自己解 JSON Schema,两端各写一份解析器就是漂移的开始。
    */
-  configFields: OnethingPluginConfigFieldLike[]
+  configFields: PluginConfigField[]
   configTitle: string
   configValues: Record<string, unknown>
   /** 声明了 settings schema 但超出宿主控件集时的逐条原因。 */
   configUnsupportedReasons: string[]
+  /**
+   * configValues 是"schema 默认值"而不是宿主真实存量。
+   *
+   * server 只读镜像没接取值器 —— 不标出来的话,用户会把默认值读成桌面真值。
+   */
+  configValuesAreDefaults: boolean
+  /** 本宿主是否允许编辑配置(方案 A 下 server 侧为 false)。 */
+  configEditable: boolean
   minAppVersion: string
   /** 'healthy' | 'installing' | 'degraded' | 'disabled';无健康记录时为 'healthy'。 */
   healthStatus: string
@@ -148,31 +156,28 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
   }))
 }
 
-export interface OnethingPluginConfigFieldLike {
-  key: string
-  control: 'switch' | 'text' | 'number' | 'select' | 'string-list'
-  label: string
-  hint?: string
-  required: boolean
-  options?: string[]
-  minimum?: number
-  maximum?: number
-  integer?: boolean
-  defaultValue: unknown
-}
-
 function projectPluginConfig<TPlugin extends OnethingPluginListItemLike>(
   plugin: TPlugin,
   options: ProjectOnethingPluginsOptions,
 ): {
-  configFields: OnethingPluginConfigFieldLike[]
+  configFields: PluginConfigField[]
   configTitle: string
   configValues: Record<string, unknown>
   configUnsupportedReasons: string[]
+  configValuesAreDefaults: boolean
+  configEditable: boolean
 } {
+  const editable = Boolean(options.getConfig)
   const settings = plugin.definition.manifest.contributes?.settings
   if (!settings?.schema) {
-    return { configFields: [], configTitle: '', configValues: {}, configUnsupportedReasons: [] }
+    return {
+      configFields: [],
+      configTitle: '',
+      configValues: {},
+      configUnsupportedReasons: [],
+      configValuesAreDefaults: false,
+      configEditable: editable,
+    }
   }
   const described = describePluginConfigSchema(settings.schema, {
     title: settings.title,
@@ -184,16 +189,21 @@ function projectPluginConfig<TPlugin extends OnethingPluginListItemLike>(
       configTitle: settings.title || '',
       configValues: {},
       configUnsupportedReasons: described.reasons,
+      configValuesAreDefaults: false,
+      configEditable: editable,
     }
   }
+  // 宿主没给取值器时(server 只读镜像)退回默认值:呈现要诚实,
+  // 但不能因为拿不到值就把整个配置区藏起来 —— 所以退默认的同时把
+  // configValuesAreDefaults 标出来,让 UI 说清楚"这不是桌面真值"。
   return {
     configFields: described.fields,
     configTitle: described.title || '',
-    // 宿主没给取值器时(server 只读镜像)退回默认值:呈现要诚实,
-    // 但不能因为拿不到值就把整个配置区藏起来。
     configValues: options.getConfig?.(plugin.definition.id)
       ?? Object.fromEntries(described.fields.map(field => [field.key, field.defaultValue])),
     configUnsupportedReasons: [],
+    configValuesAreDefaults: !editable,
+    configEditable: editable,
   }
 }
 

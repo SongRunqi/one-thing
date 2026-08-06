@@ -152,10 +152,17 @@
               <div class="plugin-config-head">
                 <span class="plugin-config-title">{{ plugin.configTitle || 'Configuration' }}</span>
                 <span
-                  v-if="!configEditable"
+                  v-if="!isConfigEditable(plugin)"
                   class="meta-tag readonly"
-                >read-only on web</span>
+                >{{ plugin.configValuesAreDefaults ? 'read-only on web — defaults shown' : 'read-only on web' }}</span>
               </div>
+              <p
+                v-if="!isConfigEditable(plugin) && plugin.configValuesAreDefaults"
+                class="plugin-config-note"
+              >
+                These are the schema defaults, not this plugin's values on your desktop — plugins run on the
+                desktop host only, so the values there may differ.
+              </p>
 
               <ErrorNote
                 v-if="plugin.configUnsupportedReasons?.length"
@@ -164,77 +171,92 @@
               />
 
               <SettingsGroup v-else>
-                <SettingsField
+                <template
                   v-for="field in plugin.configFields"
                   :key="field.key"
-                  :label="field.label"
-                  :hint="field.hint"
                 >
-                  <Switch
+                  <!-- boolean 走 SettingRow:标签+描述在左、开关在右,与其余 tab 对齐。 -->
+                  <SettingRow
                     v-if="field.control === 'switch'"
-                    variant="ledger"
-                    :model-value="Boolean(draftFor(plugin)[field.key])"
-                    :disabled="!configEditable"
-                    :aria-label="field.label"
-                    @update:model-value="setDraft(plugin, field.key, Boolean($event))"
-                  />
-                  <InputNumber
-                    v-else-if="field.control === 'number'"
-                    :model-value="Number(draftFor(plugin)[field.key])"
-                    :min="field.minimum"
-                    :max="field.maximum"
-                    :step="field.integer ? 1 : undefined"
-                    :disabled="!configEditable"
-                    :aria-label="field.label"
-                    @update:model-value="setDraft(plugin, field.key, Number($event))"
-                  />
-                  <Select
-                    v-else-if="field.control === 'select'"
-                    variant="ledger"
-                    size="small"
-                    teleported
-                    fit-input-width
-                    :model-value="String(draftFor(plugin)[field.key] ?? '')"
-                    :options="field.options || []"
-                    :disabled="!configEditable"
-                    :aria-label="field.label"
-                    @update:model-value="setDraft(plugin, field.key, String($event))"
-                  />
-                  <Input
-                    v-else-if="field.control === 'string-list'"
-                    :model-value="stringListText(draftFor(plugin)[field.key])"
-                    :disabled="!configEditable"
-                    :aria-label="field.label"
-                    placeholder="Comma separated"
-                    @update:model-value="setDraft(plugin, field.key, parseStringList(String($event)))"
-                  />
-                  <Input
+                    :label="field.label + (field.required ? ' *' : '')"
+                    :description="fieldError(plugin, field.key) || field.hint"
+                  >
+                    <Switch
+                      variant="ledger"
+                      :model-value="Boolean(draftFor(plugin)[field.key])"
+                      :disabled="!isConfigEditable(plugin)"
+                      :aria-label="field.label"
+                      @update:model-value="setDraft(plugin, field.key, Boolean($event))"
+                    />
+                  </SettingRow>
+
+                  <SettingsField
                     v-else
-                    :model-value="String(draftFor(plugin)[field.key] ?? '')"
-                    :disabled="!configEditable"
-                    :aria-label="field.label"
-                    @update:model-value="setDraft(plugin, field.key, String($event))"
-                  />
-                </SettingsField>
+                    :label="field.label + (field.required ? ' *' : '')"
+                    :hint="fieldError(plugin, field.key) || field.hint"
+                  >
+                    <InputNumber
+                      v-if="field.control === 'number'"
+                      :model-value="Number(draftFor(plugin)[field.key])"
+                      :min="field.minimum"
+                      :max="field.maximum"
+                      :step="field.integer ? 1 : undefined"
+                      :disabled="!isConfigEditable(plugin)"
+                      :aria-label="field.label"
+                      @update:model-value="setDraft(plugin, field.key, Number($event))"
+                    />
+                    <Select
+                      v-else-if="field.control === 'select'"
+                      variant="ledger"
+                      size="small"
+                      teleported
+                      fit-input-width
+                      :model-value="String(draftFor(plugin)[field.key] ?? '')"
+                      :options="field.options || []"
+                      :disabled="!isConfigEditable(plugin)"
+                      :aria-label="field.label"
+                      @update:model-value="setDraft(plugin, field.key, String($event))"
+                    />
+                    <!-- string-list 编辑期间只维护**原始文本**:每敲一键就
+                         split+trim+filter 再 join 回去是有损往返 —— 键入逗号
+                         当场被自己吃掉,根本打不出第二项。blur 时才 parse。 -->
+                    <Input
+                      v-else-if="field.control === 'string-list'"
+                      :model-value="stringListDraft(plugin, field.key)"
+                      :disabled="!isConfigEditable(plugin)"
+                      :aria-label="field.label"
+                      placeholder="Comma separated"
+                      @update:model-value="setStringListText(plugin, field.key, String($event))"
+                      @blur="commitStringList(plugin, field.key)"
+                    />
+                    <Input
+                      v-else
+                      :model-value="String(draftFor(plugin)[field.key] ?? '')"
+                      :disabled="!isConfigEditable(plugin)"
+                      :aria-label="field.label"
+                      @update:model-value="setDraft(plugin, field.key, String($event))"
+                    />
+                  </SettingsField>
+                </template>
               </SettingsGroup>
 
               <ErrorNote
-                v-if="configErrors[plugin.id]?.length"
+                v-if="generalErrors(plugin).length"
                 size="sm"
-                :message="configErrors[plugin.id].join('; ')"
+                :message="generalErrors(plugin).join('; ')"
               />
 
               <div
-                v-if="configEditable && plugin.configFields?.length"
+                v-if="isConfigEditable(plugin) && plugin.configFields?.length"
                 class="plugin-config-actions"
               >
                 <Button
                   unstyled
                   class="btn-sm"
-                  :disabled="!isDirty(plugin) || savingPluginId === plugin.id"
+                  :disabled="!isDirty(plugin) || savingPlugins.has(plugin.id)"
                   @click="saveConfig(plugin)"
                 >
-                  {{ savingPluginId === plugin.id ? 'Saving…' : 'Save' }}
+                  {{ savingPlugins.has(plugin.id) ? 'Saving…' : 'Save' }}
                 </Button>
                 <Button
                   v-if="isDirty(plugin)"
@@ -245,20 +267,24 @@
                   Reset
                 </Button>
                 <span
-                  v-if="savedPluginId === plugin.id && !isDirty(plugin)"
+                  v-if="savedPlugins.has(plugin.id)"
                   class="plugin-config-saved"
                 >Saved</span>
               </div>
             </div>
+          </div>
 
-            <div class="plugin-toggle">
-              <Switch
-                variant="ledger"
-                :model-value="plugin.enabled"
-                :aria-label="`Enable ${plugin.name}`"
-                @update:model-value="togglePlugin(plugin)"
-              />
-            </div>
+          <!-- 启用开关是 .plugin-item 的**直接子节点**:它靠
+               `.plugin-item{align-items:flex-start}` 锚在卡片右上角。挪进
+               .plugin-body 里(配置区之后)会让它掉到底部左侧,那条对齐规则
+               和 .plugin-toggle{flex-shrink:0} 一起变成死样式。 -->
+          <div class="plugin-toggle">
+            <Switch
+              variant="ledger"
+              :model-value="plugin.enabled"
+              :aria-label="`Enable ${plugin.name}`"
+              @update:model-value="togglePlugin(plugin)"
+            />
           </div>
         </div>
       </div>
@@ -289,10 +315,9 @@ import Input from '@/components/common/Input.vue'
 import InputNumber from '@/components/common/InputNumber.vue'
 import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
-import SettingsField from './SettingsField.vue'
-import SettingsGroup from './SettingsGroup.vue'
-import type { PluginConfigFieldDescriptor } from '@shared/ipc/plugins.js'
-import { computed, ref, onBeforeUnmount, onMounted } from 'vue'
+import { SettingRow, SettingsField, SettingsGroup } from './settings-primitives'
+import type { PluginConfigErrorDetail, PluginConfigFieldDescriptor } from '@shared/ipc/plugins.js'
+import { ref, onBeforeUnmount, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 
@@ -325,6 +350,8 @@ interface PluginInfo {
   configTitle?: string
   configValues?: Record<string, unknown>
   configUnsupportedReasons?: string[]
+  configValuesAreDefaults?: boolean
+  configEditable?: boolean
 }
 
 /**
@@ -334,12 +361,38 @@ interface PluginInfo {
  * 写一次盘并推一遍 onChange」。
  */
 const drafts = ref<Record<string, Record<string, unknown>>>({})
-const configErrors = ref<Record<string, string[]>>({})
-const savingPluginId = ref('')
-const savedPluginId = ref('')
+const configErrors = ref<Record<string, PluginConfigErrorDetail[]>>({})
+/**
+ * string-list 的编辑期文本态。
+ *
+ * 只存原始字符串:每敲一键就 split+trim+filter 再 join 回去是有损往返,
+ * 输入的逗号会被自己吃掉,第二项永远打不出来。blur 时才 parse 成数组。
+ */
+const stringListText = ref<Record<string, string>>({})
+// per-plugin 而不是单个 id:两个插件同时保存时,单值状态会互相顶掉。
+const savingPlugins = ref<Set<string>>(new Set())
+const savedPlugins = ref<Set<string>>(new Set())
+const savedTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-/** 方案 A:插件只在桌面执行,配置也只在桌面可编辑。 */
-const configEditable = computed(() => platformApi.environment !== 'web')
+/**
+ * 可编辑性以**投影字段**为准,环境只作缺省。
+ * 宿主自己最清楚它能不能写(方案 A 下 server 侧投影会给 false)。
+ */
+function isConfigEditable(plugin: PluginInfo): boolean {
+  return plugin.configEditable ?? (platformApi.environment !== 'web')
+}
+
+function fieldKey(plugin: PluginInfo, key: string): string {
+  return `${plugin.id}::${key}`
+}
+
+function fieldError(plugin: PluginInfo, key: string): string {
+  return configErrors.value[plugin.id]?.find(item => item.key === key)?.message ?? ''
+}
+
+function generalErrors(plugin: PluginInfo): string[] {
+  return (configErrors.value[plugin.id] ?? []).filter(item => !item.key).map(item => item.message)
+}
 
 function hasConfigArea(plugin: PluginInfo): boolean {
   return Boolean(plugin.configFields?.length) || Boolean(plugin.configUnsupportedReasons?.length)
@@ -358,12 +411,15 @@ function setDraft(plugin: PluginInfo, key: string, value: unknown): void {
     ...drafts.value,
     [plugin.id]: { ...draftFor(plugin), [key]: value },
   }
-  savedPluginId.value = ''
+  savedPlugins.value = withoutId(savedPlugins.value, plugin.id)
 }
 
 function resetDraft(plugin: PluginInfo): void {
   const { [plugin.id]: _dropped, ...rest } = drafts.value
   drafts.value = rest
+  stringListText.value = Object.fromEntries(
+    Object.entries(stringListText.value).filter(([key]) => !key.startsWith(`${plugin.id}::`)),
+  )
   configErrors.value = { ...configErrors.value, [plugin.id]: [] }
 }
 
@@ -373,35 +429,87 @@ function isDirty(plugin: PluginInfo): boolean {
   return JSON.stringify(draft) !== JSON.stringify(baselineFor(plugin))
 }
 
-function stringListText(value: unknown): string {
-  return Array.isArray(value) ? value.join(', ') : ''
-}
-
 function parseStringList(value: string): string[] {
   return value.split(',').map(item => item.trim()).filter(Boolean)
 }
 
+/** 编辑中显示本地文本;没在编辑就由数组现算。 */
+function stringListDraft(plugin: PluginInfo, key: string): string {
+  const pending = stringListText.value[fieldKey(plugin, key)]
+  if (pending !== undefined) return pending
+  const value = draftFor(plugin)[key]
+  return Array.isArray(value) ? value.join(', ') : ''
+}
+
+function setStringListText(plugin: PluginInfo, key: string, text: string): void {
+  stringListText.value = { ...stringListText.value, [fieldKey(plugin, key)]: text }
+  savedPlugins.value = withoutId(savedPlugins.value, plugin.id)
+}
+
+function commitStringList(plugin: PluginInfo, key: string): void {
+  const pending = stringListText.value[fieldKey(plugin, key)]
+  if (pending === undefined) return
+  const { [fieldKey(plugin, key)]: _dropped, ...rest } = stringListText.value
+  stringListText.value = rest
+  setDraft(plugin, key, parseStringList(pending))
+}
+
+function withId(set: Set<string>, id: string): Set<string> {
+  const next = new Set(set)
+  next.add(id)
+  return next
+}
+
+function withoutId(set: Set<string>, id: string): Set<string> {
+  const next = new Set(set)
+  next.delete(id)
+  return next
+}
+
 async function saveConfig(plugin: PluginInfo): Promise<void> {
-  savingPluginId.value = plugin.id
+  // 先把编辑中的文本态收敛成数组,否则刚敲完还没失焦的那一项会丢。
+  for (const field of plugin.configFields ?? []) {
+    if (field.control === 'string-list') commitStringList(plugin, field.key)
+  }
+
+  savingPlugins.value = withId(savingPlugins.value, plugin.id)
   configErrors.value = { ...configErrors.value, [plugin.id]: [] }
+  // 快照本次要保存的草稿:飞行期用户可能接着改,那份新脏态不该被 reset 抹掉。
+  const submitted = JSON.stringify(draftFor(plugin))
   try {
-    const result = await platformApi.setPluginConfig(plugin.id, draftFor(plugin) as Record<string, unknown>)
+    const result = await platformApi.setPluginConfig(plugin.id, JSON.parse(submitted))
     if (result?.success) {
-      plugin.configValues = result.config ?? draftFor(plugin)
-      resetDraft(plugin)
-      savedPluginId.value = plugin.id
+      plugin.configValues = result.config ?? JSON.parse(submitted)
+      if (JSON.stringify(draftFor(plugin)) === submitted) resetDraft(plugin)
+      markSaved(plugin.id)
       emit('plugins-changed')
     } else {
       configErrors.value = {
         ...configErrors.value,
-        [plugin.id]: result?.errors?.length ? result.errors : [result?.error || 'Failed to save plugin config'],
+        [plugin.id]: result?.errors?.length
+          ? result.errors
+          : [{ message: result?.error || 'Failed to save plugin config' }],
       }
     }
   } catch (e: any) {
-    configErrors.value = { ...configErrors.value, [plugin.id]: [e?.message || 'Failed to save plugin config'] }
+    configErrors.value = {
+      ...configErrors.value,
+      [plugin.id]: [{ message: e?.message || 'Failed to save plugin config' }],
+    }
   } finally {
-    savingPluginId.value = ''
+    savingPlugins.value = withoutId(savingPlugins.value, plugin.id)
   }
+}
+
+/** Saved 提示是一次性的反馈,不是一种状态 —— 让它自己退场。 */
+function markSaved(pluginId: string): void {
+  savedPlugins.value = withId(savedPlugins.value, pluginId)
+  clearTimeout(savedTimers.get(pluginId))
+  const timer = setTimeout(() => {
+    savedPlugins.value = withoutId(savedPlugins.value, pluginId)
+    savedTimers.delete(pluginId)
+  }, 2500)
+  savedTimers.set(pluginId, timer)
 }
 
 /**
@@ -533,6 +641,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('onething:plugins-changed', handlePluginsChanged)
+  for (const timer of savedTimers.values()) clearTimeout(timer)
+  savedTimers.clear()
 })
 </script>
 
@@ -757,6 +867,13 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   margin-top: 10px;
+}
+
+.plugin-config-note {
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
 }
 
 .plugin-config-saved {

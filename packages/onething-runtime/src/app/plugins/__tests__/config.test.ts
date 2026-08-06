@@ -87,21 +87,24 @@ describe('R3 store — the host owns storage, not the plugin', () => {
     const disk = installHost()
     const result = setPluginConfig('demo', { label: 'saved', retention: 3, legacyKey: 'gone' })
     expect(result.success).toBe(true)
-    expect(disk.demo).toEqual({
+    // 盘上只留**偏离默认**的键;等于默认的那些跟随 manifest 演进(见第 22 条)。
+    expect(disk.demo).toEqual({ label: 'saved', retention: 3 })
+    expect(disk.demo).not.toHaveProperty('legacyKey')
+    // 有效配置仍然是全字段(读路径填默认)。
+    expect(result.config).toEqual({
       enabled: true,
       label: 'saved',
       retention: 3,
       mode: 'fast',
       tags: [],
     })
-    expect(disk.demo).not.toHaveProperty('legacyKey')
   })
 
   it('refuses an invalid write and leaves the stored value alone', () => {
     const disk = installHost({ stored: { retention: 5 } })
     const result = setPluginConfig('demo', { retention: 999 })
     expect(result.success).toBe(false)
-    expect(result.errors?.[0]).toContain('<= 30')
+    expect(result.errors?.[0]).toMatchObject({ key: 'retention', message: expect.stringContaining('<= 30') })
     expect(disk.demo).toEqual({ retention: 5 })
   })
 
@@ -109,7 +112,7 @@ describe('R3 store — the host owns storage, not the plugin', () => {
     installHost({ schema: { type: 'object', properties: { nested: { type: 'object' } } } })
     const result = setPluginConfig('demo', { nested: {} })
     expect(result.success).toBe(false)
-    expect(result.errors?.[0]).toContain('unsupported type "object"')
+    expect(result.errors?.[0].message).toContain('unsupported type "object"')
     // 但读取路径不崩:schema 不受支持就原样返回盘上的东西。
     expect(() => getEffectivePluginConfig('demo')).not.toThrow()
   })
@@ -121,6 +124,68 @@ describe('R3 store — the host owns storage, not the plugin', () => {
       declared: false,
       supported: false,
     })
+  })
+})
+
+describe('R3 review fixes — snapshot immutability and notification ordering', () => {
+  it('hands out a deep-frozen snapshot that cannot be written through', () => {
+    installHost({
+      schema: {
+        type: 'object',
+        properties: { tags: { type: 'array', items: { type: 'string' }, default: ['seed'] } },
+      },
+    })
+    const snapshot = getEffectivePluginConfig('demo') as { tags: string[] }
+    expect(Object.isFrozen(snapshot)).toBe(true)
+    expect(Object.isFrozen(snapshot.tags)).toBe(true)
+    expect(() => snapshot.tags.push('x')).toThrow()
+    // 再读一次仍是原值 —— 没有人能通过快照写穿共享状态。
+    expect((getEffectivePluginConfig('demo') as { tags: string[] }).tags).toEqual(['seed'])
+  })
+
+  it('delivers the newest config last when two saves land back to back', async () => {
+    installHost()
+    resetPluginConfigListenersForTests()
+    const seen: string[] = []
+    subscribePluginConfigChange('demo', async config => {
+      // 第一次故意慢:fire-and-forget 的话它会在第二次之后才落地,
+      // 插件的最终认知就停在旧配置,而盘上是新配置。
+      const label = String(config.label)
+      if (label === 'first') await new Promise(resolve => setTimeout(resolve, 30))
+      seen.push(label)
+    })
+
+    setPluginConfig('demo', { label: 'first' })
+    setPluginConfig('demo', { label: 'second' })
+
+    await vi.waitFor(() => expect(seen.at(-1)).toBe('second'), { timeout: 2000 })
+    expect(seen.at(-1)).toBe('second')
+  })
+
+  it('coalesces a burst into the latest config instead of replaying every step', async () => {
+    installHost()
+    resetPluginConfigListenersForTests()
+    const seen: string[] = []
+    let release: (() => void) | undefined
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    subscribePluginConfigChange('demo', async config => {
+      seen.push(String(config.label))
+      if (seen.length === 1) await gate
+    })
+
+    setPluginConfig('demo', { label: 'a' })
+    // 等第一轮真的开始投递(它会卡在 gate 上),之后的保存才算"排队期间到达"。
+    await vi.waitFor(() => expect(seen).toEqual(['a']))
+
+    setPluginConfig('demo', { label: 'b' })
+    setPluginConfig('demo', { label: 'c' })
+    release?.()
+
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThanOrEqual(2))
+    // 中间态('b')没人需要看见:排队期间只留最新那份。
+    expect(seen).toEqual(['a', 'c'])
   })
 })
 

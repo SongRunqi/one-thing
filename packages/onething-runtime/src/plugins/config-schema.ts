@@ -17,6 +17,8 @@
  * 不崩、不静默。
  */
 
+import { deepFreezeCorePluginValue } from '@onething/core/plugins'
+
 /** 控件集 —— 与 PluginsSettingsTab 的渲染分支一一对应。 */
 export const PLUGIN_CONFIG_CONTROLS = [
   'switch',
@@ -28,15 +30,63 @@ export const PLUGIN_CONFIG_CONTROLS = [
 
 export type PluginConfigControl = (typeof PLUGIN_CONFIG_CONTROLS)[number]
 
+/**
+ * 值的类型 —— **校验的唯一依据**。
+ *
+ * 与 control 严格分开:control 是纯呈现提示。让 coerce 跟着 control 走会击穿
+ * manifest 自己的类型契约(`{type:'string'}` 配 `control:'switch'` 就会把 boolean
+ * 落盘),而 schema 才是那份契约。
+ */
+export type PluginConfigValueType =
+  | 'boolean'
+  | 'string'
+  | 'string-enum'
+  | 'number'
+  | 'integer'
+  | 'string-array'
+
+/** 类型 → 允许的呈现覆盖。不相容的覆盖进 unsupportedReasons,不静默降级。 */
+const COMPATIBLE_CONTROLS: Record<PluginConfigValueType, readonly PluginConfigControl[]> = {
+  boolean: ['switch'],
+  // 纯 string 没有候选值,渲染成下拉是空下拉 —— 那是个永远存不进去的字段。
+  string: ['text'],
+  'string-enum': ['select', 'text'],
+  number: ['number'],
+  integer: ['number'],
+  'string-array': ['string-list'],
+}
+
+const DEFAULT_CONTROL: Record<PluginConfigValueType, PluginConfigControl> = {
+  boolean: 'switch',
+  string: 'text',
+  'string-enum': 'select',
+  number: 'number',
+  integer: 'number',
+  'string-array': 'string-list',
+}
+
+/**
+ * 原型污染面:这些键名走 `obj[key] = value` 会撞上原型 setter 被静默吞掉,
+ * 或者更糟 —— 改掉 Object.prototype。schema 里出现它们一律判不支持。
+ */
+const FORBIDDEN_PROPERTY_NAMES = new Set(['__proto__', 'constructor', 'prototype'])
+
 export interface PluginConfigField {
   key: string
+  /** 校验依据。 */
+  type: PluginConfigValueType
+  /** 呈现提示(可被 contributes.settings.ui.control 覆盖);**不参与校验**。 */
   control: PluginConfigControl
   label: string
   hint?: string
+  /**
+   * 仅**呈现**语义:UI 在标签侧渲染一个必填标记。
+   * 不做写入校验 —— 每个字段都有默认值,"缺失"这个状态不存在。
+   */
   required: boolean
   /** select 的候选值。 */
   options?: string[]
-  /** number 控件的边界(schema 的 minimum/maximum);仅提示与校验用。 */
+  /** number 控件的边界(schema 的 minimum/maximum)。 */
   minimum?: number
   maximum?: number
   /** integer 时步进为 1。 */
@@ -48,8 +98,24 @@ export type PluginConfigSchemaDescription =
   | { supported: true; title?: string; fields: PluginConfigField[] }
   | { supported: false; reasons: string[] }
 
+export interface PluginConfigError {
+  /** 出错的字段;缺省表示整体性错误。 */
+  key?: string
+  message: string
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * `Object.hasOwn` 的等价物(renderer 的 tsconfig lib 还没到 ES2022)。
+ *
+ * 用它而不是 `key in obj`:后者会把原型链上的东西(toString、constructor…)
+ * 当成"用户存过的值"。
+ */
+function hasOwnKey(target: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(target, key)
 }
 
 function humanizeKey(key: string): string {
@@ -57,6 +123,28 @@ function humanizeKey(key: string): string {
     .replace(/[_-]+/g, ' ')
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/^./, char => char.toUpperCase())
+}
+
+/**
+ * 默认值必须**克隆**再交出去。
+ *
+ * 否则 string-list 字段拿到的是 manifest 里那个数组本体:插件
+ * `api.settings.get().tags.push('x')` 会写穿常量,污染此后所有读取方直到重启。
+ */
+function cloneDefault(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cloneDefault)
+  if (isPlainRecord(value)) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cloneDefault(item)]))
+  }
+  return value
+}
+
+/**
+ * 深冻结:浅冻结只挡住顶层赋值,数组/对象成员照样可变。
+ * 语义与 core 的 api.settings.get() 共用同一份实现,免得两处各冻各的。
+ */
+export function deepFreezePluginConfig<T>(value: T): T {
+  return deepFreezeCorePluginValue(value)
 }
 
 interface FieldSchema {
@@ -71,7 +159,7 @@ interface FieldSchema {
 }
 
 /**
- * 把一条属性 schema 归约成一个控件。
+ * 把一条属性 schema 归约成一个字段。
  * 返回 string = 不支持的理由(会被聚合到配置区的说明里)。
  */
 function describeField(
@@ -80,13 +168,16 @@ function describeField(
   required: Set<string>,
   ui: Record<string, { label?: string; hint?: string; control?: string }>,
 ): PluginConfigField | string {
+  if (FORBIDDEN_PROPERTY_NAMES.has(key)) {
+    return `"${key}": property name is reserved (prototype pollution surface)`
+  }
   if (!isPlainRecord(raw)) return `"${key}": property schema must be an object`
   const schema = raw as FieldSchema
   const hint = ui[key]?.hint ?? (typeof schema.description === 'string' ? schema.description : undefined)
   const label = ui[key]?.label ?? (typeof schema.title === 'string' ? schema.title : humanizeKey(key))
   const base = { key, label, hint, required: required.has(key) }
 
-  // enum 优先于 type:一个带 enum 的 string 是下拉,不是自由文本。
+  // enum 优先于 type:一个带 enum 的 string 默认渲染成下拉,不是自由文本。
   if (schema.enum !== undefined) {
     if (!Array.isArray(schema.enum) || schema.enum.length === 0) {
       return `"${key}": enum must be a non-empty array`
@@ -94,8 +185,17 @@ function describeField(
     if (schema.enum.some(option => typeof option !== 'string')) {
       return `"${key}": only string enums are supported`
     }
+    if (schema.type !== undefined && schema.type !== 'string') {
+      return `"${key}": enum is only supported on string properties`
+    }
     const options = schema.enum as string[]
-    return { ...base, control: 'select', options, defaultValue: schema.default ?? options[0] }
+    return {
+      ...base,
+      type: 'string-enum',
+      control: DEFAULT_CONTROL['string-enum'],
+      options,
+      defaultValue: cloneDefault(schema.default ?? options[0]),
+    }
   }
 
   const type = schema.type
@@ -105,25 +205,41 @@ function describeField(
 
   switch (type) {
     case 'boolean':
-      return { ...base, control: 'switch', defaultValue: schema.default ?? false }
+      return {
+        ...base,
+        type: 'boolean',
+        control: DEFAULT_CONTROL.boolean,
+        defaultValue: cloneDefault(schema.default ?? false),
+      }
     case 'string':
-      return { ...base, control: 'text', defaultValue: schema.default ?? '' }
+      return {
+        ...base,
+        type: 'string',
+        control: DEFAULT_CONTROL.string,
+        defaultValue: cloneDefault(schema.default ?? ''),
+      }
     case 'number':
     case 'integer':
       return {
         ...base,
-        control: 'number',
+        type,
+        control: DEFAULT_CONTROL[type],
         integer: type === 'integer',
         minimum: typeof schema.minimum === 'number' ? schema.minimum : undefined,
         maximum: typeof schema.maximum === 'number' ? schema.maximum : undefined,
-        defaultValue: schema.default ?? (typeof schema.minimum === 'number' ? schema.minimum : 0),
+        defaultValue: cloneDefault(schema.default ?? (typeof schema.minimum === 'number' ? schema.minimum : 0)),
       }
     case 'array': {
       const items = schema.items
       if (!isPlainRecord(items) || (items as FieldSchema).type !== 'string') {
         return `"${key}": only arrays of strings are supported`
       }
-      return { ...base, control: 'string-list', defaultValue: schema.default ?? [] }
+      return {
+        ...base,
+        type: 'string-array',
+        control: DEFAULT_CONTROL['string-array'],
+        defaultValue: cloneDefault(schema.default ?? []),
+      }
     }
     default:
       return `"${key}": unsupported type "${type}" (supported: boolean/string/number/integer/array-of-string)`
@@ -163,20 +279,40 @@ export function describePluginConfigSchema(
   const fields: PluginConfigField[] = []
   const reasons: string[] = []
 
-  for (const [key, raw] of Object.entries(properties)) {
-    const described = describeField(key, raw, required, ui)
+  for (const key of Object.keys(properties)) {
+    const described = describeField(key, properties[key], required, ui)
     if (typeof described === 'string') {
       reasons.push(described)
       continue
     }
+
+    // manifest 自己的 default 也要过校验:`{type:'integer',minimum:1,default:0}`
+    // 会让"坏值回退"回退到一个非法值,然后被写路径原样落盘 —— 永远循环。
+    const defaultCheck = coerceField(described, described.defaultValue)
+    if (defaultCheck.error) {
+      reasons.push(`"${key}": schema default is invalid — ${defaultCheck.error}`)
+      continue
+    }
+
     const requestedControl = ui[key]?.control
-    if (requestedControl && !(PLUGIN_CONFIG_CONTROLS as readonly string[]).includes(requestedControl)) {
+    if (!requestedControl) {
+      fields.push(described)
+      continue
+    }
+    if (!(PLUGIN_CONFIG_CONTROLS as readonly string[]).includes(requestedControl)) {
       reasons.push(`"${key}": ui.control "${requestedControl}" is not one of ${PLUGIN_CONFIG_CONTROLS.join('/')}`)
       continue
     }
-    fields.push(requestedControl
-      ? { ...described, control: requestedControl as PluginConfigControl }
-      : described)
+    const compatible = COMPATIBLE_CONTROLS[described.type]
+    if (!compatible.includes(requestedControl as PluginConfigControl)) {
+      // 呈现提示不许改变值的类型契约:schema 说 string 就必须存 string。
+      reasons.push(
+        `"${key}": ui.control "${requestedControl}" is not compatible with type "${described.type}" `
+        + `(allowed: ${compatible.join('/')})`,
+      )
+      continue
+    }
+    fields.push({ ...described, control: requestedControl as PluginConfigControl })
   }
 
   if (reasons.length > 0) return { supported: false, reasons }
@@ -188,53 +324,92 @@ export interface PluginConfigCoercion {
   /** 存量坏值被回退成默认值的说明(读取路径 warn 用)。 */
   warnings: string[]
   /** 写入路径的硬错误:调用方给了这条 schema 不接受的值。 */
-  errors: string[]
+  errors: PluginConfigError[]
   /** 被剥掉的未知键。 */
   strippedKeys: string[]
 }
 
+/** 按 **schema type** 校验 —— control 只管长相,管不着值。 */
 function coerceField(field: PluginConfigField, value: unknown): { value: unknown; error?: string } {
-  switch (field.control) {
-    case 'switch':
+  switch (field.type) {
+    case 'boolean':
       if (typeof value === 'boolean') return { value }
-      return { value: field.defaultValue, error: `"${field.key}" must be a boolean` }
-    case 'text':
+      return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be a boolean` }
+    case 'string':
       if (typeof value === 'string') return { value }
-      return { value: field.defaultValue, error: `"${field.key}" must be a string` }
-    case 'select':
+      return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be a string` }
+    case 'string-enum':
       if (typeof value === 'string' && (field.options ?? []).includes(value)) return { value }
-      return { value: field.defaultValue, error: `"${field.key}" must be one of ${(field.options ?? []).join('/')}` }
-    case 'number': {
-      if (typeof value !== 'number' || !Number.isFinite(value)) {
-        return { value: field.defaultValue, error: `"${field.key}" must be a finite number` }
+      return {
+        value: cloneDefault(field.defaultValue),
+        error: `"${field.key}" must be one of ${(field.options ?? []).join('/')}`,
       }
-      if (field.integer && !Number.isInteger(value)) {
-        return { value: field.defaultValue, error: `"${field.key}" must be an integer` }
+    case 'number':
+    case 'integer': {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be a finite number` }
+      }
+      if (field.type === 'integer' && !Number.isInteger(value)) {
+        return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be an integer` }
       }
       if (field.minimum !== undefined && value < field.minimum) {
-        return { value: field.defaultValue, error: `"${field.key}" must be >= ${field.minimum}` }
+        return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be >= ${field.minimum}` }
       }
       if (field.maximum !== undefined && value > field.maximum) {
-        return { value: field.defaultValue, error: `"${field.key}" must be <= ${field.maximum}` }
+        return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be <= ${field.maximum}` }
       }
       return { value }
     }
-    case 'string-list':
+    case 'string-array':
       if (Array.isArray(value) && value.every(item => typeof item === 'string')) return { value: [...value] }
-      return { value: field.defaultValue, error: `"${field.key}" must be an array of strings` }
+      return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be an array of strings` }
     default:
-      return { value: field.defaultValue, error: `"${field.key}" has an unsupported control` }
+      return { value: cloneDefault(field.defaultValue), error: `"${field.key}" has an unsupported type` }
   }
 }
 
 /**
  * 读取/写入共用的归一化。
  *
- * - 缺失的键 → 填默认值;
- * - 非法的值 → **回退默认并记 warning**(zod 的 .catch 语义)。存量坏值不该让
+ * - 缺失的键 → 填**克隆过的**默认值(直接塞 manifest 里那个数组会被插件改穿);
+ * - 非法的值 → 回退默认并记 warning(zod 的 .catch 语义)。存量坏值不该让
  *   插件拿不到配置,更不该发明一个迁移框架去"修"它;
  * - 未知的键 → 剥掉(schema 是唯一事实源,盘上多出来的东西不代表任何契约)。
  */
+function deepEqualConfigValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((item, index) => deepEqualConfigValue(item, b[index]))
+  }
+  if (isPlainRecord(a) && isPlainRecord(b)) {
+    const aKeys = Object.keys(a)
+    const bKeys = Object.keys(b)
+    return aKeys.length === bKeys.length
+      && aKeys.every(key => hasOwnKey(b, key) && deepEqualConfigValue(a[key], b[key]))
+  }
+  return false
+}
+
+/**
+ * 落盘前剥掉"与默认值相同"的键(VS Code 同语义)。
+ *
+ * 物化全字段的话,用户保存过一次之后,manifest 后续修改 default 对他永远不再
+ * 生效 —— 他的盘上冻着一份当时的默认值快照。只存**偏离默认的部分**,未偏离的
+ * 跟着 manifest 演进;读路径本来就会填默认,所以有效配置一模一样。
+ */
+export function stripPluginConfigDefaults(
+  fields: PluginConfigField[],
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const stored: Record<string, unknown> = {}
+  for (const field of fields) {
+    if (!hasOwnKey(config, field.key)) continue
+    if (deepEqualConfigValue(config[field.key], field.defaultValue)) continue
+    stored[field.key] = config[field.key]
+  }
+  return stored
+}
+
 export function coercePluginConfig(
   fields: PluginConfigField[],
   stored: unknown,
@@ -242,18 +417,20 @@ export function coercePluginConfig(
   const input = isPlainRecord(stored) ? stored : {}
   const config: Record<string, unknown> = {}
   const warnings: string[] = []
-  const errors: string[] = []
+  const errors: PluginConfigError[] = []
 
   for (const field of fields) {
-    if (!(field.key in input)) {
-      config[field.key] = field.defaultValue
+    // hasOwn 而不是 `in`:后者会把原型链上的东西(toString、constructor…)
+    // 当成"用户存过的值"。
+    if (!hasOwnKey(input, field.key)) {
+      config[field.key] = cloneDefault(field.defaultValue)
       continue
     }
     const { value, error } = coerceField(field, input[field.key])
     config[field.key] = value
     if (error) {
       warnings.push(`${error}; falling back to the default`)
-      errors.push(error)
+      errors.push({ key: field.key, message: error })
     }
   }
 

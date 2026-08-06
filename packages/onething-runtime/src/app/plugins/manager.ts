@@ -20,6 +20,7 @@ import {
   writePluginConfig,
 } from './loader.js'
 import { configurePluginConfigHost } from './config.js'
+import { configurePluginConfigBroadcast } from './config-access.js'
 import {
   configurePluginHealthHost,
   getPluginRuntimeHealth,
@@ -104,6 +105,15 @@ export class PluginManager extends CorePluginManager<
         ?.definition.manifest.contributes?.settings,
       readConfig: readPluginConfig,
       writeConfig: writePluginConfig,
+    })
+    configurePluginConfigBroadcast(pluginId => {
+      context.eventBus?.emitGlobal?.({
+        type: 'plugin:notification',
+        pluginId,
+        message: `plugin-config-changed:${pluginId}`,
+        level: 'info',
+        kind: 'config-changed',
+      })
     })
     // 回灌必须在扫描/加载之前:上一轮被熔断禁用的插件,这次启动要带着原因出现。
     restorePluginRuntimeHealth()

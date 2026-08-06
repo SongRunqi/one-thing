@@ -1,4 +1,5 @@
 import type { CorePluginAPIState } from './api-state.js'
+import { deepFreezeCorePluginValue } from './freeze.js'
 import {
   assertPluginPayloadSerializable,
   normalizePluginRequestAction,
@@ -332,10 +333,17 @@ export function createCorePluginAPI<
     },
 
     settings: {
+      /**
+       * **有意不带 disposed 闩**:读配置没有破坏性(不注册、不落盘、不发事件),
+       * 拆除之后一个晚到的读取最多拿到一份过期快照。给它加闩只会让插件在
+       * teardown 竞速里拿到 undefined 而崩,收益为负。
+       */
       get<T = Record<string, unknown>>(): T {
-        // 冻结快照,不是活引用:插件改它不该影响宿主的那一份,
-        // 而且 H 线把插件搬进子进程之后"同步读一个远端对象"根本不成立。
-        return Object.freeze({ ...(host.getPluginConfig?.(pluginId) ?? {}) }) as T
+        // 深冻结快照,不是活引用:浅冻结只挡住顶层赋值,
+        // `get().tags.push('x')` 照样能写穿共享的数组(乃至 manifest 里的
+        // schema.default 本体)。而且 H 线把插件搬进子进程之后,
+        // "同步读一个远端对象"根本不成立 —— 快照语义现在就定死。
+        return deepFreezeCorePluginValue({ ...(host.getPluginConfig?.(pluginId) ?? {}) }) as T
       },
       onChange(callback: (config: Record<string, unknown>) => void): () => void {
         if (rejectLateCall('settings.onChange')) return () => {}

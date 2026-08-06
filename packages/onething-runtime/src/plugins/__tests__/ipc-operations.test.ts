@@ -74,6 +74,8 @@ describe('plugin IPC operations', () => {
         configTitle: '',
         configValues: {},
         configUnsupportedReasons: [],
+        configValuesAreDefaults: false,
+        configEditable: false,
         minAppVersion: '',
         healthStatus: 'healthy',
         healthFailures: 0,

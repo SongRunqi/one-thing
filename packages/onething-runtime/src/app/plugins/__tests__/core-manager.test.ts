@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   CorePluginBootstrapper,
   CorePluginManager,
@@ -13,6 +13,8 @@ import {
   getCorePluginsDir,
   getPluginEnabledWithAdapters,
   installCorePluginDependencies,
+  readPluginSettingsFile,
+  writePluginSettingsFile,
   loadCorePluginEntry,
   scanCorePlugins,
   setPluginEnabledWithAdapters,
@@ -299,6 +301,44 @@ describe('CorePluginManager', () => {
       },
       logger,
     })).toBe('npm failed')
+  })
+
+  /**
+   * plugin-settings 现在装着用户手工配的插件配置(R3),半截 JSON 的代价从
+   * "启停位丢了"升级成"用户配置全没了"。
+   */
+  it('writes plugin settings atomically and quarantines an unreadable file', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-settings-safety-'))
+    const settingsPath = path.join(root, 'plugin-settings.json')
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      writePluginSettingsFile(settingsPath, {
+        enabled: { demo: true },
+        config: { demo: { label: 'precious' } },
+      })
+      expect(readPluginSettingsFile(settingsPath)).toEqual({
+        enabled: { demo: true },
+        config: { demo: { label: 'precious' } },
+      })
+      // 原子写:落地后目录里不该留下 .tmp 孤儿。
+      expect(fs.readdirSync(root).filter(name => name.endsWith('.tmp'))).toEqual([])
+
+      // 半截 JSON:读要把它挪走,而不是返回 {} 让下一次写入以空为基底整份重写。
+      fs.writeFileSync(settingsPath, '{"enabled": {"demo": tru', 'utf-8')
+      expect(readPluginSettingsFile(settingsPath)).toEqual({})
+      expect(fs.existsSync(settingsPath)).toBe(false)
+      const quarantined = fs.readdirSync(root).filter(name => name.includes('.corrupt-'))
+      expect(quarantined).toHaveLength(1)
+      expect(fs.readFileSync(path.join(root, quarantined[0]), 'utf-8')).toContain('tru')
+
+      // 顶层不是对象的也算坏文件(否则 settings.enabled 之类会在别处炸)。
+      fs.writeFileSync(settingsPath, '[]', 'utf-8')
+      expect(readPluginSettingsFile(settingsPath)).toEqual({})
+      expect(fs.readdirSync(root).filter(name => name.includes('.corrupt-')).length).toBeGreaterThanOrEqual(1)
+    } finally {
+      error.mockRestore()
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('reads and writes plugin enabled settings through core adapters', () => {

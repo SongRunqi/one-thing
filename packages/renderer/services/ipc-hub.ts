@@ -322,8 +322,13 @@ export function initializeIPCHub() {
   // 告警。两者此前都发到零订阅者的全局总线上,用户什么也看不到。
   platformApi.onPluginNotification?.((payload) => {
     if (!payload?.message) return
-    if (payload.level === 'error') toast.error(payload.message)
-    else toast.info(payload.message)
+    // 配置变更是**机械同步信号**,不是给人看的通知:只派发刷新事件,不弹 toast
+    // (保存是用户自己点的,再弹一条就是噪音)。
+    const isConfigChanged = (payload as { kind?: string }).kind === 'config-changed'
+    if (!isConfigChanged) {
+      if (payload.level === 'error') toast.error(payload.message)
+      else toast.info(payload.message)
+    }
     // 设置页开着的话顺手刷新插件列表:自动禁用刚刚改了 enabled 与健康态,
     // 不刷新的话卡片还停在 Active。
     window.dispatchEvent(new CustomEvent('onething:plugins-changed', {

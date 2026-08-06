@@ -49,6 +49,11 @@ export interface PluginNotificationPayload {
 	pluginId: string;
 	message: string;
 	level: "info" | "warn" | "error";
+	/**
+	 * 机械同步信号(不给人看)。`config-changed` 只触发刷新,不弹 toast ——
+	 * 保存是用户自己点的,再弹一条就是噪音。
+	 */
+	kind?: "config-changed";
 }
 
 /**
@@ -60,6 +65,8 @@ export interface PluginNotificationPayload {
  */
 export interface PluginConfigFieldDescriptor {
 	key: string;
+	/** 校验依据(control 只管长相)。 */
+	type: "boolean" | "string" | "string-enum" | "number" | "integer" | "string-array";
 	control: "switch" | "text" | "number" | "select" | "string-list";
 	label: string;
 	hint?: string;
@@ -84,6 +91,8 @@ export interface PluginConfigResponse {
 	title?: string;
 	/** 该插件是否声明了 settings schema。 */
 	declared?: boolean;
+	/** 值是"schema 默认值"而非宿主真实存量(server 只读镜像时为 true)。 */
+	valuesAreDefaults?: boolean;
 	/** schema 超出宿主控件集时的逐条原因(不崩,照实说)。 */
 	unsupportedReasons?: string[];
 	/** 本宿主是否允许编辑(方案 A 下 web 永远 false)。 */
@@ -98,12 +107,22 @@ export interface SetPluginConfigRequest {
 	config: Record<string, unknown>;
 }
 
+/**
+ * 结构化错误:带 key 才能让设置页把红态挂到**出错的那个字段**上,
+ * 而不是在配置区底下堆一行拼接字符串。coerce 内部本来就知道 key。
+ */
+export interface PluginConfigErrorDetail {
+	/** 出错的字段;缺省表示整体性错误。 */
+	key?: string;
+	message: string;
+}
+
 export interface SetPluginConfigResponse {
 	success: boolean;
 	/** 落盘后的有效值(已剥未知键、已填默认)。 */
 	config?: Record<string, unknown>;
 	/** 校验未通过的逐条原因。 */
-	errors?: string[];
+	errors?: PluginConfigErrorDetail[];
 	error?: string;
 }
 

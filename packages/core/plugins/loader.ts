@@ -2,6 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { pathToFileURL } from 'url'
+import { writeJsonFile } from '../storage/json-file.js'
 import type {
   CorePluginDefinition,
   PersistedPluginHealth,
@@ -62,20 +63,57 @@ export function ensureCorePluginsDir(
   }
 }
 
+/**
+ * 读 plugin-settings。
+ *
+ * parse 失败时**把坏文件挪走再返回空**,而不是直接拿 `{}` 当结果继续用:
+ * 这个文件现在装着启停位、熔断原因和用户手工配的插件配置(R3),而下一次任意
+ * 写入(比如熔断落一条 health)都会以读到的东西为基底整份重写 —— 让 `{}` 成为
+ * 基底,等于一次半截 JSON 就把用户的全部配置静默蒸发掉。备份成
+ * `.corrupt-<时间戳>` 至少留得下现场。
+ */
 export function readPluginSettingsFile(settingsPath: string): PluginSettings {
   if (!fs.existsSync(settingsPath)) return {}
 
+  let raw: string
   try {
-    return JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as PluginSettings
+    raw = fs.readFileSync(settingsPath, 'utf-8')
   } catch (error) {
     console.error('[PluginLoader] Failed to read plugin settings:', error)
     return {}
   }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('plugin settings must be a JSON object')
+    }
+    return parsed as PluginSettings
+  } catch (error) {
+    const backupPath = `${settingsPath}.corrupt-${Date.now()}`
+    try {
+      fs.renameSync(settingsPath, backupPath)
+      console.error(
+        `[PluginLoader] plugin-settings.json is unreadable; moved it to ${backupPath} `
+        + 'so the next write starts from a clean file instead of overwriting it:',
+        error,
+      )
+    } catch (renameError) {
+      console.error('[PluginLoader] Failed to quarantine the corrupt plugin settings file:', renameError)
+    }
+    return {}
+  }
 }
 
+/**
+ * 写 plugin-settings —— 走原子写(tmp + rename)。
+ *
+ * 裸 writeFileSync 在写到一半掉电/被杀时留下半截 JSON;配上上面那个"读不出来
+ * 就当空"的旧行为,就是用户配置静默蒸发的完整配方。
+ */
 export function writePluginSettingsFile(settingsPath: string, settings: PluginSettings): void {
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+  writeJsonFile(settingsPath, settings)
 }
 
 export function getPluginEnabledFromSettings(

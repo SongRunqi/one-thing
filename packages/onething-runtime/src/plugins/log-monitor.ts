@@ -40,7 +40,9 @@ export const ONETHING_LOG_MONITOR_MANIFEST = {
           flushIntervalMs: {
             type: 'integer',
             title: 'Flush interval (ms)',
-            description: 'How long buffered log lines wait before hitting disk.',
+            // 语义:对**已排定**的那次 flush 不生效,下一次排定时才按新值走
+            // (定时器已经在跑了,不为了一个日志间隔去重排它)。
+            description: 'How long buffered log lines wait before hitting disk. Applies from the next scheduled flush.',
             default: CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS,
             minimum: 100,
             maximum: 60_000,

@@ -4,6 +4,7 @@
  * 单独一个文件是为了让 @main 只 import 一个工厂,而不必认识 describe/get/set
  * 三个自由函数以及它们的顺序约定(@main 只做薄接线)。
  */
+import type { PluginConfigError, PluginConfigField } from '@onething/runtime/plugins'
 import {
   describePluginConfig,
   getEffectivePluginConfig,
@@ -15,26 +16,28 @@ export interface PluginConfigAccess {
     declared: boolean
     supported: boolean
     title?: string
-    fields: Array<{
-      key: string
-      control: 'switch' | 'text' | 'number' | 'select' | 'string-list'
-      label: string
-      hint?: string
-      required: boolean
-      options?: string[]
-      minimum?: number
-      maximum?: number
-      integer?: boolean
-      defaultValue: unknown
-    }>
+    // 直接吃产品层的字段类型,不再手抄一份形状(同包内已有 3 份重复)。
+    fields: PluginConfigField[]
     unsupportedReasons: string[]
   }
   read(pluginId: string): Record<string, unknown>
   write(pluginId: string, config: unknown): {
     success: boolean
     config?: Record<string, unknown>
-    errors?: string[]
+    errors?: PluginConfigError[]
   }
+}
+
+/**
+ * 配置保存后的广播出口(R5 跨窗口一致性的铺垫)。
+ *
+ * 复用 plugin:notification 那条已经通到 renderer 的通道 —— 设置窗与主窗都收得到,
+ * 收到后各自刷新对应插件的 configValues。
+ */
+let broadcastConfigChanged: ((pluginId: string) => void) | null = null
+
+export function configurePluginConfigBroadcast(next: ((pluginId: string) => void) | null): void {
+  broadcastConfigChanged = next
 }
 
 export function createPluginConfigAccess(): PluginConfigAccess {
@@ -56,6 +59,16 @@ export function createPluginConfigAccess(): PluginConfigAccess {
       }
     },
     read: getEffectivePluginConfig,
-    write: (pluginId, config) => setPluginConfig(pluginId, config),
+    write: (pluginId, config) => {
+      const result = setPluginConfig(pluginId, config)
+      if (result.success) {
+        try {
+          broadcastConfigChanged?.(pluginId)
+        } catch (error) {
+          console.error(`[PluginConfig] Failed to broadcast config change for "${pluginId}":`, error)
+        }
+      }
+      return result
+    },
   }
 }

@@ -457,6 +457,7 @@ export type {
 	AbortPluginRequestResult,
 	PluginNotificationPayload,
 	PluginConfigFieldDescriptor,
+	PluginConfigErrorDetail,
 	PluginConfigRequest,
 	PluginConfigResponse,
 	SetPluginConfigRequest,

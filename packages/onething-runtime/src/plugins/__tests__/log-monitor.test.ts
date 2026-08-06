@@ -18,7 +18,7 @@ function createTempLogDir(): string {
  * 而且**改了就生效** —— 不必 disable→enable,更不必重启。
  */
 describe('runtime log-monitor plugin config', () => {
-  it('reads retention/flush/notify from api.settings and honors changes immediately', () => {
+  it('reads retention/flush/notify from api.settings and honors changes immediately', async () => {
     const logDir = createTempLogDir()
     const handlers = new Map<string, (envelope: any) => void>()
     const notifications: string[] = []
@@ -84,12 +84,15 @@ describe('runtime log-monitor plugin config', () => {
       })
       expect(notifications).toHaveLength(1)
     } finally {
+      // close() 之后句柄还没落地(createWriteStream 的 open 是异步的)——
+      // 立刻 rmSync 会让那个 open 以 ENOENT 变成 unhandled rejection。
       runtime.diskWriter.close()
+      await new Promise(resolve => setTimeout(resolve, 60))
       fs.rmSync(logDir, { recursive: true, force: true })
     }
   })
 
-  it('falls back to the old hardcoded constants when nothing is configured', () => {
+  it('falls back to the old hardcoded constants when nothing is configured', async () => {
     const logDir = createTempLogDir()
     const api: OnethingLogMonitorPluginApi = {
       on: vi.fn(),
@@ -105,7 +108,10 @@ describe('runtime log-monitor plugin config', () => {
       // 没有 api.settings(旧宿主 / 未配置)也要照常跑,用的就是原来的常量。
       expect(() => runtime.diskWriter.cleanupOldLogs()).not.toThrow()
     } finally {
+      // close() 之后句柄还没落地(createWriteStream 的 open 是异步的)——
+      // 立刻 rmSync 会让那个 open 以 ENOENT 变成 unhandled rejection。
       runtime.diskWriter.close()
+      await new Promise(resolve => setTimeout(resolve, 60))
       fs.rmSync(logDir, { recursive: true, force: true })
     }
   })

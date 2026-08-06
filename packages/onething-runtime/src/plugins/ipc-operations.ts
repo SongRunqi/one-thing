@@ -10,6 +10,7 @@ import {
   type ExecuteOnethingPluginCommandResult,
   type OnethingPluginCommandSessionLike,
 } from './plugin-command-execution.js'
+import type { PluginConfigError, PluginConfigField } from './config-schema.js'
 import {
   projectOnethingPluginCommandsForRenderer,
   projectOnethingPluginsForRenderer,
@@ -284,34 +285,20 @@ export interface OnethingPluginConfigAccess {
     declared: boolean
     supported: boolean
     title?: string
-    fields: OnethingPluginConfigField[]
+    fields: PluginConfigField[]
     unsupportedReasons: string[]
   }
   read(pluginId: string): Record<string, unknown>
-  write(pluginId: string, config: unknown): { success: boolean; config?: Record<string, unknown>; errors?: string[] }
-}
-
-export interface OnethingPluginConfigField {
-  key: string
-  /**
-   * 与共享 IPC 契约里的 PluginConfigFieldDescriptor 同一组字面量。
-   * 产品层不许吃那层契约(分层检查),所以这份联合只能重述一遍;
-   * 漂移会在 @main 的接线处当场 typecheck 报错(那是它唯一的交汇点)。
-   */
-  control: 'switch' | 'text' | 'number' | 'select' | 'string-list'
-  label: string
-  hint?: string
-  required: boolean
-  options?: string[]
-  minimum?: number
-  maximum?: number
-  integer?: boolean
-  defaultValue: unknown
+  write(pluginId: string, config: unknown): {
+    success: boolean
+    config?: Record<string, unknown>
+    errors?: PluginConfigError[]
+  }
 }
 
 export type GetOnethingPluginConfigForIpcResult = {
   success: boolean
-  fields?: OnethingPluginConfigField[]
+  fields?: PluginConfigField[]
   config?: Record<string, unknown>
   title?: string
   declared?: boolean
@@ -348,7 +335,7 @@ export function setOnethingPluginConfigForIpc(options: {
   pluginId: string
   config: unknown
   logger?: OnethingPluginIpcLogger
-}): { success: boolean; config?: Record<string, unknown>; errors?: string[]; error?: string } {
+}): { success: boolean; config?: Record<string, unknown>; errors?: PluginConfigError[]; error?: string } {
   try {
     if (!options.access) return { success: false, error: ONETHING_PLUGIN_SYSTEM_NOT_INITIALIZED }
     return options.access.write(options.pluginId, options.config)

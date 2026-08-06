@@ -90,6 +90,7 @@ export type {
 export {
   disposeCorePluginState,
 } from './api-state.js'
+export { deepFreezeCorePluginValue } from './freeze.js'
 export {
   createCorePluginAPI,
   executeCorePluginTool,
