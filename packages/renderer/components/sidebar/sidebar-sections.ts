@@ -26,9 +26,12 @@
  *  - `active`「进行中」:回到某件活(本产品特有,原样保留)。
  *  - `contacts`「通讯录」:**发起**一段对话 —— 同事 + 群,含从没聊过的。
  *    旧的 `rooms` 类并进这里(见 `migrateRailCategory`)。
- *  - `sessions`「会话」:按项目找旧直聊(归档面,仍是既有 SessionList)。
+ *
+ * 2026-08-05(U3):第四格 `sessions`「会话」**搬走了** —— 直聊列表升成了产品
+ * 的另一种形态(对话形态),归顶部的形态切换器管。rail 自此是**协作形态专属**
+ * 的三格。见 docs/design/product-two-forms-chatgpt-shell.md D6。
  */
-export type SidebarRailCategoryId = 'recent' | 'active' | 'contacts' | 'sessions'
+export type SidebarRailCategoryId = 'recent' | 'active' | 'contacts'
 
 export interface SidebarRailCategory {
   id: SidebarRailCategoryId
@@ -40,7 +43,6 @@ export const SIDEBAR_RAIL_CATEGORIES: readonly SidebarRailCategory[] = [
   { id: 'recent', label: '消息' },
   { id: 'active', label: '进行中' },
   { id: 'contacts', label: '通讯录' },
-  { id: 'sessions', label: '会话' },
 ]
 
 /**
@@ -58,11 +60,10 @@ export interface SidebarRailAvailabilityInput {
 /**
  * rail 上真正画出来的类别。
  *
- * **web 降级**:没有 rooms 能力时,消息/进行中/通讯录三类全都无源可吃
- * (私聊与群聊都是房,活卡片是房的附属)—— 留在 rail 上就是三枚点不出东西的
- * 死图标,所以只留「会话」。
+ * **web 降级**:没有 rooms 能力时协作形态整个不存在(私聊与群聊都是房,活卡片
+ * 是房的附属),rail 一格都不画。
  *
- * 桌面端四类**恒在**。R4 那条「没有活就整区不显示」是给*列表里的分区*定的:
+ * 桌面端三类**恒在**。R4 那条「没有活就整区不显示」是给*列表里的分区*定的:
  * 空分区白占左栏最贵的纵向空间。到了 rail 上它不成立 —— 图标不占列表空间,
  * 藏掉却有两个坏处:活一起一停 rail 就上下跳(肌肉记忆没了);没活时点不进去看
  * 「已交付」。空态由面板内部说话,不由 rail 决定去留。
@@ -70,8 +71,8 @@ export interface SidebarRailAvailabilityInput {
 export function resolveRailCategories(
   input: SidebarRailAvailabilityInput,
 ): SidebarRailCategoryId[] {
-  if (!input.roomsEnabled) return ['sessions']
-  return ['recent', 'active', 'contacts', 'sessions']
+  if (!input.roomsEnabled) return []
+  return ['recent', 'active', 'contacts']
 }
 
 /**
@@ -93,7 +94,7 @@ export function resolveRailCategory(
   stored: string | null | undefined,
   available: readonly SidebarRailCategoryId[],
 ): SidebarRailCategoryId {
-  const fallback = available[0] ?? 'sessions'
+  const fallback = available[0] ?? 'recent'
   const migrated = migrateRailCategory(stored)
   if (!migrated) return fallback
   return (available as readonly string[]).includes(migrated)
@@ -108,8 +109,6 @@ export interface SidebarRailBadgeInput {
   available: readonly SidebarRailCategoryId[]
   /** 对话有未读:群 / 私聊 / 私下 —— 「消息」那一类装的东西。 */
   unreadConversations: boolean
-  /** 直聊会话有未读 —— 「会话」那一类装的东西。 */
-  unreadChatSessions: boolean
   /** 有活在跑,或有活在等你(delivered 不算 —— 交付了就不催人)。 */
   activeWork: boolean
 }
@@ -119,13 +118,12 @@ export type SidebarRailBadges = Record<SidebarRailCategoryId, boolean>
 /**
  * 右上角那枚 5px 点。**一条未读只催一次**。
  *
- * 「消息」装房、「会话」装直聊,两堆不重叠,所以各自亮各自的不会重复报数。
- * **通讯录恒不亮**:它的每一行要么已经在消息流里(聊过的),要么根本没聊过 ——
- * 替消息流再报一次就是同一条未读在 rail 上被数两遍,而徽标一旦学会重复报数
- * 就没人再信它。
+ * 「消息」装房。**通讯录恒不亮**:它的每一行要么已经在消息流里(聊过的),要么
+ * 根本没聊过 —— 替消息流再报一次就是同一条未读在 rail 上被数两遍,而徽标一旦
+ * 学会重复报数就没人再信它。
  *
- * web 降级下 rail 上没有「消息」(私聊与群都是房),两路未读一起落到「会话」——
- * 那时它是唯一的列表,总不能让未读无处可报。
+ * 直聊会话的未读不在这里报:U3 之后它归对话形态,由形态切换器上的徽标说话
+ * (rail 是协作形态专属的三格)。
  *
  * 判定本身全在调用方的既有账上(`isUnreadSession` / `CollabTask` 的状态标),
  * 这里只做归一 —— 一枚点不摆数字:系统只知道"有没有",不知道"几条"。
@@ -136,8 +134,6 @@ export function resolveRailBadges(input: SidebarRailBadgeInput): SidebarRailBadg
     recent: hasRecent && input.unreadConversations === true,
     active: input.activeWork === true,
     contacts: false,
-    sessions: input.unreadChatSessions === true
-      || (!hasRecent && input.unreadConversations === true),
   }
 }
 

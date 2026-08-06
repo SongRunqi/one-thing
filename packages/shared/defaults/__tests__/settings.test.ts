@@ -324,21 +324,16 @@ describe('todo plan settings defaults', () => {
   })
 })
 
-describe('ui.shellMode (im-workbench-layout C0 回滚闸)', () => {
-  it('defaults to workbench', () => {
-    expect(createDefaultSettings().ui?.shellMode).toBe('workbench')
-    expect(mergeWithDefaults({}).ui?.shellMode).toBe('workbench')
-  })
-
-  it('survives the merge whitelist so settings.json edits actually take effect', () => {
-    expect(mergeSettings({ ui: { shellMode: 'classic' } }).ui?.shellMode).toBe('classic')
-    expect(mergeSettings({ ui: { shellMode: 'workbench' } }).ui?.shellMode).toBe('workbench')
-  })
-
-  it('falls back to workbench on a garbled value instead of silently rolling back', () => {
-    expect(mergeSettings({ ui: { shellMode: 'Classic' } }).ui?.shellMode).toBe('workbench')
-    expect(mergeSettings({ ui: { shellMode: 'stage' } }).ui?.shellMode).toBe('workbench')
-    expect(mergeSettings({ ui: {} }).ui?.shellMode).toBe('workbench')
+describe('settings.ui (im-workbench-layout C0 回滚闸)已退役', () => {
+  /**
+   * `ui.shellMode`(workbench ↔ classic 逐像素回滚闸)于 2026-08-05 整段删除 ——
+   * docs/design/product-two-forms-chatgpt-shell.md D2。这条测试留下来是当墓碑用:
+   * 谁要是再往 settings 里加一个「外壳形态」开关,得先回去读那一节为什么删的。
+   */
+  it('不再有 ui 段,settings.json 里写 shellMode 也不再有任何效果', () => {
+    expect('ui' in createDefaultSettings()).toBe(false)
+    expect('ui' in mergeWithDefaults({})).toBe(false)
+    expect('ui' in mergeSettings({ ui: { shellMode: 'classic' } } as never)).toBe(false)
   })
 })
 

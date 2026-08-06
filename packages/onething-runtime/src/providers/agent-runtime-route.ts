@@ -54,6 +54,8 @@ export function createOnethingUtilityAgentProvider(
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
     zhipuApiMode: config.zhipuApiMode,
+    qwenApiMode: config.qwenApiMode,
+    qwenRegion: config.qwenRegion,
     model: config.model,
     apiType: config.apiType,
     oauthToken: config.oauthToken,

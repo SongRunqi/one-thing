@@ -127,8 +127,19 @@ interface BashLine {
   kind: 'result' | 'blank'
 }
 
-/** Collapsed bash output shows the tail; earlier lines expand on demand. */
-const BASH_TAIL_LINES = 6
+/**
+ * Collapsed bash output shows the tail; earlier lines expand on demand.
+ *
+ * 这个数**必须让默认态撑满 `.bash-output` 的 max-height**,否则那块等宽面板是
+ * 摆着好看的:内容高度够不到 `clamp(148px, 28vh, 240px)` 的下限时
+ * `scrollHeight === clientHeight`,`overflow: auto` 一辈子不生效,鼠标滚轮在上面
+ * 毫无反应(2026-08-06 真机反馈)。此前是 6 —— 6 行 × 20px 行高 + 展开钮 ≈ 145px,
+ * 差 3px 就是滚不动。
+ *
+ * 20 行 × 20px = 400px,稳稳越过 240px 的上限,任何字号档下都必然溢出 → 有滚动条、
+ * 滚轮有反应。真正的长输出仍然靠「▸ +N lines」一次性展开,不会把上万行铺进 DOM。
+ */
+const BASH_TAIL_LINES = 20
 
 const props = withDefaults(defineProps<{
   result?: ToolPartialResult | null

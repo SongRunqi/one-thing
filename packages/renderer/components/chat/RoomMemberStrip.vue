@@ -355,6 +355,12 @@ async function commit(update: {
   box-shadow: 0 0 0 1.5px var(--ui-tab-bar-surface-bg, var(--ui-surface-app-bg));
 }
 
+/* 等你回答 / 等你审批(E6):唯一一个**要用户动手**的态,所以用 danger 那一档 ——
+   它比「在跑」的绿和「持牌」的黄都更该被扫到。 */
+.member-badge.is-waiting {
+  background: var(--ui-status-danger-fg, var(--color-error));
+}
+
 .member-badge.is-generating {
   background: var(--ui-status-success-fg, var(--color-success));
 }

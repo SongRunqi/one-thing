@@ -30,6 +30,16 @@
           class="session-group"
         >
           <template #title>
+            <!-- 项目组带一枚文件夹章(样板 ChatGPT 左栏的 `📁 Projects`)——
+                 「置顶」「未归类」「Music · 电台」不是项目,不画。
+                 判据读 `group.kind`,不解析 `key` 前缀。 -->
+            <Folder
+              v-if="group.kind === 'project'"
+              class="group-folder"
+              :size="14"
+              :stroke-width="1.7"
+              aria-hidden="true"
+            />
             <span class="group-label">{{ group.label }}</span>
           </template>
 
@@ -66,6 +76,8 @@
                 />
               </MenuItem>
             </template>
+            <!-- 样板那行 `Show more`:一条低调的墨字,不是一颗按钮 —— 它是
+                 "还有"这个事实的旁白,不该在列表里抢过会话行。 -->
             <Button
               v-if="hasMore(group)"
               text
@@ -95,6 +107,7 @@ import AppMenu from '@/components/common/Menu.vue'
 import MenuItem from '@/components/common/MenuItem.vue'
 import SubMenu from '@/components/common/SubMenu.vue'
 import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
+import { Folder } from 'lucide-vue-next'
 import SessionItem from './SessionItem.vue'
 import type { SessionWithBranches, SessionGroup } from './useSessionOrganizer'
 
@@ -591,6 +604,12 @@ onUnmounted(() => {
   outline-offset: -2px;
 }
 
+.group-folder {
+  flex: 0 0 auto;
+  margin-right: 6px;
+  color: var(--ui-text-muted-fg);
+}
+
 .group-label {
   flex: 1;
   min-width: 0;
@@ -647,33 +666,10 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
-/* ── 工作台外壳:交出内部滚动(R4,im-workbench-layout.md §3 W1)────────────
-   workbench 下左栏只有**一个**滚动体(`Sidebar.vue` 的 `.sidebar-sections`),
-   四区一起滚。这里再留一层 `overflow-y: auto` 就是双滚动条,所以整条让出去:
-
-    - `.session-list-wrapper` 不再 `flex: 1` —— 在滚动容器里它该按内容撑开,
-      而不是抢走整条竖轴(抢走了,上面三区就又被顶死);
-    - `.sessions-list` 的 `overflow-y: auto` 改 `visible`;
-    - **`contain: strict` 必须一并解开** —— strict 含 size containment,内容
-      不再撑高盒子,让出滚动后这一段会直接塌成 0 高。`content-visibility: auto`
-      同理(它隐含 size containment),一起退成 `visible`。
-
-   classic 一条都不生效:那边会话列表照旧是左栏里唯一会滚的东西。
-
-   ⚠️ 门写成 `html[...] .xxx` 而**不是** `:global(html[...]) .xxx` ——
-   `@vue/compiler-sfc` 会把 `:global(X) .y` 静默截断成 `X`,声明全扣到 `<html>`
-   头上(详见 `Sidebar.vue` 末尾那段说明,那正是 order 规则失效的真因)。
-   祖先是 `html` 本来就不需要 `:global`:scoped 只给最后一个复合选择器补
-   `[data-v-xxx]`,祖先照原样输出。 */
-html[data-shell-mode='workbench'] .session-list-wrapper {
-  flex: 0 0 auto;
-  overflow: visible;
-}
-
-html[data-shell-mode='workbench'] .sessions-list {
-  flex: 0 0 auto;
-  overflow: visible;
-  contain: none;
-  content-visibility: visible;
-}
+/*
+ * 「会话列表交出内部滚动」那两条(U0b 之前挂在 `data-shell-mode` 门里)已删:
+ * 它们是给「会话」还是 rail 一格时准备的 —— 那时列表住在 `.sidebar-pane` 里,
+ * 面板才是唯一的滚动体。U3 之后会话列表只在**对话形态**渲染,宿主是
+ * `.sidebar-chat-pane`(它不滚),列表自己滚回来才对。
+ */
 </style>

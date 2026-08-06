@@ -651,6 +651,27 @@ export interface CreateSessionRequest {
   room?: RoomConfig
 }
 
+/**
+ * `platformApi.createSession(name, options)` 的第二个参数 —— **唯一一份**。
+ *
+ * 2026-08-05 (U5) 收敛:此前它在三处各手抄一遍(`renderer/types/index.ts`、
+ * `preload/bridge.ts`、`platform/web.ts`),而且已经抄岔了 —— 只有 renderer 那份
+ * 带 `room.dm`,另两处漏了。三份手抄的类型迟早会再岔一次,所以只留这一份。
+ */
+export interface CreateSessionOptions {
+  /** 调用方指定 id(建房走派生 id:一个人只有一间私聊房)。 */
+  sessionId?: string
+  /** 桌面端只放行 'room';服务端对任何 kind 一律拒绝(它不跑协调器)。 */
+  kind?: Extract<SessionKind, "room">
+  room?: {
+    memberAgentIds: string[]
+    pmAgentId?: string
+    budgets?: { dailyCostUSD?: number; maxChain?: number }
+    /** 私聊标记(agent-im-dm.md D1/D3);人数即形态。 */
+    dm?: true
+  }
+}
+
 export interface CreateSessionResponse {
   success: boolean
   session?: ChatSession

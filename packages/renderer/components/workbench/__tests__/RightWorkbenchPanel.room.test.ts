@@ -212,9 +212,14 @@ describe('RightWorkbenchPanel — 右栏只有一套面板系统', () => {
     expect(tabLabels(wrapper)).toEqual(['线程', '空间', '调度'])
   })
 
-  it('classic 外壳逐像素回滚:房里不备固定组,只有既有工具页签', async () => {
+  /**
+   * 非房会话不备固定组 —— 判据只剩「是不是一间房」。外壳形态那道门(classic 下
+   * 房里也不备)已随 shellMode 于 2026-08-05 退役,见
+   * docs/design/product-two-forms-chatgpt-shell.md D2。
+   */
+  it('直聊不备固定组,只有既有工具页签', async () => {
     const wrapper = mount(RightWorkbenchPanel, {
-      props: { sessionId: 'room-1', shellMode: 'classic' },
+      props: { sessionId: 'chat-1' },
     })
     await settle()
     expect(tabLabels(wrapper)).toEqual([])

@@ -50,34 +50,15 @@ vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => mocks.settingsStore,
 }))
 
-vi.mock('../TabBar.vue', () => ({
+vi.mock('../SessionHeader.vue', () => ({
   default: {
-    name: 'TabBar',
+    name: 'SessionHeader',
     components: { Button },
-    props: ['tabs', 'activeTabId', 'sidePanelAvailable', 'sidePanelCollapsed'],
-    emits: ['selectTab', 'closeTab', 'toggleSidePanel'],
+    props: ['sessionId', 'sessionName', 'sidePanelAvailable', 'sidePanelCollapsed'],
+    emits: ['toggleSidePanel'],
     template: `
-      <div class="mock-tab-bar">
-        <Button
-          v-for="tab in tabs"
-          :key="tab.id"
-          unstyled
-          class="tab-button"
-          :data-type="tab.type"
-          :data-active="tab.id === activeTabId"
-          @click="$emit('selectTab', tab.id)"
-        >
-          {{ tab.type }}
-        </Button>
-        <Button
-          v-for="tab in tabs"
-          :key="tab.id + '-close'"
-          unstyled
-          class="close-tab-btn"
-          @click="$emit('closeTab', tab.id)"
-        >
-          close {{ tab.type }}
-        </Button>
+      <div class="mock-session-header" :data-session="sessionId">
+        <span class="mock-session-title">{{ sessionName }}</span>
         <Button
           unstyled
           class="mock-side-toggle"
@@ -143,7 +124,7 @@ function installElectronAPI() {
   })
 }
 
-describe('ChatWindow tab switching', () => {
+describe('ChatWindow 单会话外壳', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubGlobal('localStorage', {
@@ -162,13 +143,38 @@ describe('ChatWindow tab switching', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders only the chat tabs of its workspace leaf', async () => {
+  it('画的是它那一格里坐着的那条会话', async () => {
     const wrapper = mount(ChatWindow)
     await settle()
 
-    const buttons = wrapper.findAll('.tab-button')
-    expect(buttons.map(button => button.attributes('data-type'))).toEqual(['chat'])
-    expect(buttons[0].attributes('data-active')).toBe('true')
+    expect(wrapper.find('.mock-session-header').attributes('data-session')).toBe('session-1')
+  })
+
+  /**
+   * 多页签与「关闭会话」都已退役(U2,product-two-forms-chatgpt-shell.md D4/D5):
+   * 顶栏上不该再有任何关闭入口,ChatWindow 也不该再暴露页签操作。
+   */
+  it('顶栏没有关闭入口,ChatWindow 不再暴露页签操作', async () => {
+    const wrapper = mount(ChatWindow)
+    await settle()
+
+    expect(wrapper.find('.close-tab-btn').exists()).toBe(false)
+    const vm = wrapper.vm as unknown as Record<string, unknown>
+    expect(vm.selectTabByIndex).toBeUndefined()
+    expect(vm.closeActiveTab).toBeUndefined()
+    expect(vi.mocked((window as any).electronAPI.closeWindow)).not.toHaveBeenCalled()
+  })
+
+  it('再开一条会话 = 换掉这一格的靶子,不是叠一张签', async () => {
+    const workspace = useWorkspaceStore()
+    const wrapper = mount(ChatWindow)
+    await settle()
+
+    workspace.openSession('session-2')
+    await settle()
+
+    expect(wrapper.find('.mock-session-header').attributes('data-session')).toBe('session-2')
+    expect([...workspace.openSessionIds]).toEqual(['session-2'])
   })
 
   it('provides a left-column footer region to host the chat composer', async () => {
@@ -185,7 +191,7 @@ describe('ChatWindow tab switching', () => {
     expect(chatPanel.props('sessionId')).toBe('session-1')
   })
 
-  it('forwards the shared side-panel props straight through to TabBar and ChatPanel', async () => {
+  it('forwards the shared side-panel props straight through to the header and ChatPanel', async () => {
     const wrapper = mount(ChatWindow, {
       props: {
         sidePanelAvailable: true,
@@ -203,7 +209,7 @@ describe('ChatWindow tab switching', () => {
     expect(wrapper.emitted('toggleSidePanel')).toHaveLength(1)
   })
 
-  it('emits file opens for the app-level right workbench instead of creating a chat tab', async () => {
+  it('emits file opens for the app-level right workbench (文件不进工作区树)', async () => {
     const wrapper = mount(ChatWindow)
     await settle()
 
@@ -211,12 +217,11 @@ describe('ChatWindow tab switching', () => {
     await settle()
 
     expect(wrapper.emitted('openFile')).toEqual([['/repo/src/a.ts']])
-    expect(wrapper.findAll('.tab-button').map(button => button.attributes('data-type'))).toEqual(['chat'])
     expect(mocks.chatPanelSave).not.toHaveBeenCalled()
     expect(mocks.chatPanelRestore).not.toHaveBeenCalled()
   })
 
-  it('scrolls to a target message from the chat tab', async () => {
+  it('scrolls to a target message', async () => {
     const wrapper = mount(ChatWindow)
     await settle()
 
@@ -229,63 +234,4 @@ describe('ChatWindow tab switching', () => {
     expect(mocks.chatPanelScrollToMessage).toHaveBeenCalledWith('message-1')
   })
 
-  it('closing the only chat tab of a split panel closes the whole leaf in the store', async () => {
-    const workspace = useWorkspaceStore()
-    const newLeafId = workspace.splitLeaf('main', 'session-2', 'right')!
-
-    const wrapper = mount(ChatWindow, {
-      props: { panelId: newLeafId, canClose: true },
-    })
-    await settle()
-
-    await wrapper.find('.close-tab-btn').trigger('click')
-    await settle()
-
-    // The leaf collapsed away and its session's cache was released.
-    expect(workspace.leaves.map(leaf => leaf.id)).toEqual(['main'])
-    expect(vi.mocked((window as any).electronAPI.evictSessionCache)).toHaveBeenCalledWith('session-2')
-  })
-
-  it('closing the only chat tab of the only panel closes the window instead', async () => {
-    const workspace = useWorkspaceStore()
-    const wrapper = mount(ChatWindow)
-    await settle()
-
-    await wrapper.find('.close-tab-btn').trigger('click')
-    await settle()
-
-    // The store still refuses to empty the workspace — the window goes away instead.
-    expect(workspace.tabsOf('main')).toHaveLength(1)
-    expect(wrapper.findAll('.tab-button').map(button => button.attributes('data-type'))).toEqual(['chat'])
-    expect(vi.mocked((window as any).electronAPI.evictSessionCache)).not.toHaveBeenCalled()
-    expect(vi.mocked((window as any).electronAPI.closeWindow)).toHaveBeenCalledOnce()
-  })
-
-  it('closing a tab with siblings does not close the window', async () => {
-    const workspace = useWorkspaceStore()
-    workspace.openSession('session-2')
-    const wrapper = mount(ChatWindow)
-    await settle()
-
-    await wrapper.findAll('.close-tab-btn')[1].trigger('click')
-    await settle()
-
-    expect(workspace.tabsOf('main')).toHaveLength(1)
-    expect(vi.mocked((window as any).electronAPI.closeWindow)).not.toHaveBeenCalled()
-  })
-
-  it('closing a draft tab discards the draft instead of evicting cache', async () => {
-    const workspace = useWorkspaceStore()
-    workspace.openSession('draft:abc')
-    const wrapper = mount(ChatWindow)
-    await settle()
-
-    const closeButtons = wrapper.findAll('.close-tab-btn')
-    await closeButtons[1].trigger('click')
-    await settle()
-
-    expect(mocks.sessionsStore.discardNewChatDraft).toHaveBeenCalledWith('draft:abc')
-    expect(vi.mocked((window as any).electronAPI.evictSessionCache)).not.toHaveBeenCalled()
-    expect(workspace.tabsOf('main').map(tab => tab.sessionId)).toEqual(['session-1'])
-  })
 })

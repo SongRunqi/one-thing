@@ -23,6 +23,8 @@ const DEFAULT_PROVIDER_API_KEY_ENV_VARS: Record<string, string[]> = {
   deepseek: ['DEEPSEEK_API_KEY'],
   kimi: ['MOONSHOT_API_KEY', 'KIMI_API_KEY'],
   zhipu: ['ZAI_API_KEY', 'ZHIPU_API_KEY', 'ZHIPUAI_API_KEY'],
+  // Both 千问 AI 平台 and QwenCloud tell you to export DASHSCOPE_API_KEY.
+  qwen: ['DASHSCOPE_API_KEY', 'QWEN_API_KEY'],
   openrouter: ['OPENROUTER_API_KEY'],
   gemini: ['GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GOOGLE_API_KEY'],
 }

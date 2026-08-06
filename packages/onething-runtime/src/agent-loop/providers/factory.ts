@@ -25,6 +25,11 @@ import {
 	resolveOnethingProviderBaseUrl,
 	type OnethingZhipuApiMode,
 } from "../../providers/zhipu.js";
+import {
+	ONETHING_QWEN_DEFAULT_BASE_URL,
+	type OnethingQwenApiMode,
+	type OnethingQwenRegion,
+} from "../../providers/qwen.js";
 import { resolveOnethingModelCapabilities } from "../../providers/model-capability.js";
 
 export interface AgentProviderRuntimeOAuthToken {
@@ -40,6 +45,8 @@ export interface AgentProviderRuntimeConfig {
 	apiKey?: string;
 	baseUrl?: string;
 	zhipuApiMode?: OnethingZhipuApiMode;
+	qwenApiMode?: OnethingQwenApiMode;
+	qwenRegion?: OnethingQwenRegion;
 	model?: string;
 	apiType?: "openai" | "anthropic";
 	oauthToken?: AgentProviderRuntimeOAuthToken;
@@ -570,6 +577,26 @@ registerAgentProviderRuntime(
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
 			reasoningStyle: "zhipu-thinking",
+		}),
+	{ replace: true },
+);
+
+registerAgentProviderRuntime(
+	"qwen",
+	(config, options) =>
+		createOpenAICompatibleAgentProvider({
+			providerId: "qwen",
+			apiKey: config.apiKey,
+			baseUrl: resolveOnethingProviderBaseUrl("qwen", config),
+			defaultBaseUrl: ONETHING_QWEN_DEFAULT_BASE_URL,
+			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
+			supportsVision: true,
+			supportsReasoning: true,
+			// qwen3.8-max runs preserve_thinking by default and rejects history
+			// whose reasoning_content was dropped — echo it back verbatim.
+			includeAssistantReasoning: true,
+			reasoningStyle: "qwen-thinking",
 		}),
 	{ replace: true },
 );

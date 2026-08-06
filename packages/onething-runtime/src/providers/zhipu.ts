@@ -1,3 +1,9 @@
+import {
+  ONETHING_QWEN_PROVIDER_ID,
+  resolveOnethingQwenBaseUrl,
+  type OnethingQwenEndpointConfig,
+} from './qwen.js'
+
 export type OnethingZhipuApiMode = 'standard' | 'coding-plan'
 
 export const ONETHING_ZHIPU_STANDARD_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4'
@@ -36,8 +42,9 @@ export function resolveOnethingZhipuBaseUrl(
 
 export function resolveOnethingProviderBaseUrl(
   providerId: string,
-  config: OnethingZhipuBaseUrlConfig | undefined,
+  config: (OnethingZhipuBaseUrlConfig & OnethingQwenEndpointConfig) | undefined,
 ): string | undefined {
-  if (providerId !== 'zhipu') return normalizeBaseUrl(config?.baseUrl) || undefined
-  return resolveOnethingZhipuBaseUrl(config)
+  if (providerId === 'zhipu') return resolveOnethingZhipuBaseUrl(config)
+  if (providerId === ONETHING_QWEN_PROVIDER_ID) return resolveOnethingQwenBaseUrl(config)
+  return normalizeBaseUrl(config?.baseUrl) || undefined
 }

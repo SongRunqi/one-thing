@@ -1,6 +1,7 @@
 import type { OnethingOAuthFlowType, OnethingOAuthToken, OnethingProviderAuthContext } from '../auth/types.js'
 import type { CoreProviderConfigLike } from './provider-config.js'
 import type { OnethingProviderRegistryDefinition, OnethingProviderRegistryInfo } from './registry.js'
+import type { OnethingQwenApiMode, OnethingQwenRegion } from './qwen.js'
 import type { OnethingZhipuApiMode } from './zhipu.js'
 
 export type OnethingProviderOAuthFlowType = OnethingOAuthFlowType
@@ -25,11 +26,14 @@ export interface OnethingProviderConfig<
   apiKey?: string
   enabled?: boolean
   zhipuApiMode?: OnethingZhipuApiMode
+  qwenApiMode?: OnethingQwenApiMode
+  qwenRegion?: OnethingQwenRegion
   authType?: 'apiKey' | 'oauth'
   oauthToken?: TOAuthToken
   authContext?: TAuthContext
   temperatureByModel?: Record<string, number>
   maxOutputByModel?: Record<string, number>
+  contextLengthByModel?: Record<string, number>
   thinkingByModel?: Record<string, boolean>
   thinkingEffortByModel?: Record<string, string>
   serviceTierByModel?: Record<string, string>

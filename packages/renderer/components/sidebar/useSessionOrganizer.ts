@@ -35,6 +35,11 @@ export interface SessionWithBranches extends SessionBase {
 export interface SessionGroup {
   key: string
   label: string
+  /**
+   * 这一组是什么(U4)。呈现层据此决定画不画文件夹图标 —— **不要去解析 `key`
+   * 的前缀**:那是一个内部标识,不是分类依据。
+   */
+  kind: 'pinned' | 'project' | 'other'
   sessions: SessionWithBranches[]
 }
 
@@ -312,99 +317,12 @@ export function useSessionOrganizer() {
     return flattenWithBranches(rootSessions)
   }
 
-  // Get flat sessions list: pinned first, then by updatedAt (no date grouping)
-  function getFlatSessions(filteredSessions: SessionBase[]): SessionWithBranches[] {
-    const organizedSessions = organizeSessionsWithBranches(filteredSessions)
+  /*
+   * `getFlatSessions` 与 `getGroupedSessions`(纯时间分组:置顶/今天/昨天/过去
+   * 7 天/更早)已于 2026-08-05 (U4) 删除 —— 生产唯一的分组口径是下面的
+   * `getProjectGroupedSessions`,那两个只剩测试在引用,是死码。
+   */
 
-    // Separate pinned and unpinned sessions
-    const pinned: SessionWithBranches[] = []
-    const unpinned: SessionWithBranches[] = []
-
-    for (const session of organizedSessions) {
-      // Find root to check if pinned
-      let root = session
-      while (root.parentSessionId) {
-        const parent = organizedSessions.find(s => s.id === root.parentSessionId)
-        if (!parent) break
-        root = parent
-      }
-
-      if (root.isPinned) {
-        pinned.push(session)
-      } else {
-        unpinned.push(session)
-      }
-    }
-
-    // Return pinned first, then unpinned (both already sorted by updatedAt in organizeSessionsWithBranches)
-    return [...pinned, ...unpinned]
-  }
-
-  // Group sessions into temporal sections (置顶 / 今天 / 昨天 / 过去7天 / 更早).
-  // Each root session keeps its branch subtree together inside its section.
-  function getGroupedSessions(filteredSessions: SessionBase[]): SessionGroup[] {
-    const organized = organizeSessionsWithBranches(filteredSessions)
-
-    // Chunk the flattened list into per-root blocks (root + its descendant rows)
-    type Block = { root: SessionWithBranches; rows: SessionWithBranches[] }
-    const blocks: Block[] = []
-    for (const session of organized) {
-      if (session.depth === 0) {
-        blocks.push({ root: session, rows: [session] })
-      } else {
-        blocks[blocks.length - 1]?.rows.push(session)
-      }
-    }
-
-    const buckets: Record<string, Block[]> = {
-      pinned: [], today: [], yesterday: [], week: [], older: [],
-    }
-    const draftBlocks: Block[] = []
-    for (const block of blocks) {
-      if (isNewChatDraft(block.root)) {
-        draftBlocks.push(block)
-        continue
-      }
-      const key = block.root.isPinned ? 'pinned' : temporalKey(block.root.lastBranchUpdate)
-      buckets[key].push(block)
-    }
-
-    // Most recent activity first within each section
-    for (const key of Object.keys(buckets)) {
-      buckets[key].sort((a, b) => b.root.lastBranchUpdate - a.root.lastBranchUpdate)
-    }
-
-    const order: { key: string; label: string }[] = [
-      { key: 'pinned', label: '置顶' },
-      { key: 'today', label: '今天' },
-      { key: 'yesterday', label: '昨天' },
-      { key: 'week', label: '过去 7 天' },
-      { key: 'older', label: '更早' },
-    ]
-
-    const groups: SessionGroup[] = []
-    for (const { key, label } of order) {
-      const sectionBlocks = buckets[key]
-      if (sectionBlocks.length === 0) continue
-      groups.push({ key, label, sessions: sectionBlocks.flatMap(b => b.rows) })
-    }
-
-    if (draftBlocks.length > 0) {
-      draftBlocks.sort((a, b) => b.root.lastBranchUpdate - a.root.lastBranchUpdate)
-      const draftRows = draftBlocks.flatMap(b => b.rows)
-      const todayIndex = groups.findIndex(group => group.key === 'today')
-      if (todayIndex >= 0) {
-        const todayGroup = groups[todayIndex]
-        todayGroup.sessions = [...draftRows, ...todayGroup.sessions]
-      } else {
-        const pinnedIndex = groups.findIndex(group => group.key === 'pinned')
-        const insertIndex = pinnedIndex >= 0 ? pinnedIndex + 1 : 0
-        groups.splice(insertIndex, 0, { key: 'today', label: '今天', sessions: draftRows })
-      }
-    }
-
-    return groups
-  }
 
   // Project label = the last path segment of workingDirectory
   // (/Users/me/data/code/start-electron → start-electron).
@@ -474,10 +392,15 @@ export function useSessionOrganizer() {
 
     const groups: SessionGroup[] = []
     if (pinnedBlocks.length > 0) {
-      groups.push({ key: 'pinned', label: '置顶', sessions: pinnedBlocks.flatMap(b => b.rows) })
+      groups.push({ key: 'pinned', label: '置顶', kind: 'pinned', sessions: pinnedBlocks.flatMap(b => b.rows) })
     }
     for (const section of projectSections) {
-      groups.push({ key: `proj:${section.dir}`, label: section.label, sessions: section.blocks.flatMap(b => b.rows) })
+      groups.push({
+        key: `proj:${section.dir}`,
+        label: section.label,
+        kind: 'project',
+        sessions: section.blocks.flatMap(b => b.rows),
+      })
     }
     // Drafts and cwd-less sessions share the 未归类 bucket; drafts float first.
     // Inside it, fall back to time (V7): tag the first root of each temporal
@@ -493,7 +416,7 @@ export function useSessionOrganizer() {
         block.root.sectionLabel = key !== lastKey ? temporalLabel[key] : undefined
         lastKey = key
       }
-      groups.push({ key: 'uncategorized', label: '未归类', sessions: miscBlocks.flatMap(b => b.rows) })
+      groups.push({ key: 'uncategorized', label: '未归类', kind: 'other', sessions: miscBlocks.flatMap(b => b.rows) })
     }
     return groups
   }
@@ -541,8 +464,6 @@ export function useSessionOrganizer() {
     getAncestorIds,
     getBranchDepth,
     organizeSessionsWithBranches,
-    getFlatSessions,
-    getGroupedSessions,
     getProjectGroupedSessions,
     getSessionPreview,
     formatModelName,

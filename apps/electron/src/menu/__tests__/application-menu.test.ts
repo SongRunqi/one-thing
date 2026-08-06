@@ -75,7 +75,9 @@ describe('electron application menu', () => {
     expect(fileMenu.submenu.at(-1)).toEqual({ role: 'quit' })
   })
 
-  it('routes Cmd+W on the main window to the renderer instead of closing the window', async () => {
+  // ⌘W 的仲裁仍然先交给渲染层(它自己的浏览器面板可能持有焦点);渲染层走完
+  // 那一步之后才关窗 —— 会话已经没有"关闭"这回事了(U2,D5)。
+  it('routes Cmd+W on the main window to the renderer first', async () => {
     const { setupElectronApplicationMenu } = await import('../application-menu.js')
     const mainWindow = createWindow()
     mainWindow.close = vi.fn()
@@ -91,7 +93,7 @@ describe('electron application menu', () => {
 
     const template = (menu.buildFromTemplate as any).mock.calls[0][0] as any[]
     const fileMenu = template.find(item => item.label === 'File')
-    const closeItem = fileMenu.submenu.find((item: any) => item.label === 'Close Tab')
+    const closeItem = fileMenu.submenu.find((item: any) => item.label === 'Close')
 
     expect(closeItem.accelerator).toBe('CmdOrCtrl+W')
     closeItem.click()
@@ -116,7 +118,7 @@ describe('electron application menu', () => {
 
     const template = (menu.buildFromTemplate as any).mock.calls[0][0] as any[]
     const fileMenu = template.find(item => item.label === 'File')
-    fileMenu.submenu.find((item: any) => item.label === 'Close Tab').click()
+    fileMenu.submenu.find((item: any) => item.label === 'Close').click()
 
     expect(settingsWindow.close).toHaveBeenCalledOnce()
     expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('menu:close-chat')
@@ -148,13 +150,13 @@ describe('electron application menu', () => {
       browser,
     })
 
-    fileMenuOf(menu).submenu.find((item: any) => item.label === 'Close Tab').click()
+    fileMenuOf(menu).submenu.find((item: any) => item.label === 'Close').click()
 
     expect(browser.closeActiveTab).toHaveBeenCalledOnce()
     expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('menu:close-chat')
   })
 
-  it('falls back to the renderer tab tree on Cmd+W when the page has no focus', async () => {
+  it('falls back to the renderer on Cmd+W when the embedded page has no focus', async () => {
     const { setupElectronApplicationMenu } = await import('../application-menu.js')
     const mainWindow = createWindow()
     const { menu } = createMenu()
@@ -169,7 +171,7 @@ describe('electron application menu', () => {
       browser,
     })
 
-    fileMenuOf(menu).submenu.find((item: any) => item.label === 'Close Tab').click()
+    fileMenuOf(menu).submenu.find((item: any) => item.label === 'Close').click()
 
     expect(browser.closeActiveTab).not.toHaveBeenCalled()
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('menu:close-chat')

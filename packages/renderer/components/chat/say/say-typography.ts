@@ -24,7 +24,6 @@
  */
 
 import { DEFAULT_CHAT_SETTINGS, DEFAULT_GENERAL_SETTINGS } from '@shared/defaults/settings'
-import type { ShellMode } from '@/types'
 
 /**
  * 聊天面的排版与栏位常量 —— **唯一真源**。
@@ -53,7 +52,6 @@ export const SAY_METRICS = {
 } as const
 
 export interface SayTypographyInput {
-  shellMode: ShellMode
   /** 只有房/私聊走新聊天面;直聊(工程驾驶舱)永远不进这一档。 */
   isSaySurface: boolean
   /** `settings.general.messageListDensity` */
@@ -101,9 +99,8 @@ export function hasExplicitTypographyChoice(
   return false
 }
 
-/** 聊天面排版档是否生效:workbench 外壳 + 房/私聊 **且** 用户没有过显式排版选择。 */
+/** 聊天面排版档是否生效:房/私聊 **且** 用户没有过显式排版选择。 */
 export function shouldUseSayTypography(input: SayTypographyInput): boolean {
-  if (input.shellMode !== 'workbench') return false
   if (!input.isSaySurface) return false
   return !hasExplicitTypographyChoice(input)
 }

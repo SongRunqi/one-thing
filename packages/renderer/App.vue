@@ -190,7 +190,6 @@
                   :workspace-root="currentWorkspaceRoot"
                   :workspace-roots="currentWorkspaceRoots"
                   :revealed="workbenchRevealed"
-                  :shell-mode="shellMode"
                   @close="inspectorOpen = false"
                 />
               </div>
@@ -222,7 +221,7 @@ import { useChatStore } from '@/stores/chat'
 import { useThemeStore } from '@/stores/themes'
 import { useVoiceStore } from '@/stores/voice'
 import { useShortcuts } from '@/composables/useShortcuts'
-import { resolveInspectorDefaultOpen, resolveShellMode } from '@/composables/useShellMode'
+import { resolveInspectorDefaultOpen } from '@/composables/useInspectorDefault'
 import { Sidebar } from '@/components/sidebar'
 import ChatContainer from '@/components/ChatContainer.vue'
 import Container from '@/components/common/Container.vue'
@@ -307,22 +306,8 @@ const inspectorOpen = computed({
   set: (val) => { chatStore.inspectorOpen = val }
 })
 
-/* ─── 工作台式外壳(im-workbench-layout.md §5 C0)─────────────────────────
-   workbench(默认)= 常驻左栏以活为脊 + 账页流 + 常驻右栏;
-   classic         = 改造前的外壳,逐像素不变(§6 回滚闸)。
-   形态推导全部走 useShellMode 的纯函数,两种模式的分野在那里有测试钉着。 */
-const shellMode = computed(() => resolveShellMode(settingsStore.settings))
-const isWorkbenchShell = computed(() => shellMode.value === 'workbench')
-
-/* `data-shell-mode` 是外壳形态的**唯一** CSS 门。C1–C4 的视觉差异一律写成
-   `:root[data-shell-mode='workbench'] …`,于是不需要每个组件各自 import 一次
-   判定、也不需要往下透传 prop —— 一个属性管住整棵树;classic 下属性值是
-   'classic',所有 workbench 规则一条都不命中,像素与改造前一致。
-   辅助窗也写:形态是全 app 的事实。 */
-watch(shellMode, (mode) => {
-  if (typeof document === 'undefined') return
-  document.documentElement.setAttribute('data-shell-mode', mode)
-}, { immediate: true })
+/* C0 的 workbench↔classic 外壳回滚闸已于 2026-08-05 整套退役(D2 / U0),它的
+   根属性 `data-shell-mode` 与 CSS 门也随 U0b 一起删干净了 —— 外壳只有一套。 */
 
 /* 右栏开合的持久化(W-Q2)。沿用右栏自己既有的那套 —— `inspectorPanelSize`
    就住在 localStorage —— 而不是另开一条 appState 字段。 */
@@ -350,8 +335,6 @@ function writeStoredInspectorOpen(open: boolean): void {
 /**
  * 右栏初值(W-Q2:≥1400px 默认展开,否则默认收起但入口保留)。
  *
- * 只在设置真的加载完之后跑一次 —— 在那之前 `settingsStore.settings` 还是内置
- * 默认值(shellMode = 'workbench'),照它去开右栏会把 classic 用户也弹开。
  * 「默认」不是「强制」:存过的用户选择永远胜出,手动收起的人不会每次被弹开。
  */
 let inspectorDefaultApplied = false
@@ -360,7 +343,6 @@ function applyInspectorDefaultOnce() {
   inspectorDefaultApplied = true
   if (isAuxiliaryWindow.value) return
   inspectorOpen.value = resolveInspectorDefaultOpen({
-    shellMode: shellMode.value,
     viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth,
     stored: readStoredInspectorOpen(),
   })
@@ -370,7 +352,6 @@ function applyInspectorDefaultOnce() {
    照用户上次留下的样子,而不是把窗宽默认值再算一遍。 */
 watch(inspectorOpen, open => {
   if (!inspectorDefaultApplied || isAuxiliaryWindow.value) return
-  if (!isWorkbenchShell.value) return
   writeStoredInspectorOpen(open)
 })
 
@@ -496,10 +477,6 @@ useShortcuts({
   onToggleTodoPlan: () => {
     if (isAuxiliaryWindow.value) return
     window.dispatchEvent(new CustomEvent('todo-plan:toggle-card'))
-  },
-  onSelectTabByIndex: (digit) => {
-    if (isAuxiliaryWindow.value) return
-    chatContainerRef.value?.selectFocusedPanelTabByIndex?.(digit)
   },
 })
 
@@ -1115,7 +1092,6 @@ onMounted(async () => {
     sessionsStore.loadSessions(),
     settingsStore.loadSettings(),
   ])
-  // 右栏初值必须等真设置落地(在此之前 shellMode 读到的是内置默认值)。
   applyInspectorDefaultOnce()
   void voiceStore.initialize().catch((e) => {
     console.warn('[App] voice init failed', e)
@@ -1202,17 +1178,18 @@ onMounted(async () => {
     createNewChat()
   })
 
-  // Cmd+W closes the focused tab; the panel asks the host to close the window
-  // only once nothing is left to fall back to. The browser panel gets first
-  // refusal when it is the focused surface — the main process already handled
-  // the case where the embedded PAGE has focus, so reaching here means focus is
-  // in our own DOM (omnibox / start page / tab drawer).
+  // ⌘W 恢复 macOS 标准语义 = 关窗口(U2,product-two-forms-chatgpt-shell.md D5)。
+  // 会话没有"关闭"这回事 —— 它不是文档,退场只有归档 / 删除。
+  //
+  // 内嵌浏览器是本 app 里唯一还有真页签的面,所以它先要:主进程已经处理过
+  // "内嵌页面本身有焦点"那一档,走到这里说明焦点在我们自己的 DOM 里
+  // (omnibox / 起始页 / 页签抽屉)。
   unsubscribeMenuCloseChat = platformApi.onMenuCloseChat(() => {
     if (browserStore.panelFocused) {
       void browserStore.closeActiveTab()
       return
     }
-    chatContainerRef.value?.closeFocusedPanelActiveTab?.()
+    void platformApi.closeWindow().catch(() => {})
   })
 
   // Cmd+T is the browser's alone: outside the browser panel it does nothing

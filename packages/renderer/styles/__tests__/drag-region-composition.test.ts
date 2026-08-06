@@ -17,7 +17,7 @@ const rendererDir = path.resolve(dirname, '..', '..')
 // no-drag 挖洞。这条守卫拦住"预留槽"这种写法回来。
 
 const HEADER_HOSTS = [
-  'components/chat/TabBar.vue',
+  'components/chat/SessionHeader.vue',
   'components/MediaPanel.vue',
   'components/sidebar/SidebarHeader.vue',
 ]
@@ -43,7 +43,7 @@ describe('顶栏拖拽区的组合方式', () => {
 
   it('按钮住在各自的 drag 宿主里', () => {
     expect(read('components/sidebar/SidebarHeader.vue')).toContain('<slot />')
-    expect(read('components/chat/TabBar.vue')).toContain('<SidebarActionGroup')
+    expect(read('components/chat/SessionHeader.vue')).toContain('<SidebarActionGroup')
     expect(read('components/MediaPanel.vue')).toContain('<SidebarActionGroup')
   })
 

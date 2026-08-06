@@ -263,3 +263,40 @@ describe('formatRoomMemberPresence — tooltip 里那半句「在哪儿」', () 
     expect(formatRoomMemberPresence(null, roomName)).toBe('')
   })
 })
+
+/**
+ * 第五态(E6,claude-code-integration-v2 §6):**球在人这边**。
+ *
+ * 排在最前是刻意的:它与「在生成」在真机上同时成立(大脑那一轮还开着),但只有它
+ * 需要用户做点什么。压在下面,徽标就会一直说「生成中」—— 那正是 F3 里没人去找那
+ * 张卡的原因。
+ */
+describe('等你回答徽标(E6)', () => {
+  it('提问挂着 → waiting,压过生成中', () => {
+    expect(resolveRoomMemberPresence(activity({
+      mind: { state: 'thinking', roomSessionId: 'room-1', since: 1 },
+      waitingOn: { kind: 'interaction', since: 2 },
+    }))).toBe('waiting')
+  })
+
+  it('审批挂着 → waiting,压过持牌', () => {
+    expect(resolveRoomMemberPresence(activity({
+      heldLeases: [lease(false)],
+      waitingOn: { kind: 'permission', since: 2 },
+    }))).toBe('waiting')
+  })
+
+  it('tooltip 说的是要用户动手的那句,不是「在生成」', () => {
+    expect(formatRoomMemberPresence(
+      activity({
+        mind: { state: 'thinking', roomSessionId: 'room-1', since: 1 },
+        waitingOn: { kind: 'interaction', since: 2 },
+      }),
+      () => '排期房',
+    )).toBe('等你回答')
+    expect(formatRoomMemberPresence(
+      activity({ waitingOn: { kind: 'permission', since: 2 } }),
+      () => '排期房',
+    )).toBe('等你审批')
+  })
+})

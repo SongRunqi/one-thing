@@ -316,7 +316,7 @@ import {
   type RoomTabDot,
 } from './room-tabs'
 import type { TabPaneName } from '@/components/common/tabs'
-import type { ContextVariable, ShellMode } from '@/types'
+import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
 
 type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling'
@@ -357,14 +357,8 @@ const props = withDefaults(defineProps<{
   workspaceRoots?: string[]
   /** Whether the workbench panel is expanded — drives embedded-browser view visibility. */
   revealed?: boolean
-  /**
-   * 外壳形态。classic 是逐像素回滚闸 —— 那一档下右栏不备房的固定页签组,
-   * 只有 Files/Terminal/Browser 那一路。
-   */
-  shellMode?: ShellMode
 }>(), {
   revealed: true,
-  shellMode: 'workbench',
 })
 
 defineEmits<{
@@ -385,7 +379,6 @@ const currentSession = computed(() =>
   sessionsStore.sessions.find(session => session.id === props.sessionId))
 
 const roomTarget = computed<RoomPanelTarget>(() => resolveRoomPanelTarget({
-  shellMode: props.shellMode,
   session: currentSession.value,
   // 形态判定单一收口:`isUserDmRoom` 是产品层纯规则(人数即形态),不自写第二份。
   isUserDm: session => isUserDmRoom(session.room),

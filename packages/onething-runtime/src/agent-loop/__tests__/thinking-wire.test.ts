@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { AgentMessage, AgentTurnRequest, AgentTurnStreamEvent } from '@onething/core/agent-loop'
 import { createClaudeAgentProvider } from '../providers/claude.js'
 import { createGeminiAgentProvider } from '../providers/gemini.js'
-import { createOpenAICompatibleAgentProvider } from '../providers/openai-compatible.js'
+import {
+  createOpenAICompatibleAgentProvider,
+  type OpenAICompatibleAgentProviderOptions,
+} from '../providers/openai-compatible.js'
 
 function sseResponse(lines: string[] = []): Response {
   const body = [
@@ -200,7 +203,9 @@ describe('claude thinking wire format', () => {
 
 describe('openai-compatible reasoning styles', () => {
   async function styleBody(
-    reasoningStyle: 'thinking-type' | 'openai-effort' | 'zhipu-thinking' | 'grok-effort' | 'openrouter-reasoning' | 'none',
+    // Derived, not re-listed: a new wire style must reach this helper without
+    // an edit here, or the test silently stops covering it.
+    reasoningStyle: NonNullable<OpenAICompatibleAgentProviderOptions['reasoningStyle']>,
     request: Partial<AgentTurnRequest>,
   ): Promise<CapturedBody> {
     let captured: CapturedBody | undefined
@@ -297,6 +302,50 @@ describe('openai-compatible reasoning styles', () => {
     expect(body.thinking).toBeUndefined()
     expect(body.reasoning_effort).toBeUndefined()
     expect(body.reasoning).toBeUndefined()
+  })
+
+  it('qwen-thinking sends enable_thinking, and effort only where accepted', async () => {
+    // qwen3.8-max is the one family that takes reasoning_effort (low|medium|xhigh).
+    const max = await styleBody('qwen-thinking', {
+      model: 'qwen3.8-max',
+      thinking: 'enabled',
+      reasoningEffort: 'max',
+    })
+    expect(max.enable_thinking).toBe(true)
+    expect(max.reasoning_effort).toBe('xhigh')
+
+    const maxLow = await styleBody('qwen-thinking', {
+      model: 'qwen3.8-max',
+      thinking: 'enabled',
+      reasoningEffort: 'minimal',
+    })
+    expect(maxLow.reasoning_effort).toBe('low')
+
+    // Resold GLM / DeepSeek keep the vendors' high|max pair.
+    const glm = await styleBody('qwen-thinking', {
+      model: 'glm-5.2',
+      thinking: 'enabled',
+      reasoningEffort: 'xhigh',
+    })
+    expect(glm.reasoning_effort).toBe('max')
+
+    // Every other Qwen model is thinking_budget-driven: sending effort would
+    // 400, so the toggle alone goes out.
+    const plus = await styleBody('qwen-thinking', {
+      model: 'qwen3.7-plus',
+      thinking: 'enabled',
+      reasoningEffort: 'high',
+    })
+    expect(plus.enable_thinking).toBe(true)
+    expect(plus.reasoning_effort).toBeUndefined()
+
+    const off = await styleBody('qwen-thinking', { model: 'qwen3.7-plus', thinking: 'disabled' })
+    expect(off.enable_thinking).toBe(false)
+    expect(off.reasoning_effort).toBeUndefined()
+
+    // Untouched toggle must not change the request at all.
+    const untouched = await styleBody('qwen-thinking', { model: 'qwen3.7-plus' })
+    expect(untouched.enable_thinking).toBeUndefined()
   })
 
   it('thinking-type keeps the kimi/deepseek wire shape', async () => {

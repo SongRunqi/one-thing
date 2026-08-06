@@ -14,7 +14,6 @@ function readChatFile(relativePath: string): string {
 
 function input(overrides: Record<string, unknown> = {}) {
   return {
-    shellMode: 'workbench' as const,
     isSaySurface: true,
     ...overrides,
   }
@@ -55,8 +54,9 @@ describe('聊天面排版档:退让闸', () => {
     expect(hasExplicitTypographyChoice({ messageLineHeight: 1.6 })).toBe(true)
   })
 
-  it('classic 与直聊都不进这一档', () => {
-    expect(shouldUseSayTypography(input({ shellMode: 'classic' }))).toBe(false)
+  // 外壳形态那道门(classic 不进这一档)随 shellMode 于 2026-08-05 一起退役
+  // (product-two-forms-chatgpt-shell.md D2),判据只剩「是不是 say 面」。
+  it('直聊不进这一档', () => {
     expect(shouldUseSayTypography(input({ isSaySurface: false }))).toBe(false)
   })
 })

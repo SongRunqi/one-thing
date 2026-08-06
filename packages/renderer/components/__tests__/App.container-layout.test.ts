@@ -199,16 +199,16 @@ describe('App container layout', () => {
     expect(sidebar).not.toContain('max-width: 300px !important')
   })
 
-  it('keeps tab reservation width changes discrete during sidebar toggle', () => {
-    const tabBar = readRendererFile('components/chat/TabBar.vue')
+  it('keeps titlebar reservation width changes discrete during sidebar toggle', () => {
+    const header = readRendererFile('components/chat/SessionHeader.vue')
 
-    expect(tabBar).toContain('Width changes stay discrete to avoid')
-    expect(tabBar).toContain('transition: none;')
-    expect(tabBar).not.toContain('width var(--app-sidebar-transition-duration, 0.3s)')
-    expect(tabBar).not.toContain('padding-left var(--app-sidebar-transition-duration, 0.3s)')
-    expect(tabBar).not.toContain('var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1))')
-    expect(tabBar).not.toContain('width 0.3s cubic-bezier')
-    expect(tabBar).not.toContain('padding-left 0.3s cubic-bezier')
+    expect(header).toContain('Width changes stay discrete to avoid')
+    expect(header).toContain('transition: none;')
+    expect(header).not.toContain('width var(--app-sidebar-transition-duration, 0.3s)')
+    expect(header).not.toContain('padding-left var(--app-sidebar-transition-duration, 0.3s)')
+    expect(header).not.toContain('var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1))')
+    expect(header).not.toContain('width 0.3s cubic-bezier')
+    expect(header).not.toContain('padding-left 0.3s cubic-bezier')
   })
 
   it('uses the right workbench with dynamic tabs and the shared file layout components', () => {
@@ -341,7 +341,7 @@ describe('App container layout', () => {
     const userRail = readRendererFile('components/chat/UserMessageNavRail.vue')
     const assistantRail = readRendererFile('components/chat/AssistantMessageNavRail.vue')
     const sidePanel = readRendererFile('components/chat/ChatSidePanel.vue')
-    const tabBar = readRendererFile('components/chat/TabBar.vue')
+    const sessionHeader = readRendererFile('components/chat/SessionHeader.vue')
     const todoProgress = readRendererFile('components/chat/TodoProgressPanel.vue')
 
     expect(messageList).toContain('<Teleport')
@@ -385,11 +385,11 @@ describe('App container layout', () => {
     expect(sidePanel).toContain('background: transparent;')
     expect(sidePanel).toContain('.chat-side-panel.collapsed')
     expect(sidePanel).toContain('padding: 0;')
-    expect(tabBar).toContain('sidePanelAvailable?: boolean')
-    expect(tabBar).toContain('sidePanelCollapsed?: boolean')
-    expect(tabBar).toContain('class="header-btn side-panel-toggle"')
-    expect(tabBar).not.toContain('v-if="sidePanelAvailable"')
-    expect(tabBar).toContain("toggleSidePanel: []")
+    expect(sessionHeader).toContain('sidePanelAvailable?: boolean')
+    expect(sessionHeader).toContain('sidePanelCollapsed?: boolean')
+    expect(sessionHeader).toContain('class="header-btn side-panel-toggle"')
+    expect(sessionHeader).not.toContain('v-if="sidePanelAvailable"')
+    expect(sessionHeader).toContain("toggleSidePanel: []")
     expect(sidePanel).toContain('<TodoProgressPanel')
     expect(sidePanel).toContain("window.addEventListener('todo-plan:toggle-card', handleTodoToggleCard)")
     expect(todoProgress).toContain('platformApi.getTodoPlan')
@@ -443,12 +443,14 @@ describe('App container layout', () => {
     const sidebar = readRendererFile('components/sidebar/Sidebar.vue')
     const sessionList = readRendererFile('components/sidebar/SessionList.vue')
 
-    // Sessions flow through the Menu; workspace panels moved to the bottom
-    // icon row and emit open-workspace-panel directly.
+    // Sessions flow through the Menu; workspace panels emit
+    // open-workspace-panel directly. That used to come off the flat bottom
+    // icon dock — it now comes off the rail's ⋯ menu (the dock retired with
+    // the classic shell, 2026-08-05), but the one-way edge is the same.
     expect(sidebar).not.toContain("import MenuItem from '@/components/common/MenuItem.vue'")
     expect(sidebar).toContain(':active-index="activeSidebarIndex"')
     expect(sidebar).toContain('@menu-select="handleSidebarMenuSelect"')
-    expect(sidebar).toContain("$emit('open-workspace-panel', action.id)")
+    expect(sidebar).toContain("emit('open-workspace-panel', action.id)")
     expect(sidebar).toContain("return `session:${sessionId}`")
     expect(sidebar).toContain("'select-session': [sessionId: string]")
     expect(sidebar).not.toContain('@session-click')

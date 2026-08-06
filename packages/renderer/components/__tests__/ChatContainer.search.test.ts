@@ -136,7 +136,7 @@ describe('ChatContainer search navigation', () => {
   })
 
   it('focuses the composer after creating a draft from the empty state', async () => {
-    useWorkspaceStore().closeSessionTabs('session-1')
+    useWorkspaceStore().closeSession('session-1')
     mocks.sessionsStore.currentSessionId = ''
     const wrapper = mount(ChatContainer)
     await settle()

@@ -8,6 +8,11 @@ import {
 	ONETHING_CODEX_DEFAULT_MODEL,
 	ONETHING_CODEX_PROVIDER_ID,
 } from "./codex.js";
+import {
+	ONETHING_QWEN_DEFAULT_BASE_URL,
+	ONETHING_QWEN_DEFAULT_MODEL,
+	ONETHING_QWEN_PROVIDER_ID,
+} from "./qwen.js";
 
 export type OnethingBuiltinOAuthFlowType = OnethingProviderOAuthFlowType;
 export type OnethingBuiltinProviderInfo = OnethingProviderInfo;
@@ -80,6 +85,21 @@ export const zhipuBuiltinProvider: OnethingBuiltinProviderDefinition = {
 		defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
 		defaultModel: "glm-5.2",
 		icon: "zhipu",
+		supportsCustomBaseUrl: true,
+		requiresApiKey: true,
+	},
+};
+
+export const qwenBuiltinProvider: OnethingBuiltinProviderDefinition = {
+	id: ONETHING_QWEN_PROVIDER_ID,
+	info: {
+		id: ONETHING_QWEN_PROVIDER_ID,
+		name: "千问",
+		description:
+			"千问 AI 平台 / QwenCloud — Qwen3.x 系列，支持国内版与海外版、按量付费与 Token Plan 订阅",
+		defaultBaseUrl: ONETHING_QWEN_DEFAULT_BASE_URL,
+		defaultModel: ONETHING_QWEN_DEFAULT_MODEL,
+		icon: "qwen",
 		supportsCustomBaseUrl: true,
 		requiresApiKey: true,
 	},
@@ -233,6 +253,7 @@ export const onethingPortableBuiltinProviders: OnethingBuiltinProviderDefinition
 		deepseekBuiltinProvider,
 		kimiBuiltinProvider,
 		zhipuBuiltinProvider,
+		qwenBuiltinProvider,
 		openrouterBuiltinProvider,
 		geminiBuiltinProvider,
 		claudeCodeBuiltinProvider,

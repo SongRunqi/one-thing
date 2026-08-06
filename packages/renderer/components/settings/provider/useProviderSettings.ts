@@ -19,6 +19,13 @@ import { useSettingsStore } from "@/stores/settings";
 import { isProviderConfigEnabled } from "@/stores/helpers/provider-model";
 import { useProviderAuth } from "./useProviderAuth";
 import {
+	getOnethingQwenBaseUrl,
+	normalizeOnethingQwenApiMode,
+	normalizeOnethingQwenRegion,
+	type OnethingQwenApiMode,
+	type OnethingQwenRegion,
+} from "@onething/runtime/providers/qwen";
+import {
 	hasVision,
 	hasImageGeneration,
 	hasTools,
@@ -170,6 +177,47 @@ export function useProviderSettings(
 			? "coding-plan"
 			: "standard";
 	});
+
+	const isQwenProvider = computed(() => viewingProvider.value === "qwen");
+
+	const currentQwenApiMode = computed(() =>
+		normalizeOnethingQwenApiMode(
+			props.settings.ai.providers.qwen?.qwenApiMode,
+		),
+	);
+
+	const currentQwenRegion = computed(() =>
+		normalizeOnethingQwenRegion(props.settings.ai.providers.qwen?.qwenRegion),
+	);
+
+	/**
+	 * 千问 has four endpoints (国内/海外 x 按量付费/Token Plan). Writing the base
+	 * URL alongside the mode keeps the field showing the address actually in
+	 * use — the runtime re-derives it either way.
+	 */
+	function updateQwenEndpoint(patch: {
+		mode?: OnethingQwenApiMode;
+		region?: OnethingQwenRegion;
+	}) {
+		const qwenApiMode = patch.mode ?? currentQwenApiMode.value;
+		const qwenRegion = patch.region ?? currentQwenRegion.value;
+		const providers = { ...props.settings.ai.providers };
+		providers.qwen = {
+			...providers.qwen,
+			qwenApiMode,
+			qwenRegion,
+			baseUrl: getOnethingQwenBaseUrl(qwenApiMode, qwenRegion),
+		};
+		updateSettings({ ai: { ...props.settings.ai, providers } });
+	}
+
+	function updateQwenApiMode(mode: string) {
+		updateQwenEndpoint({ mode: normalizeOnethingQwenApiMode(mode) });
+	}
+
+	function updateQwenRegion(region: string) {
+		updateQwenEndpoint({ region: normalizeOnethingQwenRegion(region) });
+	}
 
 	const currentProviderEnvStatus = computed(() => {
 		return providerEnvStatuses.value[viewingProvider.value];
@@ -404,6 +452,36 @@ export function useProviderSettings(
 		updateSettings({ ai: { ...props.settings.ai, providers } });
 	}
 
+	/**
+	 * Per-model context-window override. Needed because a hand-added model has
+	 * no registry entry, and the resolver's 128k fallback silently mis-budgets
+	 * context compaction for anything with a different window.
+	 */
+	function updateModelContextLength(modelId: string, value: number | null) {
+		const providers = { ...props.settings.ai.providers };
+		const current = { ...providers[viewingProvider.value] };
+		const map = { ...(current.contextLengthByModel ?? {}) };
+		if (value === null || !Number.isFinite(value) || value <= 0) {
+			delete map[modelId];
+		} else {
+			map[modelId] = Math.min(Math.floor(value), 100_000_000);
+		}
+		if (Object.keys(map).length === 0) {
+			delete current.contextLengthByModel;
+		} else {
+			current.contextLengthByModel = map;
+		}
+		providers[viewingProvider.value] = current;
+		updateSettings({ ai: { ...props.settings.ai, providers } });
+	}
+
+	const currentProviderContextLengths = computed<Record<string, number>>(() => {
+		return (
+			props.settings.ai.providers[viewingProvider.value]
+				?.contextLengthByModel ?? {}
+		);
+	});
+
 	// Per-model capability overrides (settings.ai.providers[id].modelCapabilitiesByModel).
 	// Pass `value: null` (or `undefined`) to clear the override for that key
 	// and fall back to models.dev / name-pattern detection.
@@ -485,6 +563,7 @@ export function useProviderSettings(
 			return next;
 		};
 		current.maxOutputByModel = moveKey(current.maxOutputByModel);
+		current.contextLengthByModel = moveKey(current.contextLengthByModel);
 		current.temperatureByModel = moveKey(current.temperatureByModel);
 		current.thinkingByModel = moveKey(current.thinkingByModel);
 		current.thinkingEffortByModel = moveKey(current.thinkingEffortByModel);
@@ -835,6 +914,8 @@ export function useProviderSettings(
 		hasProviderTemperatureOverride,
 		activeModelSupportsTemperature,
 		currentProviderMaxOutputs,
+		currentProviderContextLengths,
+		updateModelContextLength,
 		activeModelId,
 		activeModelMaxLimit,
 		activeModelDefaultMaxOutput,
@@ -846,6 +927,9 @@ export function useProviderSettings(
 		isACPProvider,
 		isZhipuProvider,
 		currentZhipuApiMode,
+		isQwenProvider,
+		currentQwenApiMode,
+		currentQwenRegion,
 		currentACPAgent,
 		currentACPAgentState,
 		currentProviderUsesEnvApiKey,
@@ -873,6 +957,8 @@ export function useProviderSettings(
 		updateProviderApiKey,
 		updateProviderBaseUrl,
 		updateZhipuApiMode,
+		updateQwenApiMode,
+		updateQwenRegion,
 		updateProviderTemperature,
 		resetProviderTemperature,
 		updateModelMaxOutput,

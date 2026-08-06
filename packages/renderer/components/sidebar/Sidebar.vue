@@ -25,28 +25,50 @@
         />
       </SidebarHeader>
 
-      <!-- 方案六 · 顶部「＋ 新会话」：固定在滚动区之外的文本入口。
-           **classic 专属** —— 方案三下新会话住在 rail 底部那一栏。 -->
-      <button
-        v-if="!isWorkbenchShell"
-        type="button"
-        class="sidebar-newchat"
-        @click="$emit('create-new-chat')"
+      <!-- 形态切换器(U3,样板 ChatGPT 左栏顶部的 `ChatGPT ▾`)。
+           一个产品两种形态:对话 = 老模式直聊,协作 = 群聊 + 私聊。
+           它只换左栏与「＋」建什么 —— 主区画什么永远由 `session.kind` 推
+           (docs/design/product-two-forms-chatgpt-shell.md D1)。
+           web 端没有协作形态(rooms 是 desktop-only),单项下拉是死控件,整行不画。 -->
+      <div
+        v-if="showFormSwitcher"
+        class="sidebar-form-row"
       >
-        ＋ 新会话
-      </button>
+        <button
+          ref="formSwitcherEl"
+          type="button"
+          class="sidebar-form-switcher"
+          :class="{ 'is-open': formMenuOpen }"
+          :aria-expanded="formMenuOpen"
+          aria-haspopup="menu"
+          @click="toggleFormMenu"
+        >
+          <b class="sidebar-form-name">{{ formModeLabel }}</b>
+          <ChevronDown
+            class="sidebar-form-caret"
+            :size="14"
+            :stroke-width="1.8"
+          />
+          <!-- 另一形态有未读时在这儿亮一枚点 —— 切过去才看得见的未读,总得有人说。 -->
+          <span
+            v-if="otherFormUnread"
+            class="sidebar-form-badge"
+            aria-hidden="true"
+          />
+        </button>
+      </div>
 
       <!-- 方案三 · rail + 单类面板(样板 docs/design/im-redesign/sidebar-4.html
-           第三格)。两层壳在 classic 下都是 `display: contents` —— 不生成盒子,
-           四区仍然是 `.sidebar-content` 的直接布局子,排版逐像素不变(纪律 1);
-           workbench 下 `.sidebar-split` 才成为 rail | 面板 的那一横排。
+           第三格)。`.sidebar-split` 是 rail | 面板 的那一横排。
 
            rail 从 `SidebarHeader` **下面**开始:那一行 44px 是全宽拖拽行,左 70px
            是 macOS 交通灯保留位。rail 若从窗顶起,前两枚图标会被交通灯压住,而且
            整行 `-webkit-app-region: drag`,根本点不动。 -->
-      <div class="sidebar-split">
+      <div
+        v-if="formMode === 'collab'"
+        class="sidebar-split"
+      >
         <div
-          v-if="isWorkbenchShell"
           class="sidebar-rail"
           role="tablist"
           aria-label="左栏类别"
@@ -156,38 +178,33 @@
              `role="tab"` 与 `role="tablist"` 之间夹一层 div 会切断从属关系,
              30px 方钮外面多一个盒子也会把这一竖条撑歪。`trigger-el` 让 Tooltip
              自己 `display:none`,只托管浮层,rail 的 DOM 一个节点都不动。 -->
-        <template v-if="isWorkbenchShell">
-          <Tooltip
-            v-for="category in railCategories"
-            :key="`rail-tip-${category.id}`"
-            :trigger-el="railTabEls[category.id] ?? null"
-            :text="category.label"
-            position="right"
-          />
-          <Tooltip
-            :trigger-el="railMoreEl"
-            text="工作区面板"
-            position="right"
-          />
-          <Tooltip
-            :trigger-el="railNewChatEl"
-            text="新会话"
-            position="right"
-          />
-          <Tooltip
-            :trigger-el="railSettingsEl"
-            text="Settings"
-            position="right"
-          />
-        </template>
+        <Tooltip
+          v-for="category in railCategories"
+          :key="`rail-tip-${category.id}`"
+          :trigger-el="railTabEls[category.id] ?? null"
+          :text="category.label"
+          position="right"
+        />
+        <Tooltip
+          :trigger-el="railMoreEl"
+          text="工作区面板"
+          position="right"
+        />
+        <Tooltip
+          :trigger-el="railNewChatEl"
+          text="新会话"
+          position="right"
+        />
+        <Tooltip
+          :trigger-el="railSettingsEl"
+          text="Settings"
+          position="right"
+        />
 
         <div class="sidebar-pane">
           <!-- 样板 `.ph`:40px 面板头 = 类别名 + 右对齐计数。分区头即折叠钮那一套
                随分区折叠一起退役了 —— 类别切换替代了它。 -->
-          <div
-            v-if="isWorkbenchShell"
-            class="sidebar-pane-head"
-          >
+          <div class="sidebar-pane-head">
             <b class="sidebar-pane-title">{{ railCategoryLabel }}</b>
             <span class="sidebar-pane-count">{{ railCategoryCount }}</span>
             <!-- 新建群聊:样板没画这枚(它只画了「进行中」那一格),但撤掉就等于
@@ -273,9 +290,8 @@
              执行中/待你/已交付分组(样板 `.grp`)。
              取数(`useActiveWork`)提到了 script 里:rail 上这一类的徽标与计数
              在别的类别被选中时也得算,所以它不能跟着这一区的 v-if 一起挂卸。
-             两道门仍在,只是搬到了 `activeWorkEnabled` 上:
-              - `isWorkbenchShell` —— classic 是逐像素回滚闸,一次看板 IPC 都不发;
-              - `roomsEnabled` —— 看板是房的附属,web 端没有 rooms 协调器。
+             门仍在,只是搬到了 `activeWorkEnabled` 上:`roomsEnabled` —— 看板是
+             房的附属,web 端没有 rooms 协调器,那里一次看板 IPC 都不发。
              「没有在跑的活就整区不显示」在方案三下的等价物是「这一类不上 rail」
              (`resolveRailCategories`),所以这里点进来必然有行。 -->
             <ActiveWorkSection
@@ -296,21 +312,10 @@
               v-if="roomsEnabled && contacts.length > 0 && isCategoryVisible('contacts')"
               class="sidebar-rooms sidebar-contacts"
             >
-              <!-- classic 照旧一枚不可点的标签;workbench 下类别名归面板头,这一行整个
-               不画(纪律 1:形态差异关在门里,classic 一个像素不变)。 -->
-              <div
-                v-if="!isWorkbenchShell"
-                class="sidebar-rooms-header"
-              >
-                <span class="sidebar-rooms-label">联系人</span>
-              </div>
-              <!-- workbench 下「通讯录」一类里装着同事与群两段,面板头只说得出
+              <!-- 「通讯录」一类里装着同事与群两段,面板头只说得出
                类别名 —— 段与段之间要有一行组头,否则两批行糊成一条。
                句法与「进行中」的组头、「私下」的折叠头同一族。 -->
-              <div
-                v-else
-                class="sidebar-pane-group"
-              >
+              <div class="sidebar-pane-group">
                 同事
               </div>
               <button
@@ -358,31 +363,8 @@
               v-if="(roomSessions.length > 0 || roomsEnabled) && isCategoryVisible('contacts')"
               class="sidebar-rooms"
             >
-              <!-- classic 照旧:标签 + 建群 ＋。workbench 下建群归面板头,组头
-               只剩一行段标(与上面「同事」那一行成对)。 -->
-              <div
-                v-if="!isWorkbenchShell"
-                class="sidebar-rooms-header"
-              >
-                <span class="sidebar-rooms-label">群聊</span>
-                <Tooltip
-                  v-if="roomsEnabled"
-                  text="新建群聊"
-                >
-                  <button
-                    type="button"
-                    class="sidebar-rooms-add"
-                    aria-label="新建群聊"
-                    @click="showRoomDialog = true"
-                  >
-                    ＋
-                  </button>
-                </Tooltip>
-              </div>
-              <div
-                v-else
-                class="sidebar-pane-group"
-              >
+              <!-- 建群归面板头,组头只剩一行段标(与上面「同事」那一行成对)。 -->
+              <div class="sidebar-pane-group">
                 群聊
               </div>
               <button
@@ -496,81 +478,110 @@
             <!-- 「Agent 组」已退役(agent-im-dm.md §4.1)。它唯一的能力 —— 各群执行
              会话的只读转录入口 —— 迁进了 Agents 面板的履历页「群聊」栏:基础设施
              转录放在通讯录层级是错位的,而履历页本来就是"这个人干过什么"的家。 -->
-
-            <!-- 「会话」类:直接复用既有 SessionList(分组、折叠、改名、右键全在它
-             自己身上,这里不重写一份)。workbench 下它交出内部滚动 —— 面板是
-             唯一的滚动体(规则在 SessionList.vue 自己的形态门里)。 -->
-            <SessionList
-              v-if="isCategoryVisible('sessions')"
-              :groups="groupedSessions"
-              :active-index="activeSidebarIndex"
-              :current-session-id="sessionsStore.currentSessionId"
-              :is-session-generating="chatStore.isSessionGenerating"
-              :editing-session-id="editingSessionId"
-              :editing-name="editingName"
-              @menu-select="handleSidebarMenuSelect"
-              @context-menu="openContextMenu"
-              @toggle-collapse="sessionOrganizer.toggleCollapse"
-              @start-rename="startInlineRename"
-              @confirm-rename="confirmInlineRename"
-              @cancel-rename="cancelInlineRename"
-              @overflow-change="handleOverflowChange"
-            />
           </div>
         </div>
       </div>
 
-      <!-- Bottom dock (方案二/v7 原样): 裸 16px 线性图标浮在白胶囊里，
-           单色墨系（rest 灰 → hover/active 墨），设置在分隔线右侧。
-           **classic 专属** —— workbench 下这排平铺图标撤掉(用户真机要求 4),
-           五个工作区面板收进下面那条脚栏的「⋯」菜单,一个入口都不丢。 -->
+      <!-- 对话形态:会话表。没有 rail —— 这一形态只有一种列表(U3)。
+           三颗入口(⋯ 工作区面板 / ＋ 新会话 / ⚙ 设置)在协作形态下住在 rail
+           底部,这一形态下退成面板底下的一条 —— 入口一个不丢。 -->
       <div
-        v-if="!isWorkbenchShell"
-        class="sidebar-dock"
+        v-else
+        class="sidebar-chat-pane"
       >
-        <div class="sidebar-dock-pill">
-          <button
-            v-for="action in workspaceActions"
-            :key="action.id"
-            type="button"
-            class="sidebar-dock-icon"
-            :class="{ 'is-active': activeWorkspacePanel === action.id }"
-            :aria-label="action.label"
-            @click="$emit('open-workspace-panel', action.id)"
+        <SessionList
+          :groups="groupedSessions"
+          :active-index="activeSidebarIndex"
+          :current-session-id="sessionsStore.currentSessionId"
+          :is-session-generating="chatStore.isSessionGenerating"
+          :editing-session-id="editingSessionId"
+          :editing-name="editingName"
+          @menu-select="handleSidebarMenuSelect"
+          @context-menu="openContextMenu"
+          @toggle-collapse="sessionOrganizer.toggleCollapse"
+          @start-rename="startInlineRename"
+          @confirm-rename="confirmInlineRename"
+          @cancel-rename="cancelInlineRename"
+          @overflow-change="handleOverflowChange"
+        />
+
+        <div class="sidebar-chat-foot">
+          <Tooltip
+            text="工作区面板"
+            position="top"
           >
-            <component
-              :is="action.icon"
-              :size="16"
-              :stroke-width="1.7"
-            />
-          </button>
-          <span
-            class="sidebar-dock-divider"
-            aria-hidden="true"
-          />
-          <button
-            type="button"
-            class="sidebar-dock-icon"
-            aria-label="Settings"
-            @click="$emit('open-settings')"
+            <button
+              type="button"
+              class="sidebar-chat-foot-btn"
+              :class="{ 'is-on': activeWorkspacePanel !== null }"
+              aria-label="工作区面板"
+              @click="openWorkspaceMenu"
+            >
+              <MoreVertical
+                :size="16"
+                :stroke-width="1.6"
+              />
+            </button>
+          </Tooltip>
+          <Tooltip
+            text="新会话"
+            position="top"
           >
-            <Settings
-              :size="16"
-              :stroke-width="1.7"
-            />
-          </button>
+            <button
+              type="button"
+              class="sidebar-chat-foot-btn"
+              aria-label="新会话"
+              @click="$emit('create-new-chat')"
+            >
+              <Plus
+                :size="16"
+                :stroke-width="1.6"
+              />
+            </button>
+          </Tooltip>
+          <span class="sidebar-chat-foot-spacer" />
+          <Tooltip
+            text="Settings"
+            position="top"
+          >
+            <button
+              type="button"
+              class="sidebar-chat-foot-btn"
+              aria-label="Settings"
+              @click="$emit('open-settings')"
+            >
+              <Settings
+                :size="15"
+                :stroke-width="1.6"
+              />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
-      <!-- R4 那条「脚栏」(`.sidebar-foot`)在方案三里退役:它的两枚图标(⋯ / 设置)
+      <!-- 方案二/v7 那排平铺 dock 图标已随 classic 一起退役(用户真机要求 4):
+           五个工作区面板收进 rail 底部的「⋯」菜单,一个入口都不丢。
+
+           R4 那条「脚栏」(`.sidebar-foot`)在方案三里退役:它的两枚图标(⋯ / 设置)
            搬进了 rail 底部那一栏 —— 样板第三格把入口全收在 46px 那一竖条上,
            面板底下不再另起一条发丝线。 -->
 
       <!-- 「⋯」= 工作区面板菜单。复用既有 ContextMenu(Teleport 到 body,不会被
            左栏的 overflow 裁掉),锚点取按钮的 rect 而不是鼠标位置 —— 它是个
            下拉,不是右键菜单。 -->
+      <!-- 形态下拉。复用既有 ContextMenu(Teleport 到 body,不会被左栏的
+           overflow 裁掉),锚点取按钮的 rect —— 它是个下拉,不是右键菜单。 -->
       <ContextMenu
-        v-if="isWorkbenchShell"
+        class="sidebar-form-menu"
+        :show="formMenuOpen"
+        :x="formMenuAnchor.x"
+        :y="formMenuAnchor.y"
+        :items="formMenuItems"
+        @select="(id) => selectFormMode(id as SidebarFormMode)"
+        @close="formMenuOpen = false"
+      />
+
+      <ContextMenu
         class="sidebar-workspace-menu"
         :show="workspaceMenu !== null"
         :x="workspaceMenu?.x ?? 0"
@@ -620,11 +631,12 @@ import Tooltip from '@/components/common/Tooltip.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
-import { Bot, Brain, CalendarClock, Images, MoreVertical, Pencil, Pin, Plus, Radio, Settings, X } from 'lucide-vue-next'
+import { Bot, Brain, CalendarClock, Check, ChevronDown, Images, MoreVertical, Pencil, Pin, Plus, Radio, Settings, X } from 'lucide-vue-next'
 import { buildRoomMemberEntries, type RoomMemberEntry } from '@/components/chat/room-member-strip'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarActionGroup from './SidebarActionGroup.vue'
 import SessionList from './SessionList.vue'
+import { SIDEBAR_FORM_MODES, type SidebarFormMode } from '@/stores/form-mode'
 import RoomCreateDialog from './RoomCreateDialog.vue'
 import ActiveWorkSection from './ActiveWorkSection.vue'
 import { hasActiveWorkSignal, type ActiveWorkCardModel } from './active-work'
@@ -645,8 +657,6 @@ import {
 } from './sidebar-recent'
 import { platformApi } from '@/platform'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { useSettingsStore } from '@/stores/settings'
-import { resolveShellMode } from '@/composables/useShellMode'
 import {
   formatRelativeTime,
   useSessionOrganizer,
@@ -712,32 +722,64 @@ function openRoom(sessionId: string): void {
   workspaceStore.openSession(sessionId)
 }
 
-// ── 外壳形态门(C0 的 useShellMode)────────────────────────────────────────
-// 「进行中」区是**结构**差异不是视觉差异(它带着一次取数),CSS 门关不掉一次
-// IPC,所以这一处必须是 JS 判定。视觉上的四区重排仍然走 `data-shell-mode`。
-// 没挂 pinia 的老单测取不到设置 store —— 退到 classic,也就是"什么都不变",
-// 这是测试兜底,不是产品默认(产品默认见 resolveShellMode)。
-let settingsStore: ReturnType<typeof useSettingsStore> | null = null
-try {
-  settingsStore = useSettingsStore()
-} catch {
-  settingsStore = null
-}
-const isWorkbenchShell = computed(
-  () => !!settingsStore && resolveShellMode(settingsStore.settings) === 'workbench',
-)
-
 // ── 「进行中」的取数(方案三:提到了这一层)──────────────────────────────
 //
 // rail 上「进行中」那一类的**徽标、计数、以及这一类在不在 rail 上**,在别的类别
 // 被选中时也得算 —— 所以取数不能再跟着那一区的 v-if 一起挂载/卸载。composable
-// 不能条件调用,于是把两道门做成参数(`enabled`):关着的时候订阅不发、补齐不跑、
-// 卡片恒空。classic「一次看板 IPC 都不发」这条有测试钉住。
-const activeWorkEnabled = computed(() => isWorkbenchShell.value && roomsEnabled.value)
+// 不能条件调用,于是把门做成参数(`enabled`):关着的时候订阅不发、补齐不跑、
+// 卡片恒空。web 端没有协调器(roomsEnabled=false),那里一次看板 IPC 都不发。
+const activeWorkEnabled = computed(() => roomsEnabled.value)
 const activeWork = useActiveWork({ enabled: activeWorkEnabled })
 const activeWorkCards = computed(() => activeWork.cards.value)
 
-// ── rail 类别(方案三)──────────────────────────────────────────────────────
+// ── 产品形态(U3 / U3b)──────────────────────────────────────────────────────
+//
+// 形态的**归属在 workspace store**,不在这里 —— 它决定主区显示哪条会话、哪棵
+// 分栏树是活的,早就不是侧栏的本机视图偏好了(D7 修正了 D6 的这一句)。
+// 这里只负责画那枚下拉。
+const formMode = computed(() => workspaceStore.formMode)
+const formModes = computed(() => {
+  const ids = workspaceStore.availableFormModes
+  return SIDEBAR_FORM_MODES.filter(mode => ids.includes(mode.id))
+})
+
+/** 单项下拉是个点不出东西的死控件 —— web 端干脆不画切换器。 */
+const showFormSwitcher = computed(() => formModes.value.length > 1)
+const formModeLabel = computed(
+  () => formModes.value.find(mode => mode.id === formMode.value)?.label ?? '',
+)
+const formMenuOpen = ref(false)
+const formSwitcherEl = ref<HTMLElement | null>(null)
+const formMenuAnchor = ref({ x: 0, y: 0 })
+
+/** 当前形态用一枚 ✓ 标出来 —— `ContextMenuItem` 没有 checked 位,图标就是它。 */
+const formMenuItems = computed<ContextMenuItem[]>(() => formModes.value.map(mode => ({
+  id: mode.id,
+  label: mode.label,
+  icon: mode.id === formMode.value ? Check : undefined,
+})))
+
+function toggleFormMenu(): void {
+  if (formMenuOpen.value) {
+    formMenuOpen.value = false
+    return
+  }
+  const rect = formSwitcherEl.value?.getBoundingClientRect()
+  if (rect) formMenuAnchor.value = { x: rect.left, y: rect.bottom + 6 }
+  formMenuOpen.value = true
+}
+
+function selectFormMode(id: SidebarFormMode): void {
+  formMenuOpen.value = false
+  workspaceStore.setFormMode(id)
+}
+
+/** 另一形态里有没有未读 —— 切过去才看得见的东西,得在切换器上说一声。 */
+const otherFormUnread = computed(() => (formMode.value === 'chat'
+  ? unreadConversations.value
+  : unreadChatSessions.value))
+
+// ── rail 类别(协作形态内部的三格)──────────────────────────────────────────
 // 判定与存档格式全在 `sidebar-sections.ts`(纯函数),这里只负责读一次、写一次。
 // localStorage 而不是 settings:「我停在哪一类」是本机视图偏好,不跨端同步 ——
 // 与 R4 那套折叠态同一个机制,只是那一套已随分区折叠一起退役。
@@ -788,16 +830,16 @@ const railCategoryCount = computed(() => {
     // 通讯录一类装着同事与群两段,计数是两段之和 —— 面板头那个数说的是
     // "这一类此刻装着几行",不是"其中一段有几行"。
     case 'contacts': return contacts.value.length + roomSessions.value.length
-    default: return groupedSessions.value.reduce((total, group) => total + group.sessions.length, 0)
+    default: return 0
   }
 })
 
 /**
  * 徽标:未读落在**能回话的那一类**,在跑落在「进行中」。
  *
- * 两路未读天然不重叠 —— 「消息」装房(群 + 私聊 + 折叠着的「私下」),「会话」装
- * 直聊。所以各归各的不会让同一条未读被数两遍。**通讯录不亮**:它的每一行要么
+ * 「消息」装房(群 + 私聊 + 折叠着的「私下」)。**通讯录不亮**:它的每一行要么
  * 已经在消息流里,要么根本没聊过,替消息流再报一次就是重复催人。
+ * 直聊的未读归对话形态,落在形态切换器上(U3)。
  * 判定本身仍只有 `isUnreadSession` 那一处。
  */
 const unreadConversations = computed(() =>
@@ -813,7 +855,6 @@ const unreadChatSessions = computed(() =>
 const railBadges = computed(() => resolveRailBadges({
   available: railCategories.value.map(category => category.id),
   unreadConversations: unreadConversations.value,
-  unreadChatSessions: unreadChatSessions.value,
   activeWork: hasActiveWorkSignal(activeWorkCards.value),
 }))
 
@@ -827,23 +868,15 @@ function selectRailCategory(id: SidebarRailCategoryId): void {
 }
 
 /**
- * 这一区现在该不该出现。
- *
- * classic 永远当作"全都出现"—— 类别切换是 workbench 的形态,逐像素回滚闸下
- * 四区照旧一起平铺(纪律 1)。
+ * 这一区现在该不该出现 —— rail 上只有被选中的那一类画得出来。
  */
 function isCategoryVisible(id: SidebarRailCategoryId): boolean {
-  return !isWorkbenchShell.value || railCategory.value === id
+  return railCategory.value === id
 }
 
 // ── 「消息」类:一条时间序的对话流 ──────────────────────────────────────────
-//
-// **workbench 专属**,这是唯一一处不套 `isCategoryVisible` 的区:classic 下四区
-// 一起平铺,再插一条把私聊/群/直聊又画一遍的流,等于每一行都摆两次。
 
-const recentVisible = computed(
-  () => isWorkbenchShell.value && railCategory.value === 'recent',
-)
+const recentVisible = computed(() => railCategory.value === 'recent')
 
 /**
  * 合并与排序全在 `sidebar-recent.ts`。两路来源一律读 store 的 selector,这里不写
@@ -903,8 +936,6 @@ const contentHidden = computed(
  */
 const roomFacesById = computed(() => {
   const byRoom: Record<string, ReturnType<typeof takeRoomFaces<RoomMemberEntry>>> = {}
-  // classic 一枚头像都不画,连算都不算(逐像素回滚闸)。
-  if (!isWorkbenchShell.value) return byRoom
   const agents = agentsStore.agents ?? []
   for (const room of roomSessions.value) {
     byRoom[room.id] = takeRoomFaces(buildRoomMemberEntries({
@@ -1169,6 +1200,8 @@ const musicGroup = computed(() => {
   return {
     key: 'music',
     label: 'Music · 电台',
+    // 电台不是项目 —— 不画文件夹图标。
+    kind: 'other' as const,
     sessions: radioSessions.map((session): SessionWithBranches => ({
       ...session,
       branches: [],
@@ -1432,40 +1465,114 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-/* 方案六 · 顶部「＋ 新会话」：文本行不进滚动区，hover 只由灰转墨（无填充），
-   ＋ 号与分组行 chevron 同起笔线（x=24 = 列表容器 12 + 抽屉头起点 12）。
-   上内边距 12px 让文字躲开 SidebarHeader 底部同高的淡出渐变。 */
-.sidebar-newchat {
+/* 两层壳与滚动容器的真身写在文件末尾(rail | 面板 那一横排 + 唯一的滚动体)。
+   U0b 之前它们在这里还有一份 `display: contents` 的 classic 基线,形态开关退役
+   后那一份连同门一起删了 —— 现在只有一套规则。 */
+
+/* ── 形态切换器(U3,样板 ChatGPT 左栏顶部的 `ChatGPT ▾`)──────────────────
+   一行,不是一块:它换的是左栏装什么,不是一个需要视觉重量的功能入口。
+   墨阶沿用 rail 那一族 token,不另起一套颜色。 */
+.sidebar-form-row {
   flex-shrink: 0;
-  margin: 0;
-  padding: 12px 16px 10px 24px;
-  border: none;
+  display: flex;
+  align-items: center;
+  padding: 2px 10px 6px;
+}
+
+.sidebar-form-switcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
   background: transparent;
-  text-align: left;
+  padding: 4px 8px;
+  border-radius: 6px;
   font-family: inherit;
-  /* v7：与行文同 13px */
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
+  color: var(--ui-text-primary-fg);
   cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  transition: color var(--duration-normal) var(--ease-default);
+  transition: background var(--duration-fast) var(--ease-default);
 }
 
-.sidebar-newchat:hover,
-.sidebar-newchat:focus-visible {
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
+.sidebar-form-switcher:hover,
+.sidebar-form-switcher.is-open {
+  background: var(--ui-sidebar-rail-hover-bg);
 }
 
-/* 方案三的两层壳与滚动容器。classic 下三层都是 `display: contents` —— 不生成
-   盒子,四区仍然是 `.sidebar-content` 的直接布局子,排版与从前逐像素一致。
-   真正成为 rail | 面板 与滚动体的规则写在文件末尾的
-   `data-shell-mode='workbench'` 门里。 */
-.sidebar-split,
-.sidebar-pane,
-.sidebar-sections {
-  display: contents;
+.sidebar-form-switcher:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
+}
+
+.sidebar-form-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.sidebar-form-caret {
+  flex: 0 0 auto;
+  color: var(--ui-sidebar-rail-muted-fg);
+}
+
+/* 另一形态有未读:一枚点,不摆数字(与 rail 徽标同一句法)。 */
+.sidebar-form-badge {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin-left: 2px;
+  background: var(--ui-accent-primary-fg);
+}
+
+/* ── 对话形态的左栏 ────────────────────────────────────────────────────────
+   没有 rail:这一形态只有一种列表。会话表自己滚,三颗入口退成底下一条。 */
+.sidebar-chat-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sidebar-chat-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px 6px;
+}
+
+.sidebar-chat-foot-spacer {
+  flex: 1 1 auto;
+}
+
+.sidebar-chat-foot-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-sidebar-rail-muted-fg);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-default),
+              color var(--duration-fast) var(--ease-default);
+}
+
+.sidebar-chat-foot-btn:hover {
+  background: var(--ui-sidebar-rail-hover-bg);
+  color: var(--ui-sidebar-rail-fg);
+}
+
+.sidebar-chat-foot-btn.is-on {
+  background: var(--ui-sidebar-rail-active-bg);
+  color: var(--ui-sidebar-rail-fg);
+}
+
+.sidebar-chat-foot-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
 }
 
 /* ── rail(样板 `.sb3 .rail`)────────────────────────────────────────────────
@@ -1568,20 +1675,6 @@ onUnmounted(() => {
   padding: 2px 12px 6px 24px;
   display: flex;
   flex-direction: column;
-}
-
-.sidebar-rooms-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 4px 2px 0;
-}
-
-.sidebar-rooms-label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
-  user-select: none;
 }
 
 .sidebar-rooms-add {
@@ -1795,7 +1888,7 @@ onUnmounted(() => {
    行本体沿用 `.sidebar-room-item` + `.sidebar-agent-item`(章 + 名字那套身份行
    排版),这里只补三样:群的方章、行尾时间、以及空态/尾行两行文字。
    这一区**只在 workbench 下渲染**(`recentVisible`),所以这些规则不必再挂
-   `data-shell-mode` 门 —— classic 下模板里根本没有这些类名。 */
+   形态门 —— 那道门已随形态开关一起退役(U0b)。 */
 .sidebar-recent-item {
   /* `.sidebar-agent-item` 的 flex:1 是给行内排版写的,在竖列里会让行去抢高度。 */
   flex: 0 0 auto;
@@ -1874,84 +1967,10 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-/* 方案二 · 底部悬浮胶囊 dock —— v7 原样：白胶囊、9/15 内边距、裸 16px
-   线性图标、图标间距 15、细分隔线、无边框，阴影同设计稿。 */
-.sidebar-dock {
-  display: flex;
-  justify-content: center;
-  flex-shrink: 0;
-  min-width: 0;
-  padding: 10px 8px 14px;
-}
-
-/* 自然宽 = 图标 6×16 + 分隔线 1 + 内边距 30 + 间距 6×15 = 217px。
-   space-between 让间距在足宽时恰为 15px（=设计稿 gap），sidebar 收窄时
-   间距均匀压缩、图标不缩，200px 也不溢出。 */
-.sidebar-dock-pill {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: min(217px, 100%);
-  min-width: 0;
-  padding: 9px 15px;
-  border-radius: 999px;
-  /* 主题色：用主题自己的最亮面（主界面纸色），与 sidebar 同色相、亮一档，
-     浮起感靠阴影——与设计稿"纯白对米白"的微差关系一致。
-     fx-base-50 是 flexoki 静态阶，色相与自定义主题会打架，不能用。 */
-  background: var(--ui-surface-app-bg);
-  box-shadow: var(--shadow-md, 0 3px 12px rgba(30, 26, 16, 0.13));
-}
-
-/* 暗色（html[data-theme='dark']）：flexoki 色阶翻转后 fx-base-50 变最深，
-   胶囊改用主题的浮起面（比 sidebar 底亮一档，与弹层一致）
-
-   ⚠️ 不写 `:global(...)` —— 见文件末尾那段说明:`:global(X) .y` 会被
-   `@vue/compiler-sfc` 截断成 `X`,这条从前一直是把整页背景改掉,而不是改胶囊。
-   祖先是 `html` 本来就不需要 `:global`:scoped 只给**最后一个**复合选择器
-   补 `[data-v-xxx]`,祖先部分照原样输出。 */
-html[data-theme='dark'] .sidebar-dock-pill {
-  background: var(--ui-surface-floating-bg);
-}
-
-.sidebar-dock-divider {
-  width: 1px;
-  height: 15px;
-  flex-shrink: 0;
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 12%, transparent);
-}
-
-/* 裸图标即入口（v7）：无按钮盒、无填充。padding+负 margin 只扩点击热区，
-   不改变 16px 的排版占位。 */
-.sidebar-dock-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 4px;
-  margin: -4px;
-  border: none;
-  background: transparent;
-  color: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 56%, transparent);
-  cursor: pointer;
-  transition: color var(--duration-normal) var(--ease-default);
-}
-
-.sidebar-dock-icon:hover,
-.sidebar-dock-icon:focus-visible,
-.sidebar-dock-icon.is-active {
-  color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
-}
-
-.sidebar-dock-icon:focus-visible {
-  outline: none;
-  border-radius: 6px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
-}
-
-/* ── 工作台外壳:方案三 rail + 单类面板(样板 sidebar-4.html 第三格)────────
+/* ── 协作形态的左栏:rail + 单类面板(样板 sidebar-4.html 第三格)────────────
    四区重排的那五条 `order` 已随「一次只显示一类」一起删除 —— 面板里一次只有
-   一区,没有可排的坐次了。整段仍然挂在 `data-shell-mode='workbench'` 门里,
-   classic 下一条都不生效(C0 纪律 3)。 */
+   一区,没有可排的坐次了。整段原本挂在 `data-shell-mode='workbench'` 门里,
+   U0b 把门解了(形态开关退役,那个属性恒真),规则本身一字未动。 */
 /* ⚠️⚠️ 本仓库最容易再踩的 CSS 坑:**`:global(X) .y` 会被静默截断成 `X`。**
  *
  * `@vue/compiler-sfc`(3.5.26)的 scoped 插件遇到 `:global()` 时,会把该复合
@@ -1962,8 +1981,8 @@ html[data-theme='dark'] .sidebar-dock-pill {
  *   `:global(html[x] .a > .b)`  →  `html[x] .a > .b`      ← 正确但完全不作用域
  *
  * 后果不只是"规则失效",而是**声明被扣到 `<html>` 头上**。C1 落地的那五条
- * `:global(html[data-shell-mode='workbench']) .sidebar-content > .xxx { order: N }`
- * 编译出来是 `html[data-shell-mode='workbench'] { order: N }` —— 这才是「order
+ * `:global(html[x]) .sidebar-content > .xxx { order: N }`
+ * 编译出来是 `html[x] { order: N }` —— 这才是「order
  * 一直是死规则、真机上联系人仍在群聊之上」的真因(不是"父级不是 flex":
  * `.sidebar-content` 是 `Space` 的根,`.app-space` 本来就 `display:flex` +
  * `.app-space--vertical` 的 column;`Space` 也只在 `spacer`/`fill` 时才包
@@ -1973,14 +1992,14 @@ html[data-theme='dark'] .sidebar-dock-pill {
  * 复合选择器补 `[data-v-xxx]`,祖先部分照原样输出,作用域还在。 */
 
 /* 样板 `.sb3 .split`:头行**下面**才是 rail | 面板 的那一横排。 */
-html[data-shell-mode='workbench'] .sidebar-split {
+.sidebar-split {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
 }
 
 /* 样板 `.sb3 .pane`:面板吃掉 rail 之外的全部宽度。 */
-html[data-shell-mode='workbench'] .sidebar-pane {
+.sidebar-pane {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -1992,7 +2011,7 @@ html[data-shell-mode='workbench'] .sidebar-pane {
    (规则在 SessionList.vue 自己的形态门里),不出双滚动条。
    classic 下这一层仍是 `display: contents`(见上),四区照旧是 `.sidebar-content`
    的直接布局子 —— 那边一个像素不变。 */
-html[data-shell-mode='workbench'] .sidebar-sections {
+.sidebar-sections {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -2008,7 +2027,7 @@ html[data-shell-mode='workbench'] .sidebar-sections {
    workbench 门里把它们换成样板的行:30px 行高、6px 圆角、左右 8px 外边距,
    hover 4.5% 填充,当前项 7.5% 且转墨色。classic 那边的画线风行照旧。
    门写成 `html[...] .xxx` 而**不是** `:global(html[...]) .xxx` —— 见上面那段。 */
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-rooms {
+.sidebar-pane .sidebar-rooms {
   /* 行间 2px 呼吸缝(ui-system.md §1):这一门里的行是满宽圆角底色块,hover 与
      active 紧邻时圆角互相填平会焊成一整条通板。容器本来就是 flex column,缝用
      `gap` 画 —— 它只落在行与行之间,不在首尾各多出一份,外缘几何逐像素不变
@@ -2018,7 +2037,7 @@ html[data-shell-mode='workbench'] .sidebar-pane .sidebar-rooms {
   padding: 0 0 6px;
 }
 
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item {
+.sidebar-pane .sidebar-room-item {
   /* 选中底只定义一次,下面加深的那一档贴着它写,免得两处数值各自漂移。 */
   --sidebar-pane-row-active-fill: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 7.5%, transparent);
 
@@ -2033,12 +2052,12 @@ html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item {
   color: var(--sidebar-row-fg, var(--ui-text-primary-fg));
 }
 
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item:hover {
+.sidebar-pane .sidebar-room-item:hover {
   background: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 4.5%, transparent);
   color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item.is-active {
+.sidebar-pane .sidebar-room-item.is-active {
   background: var(--sidebar-pane-row-active-fill);
   color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
   font-weight: 500;
@@ -2048,13 +2067,13 @@ html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item.is-active {
    写在后面就赢,选中行成了死区 —— 选中不等于这一行不再响应指针(ui-system.md §1)。
    面 register 只剩"加深一档"这一条通道,掺 `--ui-text-primary-fg`(浅色主题是深的、
    深色主题是浅的)让这一档两边都成立,不写死 alpha/hex。(0,5,1) 直接压过,不留平局。 */
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item.is-active:hover,
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-item.is-active:focus-visible {
+.sidebar-pane .sidebar-room-item.is-active:hover,
+.sidebar-pane .sidebar-room-item.is-active:focus-visible {
   background: color-mix(in srgb, var(--sidebar-pane-row-active-fill) 92%, var(--ui-text-primary-fg));
 }
 
 /* 样板 `.r .nm`:名字吃掉所有余量,省略号永远画在名字上。 */
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-name {
+.sidebar-pane .sidebar-room-name {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -2063,7 +2082,7 @@ html[data-shell-mode='workbench'] .sidebar-pane .sidebar-room-name {
 }
 
 /* 职位退成样板的 `.meta`(12px 副文,靠在行尾)。 */
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-contact-title {
+.sidebar-pane .sidebar-contact-title {
   flex: 0 0 auto;
   font-size: 12px;
   opacity: 1;
@@ -2071,14 +2090,14 @@ html[data-shell-mode='workbench'] .sidebar-pane .sidebar-contact-title {
 }
 
 /* 「私下」子分组头退成样板的 `.grp`(与「进行中」的组头同一句法)。 */
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-subgroup {
+.sidebar-pane .sidebar-subgroup {
   padding: 12px 14px 3px;
   font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0;
 }
 
-html[data-shell-mode='workbench'] .sidebar-pane .sidebar-subgroup-item {
+.sidebar-pane .sidebar-subgroup-item {
   padding-left: 22px;
 }
 

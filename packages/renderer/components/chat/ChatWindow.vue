@@ -30,12 +30,10 @@
           @open-search="emit('openSearch')"
           @toggle-inspector="emit('toggleInspector')"
         />
-        <TabBar
+        <SessionHeader
           v-else
-          :tabs="tabs"
-          :active-tab-id="activeTabId"
           :session-id="effectiveSessionId"
-          :chat-session-names="chatSessionNames"
+          :session-name="chatSessionNames[effectiveSessionId]"
           :cached-session-ids="cachedSessionIds"
           :panel-id="panelId"
           :is-branch-session="isBranchSession"
@@ -48,11 +46,7 @@
           :side-panel-available="sidePanelAvailable"
           :side-panel-collapsed="sidePanelCollapsed"
           :panel-focused="panelFocused"
-          @select-tab="activateTab"
-          @close-tab="handleCloseTab"
-          @close-tabs="handleCloseTabs"
           @rename-session="(sid, name) => sessionsStore.renameSession(sid, name)"
-          @move-tab="(fromId, toId) => workspaceStore.moveTab(leafId, fromId, toId)"
           @toggle-sidebar="emit('toggleSidebar')"
           @open-search="emit('openSearch')"
           @create-new-chat="emit('createNewChat')"
@@ -117,16 +111,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { MAIN_LEAF_ID, type SplitDirection } from '@/stores/workspace-tree'
-import TabBar from './TabBar.vue'
+import SessionHeader from './SessionHeader.vue'
 import ChatPanel from './ChatPanel.vue'
 import RoomHeader from './room/RoomHeader.vue'
 import RoomSurface from './room/RoomSurface.vue'
-import { useSettingsStore } from '@/stores/settings'
-import { resolveShellMode } from '@/composables/useShellMode'
 import Container from '@/components/common/Container.vue'
 import BorderBox from '@/components/common/BorderBox.vue'
 import PracticeStrip from './PracticeStrip.vue'
@@ -182,41 +174,39 @@ const emit = defineEmits<{
 const sessionsStore = useSessionsStore()
 const workspaceStore = useWorkspaceStore()
 
-// This window renders one workspace leaf; all tab state lives in the store.
+// This window renders one workspace leaf; which session sits in it lives in
+// the store (一格恰好一条会话,U2)。
 const leafId = computed(() => props.panelId ?? MAIN_LEAF_ID)
-const tabs = computed(() => workspaceStore.tabsOf(leafId.value))
-const activeTabId = computed(() => workspaceStore.activeTabIdOf(leafId.value))
 const effectiveSessionId = computed(() => workspaceStore.activeSessionIdOf(leafId.value))
 
 onMounted(() => {
   void refreshCacheStats()
 })
 
-// Session info for TabBar
+// Session info for the header
 const currentSession = computed(() => {
   const sid = effectiveSessionId.value
   if (!sid) return null
   return sessionsStore.getSessionItem(sid) || null
 })
 
-// Tab titles. "New Chat" is reserved for drafts; a real session id that no
-// longer resolves (should not survive hydration/lifecycle pruning) must not
-// masquerade as a new chat.
-const chatSessionNames = computed(() => Object.fromEntries(
-  tabs.value.map(tab => [
-    tab.sessionId,
-    sessionsStore.getSessionItem(tab.sessionId)?.name
-      || (sessionsStore.isNewChatDraftId(tab.sessionId) ? 'New Chat' : 'Untitled'),
-  ]),
-))
+// 标题。"New Chat" 只留给草稿;一个解析不出来的真实会话 id(正常不该活过
+// hydration/生命周期清理)不许冒充新会话。
+const chatSessionNames = computed<Record<string, string>>(() => {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return {}
+  return {
+    [sessionId]: sessionsStore.getSessionItem(sessionId)?.name
+      || (sessionsStore.isNewChatDraftId(sessionId) ? 'New Chat' : 'Untitled'),
+  }
+})
 
 // Sessions currently held in the main process's in-memory session LRU cache,
-// used to mark evicted ("cold") chat tabs. Refreshed opportunistically after
-// the actions that actually change cache membership (see syncSessionFromTab /
-// handleCloseTab) rather than polled, since a brief staleness after a
+// used to mark an evicted ("cold") session in the header. Refreshed
+// opportunistically rather than polled, since a brief staleness after a
 // capacity-triggered server-side eviction is only a cosmetic delay.
 // null = unknown (before the first refresh, or on hosts without a session
-// cache, e.g. web): tabs are then treated as warm so nothing gets marked.
+// cache, e.g. web): the session is then treated as warm so nothing gets marked.
 const cachedSessionIds = ref<Set<string> | null>(null)
 
 async function refreshCacheStats() {
@@ -239,10 +229,7 @@ const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
  * **全库唯一一处 say 树分流**:R3 已拆掉 `MessageList` 里那道同口径的旧门
  * (workbench 下房会话根本到不了 `ChatPanel` → `MessageList`)。
  */
-const settingsStore = useSettingsStore()
-const shellMode = computed(() => resolveShellMode(settingsStore.settings))
-const roomSurfaceActive = computed(() =>
-  currentSession.value?.kind === 'room' && shellMode.value === 'workbench')
+const roomSurfaceActive = computed(() => currentSession.value?.kind === 'room')
 
 async function goToParentSession() {
   if (currentSession.value?.parentSessionId) {
@@ -268,87 +255,8 @@ function insertPromptReference(promptId: string) {
   activeSurface()?.insertPromptReference(promptId)
 }
 
-function activateTab(id: string) {
-  if (activeTabId.value === id && workspaceStore.activeLeafId === leafId.value) return
-  workspaceStore.activateTab(leafId.value, id)
-  // Session switching follows via the workspace effect; refresh the cache
-  // markers once that has had a chance to run.
-  void nextTick().then(refreshCacheStats)
-}
-
-// Cmd+1..9: digit is 1-9, browser convention where 9 always means "last tab".
-function selectTabByIndex(digit: number) {
-  const list = tabs.value
-  const index = digit === 9 ? list.length - 1 : digit - 1
-  const target = list[index]
-  if (target) activateTab(target.id)
-}
-
 function handleOpenFile(filePath: string) {
   emit('openFile', filePath)
-}
-
-// Cmd+W: close the tab the user is looking at, not the window.
-function closeActiveTab() {
-  const id = activeTabId.value
-  if (id) void handleCloseTab(id)
-}
-
-/** Closes one tab through the store; false means the store refused (nothing left to keep on screen). */
-async function closeOneTab(id: string): Promise<boolean> {
-  // The store owns the close semantics: closing a leaf's last tab closes the
-  // leaf itself (mirrors VS Code editor groups), refused only for the sole
-  // remaining leaf. `released` means no other leaf still shows the session.
-  const result = workspaceStore.closeTab(leafId.value, id)
-  if (!result) return false
-
-  if (result.released) {
-    if (sessionsStore.isNewChatDraftId(result.closedSessionId)) {
-      sessionsStore.discardNewChatDraft(result.closedSessionId)
-    } else {
-      await platformApi.evictSessionCache(result.closedSessionId).catch(() => {})
-    }
-  }
-  return true
-}
-
-async function handleCloseTab(id: string) {
-  const lastRemaining = workspaceStore.isLastRemainingTab(leafId.value, id)
-  const closed = await closeOneTab(id)
-  if (!closed) {
-    // The workspace must keep something on screen, so the last tab has nowhere
-    // to go — closing it means closing the window (macOS Cmd+W convention).
-    if (lastRemaining) await platformApi.closeWindow().catch(() => {})
-    return
-  }
-  await refreshCacheStats()
-}
-
-/**
- * Batch close from the tab menu (close others / left / right / all). Unlike
- * Cmd+W this never closes the window: when the batch would empty the last
- * remaining leaf, a blank New Chat takes the seat so the workspace still has
- * something on screen and "Close All" really does close everything opened.
- */
-async function handleCloseTabs(ids: string[]) {
-  let refreshNeeded = false
-  for (const id of ids) {
-    if (await closeOneTab(id)) {
-      refreshNeeded = true
-      continue
-    }
-    // Refused: this is the only tab of the only leaf. Seat a fresh draft next
-    // to it, then retry — unless the draft simply reused this very tab (an
-    // empty draft is already the desired end state).
-    if (!workspaceStore.isLastRemainingTab(leafId.value, id)) break
-    workspaceStore.activateTab(leafId.value, id)
-    sessionsStore.openNewChatDraft()
-    await nextTick()
-    if (workspaceStore.tabsOf(leafId.value).length <= 1) break
-    if (!(await closeOneTab(id))) break
-    refreshNeeded = true
-  }
-  if (refreshNeeded) await refreshCacheStats()
 }
 
 const SPLIT_DROP_MIME = 'application/x-onething-split-tab'
@@ -420,8 +328,6 @@ defineExpose({
   focusInput,
   insertPromptReference,
   scrollToMessage,
-  selectTabByIndex,
-  closeActiveTab,
 })
 </script>
 

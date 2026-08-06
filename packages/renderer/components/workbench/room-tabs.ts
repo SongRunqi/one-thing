@@ -23,7 +23,6 @@
  *  - **不显示计数**:系统只知道"有没有",编个数字出来比不显示更糟。状态点只有
  *    "亮 / 不亮"两态。
  */
-import type { ShellMode } from '@/types'
 
 /** 一间房的固定页签(与 `WorkbenchTabType` 同名,那边是全集,这里是房的子集)。 */
 export type RoomFixedTabType = 'thread' | 'members' | 'board' | 'schedule'
@@ -88,12 +87,10 @@ export const NO_ROOM_TARGET: RoomPanelTarget = { roomSessionId: '', isDm: false,
  * "人数即形态")。这里只做分发,不重造判定。
  */
 export function resolveRoomPanelTarget(input: {
-  shellMode: ShellMode
   session: RoomPanelSessionLike | null | undefined
   /** `isUserDmRoom`(产品层规则)。不给就当成没有私聊房。 */
   isUserDm?: (session: RoomPanelSessionLike) => boolean
 }): RoomPanelTarget {
-  if (input.shellMode !== 'workbench') return NO_ROOM_TARGET
   const session = input.session
   if (!session?.id || session.kind !== 'room') return NO_ROOM_TARGET
 

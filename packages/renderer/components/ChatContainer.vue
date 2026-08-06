@@ -23,7 +23,7 @@
       >
         <!-- Empty state when nothing is open -->
         <div
-          v-if="!workspaceStore.hasAnyChatTab"
+          v-if="!workspaceStore.hasAnySession"
           class="empty-state"
         >
           <div class="empty-state-content">
@@ -62,7 +62,7 @@
              store (not currentSessionId): tab/panel state lives in the store,
              so this v-if flipping only toggles the view, never the state. -->
         <PanelTree
-          v-if="workspaceStore.hasAnyChatTab"
+          v-if="workspaceStore.hasAnySession"
           class="chat-panels-tree"
           :node="workspaceStore.root"
           :active-leaf-id="workspaceStore.activeLeafId"
@@ -112,8 +112,6 @@ import ChatSidePanel from '@/components/chat/ChatSidePanel.vue'
 import PanelTree from '@/components/chat/PanelTree.vue'
 import Container from '@/components/common/Container.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { useSettingsStore } from '@/stores/settings'
-import { resolveShellMode } from '@/composables/useShellMode'
 import type { SplitDirection } from '@/stores/workspace-tree'
 import type { PanelEvent } from '@/components/chat/panel-event'
 
@@ -185,9 +183,7 @@ const chatSidePanelWidth = computed(() =>
  * 只是这里看的是**当前聚焦的那个 leaf** —— 侧栏本来就只服务它。
  * classic 与直聊一个字节不变。
  */
-const settingsStore = useSettingsStore()
-const activeLeafOnRoomSurface = computed(() =>
-  activeLeafSession.value?.kind === 'room' && resolveShellMode(settingsStore.settings) === 'workbench')
+const activeLeafOnRoomSurface = computed(() => activeLeafSession.value?.kind === 'room')
 
 const sidePanelVisible = computed(() =>
   !activeLeafOnRoomSurface.value && (sidePanelAvailable.value || !sidePanelCollapsed.value))
@@ -261,7 +257,7 @@ function handleSplitDrop(leafId: string, sessionId: string, sourcePanelId: strin
   if (!newLeafId) return
   // The session moved panels: drop its tab in the source leaf only. It is
   // still open (in the new leaf), so no cache eviction is involved.
-  workspaceStore.closeSessionTabs(sessionId, { onlyLeafId: sourcePanelId })
+  workspaceStore.closeSession(sessionId, { onlyLeafId: sourcePanelId })
 }
 
 // Every ChatWindow (at any depth in the tree) funnels its events through a
@@ -347,10 +343,10 @@ function openFileTab(filePath: string) {
 }
 
 async function jumpToMessage(sessionId: string, messageId: string) {
-  // Prefer a leaf that already shows the session; otherwise open it in the
-  // focused one. Focusing + activating first means the explicit switch below
-  // reuses that exact tab.
-  const leaf = workspaceStore.leaves.find(l => l.tabs.some(tab => tab.sessionId === sessionId))
+  // Prefer a leaf that already shows the session; otherwise seat it in the
+  // focused one. Focusing first means the explicit switch below reuses that
+  // exact leaf.
+  const leaf = workspaceStore.leaves.find(l => l.sessionId === sessionId)
     ?? workspaceStore.activeLeaf
   if (!leaf) return false
   workspaceStore.openSession(sessionId, { leafId: leaf.id })
@@ -376,15 +372,7 @@ async function jumpToMessage(sessionId: string, messageId: string) {
 }
 
 // Cmd+1..9: applies to the currently focused panel's tabs only.
-function selectFocusedPanelTabByIndex(digit: number) {
-  panelRefs.value[workspaceStore.activeLeafId]?.selectTabByIndex?.(digit)
-}
-
 // Cmd+W: applies to the currently focused panel's active tab only.
-function closeFocusedPanelActiveTab() {
-  panelRefs.value[workspaceStore.activeLeafId]?.closeActiveTab?.()
-}
-
 // Expose methods
 defineExpose({
   focusInput,
@@ -392,8 +380,6 @@ defineExpose({
   openFileTab,
   jumpToMessage,
   splitPanel,
-  selectFocusedPanelTabByIndex,
-  closeFocusedPanelActiveTab,
 })
 </script>
 

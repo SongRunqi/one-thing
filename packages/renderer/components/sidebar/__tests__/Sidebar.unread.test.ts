@@ -15,6 +15,7 @@ import Sidebar from '../Sidebar.vue'
 
 const mocks = vi.hoisted(() => ({
   capabilities: { collabRooms: true },
+  formMode: 'collab' as string,
   unread: new Set<string>(),
   dmRooms: new Map<string, { id: string }>(),
   sessionsStore: {
@@ -53,13 +54,24 @@ vi.mock('@/stores/chat', () => ({
   useChatStore: () => ({ isSessionGenerating: () => false }),
 }))
 vi.mock('@/stores/workspace', () => ({
-  useWorkspaceStore: () => ({ openSession: vi.fn() }),
+  // 形态的归属在 workspace store(D7)—— 侧栏只是读它。这些用例验的是协作
+  // 形态里的那三格,所以钉在 collab 上。
+  useWorkspaceStore: () => ({
+    openSession: vi.fn(),
+    get formMode() { return mocks.formMode },
+    get availableFormModes() { return mocks.capabilities.collabRooms ? ['chat', 'collab'] : ['chat'] },
+    setFormMode: (mode: string) => {
+      if (mode === 'collab' && !mocks.capabilities.collabRooms) return
+      mocks.formMode = mode
+    },
+  }),
 }))
-// 外壳形态门(C1):这一组验的是与形态无关的未读徽标,钉死在 classic 上 ——
-// 「进行中」区不挂,左栏与从前逐像素一致。workbench 那一路见 Sidebar.workbench.test.ts。
-vi.mock('@/stores/settings', () => ({
-  useSettingsStore: () => ({ settings: { ui: { shellMode: 'classic' } } }),
-}))
+/*
+ * 这一组验的是未读徽标本身。以前它靠 `shellMode: 'classic'`(四区一起平铺)
+ * 一次性把联系人 / 群 / 会话都摆出来;形态开关退役后左栏只有 rail 一种形态,
+ * 一次只画一类,所以改成把类别落点直接种在 localStorage 上 —— 见下面的
+ * `RAIL_KEY`。验的东西一个没变。
+ */
 vi.mock('@/stores/agents', () => ({
   DEFAULT_AGENT_ID: 'default',
   useAgentsStore: () => ({
@@ -109,8 +121,26 @@ function mountSidebar() {
 const ROOM = { id: 'room-1', name: '官网改版组' }
 const PAIR = { id: 'agent-dm-room-fe--pm', name: '小李 ⇄ 小王' }
 
+/**
+ * 当前 rail 类别的落点(`sidebar-sections.ts` 的常量,这里刻意写死一份当围栏)。
+ *
+ * Node 25 自带的 Web Storage 全局在没有 `--localstorage-file` 时方法直接抛,
+ * 组件里那两处 try/catch 会把读写整个吞掉 —— 于是种不进去。换一个能用的。
+ */
+const RAIL_KEY = 'onething:sidebar-rail-category'
+const railStore = new Map<string, string>()
+vi.stubGlobal('localStorage', {
+  getItem: (key: string) => railStore.get(key) ?? null,
+  setItem: (key: string, value: string) => { railStore.set(key, value) },
+  removeItem: (key: string) => { railStore.delete(key) },
+  clear: () => { railStore.clear() },
+})
+
 beforeEach(() => {
+  // 联系人 / 群 / 「私下」三段都住在「通讯录」这一类里。
+  railStore.set(RAIL_KEY, 'contacts')
   mocks.capabilities.collabRooms = true
+  mocks.formMode = 'collab'
   mocks.unread.clear()
   mocks.dmRooms.clear()
   mocks.sessionsStore.currentSessionId = ''

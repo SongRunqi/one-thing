@@ -19,13 +19,11 @@ const isUserDm = (session: { room?: { dm?: boolean; memberAgentIds?: string[] } 
 describe('resolveRoomPanelTarget — 这一面对着哪一间房', () => {
   it('房 → 带房 id;直聊 → 不是房(不备固定页签组)', () => {
     expect(resolveRoomPanelTarget({
-      shellMode: 'workbench',
       session: { id: 'room-1', kind: 'room', room: { memberAgentIds: ['lin', 'che'] } },
       isUserDm,
     })).toEqual({ roomSessionId: 'room-1', isDm: false, dmAgentId: '' })
 
     expect(resolveRoomPanelTarget({
-      shellMode: 'workbench',
       session: { id: 'chat-1', kind: 'chat' },
       isUserDm,
     }).roomSessionId).toBe('')
@@ -33,23 +31,18 @@ describe('resolveRoomPanelTarget — 这一面对着哪一间房', () => {
 
   it('私聊房带出那一个人', () => {
     expect(resolveRoomPanelTarget({
-      shellMode: 'workbench',
       session: { id: 'dm-1', kind: 'room', room: { dm: true, memberAgentIds: ['lin'] } },
       isUserDm,
     })).toEqual({ roomSessionId: 'dm-1', isDm: true, dmAgentId: 'lin' })
   })
 
-  it('classic 外壳不备房的固定组 —— 回滚闸下右栏一个字节不变', () => {
-    expect(resolveRoomPanelTarget({
-      shellMode: 'classic',
-      session: { id: 'room-1', kind: 'room', room: { memberAgentIds: ['lin'] } },
-      isUserDm,
-    }).roomSessionId).toBe('')
-  })
-
+  /**
+   * 判据只剩「是不是一间房」这一条 —— 外壳形态那道门(classic 不备固定组)随
+   * shellMode 于 2026-08-05 一起退役(product-two-forms-chatgpt-shell.md D2)。
+   */
   it('会话查不到 / 没有 kind 一律不当成房(不猜)', () => {
-    expect(resolveRoomPanelTarget({ shellMode: 'workbench', session: null }).roomSessionId).toBe('')
-    expect(resolveRoomPanelTarget({ shellMode: 'workbench', session: { id: 'x' } }).roomSessionId).toBe('')
+    expect(resolveRoomPanelTarget({ session: null }).roomSessionId).toBe('')
+    expect(resolveRoomPanelTarget({ session: { id: 'x' } }).roomSessionId).toBe('')
   })
 })
 

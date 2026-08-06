@@ -35,6 +35,7 @@ export type OnethingReasoningWire =
   | 'gemini-budget'
   | 'thinking-type'
   | 'zhipu-thinking'
+  | 'qwen-thinking'
   | 'grok-effort'
   | 'openrouter-reasoning'
   | 'codex'
@@ -116,6 +117,7 @@ export type OnethingProviderKind =
   | 'openai'
   | 'gemini'
   | 'zhipu'
+  | 'qwen'
   | 'grok'
   | 'openrouter'
   | 'deepseek'
@@ -133,6 +135,7 @@ export function resolveOnethingProviderKind(
   if (providerId === 'openai') return 'openai'
   if (providerId === 'gemini') return 'gemini'
   if (providerId === 'zhipu') return 'zhipu'
+  if (providerId === 'qwen') return 'qwen'
   if (providerId === 'grok' || providerId === 'grok-oauth') return 'grok'
   if (providerId === 'openrouter') return 'openrouter'
   if (providerId === 'deepseek') return 'deepseek'
@@ -193,6 +196,12 @@ export const ONETHING_GEMINI_EFFORTS = ['low', 'medium', 'high'] as const
 export const ONETHING_GROK_EFFORTS = ['low', 'medium', 'high'] as const
 export const ONETHING_OPENROUTER_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 export const ONETHING_DEEPSEEK_EFFORTS = ['high', 'max'] as const
+/**
+ * Qwen3.8-Max is the only Qwen family that takes reasoning_effort, and it
+ * accepts exactly low|medium|xhigh (it 400s if thinking_budget is sent too).
+ * Every other hybrid Qwen model is budget-driven, so it exposes no effort tier.
+ */
+export const ONETHING_QWEN_MAX_EFFORTS = ['low', 'medium', 'xhigh'] as const
 export const ONETHING_CODEX_FALLBACK_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
 
 /** Pre-4.6 Claude extended thinking: fixed budget_tokens, min 1024, < max_tokens. */
@@ -325,6 +334,89 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
         wire: 'zhipu-thinking',
       },
     },
+    { test: /(?:)/, caps: { reasoning: false } },
+  ],
+  // 千问 AI 平台 resells GLM / Kimi / DeepSeek / MiniMax next to its own Qwen
+  // models, and each family keeps its own effort vocabulary on this endpoint.
+  qwen: [
+    {
+      // The preview shares 3.8-max's effort ladder but carries no thinking
+      // toggle (models.dev lists effort + budget only, and the API docs leave
+      // Qwen3.8 out of the enable_thinking model list) — so no fake Off.
+      test: /qwen3\.8-max-preview/,
+      caps: { reasoning: true, vision: true },
+      profile: {
+        toggleable: false,
+        defaultOn: true,
+        efforts: ONETHING_QWEN_MAX_EFFORTS,
+        defaultEffort: 'xhigh',
+        wire: 'qwen-thinking',
+      },
+    },
+    {
+      // Only the 3.8-max family takes reasoning_effort; it thinks by default
+      // and, unlike the preview, still accepts the toggle.
+      test: /qwen3\.8-max/,
+      caps: { reasoning: true, vision: true },
+      profile: {
+        toggleable: true,
+        defaultOn: true,
+        efforts: ONETHING_QWEN_MAX_EFFORTS,
+        defaultEffort: 'xhigh',
+        wire: 'qwen-thinking',
+      },
+    },
+    {
+      // GLM and DeepSeek-V4/V3.2 keep the high|max pair the vendors use.
+      test: /^glm-|^deepseek-v[34]/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: true,
+        defaultOn: true,
+        efforts: ONETHING_DEEPSEEK_EFFORTS,
+        defaultEffort: 'high',
+        wire: 'qwen-thinking',
+      },
+    },
+    {
+      // k2.7-code / k2-thinking always think and expose no knob.
+      test: /^kimi.*(code|thinking)/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: false,
+        defaultOn: true,
+        efforts: [],
+        defaultEffort: 'high',
+        wire: 'none',
+      },
+    },
+    {
+      // Qwen3.5+ hybrids and the resold Kimi K2.x: thinking on by default,
+      // toggled with enable_thinking, depth set by thinking_budget (no tiers).
+      test: /^qwen3\.\d|^kimi/,
+      caps: { reasoning: true, vision: true },
+      profile: {
+        toggleable: true,
+        defaultOn: true,
+        efforts: [],
+        defaultEffort: 'high',
+        wire: 'qwen-thinking',
+      },
+    },
+    {
+      // Older hybrids (qwen3-*, qwen-plus/turbo/flash, qwq/qvq): the API does
+      // not think unless enable_thinking is sent.
+      test: /^qwen3-|^qwen-(?:plus|turbo|flash)|^q[wv]q/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: true,
+        defaultOn: false,
+        efforts: [],
+        defaultEffort: 'high',
+        wire: 'qwen-thinking',
+      },
+    },
+    { test: /-vl|vl-|omni/, caps: { reasoning: false, vision: true } },
     { test: /(?:)/, caps: { reasoning: false } },
   ],
   grok: [

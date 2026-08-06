@@ -1,6 +1,7 @@
 import { clipboard, contextBridge, ipcRenderer, webUtils } from "electron";
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import type {
+	CreateSessionOptions,
 	AgentUpdateRequest,
 	CollabBoardAction,
 	CollabRoomBudgetsPatch,
@@ -370,11 +371,7 @@ const electronAPI = {
 
 	createSession: (
 		name: string,
-		options?: {
-			sessionId?: string
-			kind?: 'room'
-			room?: { memberAgentIds: string[]; pmAgentId?: string; budgets?: { dailyCostUSD?: number; maxChain?: number } }
-		},
+		options?: CreateSessionOptions,
 	) =>
 		ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, {
 			name,

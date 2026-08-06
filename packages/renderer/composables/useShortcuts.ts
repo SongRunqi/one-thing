@@ -80,7 +80,6 @@ export interface ShortcutHandlers {
   onToggleTodoPlanWindow?: () => void
   onToggleTodoPlan?: () => void
   /** digit is 1-9, browser convention: 9 always means "last tab" */
-  onSelectTabByIndex?: (digit: number) => void
 }
 
 /**
@@ -184,14 +183,8 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       return
     }
 
-    // Switch tab by position - Cmd+1..9 (macOS) or Ctrl+1..9 (Windows)
-    // Browser convention, hardcoded like Cmd+, above; active even while
-    // focused in an input, since the shortcut targets tabs, not text.
-    if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) {
-      event.preventDefault()
-      handlers.onSelectTabByIndex?.(Number(event.key))
-      return
-    }
+    // ⌘1..9(按位置切页签)随多页签一起退役(U2,product-two-forms-chatgpt-shell.md
+    // D4):一格恰好一条会话,没有"第 N 张"可切。这几个键位现在留白,不抢。
 
     // Prevent Cmd+A (Select All) when not in input/textarea
     // This prevents selecting all text on the page

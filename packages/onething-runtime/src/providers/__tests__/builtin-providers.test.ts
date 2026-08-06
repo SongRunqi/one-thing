@@ -18,6 +18,7 @@ describe("onething builtin provider metadata", () => {
 			"deepseek",
 			"kimi",
 			"zhipu",
+			"qwen",
 			"openrouter",
 			"gemini",
 			"claude-code",

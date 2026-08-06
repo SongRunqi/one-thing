@@ -45,6 +45,11 @@ export interface OpenAICompatibleAgentProviderOptions {
 	 *   o-series / gpt-5; xhigh and max clamp to high; reasoning cannot be
 	 *   disabled, so 'disabled' emits nothing)
 	 * - 'zhipu-thinking': `thinking: {type}` only (GLM-4.5+; no effort knob)
+	 * - 'qwen-thinking': `enable_thinking` boolean (千问 AI 平台 / QwenCloud).
+	 *   `reasoning_effort` rides along only for the families that accept it —
+	 *   low|medium|xhigh on qwen3.8-max, high|max on the resold GLM/DeepSeek —
+	 *   because every other model there is thinking_budget-driven and rejects
+	 *   the pair.
 	 * - 'grok-effort': `reasoning_effort` low|medium|high(+xhigh on 4.20);
 	 *   reasoning cannot be disabled, so 'disabled' emits nothing
 	 * - 'openrouter-reasoning': unified `reasoning: {effort}` object,
@@ -55,6 +60,7 @@ export interface OpenAICompatibleAgentProviderOptions {
 		| "thinking-type"
 		| "openai-effort"
 		| "zhipu-thinking"
+		| "qwen-thinking"
 		| "grok-effort"
 		| "openrouter-reasoning"
 		| "none";
@@ -115,6 +121,7 @@ interface OpenAICompatibleRequestBody {
 	thinking?: { type: "enabled" | "disabled" };
 	reasoning_effort?: string;
 	reasoning?: { effort?: string; enabled?: boolean };
+	enable_thinking?: boolean;
 }
 
 interface OpenAICompatibleStreamChunk {
@@ -506,6 +513,28 @@ function clampGrokReasoningEffort(
 	return "high";
 }
 
+/**
+ * 千问 only accepts reasoning_effort on the families that document it, and
+ * qwen3.8-max errors when effort and thinking_budget arrive together — so
+ * anything else returns undefined and rides the server-side default budget.
+ */
+function clampQwenReasoningEffort(
+	effort: string | undefined,
+	model: string,
+): string | undefined {
+	if (!effort) return undefined;
+	const lower = model.toLowerCase();
+	if (lower.includes("qwen3.8-max")) {
+		if (effort === "minimal" || effort === "low") return "low";
+		if (effort === "medium") return "medium";
+		return "xhigh";
+	}
+	if (/^glm-|^deepseek-v[34]/.test(lower)) {
+		return effort === "max" || effort === "xhigh" ? "max" : "high";
+	}
+	return undefined;
+}
+
 function applyReasoningParams(
 	body: OpenAICompatibleRequestBody,
 	style: NonNullable<OpenAICompatibleAgentProviderOptions["reasoningStyle"]>,
@@ -523,6 +552,18 @@ function applyReasoningParams(
 			break;
 		case "zhipu-thinking":
 			if (request.thinking) body.thinking = { type: request.thinking };
+			break;
+		case "qwen-thinking":
+			if (request.thinking === "enabled") {
+				body.enable_thinking = true;
+				const qwenEffort = clampQwenReasoningEffort(
+					request.reasoningEffort,
+					body.model,
+				);
+				if (qwenEffort) body.reasoning_effort = qwenEffort;
+			} else if (request.thinking === "disabled") {
+				body.enable_thinking = false;
+			}
 			break;
 		case "grok-effort":
 			if (request.thinking === "enabled") {

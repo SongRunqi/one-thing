@@ -21,7 +21,7 @@ import Sidebar from '../Sidebar.vue'
 
 const mocks = vi.hoisted(() => ({
   capabilities: { collabRooms: true },
-  shellMode: 'workbench' as string,
+  formMode: 'collab' as string,
   boards: {} as Record<string, unknown>,
   pendingAsks: new Set<string>(),
   typing: {} as Record<string, string[]>,
@@ -75,10 +75,17 @@ vi.mock('@/stores/chat', () => ({
   useChatStore: () => ({ isSessionGenerating: () => false }),
 }))
 vi.mock('@/stores/workspace', () => ({
-  useWorkspaceStore: () => ({ openSession: mocks.openSession }),
-}))
-vi.mock('@/stores/settings', () => ({
-  useSettingsStore: () => ({ settings: { ui: { shellMode: mocks.shellMode } } }),
+  // 形态的归属在 workspace store(D7)—— 侧栏只是读它。这些用例验的是协作
+  // 形态里的那三格,所以钉在 collab 上。
+  useWorkspaceStore: () => ({
+    openSession: mocks.openSession,
+    get formMode() { return mocks.formMode },
+    get availableFormModes() { return mocks.capabilities.collabRooms ? ['chat', 'collab'] : ['chat'] },
+    setFormMode: (mode: string) => {
+      if (mode === 'collab' && !mocks.capabilities.collabRooms) return
+      mocks.formMode = mode
+    },
+  }),
 }))
 vi.mock('@/stores/agents', () => ({
   DEFAULT_AGENT_ID: 'default',
@@ -124,6 +131,20 @@ function mountSidebar(props: Record<string, unknown> = {}) {
   })
 }
 
+/**
+ * 左栏挂着好几个 `ContextMenu`(形态下拉 / 工作区面板 / 会话右键 …)。
+ * 按 class 认不住 —— 那个类名落在 Teleport 之后的浮层上,组件根节点看不到它。
+ * 所以按**内容**认:每张菜单的 items 是各自唯一的。
+ */
+function menuWithItem(wrapper: ReturnType<typeof mountSidebar>, itemId: string) {
+  const menu = wrapper.findAllComponents({ name: 'ContextMenu' }).find((candidate) => {
+    const items = candidate.props('items') as Array<{ id: string }> | undefined
+    return Array.isArray(items) && items.some(item => item.id === itemId)
+  })
+  if (!menu) throw new Error(`没有哪张菜单装着 ${itemId}`)
+  return menu
+}
+
 /** 切到某一类(rail 上的按钮按 aria-label 找 —— 与真机点的是同一枚)。 */
 async function selectCategory(
   wrapper: ReturnType<typeof mountSidebar>,
@@ -149,7 +170,7 @@ function task(patch: Record<string, unknown>) {
 
 beforeEach(() => {
   mocks.capabilities.collabRooms = true
-  mocks.shellMode = 'workbench'
+  mocks.formMode = 'collab'
   mocks.boards = {}
   mocks.pendingAsks.clear()
   mocks.typing = {}
@@ -193,38 +214,29 @@ function sidebarSource(): string {
   )
 }
 
-describe('classic 回滚闸', () => {
-  it('classic 下 rail 与面板整套不挂,也不碰看板', () => {
-    mocks.shellMode = 'classic'
-    mocks.boards = { 'room-1': { version: 1, tasks: [task({ id: 'a', status: 'doing' })] } }
-    const wrapper = mountSidebar()
-    expect(wrapper.find('.sidebar-rail').exists()).toBe(false)
-    expect(wrapper.find('.sidebar-pane-head').exists()).toBe(false)
-    expect(wrapper.find('.sidebar-active-work').exists()).toBe(false)
-    // 「进行中」的取数提到了 Sidebar 这一层,门做成了 `enabled` 参数 ——
-    // classic 下一次订阅、一次补齐都不许发。
-    expect(mocks.ensureSubscribed).not.toHaveBeenCalled()
-    expect(mocks.load).not.toHaveBeenCalled()
+/**
+ * `data-shell-mode` 在 U0 之后是**常量 workbench**:形态开关已退役
+ * (docs/design/product-two-forms-chatgpt-shell.md D2),但 CSS 里那 ~60 条
+ * `html[data-shell-mode='workbench']` 的门**还在** —— 解开它们会把选择器特异性
+ * 从 (0,2,1) 降到 (0,1,0),足以改变既有的 CSS 平局,所以那是 U0b 的活(一个纯
+ * CSS 提交,单独走一遍像素)。
+ *
+ * 下面两条因此仍然成立,而且正是 U0b 的**起点清单**:它们说的是"门还在、基线
+ * 还在"。U0b 落地时这两条要一起改写。
+ */
+describe('CSS 形态门已解(U0b)', () => {
+  /**
+   * `data-shell-mode` 那道门连同外壳形态开关一起退役了(U0 / U0b)。规则本身
+   * 一字未动,只是不再被属性选择器包着 —— 这条钉住"门没了、规则还在",以及
+   * **不许再有人把它加回来**(那会是第三个同名不同物的"形态")。
+   */
+  it('左栏 CSS 里不再有任何 data-shell-mode 门', () => {
+    expect(sidebarSource()).not.toContain("html[data-shell-mode=")
   })
 
-  it('classic 下四区照旧一起平铺(类别切换只是 workbench 的形态)', () => {
-    mocks.shellMode = 'classic'
-    mocks.agents = [{ id: 'fe', name: '小李', avatar: '🔧' }]
-    const wrapper = mountSidebar()
-    // 联系人区与群聊区同时在场 —— 单类面板一次只显示一类,classic 不受它管。
-    expect(wrapper.find('.sidebar-contacts').exists()).toBe(true)
-    expect(wrapper.find('.sidebar-rooms:not(.sidebar-contacts)').exists()).toBe(true)
-    expect(wrapper.findComponent({ name: 'SessionList' }).exists()).toBe(true)
-    // 顶部那行「＋ 新会话」是 classic 专属(workbench 下它在 rail 底部)。
-    expect(wrapper.find('.sidebar-newchat').exists()).toBe(true)
-  })
-
-  it('rail / 面板的形态规则全部关在 data-shell-mode 门里', () => {
-    const source = sidebarSource()
-    const lines = source.split('\n')
-    // 这几条是"把共用类名换成样板行"的规则:它们踩在 classic 也有的类名上,
-    // 漏了门就是 classic 被改了像素。
-    const gated = [
+  it('rail / 面板那几条规则原样还在(解门不等于删规则)', () => {
+    const lines = sidebarSource().split('\n')
+    const kept = [
       '.sidebar-pane .sidebar-room-item {',
       '.sidebar-pane .sidebar-rooms {',
       '.sidebar-pane .sidebar-room-name {',
@@ -232,86 +244,22 @@ describe('classic 回滚闸', () => {
       '.sidebar-split {',
       '.sidebar-pane {',
     ]
-    for (const needle of gated) {
-      const hits = lines.filter(line => line.trimEnd().endsWith(needle))
-      expect(hits.length, `${needle} 这条选择器不见了`).toBeGreaterThan(0)
-      // 每一条要么是 classic 基线(`display: contents` 那三行,不带门),
-      // 要么带着 workbench 门。带门的那份必须存在。
+    for (const needle of kept) {
       expect(
-        hits.some(line => line.includes("html[data-shell-mode='workbench']")),
-        `${needle} 缺 workbench 门`,
+        lines.some(line => line.trimEnd().endsWith(needle)),
+        `${needle} 这条选择器不见了`,
       ).toBe(true)
     }
   })
 
-  it('classic 基线:三层壳都是 display:contents(不生成盒子,排版逐像素不变)', () => {
-    const block = sidebarSource().match(
-      /\n\.sidebar-split,\n\.sidebar-pane,\n\.sidebar-sections\s*\{([^}]*)\}/,
+  /**
+   * `display: contents` 那份 classic 基线随门一起删了 —— 它存在的唯一理由是
+   * 「classic 下这三层不生成盒子」。留着会和解门后的规则打成 (0,2,0) 平局。
+   */
+  it('classic 的 display:contents 基线已删,不再和解门后的规则抢', () => {
+    expect(sidebarSource()).not.toMatch(
+      /\n\.sidebar-split,\n\.sidebar-pane,\n\.sidebar-sections\s*\{/,
     )
-    expect(block, '三层壳的 classic 基线规则不见了').toBeTruthy()
-    expect(block![1]).toMatch(/display:\s*contents/)
-  })
-
-  /**
-   * 真机回归(2026-07-31)的**真因**,以及本仓库最容易再踩的 CSS 坑。
-   *
-   * `:global(X) .y` 会被 `@vue/compiler-sfc` 静默截断成 `X`:
-   *   `:global(html[x]) .a > .b`  →  `html[x]`            ← 后代整段消失
-   *   `html[x] .a > .b`           →  `html[x] .a > .b[data-v-xxx]`
-   * 于是那种写法编译出来是 `html[data-shell-mode='workbench'] { … }` ——
-   * 声明扣在 `<html>` 上,目标元素一条都没碰到。
-   *
-   * 所以形态门一律写成 `html[...] .xxx`(祖先是 html,scoped 只给最后一个复合
-   * 选择器补 `[data-v-xxx]`,作用域仍在),**不许**再出现 `:global(...) 后代`。
-   */
-  it('形态门不许写成 `:global(X) 后代` —— 会被静默截断成 X,声明扣到 <html> 上', () => {
-    for (const file of [
-      'packages/renderer/components/sidebar/Sidebar.vue',
-      'packages/renderer/components/sidebar/SessionList.vue',
-      'packages/renderer/components/sidebar/ActiveWorkSection.vue',
-      'packages/renderer/components/sidebar/ActiveWorkCard.vue',
-    ]) {
-      const source = readFileSync(resolve(process.cwd(), file), 'utf8')
-      const offenders = source
-        .split('\n')
-        .map(line => line.trim())
-        // 只看真选择器行(注释里拿它当反例讲解是允许的)。
-        .filter(line => line.startsWith(':global(') && line.endsWith('{'))
-        .filter(line => !/^:global\([^)]*\)\s*\{$/.test(line))
-      expect(offenders, `${file} 里有被截断的 :global 选择器`).toEqual([])
-    }
-  })
-
-  /**
-   * `Space` 的包装行为(`Space.vue` 的 `shouldWrapItems = hasSpacer || fill`):
-   * 侧栏没传 spacer/separator/fill,所以子节点**不被** `.app-space__item` 包起来。
-   * 一旦有人给这个 `Space` 加上 spacer 或 fill,rail/面板就会退到孙子层,
-   * `.sidebar-split` 的 `flex: 1` 也会因为中间那层没有 grow 而拿不到剩余高度。
-   */
-  it('.sidebar-split 是 .sidebar-content 的直接子(Space 没有插 .app-space__item)', () => {
-    const wrapper = mountSidebar()
-    const content = wrapper.find('.sidebar-content').element
-    expect(wrapper.findAll('.app-space__item')).toHaveLength(0)
-    expect(wrapper.find('.sidebar-split').element.parentElement).toBe(content)
-    // 滚动体在面板里(样板:头行 → rail | 面板 → 面板头 + 滚动区)。
-    expect(wrapper.find('.sidebar-sections').element.parentElement)
-      .toBe(wrapper.find('.sidebar-pane').element)
-  })
-
-  /**
-   * 交通灯:`SidebarHeader` 是 44px 全宽 drag 行,左 70px 是交通灯保留位。
-   * rail 必须从它**下面**开始 —— 否则前两枚图标被交通灯压住,而且整行
-   * `-webkit-app-region: drag`,根本点不动。
-   */
-  it('rail 从 SidebarHeader 下面开始(交通灯那一行原样保留)', () => {
-    const wrapper = mountSidebar()
-    const children = [...wrapper.find('.sidebar-content').element.children]
-    const header = wrapper.findComponent({ name: 'SidebarHeader' }).element
-    expect(children.indexOf(header)).toBe(0)
-    expect(children.indexOf(wrapper.find('.sidebar-split').element)).toBeGreaterThan(0)
-    // rail 是 `.sidebar-split` 的子,不是 header 的兄弟之前。
-    expect(wrapper.find('.sidebar-rail').element.parentElement)
-      .toBe(wrapper.find('.sidebar-split').element)
   })
 })
 
@@ -320,40 +268,43 @@ describe('rail 上有哪几类', () => {
    * 2026-08-01:四格从**按类型分列**改成**按意图分列**(用户原话:
    * 「sidebar 的 tab 要显示最近的聊天;不要把入口放在联系人、群聊上」)。
    */
-  it('四类齐全,顺序即 rail 自上而下:消息 / 进行中 / 通讯录 / 会话', () => {
+  it('三类齐全,顺序即 rail 自上而下:消息 / 进行中 / 通讯录', () => {
     mocks.boards = {
       'room-1': { version: 1, tasks: [task({ id: 'a', status: 'doing', title: '换核' })] },
     }
     const wrapper = mountSidebar()
     const tabs = wrapper.findAll('.sidebar-rail-tab')
-    // 四类 + 三颗底部(⋯ / ＋ / 设置)
+    // 三类 + 三颗底部(⋯ / ＋ / 设置)。「会话」那一格于 U3 搬去了对话形态。
     expect(tabs.map(tab => tab.attributes('aria-label')))
-      .toEqual(['消息', '进行中', '通讯录', '会话', '工作区面板', '新会话', 'Settings'])
+      .toEqual(['消息', '进行中', '通讯录', '工作区面板', '新会话', 'Settings'])
   })
 
   /**
    * 真机比对后改口径:四类恒在,rail 不随数据增删图标(否则活一起一停 rail 就
    * 上下跳,而且没活时点不进去看「已交付」)。空态由面板内部一行说话。
    */
-  it('没有在跑的活:rail 仍是四类,面板里出现「没有在跑的活」', async () => {
+  it('没有在跑的活:rail 仍是三类,面板里出现「没有在跑的活」', async () => {
     const wrapper = mountSidebar()
     expect(wrapper.findAll('.sidebar-rail-tab').map(tab => tab.attributes('aria-label')))
-      .toEqual(['消息', '进行中', '通讯录', '会话', '工作区面板', '新会话', 'Settings'])
+      .toEqual(['消息', '进行中', '通讯录', '工作区面板', '新会话', 'Settings'])
 
     await selectCategory(wrapper, '进行中')
     expect(wrapper.find('.active-work-empty').text()).toBe('没有在跑的活')
   })
 
   /**
-   * web 端 `platformApi.capabilities.collabRooms` 为 false:消息/进行中/通讯录
-   * 三类无源可吃(私聊与群都是房)—— 优雅降级成"只留会话 + 底部三颗"。
+   * web 端 `platformApi.capabilities.collabRooms` 为 false:协作形态整个不存在
+   * (私聊与群都是房)。左栏直接落在对话形态,rail 一格不画,单项的形态下拉
+   * 也不画 —— 一个点不出东西的死控件不如没有。
    */
-  it('web 降级:只留会话 + 底部三颗,一枚死图标都不留', () => {
+  it('web 降级:落在对话形态,rail 与形态切换器都不画', () => {
     mocks.capabilities.collabRooms = false
+    // 形态的归属在 workspace store,它 hydrate 时会把不可用的形态落回可用的。
+    mocks.formMode = 'chat'
     const wrapper = mountSidebar()
-    expect(wrapper.findAll('.sidebar-rail-tab').map(tab => tab.attributes('aria-label')))
-      .toEqual(['会话', '工作区面板', '新会话', 'Settings'])
-    expect(wrapper.find('.sidebar-pane-title').text()).toBe('会话')
+    expect(wrapper.findAll('.sidebar-rail-tab')).toHaveLength(0)
+    expect(wrapper.find('.sidebar-form-switcher').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'SessionList' }).exists()).toBe(true)
     // 看板那条线在 web 端一次都不许起。
     expect(mocks.ensureSubscribed).not.toHaveBeenCalled()
   })
@@ -405,13 +356,28 @@ describe('一次只显示一类', () => {
     expect(wrapper.findAll('.sidebar-recent-item')).toHaveLength(0)
   })
 
-  it('切到会话:只剩项目分组那张表', async () => {
+  /**
+   * 「会话」不再是 rail 的一格 —— 它是另一种形态,切过去 rail 整条都没了。
+   *
+   * 两半分开验:侧栏只负责把动作交给 store(形态的归属在 workspace store,D7),
+   * 渲染则由 store 里那个值决定。中间那步(store 改了值 → 组件重算)是 pinia
+   * 自己的事,这里用的是手写桩,不去假装它有响应式。
+   */
+  it('点切换器 = 把形态交给 store,不自己记一份', async () => {
     const wrapper = mountSidebar()
-    await selectCategory(wrapper, '会话')
-    expect(wrapper.find('.sidebar-pane-title').text()).toBe('会话')
+    expect(wrapper.find('.sidebar-rail').exists()).toBe(true)
+
+    await wrapper.find('.sidebar-form-switcher').trigger('click')
+    menuWithItem(wrapper, 'collab').vm.$emit('select', 'chat')
+    expect(mocks.formMode).toBe('chat')
+  })
+
+  it('形态是对话时:rail 整条退场,只剩项目分组那张表', () => {
+    mocks.formMode = 'chat'
+    const wrapper = mountSidebar()
+    expect(wrapper.find('.sidebar-rail').exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'SessionList' }).exists()).toBe(true)
     expect(wrapper.find('.sidebar-contacts').exists()).toBe(false)
-    expect(wrapper.find('.sidebar-pane-head .sidebar-rooms-add').exists()).toBe(false)
   })
 
   it('当前类别落在 localStorage,重挂之后还停在那一类', async () => {
@@ -433,11 +399,13 @@ describe('一次只显示一类', () => {
    * 四类恒在之后,「存档指着一个不可用的类」只剩一种真实成因:**web 降级**
    * (roomsEnabled=false,只剩会话)。桌面端不会再因为活干完了而少一类。
    */
-  it('存档指着 web 端不可用的类 → 退到第一个可用的,不留空面板', () => {
+  it('存档指着 web 端不存在的协作形态 → 落回对话形态,不留空面板', () => {
     localStorage.setItem(RAIL_KEY, 'active')
     mocks.capabilities.collabRooms = false
+    mocks.formMode = 'chat'
     const wrapper = mountSidebar()
-    expect(wrapper.find('.sidebar-pane-title').text()).toBe('会话')
+    expect(wrapper.find('.sidebar-rail').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'SessionList' }).exists()).toBe(true)
   })
 
   it('桌面端:活干完了也不换类 —— 停在「进行中」看已交付', () => {
@@ -515,11 +483,6 @@ describe('「消息」面板 —— 一条时间序的对话流', () => {
     expect(mountSidebar().find('.sidebar-recent-empty').exists()).toBe(true)
   })
 
-  /** classic 是逐像素回滚闸:四区照旧平铺,不许再插一条把同一批会话画第二遍。 */
-  it('classic 下这一区整个不画', () => {
-    mocks.shellMode = 'classic'
-    expect(mountSidebar().find('.sidebar-recent-item').exists()).toBe(false)
-  })
 })
 
 describe('rail 徽标(该类有未读或在跑)', () => {
@@ -555,10 +518,16 @@ describe('rail 徽标(该类有未读或在跑)', () => {
   })
 
   /** 消息装房、会话装直聊,两堆不重叠 —— 各归各的不会重复报数。 */
-  it('直聊未读 → 「会话」亮(它不在消息流里,也就不该由消息流报)', () => {
+  /**
+   * 直聊未读归**对话形态**(U3):rail 上一格都不该亮 —— 它是协作形态专属的
+   * 三格,替另一个形态报数就是同一条未读被数两遍。它落在形态切换器上。
+   */
+  it('直聊未读 → rail 不亮,亮在形态切换器上', () => {
     mocks.sidebarSessions = [{ id: 's-1', name: '直聊' }]
     mocks.unread.add('s-1')
-    expect(badgeTitles(mountSidebar())).toEqual(['会话'])
+    const wrapper = mountSidebar()
+    expect(badgeTitles(wrapper)).toEqual([])
+    expect(wrapper.find('.sidebar-form-badge').exists()).toBe(true)
   })
 
   /** 通讯录恒不亮:它的行要么已在消息流里,要么根本没聊过。 */
@@ -732,38 +701,29 @@ describe('面板是唯一的滚动体', () => {
     expect(wrapper.find('.sidebar-rail').exists()).toBe(true)
   })
 
-  it('workbench 门里 .sidebar-sections 才成为滚动体', () => {
-    const block = sidebarSource().match(
-      /html\[data-shell-mode='workbench'\]\s\.sidebar-sections\s*\{([^}]*)\}/,
-    )
+  it('.sidebar-sections 是面板里唯一的滚动体', () => {
+    const block = sidebarSource().match(/\n\.sidebar-sections\s*\{([^}]*)\}/)
     expect(block).toBeTruthy()
     expect(block![1]).toMatch(/overflow-y:\s*auto/)
     expect(block![1]).toMatch(/flex:\s*1/)
   })
 
   /**
-   * 双滚动条防线:面板里再留一层 `overflow: auto` 就是两根滚动条。
-   * `.sessions-list` 让出滚动的同时**必须**解开 `contain: strict`
-   * (strict 含 size containment,让出滚动后这一段会塌成 0 高)。
-   * 这两条从 R4 起就写在 SessionList 自己身上,方案三下面板仍是唯一滚动体,
-   * 所以它们原样有效 —— 这里只是把"还在不在"钉住。
+   * 「会话列表交出内部滚动」那两条已删(U0b):它们是给「会话」还是 rail 一格时
+   * 准备的 —— 那时列表住在 `.sidebar-pane` 里,面板才是唯一的滚动体。U3 之后
+   * 会话列表只在**对话形态**渲染,宿主是不滚的 `.sidebar-chat-pane`,列表得把
+   * 自己的滚动拿回来,否则对话形态的左栏根本滚不动。
    */
-  it('会话列表在 workbench 下交出内部滚动,并同时解开 contain: strict', () => {
+  it('会话列表拿回自己的滚动(它的宿主 .sidebar-chat-pane 不滚)', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'packages/renderer/components/sidebar/SessionList.vue'),
       'utf8',
     )
-    const list = source.match(
-      /html\[data-shell-mode='workbench'\]\s\.sessions-list\s*\{([^}]*)\}/,
-    )
-    expect(list, 'SessionList 没有让出滚动 —— 左栏会出现两根滚动条').toBeTruthy()
-    expect(list![1]).toMatch(/overflow:\s*visible/)
-    expect(list![1]).toMatch(/contain:\s*none/)
-    const wrap = source.match(
-      /html\[data-shell-mode='workbench'\]\s\.session-list-wrapper\s*\{([^}]*)\}/,
-    )
-    expect(wrap).toBeTruthy()
-    expect(wrap![1]).toMatch(/flex:\s*0 0 auto/)
+    expect(source).not.toContain("html[data-shell-mode=")
+
+    const pane = sidebarSource().match(/\n\.sidebar-chat-pane\s*\{([^}]*)\}/)
+    expect(pane, '对话形态的左栏容器不见了').toBeTruthy()
+    expect(pane![1]).not.toMatch(/overflow[^:]*:\s*auto/)
   })
 })
 
@@ -790,13 +750,12 @@ describe('整体折叠 = 整条侧栏卸下来', () => {
     expect(wrapper.find('.sidebar-content').classes()).not.toContain('content-hidden')
   })
 
-  it('classic 的折叠语义一个字节不变(整块淡出)', () => {
-    mocks.shellMode = 'classic'
+  it('折叠 = 整块淡出(`content-hidden`),不是把 rail 留下来当一条竖条', () => {
     const wrapper = mountSidebar({ collapsed: true })
     expect(wrapper.find('.sidebar-content').classes()).toContain('content-hidden')
   })
 
-  it('App 两种壳共用同一支:折叠即不挂侧栏,没有 rail 分支', () => {
+  it('折叠即不挂侧栏,没有 rail 分支', () => {
     const app = readFileSync(resolve(process.cwd(), 'packages/renderer/App.vue'), 'utf8')
     expect(app).toContain('v-if="sidebarDockedVisible"')
     expect(app).not.toContain('SIDEBAR_RAIL_WIDTH')
@@ -812,7 +771,7 @@ describe('工作区面板入口一个都不丢', () => {
     const more = wrapper.findAll('.sidebar-rail-tab')
       .find(tab => tab.attributes('aria-label') === '工作区面板')!
     await more.trigger('click')
-    const menu = wrapper.findComponent({ name: 'ContextMenu' })
+    const menu = menuWithItem(wrapper, 'memory')
     expect((menu.props('items') as Array<{ id: string }>).map(item => item.id))
       .toEqual(['memory', 'media', 'agents', 'tasks', 'music'])
   })
@@ -822,7 +781,7 @@ describe('工作区面板入口一个都不丢', () => {
     const more = wrapper.findAll('.sidebar-rail-tab')
       .find(tab => tab.attributes('aria-label') === '工作区面板')!
     await more.trigger('click')
-    const menu = wrapper.findComponent({ name: 'ContextMenu' })
+    const menu = menuWithItem(wrapper, 'memory')
     for (const id of ['memory', 'media', 'agents', 'tasks', 'music']) {
       menu.vm.$emit('select', id)
     }
@@ -839,12 +798,11 @@ describe('工作区面板入口一个都不丢', () => {
     expect(wrapper.emitted('open-settings')).toHaveLength(1)
   })
 
-  it('classic:胶囊 dock 原样在(逐像素回滚闸)', () => {
-    mocks.shellMode = 'classic'
+  /** 平铺 dock 已随 classic 一起退役:入口全在 rail 上,一个都不丢。 */
+  it('平铺的胶囊 dock 不再存在,入口收在 rail 底部', () => {
     const wrapper = mountSidebar()
-    expect(wrapper.find('.sidebar-dock').exists()).toBe(true)
-    expect(wrapper.findAll('.sidebar-dock-icon')).toHaveLength(6)
-    expect(wrapper.find('.sidebar-rail').exists()).toBe(false)
+    expect(wrapper.find('.sidebar-dock').exists()).toBe(false)
+    expect(wrapper.find('.sidebar-rail').exists()).toBe(true)
   })
 })
 
@@ -869,13 +827,6 @@ describe('群聊行成员头像堆', () => {
     expect(rows[1].find('.sidebar-room-face-more').exists()).toBe(false)
   })
 
-  it('classic 一枚都不画', () => {
-    mocks.shellMode = 'classic'
-    mocks.agents = [{ id: 'a1', name: '林', avatar: '🅰' }]
-    mocks.roomSessions = [{ id: 'room-1', name: '一组', room: { memberAgentIds: ['a1'] } }]
-    const wrapper = mountSidebar()
-    expect(wrapper.find('.sidebar-room-face').exists()).toBe(false)
-  })
 })
 
 describe('跨房补齐是定向的', () => {

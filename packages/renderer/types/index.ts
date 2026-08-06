@@ -36,8 +36,6 @@ import type {
 	GetSessionUserMarkersResponse,
 	AISettings,
 	AppSettings,
-	ShellMode,
-	UISettings,
 	AIProvider,
 	ProviderConfig,
 	ModelCapabilityOverride,
@@ -163,6 +161,7 @@ import type {
 	SystemPromptToolSnapshot,
 	GetSessionsResponse,
 	CreateSessionResponse,
+	CreateSessionOptions,
 	SwitchSessionResponse,
 	DeleteSessionResponse,
 	RenameSessionResponse,
@@ -436,6 +435,7 @@ export type {
 	PromptUpdateResponse,
 	PromptDeleteRequest,
 	PromptDeleteResponse,
+	CreateSessionOptions,
 	SessionMeta,
 	SessionDetails,
 	GetSessionsListResponse,
@@ -451,8 +451,6 @@ export type {
 	SystemPromptToolSnapshot,
 	AISettings,
 	AppSettings,
-	ShellMode,
-	UISettings,
 	AIProvider,
 	ProviderConfig,
 	ModelCapabilityOverride,
@@ -803,17 +801,7 @@ export interface ElectronAPI {
 	getSessions: () => Promise<GetSessionsResponse>;
 	createSession: (
 		name: string,
-		options?: {
-			sessionId?: string;
-			kind?: "room";
-			room?: {
-				memberAgentIds: string[];
-				pmAgentId?: string;
-				budgets?: { dailyCostUSD?: number; maxChain?: number };
-				/** 私聊标记(agent-im-dm.md D1/D3);人数即形态。 */
-				dm?: true;
-			};
-		},
+		options?: CreateSessionOptions,
 	) => Promise<CreateSessionResponse>;
 	getCollabBoard: (
 		roomSessionId: string,
@@ -840,6 +828,17 @@ export interface ElectronAPI {
 	getCollabRoomSpend: (
 		roomSessionId: string,
 	) => Promise<import("@shared/ipc.js").CollabRoomSpendResponse>;
+	/**
+	 * 人级停止(E5):点名收回某一张在外的牌 —— 三级停止的第三级。
+	 *
+	 * `expectedEpoch` 是乐观并发的前置条件(仿看板的 `expectedRev`):界面看见这张
+	 * 牌时房间是第几代,取自协调器快照的 `floorEpoch`。对不上就拒绝并回报当前代数。
+	 */
+	revokeCollabRoomLease: (
+		roomSessionId: string,
+		leaseId: string,
+		expectedEpoch: number,
+	) => Promise<import("@shared/ipc.js").CollabRoomRevokeLeaseResponse>;
 	/** 协调器状态条的冷启动读取;实时更新走 'collab:coordinator-changed' 会话事件。 */
 	getCollabCoordinator: (
 		roomSessionId: string,

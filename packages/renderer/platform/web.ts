@@ -1,4 +1,5 @@
 import type {
+	CreateSessionOptions,
 	AgentUpdateRequest,
 	AppSettings,
 	GetSessionUsageRequest,
@@ -444,6 +445,8 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	"setCollabRoomBudgets",
 	"getCollabRoomSpend",
 	"getCollabCoordinator",
+	// 人级停止(E5):撤牌的落点在主进程的 v3 房账里,与协调器同一条边界
+	"revokeCollabRoomLease",
 	// Agent 活动快照(D8 §3.1):供数在主进程的 v3 运行时里,与协调器同一条边界
 	"getCollabAgentActivity",
 	// 调度时间轴(D8 §3.3):账文件在主进程的 store 里,与 room folder 同一条理由
@@ -1184,11 +1187,7 @@ const webApi = {
 	getSessions: () => requestJson("/api/sessions"),
 	createSession: (
 		name: string,
-		options?: {
-			sessionId?: string;
-			kind?: "room";
-			room?: { memberAgentIds: string[]; pmAgentId?: string; budgets?: { dailyCostUSD?: number; maxChain?: number } };
-		},
+		options?: CreateSessionOptions,
 	) =>
 		// kind/room are desktop-only in P0 (rooms need the collab coordinator);
 		// the server rejects unknown kinds if ever passed.

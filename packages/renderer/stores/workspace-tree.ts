@@ -1,18 +1,17 @@
 /**
  * Pure tree operations for the chat workspace: nested split panels whose
- * leaves each hold an ordered list of chat tabs.
+ * leaves each hold exactly one session.
  *
- * Ported from composables/usePanelLayout.ts (tree shape) and
- * composables/useTabs.ts (tab semantics), with one structural change: a leaf
- * no longer holds a single `sessionId` — it holds `tabs` + `activeTabId`,
- * and "the session this panel shows" is derived from the active tab.
+ * 形状史:leaf 一开始就是单个 `sessionId`,中途改成 `tabs[] + activeTabId`
+ * (一格叠多会话),2026-08-05 的 U2 又改了回来 —— 多页签整套退役,见
+ * docs/design/product-two-forms-chatgpt-shell.md D4。**分栏保留**:取消的是
+ * 「一格叠多条」,不是「屏幕上只能一格」。
  *
  * All functions are side-effect free with respect to module state (aside from
  * the id counter) and operate on plain objects so the store can keep them in
  * a single reactive tree. Functions that may replace the root node return the
  * new root; callers must assign it back.
  */
-import type { ChatTab } from '@/types/tabs'
 import type { SplitterLayout } from '@/components/common/splitter'
 
 export type SplitDirection = 'left' | 'right' | 'top' | 'bottom'
@@ -21,8 +20,8 @@ export interface WorkspaceLeaf {
   type: 'leaf'
   id: string
   size: number
-  tabs: ChatTab[]
-  activeTabId: string
+  /** 这一格里坐着的那条会话。'' = 空格子(只有空工作区那唯一一格才合法)。 */
+  sessionId: string
 }
 
 export interface WorkspaceSplit {
@@ -49,18 +48,8 @@ export function genWorkspaceId(prefix: string): string {
   return `${prefix}-${Date.now()}-${++nextId}`
 }
 
-export function createChatTab(sessionId: string): ChatTab {
-  return { id: genWorkspaceId('tab'), type: 'chat', sessionId }
-}
-
-export function createLeaf(id: string, size: number, tabs: ChatTab[] = []): WorkspaceLeaf {
-  return {
-    type: 'leaf',
-    id,
-    size,
-    tabs,
-    activeTabId: tabs[tabs.length - 1]?.id ?? '',
-  }
+export function createLeaf(id: string, size: number, sessionId = ''): WorkspaceLeaf {
+  return { type: 'leaf', id, size, sessionId }
 }
 
 function directionToOrientation(direction: SplitDirection): SplitterLayout {
@@ -103,13 +92,8 @@ export function firstLeafId(node: WorkspaceNode): string {
   return node.type === 'leaf' ? node.id : firstLeafId(node.children[0])
 }
 
-export function activeTabOf(leaf: WorkspaceLeaf): ChatTab | undefined {
-  return leaf.tabs.find(tab => tab.id === leaf.activeTabId)
-}
-
 export function activeSessionOf(leaf: WorkspaceLeaf | undefined): string {
-  if (!leaf) return ''
-  return activeTabOf(leaf)?.sessionId ?? ''
+  return leaf?.sessionId ?? ''
 }
 
 export interface SplitLeafResult {
@@ -133,12 +117,11 @@ export function splitLeaf(
   const leaf = found.node
   const orientation = directionToOrientation(direction)
   const insertBefore = isBeforeDirection(direction)
-  const tab = createChatTab(sessionId)
 
   if (found.parent && found.parent.orientation === orientation) {
     const parent = found.parent
     const halfSize = leaf.size / 2
-    const newLeaf = createLeaf(genWorkspaceId('panel'), halfSize, [tab])
+    const newLeaf = createLeaf(genWorkspaceId('panel'), halfSize, sessionId)
     leaf.size = halfSize
     const insertIndex = insertBefore ? found.index : found.index + 1
     parent.children.splice(insertIndex, 0, newLeaf)
@@ -149,7 +132,7 @@ export function splitLeaf(
   // SplitterPanel enforces a minimum size, so a leaf starting at 0 gets
   // clamped up on its very first mount-time sync and can race with any
   // later attempt to correct it back to a 50/50 split.
-  const newLeaf = createLeaf(genWorkspaceId('panel'), 50, [tab])
+  const newLeaf = createLeaf(genWorkspaceId('panel'), 50, sessionId)
   const wrapped: WorkspaceSplit = {
     type: 'split',
     id: genWorkspaceId('split'),

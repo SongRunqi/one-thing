@@ -72,6 +72,8 @@ export interface CoreProviderConfigLike {
   selectedModels?: string[]
   baseUrl?: string
   zhipuApiMode?: 'standard' | 'coding-plan'
+  qwenApiMode?: 'standard' | 'token-plan' | 'coding-plan'
+  qwenRegion?: 'cn' | 'intl'
   temperature?: number
   oauthToken?: unknown
 }

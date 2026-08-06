@@ -246,22 +246,12 @@ export interface StorageSettings {
 	sessionFormat?: "legacy-json" | "jsonl";
 }
 
-/**
- * Shell form factor (docs/design/im-workbench-layout.md §5 C0).
- *
- * - `workbench` 工作台式外壳:左栏以活为脊 + 账页流 + 右栏常驻(默认)。
- * - `classic`   旧形态:与改造前逐像素一致。
- *
- * 这是 C0 的**回滚闸**——所有形态差异都写成 `:root[data-shell-mode='workbench']`
- * 的 CSS 门或走 `resolveShellMode` 的判定,所以任何时候都能靠一行 settings.json
- * 回到改造前的外壳。
+/*
+ * `ShellMode` / `UISettings`(C0 的 workbench↔classic 逐像素回滚闸)已于 2026-08-05
+ * 退役 —— 见 docs/design/product-two-forms-chatgpt-shell.md D2。Actor v3 大 break
+ * 之后 classic 那一侧已事实上不可回滚(旧壳画不对 say/drive 语义),留着只会让房
+ * 一直有两套渲染。外壳形态自此恒为 workbench,不再有开关。
  */
-export type ShellMode = "workbench" | "classic";
-
-export interface UISettings {
-	/** 外壳形态,默认 'workbench'。 */
-	shellMode?: ShellMode;
-}
 
 export interface EvalsSettings {
 	repoDir?: string;
@@ -286,7 +276,6 @@ export interface AppSettings {
 	skills?: SkillSettings;
 	storage?: StorageSettings;
 	evals?: EvalsSettings;
-	ui?: UISettings;
 }
 
 // Settings IPC Request/Response types

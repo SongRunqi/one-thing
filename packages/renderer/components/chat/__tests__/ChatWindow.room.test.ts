@@ -9,18 +9,19 @@ import { useWorkspaceStore } from '@/stores/workspace'
 /**
  * 去复用重构 R1 的分流门(docs/design/im-workbench-layout.md §8 铁律 2/3)。
  *
- * 这一组钉四件事:
- *  1. 房 / 私聊 + workbench → 新面(房头 + RoomSurface),**没有 TabBar**;
- *  2. 直聊 → 旧壳(TabBar + ChatPanel),一个字节不变;
- *  3. classic → 永远旧壳,房也不例外(逐像素回滚闸);
- *  4. 两套聊天面**永不同时挂载**。
+ * 这一组钉三件事:
+ *  1. 房 / 私聊 → 新面(房头 + RoomSurface),**没有会话头**;
+ *  2. 直聊 → 旧壳(SessionHeader + ChatPanel);
+ *  3. 两套聊天面**永不同时挂载**。
+ *
+ * 判据只剩 `kind === 'room'`:外壳形态那道门(classic 下房也走旧壳)已于
+ * 2026-08-05 退役,见 docs/design/product-two-forms-chatgpt-shell.md D2。
  */
 const mocks = vi.hoisted(() => ({
   sessions: [
     { id: 'room-1', name: '浏览器重构', kind: 'room', workingDirectory: '/repo' },
     { id: 'chat-1', name: '直聊', workingDirectory: '/repo' },
   ] as any[],
-  shellMode: 'workbench' as 'workbench' | 'classic',
 }))
 
 vi.mock('@/stores/sessions', () => ({
@@ -38,12 +39,12 @@ vi.mock('@/stores/sessions', () => ({
 
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => ({
-    settings: { ui: { shellMode: mocks.shellMode }, general: {}, chat: {} },
+    settings: { general: {}, chat: {} },
   }),
 }))
 
-vi.mock('../TabBar.vue', () => ({
-  default: { name: 'TabBar', template: '<div class="mock-tab-bar" />' },
+vi.mock('../SessionHeader.vue', () => ({
+  default: { name: 'SessionHeader', template: '<div class="mock-session-header" />' },
 }))
 
 vi.mock('../ChatPanel.vue', () => ({
@@ -95,7 +96,6 @@ function seat(sessionId: string) {
 describe('ChatWindow 房/私聊分流', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.shellMode = 'workbench'
     vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn() })
     installElectronAPI()
   })
@@ -104,7 +104,7 @@ describe('ChatWindow 房/私聊分流', () => {
     vi.unstubAllGlobals()
   })
 
-  it('房 + workbench:房头取代 TabBar,中栏是新面', async () => {
+  it('房:房头取代会话头,中栏是新面', async () => {
     seat('room-1')
     const wrapper = mount(ChatWindow, { props: { showPracticeStrip: true } })
     await settle()
@@ -112,19 +112,19 @@ describe('ChatWindow 房/私聊分流', () => {
     expect(wrapper.find('.mock-room-header').exists()).toBe(true)
     expect(wrapper.find('.mock-room-surface').attributes('data-session')).toBe('room-1')
     // 旧壳的三件在这一面上一个都没有。
-    expect(wrapper.find('.mock-tab-bar').exists()).toBe(false)
+    expect(wrapper.find('.mock-session-header').exists()).toBe(false)
     expect(wrapper.find('.mock-chat-panel').exists()).toBe(false)
     expect(wrapper.find('.chat-footer').exists()).toBe(false)
     // 练习条是直聊的东西,不进房。
     expect(wrapper.find('.mock-practice-strip').exists()).toBe(false)
   })
 
-  it('直聊 + workbench:旧壳原样,房面一行都不挂', async () => {
+  it('直聊:旧壳原样,房面一行都不挂', async () => {
     seat('chat-1')
     const wrapper = mount(ChatWindow, { props: { showPracticeStrip: true } })
     await settle()
 
-    expect(wrapper.find('.mock-tab-bar').exists()).toBe(true)
+    expect(wrapper.find('.mock-session-header').exists()).toBe(true)
     expect(wrapper.find('.mock-chat-panel').exists()).toBe(true)
     expect(wrapper.find('.chat-footer').exists()).toBe(true)
     expect(wrapper.find('.mock-practice-strip').exists()).toBe(true)
@@ -132,25 +132,13 @@ describe('ChatWindow 房/私聊分流', () => {
     expect(wrapper.find('.mock-room-surface').exists()).toBe(false)
   })
 
-  it('classic:房也走旧壳 —— 逐像素回滚闸', async () => {
-    mocks.shellMode = 'classic'
-    seat('room-1')
-    const wrapper = mount(ChatWindow)
-    await settle()
-
-    expect(wrapper.find('.mock-tab-bar').exists()).toBe(true)
-    expect(wrapper.find('.mock-chat-panel').exists()).toBe(true)
-    expect(wrapper.find('.mock-room-surface').exists()).toBe(false)
-    expect(wrapper.find('.mock-room-header').exists()).toBe(false)
-  })
-
+  /**
+   * 分流判据只剩 `kind === 'room'` 这一条 —— 外壳形态那道门(classic 下房也走
+   * 旧壳)随 shellMode 于 2026-08-05 一起退役,房自此**只有一套**渲染。
+   * 见 docs/design/product-two-forms-chatgpt-shell.md D2。
+   */
   it('两套聊天面永不同时挂载', async () => {
-    for (const [sessionId, shellMode] of [
-      ['room-1', 'workbench'],
-      ['chat-1', 'workbench'],
-      ['room-1', 'classic'],
-    ] as const) {
-      mocks.shellMode = shellMode
+    for (const sessionId of ['room-1', 'chat-1'] as const) {
       seat(sessionId)
       const wrapper = mount(ChatWindow)
       await settle()

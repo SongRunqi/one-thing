@@ -10,6 +10,7 @@
     "bg": "#282C34",
     "bgDark": "#21252B",
     "bgHighlight": "#2C323C",
+    "bgFloat": "#4D545F",
     "gutter": "#636D83",
     "fg": "#ABB2BF",
     "fgBright": "#D7DAE0",
@@ -34,7 +35,7 @@
       "chat": "bg",
       "panel": "bgHighlight",
       "elevated": "bgHighlight",
-      "floating": "gutter",
+      "floating": "bgFloat",
       "message": {
         "user": "bgHighlight",
         "userSolid": "bgHighlight",

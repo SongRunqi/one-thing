@@ -22,19 +22,18 @@ export const ROOM_DEFAULT_MAX_TURN_TOOL_CALLS = 40
 export const ROOM_DEFAULT_MAX_TURN_SAY_CALLS = 20
 
 /**
- * 连续发言上限(链长闸)的默认值与可填区间。
+ * 连续发言上限(链长闸)的默认值。
  *
- * 镜像 `COLLAB_DEFAULT_MAX_CHAIN` 与 `maxChainFor()` 的夹取规则:引擎把配置值
- * 夹到 `min(cap, 默认 × 4)`,所以表单也只让填到那儿——一个填得进去却不生效的
- * 数字比填不进去更糟。
+ * 镜像 `COLLAB_DEFAULT_MAX_CHAIN`(onething-runtime `collab/types.ts`)与
+ * `maxChainFor()`,与上面几个默认值同一条纪律:表单显示引擎真正会用的那个数。
+ * 引擎侧的三条规则这里一条都不重写——**0 = 不限**、正数原样生效**不夹上限**、
+ * 负数按没配处理。此前这里写 100 并声称引擎会夹到 `默认 × 4`,两条都已不成立,
+ * 后果是没配过的房在弹窗里显示 100 而引擎按 32 跑。
  *
- * **这一格没有「0 = 不限」**,与上面几格不同,这是刻意的:链长闸是防失控的
- * 安全网(没有它,agent 之间可以无人类输入地一直聊下去),不该有关掉它的开关。
- * 0 在引擎里也不是"不限",而是"当作没配、回落默认 8"。
+ * 双成员 dm 房引擎另有默认(`COLLAB_DM_PAIR_MAX_CHAIN` = 6):一对一免判激活之后
+ * 唯一拦得住客套乒乓的就是这道闸。这个弹窗是群房设置,那一档不在这里露面。
  */
-export const ROOM_DEFAULT_MAX_CHAIN = 100
-export const ROOM_MIN_MAX_CHAIN = 1
-export const ROOM_MAX_MAX_CHAIN = ROOM_DEFAULT_MAX_CHAIN * 4
+export const ROOM_DEFAULT_MAX_CHAIN = 32
 
 /** 镜像 `COLLAB_MAX_CONCURRENT_TURNS`(onething-runtime `app/collab/room-runtime.ts`),
  *  与上面几个默认值同一条纪律:表单显示引擎真正会用的那个数。 */

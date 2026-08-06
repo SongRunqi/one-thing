@@ -58,17 +58,16 @@ export function setupElectronApplicationMenu(options: ElectronApplicationMenuOpt
   const electronWindows = options.windows ?? BrowserWindow
   const isMac = (options.platform ?? process.platform) === 'darwin'
 
-  // Cmd+W closes the focused *tab*, not the window — the window only goes away
-  // once its last tab is gone, which the renderer decides (it owns the tab
-  // tree) and requests back over IPC. Auxiliary windows (settings, search,
-  // image preview) have no tabs, so they keep the plain close behavior.
+  // ⌘W = macOS 标准语义:关窗口。会话的多页签已于 2026-08-05 退役(U2,
+  // docs/design/product-two-forms-chatgpt-shell.md D5),会话不是文档,没有
+  // "关闭"这回事 —— 退场只有归档 / 删除。
   //
-  // Three claimants, in order: an auxiliary window > the embedded browser page
-  // (it has focus, so the key was aimed at it) > the renderer's tab tree. The
-  // renderer arbitrates the last step further — its own browser panel may hold
-  // focus (omnibox / start page) without the page itself being focused.
+  // 三个认领者,依次:辅助窗(设置 / 搜索 / 图片预览)> 内嵌浏览器页面(它有
+  // 焦点,这一下就是冲它去的)> 主窗口。浏览器是本 app 里唯一还有真页签的面,
+  // 所以它仍然先要;渲染层再细分一次 —— 它自己的浏览器面板可能持有焦点
+  // (omnibox / 起始页)而内嵌页面并没有。走完这两步才轮到关窗。
   const closeTabItem: MenuItemConstructorOptions = {
-    label: 'Close Tab',
+    label: 'Close',
     accelerator: 'CmdOrCtrl+W',
     click: () => {
       const focused = electronWindows.getFocusedWindow()

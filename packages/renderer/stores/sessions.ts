@@ -557,7 +557,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			(draft) => draft.id !== sessionId,
 		);
 		const workspace = useWorkspaceStore();
-		workspace.closeSessionTabs(sessionId);
+		workspace.closeSession(sessionId);
 		// A surviving tab (workspace promoted a neighbor) drives the follow-up
 		// switch via the workspace effect; only blank out when nothing is left.
 		if (currentSessionId.value === sessionId && !workspace.activeSessionId) {
@@ -880,7 +880,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			const wasCurrent = currentSessionId.value === sessionId;
 			await permanentlyDeleteSession(sessionId);
 			const workspace = useWorkspaceStore();
-			workspace.closeSessionTabs(sessionId);
+			workspace.closeSession(sessionId);
 			if (currentSessionId.value === sessionId && !workspace.activeSessionId) {
 				clearCurrentSession();
 			}
@@ -888,7 +888,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			// With nothing left open, keep the old UX of jumping to a sidebar
 			// neighbor instead of dropping into the empty state.
 			const remaining = filteredSessions.value;
-			if (wasCurrent && !workspace.hasAnyChatTab && remaining.length > 0) {
+			if (wasCurrent && !workspace.hasAnySession && remaining.length > 0) {
 				// Switch to previous session if available, otherwise next
 				// After deletion, the next session is at the same index
 				const targetIndex = sessionIndex > 0 ? sessionIndex - 1 : 0;
@@ -947,12 +947,12 @@ export const useSessionsStore = defineStore("sessions", () => {
 			const wasCurrent = allIdsToArchive.includes(currentSessionId.value);
 			const workspace = useWorkspaceStore();
 			for (const id of allIdsToArchive) {
-				workspace.closeSessionTabs(id);
+				workspace.closeSession(id);
 			}
 			if (wasCurrent && !workspace.activeSessionId) {
 				clearCurrentSession();
 			}
-			if (wasCurrent && !workspace.hasAnyChatTab) {
+			if (wasCurrent && !workspace.hasAnySession) {
 				const activeSessions = filteredSessions.value;
 				if (activeSessions.length > 0) {
 					// Switch to previous session if available, otherwise next

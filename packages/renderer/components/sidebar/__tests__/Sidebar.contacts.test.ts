@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
   ]
   return {
     capabilities: { collabRooms: true },
+    formMode: 'collab' as string,
     ensureCollabDmRoom: vi.fn(async (_agentId: string): Promise<{
       success: boolean
       roomSessionId?: string
@@ -71,13 +72,23 @@ vi.mock('@/stores/chat', () => ({
   useChatStore: () => ({ isSessionGenerating: () => false }),
 }))
 vi.mock('@/stores/workspace', () => ({
-  useWorkspaceStore: () => ({ openSession: mocks.openSession }),
+  // 形态的归属在 workspace store(D7)—— 侧栏只是读它。这些用例验的是协作
+  // 形态里的那三格,所以钉在 collab 上。
+  useWorkspaceStore: () => ({
+    openSession: mocks.openSession,
+    get formMode() { return mocks.formMode },
+    get availableFormModes() { return mocks.capabilities.collabRooms ? ['chat', 'collab'] : ['chat'] },
+    setFormMode: (mode: string) => {
+      if (mode === 'collab' && !mocks.capabilities.collabRooms) return
+      mocks.formMode = mode
+    },
+  }),
 }))
-// 外壳形态门(C1):联系人区的行为与形态无关,钉死在 classic 上 ——
-// 「进行中」区不挂,左栏与从前逐像素一致。
-vi.mock('@/stores/settings', () => ({
-  useSettingsStore: () => ({ settings: { ui: { shellMode: 'classic' } } }),
-}))
+/*
+ * 这一组验的是联系人区的行为。以前它靠 `shellMode: 'classic'`(四区一起平铺)
+ * 把联系人区直接摆出来;形态开关退役后左栏只有 rail 一种形态,一次只画一类,
+ * 所以改成把类别落点直接种在 localStorage 上 —— 见下面的 `RAIL_KEY`。
+ */
 vi.mock('@/stores/agents', () => ({
   DEFAULT_AGENT_ID: 'default',
   useAgentsStore: () => ({
@@ -140,8 +151,26 @@ function mountSidebar() {
   })
 }
 
+/**
+ * 当前 rail 类别的落点(`sidebar-sections.ts` 的常量,这里刻意写死一份当围栏)。
+ *
+ * Node 25 自带的 Web Storage 全局在没有 `--localstorage-file` 时方法直接抛,
+ * 组件里那两处 try/catch 会把读写整个吞掉 —— 于是种不进去。换一个能用的。
+ */
+const RAIL_KEY = 'onething:sidebar-rail-category'
+const railStore = new Map<string, string>()
+vi.stubGlobal('localStorage', {
+  getItem: (key: string) => railStore.get(key) ?? null,
+  setItem: (key: string, value: string) => { railStore.set(key, value) },
+  removeItem: (key: string) => { railStore.delete(key) },
+  clear: () => { railStore.clear() },
+})
+
 beforeEach(() => {
+  // 同事与群两段都住在「通讯录」这一类里。
+  railStore.set(RAIL_KEY, 'contacts')
   mocks.capabilities.collabRooms = true
+  mocks.formMode = 'collab'
   mocks.ensureCollabDmRoom.mockReset()
   mocks.ensureCollabDmRoom.mockResolvedValue({ success: true, roomSessionId: 'agent-dm-fe' })
   mocks.openSession.mockReset()

@@ -1,5 +1,11 @@
 import type { JsonObject } from "@onething/core";
 import { detectCopilotModelCapabilities as detectCopilotLikeModelCapabilities } from "./github-copilot.js";
+import {
+	ONETHING_QWEN_PROVIDER_ID,
+	onethingQwenBackfillModels,
+	resolveOnethingQwenModelsDevProviderId,
+	type OnethingQwenEndpointConfig,
+} from "./qwen.js";
 
 export const ONETHING_MODELS_DEV_API = "https://models.dev/api.json";
 
@@ -11,7 +17,9 @@ export const ONETHING_PROVIDER_MAPPING: Record<string, string> = {
 	mistral: "mistral",
 	meta: "llama",
 	cohere: "cohere",
-	qwen: "qwen",
+	// 千问: the registry key depends on region + plan (see qwen.ts). This entry
+	// is only the fallback for a config-less lookup — 国内版 pay-as-you-go.
+	"alibaba-cn": "qwen",
 	zhipuai: "zhipu",
 	moonshotai: "kimi",
 	xai: "grok",
@@ -120,10 +128,12 @@ export interface OnethingModelCapabilityEntry {
 	providerMetadata?: JsonObject;
 }
 
-export interface OnethingProviderModelConfig {
+export interface OnethingProviderModelConfig extends OnethingQwenEndpointConfig {
 	models?: Record<string, OnethingModelCapabilityEntry>;
 	modelsLastFetched?: number;
 	modelCapabilitiesByModel?: Record<string, OnethingModelCapabilityOverride>;
+	/** Per-model context-window override, keyed by model id. */
+	contextLengthByModel?: Record<string, number>;
 }
 
 export type OnethingProviderModelConfigs = Record<
@@ -251,9 +261,16 @@ export async function fetchOnethingGitHubCopilotModelsWithAuth<
 	return await options.fetchCopilotModels(token.accessToken);
 }
 
-export function getOnethingModelsDevProviderId(providerId: string): string {
+export function getOnethingModelsDevProviderId(
+	providerId: string,
+	config?: OnethingQwenEndpointConfig,
+): string {
 	// grok-oauth shares the same xAI models as grok
 	if (providerId === "grok-oauth") return "xai";
+	// 千问 splits its catalog four ways (国内/海外 x 按量/Token Plan).
+	if (providerId === ONETHING_QWEN_PROVIDER_ID) {
+		return resolveOnethingQwenModelsDevProviderId(config);
+	}
 	return (
 		Object.entries(ONETHING_PROVIDER_MAPPING).find(
 			([, mappedId]) => mappedId === providerId,
@@ -588,17 +605,21 @@ export async function refreshOnethingProviderModels<
 	}
 
 	const data = await adapters.fetchModelsDevData();
-	const models = createOnethingModelEntriesFromModelsDev(providerId, data);
+	const settings = adapters.getSettings();
+	const providerConfig = settings.ai.providers[providerId] || {};
+	const models = createOnethingModelEntriesFromModelsDev(
+		providerId,
+		data,
+		providerConfig,
+	);
 
 	if (!models) {
 		adapters.logger?.warn?.(
-			`[ModelRegistry] No models.dev data found for provider: ${providerId} (dev key: ${getOnethingModelsDevProviderId(providerId)})`,
+			`[ModelRegistry] No models.dev data found for provider: ${providerId} (dev key: ${getOnethingModelsDevProviderId(providerId, providerConfig)})`,
 		);
 		return;
 	}
 
-	const settings = adapters.getSettings();
-	const providerConfig = settings.ai.providers[providerId] || {};
 	providerConfig.models = models;
 	providerConfig.modelsLastFetched = adapters.now?.() ?? Date.now();
 	settings.ai.providers[providerId] = providerConfig;
@@ -625,7 +646,12 @@ export async function refreshAllOnethingProviderModels<
 	const data = await adapters.fetchModelsDevData();
 
 	for (const providerId of providerIds) {
-		const models = createOnethingModelEntriesFromModelsDev(providerId, data);
+		const providerConfig = providers[providerId] || {};
+		const models = createOnethingModelEntriesFromModelsDev(
+			providerId,
+			data,
+			providerConfig,
+		);
 
 		if (!models) {
 			adapters.logger?.warn?.(
@@ -634,7 +660,6 @@ export async function refreshAllOnethingProviderModels<
 			continue;
 		}
 
-		const providerConfig = providers[providerId] || {};
 		providerConfig.models = models;
 		providerConfig.modelsLastFetched = adapters.now?.() ?? Date.now();
 		settings.ai.providers[providerId] = providerConfig;
@@ -749,8 +774,9 @@ export function onethingCapabilityEntryToOpenRouterModel(
 export function createOnethingModelEntriesFromModelsDev(
 	providerId: string,
 	data: OnethingModelsDevResponse,
+	config?: OnethingQwenEndpointConfig,
 ): Record<string, OnethingModelCapabilityEntry> | undefined {
-	const devProvider = data[getOnethingModelsDevProviderId(providerId)];
+	const devProvider = data[getOnethingModelsDevProviderId(providerId, config)];
 	if (!devProvider) return undefined;
 
 	const models: Record<string, OnethingModelCapabilityEntry> = {};
@@ -760,6 +786,18 @@ export function createOnethingModelEntriesFromModelsDev(
 			providerId,
 		);
 	}
+
+	if (providerId === ONETHING_QWEN_PROVIDER_ID) {
+		// Gap-fill only: a real catalog entry always outranks the backfill.
+		for (const model of onethingQwenBackfillModels(config)) {
+			if (models[model.id]) continue;
+			models[model.id] = modelsDevModelToOnethingCapabilityEntry(
+				model,
+				providerId,
+			);
+		}
+	}
+
 	return models;
 }
 
@@ -880,6 +918,14 @@ export function getOnethingModelContextLength(
 	providerId?: string,
 	options: OnethingModelRegistryQueryOptions = {},
 ): number {
+	// User override wins: a hand-added or self-hosted model has no registry
+	// entry, and the 128000 fallback below would silently mis-budget context
+	// compaction for anything with a different window.
+	const override = providerId
+		? providers?.[providerId]?.contextLengthByModel?.[modelId]
+		: undefined;
+	if (typeof override === "number" && override > 0) return override;
+
 	const entry = getModelEntry(providers, modelId, providerId);
 	if (entry?.contextLength) return entry.contextLength;
 

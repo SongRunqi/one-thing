@@ -1,25 +1,31 @@
 /**
- * Persisted (v2) wire format for the chat workspace, plus the pure
+ * Persisted (v3) wire format for the chat workspace, plus the pure
  * serialize/rebuild functions between it and the runtime tree.
  *
- * v2 persists the whole split tree (layout + per-leaf tabs + active tab),
- * replacing the v1 flat `openTabs`/`activeTabIndex` pair, which was written
- * concurrently by every split panel (last-writer-wins) and serialized draft
- * tabs as `sessionId: ''`. v1 stays readable for migration; it is no longer
- * written.
+ * 版本史:
+ * - v1 = 扁平的 `openTabs`/`activeTabIndex`,每个分栏各写各的(last-writer-wins);
+ * - v2 = 整棵分栏树 + 每格一列页签 + 当前页签;
+ * - v3 = 整棵分栏树 + **每格一条会话**(多页签于 2026-08-05 退役,U2);
+ * - v4 = **每个形态一棵树**(U3b):形态 = 一个完整的工作现场,切形态时会话与
+ *   分栏布局一起换。见 docs/design/product-two-forms-chatgpt-shell.md D7。
+ *
+ * **v1 / v2 / v3 都仍然读得进来**,只写 v4。这一条是硬要求:`hydrate` 若只认最新
+ * 版本,老存档会静默清空整个工作区而且不报错(§6.2)。
+ * - v2 存档每格取它当时的当前页签,其余丢弃;
+ * - v3 那棵**单树**按它当前会话的 kind 认领到某一个形态,另一个形态从空开始。
  *
  * Serialization rules:
- * - chat tabs persist as bare session ids; drafts (unmaterialized sessions —
- *   a state, not an id format; the caller passes the predicate) are skipped,
- * - runtime tab/leaf ids for new nodes are regenerated on rebuild; persisted
+ * - 会话以裸 id 落盘;草稿(未落地的会话 —— 是一种状态而不是 id 格式,谓词由
+ *   调用方注入)跳过,
+ * - runtime leaf ids for new nodes are regenerated on rebuild; persisted
  *   leaf ids are kept so `activeLeafId` stays resolvable,
  * - rebuild validates every session id against the loaded session list
- *   (which never contains drafts), dedupes within a leaf, drops empty
- *   leaves, and collapses degenerate splits.
+ *   (which never contains drafts), drops empty leaves, and collapses
+ *   degenerate splits.
  */
 import type { SplitterLayout } from '@/components/common/splitter'
+import type { SidebarFormMode as WorkspaceFormMode } from './form-mode'
 import {
-  createChatTab,
   createLeaf,
   firstLeafId,
   findLeaf,
@@ -33,8 +39,12 @@ export interface PersistedWorkspaceLeaf {
   type: 'leaf'
   id: string
   size: number
-  sessions: string[]
-  activeIndex: number
+  /** v3:这一格坐着的那条会话。 */
+  session?: string
+  /** v2 遗留:一格一列页签。只读不写。 */
+  sessions?: string[]
+  /** v2 遗留:`sessions` 里的当前页签下标。只读不写。 */
+  activeIndex?: number
 }
 
 export interface PersistedWorkspaceSplit {
@@ -47,11 +57,25 @@ export interface PersistedWorkspaceSplit {
 
 export type PersistedWorkspaceNode = PersistedWorkspaceLeaf | PersistedWorkspaceSplit
 
-export interface PersistedWorkspace {
-  version: 2
+/** 一个形态的工作区(v4 里每个形态各一份)。 */
+export interface PersistedWorkspaceForm {
   activeLeafId: string
   root: PersistedWorkspaceNode
 }
+
+export interface PersistedWorkspaceV4 {
+  version: 4
+  forms: Partial<Record<WorkspaceFormMode, PersistedWorkspaceForm>>
+}
+
+/** v2 / v3 的单树形状,只读不写。 */
+export interface PersistedWorkspaceLegacyTree {
+  version: 2 | 3
+  activeLeafId: string
+  root: PersistedWorkspaceNode
+}
+
+export type PersistedWorkspace = PersistedWorkspaceV4 | PersistedWorkspaceLegacyTree
 
 /** v1 flat shape, read-only for migration. */
 export interface LegacyPersistedTab {
@@ -66,15 +90,8 @@ function serializeNode(
   isDraftSessionId: (sessionId: string) => boolean,
 ): PersistedWorkspaceNode {
   if (node.type === 'leaf') {
-    const persistable = node.tabs.filter(tab => !isDraftSessionId(tab.sessionId))
-    const activeIndex = persistable.findIndex(tab => tab.id === node.activeTabId)
-    return {
-      type: 'leaf',
-      id: node.id,
-      size: node.size,
-      sessions: persistable.map(tab => tab.sessionId),
-      activeIndex: activeIndex >= 0 ? activeIndex : Math.max(0, persistable.length - 1),
-    }
+    const session = node.sessionId && !isDraftSessionId(node.sessionId) ? node.sessionId : ''
+    return { type: 'leaf', id: node.id, size: node.size, session }
   }
   return {
     type: 'split',
@@ -86,46 +103,51 @@ function serializeNode(
 }
 
 export function serializeWorkspace(
-  root: WorkspaceNode,
-  activeLeafId: string,
+  forms: Record<WorkspaceFormMode, { root: WorkspaceNode; activeLeafId: string }>,
   isDraftSessionId: (sessionId: string) => boolean,
-): PersistedWorkspace {
+): PersistedWorkspaceV4 {
   return {
-    version: 2,
-    activeLeafId,
-    root: serializeNode(root, isDraftSessionId),
+    version: 4,
+    forms: {
+      chat: {
+        activeLeafId: forms.chat.activeLeafId,
+        root: serializeNode(forms.chat.root, isDraftSessionId),
+      },
+      collab: {
+        activeLeafId: forms.collab.activeLeafId,
+        root: serializeNode(forms.collab.root, isDraftSessionId),
+      },
+    },
   }
 }
 
 // ── rebuild ───────────────────────────────────────────────────────────────
 
-export interface RebuildResult {
-  root: WorkspaceNode
-  activeLeafId: string
-}
-
+/**
+ * 一格的还原。v3 读 `session`;v2 存档读 `sessions[activeIndex]` —— 迁移的口径是
+ * **每格只留当时看得见的那一条**,后台页签就此丢弃(U2 取消的正是它们)。
+ */
 function buildLeaf(
   persisted: PersistedWorkspaceLeaf,
   isValidSessionId: (sessionId: string) => boolean,
 ): WorkspaceLeaf | null {
-  const seen = new Set<string>()
-  const sessions = persisted.sessions.filter((sessionId) => {
-    if (!sessionId || !isValidSessionId(sessionId) || seen.has(sessionId)) return false
-    seen.add(sessionId)
-    return true
-  })
-  if (sessions.length === 0) return null
+  let sessionId = ''
+  if (typeof persisted.session === 'string') {
+    sessionId = persisted.session
+  } else if (Array.isArray(persisted.sessions) && persisted.sessions.length > 0) {
+    const sessions = persisted.sessions
+    const index = Number.isInteger(persisted.activeIndex)
+      ? Math.min(Math.max(persisted.activeIndex as number, 0), sessions.length - 1)
+      : sessions.length - 1
+    sessionId = sessions[index] ?? ''
+  }
+  if (!sessionId || !isValidSessionId(sessionId)) return null
 
-  const leaf = createLeaf(
+  return createLeaf(
     persisted.id || genWorkspaceId('panel'),
     Number.isFinite(persisted.size) && persisted.size > 0 ? persisted.size : 50,
-    sessions.map(createChatTab),
+    sessionId,
   )
-  const activeIndex = Number.isInteger(persisted.activeIndex)
-    ? Math.min(Math.max(persisted.activeIndex, 0), sessions.length - 1)
-    : sessions.length - 1
-  leaf.activeTabId = leaf.tabs[activeIndex].id
-  return leaf
 }
 
 function buildNode(
@@ -152,26 +174,82 @@ function buildNode(
   }
 }
 
-export function rebuildWorkspace(
-  persisted: PersistedWorkspace,
+/** 一个形态的还原结果。 */
+export interface RebuildFormResult {
+  root: WorkspaceNode
+  activeLeafId: string
+}
+
+export type RebuildAllResult = Record<WorkspaceFormMode, RebuildFormResult>
+
+function emptyForm(): RebuildFormResult {
+  return { root: createLeaf(MAIN_LEAF_ID, 100), activeLeafId: MAIN_LEAF_ID }
+}
+
+function rebuildForm(
+  persisted: PersistedWorkspaceForm | undefined,
   isValidSessionId: (sessionId: string) => boolean,
-): RebuildResult {
-  const root = persisted.root ? buildNode(persisted.root, isValidSessionId) : null
-  if (!root) {
-    return { root: createLeaf(MAIN_LEAF_ID, 100), activeLeafId: MAIN_LEAF_ID }
-  }
-  const activeLeafId = persisted.activeLeafId && findLeaf(root, persisted.activeLeafId)
+): RebuildFormResult {
+  const root = persisted?.root ? buildNode(persisted.root, isValidSessionId) : null
+  if (!root) return emptyForm()
+  const activeLeafId = persisted?.activeLeafId && findLeaf(root, persisted.activeLeafId)
     ? persisted.activeLeafId
     : firstLeafId(root)
   return { root, activeLeafId }
 }
 
-/** v1 migration: flat `openTabs` + `activeTabIndex` → single-leaf tree. */
+/**
+ * 整份存档 → 两个形态各一棵树。
+ *
+ * v2 / v3 是**单树**存档:U3b 之前只有一个工作区。把它整棵认领给 `claimLegacyBy`
+ * 说的那个形态(调用方按树里当前会话的 kind 判),另一个形态从空开始 —— 不是
+ * 丢掉,是"那个形态还没被用过"。
+ */
+export function rebuildWorkspace(
+  persisted: PersistedWorkspace,
+  isValidSessionId: (sessionId: string) => boolean,
+  claimLegacyBy: (sessionIds: string[]) => WorkspaceFormMode,
+): RebuildAllResult {
+  if ((persisted as PersistedWorkspaceV4).version === 4) {
+    const forms = (persisted as PersistedWorkspaceV4).forms ?? {}
+    return {
+      chat: rebuildForm(forms.chat, isValidSessionId),
+      collab: rebuildForm(forms.collab, isValidSessionId),
+    }
+  }
+
+  const legacy = persisted as PersistedWorkspaceLegacyTree
+  const tree = rebuildForm(
+    legacy.root ? { activeLeafId: legacy.activeLeafId, root: legacy.root } : undefined,
+    isValidSessionId,
+  )
+  const sessionIds = collectSessionIds(tree.root)
+  if (sessionIds.length === 0) return { chat: emptyForm(), collab: emptyForm() }
+
+  const claimed = claimLegacyBy(sessionIds)
+  return claimed === 'collab'
+    ? { chat: emptyForm(), collab: tree }
+    : { chat: tree, collab: emptyForm() }
+}
+
+function collectSessionIds(node: WorkspaceNode, acc: string[] = []): string[] {
+  if (node.type === 'leaf') {
+    if (node.sessionId) acc.push(node.sessionId)
+    return acc
+  }
+  node.children.forEach(child => collectSessionIds(child, acc))
+  return acc
+}
+
+/**
+ * v1 migration: flat `openTabs` + `activeTabIndex` → single-leaf tree。
+ * 与 v2 同一口径:只留当时看得见的那一条。
+ */
 export function rebuildFromLegacyTabs(
   openTabs: LegacyPersistedTab[],
   activeTabIndex: number | undefined,
   isValidSessionId: (sessionId: string) => boolean,
-): RebuildResult {
+): RebuildFormResult {
   const seen = new Set<string>()
   const sessions = openTabs
     .filter(tab => tab.type === 'chat')
@@ -182,12 +260,11 @@ export function rebuildFromLegacyTabs(
       return true
     })
 
-  const leaf = createLeaf(MAIN_LEAF_ID, 100, sessions.map(createChatTab))
-  if (leaf.tabs.length > 0) {
-    const index = Number.isInteger(activeTabIndex)
-      ? Math.min(Math.max(activeTabIndex as number, 0), leaf.tabs.length - 1)
-      : 0
-    leaf.activeTabId = leaf.tabs[index].id
+  const index = Number.isInteger(activeTabIndex)
+    ? Math.min(Math.max(activeTabIndex as number, 0), Math.max(sessions.length - 1, 0))
+    : 0
+  return {
+    root: createLeaf(MAIN_LEAF_ID, 100, sessions[index] ?? ''),
+    activeLeafId: MAIN_LEAF_ID,
   }
-  return { root: leaf, activeLeafId: MAIN_LEAF_ID }
 }

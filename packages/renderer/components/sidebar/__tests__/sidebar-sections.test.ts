@@ -19,7 +19,7 @@ import {
   takeRoomFaces,
 } from '../sidebar-sections'
 
-const ALL = ['recent', 'active', 'contacts', 'sessions'] as const
+const ALL = ['recent', 'active', 'contacts'] as const
 
 describe('rail 上有哪几类', () => {
   /**
@@ -27,22 +27,27 @@ describe('rail 上有哪几类', () => {
    * 「消息」在最前且是默认停靠的一类 —— 打开 app 先看见的是最近说过话的人,
    * 而不是一本按类型排的花名册。
    */
-  it('四类定序:消息 / 进行中 / 通讯录 / 会话', () => {
+  /**
+   * 2026-08-05(U3):第四格「会话」搬走了 —— 直聊列表升成了对话形态,归顶部
+   * 的形态切换器管。rail 自此是协作形态专属的三格。
+   * 见 docs/design/product-two-forms-chatgpt-shell.md D6。
+   */
+  it('三类定序:消息 / 进行中 / 通讯录', () => {
     expect(SIDEBAR_RAIL_CATEGORIES.map(category => category.id)).toEqual([...ALL])
     expect(SIDEBAR_RAIL_CATEGORIES.map(category => category.label))
-      .toEqual(['消息', '进行中', '通讯录', '会话'])
+      .toEqual(['消息', '进行中', '通讯录'])
   })
 
-  it('桌面端四类恒在(rail 不随数据增删图标)', () => {
+  it('桌面端三类恒在(rail 不随数据增删图标)', () => {
     expect(resolveRailCategories({ roomsEnabled: true })).toEqual([...ALL])
   })
 
   /**
-   * web 端 `platformApi.capabilities.collabRooms` 为 false:消息/进行中/通讯录
-   * 三类无源可吃(私聊与群都是房),留在 rail 上就是三枚点不出东西的死图标。
+   * web 端 `platformApi.capabilities.collabRooms` 为 false:协作形态整个不存在
+   * (私聊与群都是房),rail 一格都不画。
    */
-  it('web 降级:没有 rooms 能力时只留「会话」,不留死图标', () => {
-    expect(resolveRailCategories({ roomsEnabled: false })).toEqual(['sessions'])
+  it('web 降级:没有 rooms 能力时 rail 一格都不画', () => {
+    expect(resolveRailCategories({ roomsEnabled: false })).toEqual([])
   })
 })
 
@@ -66,13 +71,14 @@ describe('当前类别', () => {
     expect(resolveRailCategory('rooms', ALL)).toBe('contacts')
   })
 
-  it('存的那类已经不在 rail 上(web 降级)→ 退到第一个可用的', () => {
-    expect(resolveRailCategory('recent', ['sessions'])).toBe('sessions')
-    expect(resolveRailCategory('contacts', ['sessions'])).toBe('sessions')
+  it('存的那类已经不在 rail 上 → 退到第一个可用的', () => {
+    // 'sessions' 是 U3 搬去对话形态的那一格,存档里还会有 —— 不认它,退回首格。
+    expect(resolveRailCategory('sessions', ALL)).toBe('recent')
+    expect(resolveRailCategory('recent', ['contacts'])).toBe('contacts')
   })
 
-  it('一个可用类别都没有也不能崩(兜底到会话)', () => {
-    expect(resolveRailCategory('recent', [])).toBe('sessions')
+  it('一个可用类别都没有也不能崩(兜底到消息)', () => {
+    expect(resolveRailCategory('recent', [])).toBe('recent')
   })
 
   it('落点是 localStorage 的一个键(本机视图偏好,不进 settings)', () => {
@@ -86,33 +92,29 @@ describe('徽标', () => {
    * 各自亮各自的不会重复报数;而「通讯录」的每一行要么已经在消息流里、要么根本
    * 没聊过 —— 它替谁报都是第二遍,所以恒不亮。
    */
-  it('房的未读落「消息」,直聊的未读落「会话」,通讯录恒不亮', () => {
+  it('房的未读落「消息」,通讯录恒不亮', () => {
     expect(resolveRailBadges({
-      available: ALL, unreadConversations: true, unreadChatSessions: false, activeWork: false,
-    })).toEqual({ recent: true, active: false, contacts: false, sessions: false })
-
-    expect(resolveRailBadges({
-      available: ALL, unreadConversations: false, unreadChatSessions: true, activeWork: false,
-    })).toEqual({ recent: false, active: false, contacts: false, sessions: true })
+      available: ALL, unreadConversations: true, activeWork: false,
+    })).toEqual({ recent: true, active: false, contacts: false })
   })
 
   it('在跑落在「进行中」,与未读互不干涉', () => {
     expect(resolveRailBadges({
-      available: ALL, unreadConversations: false, unreadChatSessions: false, activeWork: true,
-    })).toEqual({ recent: false, active: true, contacts: false, sessions: false })
+      available: ALL, unreadConversations: false, activeWork: true,
+    })).toEqual({ recent: false, active: true, contacts: false })
   })
 
-  /** web 端没有房这一路,rail 上也没有「消息」—— 两路未读一起落到唯一那条列表。 */
-  it('web 降级:未读全落「会话」,不会无处可报', () => {
+  /** 直聊的未读归对话形态,落在形态切换器上 —— rail 不替它报(U3)。 */
+  it('rail 上没有「消息」时,房的未读也不会挪到别的格上去', () => {
     expect(resolveRailBadges({
-      available: ['sessions'], unreadConversations: true, unreadChatSessions: false, activeWork: false,
-    })).toEqual({ recent: false, active: false, contacts: false, sessions: true })
+      available: [], unreadConversations: true, activeWork: false,
+    })).toEqual({ recent: false, active: false, contacts: false })
   })
 
   it('全静时一枚都不亮', () => {
     expect(resolveRailBadges({
-      available: ALL, unreadConversations: false, unreadChatSessions: false, activeWork: false,
-    })).toEqual({ recent: false, active: false, contacts: false, sessions: false })
+      available: ALL, unreadConversations: false, activeWork: false,
+    })).toEqual({ recent: false, active: false, contacts: false })
   })
 })
 

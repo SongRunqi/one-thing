@@ -410,6 +410,58 @@ describe("agent provider runtime factory", () => {
 		expect(capabilities?.capabilities).not.toContain("vision-input");
 	});
 
+	it("points the qwen runtime at the host its mode + region select", async () => {
+		async function requestedUrl(
+			config: Record<string, unknown>,
+		): Promise<string> {
+			let url = "";
+			const provider = createAgentProviderFromRuntime(
+				"qwen",
+				{ apiKey: "k", ...config },
+				{
+					fetchImpl: async (input) => {
+						url = String(input);
+						return new Response("", {
+							status: 200,
+							headers: { "content-type": "text/event-stream" },
+						});
+					},
+				},
+			);
+			for await (const _ of provider!.streamTurn!({
+				turn: 0,
+				model: "qwen3.7-plus",
+				messages: [{ role: "user", content: "hi" }],
+			})) {
+				// drain
+			}
+			return url;
+		}
+
+		expect(await requestedUrl({})).toBe(
+			"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+		);
+		expect(await requestedUrl({ qwenRegion: "intl" })).toBe(
+			"https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+		);
+		// Token Plan is a different host, not just a different key.
+		expect(await requestedUrl({ qwenApiMode: "token-plan" })).toBe(
+			"https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+		);
+		expect(
+			await requestedUrl({ qwenApiMode: "token-plan", qwenRegion: "intl" }),
+		).toBe(
+			"https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+		);
+		// Coding Plan hangs off a bare /v1, unlike every other qwen host.
+		expect(await requestedUrl({ qwenApiMode: "coding-plan" })).toBe(
+			"https://coding.dashscope.aliyuncs.com/v1/chat/completions",
+		);
+		expect(
+			await requestedUrl({ qwenApiMode: "coding-plan", qwenRegion: "intl" }),
+		).toBe("https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions");
+	});
+
 	it("allows additional provider runtimes to register without changing the factory", () => {
 		const unregister = registerAgentProviderRuntime(
 			"plugin-agent",

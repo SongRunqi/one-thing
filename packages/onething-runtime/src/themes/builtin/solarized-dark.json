@@ -9,6 +9,7 @@
   "defs": {
     "base03": "#002B36",
     "base02": "#073642",
+    "base02Float": "#2E5966",
     "base01": "#586E75",
     "base00": "#657B83",
     "base0": "#839496",
@@ -37,7 +38,7 @@
       "chat": "base03",
       "panel": "base03",
       "elevated": "base02",
-      "floating": "base01",
+      "floating": "base02Float",
       "message": {
         "user": "base02",
         "userSolid": "base02",

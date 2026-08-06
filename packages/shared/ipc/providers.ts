@@ -6,7 +6,7 @@
 import type { JsonObject } from '../json.js'
 
 // Provider IDs - can be extended by adding new providers
-export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'zhipu' | 'gemini' | 'codex' | 'acp' | 'custom' | string
+export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'zhipu' | 'qwen' | 'gemini' | 'codex' | 'acp' | 'custom' | string
 
 export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
@@ -17,6 +17,7 @@ export enum AIProvider {
   DeepSeek = 'deepseek',
   Kimi = 'kimi',
   Zhipu = 'zhipu',
+  Qwen = 'qwen',
   OpenRouter = 'openrouter',
   Gemini = 'gemini',
   ClaudeCode = 'claude-code',
@@ -98,11 +99,24 @@ export interface ProviderInfo {
 
 export type ZhipuApiMode = 'standard' | 'coding-plan'
 
+/**
+ * 千问: pay-as-you-go API key vs the Token Plan / Coding Plan subscriptions.
+ * Each subscription has its own key AND its own host — leaving the general one
+ * in place bills pay-as-you-go on top of the subscription.
+ */
+export type QwenApiMode = 'standard' | 'token-plan' | 'coding-plan'
+/** 千问: 国内版 (Beijing) vs 海外版 (Singapore) — separate accounts and hosts. */
+export type QwenRegion = 'cn' | 'intl'
+
 // Per-provider configuration
 export interface ProviderConfig {
   apiKey?: string           // Optional for OAuth providers
   baseUrl?: string
   zhipuApiMode?: ZhipuApiMode
+  // 千问 endpoint matrix: region picks the host family, mode picks pay-as-you-go
+  // vs Token Plan (which has its OWN host and its own sk-sp- key).
+  qwenApiMode?: QwenApiMode
+  qwenRegion?: QwenRegion
   model: string             // Currently active model
   selectedModels: string[]  // List of models user has selected/enabled for quick switching
   enabled?: boolean         // Whether this provider is shown in the chat model selector
@@ -116,6 +130,10 @@ export interface ProviderConfig {
   temperatureByModel?: Record<string, number>
   // Per-model max output token overrides. Keys are model IDs (e.g. "deepseek-chat").
   maxOutputByModel?: Record<string, number>
+  // Per-model context-window overrides. Keys are model IDs. Needed for models
+  // the registry has never heard of (hand-added, self-hosted), where the
+  // 128k fallback would mis-budget context compaction.
+  contextLengthByModel?: Record<string, number>
   // Per-model native-thinking toggle. Keys are model IDs (e.g. "deepseek-v4-pro").
   thinkingByModel?: Record<string, boolean>
   // Per-model thinking effort. Codex supports minimal/low/medium/high/xhigh;

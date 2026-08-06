@@ -167,7 +167,6 @@ import type { ChatMessage, ChatMessageMention, ChatMessageReplyTo, MessageAttach
 import { useSessionsStore } from '@/stores/sessions'
 import { useAgentsStore } from '@/stores/agents'
 import { useSettingsStore } from '@/stores/settings'
-import { resolveShellMode } from '@/composables/useShellMode'
 import { useChatStore } from '@/stores/chat'
 import { useChatSession } from '@/composables/useChatSession'
 import { useFollowScroll } from '@/composables/useFollowScroll'
@@ -247,7 +246,6 @@ const composerPlaceholder = computed(() => {
 const flowStyles = computed((): Record<string, string> => {
   const settings = settingsStore.settings
   const active = shouldUseSayTypography({
-    shellMode: resolveShellMode(settings),
     isSaySurface: true,
     messageListDensity: settings?.general?.messageListDensity,
     messageLineHeight: settings?.general?.messageLineHeight,
