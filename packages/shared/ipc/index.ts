@@ -464,6 +464,8 @@ export type {
 	SetPluginConfigResponse,
 	UninstallPluginRequest,
 	UninstallPluginResponse,
+	PluginDataFootprint,
+	PluginFootprintResponse,
 } from "./plugins.js";
 
 // Memory panel types

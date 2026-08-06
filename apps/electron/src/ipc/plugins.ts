@@ -7,6 +7,7 @@ import type {
   PluginRequestResult,
   SetPluginConfigRequest,
   SetPluginConfigResponse,
+  PluginFootprintResponse,
   UninstallPluginRequest,
   UninstallPluginResponse,
 } from '@shared/ipc/plugins.js'
@@ -30,6 +31,7 @@ export interface ElectronPluginsIpcChannels {
   configGet: string
   configSet: string
   uninstall: string
+  footprint: string
 }
 
 export interface ElectronPluginToggleRequest {
@@ -77,6 +79,7 @@ export interface RegisterElectronPluginsIpcHandlersOptions {
   getPluginConfig(request: PluginConfigRequest): PluginConfigResponse
   setPluginConfig(request: SetPluginConfigRequest): SetPluginConfigResponse
   uninstallPlugin(request: UninstallPluginRequest): Promise<UninstallPluginResponse> | UninstallPluginResponse
+  getPluginFootprint(request: UninstallPluginRequest): PluginFootprintResponse
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -129,5 +132,9 @@ export function registerElectronPluginsIpcHandlers(
 
   host.handle(options.channels.uninstall, (_event, request: UninstallPluginRequest) => {
     return options.uninstallPlugin(request)
+  })
+
+  host.handle(options.channels.footprint, (_event, request: UninstallPluginRequest) => {
+    return options.getPluginFootprint(request)
   })
 }

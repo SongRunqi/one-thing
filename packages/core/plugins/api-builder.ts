@@ -2,8 +2,17 @@ import type { CorePluginAPIState } from './api-state.js'
 import { deepFreezeCorePluginValue } from './freeze.js'
 import { PluginStorageError, type CorePluginStorage } from './storage.js'
 import {
+  PLUGIN_PANEL_INVOKE_ACTION,
+  PLUGIN_PANEL_RENDER_ACTION,
+  validatePluginPanelActionResult,
+  validatePluginPanelTree,
+  type CorePluginPanelContext,
+  type CorePluginPanelRegistration,
+} from './panel.js'
+import {
   assertPluginPayloadSerializable,
   normalizePluginRequestAction,
+  type CorePluginRequestContext,
   type CorePluginRequestHandler,
 } from './request-channel.js'
 import type {
@@ -40,6 +49,8 @@ export interface CorePluginAPIHost<
    * 命名空间不由插件自己保证,否则两个插件迟早撞名。
    */
   emitPluginEvent?(pluginId: string, eventName: string, payload: unknown): void
+  /** 面板主动刷新的投递口(R5)——走既有的 plugin:notification 轨。 */
+  emitPanelRefresh?(pluginId: string, panelId: string): void
   /**
    * 插件自有配置的访问面(R3)。
    *
@@ -68,6 +79,11 @@ export interface CreateCorePluginAPIOptions<
   store: TStore
   /** 插件数据目录访问面(R4);路径/序列化守卫在 core 的 storage.ts。 */
   storage?: CorePluginStorage
+  /**
+   * manifest 里声明过的面板 id(R5)。
+   * registerWorkspacePanel 拿它做匹配 —— 声明先于代码,清单是权威。
+   */
+  declaredPanelIds?: string[]
   scheduler: TScheduler
   disposeCallbacks?: Array<() => void>
   host: CorePluginAPIHost<
@@ -397,6 +413,68 @@ export function createCorePluginAPI<
         configUnsubs.push(unsub)
         return unsub
       },
+    },
+
+    /**
+     * 面板注册 —— 只绑行为,不带存在感。
+     *
+     * id 必须匹配 manifest 的 contributes.panels:不匹配就报错而不是默默注册一个
+     * 谁也进不去的面板(插件侧那句"注册成功了"是最难查的一类假象)。
+     * 落地方式是把 render/onAction 挂到统一请求通道上 —— 于是它们免费拿到
+     * R2 的超时预算、abort、progress 与 `request:<action>` 熔断账,不另起一套。
+     */
+    registerWorkspacePanel(registration: CorePluginPanelRegistration): void {
+      if (rejectLateCall('registerWorkspacePanel')) return
+      const panelId = String(registration?.id ?? '').trim()
+      if (!panelId) {
+        logger.error(`[Plugin:${pluginId}] registerWorkspacePanel needs an id`, undefined)
+        return
+      }
+      const declared = options.declaredPanelIds ?? []
+      if (!declared.includes(panelId)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerWorkspacePanel("${panelId}") does not match any panel declared in `
+          + `contributes.panels (declared: ${declared.length ? declared.join(', ') : 'none'}). `
+          + 'Declare it in plugin.json first — the host renders the entry from the manifest.',
+          undefined,
+        )
+        reportFailure('registerWorkspacePanel', new Error(`undeclared panel "${panelId}"`))
+        return
+      }
+      if (typeof registration.render !== 'function') {
+        logger.error(`[Plugin:${pluginId}] registerWorkspacePanel("${panelId}") needs a render function`, undefined)
+        return
+      }
+
+      const panelContext = (ctx: CorePluginRequestContext): CorePluginPanelContext => ({
+        requestId: ctx.requestId,
+        abortSignal: ctx.abortSignal,
+        // 主动刷新走**通知通道**而不是 progress:progress 只在请求在飞期间有效
+        // (R2 已裁决 abort/settle 之后一律丢弃),而真实的刷新几乎都发生在
+        // 请求之外(日志文件变了、定时器到点了)。复用既有通知轨,不另开一条
+        // (§5.2 第 4 条:R5 需要投递面时用现成的)。
+        refresh: () => host.emitPanelRefresh?.(pluginId, panelId),
+      })
+
+      requestHandlers.set(`${PLUGIN_PANEL_RENDER_ACTION}:${panelId}`, async (_payload, ctx) => {
+        const tree = await registration.render(panelContext(ctx))
+        const problem = validatePluginPanelTree(tree)
+        if (problem) throw new Error(`Panel "${panelId}" produced an invalid tree: ${problem}`)
+        return tree
+      })
+
+      requestHandlers.set(`${PLUGIN_PANEL_INVOKE_ACTION}:${panelId}`, async (payload, ctx) => {
+        if (!registration.onAction) return { refresh: false }
+        const input = (payload ?? {}) as { actionId?: unknown; payload?: unknown }
+        const actionId = String(input.actionId ?? '')
+        if (!actionId) throw new Error(`Panel "${panelId}" received an action without an actionId`)
+        const result = await registration.onAction({ actionId, payload: input.payload }, panelContext(ctx))
+        const problem = validatePluginPanelActionResult(result)
+        if (problem) throw new Error(`Panel "${panelId}" produced an invalid action result: ${problem}`)
+        return result ?? { refresh: false }
+      })
+
+      logger.log(`[Plugin:${pluginId}] Registered workspace panel: ${panelId}`)
     },
 
     events: {

@@ -43,7 +43,7 @@ const TELEPORT_PRIMITIVES = new Set([
  * 自己的标题绊倒。名单刻意只列确认过的组件:`<Button :title>` 这类会透传成
  * 原生 title 的,仍然该被抓。
  */
-const TITLE_PROP_COMPONENTS = new Set(['Dialog'])
+const TITLE_PROP_COMPONENTS = new Set(['Dialog', 'SettingsEmptyState'])
 
 /**
  * zones: 规则只在它讲得通的分区里跑。

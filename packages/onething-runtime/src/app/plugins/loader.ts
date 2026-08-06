@@ -175,6 +175,20 @@ function getBuiltinPlugins(): PluginDefinition[] {
 }
 
 /** Scan built-in and user plugin directories and return plugin definitions. */
+/**
+ * 某个插件在 manifest 里声明过的面板 id(R5)。
+ *
+ * 事实源是清单,不是活状态:面板注册发生在 entry 执行期间,那时插件还没进
+ * pluginStates,只能从扫描结果里取。放在 loader 是因为 `scanPlugins` 在这里 ——
+ * 让每个造 api 的地方各自去查清单,迟早会有一条路忘了查,然后把合法的注册
+ * 判成"未声明"。
+ */
+export function getDeclaredPanelIds(pluginId: string): string[] {
+  return scanPlugins()
+    .find(definition => definition.id === pluginId)
+    ?.manifest.contributes?.panels?.map(panel => panel.id) ?? []
+}
+
 export function scanPlugins(): PluginDefinition[] {
   return scanCorePlugins<PluginEntry>({
     builtinPlugins: getBuiltinPlugins(),

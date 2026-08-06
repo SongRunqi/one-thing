@@ -526,13 +526,46 @@ function canUninstall(plugin: PluginInfo): boolean {
  * 卸载 —— 措辞必须把"停用 vs 卸载"的差别说清楚:
  * 停用保留数据原地,卸载归档数据并删掉插件代码。
  */
+/**
+ * 把足迹说成人话。
+ *
+ * R4 已经能枚举"这个插件在盘上占了什么",但那份清单一直没有出口 ——
+ * 用户在确认框里只能读到一句"数据会被归档",却看不到归档的是**什么**。
+ * 这里把它摊开:目录条目数 / 是否有历史 KV / 设置键数。
+ */
+async function describeFootprint(pluginId: string): Promise<string> {
+  try {
+    const result = await platformApi.getPluginFootprint(pluginId)
+    if (!result?.success || !result.footprint) return ''
+    const { dataDirExists, entries, legacyKvExists, settingsKeys } = result.footprint
+    const parts: string[] = []
+    if (dataDirExists) {
+      parts.push(entries.length === 1 ? '1 file in its data folder' : `${entries.length} files in its data folder`)
+    }
+    if (legacyKvExists) parts.push('its key-value store')
+    if (settingsKeys.length) {
+      parts.push(settingsKeys.length === 1 ? '1 saved setting' : `${settingsKeys.length} saved settings`)
+    }
+    // 什么都没写过的插件,如实说"没有数据" —— 比含糊的"数据会被归档"更可信。
+    if (!parts.length) return 'It has not stored any data.'
+    return `Will be archived: ${parts.join(', ')}.`
+  } catch {
+    // 足迹只是知情用的补充说明,读不到不该拦住卸载本身。
+    return ''
+  }
+}
+
 async function confirmUninstall(plugin: PluginInfo): Promise<void> {
+  const footprint = await describeFootprint(plugin.id)
   const accepted = await confirm({
     title: 'Uninstall plugin',
     // 路径不硬编码:store 根由 ONETHING_STORE_PATH 决定,写死 ~/.onething 会在
     // 自定义 store 下变成一句假话。相对表述对用户同样够用。
     message: `Uninstall "${plugin.name}"? Its plugin folder is deleted and its data folder is moved into `
-      + 'the plugin-data backup folder. Disabling instead keeps both in place.',
+      + 'the plugin-data backup folder. Disabling instead keeps both in place.'
+      // 确认框的正文是单段落(ConfirmHost 不保留换行),所以足迹接成同段的下一句,
+      // 而不是塞一个会被折叠掉的空行。
+      + (footprint ? ` ${footprint}` : ''),
     confirmText: 'uninstall',
     danger: true,
     variant: 'paper',

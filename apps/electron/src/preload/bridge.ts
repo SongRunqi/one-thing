@@ -54,6 +54,7 @@ import type {
 	PluginConfigResponse,
 	SetPluginConfigResponse,
 	UninstallPluginResponse,
+	PluginFootprintResponse,
 } from "@shared/ipc.js";
 
 /**
@@ -571,6 +572,10 @@ const electronAPI = {
 	// 真卸载(R4):停用 → 归档数据 → 删源目录 → 清设置键。仅用户插件。
 	uninstallPlugin: (pluginId: string): Promise<UninstallPluginResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_UNINSTALL, { pluginId }),
+
+	// 落盘足迹:卸载确认框据此展示"将被归档的东西"。
+	getPluginFootprint: (pluginId: string): Promise<PluginFootprintResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_FOOTPRINT, { pluginId }),
 
 	onPluginNotification: (
 		callback: (payload: PluginNotificationPayload) => void,

@@ -20,6 +20,7 @@ import {
   isCollabThinkingMessage,
 } from '@onething/runtime/collab'
 import { toast } from '@/composables/useToast'
+import { setPluginWorkspacePanels } from '@/workspace/panel-registry'
 import { shouldNotifyInbound, summarizeNotificationBody } from './notify-inbound'
 import type { SessionEventEnvelope } from '@shared/events/index.js'
 
@@ -334,9 +335,48 @@ export function initializeIPCHub() {
     window.dispatchEvent(new CustomEvent('onething:plugins-changed', {
       detail: { pluginId: payload.pluginId },
     }))
+    // 启停/熔断都会改面板入口的可见性与状态。
+    if (!isConfigChanged) void refreshPluginWorkspacePanels()
   })
 
+  window.addEventListener('onething:plugins-changed', () => {
+    void refreshPluginWorkspacePanels()
+  })
+
+  // 插件面板清单:入口来自 manifest,所以这一步**不执行任何插件代码**,
+  // 未启用的插件也会有入口(点开由 PluginPanelHost 提示启用)。
+  void refreshPluginWorkspacePanels()
+
   console.log('[IPC Hub] Unified listeners registered (session:event + session:stream + plugin notifications)')
+}
+
+/**
+ * 拉一次插件面板清单。
+ *
+ * 数据源是 `/api/plugins` 或 IPC 的列表投影 —— 里面已经带着 manifest 的
+ * `contributes.panels`(R2 建的管道)。宿主凭它渲染入口,一行插件代码都不跑。
+ */
+async function refreshPluginWorkspacePanels(): Promise<void> {
+  try {
+    const result = await platformApi.getPlugins()
+    if (!result?.success) return
+    setPluginWorkspacePanels((result.plugins || [])
+      // 停用的插件不贡献入口 —— 用户把它关了,它的界面就该消失。
+      // 但**启用却加载失败**的插件入口要留着:入口来自 manifest,不需要插件跑起来,
+      // 于是它还能把"这插件没起来"这件事告诉用户(声明先于代码的实际好处)。
+      .filter((plugin: any) => plugin.enabled)
+      .flatMap((plugin: any) =>
+        (plugin.contributes?.panels || []).map((panel: { id: string; label: string }) => ({
+          pluginId: plugin.id,
+          pluginName: plugin.name,
+          panelId: panel.id,
+          label: panel.label,
+          loaded: Boolean(plugin.loaded),
+        })),
+      ))
+  } catch (error) {
+    console.error('[IPC Hub] Failed to refresh plugin workspace panels:', error)
+  }
 }
 
 /**

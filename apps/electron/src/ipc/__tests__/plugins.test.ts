@@ -22,6 +22,7 @@ describe('electron plugins IPC host', () => {
     const getPluginConfig = vi.fn().mockReturnValue({ success: true, config: { a: 1 } })
     const setPluginConfig = vi.fn().mockReturnValue({ success: true, config: { a: 2 } })
     const uninstallPlugin = vi.fn().mockResolvedValue({ success: true, archivePath: '/backup/notes-2026-08-07' })
+    const getPluginFootprint = vi.fn().mockReturnValue({ success: true, footprint: { pluginId: 'notes', dataDir: '/data/notes', dataDirExists: true, entries: ['notes.json'], legacyKvExists: false, settingsKeys: ['enabled'] } })
 
     registerElectronPluginsIpcHandlers({
       channels: {
@@ -36,6 +37,7 @@ describe('electron plugins IPC host', () => {
         configGet: 'plugins:config-get',
         configSet: 'plugins:config-set',
         uninstall: 'plugins:uninstall',
+        footprint: 'plugins:footprint',
       },
       listPlugins,
       enablePlugin,
@@ -48,10 +50,11 @@ describe('electron plugins IPC host', () => {
       getPluginConfig,
       setPluginConfig,
       uninstallPlugin,
+      getPluginFootprint,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(11)
+    expect(handle).toHaveBeenCalledTimes(12)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'plugins:list',
       'plugins:enable',
@@ -64,6 +67,7 @@ describe('electron plugins IPC host', () => {
       'plugins:config-get',
       'plugins:config-set',
       'plugins:uninstall',
+      'plugins:footprint',
     ])
 
     const toggleRequest = { pluginId: 'notes' }
@@ -75,6 +79,20 @@ describe('electron plugins IPC host', () => {
     await expect(handle.mock.calls[3][1]({})).resolves.toEqual({ success: true })
     await expect(handle.mock.calls[4][1]({})).resolves.toEqual({ success: true, commands: [] })
     await expect(handle.mock.calls[5][1]({}, executeRequest)).resolves.toEqual({ success: true, message: 'ok' })
+
+    // 卸载确认框据此展示"将被归档的东西"(R4 枚举 + R5 出口)。
+    expect(handle.mock.calls[11][1]({}, toggleRequest)).toEqual({
+      success: true,
+      footprint: {
+        pluginId: 'notes',
+        dataDir: '/data/notes',
+        dataDirExists: true,
+        entries: ['notes.json'],
+        legacyKvExists: false,
+        settingsKeys: ['enabled'],
+      },
+    })
+    expect(getPluginFootprint).toHaveBeenCalledWith(toggleRequest)
 
     expect(listPlugins).toHaveBeenCalledWith()
     expect(enablePlugin).toHaveBeenCalledWith(toggleRequest)

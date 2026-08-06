@@ -11,7 +11,7 @@
       <div class="traffic-lights-space" />
       <div class="nav-items">
         <Button
-          v-for="item in navItems"
+          v-for="item in allNavItems"
           :key="item.id"
           unstyled
           class="nav-item"
@@ -431,6 +431,23 @@
         >
           <ArchivedChatsContent />
         </section>
+
+        <!-- 插件贡献的面板(R5)。入口来自 manifest,内容来自描述树 ——
+             新增一个插件面板不需要改这个文件的任何一行。 -->
+        <!-- v-if 在同一元素上先于 v-for 求值,所以 v-for 必须外提到 template。 -->
+        <template
+          v-for="panel in pluginPanels"
+          :key="pluginPanelNavId(panel.pluginId, panel.panelId)"
+        >
+          <section
+            v-if="hasMountedNav(pluginPanelNavId(panel.pluginId, panel.panelId))"
+            v-show="activeNav === pluginPanelNavId(panel.pluginId, panel.panelId)"
+            class="workspace-panel-view workspace-panel-content-view"
+            :data-workspace-panel-view="pluginPanelNavId(panel.pluginId, panel.panelId)"
+          >
+            <PluginPanelHost :panel="panel" />
+          </section>
+        </template>
       </div>
     </div>
   </div>
@@ -458,12 +475,18 @@ import {
 } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 import {
+  PLUGIN_PANEL_ICON,
   WORKSPACE_NAV_PANELS,
   isWorkspacePanelId,
+  parsePluginPanelNavId,
+  pluginPanelNavId,
+  usePluginWorkspacePanels,
   type WorkspacePanelId,
 } from '@/workspace/panel-registry'
+import PluginPanelHost from '@/components/plugins/PluginPanelHost.vue'
 
-type WorkspacePanelNav = WorkspacePanelId
+// 内置面板是字面量联合;插件面板的 nav id 是运行期字符串,所以状态用 string。
+type WorkspacePanelNav = WorkspacePanelId | (string & {})
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -502,8 +525,22 @@ const activeSource = ref<SourceFilter>('all')
 const navItems: Array<{ id: WorkspacePanelNav; label: string; icon: Component }> = WORKSPACE_NAV_PANELS
   .map(panel => ({ id: panel.id, label: panel.label, icon: panel.icon }))
 
-function normalizeNav(tab?: string | null): WorkspacePanelNav | null {
-  return isWorkspacePanelId(tab) ? tab : null
+// 插件面板与内置面板在导航条上并列。清单来自 manifest,所以入口在插件加载
+// 失败时也在(点开由 PluginPanelHost 说明原因);停用的插件不在清单里。
+const pluginPanels = usePluginWorkspacePanels()
+const allNavItems = computed<Array<{ id: string; label: string; icon: Component }>>(() => [
+  ...navItems,
+  ...pluginPanels.value.map(panel => ({
+    id: pluginPanelNavId(panel.pluginId, panel.panelId),
+    label: panel.label,
+    icon: PLUGIN_PANEL_ICON,
+  })),
+])
+
+function normalizeNav(tab?: string | null): string | null {
+  if (isWorkspacePanelId(tab)) return tab
+  // 插件面板的 nav id 形如 `plugin:<pluginId>:<panelId>`。
+  return typeof tab === 'string' && parsePluginPanelNavId(tab) ? tab : null
 }
 
 function markNavMounted(nav: WorkspacePanelNav) {

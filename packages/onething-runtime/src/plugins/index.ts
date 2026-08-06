@@ -2,6 +2,7 @@ export {
   ONETHING_LOG_MONITOR_DEFAULT_CONFIG,
   ONETHING_LOG_MONITOR_MANIFEST,
   createOnethingLogMonitorSearchToolParameters,
+  registerOnethingLogMonitorPanel,
   registerOnethingLogMonitorPlugin,
   resolveOnethingLogMonitorConfig,
 } from './log-monitor.js'
@@ -24,6 +25,7 @@ export * from './soul-memory.js'
 export * from './config-schema.js'
 export type {
   OnethingLogMonitorConfig,
+  OnethingLogMonitorPanelApi,
   OnethingLogMonitorPluginApi,
   OnethingLogMonitorSearchToolParameters,
   RegisterOnethingLogMonitorPluginOptions,

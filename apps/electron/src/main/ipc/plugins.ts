@@ -21,6 +21,7 @@ import {
   abortOnethingPluginRequestForIpc,
   disableOnethingPluginForIpc,
   getOnethingPluginConfigForIpc,
+  getOnethingPluginFootprintForIpc,
   setOnethingPluginConfigForIpc,
   uninstallOnethingPluginForIpc,
   enableOnethingPluginForIpc,
@@ -35,6 +36,7 @@ import type { GatewayCommandProvider } from '@onething/gateway'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getPluginManager } from '@onething/app/plugins/index.js'
 import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
+import { getPluginFootprint } from '@onething/app/plugins/loader.js'
 import { getEventBus } from '@onething/app/events/index.js'
 import * as store from '@onething/app/store.js'
 
@@ -116,6 +118,7 @@ export function registerPluginHandlers(): void {
       configGet: IPC_CHANNELS.PLUGINS_CONFIG_GET,
       configSet: IPC_CHANNELS.PLUGINS_CONFIG_SET,
       uninstall: IPC_CHANNELS.PLUGINS_UNINSTALL,
+      footprint: IPC_CHANNELS.PLUGINS_FOOTPRINT,
     },
     listPlugins: () => {
       return listOnethingPluginsForIpc({
@@ -182,6 +185,23 @@ export function registerPluginHandlers(): void {
     getPluginConfig: (request: PluginConfigRequest) => {
       return getOnethingPluginConfigForIpc({
         access: pluginConfigAccess,
+        pluginId: request.pluginId,
+        logger: console,
+      })
+    },
+    getPluginFootprint: (request: UninstallPluginRequest) => {
+      return getOnethingPluginFootprintForIpc({
+        readFootprint: pluginId => {
+          const footprint = getPluginFootprint(pluginId)
+          return {
+            pluginId: footprint.pluginId,
+            dataDir: footprint.dataDir,
+            dataDirExists: footprint.dataDirExists,
+            entries: footprint.entries,
+            legacyKvExists: footprint.legacyKvExists,
+            settingsKeys: footprint.settingsKeys,
+          }
+        },
         pluginId: request.pluginId,
         logger: console,
       })

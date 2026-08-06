@@ -94,6 +94,29 @@ export {
 } from './api-state.js'
 export { deepFreezeCorePluginValue } from './freeze.js'
 export {
+  PLUGIN_PANEL_INVOKE_ACTION,
+  PLUGIN_PANEL_PROTOCOL_VERSION,
+  PLUGIN_PANEL_RENDER_ACTION,
+  validatePluginPanelActionResult,
+  validatePluginPanelTree,
+} from './panel.js'
+export type {
+  CorePluginPanelContext,
+  CorePluginPanelRegistration,
+  PluginPanelActionResult,
+  PluginPanelButtonNode,
+  PluginPanelEmptyStateNode,
+  PluginPanelFormField,
+  PluginPanelFormNode,
+  PluginPanelListItem,
+  PluginPanelListNode,
+  PluginPanelMarkdownNode,
+  PluginPanelNode,
+  PluginPanelRowNode,
+  PluginPanelStackNode,
+  PluginPanelTree,
+} from './panel.js'
+export {
   PLUGIN_DATA_LEGACY_BACKUP_DIR,
   PLUGIN_KV_FILE_NAME,
   PLUGIN_LEGACY_KV_FILE_NAME,

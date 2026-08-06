@@ -354,6 +354,8 @@ export const IPC_CHANNELS = {
 	// 真卸载(R4):停用 → 归档数据 → 删源目录 → 清 plugin-settings 三键。
 	// 仅用户插件;内置插件与 app 同一份构建,没有卸载可言。
 	PLUGINS_UNINSTALL: "plugins:uninstall",
+	// 落盘足迹(R4 建枚举,R5 接出口):卸载确认框据此展示"将被归档的东西"。
+	PLUGINS_FOOTPRINT: "plugins:footprint",
 
 	// Generic scheduler
 	SCHEDULER_LIST: "scheduler:list",

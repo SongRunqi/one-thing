@@ -61,6 +61,7 @@ function createHost(): CorePluginManagerHost<
     ensurePluginDirs,
     scanPlugins,
     loadPluginEntry: (definition, reloadToken) => loadPluginEntry(definition, reloadToken),
+    // 面板声明由 createPluginAPI 自己现查清单 —— 这里不再中转一遍。
     createPluginAPI(pluginId, context) {
       return createPluginAPI(pluginId, context.eventBus, context.streamEngine)
     },

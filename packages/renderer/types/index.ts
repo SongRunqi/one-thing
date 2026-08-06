@@ -275,6 +275,7 @@ import type {
 	PluginConfigResponse,
 	SetPluginConfigResponse,
 	UninstallPluginResponse,
+	PluginFootprintResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -630,6 +631,7 @@ export type {
 	PluginConfigResponse,
 	SetPluginConfigResponse,
 	UninstallPluginResponse,
+	PluginFootprintResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -1219,6 +1221,9 @@ export interface ElectronAPI {
 	 * 真卸载(R4)。数据被归档而不是删除;仅用户插件,web 端不提供。
 	 */
 	uninstallPlugin: (pluginId: string) => Promise<UninstallPluginResponse>;
+
+	/** 落盘足迹(R4 枚举 + R5 出口):卸载确认框展示"将被归档的东西"。 */
+	getPluginFootprint: (pluginId: string) => Promise<PluginFootprintResponse>;
 
 	/**
 	 * 插件通知(api.ui.notify + 熔断自动禁用告警 + 配置变更同步信号)。

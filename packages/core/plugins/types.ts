@@ -1,5 +1,6 @@
 import type { CorePluginRequestHandler } from './request-channel.js'
 import type { CorePluginStorage } from './storage.js'
+import type { CorePluginPanelRegistration } from './panel.js'
 
 /**
  * 声明先于代码(设计文档 §4.2 宪法第 3 条)。
@@ -215,6 +216,7 @@ export interface CorePluginAPI<
   TUI = MinimalCorePluginUI,
   TRequestHandler = CorePluginRequestHandler,
   TStorage = CorePluginStorage,
+  TPanelRegistration = CorePluginPanelRegistration,
 > {
   readonly id: string
   registerTool(tool: TTool): void
@@ -232,6 +234,18 @@ export interface CorePluginAPI<
    * 它们过的是一条将来会变成 RPC 的边界。
    */
   registerRequestHandler(action: string, handler: TRequestHandler): void
+  /**
+   * 声明式工作区面板(R5)。
+   *
+   * **只绑定行为**:面板的 id/label/icon 声明在 manifest 的 `contributes.panels`,
+   * 这里的 id 必须与其中一项一致(不一致直接报错)。宿主凭清单就能渲染面板入口,
+   * 一行插件代码都不执行 —— 未启用的插件也有入口。
+   *
+   * render 返回的是**纯数据描述树**(禁函数成员);按钮靠 actionId 寻址。
+   * render/onAction 经统一请求通道执行,自动获得 R2 的超时预算与
+   * `request:<action>` 熔断账。
+   */
+  registerWorkspacePanel(registration: TPanelRegistration): void
   /** 插件自定义事件。投递名 = `plugin:<pluginId>:<name>`。 */
   events: {
     emit(eventName: string, payload?: unknown): void

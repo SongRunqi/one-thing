@@ -12,6 +12,7 @@ import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
 import { PluginStore, createPluginStorage } from './store.js'
+import { getDeclaredPanelIds } from './loader.js'
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
@@ -82,10 +83,19 @@ export function isGlobalPluginEventType(eventType: string): boolean {
 /** 会话事件都带冒号命名空间;不符合的多半是拼错了,值得吼一声。 */
 const KNOWN_SESSION_EVENT_HINT = /^[a-z][\w-]*:[\w:-]+$/i
 
+export interface CreatePluginAPIOptions {
+  /**
+   * manifest contributes.panels 里声明过的面板 id(R5)。
+   * 不传就现查清单 —— 清单本来就是唯一权威,这个参数只为注入/测试留着。
+   */
+  declaredPanelIds?: string[]
+}
+
 export function createPluginAPI(
   pluginId: string,
   eventBus: EventBus,
   streamEngine: StreamEngine,
+  options?: CreatePluginAPIOptions,
 ): { api: PluginAPI; state: PluginState } {
   const store = new PluginStore(pluginId)
   const schedulerDisposeCallbacks: Array<() => void> = []
@@ -117,6 +127,8 @@ export function createPluginAPI(
     pluginId,
     store,
     storage: createPluginStorage(pluginId),
+    // 声明先于代码:面板注册要跟 manifest 对得上,清单是权威。
+    declaredPanelIds: options?.declaredPanelIds ?? getDeclaredPanelIds(pluginId),
     scheduler: pluginScheduler,
     disposeCallbacks: schedulerDisposeCallbacks,
     onPluginFailure({ pluginId: id, scope, error }) {
@@ -170,6 +182,16 @@ export function createPluginAPI(
           handler as any,
           `Plugin:${id}`,
         )
+      },
+      emitPanelRefresh(id, panelId) {
+        eventBus.emitGlobal({
+          type: 'plugin:notification',
+          pluginId: id,
+          message: `plugin-panel-refresh:${id}:${panelId}`,
+          level: 'info',
+          kind: 'panel-refresh',
+          panelId,
+        } as never)
       },
       emitPluginEvent(id, eventName, payload) {
         eventBus.emitGlobal({

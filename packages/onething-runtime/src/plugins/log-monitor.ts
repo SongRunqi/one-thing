@@ -1,7 +1,10 @@
+import fs from 'fs'
+import path from 'path'
 import { z } from 'zod'
 import {
   CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS,
   CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER,
+  CORE_LOG_MONITOR_LOG_FILE_PATTERN,
   CORE_LOG_MONITOR_DEFAULT_RETENTION_DAYS as ONETHING_LOG_MONITOR_DEFAULT_RETENTION_DAYS,
   createCoreLogMonitorFileDiskAdapters,
   ensureCoreLogMonitorDirectory,
@@ -24,6 +27,10 @@ export const ONETHING_LOG_MONITOR_MANIFEST = {
   description: 'Real-time agent event logging with disk persistence, daily rotation, and LLM-searchable logs',
   author: 'onething',
   contributes: {
+    // 面板的静态存在感(R5 裁决一):宿主凭清单渲染入口,一行插件代码都不跑。
+    panels: [
+      { id: 'logs', label: 'Agent logs' },
+    ],
     settings: {
       title: 'Log monitor',
       schema: {
@@ -121,7 +128,7 @@ export function registerOnethingLogMonitorPlugin(
   const readConfig = options.getConfig
     ?? (() => resolveOnethingLogMonitorConfig(api.settings?.get?.()))
 
-  return registerCoreLogMonitorPlugin(api, {
+  const runtime = registerCoreLogMonitorPlugin(api, {
     maxBuffer: CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER,
     searchToolParameters: createOnethingLogMonitorSearchToolParameters(),
     diskWriterOptions: {
@@ -133,5 +140,145 @@ export function registerOnethingLogMonitorPlugin(
     shouldNotify: () => readConfig().notifyOnErrors,
     ensureLogDir: () => ensureCoreLogMonitorDirectory(logDir),
     logger,
+  })
+
+  registerOnethingLogMonitorPanel(api, { logDir, readConfig, runtime })
+
+  return runtime
+}
+
+// ── 示范面板(R5 验收主体) ────────────────────
+//
+// "文件列表 + 尾部预览 + 一排按钮" 恰是 soul-memory 当年为之改了 16,989 行宿主
+// 代码的那种形态。这里全程只用插件 API:manifest 声明入口、描述树画内容、
+// actionId 寻址按钮 —— 宿主一行都不用改。
+
+export interface OnethingLogMonitorPanelApi {
+  registerWorkspacePanel(registration: {
+    id: string
+    render(ctx: { refresh(): void }): unknown
+    onAction?(input: { actionId: string; payload?: unknown }, ctx: { refresh(): void }): unknown
+  }): void
+  storage?: { dir(): string }
+}
+
+interface LogMonitorPanelOptions {
+  logDir: string
+  readConfig(): OnethingLogMonitorConfig
+  runtime: CoreLogMonitorPluginRuntime
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+export function registerOnethingLogMonitorPanel(
+  api: OnethingLogMonitorPluginApi & { registerWorkspacePanel?: unknown },
+  options: LogMonitorPanelOptions,
+): void {
+  if (typeof api.registerWorkspacePanel !== 'function') return
+
+  let selectedFile: string | null = null
+
+  const listLogFiles = (): Array<{ name: string; size: number }> => {
+    try {
+      return fs.readdirSync(options.logDir)
+        .filter(name => CORE_LOG_MONITOR_LOG_FILE_PATTERN.test(name))
+        .map(name => {
+          let size = 0
+          try {
+            size = fs.statSync(path.join(options.logDir, name)).size
+          } catch {
+            size = 0
+          }
+          return { name, size }
+        })
+        .sort((a, b) => b.name.localeCompare(a.name))
+    } catch {
+      return []
+    }
+  }
+
+  const tailOf = (name: string, lines = 20): string => {
+    try {
+      const raw = fs.readFileSync(path.join(options.logDir, name), 'utf-8')
+      return raw.split('\n').filter(Boolean).slice(-lines).join('\n')
+    } catch (error) {
+      return `Cannot read ${name}: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+
+  api.registerWorkspacePanel({
+    id: 'logs',
+    render() {
+      const files = listLogFiles()
+      const config = options.readConfig()
+      const body: Record<string, unknown> = {
+        type: 'stack',
+        gap: 'medium',
+        children: [
+          {
+            type: 'markdown',
+            text: `In-memory buffer: **${options.runtime.buffer.size}** entries · `
+              + `retention **${config.retentionDays}d** · flush **${config.flushIntervalMs}ms**`,
+          },
+          {
+            type: 'list',
+            title: 'Log files',
+            emptyText: 'No log files yet — they appear once the agent starts streaming.',
+            items: files.map(file => ({
+              id: file.name,
+              title: file.name,
+              subtitle: formatBytes(file.size),
+              badge: file.name === selectedFile ? 'selected' : undefined,
+              actionId: 'select-file',
+              payload: { name: file.name },
+            })),
+          },
+          {
+            type: 'row',
+            children: [
+              { type: 'button', label: 'Open log folder', actionId: 'open-folder' },
+              { type: 'button', label: 'Clean up old logs', actionId: 'cleanup', variant: 'danger' },
+              { type: 'button', label: 'Clear buffer', actionId: 'clear-buffer' },
+            ],
+          },
+        ],
+      }
+
+      if (selectedFile) {
+        ;(body.children as unknown[]).splice(2, 0, {
+          type: 'markdown',
+          text: `#### ${selectedFile}\n\n\`\`\`\n${tailOf(selectedFile) || '(empty)'}\n\`\`\``,
+        })
+      }
+
+      return { version: 1, title: 'Agent logs', body }
+    },
+
+    onAction(input: { actionId: string; payload?: unknown }) {
+      switch (input.actionId) {
+        case 'select-file': {
+          const name = (input.payload as { name?: string } | undefined)?.name
+          selectedFile = typeof name === 'string' && name === selectedFile ? null : name ?? null
+          return { refresh: true }
+        }
+        case 'open-folder':
+          // 打开目录是宿主能力,插件只能说"我想打开它" —— 这里给出路径,
+          // 由用户/宿主决定怎么处理(不在插件里 spawn 一个 open)。
+          return { refresh: false, notice: `Log folder: ${options.logDir}` }
+        case 'cleanup':
+          options.runtime.diskWriter.cleanupOldLogs()
+          return { refresh: true, notice: 'Old log files cleaned up.' }
+        case 'clear-buffer': {
+          const cleared = options.runtime.buffer.clear()
+          return { refresh: true, notice: `Cleared ${cleared} buffered events.` }
+        }
+        default:
+          return { refresh: false }
+      }
+    },
   })
 }

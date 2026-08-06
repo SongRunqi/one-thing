@@ -14,6 +14,7 @@ import type {
 	PluginRequestPayload,
 	PluginRequestResult,
 	SetPluginConfigResponse,
+	PluginFootprintResponse,
 	UninstallPluginResponse,
 } from "@shared/ipc/plugins.js";
 import type { PlatformApi, PlatformCapabilities } from "./types";
@@ -1226,6 +1227,11 @@ const webApi = {
 	},
 
 	// 方案 A:插件只在桌面执行,卸载(删源目录 + 归档数据)自然也只在桌面。
+	getPluginFootprint: async (): Promise<PluginFootprintResponse> => ({
+		success: false,
+		error: "Plugin data lives on the desktop host only.",
+	}),
+
 	uninstallPlugin: async (): Promise<UninstallPluginResponse> => ({
 		success: false,
 		error:

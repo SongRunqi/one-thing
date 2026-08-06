@@ -11,7 +11,8 @@
  * 手抄清单的问题不是"重复",是**漏一个就等于把一个面板弄没**,而且编译器不会
  * 提醒。所以这里定义一次,别处一律派生。
  */
-import type { Component } from 'vue'
+import { ref, type Component, type Ref } from 'vue'
+import { Puzzle } from 'lucide-vue-next'
 import {
   Activity,
   Archive,
@@ -147,6 +148,44 @@ export function findWorkspacePanel(id: string): WorkspacePanelEntry | undefined 
  * 注册表只是把"这个面板还有一条 window 事件入口"这件事记下来 —— 收编的是
  * 可发现性,不是所有权。
  */
+// ── 插件贡献的面板(R5) ──────────────────────
+//
+// 静态存在感来自 manifest 的 `contributes.panels`,所以这份清单可以在**不执行
+// 一行插件代码**的前提下装满 —— 启用但加载失败的插件照样有入口,并且能把
+// 失败说出来。内置面板是编译期常量,插件面板是运行期数据,两者在导航条上并列。
+
+export interface PluginContributedPanel {
+  pluginId: string
+  pluginName: string
+  panelId: string
+  label: string
+  /** 插件是否真的活着;停用的插件压根不进这份清单。 */
+  loaded: boolean
+}
+
+const pluginPanels: Ref<PluginContributedPanel[]> = ref([])
+
+export function setPluginWorkspacePanels(panels: PluginContributedPanel[]): void {
+  pluginPanels.value = panels
+}
+
+export function usePluginWorkspacePanels(): Ref<PluginContributedPanel[]> {
+  return pluginPanels
+}
+
+/** 导航条上的插件面板 id —— 与内置 id 不会撞:统一加前缀。 */
+export function pluginPanelNavId(pluginId: string, panelId: string): string {
+  return `plugin:${pluginId}:${panelId}`
+}
+
+export function parsePluginPanelNavId(navId: string): { pluginId: string; panelId: string } | null {
+  const match = /^plugin:([^:]+):(.+)$/.exec(navId)
+  return match ? { pluginId: match[1], panelId: match[2] } : null
+}
+
+/** 插件面板在导航条上的图标 —— 宿主统一给,插件不塞组件(UI 不执行插件代码)。 */
+export const PLUGIN_PANEL_ICON = Puzzle
+
 export function workspacePanelWindowEvent(id: WorkspacePanelId): string {
   const panel = findWorkspacePanel(id) as WorkspacePanelDefinition | undefined
   if (!panel?.windowEvent) throw new Error(`Workspace panel "${id}" has no window event entry`)

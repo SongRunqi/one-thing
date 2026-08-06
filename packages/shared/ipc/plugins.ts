@@ -52,8 +52,11 @@ export interface PluginNotificationPayload {
 	/**
 	 * 机械同步信号(不给人看)。`config-changed` 只触发刷新,不弹 toast ——
 	 * 保存是用户自己点的,再弹一条就是噪音。
+	 * `panel-refresh` 同理:插件说"我的面板该重画了",带 panelId。
 	 */
-	kind?: "config-changed";
+	kind?: "config-changed" | "panel-refresh";
+	/** kind = panel-refresh 时的面板 id。 */
+	panelId?: string;
 }
 
 /**
@@ -132,6 +135,28 @@ export interface SetPluginConfigResponse {
  */
 export interface UninstallPluginRequest {
 	pluginId: string;
+}
+
+/**
+ * 一个插件的全部落盘足迹(宪法第 6 条数据侧)。
+ *
+ * R4 建了 core 侧的枚举,R5 给它接上出口 —— 卸载确认框据此告诉用户
+ * "将被归档的是这些东西",而不是让他凭空相信。
+ */
+export interface PluginDataFootprint {
+	pluginId: string;
+	dataDir: string;
+	dataDirExists: boolean;
+	entries: string[];
+	legacyKvExists: boolean;
+	/** plugin-settings 里为它保留的键。 */
+	settingsKeys: string[];
+}
+
+export interface PluginFootprintResponse {
+	success: boolean;
+	footprint?: PluginDataFootprint;
+	error?: string;
 }
 
 export interface UninstallPluginResponse {

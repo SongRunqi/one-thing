@@ -375,6 +375,26 @@ export function setOnethingPluginConfigForIpc(options: {
   }
 }
 
+export function getOnethingPluginFootprintForIpc(options: {
+  readFootprint?: (pluginId: string) => {
+    pluginId: string
+    dataDir: string
+    dataDirExists: boolean
+    entries: string[]
+    legacyKvExists: boolean
+    settingsKeys: string[]
+  }
+  pluginId: string
+  logger?: OnethingPluginIpcLogger
+}): { success: boolean; footprint?: ReturnType<NonNullable<typeof options.readFootprint>>; error?: string } {
+  try {
+    if (!options.readFootprint) return { success: false, error: 'Plugin footprint is unavailable on this host' }
+    return { success: true, footprint: options.readFootprint(options.pluginId) }
+  } catch (error) {
+    return pluginIpcError(options.logger, `footprint ${options.pluginId}`, error, 'Failed to read plugin footprint')
+  }
+}
+
 function requireOnethingPluginManager<TManager>(
   manager: TManager | null | undefined,
 ): TManager {
