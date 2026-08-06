@@ -45,7 +45,6 @@ import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
 import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
 import soulMemoryPlugin, { soulMemoryManifest } from './builtin/soul-memory.js'
 
-function getPluginsDir(): string {
 export function getPluginsDir(): string {
   return getCorePluginsDir({ storePath: getOnethingStorePath() })
 }
