@@ -21,8 +21,24 @@ export interface CorePluginDefinition<TEntry = unknown> {
   error?: string
 }
 
+/**
+ * 落盘的运行期健康。
+ *
+ * 只存"为什么"这一半:enabled:false 本来就持久化,但原因纯在内存里,重启之后
+ * 插件就变成了"无因禁用"——用户看到一个自己没关过的开关是关的,没有任何解释。
+ * 连败计数不落盘:它是本次进程的观察,跨重启累加没有意义。
+ */
+export interface PersistedPluginHealth {
+  status: 'degraded' | 'disabled'
+  lastError?: string
+  lastErrorScope?: string
+  lastErrorAt?: number
+  disabledReason?: string
+}
+
 export interface PluginSettings {
   enabled?: Record<string, boolean>
+  health?: Record<string, PersistedPluginHealth>
 }
 
 export interface CorePluginStoreData {

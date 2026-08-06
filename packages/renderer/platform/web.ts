@@ -1105,6 +1105,11 @@ const webApi = {
 	}),
 	onPracticeEvent: () => () => {},
 
+	// 插件仅在 Electron 桌面宿主执行(设计文档 §6 已拍板的方案 A):apps/server
+	// 的插件目录是只读镜像,noopEntry 从不执行插件代码,因此 web 端永远收不到
+	// plugin:notification。这是有意降级,不是漏接。
+	onPluginNotification: () => () => {},
+
 	projectDirsList: () => requestJson("/api/project-dirs"),
 	projectDirsGet: (path: string) => postJson("/api/project-dirs/get", { path }),
 	projectDirsAdd: (path: string, description?: string) =>

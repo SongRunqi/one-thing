@@ -37,8 +37,8 @@ const lifecycleRegistry = new CorePluginLifecycleRegistry<
   onHookFailure({ pluginId, hookId, scope, error }) {
     reportPluginRuntimeFailure(pluginId, `${scope}:${hookId}`, error)
   },
-  onHookSuccess({ pluginId }) {
-    reportPluginRuntimeSuccess(pluginId)
+  onHookSuccess({ pluginId, hookId, scope }) {
+    reportPluginRuntimeSuccess(pluginId, `${scope}:${hookId}`)
   },
 })
 

@@ -29,6 +29,7 @@ export class IPCBridge {
   private streamSubs = new Map<string, Unsubscribe>()
   private sender: IPCBridgeSender | null = null
   private unsubEventBus: Unsubscribe | null = null
+  private unsubPluginNotifications: Unsubscribe | null = null
   private coalescer = new SessionStreamCoalescer(
     {
       sendChunk: (sessionId, chunk) => {
@@ -55,6 +56,16 @@ export class IPCBridge {
       this.handleSessionEvent(envelope)
     }, 'IPCBridge')
 
+    // Global (non-session) plugin notifications.
+    //
+    // `api.ui.notify` and the runtime-failure circuit breaker both emitGlobal
+    // 'plugin:notification'. The global bus had **no subscriber anywhere** —
+    // outside core/events nothing calls `.onGlobal(`, so a plugin's only UI
+    // touchpoint quietly went nowhere. This is that missing hop.
+    this.unsubPluginNotifications = eventBus.onGlobal('plugin:notification', (envelope) => {
+      this.safeSend(IPC_CHANNELS.PLUGINS_NOTIFICATION, envelope.event)
+    })
+
     // Auto-cleanup when the BrowserWindow is destroyed
     sender.on('destroyed', () => {
       this.unbind()
@@ -78,6 +89,10 @@ export class IPCBridge {
     if (this.unsubEventBus) {
       this.unsubEventBus()
       this.unsubEventBus = null
+    }
+    if (this.unsubPluginNotifications) {
+      this.unsubPluginNotifications()
+      this.unsubPluginNotifications = null
     }
 
     this.sender = null

@@ -59,6 +59,11 @@ export interface CreateCorePluginAPIOptions<
    * 宿主拿它做失败计数熔断 —— 在这之前这些错只进 console,插件卡片永远 Active。
    */
   onPluginFailure?(input: { pluginId: string; scope: string; error: unknown }): void
+  /**
+   * 运行期成功上报,清同 scope 的连败账。
+   * 事件 handler 是高频路径,这个回调必须零 IO 纯内存。
+   */
+  onPluginSuccess?(input: { pluginId: string; scope: string }): void
 }
 
 export interface CorePluginHostToolContext<TMetadata extends object = object> {
@@ -135,6 +140,9 @@ export function createCorePluginAPI<
   const reportFailure = (scope: string, error: unknown): void => {
     options.onPluginFailure?.({ pluginId, scope, error })
   }
+  const reportSuccess = (scope: string): void => {
+    options.onPluginSuccess?.({ pluginId, scope })
+  }
 
   const unsubs: Array<() => void> = []
   const commands = new Map<string, TCommand>()
@@ -144,10 +152,42 @@ export function createCorePluginAPI<
   const lifecycleUnsubs: Array<() => void> = []
   const disposeCallbacks = options.disposeCallbacks ?? []
 
+  // 晚到注册闸。
+  //
+  // entry(api) 超时之后宿主会把这份 state 拆掉,但那个 promise 并没有被取消 ——
+  // 十分钟后它恢复过来照样能调 api.registerTool,而这份 state 已经不在
+  // pluginStates 里,disposeAll() 永远摸不到它:那个工具就是个永久孤儿。
+  // 置位后所有注册入口 no-op,并按插件归因 warn 一次。
+  const state: CorePluginAPIState<TApi, TCommand> = {
+    api: undefined as unknown as TApi,
+    unsubs,
+    commands,
+    toolIds,
+    skillRootUnsubs,
+    promptContextUnsubs,
+    lifecycleUnsubs,
+    disposeCallbacks,
+    disposed: false,
+  }
+  let lateWarned = false
+  const rejectLateCall = (what: string): boolean => {
+    if (!state.disposed) return false
+    if (!lateWarned) {
+      lateWarned = true
+      logger.error(
+        `[Plugin:${pluginId}] Ignoring "${what}" after dispose — the plugin resumed past its teardown `
+        + '(entry timeout or a late async callback). Further late calls are silently dropped.',
+        undefined,
+      )
+    }
+    return true
+  }
+
   const api = {
     id: pluginId,
 
     registerTool(tool: TTool): void {
+      if (rejectLateCall('registerTool')) return
       const toolId = `plugin:${pluginId}:${tool.name}`
       try {
         host.registerTool(pluginId, toolId, tool)
@@ -161,15 +201,23 @@ export function createCorePluginAPI<
     },
 
     on(eventType: string, handler: TEventHandler): () => void {
+      if (rejectLateCall('on')) return () => {}
+      const scope = `event:${eventType}`
       const onHandlerError = (error: unknown): void => {
         logger.error(`[Plugin:${pluginId}] Event handler error (${eventType}):`, error)
-        reportFailure(`event:${eventType}`, error)
+        reportFailure(scope, error)
       }
       const wrappedHandler = ((...args: unknown[]) => {
+        if (state.disposed) {
+          // 拆除之后到达的事件不再进插件 —— 见 CorePluginAPIState.disposed。
+          return
+        }
         try {
           const result = handler(...args)
           if (result instanceof Promise) {
-            result.catch(onHandlerError)
+            result.then(() => reportSuccess(scope), onHandlerError)
+          } else {
+            reportSuccess(scope)
           }
         } catch (error) {
           onHandlerError(error)
@@ -182,6 +230,7 @@ export function createCorePluginAPI<
     },
 
     steer(sessionId: string, content: string): void {
+      if (rejectLateCall('steer')) return
       try {
         host.steer(pluginId, sessionId, content)
       } catch (error) {
@@ -191,6 +240,7 @@ export function createCorePluginAPI<
     },
 
     followUp(sessionId: string, content: string): void {
+      if (rejectLateCall('followUp')) return
       try {
         host.followUp(pluginId, sessionId, content)
       } catch (error) {
@@ -200,30 +250,35 @@ export function createCorePluginAPI<
     },
 
     registerCommand(name: string, options: TCommandOptions): void {
+      if (rejectLateCall('registerCommand')) return
       const fullName = name.startsWith('/') ? name : `/${name}`
       commands.set(fullName, { name: fullName, ...options } as unknown as TCommand)
       logger.log(`[Plugin:${pluginId}] Registered command: ${fullName}`)
     },
 
     registerPromptContextProvider(id: string, provider: TPromptContextProvider): void {
+      if (rejectLateCall('registerPromptContextProvider')) return
       const unsub = host.registerPromptContextProvider(pluginId, id, provider)
       promptContextUnsubs.push(unsub)
       logger.log(`[Plugin:${pluginId}] Registered prompt context provider: ${id}`)
     },
 
     beforeContextCompact(id: string, hook: TBeforeContextCompactHook): void {
+      if (rejectLateCall('beforeContextCompact')) return
       const unsub = host.registerBeforeContextCompactHook(pluginId, id, hook)
       lifecycleUnsubs.push(unsub)
       logger.log(`[Plugin:${pluginId}] Registered beforeContextCompact hook: ${id}`)
     },
 
     afterAssistantResponse(id: string, hook: TAfterAssistantResponseHook): void {
+      if (rejectLateCall('afterAssistantResponse')) return
       const unsub = host.registerAfterAssistantResponseHook(pluginId, id, hook)
       lifecycleUnsubs.push(unsub)
       logger.log(`[Plugin:${pluginId}] Registered afterAssistantResponse hook: ${id}`)
     },
 
     registerSkillRoot(provider: TSkillRootProvider): void {
+      if (rejectLateCall('registerSkillRoot')) return
       const unsub = host.registerSkillRoot(pluginId, provider)
       skillRootUnsubs.push(unsub)
       Promise.resolve(host.invalidateSkillsCache?.()).catch(() => undefined)
@@ -231,6 +286,7 @@ export function createCorePluginAPI<
     },
 
     onDispose(callback: () => void): void {
+      if (rejectLateCall('onDispose')) return
       disposeCallbacks.push(callback)
     },
 
@@ -238,6 +294,7 @@ export function createCorePluginAPI<
     scheduler,
     ui: {
       notify(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
+        if (rejectLateCall('ui.notify')) return
         try {
           host.notify(pluginId, message, level)
         } catch (error) {
@@ -247,17 +304,6 @@ export function createCorePluginAPI<
     },
   } as unknown as TApi
 
-  return {
-    api,
-    state: {
-      api,
-      unsubs,
-      commands,
-      toolIds,
-      skillRootUnsubs,
-      promptContextUnsubs,
-      lifecycleUnsubs,
-      disposeCallbacks,
-    },
-  }
+  state.api = api
+  return { api, state }
 }

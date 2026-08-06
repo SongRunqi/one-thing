@@ -533,6 +533,19 @@ const electronAPI = {
 			ipcRenderer.removeListener(IPC_CHANNELS.PRACTICE_EVENT, listener);
 	},
 
+	onPluginNotification: (
+		callback: (payload: {
+			pluginId: string;
+			message: string;
+			level: "info" | "warn" | "error";
+		}) => void,
+	) => {
+		const listener = (_event: any, payload: any) => callback(payload);
+		ipcRenderer.on(IPC_CHANNELS.PLUGINS_NOTIFICATION, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_NOTIFICATION, listener);
+	},
+
 	// Project directories — independent module
 	projectDirsList: () => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_LIST),
 

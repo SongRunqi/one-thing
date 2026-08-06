@@ -9,10 +9,18 @@ import {
   type CorePluginManagerHost,
 } from '@onething/core/plugins'
 import { createPluginAPI, disposePlugin, type PluginState } from './api.js'
-import { scanPlugins, loadPluginEntry, ensurePluginDirs, setPluginEnabled } from './loader.js'
+import {
+  scanPlugins,
+  loadPluginEntry,
+  ensurePluginDirs,
+  loadPersistedPluginHealth,
+  persistPluginHealth,
+  setPluginEnabled,
+} from './loader.js'
 import {
   configurePluginHealthHost,
   getPluginRuntimeHealth,
+  restorePluginRuntimeHealth,
 } from './health.js'
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './types.js'
 
@@ -76,7 +84,11 @@ export class PluginManager extends CorePluginManager<
           level: 'error',
         })
       },
+      persistHealth: persistPluginHealth,
+      loadPersistedHealth: loadPersistedPluginHealth,
     })
+    // 回灌必须在扫描/加载之前:上一轮被熔断禁用的插件,这次启动要带着原因出现。
+    restorePluginRuntimeHealth()
 
     await super.initialize(context)
   }

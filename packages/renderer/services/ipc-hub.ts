@@ -19,6 +19,7 @@ import {
   isCollabPassMessage,
   isCollabThinkingMessage,
 } from '@onething/runtime/collab'
+import { toast } from '@/composables/useToast'
 import { shouldNotifyInbound, summarizeNotificationBody } from './notify-inbound'
 import type { SessionEventEnvelope } from '@shared/events/index.js'
 
@@ -315,7 +316,22 @@ export function initializeIPCHub() {
     }
   })
 
-  console.log('[IPC Hub] Unified listeners registered (session:event + session:stream)')
+  // ── Plugin notifications (global, non-session) ─
+  //
+  // 同一条通道服务两件事:插件自己的 api.ui.notify,以及失败熔断自动禁用时的
+  // 告警。两者此前都发到零订阅者的全局总线上,用户什么也看不到。
+  platformApi.onPluginNotification?.((payload) => {
+    if (!payload?.message) return
+    if (payload.level === 'error') toast.error(payload.message)
+    else toast.info(payload.message)
+    // 设置页开着的话顺手刷新插件列表:自动禁用刚刚改了 enabled 与健康态,
+    // 不刷新的话卡片还停在 Active。
+    window.dispatchEvent(new CustomEvent('onething:plugins-changed', {
+      detail: { pluginId: payload.pluginId },
+    }))
+  })
+
+  console.log('[IPC Hub] Unified listeners registered (session:event + session:stream + plugin notifications)')
 }
 
 /**

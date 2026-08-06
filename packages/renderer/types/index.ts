@@ -1175,6 +1175,18 @@ export interface ElectronAPI {
 	practiceGetConfig: () => Promise<PracticeConfigResponse>;
 	practiceSetConfig: (request: PracticeSetConfigRequest) => Promise<PracticeConfigResponse>;
 	onPracticeEvent: (callback: (payload: PracticeEventPayload) => void) => () => void;
+
+	/**
+	 * 插件通知(api.ui.notify + 熔断自动禁用告警)。
+	 * 仅 Electron 桌面宿主真会推 —— 插件只在桌面执行(设计文档 §6 方案 A)。
+	 */
+	onPluginNotification: (
+		callback: (payload: {
+			pluginId: string;
+			message: string;
+			level: "info" | "warn" | "error";
+		}) => void,
+	) => () => void;
 	// Project directories — independent module
 	projectDirsList: () => Promise<ProjectDirsListResponse>;
 	projectDirsGet: (path: string) => Promise<ProjectDirsGetResponse>;

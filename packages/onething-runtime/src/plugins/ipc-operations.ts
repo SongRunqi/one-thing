@@ -100,11 +100,22 @@ export async function disableOnethingPluginForIpc<
   TCommandInfo extends OnethingPluginCommandLike,
   TCommand extends CorePluginCommandDefinition<CorePluginCommandContext>,
 >(
-  options: OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand> & { pluginId: string },
+  options: OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand> & {
+    pluginId: string
+    /**
+     * 手动停用的清账钩子。
+     *
+     * 熔断的自动禁用**不走这个入口**(它直接调 manager.disablePlugin),所以
+     * 这里天然只对"用户亲手关的"生效:清掉后端 tracker 与盘上的原因,否则
+     * 重开设置页红条照样复现。
+     */
+    onManualDisable?: (pluginId: string) => void
+  },
 ): Promise<ToggleOnethingPluginForIpcResult> {
   try {
     const manager = requireOnethingPluginManager(options.manager)
     await manager.disablePlugin(options.pluginId)
+    options.onManualDisable?.(options.pluginId)
     return { success: true }
   } catch (error) {
     return pluginIpcError(options.logger, `disable ${options.pluginId}`, error, 'Failed to disable plugin')

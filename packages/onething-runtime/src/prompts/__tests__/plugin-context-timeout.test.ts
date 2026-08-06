@@ -37,4 +37,20 @@ describe('collectPluginPromptContext timeout budget', () => {
     // 提示词装配确实返回了 —— 这才是"发消息不被插件钉死"的字面意思。
     expect(Date.now() - started).toBeLessThan(2_000)
   })
+
+  /**
+   * 成功也要上报,否则 promptContext 这条车道的连败计数只增不减:
+   * 一个偶发超时会跨天累加成误禁。
+   */
+  it('reports a success for every provider that returns', async () => {
+    const successes: string[] = []
+    registerPromptContextProvider('good-plugin', 'fast', () => 'fragment')
+    registerPromptContextProvider('quiet-plugin', 'empty', () => null)
+
+    await collectPluginPromptContext({ hasTools: true, skills: [] }, {
+      onProviderSuccess: success => successes.push(`${success.pluginId}/${success.providerId}`),
+    })
+
+    expect(successes).toEqual(['good-plugin/fast', 'quiet-plugin/empty'])
+  })
 })

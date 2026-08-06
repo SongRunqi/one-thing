@@ -3,6 +3,7 @@ import os from 'os'
 import path from 'path'
 import type {
   CorePluginDefinition,
+  PersistedPluginHealth,
   PluginManifest,
   PluginSettings,
   PluginSource,
@@ -96,6 +97,35 @@ export function setPluginEnabledInSettings(
       [pluginId]: enabled,
     },
   }
+}
+
+export function getPluginHealthFromSettings(
+  settings: PluginSettings,
+  pluginId: string,
+): PersistedPluginHealth | undefined {
+  return settings.health?.[pluginId]
+}
+
+export function listPluginHealthFromSettings(
+  settings: PluginSettings,
+): Array<{ pluginId: string; health: PersistedPluginHealth }> {
+  return Object.entries(settings.health ?? {}).map(([pluginId, health]) => ({ pluginId, health }))
+}
+
+export function setPluginHealthInSettings(
+  settings: PluginSettings,
+  pluginId: string,
+  health: PersistedPluginHealth | null,
+): PluginSettings {
+  const next = { ...settings.health }
+  if (health) next[pluginId] = health
+  else delete next[pluginId]
+
+  if (Object.keys(next).length === 0) {
+    const { health: _dropped, ...rest } = settings
+    return rest
+  }
+  return { ...settings, health: next }
 }
 
 export interface CorePluginSettingsStorageAdapters {

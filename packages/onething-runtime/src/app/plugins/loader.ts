@@ -17,12 +17,15 @@ import {
   getCorePluginsDir,
   getPluginEnabledWithAdapters,
   installCorePluginDependenciesAsync,
+  listPluginHealthFromSettings,
   loadCorePluginEntry,
   readPluginSettingsFile,
   scanCorePlugins,
   setPluginEnabledWithAdapters,
+  setPluginHealthInSettings,
   writePluginSettingsFile,
 } from '@onething/core/plugins'
+import type { PersistedPluginHealth } from '@onething/core/plugins'
 import {
   clearPluginRuntimeHealth,
   markPluginInstalling,
@@ -54,6 +57,15 @@ export function getPluginEnabled(pluginId: string, fallback = true): boolean {
   return getPluginEnabledWithAdapters(pluginId, fallback, {
     readSettings: readPluginSettings,
   })
+}
+
+/** 把"为什么被禁"写进 plugin-settings(与 enabled 位同一个文件,同生共死)。 */
+export function persistPluginHealth(pluginId: string, health: PersistedPluginHealth | null): void {
+  writePluginSettings(setPluginHealthInSettings(readPluginSettings(), pluginId, health))
+}
+
+export function loadPersistedPluginHealth(): Array<{ pluginId: string; health: PersistedPluginHealth }> {
+  return listPluginHealthFromSettings(readPluginSettings())
 }
 
 export function setPluginEnabled(pluginId: string, enabled: boolean): void {
@@ -101,6 +113,22 @@ export function scanPlugins(): PluginDefinition[] {
 export const PLUGIN_NPM_INSTALL_TIMEOUT_MS = 120_000
 
 /**
+ * Windows 上 `npm` 是 npm.cmd,而 spawn 不过 shell —— 直接 spawn('npm') 必 ENOENT。
+ * 原来的 execSync 之所以能跑,是因为它走 shell 解析。仓库里其他 spawn 点
+ * (tools/bash-executor.ts)也都带这条 win32 分支。
+ */
+const NPM_BIN = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+
+/**
+ * 同一个插件目录的安装只跑一次。
+ *
+ * 安装窗口最长 120s,期间来第二次 refresh 就会对同一目录并发跑 npm install
+ * (两个 npm 抢同一棵 node_modules,坏掉的方式很难看)。按 dirPath 复用在飞的
+ * 那一次。
+ */
+const inFlightInstalls = new Map<string, Promise<string | null>>()
+
+/**
  * Run `npm install` in the plugin directory — **异步**。
  *
  * 之前是 execSync(timeout 120s):一个带 package.json 的新插件能把整个主进程
@@ -108,13 +136,19 @@ export const PLUGIN_NPM_INSTALL_TIMEOUT_MS = 120_000
  * installing(设置页可见)。
  */
 export function installPluginDeps(dirPath: string, pluginId?: string): Promise<string | null> {
-  return installCorePluginDependenciesAsync(dirPath, {
+  const running = inFlightInstalls.get(dirPath)
+  if (running) return running
+
+  const install = installCorePluginDependenciesAsync(dirPath, {
     exists: pathExists,
     runInstall(pluginDir) {
       return new Promise<void>((resolve, reject) => {
-        const child = spawn('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], {
+        const child = spawn(NPM_BIN, ['install', '--no-audit', '--no-fund', '--loglevel=error'], {
           cwd: pluginDir,
-          stdio: ['ignore', 'pipe', 'pipe'],
+          // stdout 没有消费者:留成 'pipe' 的话,一个话多的 postinstall 写满
+          // 64KB 管道缓冲就会把 npm 自己阻塞住,最后被 120s SIGKILL 误判成超时。
+          // stderr 要留着做失败原因,所以它必须被读走(下面的 'data' 监听)。
+          stdio: ['ignore', 'ignore', 'pipe'],
         })
         let stderr = ''
         let settled = false
@@ -126,7 +160,8 @@ export function installPluginDeps(dirPath: string, pluginId?: string): Promise<s
         timer.unref?.()
 
         child.stderr?.on('data', chunk => {
-          stderr += String(chunk)
+          // 只留尾部:失败原因在末尾,而无上限的累加本身就是一个内存洞。
+          stderr = (stderr + String(chunk)).slice(-8_000)
         })
         child.on('error', error => {
           if (settled) return
@@ -150,9 +185,14 @@ export function installPluginDeps(dirPath: string, pluginId?: string): Promise<s
     onInstallEnd(_dirPath, error) {
       if (!pluginId) return
       if (error) markPluginLoadError(pluginId, 'npm-install', error)
-      else reportPluginRuntimeSuccess(pluginId)
+      else reportPluginRuntimeSuccess(pluginId, 'npm-install')
     },
+  }).finally(() => {
+    inFlightInstalls.delete(dirPath)
   })
+
+  inFlightInstalls.set(dirPath, install)
+  return install
 }
 
 /** Load a plugin's entry module dynamically */

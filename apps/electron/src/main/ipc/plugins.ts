@@ -21,6 +21,7 @@ import {
 import type { GatewayCommandProvider } from '@onething/gateway'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getPluginManager } from '@onething/app/plugins/index.js'
+import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
 import { getEventBus } from '@onething/app/events/index.js'
 import * as store from '@onething/app/store.js'
 
@@ -114,6 +115,8 @@ export function registerPluginHandlers(): void {
         manager: getPluginManager(),
         pluginId: request.pluginId,
         logger: console,
+        // 用户亲手关的 = 清账。熔断的自动禁用不经过这条 IPC,所以两者天然分得开。
+        onManualDisable: clearPluginRuntimeHealth,
       })
     },
     refreshPlugins: () => {

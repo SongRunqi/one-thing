@@ -7,6 +7,15 @@ export interface CorePluginAPIState<TApi = unknown, TCommand = unknown> {
   promptContextUnsubs: Array<() => void>
   lifecycleUnsubs: Array<() => void>
   disposeCallbacks: Array<() => void>
+  /**
+   * 晚到注册闸(由 disposeCorePluginState 置位)。
+   *
+   * dispose 只是把已注册的东西撤掉,它管不住"之后还来注册"。entry 超时被拆掉
+   * 的插件恢复过来再调 api.registerTool,注册会真的生效,而这份 state 已经不在
+   * pluginStates 里 —— 那个工具从此没有任何人能回收。置位后 api 的全部注册入口
+   * no-op。
+   */
+  disposed?: boolean
 }
 
 export interface DisposeCorePluginStateOptions {
@@ -31,6 +40,9 @@ export function disposeCorePluginState<TApi, TCommand>(
   state: CorePluginAPIState<TApi, TCommand>,
   options: DisposeCorePluginStateOptions = {},
 ): void {
+  // 闩先落:dispose 过程中(以及此后任何时刻)插件再来注册一律 no-op。
+  state.disposed = true
+
   drainCallbacks(state.disposeCallbacks)
 
   for (const toolId of state.toolIds.splice(0)) {

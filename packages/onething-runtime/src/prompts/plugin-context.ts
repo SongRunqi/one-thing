@@ -63,10 +63,21 @@ export interface OnethingPluginPromptContextFailure {
   timedOut: boolean
 }
 
+export interface OnethingPluginPromptContextSuccess {
+  pluginId: string
+  providerId: string
+}
+
 export interface CollectOnethingPluginPromptContextOptions {
   onProviderError?: (providerRef: string, error: unknown) => void
-  /** 结构化失败上报 —— 失败计数熔断要按 pluginId 记账。 */
+  /** 结构化失败上报 —— 失败计数熔断按 pluginId + scope 记账。 */
   onProviderFailure?: (failure: OnethingPluginPromptContextFailure) => void
+  /**
+   * 成功上报 —— 没有它,promptContext 这条车道的连败计数永远清不掉,
+   * 一个偶发超时会跨天累加成误禁。必须是零 IO 的纯内存回调(它在每次发消息的
+   * 热路径上,每个 provider 各调一次)。
+   */
+  onProviderSuccess?: (success: OnethingPluginPromptContextSuccess) => void
   /** 每个 provider 的超时预算;<=0 关闭(仅测试用)。 */
   timeoutMs?: number
 }
@@ -139,6 +150,7 @@ export async function collectPluginPromptContext(
           content: entry.content,
         })
       }
+      options.onProviderSuccess?.({ pluginId: item.pluginId, providerId: item.providerId })
     } catch (error) {
       options.onProviderError?.(`${item.pluginId}/${item.providerId}`, error)
       options.onProviderFailure?.({

@@ -166,7 +166,7 @@
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import Switch from '@/components/common/Switch.vue'
-import { ref, onMounted } from 'vue'
+import { ref, onBeforeUnmount, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 
@@ -240,14 +240,10 @@ async function togglePlugin(plugin: PluginInfo) {
     if (wasEnabled) {
       const result = await platformApi.disablePlugin(plugin.id)
       if (result?.success) {
-        plugin.enabled = false
-        plugin.loaded = false
-        plugin.commands = []
-        plugin.error = ''
-        // 手动停用后不该继续挂着上一次的运行期红态。
-        plugin.healthStatus = 'healthy'
-        plugin.healthFailures = 0
-        plugin.healthReason = ''
+        // 手动停用的清账在后端(disableOnethingPluginForIpc 清 tracker)——
+        // 在 renderer 本地抹一遍只是让这一屏好看,重开设置页红条照样复现。
+        // 重新拉一次列表,拿后端的事实。
+        await loadPlugins()
         emit('plugins-changed')
       } else {
         console.error('Failed to disable plugin:', result?.error)
@@ -281,8 +277,19 @@ async function refreshPlugins() {
   emit('plugins-changed')
 }
 
+// 熔断自动禁用发生在后台(没有用户操作),设置页必须被推着刷新,否则卡片
+// 会一直停在 Active —— "运行期错误不可见"正是 R1 要治的病。
+function handlePluginsChanged(): void {
+  void loadPlugins()
+}
+
 onMounted(() => {
   loadPlugins()
+  window.addEventListener('onething:plugins-changed', handlePluginsChanged)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('onething:plugins-changed', handlePluginsChanged)
 })
 </script>
 
