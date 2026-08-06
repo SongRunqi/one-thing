@@ -115,6 +115,23 @@ describe('IPC hub → plugin status reaches the message', () => {
     expect(currentParts(store).some((part: any) => part.type === 'plugin-status')).toBe(true)
   })
 
+  it('does not resurrect on the next message when there was no stream', async () => {
+    // docblock 承诺的另一半:没有流时那条 content:part 解析不出 messageId,
+    // 会落进待发队列 —— 而队列会在**下一次** stream:start 时 flush 到一条毫不
+    // 相干的新消息上(几小时后诈尸)。R7 之后 core 侧的 show 已经拒绝这种调用,
+    // 但渲染侧的行为仍要单独钉住:即便有人绕开账本直接发,也不能诈尸。
+    const { store } = await setup()
+
+    // 没有 stream:start —— 直接来一条状态。
+    sessionEvent?.({ sessionId: SESSION, event: { type: 'content:part', part: statusPart() } })
+
+    // 现在开一条**全新的**流(另一条消息)。
+    startStream('m2')
+
+    const parts = currentParts(store)
+    expect(parts.some((part: any) => part.type === 'plugin-status'), 'a stale status must not attach to a new message').toBe(false)
+  })
+
   it('hides a cleared cell without shifting the parts around it', async () => {
     const { store } = await setup()
     startStream()

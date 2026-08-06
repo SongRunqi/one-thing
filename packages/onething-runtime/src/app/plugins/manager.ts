@@ -180,11 +180,20 @@ export class PluginManager extends CorePluginManager<
    *
    * 不解绑的话,重启插件系统会叠加一个拦截器,而旧那个还指着上一次的 EventBus ——
    * 每次重启多一份空转,dev 热重载下可观察。
+   *
+   * 由 `shutdown()` 调用。**不留没有调用者的契约**:上一版的 docstring 写着
+   * "shutdown 必须调用它"却没人调,真正防重入的是 initialize 里那次
+   * `unsubscribeStatusSweep?.()` —— 一句自己不兑现的承诺比没有承诺更坏。
    */
   detachHostSubscriptions(): void {
     this.unsubscribeStatusSweep?.()
     this.unsubscribeStatusSweep = undefined
     this.eventBus = null
+  }
+
+  override shutdown(): void {
+    super.shutdown()
+    this.detachHostSubscriptions()
   }
 
   async refreshPlugins(): Promise<void> {

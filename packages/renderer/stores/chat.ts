@@ -1317,6 +1317,16 @@ export const useChatStore = defineStore("chat", () => {
 		const messages = getSessionMessagesRef(sessionId);
 		const resolvedMsgId = resolveMessageId(sessionId, chunk.messageId);
 		if (!resolvedMsgId) {
+			// 插件状态**只在流内有意义**,排队等于给它安排一次诈尸:待发队列会在
+			// 下一次 stream:start 时 flush 到一条毫不相干的新消息上,而那时插件
+			// 早就不在做那件事了。宿主账本已经在源头拒绝这种调用(R7),这里是
+			// 渲染侧的第二道 —— 绕开账本直接发也不会留下幽灵。
+			if (
+				chunk.type === "content_part" &&
+				chunk.contentPart?.type === "plugin-status"
+			) {
+				return;
+			}
 			queuePendingStreamChunk(sessionId, "", chunk);
 			return;
 		}

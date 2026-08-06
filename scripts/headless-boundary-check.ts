@@ -2780,10 +2780,21 @@ const CORE_TOOL_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
 
 interface WalkFilesOptions {
   includeTests?: boolean
+  /**
+   * 覆盖默认的扩展名集合。
+   *
+   * 默认集合是**所有既有守卫**共用的,别去动它 —— 那会悄悄改掉每一条规则的
+   * 扫描面。需要更宽的面时传这个参数(控制字符守卫就要看 .vue:SFC 里的裸 NUL
+   * 同样让 git 判二进制、同样不可审)。
+   */
+  extensions?: RegExp
 }
+
+const DEFAULT_WALK_EXTENSIONS = /\.(ts|tsx|js|mjs|cjs|json)$/
 
 function walkFiles(dir: string, output: string[] = [], options: WalkFilesOptions = {}): string[] {
   if (!fs.existsSync(dir)) return output
+  const extensions = options.extensions ?? DEFAULT_WALK_EXTENSIONS
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if ((!options.includeTests && entry.name === '__tests__')
       || entry.name === 'node_modules'
@@ -2791,7 +2802,7 @@ function walkFiles(dir: string, output: string[] = [], options: WalkFilesOptions
     const fullPath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
       walkFiles(fullPath, output, options)
-    } else if (/\.(ts|tsx|js|mjs|cjs|json)$/.test(entry.name)) {
+    } else if (extensions.test(entry.name)) {
       output.push(fullPath)
     }
   }
@@ -9593,8 +9604,11 @@ function checkCoreKnowsNoConcreteFeatures(): void {
 function checkNoRawControlCharacters(): void {
   const offenders: string[] = []
   const roots = ['packages', 'apps', 'scripts']
+  // 扩展名比默认集合宽:.vue 的 SFC、.css、.md 里的裸控制字符同样让 git 判
+  // 二进制、同样不可审。任何进 git 的文本文件都适用同一条规则。
+  const walkOptions = { includeTests: true, extensions: /\.(ts|tsx|js|mjs|cjs|json|vue|css|md)$/ }
   for (const dirName of roots) {
-    for (const filePath of walkFiles(path.join(root, dirName), [], { includeTests: true })) {
+    for (const filePath of walkFiles(path.join(root, dirName), [], walkOptions)) {
       const buffer = fs.readFileSync(filePath)
       for (let i = 0; i < buffer.length; i += 1) {
         const byte = buffer[i]

@@ -306,6 +306,67 @@ describe('R6 status — 装配层接线', () => {
     expect(module.getPluginStatusRegistry().size()).toBe(0)
   })
 
+  it('schedules a trailing flush so a merged burst still delivers its final label', async () => {
+    // 被测过的是 core 的 flushPending();**把它排上时间轴**的那段(220ms 定时器)
+    // 此前零用例 —— 与 R5 panel-refresh 同一个位置的教训:合并窗的价值全在
+    // trailing 那一半,而那一半最容易写漏。
+    vi.useFakeTimers()
+    try {
+      const { module, emitted } = await loadStatus()
+      const registry = module.getPluginStatusRegistry()
+
+      // 第一条直接过线(leading)。
+      const first = registry.show({ pluginId: 'p', sessionId: 's', id: 'x', label: '1/40' })
+      expect(first).not.toBeNull()
+      module.emitPluginStatusPart('s', first!)
+      emitted.length = 0
+
+      // 窗口内连发:core 压住,只更账。
+      for (const label of ['2/40', '3/40', '4/40']) {
+        expect(registry.show({ pluginId: 'p', sessionId: 's', id: 'x', label })).toBeNull()
+        module.notePluginStatusPending()
+      }
+      expect(emitted).toHaveLength(0)
+
+      // 定时器到点 → 补发**最后一条**。
+      await vi.advanceTimersByTimeAsync(300)
+      expect(emitted).toHaveLength(1)
+      expect(emitted[0].event.part).toMatchObject({ id: 'x', label: '4/40' })
+
+      // 没有新变化时不该无限自排。
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(emitted).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels a pending trailing flush when the stream ends', async () => {
+    // 终止事件之后再补一条状态,等于在一条已经收尾的消息上重新点亮。
+    vi.useFakeTimers()
+    try {
+      const { module, emitted } = await loadStatus()
+      const registry = module.getPluginStatusRegistry()
+      const interceptors: Array<(event: any, sessionId: string) => Promise<any>> = []
+      module.subscribePluginStatusSweep({ intercept: (handler: any) => { interceptors.push(handler); return () => {} } })
+
+      const first = registry.show({ pluginId: 'p', sessionId: 's', id: 'x', label: '1/40' })
+      module.emitPluginStatusPart('s', first!)
+      registry.show({ pluginId: 'p', sessionId: 's', id: 'x', label: '2/40' })
+      module.notePluginStatusPending()
+      emitted.length = 0
+
+      for (const intercept of interceptors) await intercept({ type: 'stream:complete' }, 's')
+      await vi.advanceTimersByTimeAsync(1000)
+
+      // 只该有清扫发出的那条 cleared,没有迟到的 2/40。
+      expect(emitted).toHaveLength(1)
+      expect(emitted[0].event.part).toMatchObject({ cleared: true })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('unsubscribes everything on detach so a restart does not stack interceptors', async () => {
     const { module } = await loadStatus()
     let interceptorCount = 0
