@@ -8,6 +8,7 @@ import {
   type CorePluginPanelContext,
   type CorePluginPanelRegistration,
 } from './panel.js'
+import type { CorePluginStatusPart, CorePluginStatusRegistry } from './status.js'
 import {
   assertPluginPayloadSerializable,
   normalizePluginRequestAction,
@@ -51,6 +52,12 @@ export interface CorePluginAPIHost<
   /** 面板主动刷新的投递口(R5)——走既有的 plugin:notification 轨。 */
   emitPanelRefresh?(pluginId: string, panelId: string): void
   /**
+   * 流状态的投递口(R6)——走既有的 `content:part` 会话事件。
+   *
+   * 宿主负责把它接到会话总线上;core 只管账与清扫语义。
+   */
+  emitPluginStatus?(pluginId: string, sessionId: string, part: CorePluginStatusPart): void
+  /**
    * 插件自有配置的访问面(R3)。
    *
    * 宿主全权管理存储与校验;插件只读快照 —— 没有 registerSettings,
@@ -83,6 +90,11 @@ export interface CreateCorePluginAPIOptions<
    * registerWorkspacePanel 拿它做匹配 —— 声明先于代码,清单是权威。
    */
   declaredPanelIds?: string[]
+  /**
+   * 状态账本(R6)。宿主注入**同一个实例**给所有插件 —— 清扫按会话进行,
+   * 每插件一本账就扫不干净。不注入时 api.status 是安静的 no-op(headless)。
+   */
+  statusRegistry?: CorePluginStatusRegistry
   scheduler: TScheduler
   disposeCallbacks?: Array<() => void>
   host: CorePluginAPIHost<
@@ -559,6 +571,39 @@ export function createCorePluginAPI<
       },
     },
     scheduler,
+    /**
+     * 流状态(R6)。
+     *
+     * 纳入 disposed 闩:插件被拆除之后再 show 一条状态,等于在一个没人再会来
+     * 清扫的账上挂东西 —— 停用之后气泡里多出一个永远转圈的指示器,而它的主人
+     * 已经不在了。
+     */
+    status: {
+      show(sessionId: string, status: { id: string; label: string }): void {
+        if (rejectLateCall('status.show')) return
+        const registry = options.statusRegistry
+        if (!registry) return
+        const part = registry.show({
+          pluginId,
+          sessionId: String(sessionId ?? ''),
+          id: String(status?.id ?? ''),
+          label: String(status?.label ?? ''),
+        })
+        // 输入不合法或超限:registry 返回 null 而不抛 —— 一个写错 label 的插件
+        // 不该让它正在跑的那次调用失败。
+        if (!part) return
+        host.emitPluginStatus?.(pluginId, String(sessionId), part)
+      },
+      clear(sessionId: string, id: string): void {
+        if (rejectLateCall('status.clear')) return
+        const registry = options.statusRegistry
+        if (!registry) return
+        const part = registry.clear({ pluginId, sessionId: String(sessionId ?? ''), id: String(id ?? '') })
+        if (!part) return
+        host.emitPluginStatus?.(pluginId, String(sessionId), part)
+      },
+    },
+
     ui: {
       notify(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
         if (rejectLateCall('ui.notify')) return

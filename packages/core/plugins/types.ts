@@ -203,6 +203,20 @@ export interface MinimalCorePluginUI {
   notify(message: string, level?: 'info' | 'warn' | 'error'): void
 }
 
+/**
+ * 流状态面(R6)。
+ *
+ * 插件唯一一处**出现在对话流里**的界面:一行"我正在做什么"。
+ * 生命周期由宿主兜底 —— 忘了 clear、中途抛错、被熔断,状态都会在流结束时被
+ * 强制扫掉,不会在用户的对话里永远转圈。
+ */
+export interface CorePluginStatusAPI {
+  /** 挂起一条状态;同一个 id 再来一次是**更新 label**,不是再堆一条。 */
+  show(sessionId: string, status: { id: string; label: string }): void
+  /** 撤下一条。插件正常路径应当自己调,但不调也不会留下残留。 */
+  clear(sessionId: string, id: string): void
+}
+
 export interface CorePluginAPI<
   TTool,
   TEventHandler,
@@ -217,6 +231,7 @@ export interface CorePluginAPI<
   TRequestHandler = CorePluginRequestHandler,
   TStorage = CorePluginStorage,
   TPanelRegistration = CorePluginPanelRegistration,
+  TStatus = CorePluginStatusAPI,
 > {
   readonly id: string
   registerTool(tool: TTool): void
@@ -281,6 +296,17 @@ export interface CorePluginAPI<
   storage: TStorage
   scheduler: TScheduler
   ui: TUI
+  /**
+   * 流状态(R6):在会话气泡里说一句"我正在做什么"。
+   *
+   * 投递走既有的 `content:part` 会话事件,所以 desktop(IPCBridge)与
+   * web(SSE)都是免费的 —— 没有为它新开轨道。
+   *
+   * **网关是有意的降级面**:微信/Telegram 这类纯文本渠道不消费 ContentPart,
+   * 于是插件状态在那里静默丢失。这是设计选择而不是缺陷 —— 把一行转圈状态翻译成
+   * 一条 IM 消息,得到的是刷屏,而状态的价值恰恰在于它会消失。
+   */
+  status: TStatus
 }
 
 export type CorePluginEntry<TAPI> = (api: TAPI) => void | Promise<void>

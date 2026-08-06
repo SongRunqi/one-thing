@@ -17,7 +17,9 @@ process.env.ONETHING_STORE_PATH = storeRoot
 afterAll(async () => {
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
-  await new Promise(resolve => setTimeout(resolve, 50))
+  // 等在飞的收尾写入落完再删目录。等"宏任务队列排空"这件确定的事,
+  // 而不是 `setTimeout(50)` 猜一个时长 —— 负载下 50ms 不够就会变成偶发红。
+  for (let i = 0; i < 5; i += 1) await new Promise(resolve => setImmediate(resolve))
   fs.rmSync(storeRoot, { recursive: true, force: true })
 })
 

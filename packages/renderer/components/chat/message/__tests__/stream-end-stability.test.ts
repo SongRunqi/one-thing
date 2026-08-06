@@ -666,6 +666,43 @@ describe('stream end visual stability', () => {
     expect(skeleton.attributes('aria-label')).toBe('Generating image')
   })
 
+  it('renders a plugin status line with its label and owner (R6)', async () => {
+    const wrapper = mount(MessageBubble, {
+      props: {
+        role: 'assistant',
+        content: '',
+        contentParts: [{ type: 'plugin-status', pluginId: 'log-monitor', id: 'scan', label: 'Scanning 3/40' }],
+        isStreaming: true,
+      },
+      global: { stubs: markdownStubs },
+    })
+
+    const line = wrapper.find('.plugin-status-line')
+    expect(line.exists()).toBe(true)
+    expect(line.attributes('role')).toBe('status')
+    expect(line.text()).toContain('Scanning 3/40')
+    // 归属可见:用户要能看出这行字是谁在说。
+    expect(line.text()).toContain('log-monitor')
+  })
+
+  it('renders two plugin statuses as separate cells (R6)', async () => {
+    const wrapper = mount(MessageBubble, {
+      props: {
+        role: 'assistant',
+        content: '',
+        contentParts: [
+          { type: 'plugin-status', pluginId: 'a', id: 'x', label: 'A working' },
+          { type: 'plugin-status', pluginId: 'b', id: 'x', label: 'B working' },
+        ],
+        isStreaming: true,
+      },
+      global: { stubs: markdownStubs },
+    })
+
+    // key 按 (pluginId, id) —— 两个插件用同一个 id 不能互相顶掉。
+    expect(wrapper.findAll('.plugin-status-line')).toHaveLength(2)
+  })
+
   it('renders generation waiting after data steps', async () => {
     const wrapper = mount(MessageBubble, {
       props: {

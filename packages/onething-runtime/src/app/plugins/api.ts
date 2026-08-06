@@ -14,6 +14,11 @@ import { z } from 'zod'
 import { PluginStore, createPluginStorage } from './store.js'
 import { getDeclaredPanelIds } from './loader.js'
 import {
+  emitPluginStatusPart,
+  getPluginStatusRegistry,
+  sweepPluginStatusForPlugin,
+} from './status.js'
+import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
 } from './health.js'
@@ -90,15 +95,38 @@ const KNOWN_SESSION_EVENT_HINT = /^[a-z][\w-]*:[\w:-]+$/i
  * 200ms 之外的两次刷新,用户会觉得那是两件事。
  */
 const PANEL_REFRESH_DEDUPE_MS = 200
-const lastPanelRefreshAt = new Map<string, number>()
 
-function shouldEmitPanelRefresh(pluginId: string, panelId: string): boolean {
+interface PanelRefreshWindow {
+  timer: ReturnType<typeof setTimeout>
+  /** 窗口期内是否又来过 —— 决定窗口关闭时要不要补发。 */
+  pending: boolean
+}
+const panelRefreshWindows = new Map<string, PanelRefreshWindow>()
+
+/**
+ * 合并式去重(leading + trailing),不是单纯的 leading-edge 丢弃。
+ *
+ * 只丢弃的话,"连发 N 条,最后一条落在窗口内"会把**最后一条**丢掉 —— 而最后
+ * 一条恰恰对应最终状态。之前这个洞被 renderer 的 trailing debounce 掩盖着,
+ * 但那是另一层的巧合:换一个消费者(或 renderer 改了策略)就会漏刷新。
+ * 现在窗口关闭时若期间有过调用,补发一条。
+ */
+function requestPanelRefresh(pluginId: string, panelId: string, emit: () => void): void {
   const key = `${pluginId}::${panelId}`
-  const now = Date.now()
-  const previous = lastPanelRefreshAt.get(key)
-  if (previous !== undefined && now - previous < PANEL_REFRESH_DEDUPE_MS) return false
-  lastPanelRefreshAt.set(key, now)
-  return true
+  const window = panelRefreshWindows.get(key)
+  if (window) {
+    window.pending = true
+    return
+  }
+  emit()
+  const timer = setTimeout(() => {
+    const current = panelRefreshWindows.get(key)
+    panelRefreshWindows.delete(key)
+    if (current?.pending) requestPanelRefresh(pluginId, panelId, emit)
+  }, PANEL_REFRESH_DEDUPE_MS)
+  // 这个定时器不该拖住进程退出。
+  ;(timer as unknown as { unref?: () => void }).unref?.()
+  panelRefreshWindows.set(key, { timer, pending: false })
 }
 
 export interface CreatePluginAPIOptions {
@@ -147,6 +175,8 @@ export function createPluginAPI(
     storage: createPluginStorage(pluginId),
     // 声明先于代码:面板注册要跟 manifest 对得上,清单是权威。
     declaredPanelIds: options?.declaredPanelIds ?? getDeclaredPanelIds(pluginId),
+    // 全进程一本账(R6):清扫按会话进行,每插件一本就扫不干净。
+    statusRegistry: getPluginStatusRegistry(),
     scheduler: pluginScheduler,
     disposeCallbacks: schedulerDisposeCallbacks,
     onPluginFailure({ pluginId: id, scope, error }) {
@@ -202,18 +232,22 @@ export function createPluginAPI(
         )
       },
       emitPanelRefresh(id, panelId) {
-        // 短窗去重:插件在一次文件扫描里对每个变化的文件调一次 refresh 是完全
+        // 短窗合流:插件在一次文件扫描里对每个变化的文件调一次 refresh 是完全
         // 合理的写法,但那是 N 条一模一样的信号。同一 pluginId+panelId 在窗口内
-        // 只放行第一条 —— 后面的都会让 renderer 拉出同一棵树。
-        if (!shouldEmitPanelRefresh(id, panelId)) return
-        eventBus.emitGlobal({
-          type: 'plugin:notification',
-          pluginId: id,
-          message: `plugin-panel-refresh:${id}:${panelId}`,
-          level: 'info',
-          kind: 'panel-refresh',
-          panelId,
+        // 只发一条,窗口结束时若期间还来过则补发一条(见 requestPanelRefresh)。
+        requestPanelRefresh(id, panelId, () => {
+          eventBus.emitGlobal({
+            type: 'plugin:notification',
+            pluginId: id,
+            message: `plugin-panel-refresh:${id}:${panelId}`,
+            level: 'info',
+            kind: 'panel-refresh',
+            panelId,
+          })
         })
+      },
+      emitPluginStatus(_id, sessionId, part) {
+        emitPluginStatusPart(sessionId, part)
       },
       emitPluginEvent(id, eventName, payload) {
         // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast
@@ -261,4 +295,9 @@ export function disposePlugin(state: PluginState): void {
   disposeCorePluginState(state, {
     unregisterTool: unregisterToolInRegistry,
   })
+  // R6:拆除的插件在**所有**会话里挂着的状态一起撤下。
+  // 只等流结束是不够的 —— 被熔断禁用的插件,它挂在别的会话上的状态没人再会来
+  // 清,而那些会话可能几小时后才结束。api 的 disposed 闩只挡住新的 show,
+  // 挡不住已经挂上去的。
+  if (state.api?.id) sweepPluginStatusForPlugin(state.api.id)
 }

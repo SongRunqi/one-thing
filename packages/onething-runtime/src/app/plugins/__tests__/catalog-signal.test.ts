@@ -18,9 +18,13 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-catalog
 const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
 
-afterAll(() => {
+afterAll(async () => {
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
+  // dispose 里那次收尾 flush 是异步的;删目录太早会撞出一条对着已删路径的
+  // unhandled ENOENT。让出几轮事件循环等它落完 —— 比 `setTimeout(100)` 诚实:
+  // 那是在猜时长,而这里等的是"宏任务队列排空"这件确定的事。
+  for (let i = 0; i < 5; i += 1) await new Promise(resolve => setImmediate(resolve))
   fs.rmSync(storeRoot, { recursive: true, force: true })
 })
 
@@ -43,7 +47,9 @@ function stubEventBus(sink: Emitted[]) {
 }
 
 describe('plugin catalog-changed signal', () => {
-  it('announces the catalog after bootstrap and on every enable/disable', async () => {
+  // 真装配一次插件系统(读盘 + 加载内置插件)在负载下会逼近 vitest 的 5s 默认超时。
+  // 给显式预算,免得 CI 上偶发红成为噪音。
+  it('announces the catalog after bootstrap and on every enable/disable', { timeout: 20_000 }, async () => {
     const { PluginManager } = await import('../manager.js')
     const emitted: Emitted[] = []
     const manager = new PluginManager()
@@ -80,9 +86,6 @@ describe('plugin catalog-changed signal', () => {
     for (const info of manager.getPlugins()) {
       await manager.disablePlugin(info.definition.id)
     }
-    // 让 dispose 里那次收尾 flush 真的落完再让 afterAll 删目录 —— 否则会看到
-    // 一条对着已删路径的 unhandled ENOENT(是竞态,不是缺陷)。
-    await new Promise(resolve => setTimeout(resolve, 100))
   })
 })
 

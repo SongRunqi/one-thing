@@ -31,6 +31,7 @@ import {
 	appendOrMergeText,
 	appendReasoningIfMissing,
 	appendToolCallPlaceholder,
+	applyPluginStatus,
 	popTrailingTransient,
 	pushImageLoading,
 	pushDataStepsIfMissing,
@@ -1454,6 +1455,11 @@ export const useChatStore = defineStore("chat", () => {
 			} else if (newPart.type === "reasoning") {
 				appendReasoningIfMissing(parts, newPart.content);
 				message.contentParts = [...parts];
+			} else if (newPart.type === "plugin-status") {
+				// 格子语义:同 (pluginId, id) 更新 label,cleared 则移除。
+				if (applyPluginStatus(parts, newPart)) {
+					message.contentParts = [...parts];
+				}
 			} else if (newPart.type === "image-loading") {
 				pushImageLoading(parts, newPart.turnIndex, newPart.label);
 				message.contentParts = [...parts];

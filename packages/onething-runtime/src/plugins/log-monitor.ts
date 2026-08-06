@@ -143,8 +143,59 @@ export function registerOnethingLogMonitorPlugin(
   })
 
   registerOnethingLogMonitorPanel(api, { logDir, readConfig, runtime })
+  registerOnethingLogMonitorStatusDemo(api, { logDir })
 
   return runtime
+}
+
+// ── 示范:流状态(R6 验收主体) ─────────────────
+//
+// 一次真的耗时操作(逐个文件统计日志目录)。插件只做两件事:开始时 show,
+// 结束时 clear —— 而**即使它不 clear**(抛错、超时、被熔断、被停用),宿主也会
+// 在流结束时把状态扫掉。正确性不建立在插件守规矩上,这是本期的全部要点。
+
+export interface OnethingLogMonitorStatusApi {
+  registerCommand(name: string, options: {
+    description: string
+    handler(args: string, ctx: { sessionId: string; notify(message: string, level?: string): void }): Promise<void>
+  }): void
+  status?: {
+    show(sessionId: string, status: { id: string; label: string }): void
+    clear(sessionId: string, id: string): void
+  }
+}
+
+export function registerOnethingLogMonitorStatusDemo(
+  api: OnethingLogMonitorStatusApi,
+  options: { logDir: string },
+): void {
+  if (typeof api.registerCommand !== 'function') return
+
+  api.registerCommand('/log-scan', {
+    description: 'Scan the log directory and report per-file sizes',
+    async handler(_args, ctx) {
+      const statusId = 'scan'
+      api.status?.show(ctx.sessionId, { id: statusId, label: 'Scanning log files…' })
+      try {
+        const names = fs.readdirSync(options.logDir).filter(name => CORE_LOG_MONITOR_LOG_FILE_PATTERN.test(name))
+        let total = 0
+        for (const [index, name] of names.entries()) {
+          // 同一个 id 反复 show 是**更新 label**,不是再堆一条 —— 进度汇报因此
+          // 天然安全,不会在气泡里堆出几百行。
+          api.status?.show(ctx.sessionId, { id: statusId, label: `Scanning ${index + 1}/${names.length}: ${name}` })
+          try {
+            total += fs.statSync(path.join(options.logDir, name)).size
+          } catch {
+            // 单个文件读不到不该中断整次扫描。
+          }
+        }
+        ctx.notify(`Scanned ${names.length} log file(s), ${(total / 1024).toFixed(1)} KB total.`)
+      } finally {
+        // 好公民路径。**不写这一行也不会留下残留** —— 宿主在流结束时强制清扫。
+        api.status?.clear(ctx.sessionId, statusId)
+      }
+    },
+  })
 }
 
 // ── 示范面板(R5 验收主体) ────────────────────

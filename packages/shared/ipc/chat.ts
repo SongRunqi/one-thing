@@ -56,12 +56,30 @@ export type ContentPart =
   | { type: 'image-loading'; turnIndex?: number; label?: string } // Image generation skeleton
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
   | { type: 'provider-data'; provider: string; encryptedReasoning?: string; turnIndex?: number } // Hidden provider context
+  /**
+   * 插件流状态(R6)。**一个泛化成员,不是每插件一个类型。**
+   *
+   * 按插件加类型的话,每来一个插件就要改一次本文件 —— 那正是 soul-memory 让宿主
+   * 改了 16,989 行的那种形状。R6 的验收口径:此后新增插件状态**零改动本文件**
+   * (本期加这一个成员本身是对它的一次性修改)。
+   *
+   * 寻址是 `(pluginId, id)` 的格子,不是追加:同一个 id 再来一次是改 label。
+   * `cleared` 表示撤下 —— ContentPart 数组没有"删除某一项"的事件,而状态天然
+   * 需要撤下;让同一个成员携带这一位,好过为 R6 新开一条投递轨。
+   */
+  | { type: 'plugin-status'; pluginId: string; id: string; label: string; cleared?: boolean; turnIndex?: number }
 
 // Helper: parts whose presence/absence affects subsequent content layout.
 // Used by the chunk reducer to pop trailing transient indicators when real
 // content arrives.
+//
+// plugin-status 是 transient 的:真内容到达时它让位,流结束时被扫掉。
+// 注意这只是**呈现侧**的兜底 —— 真正的生命周期保证在宿主(core 的
+// CorePluginStatusRegistry 在流结束时强制清扫并投递撤下事件),否则 web 端
+// 与桌面端会对"还挂着什么"给出不同答案。
 export function isTransientPart(part: ContentPart): boolean {
   return part.type === 'waiting' || part.type === 'loading-memory' || part.type === 'image-loading'
+    || part.type === 'plugin-status'
 }
 
 // Step types for showing AI reasoning process

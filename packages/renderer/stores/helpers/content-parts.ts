@@ -10,9 +10,15 @@ import { mergeToolCall } from './tool-calls'
 
 type TurnTextPart = Extract<ContentPart, { type: 'text' | 'reasoning' }>
 
-/** Transient indicators that should be popped when real content arrives. */
+/**
+ * Transient indicators that should be popped when real content arrives.
+ *
+ * 与 shared 契约里的 `isTransientPart` 是两份镜像 —— 加一种 transient 类型
+ * 必须两边同改(R6 的 plugin-status 就是新的一种)。
+ */
 function isTransient(part: ContentPart): boolean {
   return part.type === 'waiting' || part.type === 'loading-memory' || part.type === 'image-loading'
+    || part.type === 'plugin-status'
 }
 
 /** Pop the trailing transient indicator (waiting / loading-memory) if any. */
@@ -160,6 +166,41 @@ export function pushWaiting(parts: ContentPart[], turnIndex?: number): void {
     type: 'waiting',
     ...(turnIndex !== undefined ? { turnIndex } : {}),
   })
+}
+
+/**
+ * Upsert / remove a plugin status cell (R6).
+ *
+ * 插件状态是一个按 `(pluginId, id)` 寻址的**格子**,不是一条追加的消息:
+ * 同一个 id 再来一次是改 label。少了这条规则,一个每秒汇报进度的插件会在气泡里
+ * 堆出几百行。
+ *
+ * 返回是否真的改动了 —— 调用方据此决定要不要重新赋值 contentParts。
+ */
+export function applyPluginStatus(
+  parts: ContentPart[],
+  status: { pluginId: string; id: string; label: string; cleared?: boolean },
+): boolean {
+  const index = parts.findIndex(part =>
+    part.type === 'plugin-status' && part.pluginId === status.pluginId && part.id === status.id)
+
+  if (status.cleared) {
+    if (index < 0) return false
+    parts.splice(index, 1)
+    return true
+  }
+
+  if (index >= 0) {
+    const existing = parts[index]
+    if (existing.type === 'plugin-status' && existing.label === status.label) return false
+    parts[index] = { type: 'plugin-status', pluginId: status.pluginId, id: status.id, label: status.label }
+    return true
+  }
+
+  // 新状态挂在末尾。**不** popTrailingTransient:那会让一个插件状态顶掉正在显示的
+  // waiting 指示器,而两者说的是不同的事(等模型 vs 插件在忙)。
+  parts.push({ type: 'plugin-status', pluginId: status.pluginId, id: status.id, label: status.label })
+  return true
 }
 
 /** Push a memory-loading indicator before the main provider request starts. */

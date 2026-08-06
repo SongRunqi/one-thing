@@ -4,6 +4,7 @@ export {
   createOnethingLogMonitorSearchToolParameters,
   registerOnethingLogMonitorPanel,
   registerOnethingLogMonitorPlugin,
+  registerOnethingLogMonitorStatusDemo,
   resolveOnethingLogMonitorConfig,
 } from './log-monitor.js'
 export {
@@ -27,6 +28,7 @@ export type {
   OnethingLogMonitorConfig,
   OnethingLogMonitorPanelApi,
   OnethingLogMonitorPluginApi,
+  OnethingLogMonitorStatusApi,
   OnethingLogMonitorSearchToolParameters,
   RegisterOnethingLogMonitorPluginOptions,
 } from './log-monitor.js'

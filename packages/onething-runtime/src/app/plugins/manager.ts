@@ -32,6 +32,7 @@ import {
   writePluginConfig,
 } from './loader.js'
 import { configurePluginConfigHost, invalidatePluginConfigCache } from './config.js'
+import { configurePluginStatusHost, subscribePluginStatusSweep } from './status.js'
 import { configurePluginConfigBroadcast } from './config-access.js'
 import {
   clearPluginRuntimeHealth,
@@ -139,6 +140,9 @@ export class PluginManager extends CorePluginManager<
   /** 目录变了要广播,而 core 不认识 EventBus —— initialize 时接上。 */
   private eventBus: { emitGlobal?(event: unknown): void } | null = null
 
+  /** 流结束清扫的订阅句柄(R6)。重复 initialize 不能叠加订阅。 */
+  private unsubscribeStatusSweep: (() => void) | undefined
+
   constructor() {
     super(createHost())
   }
@@ -211,6 +215,21 @@ export class PluginManager extends CorePluginManager<
       readConfig: readPluginConfig,
       writeConfig: writePluginConfig,
     })
+    // R6:插件流状态的投递口 + 流结束强制清扫。
+    //
+    // 清扫**观察总线**而不是挂进引擎:三种结束事件(complete / error / aborted)
+    // 都从总线上过,而插件最可能漏掉 clear 的恰恰是 error 与 aborted 两条路径。
+    // 观察者写法也让这条兜底与引擎内部实现解耦 —— 引擎改结束路径不会悄悄漏掉它。
+    configurePluginStatusHost({
+      emitSessionEvent: (sessionId, event) => {
+        void context.eventBus?.emit?.(sessionId, event)
+      },
+    })
+    this.unsubscribeStatusSweep?.()
+    this.unsubscribeStatusSweep = context.eventBus?.onAnySessionAny
+      ? subscribePluginStatusSweep(context.eventBus)
+      : undefined
+
     configurePluginConfigBroadcast(pluginId => {
       context.eventBus?.emitGlobal?.({
         type: 'plugin:notification',

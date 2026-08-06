@@ -203,7 +203,15 @@ export function getDeclaredPanelIds(pluginId: string): string[] {
   return declaredPanelIdsCache.byPlugin.get(pluginId) ?? []
 }
 
-/** 装插件 / 卸插件之后清缓存 —— 不等 TTL 自然过期。 */
+/**
+ * 目录内容变了之后清缓存 —— 不等 TTL 自然过期。
+ *
+ * 接线的是 `refreshPlugins`(重扫目录)与卸载(删源目录)。**没有独立的"安装"
+ * 入口**:装一个插件 = 往 plugins 目录里放一个目录,它进入系统的唯一路径就是
+ * 下一次 refresh;`installPluginDeps` 跑的是 npm install,不动 manifest,
+ * 因此与这份缓存无关。(R5 提交信息里"装/卸/刷新时失效"的"装"是措辞不准,
+ * 此处按实际接线如实记录。)
+ */
 export function invalidateDeclaredPanelIdsCache(): void {
   declaredPanelIdsCache = null
 }

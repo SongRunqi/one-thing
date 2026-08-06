@@ -94,6 +94,20 @@ export {
 } from './api-state.js'
 export { deepFreezeCorePluginValue } from './freeze.js'
 export {
+  CORE_PLUGIN_STATUS_MAX_LABEL,
+  CORE_PLUGIN_STATUS_MAX_PER_SESSION,
+  CORE_PLUGIN_STATUS_SWEEP_EVENTS,
+  CorePluginStatusRegistry,
+  PLUGIN_STATUS_PART_TYPE,
+  isPluginStatusSweepEvent,
+} from './status.js'
+export type {
+  CorePluginStatusKey,
+  CorePluginStatusPart,
+  CorePluginStatusRecord,
+} from './status.js'
+export type { CorePluginStatusAPI } from './types.js'
+export {
   MAX_PANEL_DEPTH,
   PANEL_TREE_SCAN_DEPTH,
   PLUGIN_PANEL_INVOKE_ACTION,

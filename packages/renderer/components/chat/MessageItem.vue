@@ -874,10 +874,13 @@ const isRoomStacked = computed(() => isRoomAgentMessage.value && !props.groupTai
 const messageHasContent = computed(() => {
   if (props.message.content) return true
   if (props.message.toolCalls?.length || props.message.steps?.length) return true
+  // transient 指示器不算"有内容":一条只挂着插件状态的消息不该被当成已有正文
+  // (否则 waiting 指示器会被顶掉,用户看到插件在忙却看不到"在等模型")。
   return props.message.contentParts?.some(part =>
     part.type !== 'waiting' &&
     part.type !== 'loading-memory' &&
-    part.type !== 'image-loading'
+    part.type !== 'image-loading' &&
+    part.type !== 'plugin-status'
   ) ?? false
 })
 
