@@ -251,12 +251,21 @@ export interface CorePluginDependencyInstallAdapters {
   logger?: CorePluginLoaderLogger
 }
 
+export interface CorePluginDependencyInstallAsyncAdapters {
+  exists(path: string): boolean
+  runInstall(dirPath: string): Promise<void>
+  logger?: CorePluginLoaderLogger
+  onInstallStart?(dirPath: string): void
+  onInstallEnd?(dirPath: string, error: string | null): void
+}
+
 export interface CorePluginEntryModule<TEntry = unknown> {
   default?: TEntry | unknown
 }
 
 export interface LoadCorePluginEntryAdapters<TEntry = unknown> {
-  installDependencies(dirPath: string): string | null
+  /** 允许返回 Promise:npm install 是分钟级操作,同步跑会冻住整个宿主进程。 */
+  installDependencies(dirPath: string): string | null | Promise<string | null>
   importEntry(entryPath: string): Promise<CorePluginEntryModule<TEntry>>
   isEntry?: (value: unknown) => value is TEntry
   logger?: CorePluginLoaderLogger
@@ -297,6 +306,35 @@ export function installCorePluginDependencies(
   }
 }
 
+/**
+ * 异步版依赖安装。
+ *
+ * 同步版(execSync)会把整个主进程连同全部 IPC 冻住最长两分钟 —— 那是"宿主被
+ * 插件拖垮"最直白的一种形态。
+ */
+export async function installCorePluginDependenciesAsync(
+  dirPath: string,
+  adapters: CorePluginDependencyInstallAsyncAdapters,
+): Promise<string | null> {
+  const pkgPath = path.join(dirPath, 'package.json')
+  if (!adapters.exists(pkgPath)) return 'No package.json found'
+
+  const logger = adapters.logger ?? console
+  adapters.onInstallStart?.(dirPath)
+  try {
+    logger.log?.(`[PluginLoader] Running npm install in ${dirPath}...`)
+    await adapters.runInstall(dirPath)
+    logger.log?.(`[PluginLoader] npm install complete for ${path.basename(dirPath)}`)
+    adapters.onInstallEnd?.(dirPath, null)
+    return null
+  } catch (error) {
+    const message = pluginLoaderErrorMessage(error, 'npm install failed')
+    logger.error?.(`[PluginLoader] npm install failed for ${path.basename(dirPath)}:`, message)
+    adapters.onInstallEnd?.(dirPath, message)
+    return message
+  }
+}
+
 export async function loadCorePluginEntry<TEntry = unknown>(
   definition: CorePluginDefinition<TEntry>,
   adapters: LoadCorePluginEntryAdapters<TEntry>,
@@ -309,7 +347,7 @@ export async function loadCorePluginEntry<TEntry = unknown>(
 
   if (definition.needsInstall) {
     logger.log?.(`[PluginLoader] Installing deps for plugin "${definition.id}"...`)
-    const installError = adapters.installDependencies(definition.dirPath)
+    const installError = await adapters.installDependencies(definition.dirPath)
     if (installError) {
       logger.error?.(`[PluginLoader] Dep install failed for "${definition.id}": ${installError}`)
     } else {

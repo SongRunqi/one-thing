@@ -12,6 +12,7 @@ import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
 import { PluginStore } from './store.js'
+import { reportPluginRuntimeFailure } from './health.js'
 import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
@@ -72,6 +73,9 @@ export function createPluginAPI(
     store,
     scheduler: pluginScheduler,
     disposeCallbacks: schedulerDisposeCallbacks,
+    onPluginFailure({ pluginId: id, scope, error }) {
+      reportPluginRuntimeFailure(id, scope, error)
+    },
     host: {
       registerTool(_, toolId, tool) {
         registerToolInRegistry(

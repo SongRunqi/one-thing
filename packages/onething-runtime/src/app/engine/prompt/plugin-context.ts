@@ -19,6 +19,7 @@ import type {
   PromptActiveProject,
   PromptKnownProjects,
 } from './types.js'
+import { reportPluginRuntimeFailure } from '../../plugins/health.js'
 
 export type PromptProviderConfigValue = OnethingPromptProviderConfigValue
 export type PromptProviderConfig = OnethingPromptProviderConfig
@@ -66,6 +67,10 @@ export async function collectPluginPromptContext(
   return collectRuntimePluginPromptContext(context, {
     onProviderError(providerRef, error) {
       console.error(`[PluginPromptContext] Provider "${providerRef}" failed:`, error)
+    },
+    // 超时/异常都记一次失败:连续 N 次由熔断器自动禁用该插件。
+    onProviderFailure({ pluginId, providerId, error, timedOut }) {
+      reportPluginRuntimeFailure(pluginId, `promptContext:${providerId}${timedOut ? ' (timeout)' : ''}`, error)
     },
   }) as Promise<PluginPromptContextFragmentInput[]>
 }

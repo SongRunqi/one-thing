@@ -84,9 +84,9 @@
                 <span class="plugin-version">v{{ plugin.version }}</span>
                 <span
                   class="status-badge"
-                  :class="plugin.loaded ? 'loaded' : plugin.error ? 'error' : 'stopped'"
+                  :class="statusOf(plugin).tone"
                 >
-                  {{ plugin.loaded ? 'Active' : plugin.error ? 'Error' : 'Disabled' }}
+                  {{ statusOf(plugin).label }}
                 </span>
               </div>
               <p
@@ -99,6 +99,13 @@
                 v-if="plugin.error"
                 size="sm"
                 :message="plugin.error"
+              />
+              <!-- 运行期健康:加载成功之后才出现的失败(钩子超时、事件 handler
+                   抛错、熔断自动禁用)。之前这类错只进 console,卡片永远 Active。 -->
+              <ErrorNote
+                v-if="runtimeFault(plugin)"
+                size="sm"
+                :message="runtimeFault(plugin)"
               />
               <div class="plugin-meta">
                 <span
@@ -176,6 +183,28 @@ interface PluginInfo {
   error: string
   dirPath: string
   needsInstall: boolean
+  healthStatus?: string
+  healthFailures?: number
+  healthReason?: string
+}
+
+/** 运行期故障文案:熔断说明优先,其次最后一次失败。'' = 没有故障。 */
+function runtimeFault(plugin: PluginInfo): string {
+  if (!plugin.healthReason) return ''
+  if (plugin.healthStatus === 'disabled') return `Auto-disabled — ${plugin.healthReason}`
+  if (plugin.healthStatus === 'degraded') {
+    return `${plugin.healthFailures ?? 1} consecutive failure(s) — ${plugin.healthReason}`
+  }
+  return plugin.healthReason
+}
+
+function statusOf(plugin: PluginInfo): { label: string; tone: string } {
+  if (plugin.healthStatus === 'installing') return { label: 'Installing', tone: 'installing' }
+  if (plugin.healthStatus === 'disabled' && plugin.healthReason) return { label: 'Failed', tone: 'error' }
+  if (plugin.error) return { label: 'Error', tone: 'error' }
+  if (plugin.loaded && plugin.healthStatus === 'degraded') return { label: 'Degraded', tone: 'warning' }
+  if (plugin.loaded) return { label: 'Active', tone: 'loaded' }
+  return { label: 'Disabled', tone: 'stopped' }
 }
 
 const plugins = ref<PluginInfo[]>([])
@@ -215,6 +244,10 @@ async function togglePlugin(plugin: PluginInfo) {
         plugin.loaded = false
         plugin.commands = []
         plugin.error = ''
+        // 手动停用后不该继续挂着上一次的运行期红态。
+        plugin.healthStatus = 'healthy'
+        plugin.healthFailures = 0
+        plugin.healthReason = ''
         emit('plugins-changed')
       } else {
         console.error('Failed to disable plugin:', result?.error)
@@ -400,6 +433,12 @@ onMounted(() => {
 .status-badge.error {
   border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg));
   color: var(--ui-status-danger-fg);
+}
+
+.status-badge.warning,
+.status-badge.installing {
+  border-color: var(--ui-status-warning-border, var(--ui-status-warning-fg));
+  color: var(--ui-status-warning-fg);
 }
 
 .status-badge.stopped {

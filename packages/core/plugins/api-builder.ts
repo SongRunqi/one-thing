@@ -54,6 +54,11 @@ export interface CreateCorePluginAPIOptions<
     TSkillRootProvider
   >
   logger?: CorePluginAPILogger
+  /**
+   * 运行期失败上报(事件 handler 抛错、steer/followUp/notify 抛错)。
+   * 宿主拿它做失败计数熔断 —— 在这之前这些错只进 console,插件卡片永远 Active。
+   */
+  onPluginFailure?(input: { pluginId: string; scope: string; error: unknown }): void
 }
 
 export interface CorePluginHostToolContext<TMetadata extends object = object> {
@@ -127,6 +132,9 @@ export function createCorePluginAPI<
 ): { api: TApi; state: CorePluginAPIState<TApi, TCommand> } {
   const { pluginId, store, scheduler, host } = options
   const logger = options.logger ?? console
+  const reportFailure = (scope: string, error: unknown): void => {
+    options.onPluginFailure?.({ pluginId, scope, error })
+  }
 
   const unsubs: Array<() => void> = []
   const commands = new Map<string, TCommand>()
@@ -153,16 +161,18 @@ export function createCorePluginAPI<
     },
 
     on(eventType: string, handler: TEventHandler): () => void {
+      const onHandlerError = (error: unknown): void => {
+        logger.error(`[Plugin:${pluginId}] Event handler error (${eventType}):`, error)
+        reportFailure(`event:${eventType}`, error)
+      }
       const wrappedHandler = ((...args: unknown[]) => {
         try {
           const result = handler(...args)
           if (result instanceof Promise) {
-            result.catch((error) =>
-              logger.error(`[Plugin:${pluginId}] Event handler error (${eventType}):`, error),
-            )
+            result.catch(onHandlerError)
           }
         } catch (error) {
-          logger.error(`[Plugin:${pluginId}] Event handler error (${eventType}):`, error)
+          onHandlerError(error)
         }
       }) as TEventHandler
 
@@ -176,6 +186,7 @@ export function createCorePluginAPI<
         host.steer(pluginId, sessionId, content)
       } catch (error) {
         logger.error(`[Plugin:${pluginId}] steer error:`, error)
+        reportFailure('steer', error)
       }
     },
 
@@ -184,6 +195,7 @@ export function createCorePluginAPI<
         host.followUp(pluginId, sessionId, content)
       } catch (error) {
         logger.error(`[Plugin:${pluginId}] followUp error:`, error)
+        reportFailure('followUp', error)
       }
     },
 

@@ -6,6 +6,10 @@ import {
   type CoreBeforeContextCompactContext,
   type CoreBeforeContextCompactHook,
 } from '@onething/core/plugins'
+import {
+  reportPluginRuntimeFailure,
+  reportPluginRuntimeSuccess,
+} from './health.js'
 
 export interface BeforeContextCompactContext extends CoreBeforeContextCompactContext<
   AppSettings,
@@ -27,7 +31,16 @@ export type AfterAssistantResponseHook = CoreAfterAssistantResponseHook<AfterAss
 const lifecycleRegistry = new CorePluginLifecycleRegistry<
   BeforeContextCompactContext,
   AfterAssistantResponseContext
->()
+>({
+  // 超时预算走 core 默认(5s):beforeContextCompact 挂在压缩路径上,
+  // afterAssistantResponse 挂在每个回合结束后。
+  onHookFailure({ pluginId, hookId, scope, error }) {
+    reportPluginRuntimeFailure(pluginId, `${scope}:${hookId}`, error)
+  },
+  onHookSuccess({ pluginId }) {
+    reportPluginRuntimeSuccess(pluginId)
+  },
+})
 
 export function registerBeforeContextCompactHook(
   pluginId: string,

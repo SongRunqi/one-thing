@@ -10,6 +10,10 @@ import {
 } from '@onething/core/plugins'
 import { createPluginAPI, disposePlugin, type PluginState } from './api.js'
 import { scanPlugins, loadPluginEntry, ensurePluginDirs, setPluginEnabled } from './loader.js'
+import {
+  configurePluginHealthHost,
+  getPluginRuntimeHealth,
+} from './health.js'
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './types.js'
 
 export interface PluginManagerContext {
@@ -36,6 +40,7 @@ function createHost(): CorePluginManagerHost<
     },
     disposePlugin,
     setPluginEnabled,
+    getPluginHealth: getPluginRuntimeHealth,
   }
 }
 
@@ -58,6 +63,21 @@ export class PluginManager extends CorePluginManager<
     const context = streamEngine === undefined
       ? eventBusOrContext as PluginManagerContext
       : { eventBus: eventBusOrContext, streamEngine }
+
+    // 熔断器要能真的禁用插件并通知用户 —— core 不认识 EventBus,这条线只能在
+    // 这里接上(late-bound host port,与 configure*Host 同构)。
+    configurePluginHealthHost({
+      disablePlugin: pluginId => this.disablePlugin(pluginId),
+      notify: (pluginId, message) => {
+        context.eventBus?.emitGlobal?.({
+          type: 'plugin:notification',
+          pluginId,
+          message,
+          level: 'error',
+        })
+      },
+    })
+
     await super.initialize(context)
   }
 }

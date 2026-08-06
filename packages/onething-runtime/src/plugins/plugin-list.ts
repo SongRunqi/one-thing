@@ -14,11 +14,22 @@ export interface OnethingPluginListDefinitionLike {
   needsInstall?: boolean
 }
 
+/** 运行期健康(core 的 CorePluginRuntimeHealth 的结构镜像,过线只走 JSON)。 */
+export interface OnethingPluginRuntimeHealthLike {
+  status: string
+  consecutiveFailures: number
+  lastError?: string
+  lastErrorScope?: string
+  lastErrorAt?: number
+  disabledReason?: string
+}
+
 export interface OnethingPluginListItemLike {
   definition: OnethingPluginListDefinitionLike
   loaded: boolean
   commands: string[]
   error?: string
+  health?: OnethingPluginRuntimeHealthLike
 }
 
 export interface OnethingRendererPluginInfo {
@@ -34,6 +45,11 @@ export interface OnethingRendererPluginInfo {
   error: string
   dirPath: string
   needsInstall: boolean
+  /** 'healthy' | 'installing' | 'degraded' | 'disabled';无健康记录时为 'healthy'。 */
+  healthStatus: string
+  healthFailures: number
+  /** 运行期失败原因(熔断说明优先,其次最后一次错误)—— 设置页据此亮红。 */
+  healthReason: string
 }
 
 export interface OnethingPluginCommandLike {
@@ -65,6 +81,12 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
     error: plugin.error || '',
     dirPath: plugin.definition.dirPath,
     needsInstall: plugin.definition.needsInstall || false,
+    healthStatus: plugin.health?.status || 'healthy',
+    healthFailures: plugin.health?.consecutiveFailures || 0,
+    healthReason: plugin.health?.disabledReason
+      || (plugin.health?.lastError
+        ? `${plugin.health.lastErrorScope ? `${plugin.health.lastErrorScope}: ` : ''}${plugin.health.lastError}`
+        : ''),
   }))
 }
 

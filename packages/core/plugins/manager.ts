@@ -1,4 +1,9 @@
 import type { CorePluginDefinition } from './types.js'
+import {
+  CORE_PLUGIN_ENTRY_TIMEOUT_MS,
+  runWithPluginTimeout,
+  type CorePluginRuntimeHealth,
+} from './runtime-guard.js'
 
 export interface CorePluginInfo<
   TEntry = unknown,
@@ -8,6 +13,8 @@ export interface CorePluginInfo<
   loaded: boolean
   commands: string[]
   error?: string
+  /** 运行期健康(加载后才产生的失败:钩子超时、事件 handler 抛错、熔断)。 */
+  health?: CorePluginRuntimeHealth
 }
 
 export interface CorePluginStateLike<TCommand = unknown> {
@@ -40,6 +47,13 @@ export interface CorePluginManagerHost<
   createPluginAPI(pluginId: string, context: TContext): { api: TApi; state: TState }
   disposePlugin(state: TState): void
   setPluginEnabled(pluginId: string, enabled: boolean): void
+  /** 运行期健康(app 层持有);getPlugins() 只是把它贴到插件信息上。 */
+  getPluginHealth?(pluginId: string): CorePluginRuntimeHealth | undefined
+}
+
+export interface CorePluginManagerOptions {
+  /** entry(api) 的超时预算;<=0 关闭。 */
+  entryTimeoutMs?: number
 }
 
 export class CorePluginManager<
@@ -57,6 +71,7 @@ export class CorePluginManager<
   constructor(
     private readonly host: CorePluginManagerHost<TDefinition, TEntry, TApi, TState, TCommand, TContext>,
     private readonly logger: CorePluginManagerLogger = console,
+    private readonly options: CorePluginManagerOptions = {},
   ) {}
 
   async initialize(context: TContext): Promise<void> {
@@ -92,6 +107,15 @@ export class CorePluginManager<
     await this.loadPlugin(info.definition)
   }
 
+  /**
+   * 逐插件隔离加载。
+   *
+   * 原先是 `for (…) await loadPlugin(def)`:一个 entry 挂住,排在它后面的插件
+   * 全部装不上,连带把明文排在 plugin bootstrap 之后的 skills 一起卡死。现在
+   * 每个插件各跑各的(各自带 entry 超时),一个坏插件只坏自己。
+   *
+   * 先按扫描顺序占位再并行加载 —— Map 的插入序即 UI 的展示序,不能被竞速打乱。
+   */
   async refreshPlugins(): Promise<void> {
     this.disposeAll()
     this.plugins.clear()
@@ -102,12 +126,17 @@ export class CorePluginManager<
     this.logger.log(`[PluginManager] Found ${definitions.length} plugin(s)`)
 
     for (const def of definitions) {
-      await this.loadPlugin(def)
+      this.plugins.set(def.id, { definition: def, loaded: false, commands: [] })
     }
+
+    await Promise.all(definitions.map(def => this.loadPlugin(def)))
   }
 
   getPlugins(): Array<CorePluginInfo<TEntry, TDefinition>> {
-    return Array.from(this.plugins.values())
+    return Array.from(this.plugins.values()).map(info => {
+      const health = this.host.getPluginHealth?.(info.definition.id)
+      return health ? { ...info, health } : info
+    })
   }
 
   getPluginCommands(): Map<string, TCommand> {
@@ -175,9 +204,15 @@ export class CorePluginManager<
       return
     }
 
+    const { api, state } = this.host.createPluginAPI(def.id, this.context)
     try {
-      const { api, state } = this.host.createPluginAPI(def.id, this.context)
-      await entry(api)
+      // entry(api) 无超时是"一个坏插件卡住整队"的最后一环。超时不取消插件那一
+      // 侧的工作,但宿主不再等它。
+      await runWithPluginTimeout(
+        `entry:${def.id}`,
+        this.options.entryTimeoutMs ?? CORE_PLUGIN_ENTRY_TIMEOUT_MS,
+        () => entry(api),
+      )
 
       this.pluginStates.set(def.id, state)
       this.plugins.set(def.id, {
@@ -189,6 +224,12 @@ export class CorePluginManager<
       this.logger.log(`[PluginManager] Plugin "${def.id}" loaded successfully (${state.commands.size} commands)`)
     } catch (error) {
       this.logger.error(`[PluginManager] Plugin "${def.id}" failed:`, error)
+      // 装到一半的注册要收掉,否则失败的插件仍在工具表/事件总线上留着半截足迹。
+      try {
+        this.host.disposePlugin(state)
+      } catch (disposeError) {
+        this.logger.error(`[PluginManager] Error disposing half-loaded plugin "${def.id}":`, disposeError)
+      }
       this.plugins.set(def.id, {
         definition: def,
         loaded: false,

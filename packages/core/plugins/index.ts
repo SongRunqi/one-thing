@@ -39,8 +39,12 @@ export {
   setPluginEnabledWithAdapters,
   writePluginSettingsFile,
 } from './loader.js'
+export {
+  installCorePluginDependenciesAsync,
+} from './loader.js'
 export type {
   CorePluginDependencyInstallAdapters,
+  CorePluginDependencyInstallAsyncAdapters,
   CoreBuiltinPluginSpec,
   CorePluginEntryModule,
   CorePluginLoaderPathOptions,
@@ -55,6 +59,21 @@ export {
   CorePluginBootstrapper,
   CorePluginManager,
 } from './manager.js'
+export {
+  CORE_PLUGIN_ENTRY_TIMEOUT_MS,
+  CORE_PLUGIN_FAILURE_THRESHOLD,
+  CORE_PLUGIN_LIFECYCLE_HOOK_TIMEOUT_MS,
+  CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS,
+  CorePluginHealthTracker,
+  CorePluginTimeoutError,
+  isCorePluginTimeoutError,
+  runWithPluginTimeout,
+} from './runtime-guard.js'
+export type {
+  CorePluginHealthStatus,
+  CorePluginHealthTrackerOptions,
+  CorePluginRuntimeHealth,
+} from './runtime-guard.js'
 export {
   disposeCorePluginState,
 } from './api-state.js'
@@ -143,11 +162,13 @@ export type {
   CoreBeforeContextCompactContext,
   CoreBeforeContextCompactHook,
   CorePluginLifecycleLogger,
+  CorePluginLifecycleRegistryOptions,
 } from './lifecycle.js'
 export type {
   CorePluginBootstrapperOptions,
   CorePluginInfo,
   CorePluginManagerHost,
   CorePluginManagerLogger,
+  CorePluginManagerOptions,
   CorePluginStateLike,
 } from './manager.js'

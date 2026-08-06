@@ -62,6 +62,9 @@ describe('plugin IPC operations', () => {
         error: '',
         dirPath: 'builtin://demo',
         needsInstall: false,
+        healthStatus: 'healthy',
+        healthFailures: 0,
+        healthReason: '',
       }],
     })
 

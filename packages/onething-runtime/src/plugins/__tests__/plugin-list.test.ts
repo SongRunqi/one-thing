@@ -24,6 +24,13 @@ describe('projectOnethingPluginsForRenderer', () => {
         loaded: false,
         commands: ['/demo'],
         error: 'install deps',
+        health: {
+          status: 'disabled',
+          consecutiveFailures: 3,
+          lastError: 'boom',
+          lastErrorScope: 'promptContext:notes',
+          disabledReason: '3 consecutive failures (last: promptContext:notes — boom)',
+        },
       },
     ])).toEqual([
       {
@@ -39,8 +46,36 @@ describe('projectOnethingPluginsForRenderer', () => {
         error: 'install deps',
         dirPath: 'builtin://demo',
         needsInstall: true,
+        healthStatus: 'disabled',
+        healthFailures: 3,
+        healthReason: '3 consecutive failures (last: promptContext:notes — boom)',
       },
     ])
+  })
+
+  it('falls back to the last runtime error when the breaker has not tripped', () => {
+    expect(projectOnethingPluginsForRenderer([
+      {
+        definition: {
+          id: 'demo',
+          manifest: { name: 'Demo', version: '1.0.0' },
+          enabled: true,
+          dirPath: '/plugins/demo',
+        },
+        loaded: true,
+        commands: [],
+        health: {
+          status: 'degraded',
+          consecutiveFailures: 1,
+          lastError: 'timed out',
+          lastErrorScope: 'promptContext:notes (timeout)',
+        },
+      },
+    ])[0]).toMatchObject({
+      healthStatus: 'degraded',
+      healthFailures: 1,
+      healthReason: 'promptContext:notes (timeout): timed out',
+    })
   })
 
   it('uses renderer defaults for optional plugin fields', () => {
@@ -72,6 +107,9 @@ describe('projectOnethingPluginsForRenderer', () => {
         error: '',
         dirPath: '/plugins/user-plugin',
         needsInstall: false,
+        healthStatus: 'healthy',
+        healthFailures: 0,
+        healthReason: '',
       },
     ])
   })

@@ -4,6 +4,11 @@ import type {
   CorePromptProviderConfig,
   CorePromptProviderConfigValue,
 } from '@onething/core/engine'
+import {
+  CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS,
+  isCorePluginTimeoutError,
+  runWithPluginTimeout,
+} from '@onething/core/plugins'
 
 export type OnethingPromptContextRole = 'system' | 'developer' | 'user'
 export type OnethingPromptProviderConfigValue = CorePromptProviderConfigValue
@@ -51,8 +56,19 @@ export type OnethingPluginPromptContextProvider = (
   | null
   | undefined
 
+export interface OnethingPluginPromptContextFailure {
+  pluginId: string
+  providerId: string
+  error: unknown
+  timedOut: boolean
+}
+
 export interface CollectOnethingPluginPromptContextOptions {
   onProviderError?: (providerRef: string, error: unknown) => void
+  /** 结构化失败上报 —— 失败计数熔断要按 pluginId 记账。 */
+  onProviderFailure?: (failure: OnethingPluginPromptContextFailure) => void
+  /** 每个 provider 的超时预算;<=0 关闭(仅测试用)。 */
+  timeoutMs?: number
 }
 
 interface RegisteredProvider {
@@ -94,10 +110,18 @@ export async function collectPluginPromptContext(
   options: CollectOnethingPluginPromptContextOptions = {},
 ): Promise<OnethingPluginPromptContextFragmentInput[]> {
   const fragments: OnethingPluginPromptContextFragmentInput[] = []
+  const timeoutMs = options.timeoutMs ?? CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS
 
-  for (const item of providers.values()) {
+  for (const item of [...providers.values()]) {
     try {
-      const result = await item.provider(context)
+      // 这里挂在**每次发消息**的热路径上(prompts/builder.ts 的 collectPlugins)。
+      // 之前是裸 await:一个不 resolve 的 provider = 所有会话的发消息永久卡死,
+      // 而插件卡片还显示 Active。超时后丢弃这一段,绝不阻塞发消息。
+      const result = await runWithPluginTimeout(
+        `promptContext:${item.pluginId}/${item.providerId}`,
+        timeoutMs,
+        () => item.provider(context),
+      )
       const entries = Array.isArray(result) ? result : [result]
       for (const entry of entries) {
         if (!entry) continue
@@ -117,6 +141,12 @@ export async function collectPluginPromptContext(
       }
     } catch (error) {
       options.onProviderError?.(`${item.pluginId}/${item.providerId}`, error)
+      options.onProviderFailure?.({
+        pluginId: item.pluginId,
+        providerId: item.providerId,
+        error,
+        timedOut: isCorePluginTimeoutError(error),
+      })
     }
   }
 
