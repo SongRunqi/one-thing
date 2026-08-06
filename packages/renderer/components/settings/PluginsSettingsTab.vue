@@ -539,13 +539,16 @@ async function describeFootprint(pluginId: string): Promise<string> {
     if (!result?.success || !result.footprint) return ''
     const { dataDirExists, entries, legacyKvExists, settingsKeys } = result.footprint
     const parts: string[] = []
-    if (dataDirExists) {
-      parts.push(entries.length === 1 ? '1 file in its data folder' : `${entries.length} files in its data folder`)
+    if (dataDirExists && entries.length) {
+      // "items" 而不是 "files":entries 是目录的**顶层条目**,插件自建的子目录
+      // 也算一条。说成 "3 files" 而用户点进去看到两个文件夹,数字就变成谎话。
+      parts.push(entries.length === 1 ? '1 item in its data folder' : `${entries.length} items in its data folder`)
     }
     if (legacyKvExists) parts.push('its key-value store')
-    if (settingsKeys.length) {
-      parts.push(settingsKeys.length === 1 ? '1 saved setting' : `${settingsKeys.length} saved settings`)
-    }
+    // settingsKeys 是 plugin-settings 里的三个键(enabled / config / health),
+    // 但只有 config 是**用户存的设置** —— enabled 是启停位、health 是熔断台账,
+    // 把它们数进 "saved settings" 会让一个从没配置过的插件显示 "2 saved settings"。
+    if (settingsKeys.includes('config')) parts.push('its saved configuration')
     // 什么都没写过的插件,如实说"没有数据" —— 比含糊的"数据会被归档"更可信。
     if (!parts.length) return 'It has not stored any data.'
     return `Will be archived: ${parts.join(', ')}.`

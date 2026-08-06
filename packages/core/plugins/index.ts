@@ -94,9 +94,13 @@ export {
 } from './api-state.js'
 export { deepFreezeCorePluginValue } from './freeze.js'
 export {
+  MAX_PANEL_DEPTH,
+  PANEL_TREE_SCAN_DEPTH,
   PLUGIN_PANEL_INVOKE_ACTION,
   PLUGIN_PANEL_PROTOCOL_VERSION,
   PLUGIN_PANEL_RENDER_ACTION,
+  describePluginPanelResultProblem,
+  isReservedPluginPanelAction,
   validatePluginPanelActionResult,
   validatePluginPanelTree,
 } from './panel.js'

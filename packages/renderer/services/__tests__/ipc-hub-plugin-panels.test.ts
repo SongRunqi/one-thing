@@ -10,6 +10,11 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
+async function flushMicrotasks(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await new Promise(resolve => setTimeout(resolve, 0))
+}
+
 function plugin(overrides: Record<string, unknown> = {}) {
   return {
     id: 'log-monitor',
@@ -21,12 +26,26 @@ function plugin(overrides: Record<string, unknown> = {}) {
   }
 }
 
+const toastState = vi.hoisted(() => ({ info: vi.fn(), error: vi.fn() }))
+vi.mock('@/composables/useToast', () => ({
+  toast: {
+    info: (...args: unknown[]) => toastState.info(...args),
+    error: (...args: unknown[]) => toastState.error(...args),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
+}))
+
 describe('IPC hub → plugin workspace panels', () => {
   let getPlugins: Mock<() => Promise<{ success: boolean; plugins: Array<Record<string, unknown>> }>>
+  let notify: ((payload: Record<string, unknown>) => void) | undefined
 
   beforeEach(() => {
     vi.resetModules()
     setActivePinia(createPinia())
+    toastState.info.mockReset()
+    toastState.error.mockReset()
+    notify = undefined
     getPlugins = vi.fn(async () => ({ success: true, plugins: [plugin()] }))
 
     Object.defineProperty(window, 'electronAPI', {
@@ -34,7 +53,10 @@ describe('IPC hub → plugin workspace panels', () => {
       value: {
         onSessionEvent: vi.fn(() => vi.fn()),
         onSessionStream: vi.fn(() => vi.fn()),
-        onPluginNotification: vi.fn(() => vi.fn()),
+        onPluginNotification: vi.fn((handler: (payload: Record<string, unknown>) => void) => {
+          notify = handler
+          return vi.fn()
+        }),
         getPlugins: () => getPlugins(),
       },
     })
@@ -76,6 +98,60 @@ describe('IPC hub → plugin workspace panels', () => {
     initializeIPCHub()
     await vi.waitFor(() => expect(getPlugins).toHaveBeenCalled())
     expect(usePluginWorkspacePanels().value).toEqual([])
+  })
+
+  it('never toasts a mechanical signal — kind is the judge, not one hard-coded name', async () => {
+    // 这是 R5 评审抓到的真症状:判定曾经只豁免 config-changed,于是插件每次
+    // ctx.refresh() 用户都收到一条 `plugin-panel-refresh:log-monitor:logs` 弹窗。
+    // 判据必须是"有没有 kind" —— 白名单的反面每加一种信号都要记得回来改。
+    const { initializeIPCHub } = await import('../ipc-hub')
+    initializeIPCHub()
+    await vi.waitFor(() => expect(notify).toBeTypeOf('function'))
+
+    notify?.({ pluginId: 'log-monitor', message: 'plugin-panel-refresh:log-monitor:logs', level: 'info', kind: 'panel-refresh' })
+    notify?.({ pluginId: 'log-monitor', message: 'plugin-config-changed:log-monitor', level: 'info', kind: 'config-changed' })
+    notify?.({ pluginId: 'log-monitor', message: 'plugin-catalog-changed:*', level: 'info', kind: 'catalog-changed' })
+    await flushMicrotasks()
+
+    expect(toastState.info).not.toHaveBeenCalled()
+    expect(toastState.error).not.toHaveBeenCalled()
+
+    // 给人看的通知不带 kind —— 它还是要弹。
+    notify?.({ pluginId: 'log-monitor', message: 'Log folder is full', level: 'error' })
+    expect(toastState.error).toHaveBeenCalledWith('Log folder is full')
+  })
+
+  it('pulls the catalog exactly once per notification', async () => {
+    // 曾经同一条通知既直接调 refresh 又派发事件,于是每条通知拉两次。
+    const { initializeIPCHub } = await import('../ipc-hub')
+    initializeIPCHub()
+    await vi.waitFor(() => expect(getPlugins).toHaveBeenCalled())
+
+    // window 是整个文件共享的,前几条用例挂的监听还在 —— 先量一次"一轮派发
+    // 值多少次拉取",再断言一条通知恰好等于一轮,而不是两轮。
+    const baseline = getPlugins.mock.calls.length
+    window.dispatchEvent(new Event('onething:plugins-changed'))
+    await flushMicrotasks()
+    const perDispatch = getPlugins.mock.calls.length - baseline
+    expect(perDispatch).toBeGreaterThan(0)
+
+    const before = getPlugins.mock.calls.length
+    notify?.({ pluginId: 'log-monitor', message: 'plugin-catalog-changed:*', level: 'info', kind: 'catalog-changed' })
+    await flushMicrotasks()
+
+    expect(getPlugins.mock.calls.length - before).toBe(perDispatch)
+  })
+
+  it('does not re-pull the catalog for a panel-refresh (that one addresses the open panel)', async () => {
+    const { initializeIPCHub } = await import('../ipc-hub')
+    initializeIPCHub()
+    await vi.waitFor(() => expect(getPlugins).toHaveBeenCalled())
+    const before = getPlugins.mock.calls.length
+
+    notify?.({ pluginId: 'log-monitor', message: 'x', level: 'info', kind: 'panel-refresh', panelId: 'logs' })
+    await flushMicrotasks()
+
+    expect(getPlugins.mock.calls.length).toBe(before)
   })
 
   it('re-pulls the list when the plugin catalog changes', async () => {

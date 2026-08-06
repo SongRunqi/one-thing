@@ -78,6 +78,16 @@ export interface PluginNotificationEvent {
   pluginId: string
   message: string
   level: 'info' | 'warn' | 'error'
+  /**
+   * 机械同步信号 —— 有 kind 就**不给人看**,只驱动宿主刷新。
+   *
+   * 没有它的时候,插件每次 ctx.refresh() 用户都会收到一条
+   * `plugin-panel-refresh:log-monitor:logs` 弹窗;message 里那串是给日志看的
+   * 地址,不是给人读的句子。给人看的通知(api.ui.notify、熔断告警)不带 kind。
+   */
+  kind?: 'config-changed' | 'panel-refresh' | 'catalog-changed'
+  /** kind = panel-refresh 时的面板 id。 */
+  panelId?: string
 }
 
 // ── Union ───────────────────────────────────────

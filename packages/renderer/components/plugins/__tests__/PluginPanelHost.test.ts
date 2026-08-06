@@ -60,6 +60,12 @@ function tree(text: string) {
   }
 }
 
+/** 从既有的 plugin:notification 轨推一条刷新信号。 */
+function pushRefresh(overrides: Record<string, unknown> = {}): void {
+  const message = { pluginId: 'log-monitor', panelId: 'logs', kind: 'panel-refresh', ...overrides }
+  platformState.notificationHandlers.forEach(handler => handler(message))
+}
+
 beforeEach(() => {
   platformState.environment = 'electron'
   platformState.pluginRequest.mockReset()
@@ -114,11 +120,49 @@ describe('PluginPanelHost', () => {
     expect(wrapper.text()).toContain('first')
 
     // 走的是既有的 plugin:notification 轨,不是新开的一条。
-    platformState.notificationHandlers.forEach(handler =>
-      handler({ pluginId: 'log-monitor', panelId: 'logs', kind: 'panel-refresh' }))
+    pushRefresh()
+    await vi.waitFor(() => expect(wrapper.text()).toContain('second'))
+  })
+
+  it('coalesces a burst of refreshes into a single re-pull', async () => {
+    // 插件在一次批量操作里对每个变化调一次 refresh 是完全合理的写法。
+    // 没有合流的话,那是 N 次 render 往返,而且并发返回还能乱序覆盖。
+    platformState.pluginRequest.mockResolvedValue({ success: true, result: tree('state') })
+
+    mount(PluginPanelHost, { props: { panel } })
+    await flushPromises()
+    expect(platformState.pluginRequest).toHaveBeenCalledTimes(1)
+
+    for (let i = 0; i < 10; i += 1) pushRefresh()
+    await vi.waitFor(() => expect(platformState.pluginRequest).toHaveBeenCalledTimes(2))
+    // 再等一个窗口,确认没有第二波补拉。
+    await new Promise(resolve => setTimeout(resolve, 250))
+    expect(platformState.pluginRequest).toHaveBeenCalledTimes(2)
+  })
+
+  it('lets the newest render win when responses come back out of order', async () => {
+    // 通道不保证按发出顺序返回。先发的那次后到,就会用一棵旧树盖掉新树 ——
+    // 而且盖完看不出哪里错了。
+    let releaseFirst: (() => void) | undefined
+    platformState.pluginRequest
+      .mockImplementationOnce(async () => {
+        await new Promise<void>(resolve => { releaseFirst = resolve })
+        return { success: true, result: tree('stale') }
+      })
+      .mockResolvedValueOnce({ success: true, result: tree('fresh') })
+
+    const wrapper = mount(PluginPanelHost, { props: { panel } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('second')
+    pushRefresh()
+    await vi.waitFor(() => expect(platformState.pluginRequest).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(wrapper.text()).toContain('fresh'))
+
+    // 第一次现在才回来 —— 它必须被丢弃。
+    releaseFirst?.()
+    await flushPromises()
+    expect(wrapper.text()).toContain('fresh')
+    expect(wrapper.text()).not.toContain('stale')
   })
 
   it('ignores a refresh addressed at another plugin', async () => {
@@ -128,11 +172,24 @@ describe('PluginPanelHost', () => {
     await flushPromises()
     expect(platformState.pluginRequest).toHaveBeenCalledTimes(1)
 
-    platformState.notificationHandlers.forEach(handler =>
-      handler({ pluginId: 'notes', panelId: 'inbox', kind: 'panel-refresh' }))
-    await flushPromises()
+    pushRefresh({ pluginId: 'notes', panelId: 'inbox' })
+    await new Promise(resolve => setTimeout(resolve, 250))
 
     expect(platformState.pluginRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders an unsupported node as a visible placeholder, not as blank space', async () => {
+    // 通道守卫会先拒掉这种树,所以这条路径只在守卫被绕开时可见 ——
+    // 但"看得见的占位"和"静默空白"是两种事故:后者只会让人以为面板坏了。
+    platformState.pluginRequest.mockResolvedValue({
+      success: true,
+      result: { version: 1, body: { type: 'hologram', payload: {} } },
+    })
+
+    const wrapper = mount(PluginPanelHost, { props: { panel } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unsupported panel element "hologram"')
   })
 
   it('shows an error state (not a blank panel) when render fails, and retries', async () => {
@@ -155,6 +212,22 @@ describe('PluginPanelHost', () => {
 
     expect(platformState.pluginRequest).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('is not running')
+  })
+
+  it('catches a render-time throw from a host primitive instead of taking the shell down', async () => {
+    // 通道守卫管的是**形状**;一棵形状合法的树照样可能让某个宿主原语在渲染中抛。
+    // 没有边界的话,那一抛会顺着组件树往上炸掉整个工作区 —— 软隔离在 UI 侧漏一个口。
+    const { default: MessageMarkdown } = await import('@/components/chat/message/MessageMarkdown.vue')
+    ;(MessageMarkdown as unknown as { setup?: unknown }).setup = () => {
+      throw new Error('markdown blew up')
+    }
+    platformState.pluginRequest.mockResolvedValue({ success: true, result: tree('boom') })
+
+    const wrapper = mount(PluginPanelHost, { props: { panel } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('markdown blew up')
+    delete (MessageMarkdown as unknown as { setup?: unknown }).setup
   })
 
   it('says desktop-only on the web instead of rendering a fake panel (plan A)', async () => {

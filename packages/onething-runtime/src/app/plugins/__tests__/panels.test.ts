@@ -19,7 +19,9 @@ import {
   PLUGIN_PANEL_INVOKE_ACTION,
   PLUGIN_PANEL_PROTOCOL_VERSION,
   PLUGIN_PANEL_RENDER_ACTION,
+  MAX_PANEL_DEPTH,
   createCorePluginAPI,
+  describeNonSerializable,
   disposeCorePluginState,
   validatePluginPanelTree,
   type CorePluginDefinition,
@@ -229,7 +231,103 @@ describe('R5 declarative panels — manifest declares, code binds', () => {
     await manager.initialize({ ready: true })
 
     await expect(manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` }))
-      .resolves.toMatchObject({ success: false, error: expect.stringContaining('must be pure data') })
+      .resolves.toMatchObject({ success: false, error: expect.stringContaining('onClick is a function') })
+  })
+
+  it('rejects a function buried deeper than the request channel scans', async () => {
+    // 关键用例:list 的 items 恰好落在请求通道默认深度(4)之外。
+    // 面板校验必须自己扫得更深,否则 "禁函数成员" 只覆盖最外两层节点 ——
+    // 而 `items[].payload` 正是插件最常放东西的地方。
+    const deep = {
+      version: PLUGIN_PANEL_PROTOCOL_VERSION,
+      body: {
+        type: 'stack',
+        children: [{
+          type: 'list',
+          items: [{ id: 'a', title: 'A', payload: { nested: { onPick: () => {} } } }],
+        }],
+      },
+    } as unknown as PluginPanelTree
+
+    // 先证明"通道那道浅校验确实漏了它" —— 否则这条用例可能是被别的守卫顺手挡下的。
+    expect(describeNonSerializable(deep, 'tree')).toBeNull()
+    expect(validatePluginPanelTree(deep)).toContain('is a function')
+
+    const { manager } = createManager([
+      definition('logs', api => {
+        api.registerWorkspacePanel({ id: 'main', render: () => deep })
+      }, [{ id: 'main', label: 'Logs' }]),
+    ])
+    await manager.initialize({ ready: true })
+
+    await expect(manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` }))
+      .resolves.toMatchObject({ success: false, error: expect.stringContaining('is a function') })
+  })
+
+  it('caps nesting at 12 levels so a runaway tree fails loudly instead of hanging the renderer', () => {
+    const build = (levels: number): PluginPanelTree => {
+      let node: Record<string, unknown> = { type: 'markdown', text: 'leaf' }
+      for (let i = 0; i < levels; i += 1) node = { type: 'stack', children: [node] }
+      return { version: PLUGIN_PANEL_PROTOCOL_VERSION, body: node as never }
+    }
+    expect(MAX_PANEL_DEPTH).toBe(12)
+    expect(validatePluginPanelTree(build(MAX_PANEL_DEPTH))).toBeNull()
+    expect(validatePluginPanelTree(build(MAX_PANEL_DEPTH + 1))).toContain('nested deeper than 12 levels')
+  })
+
+  it('validates the action result too: notice must be a string, refresh a boolean', async () => {
+    const { manager } = createManager([
+      definition('logs', api => {
+        api.registerWorkspacePanel({
+          id: 'main',
+          render: () => simpleTree('idle'),
+          // notice 直接进 toast —— 传个对象过去用户会看到 "[object Object]"。
+          onAction: () => ({ refresh: true, notice: { text: 'nope' } }) as never,
+        })
+      }, [{ id: 'main', label: 'Logs' }]),
+    ])
+    await manager.initialize({ ready: true })
+
+    await expect(manager.handleRequest({
+      pluginId: 'logs',
+      action: `${PLUGIN_PANEL_INVOKE_ACTION}:main`,
+      payload: { actionId: 'go' },
+    })).resolves.toMatchObject({ success: false, error: expect.stringContaining('"notice" must be a string') })
+  })
+
+  it('reserves the panel: namespace — a plugin cannot shadow the host wrapper', async () => {
+    const { manager, errors, failures } = createManager([
+      definition('logs', api => {
+        api.registerWorkspacePanel({ id: 'main', render: () => simpleTree('real') })
+        // 直接登记同名 action:不挡的话它会顶掉宿主装好的那层,
+        // 而它的返回值不经过任何校验就直通 renderer。
+        ;(api as unknown as { registerRequestHandler(action: string, handler: unknown): void })
+          .registerRequestHandler(`${PLUGIN_PANEL_RENDER_ACTION}:main`, () => ({ hijacked: true }))
+      }, [{ id: 'main', label: 'Logs' }]),
+    ])
+    await manager.initialize({ ready: true })
+
+    expect(errors.join('\n')).toContain('the "panel:" action namespace belongs to the host')
+    expect(failures).toContainEqual({ pluginId: 'logs', scope: 'registerRequestHandler' })
+
+    const result = await manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` })
+    expect(result).toMatchObject({ success: true })
+    expect(JSON.stringify((result as { result: unknown }).result)).toContain('real')
+  })
+
+  it('refuses a second registration of the same panel id instead of silently replacing it', async () => {
+    const { manager, errors, failures } = createManager([
+      definition('logs', api => {
+        api.registerWorkspacePanel({ id: 'main', render: () => simpleTree('first') })
+        api.registerWorkspacePanel({ id: 'main', render: () => simpleTree('second') })
+      }, [{ id: 'main', label: 'Logs' }]),
+    ])
+    await manager.initialize({ ready: true })
+
+    expect(errors.join('\n')).toContain('was already registered')
+    expect(failures).toContainEqual({ pluginId: 'logs', scope: 'registerWorkspacePanel' })
+    const result = await manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` })
+    expect(JSON.stringify((result as { result: unknown }).result)).toContain('first')
   })
 
   it('validates the tree shape: buttons address actions by id, not by callback', () => {
@@ -339,9 +437,34 @@ describe('R5 declarative panels — the log-monitor demo', () => {
       expect(validatePluginPanelTree(selected)).toBeNull()
       expect(JSON.stringify(selected)).toContain('line two')
 
+      // 日志里出现 ``` 会把 markdown 的代码围栏提前关掉,后面的内容当正文渲染 ——
+      // 围栏长度必须让开内容里最长的那串反引号。
+      fs.writeFileSync(path.join(logDir, 'agent-2026-08-05.log'), 'before\n```\nafter\n')
+      await registered[0].onAction?.({ actionId: 'select-file', payload: { name: 'agent-2026-08-05.log' } }, ctx)
+      const fenced = await registered[0].render(ctx)
+      expect(validatePluginPanelTree(fenced)).toBeNull()
+      const markdown = JSON.stringify(fenced)
+      expect(markdown).toContain('````')
+      // 回到原来选中的文件,后面的断言不受影响。
+      await registered[0].onAction?.({ actionId: 'select-file', payload: { name: 'agent-2026-08-05.log' } }, ctx)
+
       const cleaned = await registered[0].onAction?.({ actionId: 'cleanup' }, ctx)
       expect(cleanupOldLogs).toHaveBeenCalledTimes(1)
       expect(cleaned).toMatchObject({ refresh: true })
+
+      // payload 来自渲染进程,是**不可信输入**。不复核的话
+      // `path.join(logDir, '../../../.ssh/id_rsa')` 会把任意文件读进面板 ——
+      // 一个只读日志的插件变成任意文件读取。
+      const escaped = await registered[0].onAction?.(
+        { actionId: 'select-file', payload: { name: '../../../etc/passwd' } },
+        ctx,
+      )
+      expect(escaped).toMatchObject({ notice: 'That is not a log file.' })
+      const afterEscape = await registered[0].render(ctx)
+      expect(JSON.stringify(afterEscape)).not.toContain('passwd')
+      // 非日志文件同样进不来(它压根不在列表里,但 payload 可以硬塞)。
+      await registered[0].onAction?.({ actionId: 'select-file', payload: { name: 'notes.txt' } }, ctx)
+      expect(JSON.stringify(await registered[0].render(ctx))).not.toContain('ignore me')
     } finally {
       fs.rmSync(logDir, { recursive: true, force: true })
     }

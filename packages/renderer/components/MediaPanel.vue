@@ -543,6 +543,22 @@ function normalizeNav(tab?: string | null): string | null {
   return typeof tab === 'string' && parsePluginPanelNavId(tab) ? tab : null
 }
 
+/**
+ * 插件面板消失时把导航拉回来。
+ *
+ * 停用一个插件(或它被熔断自动禁用)之后,它的入口会从清单里消失,但 activeNav
+ * 还指着那个 nav id —— 于是导航条上没有任何一项高亮,主区一片空白,而且没有一句
+ * 话解释发生了什么。这里让它退回 media,并顺手把已挂载记录里的死条目清掉。
+ */
+watch(pluginPanels, (panels) => {
+  const parsed = parsePluginPanelNavId(String(activeNav.value))
+  if (parsed && !panels.some(panel => panel.pluginId === parsed.pluginId && panel.panelId === parsed.panelId)) {
+    activeNav.value = 'media'
+  }
+  const live = new Set(panels.map(panel => pluginPanelNavId(panel.pluginId, panel.panelId)))
+  mountedNavs.value = mountedNavs.value.filter(nav => !parsePluginPanelNavId(String(nav)) || live.has(String(nav)))
+})
+
 function markNavMounted(nav: WorkspacePanelNav) {
   if (!mountedNavs.value.includes(nav)) {
     mountedNavs.value = [...mountedNavs.value, nav]

@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onErrorCaptured, onMounted, ref, watch } from 'vue'
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import { SettingsEmptyState } from '@/components/settings/settings-primitives'
@@ -72,6 +72,21 @@ const loading = ref(false)
 const isDesktop = platformApi.environment !== 'web'
 
 /**
+ * latest-wins 的判据。
+ *
+ * 请求通道不保证按发出顺序返回:两次 render 并发时,先发的那次后到就会用一棵
+ * 旧树盖掉新树,而且看不出哪里错了。每次发请求领一个号,只有最后领号的那次
+ * 有资格写 tree/error。
+ */
+let renderToken = 0
+
+/** trailing debounce 的定时器(通知触发的重拉合流到一次)。 */
+let refreshTimer: ReturnType<typeof setTimeout> | undefined
+
+/** 插件连打 refresh 时的合流窗口 —— main 侧已去重一层,这里兜住剩下的。 */
+const REFRESH_DEBOUNCE_MS = 150
+
+/**
  * render / action 都走 R2 的统一请求通道。
  *
  * 于是它们**免费**拿到 30s 预算、abort、以及 `request:<action>` 的熔断账 ——
@@ -79,6 +94,7 @@ const isDesktop = platformApi.environment !== 'web'
  */
 async function render(): Promise<void> {
   if (!isDesktop || !props.panel.loaded) return
+  const token = ++renderToken
   loading.value = true
   error.value = ''
   try {
@@ -86,16 +102,25 @@ async function render(): Promise<void> {
       pluginId: props.panel.pluginId,
       action: `panel:render:${props.panel.panelId}`,
     })
+    // 期间又发过一次(或已经切走了):这次的结果作废。
+    if (token !== renderToken) return
     if (result?.success) {
       tree.value = result.result as PluginPanelTreeData
     } else {
       error.value = result?.error || 'The plugin could not render this panel.'
     }
   } catch (e: any) {
+    if (token !== renderToken) return
     error.value = e?.message || 'The plugin could not render this panel.'
   } finally {
-    loading.value = false
+    if (token === renderToken) loading.value = false
   }
+}
+
+/** 合流后的重拉 —— 通知触发的刷新都走它,不直接调 render。 */
+function scheduleRender(): void {
+  clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(() => { void render() }, REFRESH_DEBOUNCE_MS)
 }
 
 async function invoke(input: { actionId: string; payload?: unknown }): Promise<void> {
@@ -112,8 +137,15 @@ async function invoke(input: { actionId: string; payload?: unknown }): Promise<v
     const outcome = (result.result ?? {}) as { refresh?: boolean; tree?: PluginPanelTreeData; notice?: string }
     if (outcome.notice) toast.info(outcome.notice)
     // 插件可以直接给新树(省一次往返),也可以只说"重拉一次"。
-    if (outcome.tree) tree.value = outcome.tree
-    else if (outcome.refresh) await render()
+    // 直接给树也要领号,否则一次在飞的 render 回来会把它盖掉。
+    if (outcome.tree) {
+      renderToken += 1
+      tree.value = outcome.tree
+      error.value = ''
+    } else if (outcome.refresh) {
+      // 用户刚点了按钮,这一次不 debounce —— 等 150ms 会显得没反应。
+      await render()
+    }
   } catch (e: any) {
     toast.error(e?.message || 'The plugin could not handle that action.')
   }
@@ -131,17 +163,32 @@ onMounted(() => {
     if (payload?.kind !== 'panel-refresh') return
     if (payload.pluginId !== props.panel.pluginId) return
     if (payload.panelId && payload.panelId !== props.panel.panelId) return
-    void render()
+    scheduleRender()
   })
 })
 
 onBeforeUnmount(() => {
   unsubscribe?.()
+  clearTimeout(refreshTimer)
+})
+
+/**
+ * 渲染期的错误边界。
+ *
+ * 描述树已经过了通道守卫,但守卫管的是**形状**;一棵形状合法的树照样可能让某个
+ * 宿主原语在渲染中抛(比如 markdown 里的病态输入)。没有边界的话,那一抛会顺着
+ * 组件树往上炸掉整个工作区 —— 软隔离在 UI 侧就漏了一个口子。
+ */
+onErrorCaptured((e: unknown) => {
+  error.value = e instanceof Error ? e.message : 'This panel could not be rendered.'
+  tree.value = null
+  return false
 })
 
 // 切到另一个插件面板时重新拉一次。
 watch(() => `${props.panel.pluginId}:${props.panel.panelId}`, () => {
   tree.value = null
+  error.value = ''
   void render()
 })
 </script>

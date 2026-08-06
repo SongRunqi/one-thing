@@ -674,8 +674,9 @@ interface Props {
   floatingClosing?: boolean
   noTransition?: boolean
   mediaPanelOpen?: boolean
-  // 这里曾经残留一个死成员 'memory'(同文件的本地联合早就没有它了)——
-  // 手抄清单的典型下场。现在两处都从注册表派生。
+  // 这个 props 联合与同文件的本地联合曾经是**两份手抄清单**;soul-memory 退役
+  // 期间的工作树里它们一度不同步(一边删了 'memory',另一边还留着)。
+  // 现在两处都从注册表派生 —— 不同步这件事在类型上不再可能。
   activeWorkspacePanel?: OpenableWorkspacePanelId | null
   width?: number
 }

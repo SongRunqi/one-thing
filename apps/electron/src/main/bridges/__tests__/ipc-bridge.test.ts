@@ -140,3 +140,65 @@ describe('IPCBridge stream buffer', () => {
     expect(sent[1].payload.event.type).toBe('permission:request')
   })
 })
+
+/**
+ * 通知类事件的投递面(R5 评审 A3)。
+ *
+ * 设置窗是独立的 BrowserWindow。插件通知只发给"绑定的那个 sender"的话,用户在
+ * 设置窗启停一个插件,主窗的面板导航收不到任何信号,于是停在陈旧状态,点开报
+ * "not active"。会话事件与流块不同 —— 它们只与主窗有关,继续走单窗口。
+ */
+describe('IPCBridge notification fan-out', () => {
+  function globalBusStub() {
+    const globalHandlers = new Map<string, (envelope: unknown) => void>()
+    return {
+      bus: {
+        onAnySessionAny: () => () => {},
+        onGlobal: (type: string, handler: (envelope: unknown) => void) => {
+          globalHandlers.set(type, handler)
+          return () => globalHandlers.delete(type)
+        },
+      },
+      emitGlobal(type: string, event: unknown) {
+        globalHandlers.get(type)?.({ event })
+      },
+    }
+  }
+
+  function sender() {
+    return { isDestroyed: () => false, send: vi.fn(), on: vi.fn() }
+  }
+
+  it('broadcasts plugin notifications to every window, not just the bound one', async () => {
+    const events = await import('@onething/app/events/index.js')
+    const stub = globalBusStub()
+    vi.spyOn(events, 'getEventBus').mockReturnValue(stub.bus as never)
+
+    const broadcast = vi.fn()
+    const bridge = new IPCBridge({ broadcast })
+    bridge.bind(sender() as never)
+
+    const notification = { type: 'plugin:notification', pluginId: 'log-monitor', message: 'x', level: 'info' }
+    stub.emitGlobal('plugin:notification', notification)
+
+    expect(broadcast).toHaveBeenCalledWith(IPC_CHANNELS.PLUGINS_NOTIFICATION, notification)
+    bridge.unbind()
+    vi.restoreAllMocks()
+  })
+
+  it('falls back to the bound sender when no broadcaster is wired (headless/tests)', async () => {
+    const events = await import('@onething/app/events/index.js')
+    const stub = globalBusStub()
+    vi.spyOn(events, 'getEventBus').mockReturnValue(stub.bus as never)
+
+    const bound = sender()
+    const bridge = new IPCBridge()
+    bridge.bind(bound as never)
+
+    stub.emitGlobal('plugin:notification', { type: 'plugin:notification', pluginId: 'p', message: 'm', level: 'info' })
+
+    expect(bound.send).toHaveBeenCalledWith(IPC_CHANNELS.PLUGINS_NOTIFICATION, expect.objectContaining({ pluginId: 'p' }))
+    bridge.unbind()
+    vi.restoreAllMocks()
+  })
+})

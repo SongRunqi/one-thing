@@ -201,13 +201,50 @@ export function registerOnethingLogMonitorPanel(
     }
   }
 
+  /**
+   * 名字白名单。
+   *
+   * `path.join(logDir, name)` 里的 name 直接来自面板 action 的 payload,也就是
+   * **渲染进程送来的字符串**。不复核的话 `../../../.ssh/id_rsa` 会被当成日志读出来
+   * 并显示在面板里 —— 一个只读日志的插件成了任意文件读取。
+   * 复核用日志文件名本身的模式(不含分隔符,只能是 `agent-YYYY-MM-DD.log`),
+   * 而不是 resolve 之后比前缀:前者根本不给穿越留下形状。
+   */
+  const isLogFileName = (name: unknown): name is string =>
+    typeof name === 'string' && CORE_LOG_MONITOR_LOG_FILE_PATTERN.test(name)
+
+  /** 尾部预览的读取上限 —— 一个跑了一整天的日志有几十 MB,不能整份读进内存。 */
+  const TAIL_BYTES = 16 * 1024
+
   const tailOf = (name: string, lines = 20): string => {
+    if (!isLogFileName(name)) return 'Not a log file.'
+    let handle: number | undefined
     try {
-      const raw = fs.readFileSync(path.join(options.logDir, name), 'utf-8')
-      return raw.split('\n').filter(Boolean).slice(-lines).join('\n')
+      const filePath = path.join(options.logDir, name)
+      const size = fs.statSync(filePath).size
+      const start = Math.max(0, size - TAIL_BYTES)
+      const buffer = Buffer.alloc(Math.min(size, TAIL_BYTES))
+      handle = fs.openSync(filePath, 'r')
+      fs.readSync(handle, buffer, 0, buffer.length, start)
+      const raw = buffer.toString('utf-8')
+      // 从中间截断的第一行多半是半行 —— 丢掉它比显示一截乱码诚实。
+      const rows = raw.split('\n')
+      if (start > 0) rows.shift()
+      return rows.filter(Boolean).slice(-lines).join('\n')
     } catch (error) {
       return `Cannot read ${name}: ${error instanceof Error ? error.message : String(error)}`
+    } finally {
+      if (handle !== undefined) {
+        try { fs.closeSync(handle) } catch { /* 关不上就算了 */ }
+      }
     }
+  }
+
+  /** 日志里出现 ``` 会把 markdown 的代码围栏提前关掉,后面的内容当正文渲染。 */
+  const fenced = (body: string): string => {
+    const longest = [...body.matchAll(/`+/g)].reduce((max, match) => Math.max(max, match[0].length), 0)
+    const fence = '`'.repeat(Math.max(3, longest + 1))
+    return `${fence}\n${body}\n${fence}`
   }
 
   api.registerWorkspacePanel({
@@ -251,7 +288,7 @@ export function registerOnethingLogMonitorPanel(
       if (selectedFile) {
         ;(body.children as unknown[]).splice(2, 0, {
           type: 'markdown',
-          text: `#### ${selectedFile}\n\n\`\`\`\n${tailOf(selectedFile) || '(empty)'}\n\`\`\``,
+          text: `#### ${selectedFile}\n\n${fenced(tailOf(selectedFile) || '(empty)')}`,
         })
       }
 
@@ -261,8 +298,13 @@ export function registerOnethingLogMonitorPanel(
     onAction(input: { actionId: string; payload?: unknown }) {
       switch (input.actionId) {
         case 'select-file': {
-          const name = (input.payload as { name?: string } | undefined)?.name
-          selectedFile = typeof name === 'string' && name === selectedFile ? null : name ?? null
+          const name = (input.payload as { name?: unknown } | undefined)?.name
+          // payload 来自渲染进程,当不可信输入处理:不是日志文件名就当没选。
+          if (!isLogFileName(name)) {
+            selectedFile = null
+            return { refresh: true, notice: 'That is not a log file.' }
+          }
+          selectedFile = name === selectedFile ? null : name
           return { refresh: true }
         }
         case 'open-folder':

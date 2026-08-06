@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import MediaPanel from '../MediaPanel.vue'
 import { confirmStack, settleConfirm } from '@/composables/useConfirm'
 import { destroyUiOverlayHost } from '@/services/ui-overlay-host'
@@ -17,10 +18,6 @@ vi.mock('../ArchivedChatsContent.vue', () => ({
 }))
 
 vi.mock('../AgentsPanelContent.vue', () => ({
-  default: { template: '<div />' },
-}))
-
-vi.mock('../memory/MemoryPanelContent.vue', () => ({
   default: { template: '<div />' },
 }))
 
@@ -221,25 +218,49 @@ describe('MediaPanel', () => {
 
   it('keeps visited workspace panel views mounted when switching the active tab', async () => {
     const wrapper = mount(MediaPanel, {
-      props: { visible: true, mode: 'main', activeTab: 'memory' },
+      props: { visible: true, mode: 'main', activeTab: 'tasks' },
       global: { stubs: { ArchivedChatsContent: true } },
     })
 
-    expect(wrapper.find('[data-workspace-panel-view="memory"]').exists()).toBe(true)
+    expect(wrapper.find('[data-workspace-panel-view="tasks"]').exists()).toBe(true)
     expect(wrapper.find('[data-workspace-panel-view="media"]').exists()).toBe(false)
     expect(wrapper.find('.main-panel-title').exists()).toBe(false)
     expect(wrapper.find('.main-panel-header-spacer').exists()).toBe(true)
 
     await wrapper.setProps({ activeTab: 'media' })
 
-    expect(wrapper.find('[data-workspace-panel-view="memory"]').exists()).toBe(true)
+    expect(wrapper.find('[data-workspace-panel-view="tasks"]').exists()).toBe(true)
     expect(wrapper.find('[data-workspace-panel-view="media"]').exists()).toBe(true)
 
     await wrapper.setProps({ activeTab: 'agents' })
 
-    expect(wrapper.find('[data-workspace-panel-view="memory"]').exists()).toBe(true)
+    expect(wrapper.find('[data-workspace-panel-view="tasks"]').exists()).toBe(true)
     expect(wrapper.find('[data-workspace-panel-view="media"]').exists()).toBe(true)
     expect(wrapper.find('[data-workspace-panel-view="agents"]').exists()).toBe(true)
+  })
+
+  it('falls back to media when the open plugin panel disappears', async () => {
+    // 停用一个插件(或它被熔断自动禁用)之后入口会从清单里消失,但 activeNav
+    // 还指着那个 nav id —— 导航条上没有任何一项高亮,主区一片空白,而且没有一句
+    // 话解释发生了什么。
+    const { setPluginWorkspacePanels } = await import('@/workspace/panel-registry')
+    setPluginWorkspacePanels([
+      { pluginId: 'log-monitor', pluginName: 'Log monitor', panelId: 'logs', label: 'Agent logs', loaded: true },
+    ])
+
+    const wrapper = mount(MediaPanel, {
+      props: { visible: true, mode: 'main', activeTab: 'plugin:log-monitor:logs' },
+      global: { stubs: { ArchivedChatsContent: true, PluginPanelHost: true } },
+    })
+    await nextTick()
+    expect(wrapper.find('[data-workspace-panel-view="plugin:log-monitor:logs"]').exists()).toBe(true)
+
+    // 插件被停用 → 清单里没有它了。
+    setPluginWorkspacePanels([])
+    await nextTick()
+
+    expect(wrapper.find('[data-workspace-panel-view="media"]').exists()).toBe(true)
+    expect(wrapper.find('[data-workspace-panel-view="plugin:log-monitor:logs"]').exists()).toBe(false)
   })
 
   it('removes assets from the library without requiring message edits', async () => {

@@ -83,6 +83,24 @@ export function isGlobalPluginEventType(eventType: string): boolean {
 /** 会话事件都带冒号命名空间;不符合的多半是拼错了,值得吼一声。 */
 const KNOWN_SESSION_EVENT_HINT = /^[a-z][\w-]*:[\w:-]+$/i
 
+/**
+ * 面板刷新的合流窗口(毫秒)。
+ *
+ * 取值只需要盖住"一次批量操作里的连续 refresh",不需要盖住用户的两次点击 ——
+ * 200ms 之外的两次刷新,用户会觉得那是两件事。
+ */
+const PANEL_REFRESH_DEDUPE_MS = 200
+const lastPanelRefreshAt = new Map<string, number>()
+
+function shouldEmitPanelRefresh(pluginId: string, panelId: string): boolean {
+  const key = `${pluginId}::${panelId}`
+  const now = Date.now()
+  const previous = lastPanelRefreshAt.get(key)
+  if (previous !== undefined && now - previous < PANEL_REFRESH_DEDUPE_MS) return false
+  lastPanelRefreshAt.set(key, now)
+  return true
+}
+
 export interface CreatePluginAPIOptions {
   /**
    * manifest contributes.panels 里声明过的面板 id(R5)。
@@ -184,6 +202,10 @@ export function createPluginAPI(
         )
       },
       emitPanelRefresh(id, panelId) {
+        // 短窗去重:插件在一次文件扫描里对每个变化的文件调一次 refresh 是完全
+        // 合理的写法,但那是 N 条一模一样的信号。同一 pluginId+panelId 在窗口内
+        // 只放行第一条 —— 后面的都会让 renderer 拉出同一棵树。
+        if (!shouldEmitPanelRefresh(id, panelId)) return
         eventBus.emitGlobal({
           type: 'plugin:notification',
           pluginId: id,
@@ -191,9 +213,11 @@ export function createPluginAPI(
           level: 'info',
           kind: 'panel-refresh',
           panelId,
-        } as never)
+        })
       },
       emitPluginEvent(id, eventName, payload) {
+        // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast
+        // 是有意的(与 panel-refresh 不同,后者已经收进联合)。
         eventBus.emitGlobal({
           type: `plugin:${id}:${eventName}`,
           pluginId: id,

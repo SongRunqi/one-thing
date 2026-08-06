@@ -23,6 +23,7 @@ import {
   ensurePluginDirs,
   getPluginDataRoot,
   getPluginsDir,
+  invalidateDeclaredPanelIdsCache,
   loadPersistedPluginHealth,
   persistPluginHealth,
   readPluginConfig,
@@ -74,7 +75,11 @@ function createHost(): CorePluginManagerHost<
     onRequestSuccess: reportPluginRuntimeSuccess,
     // ── R4:数据目录与卸载 ──
     archivePluginData: pluginId => archiveCorePluginData(getPluginDataRoot(), pluginId),
-    removePluginSource: definition => removePluginSourceDir(definition.dirPath, definition.id),
+    removePluginSource: (definition) => {
+      // 源目录没了,清单也就变了 —— 面板声明缓存必须跟着失效。
+      invalidateDeclaredPanelIdsCache()
+      return removePluginSourceDir(definition.dirPath, definition.id)
+    },
     clearPluginSettings: pluginId => {
       clearPluginSettingsKeys(pluginId)
       // 配置缓存跟着盘上的事实走,否则卸载后重装会读到上一世的值。
@@ -131,8 +136,46 @@ export class PluginManager extends CorePluginManager<
   PluginDefinition,
   PluginManagerContext
 > {
+  /** 目录变了要广播,而 core 不认识 EventBus —— initialize 时接上。 */
+  private eventBus: { emitGlobal?(event: unknown): void } | null = null
+
   constructor() {
     super(createHost())
+  }
+
+  /**
+   * 目录变更的机械信号。
+   *
+   * 插件系统是 post-window 非阻塞装配的,renderer 在 boot 时拉的那一次很可能拉了个
+   * 空清单;而设置窗启停插件之后,主窗那份 nav 也不会自己更新(两个独立
+   * BrowserWindow)。两个症状同一个成因:**目录变了没人说一声**。
+   * 一条信号盖住两处 —— bootstrap 完成、启用、停用、刷新,统一发它。
+   */
+  private emitCatalogChanged(pluginId: string): void {
+    this.eventBus?.emitGlobal?.({
+      type: 'plugin:notification',
+      pluginId,
+      message: `plugin-catalog-changed:${pluginId}`,
+      level: 'info',
+      kind: 'catalog-changed',
+    })
+  }
+
+  async enablePlugin(pluginId: string): Promise<void> {
+    await super.enablePlugin(pluginId)
+    this.emitCatalogChanged(pluginId)
+  }
+
+  async disablePlugin(pluginId: string): Promise<void> {
+    await super.disablePlugin(pluginId)
+    this.emitCatalogChanged(pluginId)
+  }
+
+  async refreshPlugins(): Promise<void> {
+    // 刷新就是"重新看盘上有什么" —— 缓存的清单先作废。
+    invalidateDeclaredPanelIdsCache()
+    await super.refreshPlugins()
+    this.emitCatalogChanged('*')
   }
 
   /** Call after EventBus and StreamEngine are initialized */
@@ -142,6 +185,7 @@ export class PluginManager extends CorePluginManager<
     const context = streamEngine === undefined
       ? eventBusOrContext as PluginManagerContext
       : { eventBus: eventBusOrContext, streamEngine }
+    this.eventBus = context.eventBus ?? null
 
     // 熔断器要能真的禁用插件并通知用户 —— core 不认识 EventBus,这条线只能在
     // 这里接上(late-bound host port,与 configure*Host 同构)。
@@ -180,6 +224,8 @@ export class PluginManager extends CorePluginManager<
     restorePluginRuntimeHealth()
 
     await super.initialize(context)
+    // 装配完成才是 renderer 能看到真实清单的时刻 —— boot 时那一次拉的多半是空的。
+    this.emitCatalogChanged('*')
   }
 }
 

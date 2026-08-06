@@ -4,7 +4,8 @@
  * 两条裁决落在这里:
  *  1. **静态存在感走 manifest**:面板的 id/label/icon 声明在
  *     `contributes.panels`(R2 已建),运行期的 `registerWorkspacePanel` 只绑定
- *     行为。宿主凭清单就能渲染面板入口 —— 未启用的插件也有入口(点开提示启用)。
+ *     行为。宿主凭清单渲染入口,**不执行一行插件代码** —— 于是"启用了但加载失败"
+ *     的插件入口仍在,并且能把失败说出来。停用的插件不贡献入口。
  *  2. **UI 永不执行插件代码**:插件交出的是一棵**纯数据**的描述树,渲染由宿主做。
  *     这是"窄腰"在 UI 侧的落地:插件能表达什么,与插件代码在哪执行,彻底解耦。
  *
@@ -85,7 +86,15 @@ export interface PluginPanelFormField {
   label: string
   hint?: string
   control: 'switch' | 'text' | 'number' | 'select' | 'string-list'
+  /** control = 'select' 时必填。 */
   options?: string[]
+  /**
+   * **仅初值**。
+   *
+   * 表单挂载之后编辑态活在宿主组件里,后续 render 返回的新树**不会**回写一个
+   * 已挂载的表单 —— 否则用户打字打到一半会被一次后台刷新抹掉。要强制换值,
+   * 让用户离开面板再回来,或者改用 button + 一次性 action。
+   */
   value?: unknown
 }
 
@@ -133,7 +142,18 @@ const PANEL_NODE_TYPES = new Set([
 const FORM_CONTROLS = new Set(['switch', 'text', 'number', 'select', 'string-list'])
 
 /** 描述树最大深度 —— 一棵能渲染的面板树不需要更深,深了多半是拼错了。 */
-const MAX_PANEL_DEPTH = 12
+export const MAX_PANEL_DEPTH = 12
+
+/**
+ * 序列化校验在描述树上要扫多深。
+ *
+ * 不能用请求通道的默认 4 层:节点每嵌套一层要走两跳(children 数组 + 下标),
+ * 12 层节点就是 24 跳,list 的 items / item 的 payload / button 的 payload 还要
+ * 再几跳。用 4 层扫等于只查了最外面两层节点,`items[].payload` 里的函数一个也
+ * 抓不到 —— "禁函数成员"那句承诺会变成半句话。描述树是小对象(要能渲染成一屏
+ * UI),完整走一遍的代价可以忽略,不适用请求通道那个性能折中。
+ */
+export const PANEL_TREE_SCAN_DEPTH = MAX_PANEL_DEPTH * 2 + 8
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -156,8 +176,9 @@ export function validatePluginPanelTree(tree: unknown): string | null {
     return 'panel tree "title" must be a string'
   }
 
-  // 整棵树过一次序列化浅校验:函数/Map/Set/类实例一律在这里止步。
-  const problem = describeNonSerializable(tree, 'panel tree')
+  // 整棵树过一次序列化校验:函数/Map/Set/类实例一律在这里止步。
+  // 深度显式给足(见 PANEL_TREE_SCAN_DEPTH)—— 默认的 4 层扫不到 items 里的 payload。
+  const problem = describeNonSerializable(tree, 'panel tree', 0, new WeakSet(), PANEL_TREE_SCAN_DEPTH)
   if (problem) return `panel tree must be pure data: ${problem}`
 
   return validateNode(tree.body, 'body', 0)
@@ -226,10 +247,42 @@ function validateNode(node: unknown, path: string, depth: number): string | null
 export function validatePluginPanelActionResult(result: unknown): string | null {
   if (result === undefined || result === null) return null
   if (!isPlainRecord(result)) return 'panel action result must be an object'
-  const problem = describeNonSerializable(result, 'panel action result')
+  const problem = describeNonSerializable(result, 'panel action result', 0, new WeakSet(), PANEL_TREE_SCAN_DEPTH)
   if (problem) return `panel action result must be pure data: ${problem}`
+  // notice 直接进 toast:传个对象过来,用户看到的是 "[object Object]"。
+  if (result.notice !== undefined && typeof result.notice !== 'string') {
+    return 'panel action result "notice" must be a string'
+  }
+  if (result.refresh !== undefined && typeof result.refresh !== 'boolean') {
+    return 'panel action result "refresh" must be a boolean'
+  }
   if (result.tree !== undefined) return validatePluginPanelTree(result.tree)
   return null
+}
+
+/**
+ * `panel:*` 请求结果的**唯一守卫**。
+ *
+ * 放在通道层而不是注册包装层:`panel:` 命名空间虽然已经对 registerRequestHandler
+ * 关上,但守卫只写在包装里的话,任何绕开包装的登记路径(将来的第二个宿主、直接
+ * 写 state.requestHandlers 的测试替身)都会把一棵没校验过的树喂给 renderer。
+ * 通道是所有 panel 结果的必经之路,钉在这里才是真的钉住。
+ */
+export function describePluginPanelResultProblem(action: string, result: unknown): string | null {
+  if (action.startsWith(`${PLUGIN_PANEL_RENDER_ACTION}:`)) {
+    const problem = validatePluginPanelTree(result)
+    return problem ? `panel render produced an invalid tree: ${problem}` : null
+  }
+  if (action.startsWith(`${PLUGIN_PANEL_INVOKE_ACTION}:`)) {
+    const problem = validatePluginPanelActionResult(result)
+    return problem ? `panel action produced an invalid result: ${problem}` : null
+  }
+  return null
+}
+
+/** `panel:` 是宿主保留的命名空间 —— 插件不能自己往里登记 handler。 */
+export function isReservedPluginPanelAction(action: string): boolean {
+  return action.startsWith('panel:')
 }
 
 // ── 插件侧注册面 ─────────────────────────────
@@ -243,6 +296,9 @@ export interface CorePluginPanelContext {
    *
    * 这是插件**主动**刷新面板的唯一出口 —— 走既有的通知通道投递,
    * 不另开一条轨(§5.2 第 4 条:自定义事件不跨 IPC,R5 需要投递面时复用现成的)。
+   *
+   * 调用频率不必自律:宿主两端都合流(main 侧按 pluginId+panelId 短窗去重,
+   * renderer 侧 trailing debounce + latest-wins),连打一百次也只重拉一次。
    */
   refresh(): void
 }

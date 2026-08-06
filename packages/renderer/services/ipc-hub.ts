@@ -323,28 +323,34 @@ export function initializeIPCHub() {
   // 告警。两者此前都发到零订阅者的全局总线上,用户什么也看不到。
   platformApi.onPluginNotification?.((payload) => {
     if (!payload?.message) return
-    // 配置变更是**机械同步信号**,不是给人看的通知:只派发刷新事件,不弹 toast
-    // (保存是用户自己点的,再弹一条就是噪音)。
-    const isConfigChanged = (payload as { kind?: string }).kind === 'config-changed'
-    if (!isConfigChanged) {
+    // **有 kind 就是机械信号**,一律不弹 toast。
+    //
+    // 判据必须是"有没有 kind",不能是"是不是 config-changed":后者是白名单的
+    // 反面,每加一种机械信号都得记得回来改这里,而漏改的代价是刷屏 ——
+    // panel-refresh 的 message 是 `plugin-panel-refresh:log-monitor:logs`
+    // 这样的机器串,插件每次 ctx.refresh() 用户就看到一个弹窗。
+    // 给人看的通知(api.ui.notify、熔断告警)不带 kind。
+    const isMechanical = Boolean((payload as { kind?: string }).kind)
+    if (!isMechanical) {
       if (payload.level === 'error') toast.error(payload.message)
       else toast.info(payload.message)
     }
-    // 设置页开着的话顺手刷新插件列表:自动禁用刚刚改了 enabled 与健康态,
-    // 不刷新的话卡片还停在 Active。
-    window.dispatchEvent(new CustomEvent('onething:plugins-changed', {
-      detail: { pluginId: payload.pluginId },
-    }))
-    // 启停/熔断都会改面板入口的可见性与状态。
-    if (!isConfigChanged) void refreshPluginWorkspacePanels()
+    // 面板清单只有**一条**重拉路径:派发 onething:plugins-changed,由下面那个
+    // 唯一的监听器去拉。此前这里既直接调 refresh 又派发事件,同一条通知会拉两次。
+    if ((payload as { kind?: string }).kind !== 'panel-refresh') {
+      window.dispatchEvent(new CustomEvent('onething:plugins-changed', {
+        detail: { pluginId: payload.pluginId },
+      }))
+    }
   })
 
   window.addEventListener('onething:plugins-changed', () => {
     void refreshPluginWorkspacePanels()
   })
 
-  // 插件面板清单:入口来自 manifest,所以这一步**不执行任何插件代码**,
-  // 未启用的插件也会有入口(点开由 PluginPanelHost 提示启用)。
+  // 插件面板清单:入口来自 manifest,所以这一步**不执行任何插件代码**。
+  // 插件系统是 post-window 非阻塞装配的,这一次很可能拉了个空清单 ——
+  // 装配完成时 manager 会发 kind:'catalog-changed',那一条负责把它补上。
   void refreshPluginWorkspacePanels()
 
   console.log('[IPC Hub] Unified listeners registered (session:event + session:stream + plugin notifications)')

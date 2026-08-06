@@ -132,6 +132,17 @@
         :aria-label="field.label"
         @update:model-value="formState[field.key] = String($event)"
       />
+      <!-- string-list 编辑期间只维护**原始文本**:每敲一键就 split+trim+filter
+           再 join 回去是有损往返 —— 键入的逗号当场被自己吃掉,第二项永远打不
+           出来。blur 时才 parse(与 R3 设置页同一配方)。 -->
+      <Input
+        v-else-if="field.control === 'string-list'"
+        :model-value="stringListText[field.key] ?? ''"
+        :aria-label="field.label"
+        placeholder="Comma separated"
+        @update:model-value="stringListText[field.key] = String($event)"
+        @blur="commitStringList(field.key)"
+      />
       <Input
         v-else
         :model-value="String(formState[field.key] ?? '')"
@@ -146,7 +157,7 @@
       <Button
         unstyled
         class="panel-button"
-        @click="emit('action', { actionId: node.submitActionId, payload: { ...formState } })"
+        @click="submitForm(node.submitActionId)"
       >
         {{ node.submitLabel || 'Save' }}
       </Button>
@@ -171,6 +182,15 @@
       </Button>
     </template>
   </SettingsEmptyState>
+
+  <!-- 认不出的节点类型。通道守卫会先拒掉它,所以这里只在守卫被绕开时才可见 ——
+       但"看得见的占位"和"静默空白"是两种事故:后者只会让人以为面板坏了。 -->
+  <p
+    v-else
+    class="panel-unknown"
+  >
+    Unsupported panel element "{{ (node as { type?: string }).type ?? 'unknown' }}" — this plugin may need a newer app.
+  </p>
 </template>
 
 <script setup lang="ts">
@@ -201,6 +221,36 @@ const formState = reactive<Record<string, unknown>>(
     ? Object.fromEntries(props.node.fields.map(field => [field.key, field.value ?? '']))
     : {},
 )
+
+/**
+ * string-list 的编辑期文本态(与 formState 分开)。
+ *
+ * 只存原始字符串;blur 时才 parse 回数组写进 formState。提交前再 parse 一次,
+ * 因为用户完全可能打完最后一项直接点保存 —— 那时 blur 还没来得及发生,
+ * 少了这一步提交上去的就是上一次 blur 的旧值。
+ */
+const stringListText = reactive<Record<string, string>>(
+  props.node.type === 'form'
+    ? Object.fromEntries(
+      props.node.fields
+        .filter(field => field.control === 'string-list')
+        .map(field => [field.key, Array.isArray(field.value) ? field.value.join(', ') : String(field.value ?? '')]),
+    )
+    : {},
+)
+
+function commitStringList(key: string): void {
+  formState[key] = (stringListText[key] ?? '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function submitForm(actionId: string): void {
+  // 先把还没 blur 的 string-list 落定,再打包 —— 否则最后一次输入会丢。
+  for (const key of Object.keys(stringListText)) commitStringList(key)
+  emit('action', { actionId, payload: { ...formState } })
+}
 </script>
 
 <style scoped>
@@ -343,6 +393,14 @@ const formState = reactive<Record<string, unknown>>(
 .panel-button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.panel-unknown {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--ui-border-default-border);
+  font-size: 12px;
+  color: var(--ui-text-muted-fg);
 }
 
 .panel-form-actions {

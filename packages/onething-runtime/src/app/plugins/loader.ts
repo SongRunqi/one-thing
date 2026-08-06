@@ -182,11 +182,30 @@ function getBuiltinPlugins(): PluginDefinition[] {
  * pluginStates,只能从扫描结果里取。放在 loader 是因为 `scanPlugins` 在这里 ——
  * 让每个造 api 的地方各自去查清单,迟早会有一条路忘了查,然后把合法的注册
  * 判成"未声明"。
+ *
+ * **短 TTL 缓存**:`scanPlugins()` 会读一遍插件目录,而 createPluginAPI 是
+ * per-plugin 调用的 —— N 个插件就是 N 次全盘扫描(启动期的 O(n²))。
+ * 一次装配/一次刷新都发生在同一瞬间,一个很短的窗口就足以把它压回 O(n),
+ * 又短到不会让"刚装上的插件"读到过期清单。
  */
+const DECLARED_PANEL_IDS_TTL_MS = 1000
+let declaredPanelIdsCache: { at: number; byPlugin: Map<string, string[]> } | null = null
+
 export function getDeclaredPanelIds(pluginId: string): string[] {
-  return scanPlugins()
-    .find(definition => definition.id === pluginId)
-    ?.manifest.contributes?.panels?.map(panel => panel.id) ?? []
+  const now = Date.now()
+  if (!declaredPanelIdsCache || now - declaredPanelIdsCache.at >= DECLARED_PANEL_IDS_TTL_MS) {
+    const byPlugin = new Map<string, string[]>()
+    for (const definition of scanPlugins()) {
+      byPlugin.set(definition.id, definition.manifest.contributes?.panels?.map(panel => panel.id) ?? [])
+    }
+    declaredPanelIdsCache = { at: now, byPlugin }
+  }
+  return declaredPanelIdsCache.byPlugin.get(pluginId) ?? []
+}
+
+/** 装插件 / 卸插件之后清缓存 —— 不等 TTL 自然过期。 */
+export function invalidateDeclaredPanelIdsCache(): void {
+  declaredPanelIdsCache = null
 }
 
 export function scanPlugins(): PluginDefinition[] {

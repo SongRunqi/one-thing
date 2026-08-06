@@ -4,8 +4,7 @@ import { PluginStorageError, type CorePluginStorage } from './storage.js'
 import {
   PLUGIN_PANEL_INVOKE_ACTION,
   PLUGIN_PANEL_RENDER_ACTION,
-  validatePluginPanelActionResult,
-  validatePluginPanelTree,
+  isReservedPluginPanelAction,
   type CorePluginPanelContext,
   type CorePluginPanelRegistration,
 } from './panel.js'
@@ -387,6 +386,19 @@ export function createCorePluginAPI<
         logger.error(`[Plugin:${pluginId}] registerRequestHandler needs a non-empty action`, undefined)
         return
       }
+      // `panel:` 是宿主保留的命名空间。不挡的话,插件可以直接登记
+      // `panel:render:<id>` 顶掉宿主装好的那层 —— 一条 replacing 日志之后,
+      // 一棵没校验过的树就直通 renderer 了。这与"未声明的面板 id"同一性质,
+      // 所以同款处理:报错 + 计熔断,不注册。
+      if (isReservedPluginPanelAction(normalized)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerRequestHandler("${normalized}") is refused: the "panel:" action `
+          + 'namespace belongs to the host. Use registerWorkspacePanel() to contribute a panel.',
+          undefined,
+        )
+        reportFailure('registerRequestHandler', new Error(`reserved action "${normalized}"`))
+        return
+      }
       if (requestHandlers.has(normalized)) {
         logger.error(`[Plugin:${pluginId}] Duplicate request handler for action "${normalized}" (replacing)`, undefined)
       }
@@ -445,6 +457,17 @@ export function createCorePluginAPI<
         logger.error(`[Plugin:${pluginId}] registerWorkspacePanel("${panelId}") needs a render function`, undefined)
         return
       }
+      // 同一个 id 注册两次:静默覆盖会让"我明明注册了"与"点开是另一个面板"
+      // 同时成立,这是最难查的一类。清单里一个 id 就是一个面板,重复即错。
+      if (requestHandlers.has(`${PLUGIN_PANEL_RENDER_ACTION}:${panelId}`)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerWorkspacePanel("${panelId}") was already registered; `
+          + 'one manifest panel id binds exactly one implementation.',
+          undefined,
+        )
+        reportFailure('registerWorkspacePanel', new Error(`duplicate panel "${panelId}"`))
+        return
+      }
 
       const panelContext = (ctx: CorePluginRequestContext): CorePluginPanelContext => ({
         requestId: ctx.requestId,
@@ -456,12 +479,10 @@ export function createCorePluginAPI<
         refresh: () => host.emitPanelRefresh?.(pluginId, panelId),
       })
 
-      requestHandlers.set(`${PLUGIN_PANEL_RENDER_ACTION}:${panelId}`, async (_payload, ctx) => {
-        const tree = await registration.render(panelContext(ctx))
-        const problem = validatePluginPanelTree(tree)
-        if (problem) throw new Error(`Panel "${panelId}" produced an invalid tree: ${problem}`)
-        return tree
-      })
+      // 形状校验不在这里做:通道层(manager.handleRequest)对所有 panel:* 结果
+      // 统一执行,包装可以被绕开而通道不能。这里只做包装自己的事。
+      requestHandlers.set(`${PLUGIN_PANEL_RENDER_ACTION}:${panelId}`, (_payload, ctx) =>
+        registration.render(panelContext(ctx)))
 
       requestHandlers.set(`${PLUGIN_PANEL_INVOKE_ACTION}:${panelId}`, async (payload, ctx) => {
         if (!registration.onAction) return { refresh: false }
@@ -469,8 +490,6 @@ export function createCorePluginAPI<
         const actionId = String(input.actionId ?? '')
         if (!actionId) throw new Error(`Panel "${panelId}" received an action without an actionId`)
         const result = await registration.onAction({ actionId, payload: input.payload }, panelContext(ctx))
-        const problem = validatePluginPanelActionResult(result)
-        if (problem) throw new Error(`Panel "${panelId}" produced an invalid action result: ${problem}`)
         return result ?? { refresh: false }
       })
 

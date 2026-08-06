@@ -5,8 +5,9 @@
  * (App.vue / Sidebar.vue / MediaPanel.vue)都必须从这里派生。
  */
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   BUILTIN_WORKSPACE_PANELS,
   OPENABLE_WORKSPACE_PANEL_IDS,
@@ -16,11 +17,19 @@ import {
   isOpenableWorkspacePanelId,
   isWorkspacePanelId,
   workspacePanelWindowEvent,
+  type OpenableWorkspacePanelId,
+  type WorkspacePanelId,
 } from '../panel-registry'
 
+// 相对本文件定位,不是相对 cwd:vitest 从仓库根跑是约定而不是保证,
+// 换个工作目录这些读文件的断言会变成一片 ENOENT,而不是一条清晰的失败。
+const RENDERER_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+
 function readRendererFile(relativePath: string): string {
-  return readFileSync(join(process.cwd(), 'packages/renderer', relativePath), 'utf-8')
+  return readFileSync(join(RENDERER_ROOT, relativePath), 'utf-8')
 }
+
+const CONSUMERS = ['App.vue', 'components/sidebar/Sidebar.vue', 'components/MediaPanel.vue'] as const
 
 describe('workspace panel registry', () => {
   it('keeps the panels the shell had before the refactor, in the same order', () => {
@@ -48,12 +57,27 @@ describe('workspace panel registry', () => {
     expect(isOpenableWorkspacePanelId('memory')).toBe(false)
   })
 
+  it('derives the openable id type from the flag instead of re-listing the exception', () => {
+    // 手写 `Exclude<WorkspacePanelId, 'archive'>` 会在单一事实源内部再抄一份
+    // 特例:再加一个 openable:false 的面板,运行时清单认得它、类型不认得。
+    expectTypeOf<OpenableWorkspacePanelId>().toEqualTypeOf<'media' | 'agents' | 'tasks' | 'music' | 'practice'>()
+    expectTypeOf<OpenableWorkspacePanelId>().toExtend<WorkspacePanelId>()
+    // 运行时清单与类型必须是同一份事实。
+    expectTypeOf(OPENABLE_WORKSPACE_PANEL_IDS[0]).toEqualTypeOf<OpenableWorkspacePanelId>()
+  })
+
   it('records the window-event entries for the panels that have them', () => {
-    expect(workspacePanelWindowEvent('tasks')).toBe('todo-plan:web-window-action')
-    expect(workspacePanelWindowEvent('practice')).toBe('practice:open-workspace')
-    // 事实源在 stores/agents.ts —— 注册表记录的名字必须与它一致。
+    // 三条 window 事件都与**发射端**交叉验证 —— 注册表记的是别人拥有的名字,
+    // 抄错了它自己是不会知道的。
     const agentsStore = readRendererFile('stores/agents.ts')
     expect(agentsStore).toContain(`AGENT_OPEN_WORKSPACE_EVENT = '${workspacePanelWindowEvent('agents')}'`)
+
+    const practiceStrip = readRendererFile('components/chat/PracticeStrip.vue')
+    expect(practiceStrip).toContain(`new CustomEvent('${workspacePanelWindowEvent('practice')}')`)
+
+    const webPlatform = readRendererFile('platform/web.ts')
+    expect(webPlatform).toContain(`TODO_PLAN_WEB_WINDOW_EVENT = "${workspacePanelWindowEvent('tasks')}"`)
+
     expect(() => workspacePanelWindowEvent('media')).toThrow()
   })
 
@@ -65,17 +89,27 @@ describe('workspace panel registry', () => {
     }
   })
 
-  it('leaves no hand-written panel union behind in the three consumers', () => {
-    const app = readRendererFile('App.vue')
-    const sidebar = readRendererFile('components/sidebar/Sidebar.vue')
-    const mediaPanel = readRendererFile('components/MediaPanel.vue')
+  it('leaves no hand-written panel list behind in the three consumers', () => {
+    for (const relativePath of CONSUMERS) {
+      const source = readRendererFile(relativePath)
 
-    for (const [name, source] of [['App.vue', app], ['Sidebar.vue', sidebar], ['MediaPanel.vue', mediaPanel]] as const) {
-      // 手抄的联合长这样:`'media' | 'agents' | …`。留一处就会再次漂移。
-      expect(source, name).not.toMatch(/'media'\s*\|\s*'agents'/)
-      expect(source, name).toContain("from '@/workspace/panel-registry'")
+      // 形态一:类型联合 `'media' | 'agents' | …`。
+      // 不写死顺序也不写死引号 —— 本次收编的漂移里就有换序和 archive 多一项,
+      // 只认一种写法的正则抓不住下一次。
+      expect(source, `${relativePath}: hand-written panel union`)
+        .not.toMatch(/["']media["']\s*\|\s*["']agents["']|["']agents["']\s*\|\s*["']media["']/)
+
+      // 形态二:数组字面量 `['media', 'agents', …]`。
+      // navItems / workspaceActions 的漂移(practice 漏掉、archive 多出)正是
+      // 这个形态 —— 上一版守卫只查联合,恰好放过了它。
+      expect(source, `${relativePath}: hand-written panel array`)
+        .not.toMatch(/\[\s*["']media["']\s*,\s*["']agents["']|\[\s*["']agents["']\s*,\s*["']media["']/)
+
+      expect(source, `${relativePath}: must derive from the registry`)
+        .toContain("from '@/workspace/panel-registry'")
     }
+
     // 死成员 'memory' 曾在 Sidebar 的 props 联合里存活了很久。
-    expect(sidebar).not.toContain("'memory' | 'media'")
+    expect(readRendererFile('components/sidebar/Sidebar.vue')).not.toContain("'memory' | 'media'")
   })
 })

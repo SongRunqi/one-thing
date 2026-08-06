@@ -771,9 +771,9 @@ describe('工作区面板入口一个都不丢', () => {
     const more = wrapper.findAll('.sidebar-rail-tab')
       .find(tab => tab.attributes('aria-label') === '工作区面板')!
     await more.trigger('click')
-    const menu = menuWithItem(wrapper, 'memory')
+    const menu = menuWithItem(wrapper, 'media')
     expect((menu.props('items') as Array<{ id: string }>).map(item => item.id))
-      .toEqual(['memory', 'media', 'agents', 'tasks', 'music'])
+      .toEqual(['media', 'agents', 'tasks', 'music'])
   })
 
   it('菜单每一项都真的把对应面板打开(没有一个面板变得进不去)', async () => {
@@ -781,12 +781,12 @@ describe('工作区面板入口一个都不丢', () => {
     const more = wrapper.findAll('.sidebar-rail-tab')
       .find(tab => tab.attributes('aria-label') === '工作区面板')!
     await more.trigger('click')
-    const menu = menuWithItem(wrapper, 'memory')
-    for (const id of ['memory', 'media', 'agents', 'tasks', 'music']) {
+    const menu = menuWithItem(wrapper, 'media')
+    for (const id of ['media', 'agents', 'tasks', 'music']) {
       menu.vm.$emit('select', id)
     }
     expect(wrapper.emitted('open-workspace-panel')?.flat())
-      .toEqual(['memory', 'media', 'agents', 'tasks', 'music'])
+      .toEqual(['media', 'agents', 'tasks', 'music'])
   })
 
   it('新会话与设置照旧各占一枚(不进菜单)', async () => {

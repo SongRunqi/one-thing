@@ -1,4 +1,5 @@
 import type { CorePluginDefinition } from './types.js'
+import { describePluginPanelResultProblem } from './panel.js'
 import {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
   CORE_PLUGIN_INSTALL_TIMEOUT_MS,
@@ -314,6 +315,10 @@ export class CorePluginManager<
           return fail(PLUGIN_REQUEST_ABORTED_ERROR, { aborted: true })
         }
         assertPluginPayloadSerializable(result, 'request result')
+        // panel:* 的结果多过一道形状校验。守卫钉在通道上而不是注册包装里 ——
+        // 包装可以被绕开(直接写 requestHandlers),通道不能。
+        const panelProblem = describePluginPanelResultProblem(action, result)
+        if (panelProblem) throw new Error(panelProblem)
         this.host.onRequestSuccess?.(input.pluginId, scope)
         return { success: true, requestId, result: result ?? null }
       } catch (error) {

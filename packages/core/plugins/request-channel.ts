@@ -56,21 +56,27 @@ export const PLUGIN_REQUEST_ABORTED_ERROR = 'Plugin request aborted'
  * Promise、TypedArray、类实例、非有限数)当场被拒;循环引用**无论多深**都能抓到
  * (WeakSet 已访问集,O(n),与深度无关)。
  *
- * **它不保证什么**:超过 4 层的形状错误会逃逸 —— 这条路径在每次插件调用上,
- * 完备遍历一棵大对象是白付的代价。H 线把插件搬进子进程、边界变成真 RPC 时,
- * 序列化会由结构化克隆强制,届时重估这个折中。
+ * **它不保证什么**:超过 `maxDepth` 层的形状错误会逃逸 —— 请求通道用默认的 4 层,
+ * 因为它在每次插件调用上,完备遍历一棵大对象是白付的代价。H 线把插件搬进子进程、
+ * 边界变成真 RPC 时,序列化会由结构化克隆强制,届时重估这个折中。
+ *
+ * **调用方可以加深**:`maxDepth` 是参数而不是常量,因为"够深"取决于被扫的东西。
+ * 描述树(R5 面板)就必须传一个大得多的值:它的节点上限是 12 层,而 list 的 items
+ * 恰好落在默认第 4 层 —— 用默认值扫,item 的 payload / button 的 payload 里的函数
+ * 一个也扫不到,"禁函数成员"这句承诺就成了半句。
  *
  * **Date 的语义差异**:这里放行 Date,但它过 IPC(structured clone)会保持 Date,
  * 过 HTTP(JSON.stringify)会变成 ISO 字符串。两个宿主拿到的类型不同 ——
  * 插件要跨端一致的话,自己转成字符串或时间戳。
  */
-const JSON_CHECK_MAX_DEPTH = 4
+export const JSON_CHECK_MAX_DEPTH = 4
 
 export function describeNonSerializable(
   value: unknown,
   path = 'value',
   depth = 0,
   seen: WeakSet<object> = new WeakSet(),
+  maxDepth: number = JSON_CHECK_MAX_DEPTH,
 ): string | null {
   if (value === null) return null
   const kind = typeof value
@@ -94,9 +100,9 @@ export function describeNonSerializable(
   seen.add(value as object)
 
   if (Array.isArray(value)) {
-    if (depth >= JSON_CHECK_MAX_DEPTH) return null
+    if (depth >= maxDepth) return null
     for (let index = 0; index < value.length; index += 1) {
-      const found = describeNonSerializable(value[index], `${path}[${index}]`, depth + 1, seen)
+      const found = describeNonSerializable(value[index], `${path}[${index}]`, depth + 1, seen, maxDepth)
       if (found) return found
     }
     return null
@@ -115,10 +121,10 @@ export function describeNonSerializable(
     return `${path} is a class instance (${(value as object).constructor?.name || 'unknown'}); pass a plain object`
   }
 
-  if (depth >= JSON_CHECK_MAX_DEPTH) return null
+  if (depth >= maxDepth) return null
 
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    const found = describeNonSerializable(child, `${path}.${key}`, depth + 1, seen)
+    const found = describeNonSerializable(child, `${path}.${key}`, depth + 1, seen, maxDepth)
     if (found) return found
   }
   return null

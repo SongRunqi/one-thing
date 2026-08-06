@@ -25,9 +25,22 @@ export interface IPCBridgeSender {
   on(event: 'destroyed', listener: () => void): void
 }
 
+export interface IPCBridgeOptions {
+  /**
+   * 通知类事件的多窗口投递面。
+   *
+   * 会话事件/流块只与主窗有关,发给绑定的那个 sender 就够了。但插件通知不是 ——
+   * 设置窗是**独立的 BrowserWindow**,用户在那里启停一个插件,主窗的面板导航
+   * 收不到任何信号,于是停在陈旧状态,点开报 "not active"。缺省仍是单窗口投递
+   * (测试与 headless 不必关心窗口),宿主装配时把真广播接进来。
+   */
+  broadcast?(channel: string, payload: unknown): void
+}
+
 export class IPCBridge {
   private streamSubs = new Map<string, Unsubscribe>()
   private sender: IPCBridgeSender | null = null
+  private broadcast: ((channel: string, payload: unknown) => void) | null = null
   private unsubEventBus: Unsubscribe | null = null
   private unsubPluginNotifications: Unsubscribe | null = null
   private coalescer = new SessionStreamCoalescer(
@@ -38,6 +51,10 @@ export class IPCBridge {
     },
     { debugLabel: 'IPCBridge' },
   )
+
+  constructor(options: IPCBridgeOptions = {}) {
+    this.broadcast = options.broadcast ?? null
+  }
 
   /**
    * Bind to a renderer sender.
@@ -63,7 +80,7 @@ export class IPCBridge {
     // outside core/events nothing calls `.onGlobal(`, so a plugin's only UI
     // touchpoint quietly went nowhere. This is that missing hop.
     this.unsubPluginNotifications = eventBus.onGlobal('plugin:notification', (envelope) => {
-      this.safeSend(IPC_CHANNELS.PLUGINS_NOTIFICATION, envelope.event)
+      this.sendToAllWindows(IPC_CHANNELS.PLUGINS_NOTIFICATION, envelope.event)
     })
 
     // Auto-cleanup when the BrowserWindow is destroyed
@@ -104,6 +121,22 @@ export class IPCBridge {
   /** Push a non-session event to the renderer (practice ticks, etc.). */
   sendToRenderer(channel: string, payload: unknown): void {
     this.safeSend(channel, payload)
+  }
+
+  /**
+   * 通知类投递:所有活着的窗口都要收到,不只是绑定的那个。
+   * 没接广播口时退回单窗口 —— 语义降级而不是静默丢失。
+   */
+  private sendToAllWindows(channel: string, payload: unknown): void {
+    if (!this.broadcast) {
+      this.safeSend(channel, payload)
+      return
+    }
+    try {
+      this.broadcast(channel, payload)
+    } catch (err) {
+      console.warn('[IPCBridge] Broadcast failed:', err)
+    }
   }
 
   private safeSend(channel: string, payload: unknown): void {
