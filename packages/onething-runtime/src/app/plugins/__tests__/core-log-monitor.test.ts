@@ -6,7 +6,6 @@ import {
   CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS,
   CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER,
   CORE_LOG_MONITOR_DEFAULT_RETENTION_DAYS,
-  CORE_LOG_MONITOR_MANIFEST,
   CORE_LOG_MONITOR_TRACKED_EVENTS,
   CoreLogMonitorBuffer,
   CoreLogMonitorDiskWriter,
@@ -32,14 +31,6 @@ import {
 } from '@onething/core/plugins'
 
 describe('core log-monitor helpers', () => {
-  it('keeps the builtin plugin manifest in core', () => {
-    expect(CORE_LOG_MONITOR_MANIFEST).toMatchObject({
-      name: 'log-monitor',
-      version: '1.0.0',
-      author: 'headless-core',
-    })
-  })
-
   it('plans log file naming and retention cleanup in core', () => {
     expect(CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER).toBe(500)
     expect(CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS).toBe(1000)

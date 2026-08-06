@@ -47,12 +47,6 @@ export const CORE_LOG_MONITOR_LOG_FILE_PATTERN = /^agent-(\d{4}-\d{2}-\d{2})\.lo
 export const CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER = 500
 export const CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS = 1000
 export const CORE_LOG_MONITOR_DEFAULT_RETENTION_DAYS = 7
-export const CORE_LOG_MONITOR_MANIFEST = {
-  name: 'log-monitor',
-  version: '1.0.0',
-  description: 'Real-time agent event logging with disk persistence, daily rotation, and LLM-searchable logs',
-  author: 'headless-core',
-}
 
 export interface CoreLogMonitorBufferOptions {
   maxBuffer?: number
@@ -160,6 +154,7 @@ export interface CoreLogMonitorPluginApi<TToolParameters> {
   ui: {
     notify(message: string, level?: 'info' | 'warn' | 'error'): void
   }
+  onDispose?(callback: () => void): void
 }
 
 export interface CoreLogMonitorPluginOptions<TToolParameters> {
@@ -566,7 +561,7 @@ export function registerCoreLogMonitorPlugin<TToolParameters>(
   const logBuffer = new CoreLogMonitorBuffer({ maxBuffer })
   const diskWriter = options.diskWriter ?? (() => {
     if (!options.diskWriterOptions) {
-      throw new Error('Core log monitor requires either diskWriter or diskWriterOptions')
+      throw new Error('Either diskWriter or diskWriterOptions is required')
     }
     return new CoreLogMonitorDiskWriter(options.diskWriterOptions)
   })()
@@ -641,6 +636,11 @@ export function registerCoreLogMonitorPlugin<TToolParameters>(
       ctx.notify(`Cleared ${count} events from buffer.`, 'info')
     },
   })
+
+  // 拆除测试守卫的是"注册表回到基线",但残留不止注册表:磁盘写入器持着
+  // 一个 flush 定时器与一条 WriteStream,不在 dispose 里收掉,禁用之后它还在
+  // 往磁盘写。
+  api.onDispose?.(() => diskWriter.close())
 
   options.ensureLogDir?.()
   diskWriter.rotateIfNeeded()

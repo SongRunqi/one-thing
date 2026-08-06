@@ -60,3 +60,8 @@ export async function runAfterAssistantResponseHooks(
 export function clearLifecycleHooksForPlugin(pluginId: string): void {
   lifecycleRegistry.clearLifecycleHooksForPlugin(pluginId)
 }
+
+/** Registry footprint accessor — the teardown guard compares it across enable/disable. */
+export function getLifecycleHookCounts(): { beforeContextCompact: number; afterAssistantResponse: number } {
+  return lifecycleRegistry.getHookCounts()
+}

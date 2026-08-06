@@ -1705,29 +1705,33 @@ const MAIN_PLUGINS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
   /ipcMain\.handle/,
 ]
 
-const MAIN_LOG_MONITOR_PLUGIN_FORBIDDEN_PATTERNS: RegExp[] = [
+// 插件逻辑不得回流主进程 —— 一条按目录走的通用规则,取代原先按符号逐个点名的
+// MAIN_LOG_MONITOR_PLUGIN_* / MAIN_NOTE_SKILLS_PLUGIN_* 两张表(它们只认识
+// findObsidianVaultRoot 这类具体名字,新插件一加就是新盲区)。
+//
+// src/app/plugins/builtin/ 是**插座**:把宿主的能力(store/settings/日志目录)
+// 注入给 @onething/runtime/plugins 里的插件实现,自己不写行为。因此这里禁的是
+// "行为的形状"而不是"某个名字":schema、Node I/O、直接 api.* 注册、控制流、
+// 计时器、长字面量(描述/提示词)。
+const BUILTIN_PLUGIN_FACADE_FORBIDDEN_PATTERNS: RegExp[] = [
+  // 参数 schema 属于插件实现(它才是被模型调用的那一侧)。
   /from\s+['"]zod['"]/,
-  /CORE_LOG_MONITOR_DEFAULT_/,
-  /CORE_LOG_MONITOR_MANIFEST/,
-  /createCoreLogMonitorFileDiskAdapters/,
-  /ensureCoreLogMonitorDirectory/,
-  /registerCoreLogMonitorPlugin/,
-  /searchToolParameters:\s*z\.object/,
-  /diskWriterOptions:/,
+  // Node I/O / 子进程:插件能力,必须经运行时实现或注入的适配器。
+  /from\s+['"](?:node:)?(?:fs|fs\/promises|os|path|child_process|http|https|net|readline|worker_threads)['"]/,
+  /\brequire\(\s*['"](?:node:)?(?:fs|fs\/promises|os|path|child_process|http|https|net)['"]\s*\)/,
+  // 直接往注入的 api 对象上挂东西 = 插件逻辑长在装配层。
+  /\bapi\s*\.\s*(?:registerTool|registerCommand|registerPromptContextProvider|registerSkillRoot|beforeContextCompact|afterAssistantResponse|onDispose|steer|followUp|store|scheduler|ui)\b/,
+  /\bapi\s*\.\s*on\s*\(/,
+  // 控制流 = 行为,不是接线。
+  /^\s*(?:if|for|while|switch|do)\s*[({]/,
+  /^\s*(?:try|catch|finally)\b/,
+  /\?\?=|\|\|=/,
+  // 生命周期(定时器)由插件实现自己持有,插座不许起。
+  /\bset(?:Interval|Timeout|Immediate)\s*\(/,
 ]
 
-const MAIN_NOTE_SKILLS_PLUGIN_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"](?:node:)?fs['"]/,
-  /from\s+['"](?:node:)?os['"]/,
-  /from\s+['"](?:node:)?path['"]/,
-  /findObsidianVaultRoot/,
-  /readObsidianAppConfig/,
-  /resolveConfiguredNoteAttachmentDirectory/,
-  /resolveNoteSkillRootDirs/,
-  /buildNoteSkillRootDescriptors/,
-  /function\s+expandNoteSkillHome/,
-  /function\s+normalizeNoteSkillDir/,
-]
+// 描述文案 / 提示词 / 路径模板这类长字面量属于插件实现;插座里只该出现模块路径。
+const BUILTIN_PLUGIN_FACADE_LONG_LITERAL = /(['"`])(?:(?!\1)[^\\])[^'"`\n]{40,}\1/
 
 const MAIN_SKILLS_IPC_RUNTIME_CACHE_FORBIDDEN_PATTERNS: RegExp[] = [
   /skillsCache\s*:/,
@@ -9288,92 +9292,248 @@ function checkRuntimeOwnsPluginsIpcOperations(): void {
   assertNoMatches('packages/onething-runtime owns plugin IPC operations', lines)
 }
 
-function checkRuntimeOwnsLogMonitorPlugin(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/log-monitor.ts')
-  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/plugins/index.ts')
-  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/plugins/__tests__/log-monitor.test.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/log-monitor.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
-  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
-  const requiredRuntimeSymbols = [
-    'ONETHING_LOG_MONITOR_MANIFEST',
-    'createOnethingLogMonitorSearchToolParameters',
-    'registerOnethingLogMonitorPlugin',
-  ]
-  const lines = [
-    ...(!fs.existsSync(runtimeFile)
-      ? [`${rel(runtimeFile)}: missing runtime-owned log-monitor plugin`]
-      : []),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime log-monitor symbol ${symbol}`),
-    ...(!fs.existsSync(runtimeTestFile)
-      ? [`${rel(runtimeTestFile)}: missing runtime log-monitor tests`]
-      : []),
-    ...(!runtimeIndexContent.includes('./log-monitor.js')
-      ? [`${rel(runtimeIndexFile)}: missing log-monitor public export`]
-      : []),
-    ...(!mainContent.includes('@onething/runtime/plugins')
-      ? [`${rel(mainFile)}: log-monitor facade must delegate to runtime plugins`]
-      : []),
-    ...(mainLines.length > 25
-      ? [`${rel(mainFile)}: log-monitor facade must stay thin`]
-      : []),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_LOG_MONITOR_PLUGIN_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing log-monitor plugin adapter`]),
-  ]
+const BUILTIN_PLUGIN_FACADE_DIR = 'packages/onething-runtime/src/app/plugins/builtin'
+const BUILTIN_PLUGIN_RUNTIME_DIR = 'packages/onething-runtime/src/plugins'
+const BUILTIN_PLUGIN_FACADE_MAX_LINES = 60
 
-  assertNoMatches('packages/onething-runtime owns log-monitor plugin registration', lines)
+/** 内置插件的 id 列表 = 插座目录的文件名。加一个插件就自动进入所有规则。 */
+function listBuiltinPluginIds(): string[] {
+  const dir = path.join(root, BUILTIN_PLUGIN_FACADE_DIR)
+  if (!fs.existsSync(dir)) return []
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts'))
+    .map(entry => entry.name.replace(/\.ts$/, ''))
+    .sort()
 }
 
-function checkRuntimeOwnsNoteSkillsPlugin(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/note-skills.ts')
-  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/plugins/index.ts')
-  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/plugins/__tests__/note-skills.test.ts')
-  const removedMainRuntimeTest = path.join(root, 'packages/onething-runtime/src/app/plugins/__tests__/core-note-skills.test.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/note-skills.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+function checkPluginLogicStaysOutOfHostAssembly(): void {
+  const pluginIds = listBuiltinPluginIds()
+  const runtimeIndexFile = path.join(root, BUILTIN_PLUGIN_RUNTIME_DIR, 'index.ts')
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
-  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
-  const requiredRuntimeSymbols = [
-    'ONETHING_NOTE_SKILLS_MANIFEST',
-    'buildNoteSkillInstructionContext',
-    'buildNoteSkillRootDescriptors',
-    'registerOnethingNoteSkillsPlugin',
-    'resolveNoteSkillRootDirs',
-  ]
-  const lines = [
-    ...(!fs.existsSync(runtimeFile)
-      ? [`${rel(runtimeFile)}: missing runtime-owned note-skills plugin`]
-      : []),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime note-skills symbol ${symbol}`),
-    ...(!fs.existsSync(runtimeTestFile)
-      ? [`${rel(runtimeTestFile)}: missing runtime note-skills tests`]
-      : []),
-    ...(fs.existsSync(removedMainRuntimeTest)
-      ? [`${rel(removedMainRuntimeTest)}: runtime note-skills tests belong under packages/onething-runtime`]
-      : []),
-    ...(!runtimeIndexContent.includes('./note-skills.js')
-      ? [`${rel(runtimeIndexFile)}: missing note-skills public export`]
-      : []),
-    ...(!mainContent.includes('@onething/runtime/plugins')
-      ? [`${rel(mainFile)}: note-skills facade must delegate to runtime plugins`]
-      : []),
-    ...(mainLines.length > 55
-      ? [`${rel(mainFile)}: note-skills facade must stay thin`]
-      : []),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_NOTE_SKILLS_PLUGIN_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing note-skills plugin adapter`]),
-  ]
+  const lines: string[] = []
 
-  assertNoMatches('packages/onething-runtime owns note-skills plugin runtime', lines)
+  if (pluginIds.length === 0) {
+    lines.push(`${BUILTIN_PLUGIN_FACADE_DIR}: no built-in plugin facades found`)
+  }
+
+  for (const pluginId of pluginIds) {
+    const facadeFile = path.join(root, BUILTIN_PLUGIN_FACADE_DIR, `${pluginId}.ts`)
+    const runtimeFile = path.join(root, BUILTIN_PLUGIN_RUNTIME_DIR, `${pluginId}.ts`)
+    const runtimeTestFile = path.join(root, BUILTIN_PLUGIN_RUNTIME_DIR, '__tests__', `${pluginId}.test.ts`)
+    const facadeContent = fs.readFileSync(facadeFile, 'utf-8')
+    const facadeLines = facadeContent.split('\n').filter(line => line.trim().length > 0)
+
+    // 1) 实现必须住在 runtime 产品层,并且自带测试与公开导出。
+    if (!fs.existsSync(runtimeFile)) {
+      lines.push(`${rel(runtimeFile)}: missing runtime-owned implementation for built-in plugin "${pluginId}"`)
+    } else {
+      const runtimeContent = fs.readFileSync(runtimeFile, 'utf-8')
+      if (!/export\s+function\s+registerOnething\w+Plugin\b/.test(runtimeContent)) {
+        lines.push(`${rel(runtimeFile)}: must export a registerOnething*Plugin(api, options) entry`)
+      }
+      if (!/export\s+const\s+ONETHING_\w*MANIFEST\b/.test(runtimeContent)) {
+        lines.push(`${rel(runtimeFile)}: must own its ONETHING_*_MANIFEST (manifests are product data, not core data)`)
+      }
+    }
+    if (!fs.existsSync(runtimeTestFile)) {
+      lines.push(`${rel(runtimeTestFile)}: missing runtime tests for built-in plugin "${pluginId}"`)
+    }
+    if (!runtimeIndexContent.includes(`./${pluginId}.js`)) {
+      lines.push(`${rel(runtimeIndexFile)}: missing public export for built-in plugin "${pluginId}"`)
+    }
+
+    // 2) 插座只许接线:委托、够薄、无行为。
+    if (!facadeContent.includes('@onething/runtime/plugins')) {
+      lines.push(`${rel(facadeFile)}: built-in plugin facade must delegate to @onething/runtime/plugins`)
+    }
+    if (facadeLines.length > BUILTIN_PLUGIN_FACADE_MAX_LINES) {
+      lines.push(`${rel(facadeFile)}: built-in plugin facade must stay thin (${facadeLines.length} > ${BUILTIN_PLUGIN_FACADE_MAX_LINES} lines)`)
+    }
+    lines.push(...matchingLines(facadeFile, BUILTIN_PLUGIN_FACADE_FORBIDDEN_PATTERNS))
+    lines.push(...facadeContent
+      .split(/\r?\n/)
+      .map((line, index) => ({ line, lineNo: index + 1 }))
+      .filter(({ line }) => !/^\s*(?:\*|\/\/|\/\*)/.test(line)
+        && !/\bfrom\s+['"]/.test(line)
+        && !/\bimport\s*\(/.test(line)
+        && BUILTIN_PLUGIN_FACADE_LONG_LITERAL.test(line))
+      .map(({ line, lineNo }) => `${rel(facadeFile)}:${lineNo}: ${line.trim()}`))
+
+    // 3) 插件行为的测试跟着实现走;装配层的 __tests__ 只留 core 原语测试。
+    for (const candidate of [`${pluginId}.test.ts`, `core-${pluginId}.test.ts`]) {
+      const parked = path.join(root, BUILTIN_PLUGIN_FACADE_DIR, '..', '__tests__', candidate)
+      if (!fs.existsSync(parked)) continue
+      const parkedContent = fs.readFileSync(parked, 'utf-8')
+      const nonCoreImports = parkedContent
+        .split(/\r?\n/)
+        .map((line, index) => ({ line, lineNo: index + 1 }))
+        .filter(({ line }) => /\bfrom\s+['"]/.test(line)
+          && !/from\s+['"](?:node:)?(?:fs|fs\/promises|os|path|crypto|util)['"]/.test(line)
+          && !/from\s+['"]vitest['"]/.test(line)
+          && !/from\s+['"]@onething\/core(?:\/|['"])/.test(line))
+        .map(({ line, lineNo }) => `${rel(parked)}:${lineNo}: plugin-behaviour test belongs next to the implementation — ${line.trim()}`)
+      lines.push(...nonCoreImports)
+    }
+  }
+
+  assertNoMatches('plugin logic stays out of the host assembly tree', lines)
+}
+
+// 已退役但仍必须防复发的功能名。import 方向检查抓不到"知识泄漏":
+// soul-memory 当年把 general.soulMemory.activeMemory.timeoutMs 直接读进了 core,
+// 一行 import 都没多加。
+const RETIRED_FEATURE_TOKENS = [
+  'soul-memory',
+  'soulMemory',
+  'activeMemory',
+]
+
+function featureTokenVariants(token: string): string[] {
+  const words = token.split(/[-_\s]+/).filter(Boolean)
+  const lower = words.map(word => word.toLowerCase())
+  const pascal = lower.map(word => word[0].toUpperCase() + word.slice(1)).join('')
+  return Array.from(new Set([
+    token,
+    lower.join('-'),
+    lower.join('_'),
+    lower.join(''),
+    pascal,
+    pascal[0].toLowerCase() + pascal.slice(1),
+  ]))
+}
+
+function normalizeFeatureToken(value: string): string {
+  return value.replace(/[^A-Za-z0-9]/g, '').toLowerCase()
+}
+
+/**
+ * core 不认识任何具体功能。
+ *
+ * 扫的是**字符串字面量与属性名**(不是标识符):`name: 'log-monitor'`、
+ * `settings.general.soulMemory.x`、`data['note-skills']` 全部算红。
+ * 模块说明符(import/export 的路径)被排除 —— 它是文件布局问题,不是知识泄漏,
+ * 由分层检查另管。
+ */
+function checkCoreKnowsNoConcreteFeatures(): void {
+  const tokens = new Set<string>()
+  for (const raw of [...listBuiltinPluginIds(), ...RETIRED_FEATURE_TOKENS]) {
+    for (const variant of featureTokenVariants(raw)) {
+      tokens.add(normalizeFeatureToken(variant))
+    }
+  }
+  const known = [...tokens].filter(Boolean)
+
+  const stringLiteral = /(['"])((?:\\.|(?!\1)[^\\])*)\1/g
+  const moduleSpecifier = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(\s*)(['"])(?:\\.|(?!\1)[^\\])*\1/g
+  const memberAccess = /\.\s*([A-Za-z_$][\w$]*)/g
+  const objectKey = /(?:^|[{,;])\s*([A-Za-z_$][\w$]*)\s*:/g
+
+  const lines: string[] = []
+  for (const file of walkFiles(path.join(root, 'packages/core'), [], { includeTests: true })) {
+    if (!/\.(ts|tsx|js|mjs|cjs)$/.test(file)) continue
+    const content = fs.readFileSync(file, 'utf-8')
+    content.split(/\r?\n/).forEach((rawLine, index) => {
+      if (/^\s*(?:\*|\/\/|\/\*)/.test(rawLine)) return
+      const line = rawLine.replace(moduleSpecifier, ' ')
+      const candidates: string[] = []
+      for (const match of line.matchAll(stringLiteral)) candidates.push(match[2])
+      for (const match of line.matchAll(memberAccess)) candidates.push(match[1])
+      for (const match of line.matchAll(objectKey)) candidates.push(match[1])
+
+      const hit = candidates
+        .map(normalizeFeatureToken)
+        .find(value => value.length > 0 && known.some(token => value.includes(token)))
+      if (hit) {
+        lines.push(`${rel(file)}:${index + 1}: core must not know concrete feature "${hit}" — ${rawLine.trim()}`)
+      }
+    })
+  }
+
+  assertNoMatches('packages/core knows no concrete plugin or feature names', lines)
+}
+
+/**
+ * onething.aliases.ts 每条 alias 的目标必须真实存在。
+ *
+ * tsconfig 的通配符(`@onething/runtime/*` 之类)对任何子路径都放行,所以
+ * typecheck 永远不会报死 alias —— 10 条死 alias 就是这么潜伏下来的,只在
+ * build/run 时才炸。
+ */
+function checkAliasTargetsExist(): void {
+  const aliasFile = path.join(root, 'onething.aliases.ts')
+  if (!fs.existsSync(aliasFile)) {
+    assertNoMatches('onething.aliases.ts targets exist', ['onething.aliases.ts: missing alias registry'])
+    return
+  }
+
+  const content = fs.readFileSync(aliasFile, 'utf-8')
+  const entry = /\{\s*find:\s*(\/(?:\\.|[^/\\])+\/[a-z]*|'[^']+'|"[^"]+")\s*,\s*replacement:\s*resolve\(\s*projectRoot\s*,\s*'([^']+)'\s*\)/g
+  const lines: string[] = []
+  let count = 0
+
+  for (const match of content.matchAll(entry)) {
+    count += 1
+    const find = match[1]
+    const target = match[2]
+    // 正则 alias 的 replacement 带 $1 捕获,能验证的是它的落点目录。
+    const probe = target.includes('$')
+      ? path.dirname(path.join(root, target.slice(0, target.indexOf('$'))))
+      : path.join(root, target)
+    if (!fs.existsSync(probe)) {
+      const lineNo = content.slice(0, match.index ?? 0).split('\n').length
+      lines.push(`onething.aliases.ts:${lineNo}: alias ${find} points at a missing target ${target}`)
+    }
+  }
+
+  if (count === 0) {
+    lines.push('onething.aliases.ts: alias table could not be parsed (entry shape changed?)')
+  }
+
+  assertNoMatches('onething.aliases.ts targets exist', lines)
+}
+
+// 宪法第 1 条:插件的全部权力 = 注入的 api 对象。
+// 插件代码(用户插件样例 + 内置插件实现)只准吃 Node 内置、zod、@onething/core;
+// 任何指向宿主 bundle 的 import 都是把"通道"变回"整个进程"。
+const PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [
+  /^\s*import\s[^'"]*from\s+['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron)/,
+  /^\s*import\s+['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron)/,
+  /\brequire\(\s*['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron)/,
+  /\bawait\s+import\(\s*['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron)/,
+]
+
+const USER_PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [
+  ...PLUGIN_HOST_IMPORT_PATTERNS,
+  // 用户插件住在 <store>/plugins/<id>/,爬出插件目录去 import 宿主源码同样禁止。
+  /^\s*import\s[^'"]*from\s+['"]\.\.\/\.\./,
+  /\brequire\(\s*['"]\.\.\/\.\./,
+]
+
+function checkPluginsOnlyUseInjectedApi(): void {
+  const lines: string[] = []
+
+  // (a) 内置插件实现:只准 Node 内置 / zod / @onething/core。
+  for (const pluginId of listBuiltinPluginIds()) {
+    const implFile = path.join(root, BUILTIN_PLUGIN_RUNTIME_DIR, `${pluginId}.ts`)
+    if (!fs.existsSync(implFile)) continue
+    lines.push(...matchingLines(implFile, PLUGIN_HOST_IMPORT_PATTERNS))
+    lines.push(...fs.readFileSync(implFile, 'utf-8')
+      .split(/\r?\n/)
+      .map((line, index) => ({ line, lineNo: index + 1 }))
+      .filter(({ line }) => /^\s*import\s[^'"]*from\s+['"]\.\.?\//.test(line))
+      .map(({ line, lineNo }) => `${rel(implFile)}:${lineNo}: plugin implementation must not reach into sibling host modules — ${line.trim()}`))
+  }
+
+  // (b) 用户插件形态的样例:它们是这条宪法唯一的可执行说明书。
+  const samplesDir = path.join(root, 'sample-plugins')
+  if (fs.existsSync(samplesDir)) {
+    for (const file of walkFiles(samplesDir)) {
+      if (!/\.(ts|js|mjs|cjs)$/.test(file)) continue
+      lines.push(...matchingLines(file, USER_PLUGIN_HOST_IMPORT_PATTERNS))
+    }
+  }
+
+  assertNoMatches('plugins reach the host only through the injected api object', lines)
 }
 
 function checkRuntimeOwnsSkillsRuntimeCache(): void {
@@ -11843,8 +12003,10 @@ checkRuntimeOwnsPluginsIpcListProjection()
 checkRuntimeOwnsPluginsIpcCommandProjection()
 checkRuntimeOwnsPluginCommandExecution()
 checkRuntimeOwnsPluginsIpcOperations()
-checkRuntimeOwnsLogMonitorPlugin()
-checkRuntimeOwnsNoteSkillsPlugin()
+checkPluginLogicStaysOutOfHostAssembly()
+checkPluginsOnlyUseInjectedApi()
+checkCoreKnowsNoConcreteFeatures()
+checkAliasTargetsExist()
 checkRuntimeOwnsSkillsRuntimeCache()
 checkRuntimeOwnsSkillsIpcOperations()
 checkRuntimeOwnsSkillManageOperations()

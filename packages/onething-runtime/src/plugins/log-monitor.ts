@@ -3,7 +3,6 @@ import {
   CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS,
   CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER,
   CORE_LOG_MONITOR_DEFAULT_RETENTION_DAYS,
-  CORE_LOG_MONITOR_MANIFEST,
   createCoreLogMonitorFileDiskAdapters,
   ensureCoreLogMonitorDirectory,
   registerCoreLogMonitorPlugin,
@@ -11,7 +10,15 @@ import {
   type CoreLogMonitorPluginRuntime,
 } from '@onething/core/plugins'
 
-export const ONETHING_LOG_MONITOR_MANIFEST = CORE_LOG_MONITOR_MANIFEST
+// Manifests are product data: the plugin's id/描述/作者只有产品层认识,
+// core 只提供无名的日志监控原语(守卫:packages/core knows no concrete
+// plugin or feature names)。
+export const ONETHING_LOG_MONITOR_MANIFEST = {
+  name: 'log-monitor',
+  version: '1.0.0',
+  description: 'Real-time agent event logging with disk persistence, daily rotation, and LLM-searchable logs',
+  author: 'onething',
+}
 
 export function createOnethingLogMonitorSearchToolParameters() {
   return z.object({
