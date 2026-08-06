@@ -16,8 +16,10 @@ import {
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,
   getCorePluginSettingsPath,
+  getCorePluginDataFootprint,
   getCorePluginsDir,
   getPluginConfigFromSettings,
+  PLUGIN_SETTINGS_KEYS,
   getPluginEnabledWithAdapters,
   buildPluginEntryImportSpecifier,
   installCorePluginDependenciesAsync,
@@ -30,7 +32,7 @@ import {
   setPluginHealthInSettings,
   writePluginSettingsFile,
 } from '@onething/core/plugins'
-import type { PersistedPluginHealth } from '@onething/core/plugins'
+import type { CorePluginDataFootprint, PersistedPluginHealth } from '@onething/core/plugins'
 import { getPluginAppVersion } from './app-version.js'
 import {
   clearPluginRuntimeHealth,
@@ -44,6 +46,7 @@ import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
 import soulMemoryPlugin, { soulMemoryManifest } from './builtin/soul-memory.js'
 
 function getPluginsDir(): string {
+export function getPluginsDir(): string {
   return getCorePluginsDir({ storePath: getOnethingStorePath() })
 }
 
@@ -101,7 +104,10 @@ export function removePluginSourceDir(dirPath: string, pluginId: string): { remo
   }
 }
 
-/** 清掉 plugin-settings 里该插件的 enabled / config / health 三键。 */
+/**
+ * 清掉 plugin-settings 里该插件的三键(PLUGIN_SETTINGS_KEYS)。
+ * 名单与足迹共用一份常量 —— 加第四个键时不会只改一边。
+ */
 export function clearPluginSettingsKeys(pluginId: string): void {
   const settings = readPluginSettings()
   const enabled = { ...settings.enabled }
@@ -112,6 +118,19 @@ export function clearPluginSettingsKeys(pluginId: string): void {
   next = setPluginConfigInSettings(next, pluginId, null)
   next = setPluginHealthInSettings(next, pluginId, null)
   writePluginSettings(next)
+}
+
+/** 这个插件在 plugin-settings 里实际占着哪几个键。 */
+export function listPluginSettingsKeys(pluginId: string): string[] {
+  const settings = readPluginSettings() as unknown as Record<string, Record<string, unknown> | undefined>
+  return PLUGIN_SETTINGS_KEYS.filter(key => settings[key]?.[pluginId] !== undefined)
+}
+
+/** 一个插件的全部落盘足迹(宪法第 6 条数据侧)。 */
+export function getPluginFootprint(pluginId: string): CorePluginDataFootprint {
+  return getCorePluginDataFootprint(getPluginDataRoot(), pluginId, {
+    settingsKeys: listPluginSettingsKeys(pluginId),
+  })
 }
 
 /** 插件自有配置的原始值(未校验);校验与默认值填充在 config.ts。 */

@@ -254,8 +254,15 @@ export interface CorePluginAPI<
    * `<store>/plugin-data/<pluginId>/`,要按 agent 分自己在里面建子结构。
    *
    * name 只接受单段文件名(路径穿越被拒);写入的值必须 JSON-可序列化。
-   * 插件的全部落盘足迹 = 这个目录 + plugin-settings 里的几个键 ——
+   * 插件的全部落盘足迹 = 这个目录 + plugin-settings 里的三个键 ——
    * 卸载与孤儿归档都建立在这条契约上。
+   *
+   * **Date 的第三种分叉**:写进这里会落成 ISO 字符串,读回来是 string 不是
+   * Date(IPC 的结构化克隆保留 Date、HTTP 的 JSON 变 ISO 串、落盘同样变串)。
+   * 要跨面一致,插件自己存时间戳或字符串。
+   *
+   * 错误一律是 PluginStorageError,带 code:`invalid-name` / `not-serializable`
+   * 是"别重试,改代码",`io` / `unavailable` 是"稍后再试"。
    */
   storage: TStorage
   scheduler: TScheduler

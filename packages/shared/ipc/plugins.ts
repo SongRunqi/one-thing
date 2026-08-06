@@ -141,18 +141,6 @@ export interface UninstallPluginResponse {
 	error?: string;
 }
 
-/** 一个插件的全部落盘足迹(宪法第 6 条数据侧)。 */
-export interface PluginDataFootprint {
-	pluginId: string;
-	dataDir: string;
-	dataDirExists: boolean;
-	entries: string[];
-	legacyKvPath: string;
-	legacyKvExists: boolean;
-	/** plugin-settings 里为它保留的键。 */
-	settingsKeys: string[];
-}
-
 export interface PluginCommandInfo {
   id: string
   name: string

@@ -282,6 +282,7 @@
             <Switch
               variant="ledger"
               :model-value="plugin.enabled"
+              :disabled="uninstallingPlugins.has(plugin.id)"
               :aria-label="`Enable ${plugin.name}`"
               @update:model-value="togglePlugin(plugin)"
             />
@@ -528,8 +529,10 @@ function canUninstall(plugin: PluginInfo): boolean {
 async function confirmUninstall(plugin: PluginInfo): Promise<void> {
   const accepted = await confirm({
     title: 'Uninstall plugin',
-    message: `Uninstall "${plugin.name}"? Its folder under ~/.onething/plugins/ is removed and its data is `
-      + 'archived to ~/.onething/plugin-data/legacy-backup/. Disabling instead keeps both in place.',
+    // 路径不硬编码:store 根由 ONETHING_STORE_PATH 决定,写死 ~/.onething 会在
+    // 自定义 store 下变成一句假话。相对表述对用户同样够用。
+    message: `Uninstall "${plugin.name}"? Its plugin folder is deleted and its data folder is moved into `
+      + 'the plugin-data backup folder. Disabling instead keeps both in place.',
     confirmText: 'uninstall',
     danger: true,
     variant: 'paper',

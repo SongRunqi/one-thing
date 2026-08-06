@@ -6,7 +6,7 @@
  * 数据主权归插件,宿主不替它发明数据模型。
  *
  * 这一层是宪法第 6 条数据侧的地基:**插件的全部落盘足迹 = 一个目录 +
- * plugin-settings 里的几个键**。足迹可枚举,卸载与孤儿归档才有得做。
+ * plugin-settings 里的三个键**。足迹可枚举,卸载与孤儿归档才有得做。
  */
 import fs from 'fs'
 import path from 'path'
@@ -14,7 +14,6 @@ import {
   ensureDir,
   isDirectory,
   pathExists,
-  readJsonFile,
   writeJsonFile,
 } from '../storage/index.js'
 import { describeNonSerializable } from './request-channel.js'
@@ -23,6 +22,44 @@ import { describeNonSerializable } from './request-channel.js'
 export const PLUGIN_DATA_LEGACY_BACKUP_DIR = 'legacy-backup'
 /** KV 并入目录后的文件名(旧的 `<root>/<id>.json` 惰性搬进来)。 */
 export const PLUGIN_KV_FILE_NAME = 'kv.json'
+/** 目录内已有 kv.json 时,遗留文件的落点 —— 绝不覆盖更新的那一份。 */
+export const PLUGIN_LEGACY_KV_FILE_NAME = 'kv.legacy.json'
+
+/** plugin-settings 里属于某个插件的全部键。足迹与清理共用这一份名单。 */
+export const PLUGIN_SETTINGS_KEYS = ['enabled', 'config', 'health'] as const
+
+export type PluginStorageErrorCode =
+  | 'invalid-name'
+  | 'not-serializable'
+  | 'unavailable'
+  | 'io'
+
+/**
+ * 插件存储错误。
+ *
+ * 带 code 是为了让插件能分辨"名字写错了别重试"(invalid-name / not-serializable)
+ * 与"磁盘满了稍后再试"(io);`io` 会把底层 fs 的原生 code(ENOSPC/EACCES…)
+ * 透传到 `cause`,插件想细分就有得分。
+ */
+export class PluginStorageError extends Error {
+  readonly name = 'PluginStorageError'
+  /** 底层 fs 错误(code=io 时透传原生 ENOSPC/EACCES/… 供插件细分)。 */
+  readonly cause?: unknown
+
+  constructor(
+    readonly code: PluginStorageErrorCode,
+    message: string,
+    options: { cause?: unknown } = {},
+  ) {
+    super(message)
+    this.cause = options.cause
+  }
+}
+
+function ioError(message: string, cause: unknown): PluginStorageError {
+  const nativeCode = (cause as { code?: string } | undefined)?.code
+  return new PluginStorageError('io', nativeCode ? `${message} (${nativeCode})` : message, { cause })
+}
 
 /**
  * 文件名穿越防护。
@@ -32,38 +69,96 @@ export const PLUGIN_KV_FILE_NAME = 'kv.json'
  * 但 api 这条被中介的通道必须自己干净,否则 H 线把它换成 RPC 时,
  * 服务端会照单全收一个恶意路径。
  */
-const FORBIDDEN_STORAGE_NAMES = new Set(['__proto__', 'constructor', 'prototype', '.', '..'])
+const FORBIDDEN_STORAGE_NAMES = new Set([
+  '__proto__', 'constructor', 'prototype', '.', '..',
+  // 宿主自己的东西:api.store 的 KV 与归档目录。不保留的话 api.storage 与
+  // api.store 会双向静默互相 clobber。
+  PLUGIN_KV_FILE_NAME,
+  PLUGIN_LEGACY_KV_FILE_NAME,
+  PLUGIN_DATA_LEGACY_BACKUP_DIR,
+])
+
+/** Windows 保留设备名 —— 带扩展名的形态(`CON.json`)同样被系统拒绝。 */
+const WINDOWS_RESERVED_NAMES = new Set([
+  'con', 'prn', 'aux', 'nul',
+  ...Array.from({ length: 9 }, (_, index) => `com${index + 1}`),
+  ...Array.from({ length: 9 }, (_, index) => `lpt${index + 1}`),
+])
+
+const MAX_STORAGE_NAME_BYTES = 255
 
 export function assertSafePluginFileName(name: unknown): string {
   if (typeof name !== 'string' || name.trim().length === 0) {
-    throw new Error('Plugin storage name must be a non-empty string')
+    throw new PluginStorageError('invalid-name', 'Plugin storage name must be a non-empty string')
   }
-  const trimmed = name.trim()
-  if (trimmed !== name) {
-    throw new Error(`Plugin storage name "${name}" must not have surrounding whitespace`)
+  // NFC 归一化后再判:同一个名字的两种 Unicode 写法在 macOS 上指向同一个文件,
+  // 不归一化的话保留名单可以被绕过。
+  const normalized = name.normalize('NFC')
+  if (normalized !== name.trim().normalize('NFC') || name !== name.trim()) {
+    throw new PluginStorageError('invalid-name', `Plugin storage name "${name}" must not have surrounding whitespace`)
   }
-  if (FORBIDDEN_STORAGE_NAMES.has(trimmed)) {
-    throw new Error(`Plugin storage name "${trimmed}" is reserved`)
+  const value = normalized
+
+  if (FORBIDDEN_STORAGE_NAMES.has(value.toLowerCase())) {
+    throw new PluginStorageError('invalid-name', `Plugin storage name "${value}" is reserved by the host`)
   }
-  if (trimmed.includes('/') || trimmed.includes('\\')) {
-    throw new Error(`Plugin storage name "${trimmed}" must be a single file name, not a path`)
+  if (value.includes('/') || value.includes('\\')) {
+    throw new PluginStorageError('invalid-name', `Plugin storage name "${value}" must be a single file name, not a path`)
   }
-  if (trimmed.includes('\0')) {
-    throw new Error('Plugin storage name must not contain a null byte')
+  if (value.includes('\0')) {
+    throw new PluginStorageError('invalid-name', 'Plugin storage name must not contain a null byte')
   }
-  if (path.isAbsolute(trimmed) || path.basename(trimmed) !== trimmed) {
-    throw new Error(`Plugin storage name "${trimmed}" must be a single file name, not a path`)
+  // `:` 是 Windows 的 alternate data stream 分隔符 —— `a.json:hidden` 会写到
+  // 一个看不见的流里。
+  if (value.includes(':')) {
+    throw new PluginStorageError('invalid-name', `Plugin storage name "${value}" must not contain ":"`)
   }
-  return trimmed
+  if (value.endsWith('.') || value.endsWith(' ')) {
+    throw new PluginStorageError('invalid-name', `Plugin storage name "${value}" must not end with a dot or space`)
+  }
+  if (WINDOWS_RESERVED_NAMES.has(value.split('.')[0].toLowerCase())) {
+    throw new PluginStorageError('invalid-name', `Plugin storage name "${value}" is a reserved device name on Windows`)
+  }
+  if (Buffer.byteLength(value, 'utf-8') > MAX_STORAGE_NAME_BYTES) {
+    throw new PluginStorageError('invalid-name', `Plugin storage name "${value}" exceeds ${MAX_STORAGE_NAME_BYTES} bytes`)
+  }
+  if (path.isAbsolute(value) || path.basename(value) !== value) {
+    throw new PluginStorageError('invalid-name', `Plugin storage name "${value}" must be a single file name, not a path`)
+  }
+  return value
+}
+
+/**
+ * 插件 id 的校验 —— 与文件名同源,但**不**套用宿主保留名单:
+ * 一个叫 `kv.json` 的插件目录不会和任何东西打架。
+ */
+export function assertSafePluginDirName(pluginId: unknown): string {
+  if (typeof pluginId !== 'string' || pluginId.trim().length === 0) {
+    throw new PluginStorageError('invalid-name', 'Plugin id must be a non-empty string')
+  }
+  const value = pluginId.normalize('NFC')
+  if (value !== pluginId.trim().normalize('NFC')) {
+    throw new PluginStorageError('invalid-name', `Plugin id "${pluginId}" must not have surrounding whitespace`)
+  }
+  if (value === '.' || value === '..' || value === PLUGIN_DATA_LEGACY_BACKUP_DIR) {
+    throw new PluginStorageError('invalid-name', `Plugin id "${value}" is reserved`)
+  }
+  if (value.includes('/') || value.includes('\\') || value.includes('\0') || value.includes(':')) {
+    throw new PluginStorageError('invalid-name', `Plugin id "${value}" must be a single directory name`)
+  }
+  if (path.isAbsolute(value) || path.basename(value) !== value) {
+    throw new PluginStorageError('invalid-name', `Plugin id "${value}" must be a single directory name`)
+  }
+  return value
 }
 
 export function getCorePluginDataDir(dataRoot: string, pluginId: string): string {
-  return path.join(dataRoot, assertSafePluginFileName(pluginId))
+  return path.join(dataRoot, assertSafePluginDirName(pluginId))
 }
 
 /** KV 并入目录之前的老位置。 */
 export function getCorePluginLegacyKvPath(dataRoot: string, pluginId: string): string {
-  return path.join(dataRoot, `${assertSafePluginFileName(pluginId)}.json`)
+  return path.join(dataRoot, `${assertSafePluginDirName(pluginId)}.json`)
 }
 
 export function getCorePluginKvPath(dataRoot: string, pluginId: string): string {
@@ -74,7 +169,7 @@ export function getCorePluginKvPath(dataRoot: string, pluginId: string): string 
  * 惰性迁移:旧的 `<root>/<id>.json` 搬进 `<root>/<id>/kv.json`。
  *
  * 首次访问时做,不搞启动期全量迁移 —— 没人碰过的插件不该因为一次升级就被动过。
- * 目标已存在则保留目标(它更新),旧文件原地留着等孤儿扫描归档,不静默删。
+ * 目标已存在则**保留目标**(它更新),旧文件原地留着等孤儿/归档处理,不静默删。
  */
 export function migrateLegacyPluginKv(dataRoot: string, pluginId: string): boolean {
   const legacyPath = getCorePluginLegacyKvPath(dataRoot, pluginId)
@@ -96,7 +191,16 @@ export function migrateLegacyPluginKv(dataRoot: string, pluginId: string): boole
 export interface CorePluginStorage {
   /** 插件的数据目录;宿主保证它存在。 */
   dir(): string
+  /**
+   * 读一份 JSON。
+   *
+   * 三态:不存在 → fallback;损坏 → **挪 `.corrupt-<ts>` 备份并抛
+   * PluginStorageError('io')**;正常 → 值。
+   * 损坏时不返回 fallback,是因为插件拿到 fallback 后通常会原样写回,
+   * 那一步会把损坏文件覆盖掉 —— 证据和数据一起没了。
+   */
   readJson<T = unknown>(name: string, fallback?: T): T | undefined
+  /** 值必须 JSON-可序列化。**Date 会落成 ISO 字符串**,读回来是 string 不是 Date。 */
   writeJson(name: string, value: unknown): void
   exists(name: string): boolean
 }
@@ -108,31 +212,68 @@ export interface CreateCorePluginStorageOptions {
 
 export function createCorePluginStorage(options: CreateCorePluginStorageOptions): CorePluginStorage {
   const { pluginId, dataRoot } = options
-  const dir = (): string => {
-    const target = getCorePluginDataDir(dataRoot, pluginId)
-    ensureDir(target)
+  /** 只拼路径,**不建目录** —— 纯读一次就创建空目录会污染足迹。 */
+  const dirPath = (): string => getCorePluginDataDir(dataRoot, pluginId)
+  const ensuredDir = (): string => {
+    const target = dirPath()
+    try {
+      ensureDir(target)
+    } catch (error) {
+      throw ioError(`Cannot create the data directory for "${pluginId}"`, error)
+    }
     return target
   }
 
   return {
-    dir,
+    dir: ensuredDir,
+
     readJson<T = unknown>(name: string, fallback?: T): T | undefined {
-      const file = path.join(dir(), assertSafePluginFileName(name))
+      const file = path.join(dirPath(), assertSafePluginFileName(name))
       if (!pathExists(file)) return fallback
-      return readJsonFile<T>(file, fallback as T)
+
+      let raw: string
+      try {
+        raw = fs.readFileSync(file, 'utf-8')
+      } catch (error) {
+        throw ioError(`Cannot read "${name}" for "${pluginId}"`, error)
+      }
+
+      try {
+        return JSON.parse(raw) as T
+      } catch (error) {
+        // 与 plugin-settings 同一条裁决(§5.3.5):损坏就隔离,不让下一次写入
+        // 以空为基底把它盖掉。
+        const backup = `${file}.corrupt-${Date.now()}`
+        try {
+          fs.renameSync(file, backup)
+        } catch (renameError) {
+          console.error(`[PluginStorage] Failed to quarantine "${file}":`, renameError)
+        }
+        throw new PluginStorageError(
+          'io',
+          `"${name}" for "${pluginId}" is not valid JSON; it was moved to ${path.basename(backup)}`,
+          { cause: error },
+        )
+      }
     },
+
     writeJson(name: string, value: unknown): void {
       const safeName = assertSafePluginFileName(name)
       // 过线皆可序列化(宪法第 2 条)—— 写盘也是一条"线":一个 Map 落进 JSON
       // 会静默变成 `{}`,那是最难查的一类数据丢失。
       const problem = describeNonSerializable(value, `storage value for "${safeName}"`)
       if (problem) {
-        throw new Error(`Plugin storage value must be JSON-serializable: ${problem}`)
+        throw new PluginStorageError('not-serializable', `Plugin storage value must be JSON-serializable: ${problem}`)
       }
-      writeJsonFile(path.join(dir(), safeName), value)
+      try {
+        writeJsonFile(path.join(ensuredDir(), safeName), value)
+      } catch (error) {
+        throw ioError(`Cannot write "${name}" for "${pluginId}"`, error)
+      }
     },
+
     exists(name: string): boolean {
-      return pathExists(path.join(getCorePluginDataDir(dataRoot, pluginId), assertSafePluginFileName(name)))
+      return pathExists(path.join(dirPath(), assertSafePluginFileName(name)))
     },
   }
 }
@@ -149,9 +290,15 @@ export interface CorePluginDataFootprint {
   /** 尚未迁移的旧 KV 文件。 */
   legacyKvPath: string
   legacyKvExists: boolean
+  /** plugin-settings 里为它保留的键(由宿主注入实际存在的那些)。 */
+  settingsKeys: string[]
 }
 
-export function getCorePluginDataFootprint(dataRoot: string, pluginId: string): CorePluginDataFootprint {
+export function getCorePluginDataFootprint(
+  dataRoot: string,
+  pluginId: string,
+  options: { settingsKeys?: string[] } = {},
+): CorePluginDataFootprint {
   const dataDir = getCorePluginDataDir(dataRoot, pluginId)
   const legacyKvPath = getCorePluginLegacyKvPath(dataRoot, pluginId)
   let entries: string[] = []
@@ -170,6 +317,7 @@ export function getCorePluginDataFootprint(dataRoot: string, pluginId: string): 
     entries,
     legacyKvPath,
     legacyKvExists: pathExists(legacyKvPath),
+    settingsKeys: options.settingsKeys ?? [],
   }
 }
 
@@ -192,7 +340,7 @@ function resolveArchiveTarget(dataRoot: string, pluginId: string, now: Date): st
     const candidate = `${base}-${index}`
     if (!pathExists(candidate)) return candidate
   }
-  throw new Error(`Cannot find a free archive slot for "${pluginId}"`)
+  throw new PluginStorageError('io', `Cannot find a free archive slot for "${pluginId}"`)
 }
 
 export interface ArchiveCorePluginDataResult {
@@ -202,7 +350,12 @@ export interface ArchiveCorePluginDataResult {
 }
 
 /**
- * 把一个插件的数据目录(以及尚未迁移的旧 KV 文件)整体挪进 legacy-backup。
+ * 把一个插件的数据整体挪进 legacy-backup。
+ *
+ * **先并后搬**:遗留的 `<id>.json` 先并进数据目录(目录里已有 kv.json 就落
+ * `kv.legacy.json` —— 用旧文件压掉更新的那一份,等于安全网自己毁数据),
+ * 然后**单次整目录 rename**。这样"半归档"这个中间态不存在:
+ * 并入失败就整个不动,rename 失败就把并入回滚。
  *
  * 失败**不抛**:卸载/孤儿归档都是多步流程,归档失败时原数据要留在原地
  * 让调用方能报出来,而不是把整条流程带崩、留下半拆状态。
@@ -212,27 +365,81 @@ export function archiveCorePluginData(
   pluginId: string,
   options: { now?: Date } = {},
 ): ArchiveCorePluginDataResult {
-  const footprint = getCorePluginDataFootprint(dataRoot, pluginId)
+  let footprint: CorePluginDataFootprint
+  try {
+    footprint = getCorePluginDataFootprint(dataRoot, pluginId)
+  } catch (error) {
+    return { archived: false, error: error instanceof Error ? error.message : String(error) }
+  }
   if (!footprint.dataDirExists && !footprint.legacyKvExists) {
     return { archived: false }
   }
 
+  // 第一步:遗留文件并进数据目录。记下回滚所需的信息。
+  let mergedFrom: string | undefined
+  let mergedTo: string | undefined
+  try {
+    if (footprint.legacyKvExists) {
+      ensureDir(footprint.dataDir)
+      const targetName = pathExists(getCorePluginKvPath(dataRoot, pluginId))
+        ? PLUGIN_LEGACY_KV_FILE_NAME
+        : PLUGIN_KV_FILE_NAME
+      const target = path.join(footprint.dataDir, targetName)
+      if (pathExists(target)) {
+        return {
+          archived: false,
+          error: `Cannot merge the legacy KV file: ${targetName} already exists for "${pluginId}"`,
+        }
+      }
+      fs.renameSync(footprint.legacyKvPath, target)
+      mergedFrom = footprint.legacyKvPath
+      mergedTo = target
+    }
+  } catch (error) {
+    console.error(`[PluginStorage] Failed to merge the legacy KV file for "${pluginId}":`, error)
+    return { archived: false, error: error instanceof Error ? error.message : String(error) }
+  }
+
+  // 第二步:单次整目录 rename。
   try {
     const target = resolveArchiveTarget(dataRoot, pluginId, options.now ?? new Date())
     ensureDir(path.dirname(target))
-    if (footprint.dataDirExists) {
-      fs.renameSync(footprint.dataDir, target)
-    } else {
-      ensureDir(target)
-    }
-    if (footprint.legacyKvExists) {
-      fs.renameSync(footprint.legacyKvPath, path.join(target, PLUGIN_KV_FILE_NAME))
-    }
+    fs.renameSync(footprint.dataDir, target)
     return { archived: true, archivePath: target }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    // 回滚第一步,否则遗留文件会停在数据目录里,而调用方以为什么都没发生。
+    if (mergedFrom && mergedTo) {
+      try {
+        fs.renameSync(mergedTo, mergedFrom)
+      } catch (rollbackError) {
+        console.error(`[PluginStorage] Failed to roll back the legacy KV merge for "${pluginId}":`, rollbackError)
+      }
+    }
+    const nativeCode = (error as { code?: string } | undefined)?.code
+    const message = nativeCode === 'EXDEV'
+      // 跨卷 rename 不可用:copy+verify+delete 降级已裁决不做,至少把原因说清楚。
+      ? `Cannot archive "${pluginId}": the data directory and the backup folder are on different volumes (EXDEV)`
+      : error instanceof Error ? error.message : String(error)
     console.error(`[PluginStorage] Failed to archive data for "${pluginId}":`, error)
     return { archived: false, error: message }
+  }
+}
+
+/** 把归档搬回原位 —— 卸载在删源目录失败时的补偿动作。 */
+export function restoreCorePluginDataArchive(
+  dataRoot: string,
+  pluginId: string,
+  archivePath: string,
+): { restored: boolean; error?: string } {
+  try {
+    const dataDir = getCorePluginDataDir(dataRoot, pluginId)
+    if (pathExists(dataDir)) {
+      return { restored: false, error: `Cannot restore "${pluginId}": its data directory already exists again` }
+    }
+    fs.renameSync(archivePath, dataDir)
+    return { restored: true }
+  } catch (error) {
+    return { restored: false, error: error instanceof Error ? error.message : String(error) }
   }
 }
 
@@ -246,32 +453,96 @@ export interface CorePluginDataOrphan {
  *
  * 手删 `<store>/plugins/<id>/` 是真实存在的卸载路径(在 R4 之前是**唯一**的),
  * 宿主对它零感知,数据就永远躺在那儿。这条扫描把它收口。
+ *
+ * **比较大小写不敏感**:macOS/Windows 的默认文件系统就是这样,区分大小写的话
+ * `Notes` 与 `notes` 会互判孤儿。
  */
 export function findCorePluginDataOrphans(dataRoot: string, knownPluginIds: Iterable<string>): CorePluginDataOrphan[] {
   if (!isDirectory(dataRoot)) return []
-  const known = new Set(knownPluginIds)
+  const known = new Set([...knownPluginIds].map(id => id.normalize('NFC').toLowerCase()))
   const orphans: CorePluginDataOrphan[] = []
 
   let entries: fs.Dirent[]
   try {
     entries = fs.readdirSync(dataRoot, { withFileTypes: true })
-  } catch {
+  } catch (error) {
+    // 读不动就什么都不做 —— 读失败不是"这里没有插件"。
+    console.error(`[PluginStorage] Cannot scan ${dataRoot} for orphaned plugin data:`, error)
     return []
   }
 
   for (const entry of entries) {
-    if (entry.name === PLUGIN_DATA_LEGACY_BACKUP_DIR) continue
-    if (entry.name.startsWith('.')) continue
+    // 逐项 try:一个畸形名不该让整轮扫描停摆。
+    try {
+      if (entry.name === PLUGIN_DATA_LEGACY_BACKUP_DIR) continue
+      if (entry.name.startsWith('.')) continue
 
-    if (entry.isDirectory()) {
-      if (!known.has(entry.name)) orphans.push({ pluginId: entry.name, kind: 'directory' })
-      continue
-    }
-    if (entry.isFile() && entry.name.endsWith('.json')) {
-      const pluginId = entry.name.slice(0, -'.json'.length)
-      if (!known.has(pluginId)) orphans.push({ pluginId, kind: 'legacy-kv' })
+      if (entry.isDirectory()) {
+        assertSafePluginDirName(entry.name)
+        if (!known.has(entry.name.normalize('NFC').toLowerCase())) {
+          orphans.push({ pluginId: entry.name, kind: 'directory' })
+        }
+        continue
+      }
+      if (entry.isFile() && entry.name.endsWith('.json')) {
+        const pluginId = entry.name.slice(0, -'.json'.length)
+        assertSafePluginDirName(pluginId)
+        if (!known.has(pluginId.normalize('NFC').toLowerCase())) {
+          orphans.push({ pluginId, kind: 'legacy-kv' })
+        }
+      }
+    } catch (error) {
+      console.warn(`[PluginStorage] Skipping unusable plugin-data entry "${entry.name}":`, error)
     }
   }
 
   return orphans.sort((a, b) => a.pluginId.localeCompare(b.pluginId))
+}
+
+/**
+ * 自动归档的安全闸(评审 critical)。
+ *
+ * `existsSync` 在**任何** stat 错误下都返回 false(EACCES / EIO / fd 耗尽 /
+ * 网络卷瞬断 / 用户临时 mv 走 plugins 目录),扫描于是返回空列表 ——
+ * 而空列表的字面意思是"一个插件都没装",接下来 plugin-data 下**每一个**目录
+ * 都会被判孤儿搬走。所以:扫描不可信、或者"一个用户插件都没有却要归档一堆",
+ * 一律拒绝自动归档,改为请人来看。
+ */
+export const PLUGIN_ORPHAN_ARCHIVE_LIMIT = 3
+
+export interface PluginOrphanArchiveDecision {
+  proceed: boolean
+  reason?: string
+}
+
+export function decidePluginOrphanArchive(input: {
+  orphans: CorePluginDataOrphan[]
+  /** 扫描是否可信(读失败时为 false)。 */
+  scanTrusted: boolean
+  /** 本轮扫到的用户插件数量。 */
+  userPluginCount: number
+  limit?: number
+}): PluginOrphanArchiveDecision {
+  if (input.orphans.length === 0) return { proceed: true }
+
+  if (!input.scanTrusted) {
+    return {
+      proceed: false,
+      reason: 'the plugins directory could not be read reliably this round',
+    }
+  }
+  if (input.userPluginCount === 0) {
+    return {
+      proceed: false,
+      reason: 'no user plugins were found at all, which usually means the plugins directory is unavailable',
+    }
+  }
+  const limit = input.limit ?? PLUGIN_ORPHAN_ARCHIVE_LIMIT
+  if (input.orphans.length > limit) {
+    return {
+      proceed: false,
+      reason: `${input.orphans.length} orphan candidates exceed the safety limit of ${limit}`,
+    }
+  }
+  return { proceed: true }
 }

@@ -26,6 +26,7 @@ export {
   checkPluginMinAppVersion,
   checkPluginNeedsInstall,
   compareCoreSemver,
+  scanPluginSourceEntries,
   validatePluginContributes,
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,
@@ -53,6 +54,7 @@ export {
   installCorePluginDependenciesAsync,
 } from './loader.js'
 export type {
+  CorePluginScanTrust,
   CorePluginDependencyInstallAdapters,
   CorePluginDependencyInstallAsyncAdapters,
   CoreBuiltinPluginSpec,
@@ -94,15 +96,22 @@ export { deepFreezeCorePluginValue } from './freeze.js'
 export {
   PLUGIN_DATA_LEGACY_BACKUP_DIR,
   PLUGIN_KV_FILE_NAME,
+  PLUGIN_LEGACY_KV_FILE_NAME,
+  PLUGIN_ORPHAN_ARCHIVE_LIMIT,
+  PLUGIN_SETTINGS_KEYS,
+  PluginStorageError,
   archiveCorePluginData,
+  assertSafePluginDirName,
   assertSafePluginFileName,
   createCorePluginStorage,
+  decidePluginOrphanArchive,
   findCorePluginDataOrphans,
   getCorePluginDataDir,
   getCorePluginDataFootprint,
   getCorePluginKvPath,
   getCorePluginLegacyKvPath,
   migrateLegacyPluginKv,
+  restoreCorePluginDataArchive,
 } from './storage.js'
 export type {
   ArchiveCorePluginDataResult,
@@ -110,6 +119,8 @@ export type {
   CorePluginDataOrphan,
   CorePluginStorage,
   CreateCorePluginStorageOptions,
+  PluginOrphanArchiveDecision,
+  PluginStorageErrorCode,
 } from './storage.js'
 export {
   createCorePluginAPI,

@@ -89,6 +89,8 @@ export function createPluginAPI(
 ): { api: PluginAPI; state: PluginState } {
   const store = new PluginStore(pluginId)
   const schedulerDisposeCallbacks: Array<() => void> = []
+  // KV 的拆除闩:晚到的 store.set 会 ensureDir 把刚归档的目录复活成鬼目录。
+  schedulerDisposeCallbacks.push(() => store.dispose())
   // 拆除闸要能被 scheduler 看到,而 state 是 createCorePluginAPI 的返回值 ——
   // 用一个后填的引用把两者接上(register 只在调用时读它)。
   const stateRef: { current: PluginState | null } = { current: null }

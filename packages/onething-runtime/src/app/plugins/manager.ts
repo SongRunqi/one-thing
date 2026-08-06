@@ -11,7 +11,10 @@ import {
 import { createPluginAPI, disposePlugin, type PluginState } from './api.js'
 import {
   archiveCorePluginData,
+  decidePluginOrphanArchive,
   findCorePluginDataOrphans,
+  restoreCorePluginDataArchive,
+  scanPluginSourceEntries,
 } from '@onething/core/plugins'
 import {
   scanPlugins,
@@ -19,6 +22,7 @@ import {
   clearPluginSettingsKeys,
   ensurePluginDirs,
   getPluginDataRoot,
+  getPluginsDir,
   loadPersistedPluginHealth,
   persistPluginHealth,
   readPluginConfig,
@@ -76,13 +80,35 @@ function createHost(): CorePluginManagerHost<
       invalidatePluginConfigCache(pluginId)
       clearPluginRuntimeHealth(pluginId)
     },
-    archiveOrphanPluginData: knownPluginIds => {
+    restorePluginDataArchive: (pluginId, archivePath) =>
+      restoreCorePluginDataArchive(getPluginDataRoot(), pluginId, archivePath),
+    getPluginSourceScan: () => scanPluginSourceEntries(getPluginsDir()),
+    archiveOrphanPluginData: ({ knownPluginIds, scanTrusted, userPluginCount }) => {
       const dataRoot = getPluginDataRoot()
+      const orphans = findCorePluginDataOrphans(dataRoot, knownPluginIds)
+
+      // 自动归档的安全闸:扫描不可信 / 一个用户插件都没有 / 候选超阈值,
+      // 一律不动手,改为请人来看。误归档一次就是把用户的数据从插件脚下搬走。
+      const decision = decidePluginOrphanArchive({ orphans, scanTrusted, userPluginCount })
+      if (!decision.proceed) {
+        console.warn(
+          `[PluginManager] Refusing to auto-archive ${orphans.length} orphan plugin data candidate(s) `
+          + `(${orphans.map(orphan => orphan.pluginId).join(', ')}): ${decision.reason}. `
+          + 'Nothing was moved; please check the plugins directory manually.',
+        )
+        return []
+      }
+
       const archived: string[] = []
-      for (const orphan of findCorePluginDataOrphans(dataRoot, knownPluginIds)) {
+      for (const orphan of orphans) {
         const result = archiveCorePluginData(dataRoot, orphan.pluginId)
         if (result.archived) {
           archived.push(orphan.pluginId)
+          // 孤儿的 plugin-settings 三键也是它的足迹 —— 数据搬走了键还留着,
+          // 下一个同名插件装上来会继承一具前世的启停位与配置。
+          clearPluginSettingsKeys(orphan.pluginId)
+          invalidatePluginConfigCache(orphan.pluginId)
+          clearPluginRuntimeHealth(orphan.pluginId)
           console.warn(
             `[PluginManager] "${orphan.pluginId}" has plugin data but is no longer installed `
             + `(${orphan.kind}); archived to ${result.archivePath}`,

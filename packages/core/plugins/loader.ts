@@ -457,22 +457,78 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
   }
 }
 
+/**
+ * 一轮扫描的**可信度**。
+ *
+ * `existsSync`/`readdirSync` 失败与"目录里确实没有插件"在返回值上长得一模一样,
+ * 而这两件事的下游后果天差地别:后者只是没插件,前者会让孤儿归档把
+ * plugin-data 下的所有目录当成无主数据搬走。所以扫描必须自己说清楚
+ * "我这轮读得可不可信"。
+ */
+export interface CorePluginScanTrust {
+  trusted: boolean
+  reason?: string
+  /** 源目录下实际存在的条目名(含 symlink)—— 所有权判定用它,不是用能否加载。 */
+  presentEntryNames: string[]
+}
+
+export function scanPluginSourceEntries(pluginsDir: string): CorePluginScanTrust {
+  let stat: fs.Stats
+  try {
+    stat = fs.statSync(pluginsDir)
+  } catch (error) {
+    const code = (error as { code?: string }).code
+    // ENOENT 是"还没建过插件目录",是可信的空;其余(EACCES/EIO/…)不可信。
+    if (code === 'ENOENT') return { trusted: true, presentEntryNames: [] }
+    return { trusted: false, reason: `cannot stat ${pluginsDir} (${code ?? 'unknown'})`, presentEntryNames: [] }
+  }
+  if (!stat.isDirectory()) {
+    return { trusted: false, reason: `${pluginsDir} is not a directory`, presentEntryNames: [] }
+  }
+
+  try {
+    return {
+      trusted: true,
+      presentEntryNames: fs.readdirSync(pluginsDir, { withFileTypes: true })
+        // **含 symlink**:dirent.isDirectory() 对符号链接是 false,而
+        // `ln -s sample-plugins/x ~/.onething/plugins/x` 正是 README 教的装法 ——
+        // 漏掉它等于每轮 refresh 都把它的数据判成孤儿。
+        .filter(entry => !entry.name.startsWith('.') && entry.name !== 'node_modules')
+        .map(entry => entry.name),
+    }
+  } catch (error) {
+    const code = (error as { code?: string }).code
+    return { trusted: false, reason: `cannot read ${pluginsDir} (${code ?? 'unknown'})`, presentEntryNames: [] }
+  }
+}
+
 export function scanPluginDirectories<TEntry = unknown>(input: {
   pluginsDir: string
   seenIds?: Set<string>
   getEnabled: (pluginId: string) => boolean
   appVersion?: string
 }): CorePluginDefinition<TEntry>[] {
-  if (!fs.existsSync(input.pluginsDir)) {
+  let entries: fs.Dirent[]
+  try {
+    if (!fs.statSync(input.pluginsDir).isDirectory()) return []
+    entries = fs.readdirSync(input.pluginsDir, { withFileTypes: true })
+  } catch {
     return []
   }
 
   const plugins: CorePluginDefinition<TEntry>[] = []
   const seen = input.seenIds ?? new Set<string>()
-  const entries = fs.readdirSync(input.pluginsDir, { withFileTypes: true })
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue
+    // symlink 装法的目录 dirent.isDirectory() 为 false —— 用 statSync 跟随链接判。
+    if (!entry.isDirectory()) {
+      if (!entry.isSymbolicLink()) continue
+      try {
+        if (!fs.statSync(path.join(input.pluginsDir, entry.name)).isDirectory()) continue
+      } catch {
+        continue
+      }
+    }
     if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
     if (seen.has(entry.name)) {
       console.warn(`[PluginLoader] Skipping user plugin "${entry.name}" because a built-in plugin with the same id exists`)

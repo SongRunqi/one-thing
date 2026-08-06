@@ -26,9 +26,30 @@ export class CorePluginStore {
   private readonly dataRoot: string
   private loaded = false
 
+  private disposed = false
+
   constructor(private readonly pluginId: string, options: PluginStoreOptions) {
     this.dataRoot = options.dataDir
     ensureDir(this.dataRoot)
+  }
+
+  /**
+   * 拆除闩。
+   *
+   * 没有它的话:一个被 abort 的异步回调事后调 store.set,save() 里的 ensureDir
+   * 会把刚刚归档掉的数据目录**复活成一个鬼目录** —— 下一轮孤儿扫描又把它搬走,
+   * 如此往复。
+   */
+  dispose(): void {
+    this.disposed = true
+  }
+
+  private rejectIfDisposed(what: string): boolean {
+    if (!this.disposed) return false
+    console.error(
+      `[PluginStore:${this.pluginId}] Ignoring store.${what} after dispose — the plugin resumed past its teardown.`,
+    )
+    return true
   }
 
   private get filePath(): string {
@@ -63,12 +84,14 @@ export class CorePluginStore {
   }
 
   set<T = unknown>(key: string, value: T): void {
+    if (this.rejectIfDisposed('set')) return
     this.ensureLoaded()
     this.data[key] = value
     this.save()
   }
 
   delete(key: string): void {
+    if (this.rejectIfDisposed('delete')) return
     this.ensureLoaded()
     delete this.data[key]
     this.save()

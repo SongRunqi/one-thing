@@ -16,14 +16,19 @@ import {
   CorePluginStore,
   PLUGIN_DATA_LEGACY_BACKUP_DIR,
   PLUGIN_KV_FILE_NAME,
+  PLUGIN_LEGACY_KV_FILE_NAME,
+  PluginStorageError,
   archiveCorePluginData,
   assertSafePluginFileName,
   createCorePluginAPI,
   createCorePluginStorage,
+  decidePluginOrphanArchive,
   disposeCorePluginState,
   findCorePluginDataOrphans,
   getCorePluginDataFootprint,
   migrateLegacyPluginKv,
+  restoreCorePluginDataArchive,
+  scanPluginSourceEntries,
   type CorePluginDefinition,
   type CorePluginManagerHost,
   type CorePluginStateLike,
@@ -64,9 +69,8 @@ describe('R4 storage surface — the api is a mediated channel, not raw fs', () 
         expect(() => storage.readJson(name), name).toThrow()
         expect(() => storage.exists(name), name).toThrow()
       }
-      // 目录之外一个文件也不该出现。
-      expect(fs.readdirSync(root)).toEqual(['notes'])
-      expect(fs.readdirSync(path.join(root, 'notes'))).toEqual([])
+      // 一个文件都不该出现 —— 既没逃出去,也没顺手把数据目录建出来。
+      expect(fs.readdirSync(root)).toEqual([])
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
@@ -84,10 +88,81 @@ describe('R4 storage surface — the api is a mediated channel, not raw fs', () 
     }
   })
 
-  it('validates plugin ids and file names with the same rule', () => {
-    expect(assertSafePluginFileName('kv.json')).toBe('kv.json')
+  it('reserves the host-owned names and rejects platform-hostile ones', () => {
+    expect(assertSafePluginFileName('notes.json')).toBe('notes.json')
     expect(() => assertSafePluginFileName('../x')).toThrow()
     expect(() => assertSafePluginFileName(' padded')).toThrow()
+    // api.store 的 KV 与归档目录:不保留的话两条通道会静默互相 clobber。
+    expect(() => assertSafePluginFileName('kv.json')).toThrow(/reserved by the host/)
+    expect(() => assertSafePluginFileName('KV.JSON')).toThrow(/reserved by the host/)
+    expect(() => assertSafePluginFileName('legacy-backup')).toThrow(/reserved by the host/)
+    // Windows:保留设备名(含带扩展名形态)、ADS 分隔符、尾点。
+    for (const name of ['CON', 'con.json', 'NUL', 'COM1.json', 'LPT9', 'a.json:hidden', 'trailing.']) {
+      expect(() => assertSafePluginFileName(name), name).toThrow()
+    }
+    expect(() => assertSafePluginFileName('x'.repeat(300))).toThrow(/exceeds/)
+  })
+
+  it('tags every failure with a code so plugins can separate fix-your-code errors and retry-later errors', () => {
+    const root = tempRoot()
+    try {
+      const storage = createCorePluginStorage({ pluginId: 'notes', dataRoot: root })
+      const nameError = (() => {
+        try {
+          storage.writeJson('../x', {})
+        } catch (error) {
+          return error as PluginStorageError
+        }
+        throw new Error('expected a throw')
+      })()
+      expect(nameError.name).toBe('PluginStorageError')
+      expect(nameError.code).toBe('invalid-name')
+
+      const shapeError = (() => {
+        try {
+          storage.writeJson('a.json', { m: new Map() })
+        } catch (error) {
+          return error as PluginStorageError
+        }
+        throw new Error('expected a throw')
+      })()
+      expect(shapeError.code).toBe('not-serializable')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not create the data directory just because something was read', () => {
+    const root = tempRoot()
+    try {
+      const storage = createCorePluginStorage({ pluginId: 'notes', dataRoot: root })
+      expect(storage.readJson('missing.json', { fallback: true })).toEqual({ fallback: true })
+      expect(storage.exists('missing.json')).toBe(false)
+      // 纯读一次就建一个空目录,会让它出现在足迹里、进而被孤儿扫描盯上。
+      expect(fs.existsSync(path.join(root, 'notes'))).toBe(false)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('quarantines a corrupt file and throws instead of handing back the fallback', () => {
+    const root = tempRoot()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const storage = createCorePluginStorage({ pluginId: 'notes', dataRoot: root })
+      storage.writeJson('a.json', { ok: true })
+      fs.writeFileSync(path.join(root, 'notes', 'a.json'), '{"ok": tru', 'utf-8')
+
+      // 返回 fallback 的话,插件通常会原样写回 —— 证据和数据一起没了。
+      expect(() => storage.readJson('a.json', { ok: false })).toThrow(/not valid JSON/)
+      expect(fs.existsSync(path.join(root, 'notes', 'a.json'))).toBe(false)
+      const quarantined = fs.readdirSync(path.join(root, 'notes')).filter(name => name.includes('.corrupt-'))
+      expect(quarantined).toHaveLength(1)
+      expect(fs.readFileSync(path.join(root, 'notes', quarantined[0]), 'utf-8')).toContain('tru')
+    } finally {
+      errorSpy.mockRestore()
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 
@@ -143,7 +218,8 @@ describe('R4 api.storage wiring — latch and breaker ledger', () => {
       // 记账是为了熔断;继续抛是为了让插件当场知道自己写错了 —— 静默吞掉
       // 只会让它以为写成功了。
       expect(failures).toHaveLength(1)
-      expect(failures[0].scope).toBe('storage')
+      // 按操作分车道:单车道下 exists 的成功会不断清掉 writeJson 的连败。
+      expect(failures[0].scope).toBe('storage.writeJson')
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
@@ -158,9 +234,12 @@ describe('R4 api.storage wiring — latch and breaker ledger', () => {
 
       disposeCorePluginState(state)
 
-      api.storage.writeJson('after.json', { ok: true })
-      expect(api.storage.dir()).toBe('')
+      // 写面**抛**:静默 no-op 是"假装写成功了"。
+      expect(() => api.storage.writeJson('after.json', { ok: true })).toThrow(/disposed/)
+      expect(() => api.storage.dir()).toThrow(/disposed/)
+      // 读面退化:teardown 竞速里的一次无害读取不该把插件炸掉。
       expect(api.storage.exists('before.json')).toBe(false)
+      expect(api.storage.readJson('before.json', { fallback: true })).toEqual({ fallback: true })
       // 拆除之后的写入没有落盘 —— 否则就是一个没人能回收的孤儿文件。
       expect(fs.existsSync(path.join(root, 'notes', 'after.json'))).toBe(false)
       expect(fs.existsSync(path.join(root, 'notes', 'before.json'))).toBe(true)
@@ -295,6 +374,72 @@ describe('R4 footprint and archiving', () => {
   })
 })
 
+describe('R4 orphan archiving — failure protection (评审 critical)', () => {
+  it('reports an unreadable plugins directory as untrusted rather than empty', () => {
+    const pluginsDir = tempRoot()
+    try {
+      // 不存在 = 可信的空(还没建过插件目录)。
+      const missing = scanPluginSourceEntries(path.join(pluginsDir, 'nope'))
+      expect(missing).toMatchObject({ trusted: true, presentEntryNames: [] })
+
+      // 是个文件而不是目录 = 不可信。
+      const asFile = path.join(pluginsDir, 'as-file')
+      fs.writeFileSync(asFile, 'x', 'utf-8')
+      expect(scanPluginSourceEntries(asFile).trusted).toBe(false)
+    } finally {
+      fs.rmSync(pluginsDir, { recursive: true, force: true })
+    }
+  })
+
+  it('counts a symlinked plugin as installed — the ln -s install path README teaches', () => {
+    const pluginsDir = tempRoot()
+    const source = tempRoot()
+    try {
+      fs.mkdirSync(path.join(source, 'notes'), { recursive: true })
+      fs.symlinkSync(path.join(source, 'notes'), path.join(pluginsDir, 'notes'), 'dir')
+
+      const scan = scanPluginSourceEntries(pluginsDir)
+      expect(scan.trusted).toBe(true)
+      // dirent.isDirectory() 对 symlink 是 false —— 漏掉它等于每轮都把它判孤儿。
+      expect(scan.presentEntryNames).toEqual(['notes'])
+      expect(findCorePluginDataOrphans(tempRoot(), scan.presentEntryNames)).toEqual([])
+    } finally {
+      fs.rmSync(pluginsDir, { recursive: true, force: true })
+      fs.rmSync(source, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses to archive when the scan is untrusted, when nothing is installed, or past the limit', () => {
+    const orphans = [{ pluginId: 'a', kind: 'directory' as const }]
+    expect(decidePluginOrphanArchive({ orphans, scanTrusted: true, userPluginCount: 1 }).proceed).toBe(true)
+
+    // 这三条各自都能让"一次 EACCES"变成"把所有插件数据搬走"。
+    expect(decidePluginOrphanArchive({ orphans, scanTrusted: false, userPluginCount: 1 }))
+      .toMatchObject({ proceed: false, reason: expect.stringContaining('could not be read') })
+    expect(decidePluginOrphanArchive({ orphans, scanTrusted: true, userPluginCount: 0 }))
+      .toMatchObject({ proceed: false, reason: expect.stringContaining('no user plugins') })
+    expect(decidePluginOrphanArchive({
+      orphans: ['a', 'b', 'c', 'd'].map(pluginId => ({ pluginId, kind: 'directory' as const })),
+      scanTrusted: true,
+      userPluginCount: 4,
+    })).toMatchObject({ proceed: false, reason: expect.stringContaining('safety limit') })
+
+    // 没有候选时永远放行(不需要做任何事)。
+    expect(decidePluginOrphanArchive({ orphans: [], scanTrusted: false, userPluginCount: 0 }).proceed).toBe(true)
+  })
+
+  it('compares ownership case-insensitively and survives a malformed entry name', () => {
+    const root = tempRoot()
+    try {
+      fs.mkdirSync(path.join(root, 'Notes'), { recursive: true })
+      // 大小写不敏感的文件系统上 `Notes` 与 `notes` 是同一个目录。
+      expect(findCorePluginDataOrphans(root, ['notes'])).toEqual([])
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('R4 orphan detection', () => {
   it('finds directories and legacy files with no installed owner, skipping the backup dir', () => {
     const root = tempRoot()
@@ -324,6 +469,75 @@ interface TestCommand { name: string }
 interface TestState extends CorePluginStateLike<TestCommand> {
   disposed?: boolean
 }
+
+describe('R4 archive atomicity (评审 major)', () => {
+  it('keeps both KV files when the directory already has one', () => {
+    const root = tempRoot()
+    try {
+      createCorePluginStorage({ pluginId: 'notes', dataRoot: root }).writeJson('a.json', { x: 1 })
+      fs.writeFileSync(path.join(root, 'notes', PLUGIN_KV_FILE_NAME), JSON.stringify({ from: 'new' }), 'utf-8')
+      fs.writeFileSync(path.join(root, 'notes.json'), JSON.stringify({ from: 'legacy' }), 'utf-8')
+
+      const result = archiveCorePluginData(root, 'notes', { now: new Date('2026-08-07T00:00:00') })
+      expect(result.archived).toBe(true)
+      // 用旧文件压掉更新的那一份,等于安全网自己毁数据。
+      expect(JSON.parse(fs.readFileSync(path.join(result.archivePath!, PLUGIN_KV_FILE_NAME), 'utf-8')))
+        .toEqual({ from: 'new' })
+      expect(JSON.parse(fs.readFileSync(path.join(result.archivePath!, PLUGIN_LEGACY_KV_FILE_NAME), 'utf-8')))
+        .toEqual({ from: 'legacy' })
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rolls the legacy merge back when the directory rename fails — no half-archive', () => {
+    const root = tempRoot()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const realRename = fs.renameSync
+    try {
+      createCorePluginStorage({ pluginId: 'notes', dataRoot: root }).writeJson('a.json', { x: 1 })
+      fs.writeFileSync(path.join(root, 'notes.json'), JSON.stringify({ from: 'legacy' }), 'utf-8')
+
+      // 只让"整目录 rename"那一步失败,合并那一步照常。
+      const spy = vi.spyOn(fs, 'renameSync').mockImplementation(((from: string, to: string) => {
+        if (to.includes(PLUGIN_DATA_LEGACY_BACKUP_DIR)) {
+          const error = new Error('EXDEV: cross-device link not permitted') as Error & { code?: string }
+          error.code = 'EXDEV'
+          throw error
+        }
+        return realRename(from, to)
+      }) as typeof fs.renameSync)
+
+      const result = archiveCorePluginData(root, 'notes', { now: new Date('2026-08-07T00:00:00') })
+      spy.mockRestore()
+
+      expect(result.archived).toBe(false)
+      // 跨卷是已裁决不做降级的场景,至少要把原因说清楚。
+      expect(result.error).toContain('different volumes')
+      // 回滚:遗留文件回到原位,数据目录完整,归档目录里没有半成品。
+      expect(fs.existsSync(path.join(root, 'notes.json'))).toBe(true)
+      expect(fs.existsSync(path.join(root, 'notes', 'a.json'))).toBe(true)
+      expect(fs.existsSync(path.join(root, 'notes', PLUGIN_KV_FILE_NAME))).toBe(false)
+    } finally {
+      errorSpy.mockRestore()
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('restores an archive back to the data directory', () => {
+    const root = tempRoot()
+    try {
+      createCorePluginStorage({ pluginId: 'notes', dataRoot: root }).writeJson('a.json', { x: 1 })
+      const archive = archiveCorePluginData(root, 'notes')
+      expect(fs.existsSync(path.join(root, 'notes'))).toBe(false)
+
+      expect(restoreCorePluginDataArchive(root, 'notes', archive.archivePath!)).toEqual({ restored: true })
+      expect(JSON.parse(fs.readFileSync(path.join(root, 'notes', 'a.json'), 'utf-8'))).toEqual({ x: 1 })
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('R4 uninstall lifecycle', () => {
   function buildManager(root: string, pluginsDir: string) {
@@ -366,9 +580,14 @@ describe('R4 uninstall lifecycle', () => {
       clearPluginSettings: pluginId => {
         for (const bucket of Object.values(settings)) delete bucket[pluginId]
       },
-      archiveOrphanPluginData: knownIds => {
+      restorePluginDataArchive: (pluginId, archivePath) =>
+        restoreCorePluginDataArchive(root, pluginId, archivePath),
+      getPluginSourceScan: () => scanPluginSourceEntries(pluginsDir),
+      archiveOrphanPluginData: ({ knownPluginIds, scanTrusted, userPluginCount }) => {
+        const orphans = findCorePluginDataOrphans(root, knownPluginIds)
+        if (!decidePluginOrphanArchive({ orphans, scanTrusted, userPluginCount }).proceed) return []
         const archived: string[] = []
-        for (const orphan of findCorePluginDataOrphans(root, knownIds)) {
+        for (const orphan of orphans) {
           if (archiveCorePluginData(root, orphan.pluginId).archived) archived.push(orphan.pluginId)
         }
         return archived
@@ -466,6 +685,90 @@ describe('R4 uninstall lifecycle', () => {
       expect(settings.enabled.notes).toBeDefined()
       expect(manager.getPlugins()[0].error).toContain('disk full')
     } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+      fs.rmSync(pluginsDir, { recursive: true, force: true })
+    }
+  })
+
+  it('restores the archived data when removing the source directory fails', async () => {
+    const root = tempRoot()
+    const pluginsDir = tempRoot()
+    try {
+      fs.mkdirSync(path.join(pluginsDir, 'notes'), { recursive: true })
+      fs.writeFileSync(path.join(pluginsDir, 'notes', 'plugin-entry.js'), 'export default () => {}', 'utf-8')
+      createCorePluginStorage({ pluginId: 'notes', dataRoot: root }).writeJson('a.json', { precious: true })
+
+      const { manager } = buildManager(root, pluginsDir)
+      ;(manager as unknown as { host: { removePluginSource(): unknown } }).host.removePluginSource = () => ({
+        removed: false,
+        error: 'EPERM',
+      })
+      await manager.initialize({ ready: true })
+
+      const result = await manager.uninstallPlugin('notes')
+      expect(result.success).toBe(false)
+      // 数据要么搬回原位,要么归档路径必须一路带到调用方(它会进 toast)。
+      const restored = fs.existsSync(path.join(root, 'notes', 'a.json'))
+      if (restored) {
+        expect(result.error).toContain('restored')
+      } else {
+        expect(result.archivePath).toBeTruthy()
+        expect(result.error).toContain(result.archivePath!)
+      }
+      expect(fs.existsSync(path.join(pluginsDir, 'notes'))).toBe(true)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+      fs.rmSync(pluginsDir, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves plugin data untouched when the plugins directory cannot be scanned', async () => {
+    const root = tempRoot()
+    const pluginsDir = tempRoot()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      createCorePluginStorage({ pluginId: 'notes', dataRoot: root }).writeJson('a.json', { precious: true })
+      createCorePluginStorage({ pluginId: 'other', dataRoot: root }).writeJson('a.json', { precious: true })
+
+      const { manager } = buildManager(root, pluginsDir)
+      // 扫描不可信(EACCES/EIO/瞬断都长这样)—— 这一轮一个字节都不许动。
+      ;(manager as unknown as { host: { getPluginSourceScan(): unknown } }).host.getPluginSourceScan = () => ({
+        trusted: false,
+        reason: 'EACCES',
+        presentEntryNames: [],
+      })
+      await manager.initialize({ ready: true })
+
+      expect(fs.existsSync(path.join(root, 'notes', 'a.json'))).toBe(true)
+      expect(fs.existsSync(path.join(root, 'other', 'a.json'))).toBe(true)
+      expect(fs.existsSync(path.join(root, PLUGIN_DATA_LEGACY_BACKUP_DIR))).toBe(false)
+    } finally {
+      warn.mockRestore()
+      errorSpy.mockRestore()
+      fs.rmSync(root, { recursive: true, force: true })
+      fs.rmSync(pluginsDir, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps data for a plugin whose source dir is present but unloadable', async () => {
+    const root = tempRoot()
+    const pluginsDir = tempRoot()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      // 源目录在,但 entry 缺失 —— definitions 里不会有它,可它显然还装着。
+      fs.mkdirSync(path.join(pluginsDir, 'broken'), { recursive: true })
+      fs.mkdirSync(path.join(pluginsDir, 'notes'), { recursive: true })
+      fs.writeFileSync(path.join(pluginsDir, 'notes', 'plugin-entry.js'), 'export default () => {}', 'utf-8')
+      createCorePluginStorage({ pluginId: 'broken', dataRoot: root }).writeJson('a.json', { precious: true })
+
+      const { manager } = buildManager(root, pluginsDir)
+      await manager.initialize({ ready: true })
+
+      // 所有权判定看的是源目录是否存在,不是能不能加载。
+      expect(fs.existsSync(path.join(root, 'broken', 'a.json'))).toBe(true)
+    } finally {
+      warn.mockRestore()
       fs.rmSync(root, { recursive: true, force: true })
       fs.rmSync(pluginsDir, { recursive: true, force: true })
     }

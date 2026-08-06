@@ -1,6 +1,6 @@
 import type { CorePluginAPIState } from './api-state.js'
 import { deepFreezeCorePluginValue } from './freeze.js'
-import type { CorePluginStorage } from './storage.js'
+import { PluginStorageError, type CorePluginStorage } from './storage.js'
 import {
   assertPluginPayloadSerializable,
   normalizePluginRequestAction,
@@ -190,19 +190,40 @@ export function createCorePluginAPI<
     return options.storage
   }
   /**
-   * 存储失败一律进熔断账(scope `storage`),然后**继续抛给插件** ——
-   * 路径穿越这类错误必须让插件当场知道自己写错了,静默吞掉只会让它以为写成功了。
+   * 存储失败进熔断账,然后**继续抛给插件** —— 路径穿越这类错误必须让插件
+   * 当场知道自己写错了,静默吞掉只会让它以为写成功了。
+   *
+   * scope 按**操作**分车道(`storage.writeJson` / `storage.readJson` / …),
+   * 与 `request:<action>` 同一个先例:单车道会让 exists 的成功不断清掉
+   * writeJson 的连败,插件级混计的假阴性会在 scope 内原样复现。
    */
   const withStorageFailureReport = <T>(what: string, run: () => T): T => {
+    const scope = `storage.${what}`
     try {
       const result = run()
-      options.onPluginSuccess?.({ pluginId, scope: 'storage' })
+      options.onPluginSuccess?.({ pluginId, scope })
       return result
     } catch (error) {
       logger.error(`[Plugin:${pluginId}] storage.${what} failed:`, error)
-      reportFailure('storage', error)
+      reportFailure(scope, error)
       throw error
     }
+  }
+  /**
+   * 拆除之后的存储语义:**写面抛、读面退化**。
+   *
+   * 写面静默 no-op 是"假装写成功了",插件会以为数据落盘了;读面抛则会让
+   * teardown 竞速里的一次无害读取把插件炸掉。dir() 归入写面 —— 它会建目录,
+   * 而且返回 '' 会让插件的 path.join 落进进程 CWD。
+   */
+  const rejectDisposedWrite = (what: string): void => {
+    if (!state.disposed) return
+    const error = new PluginStorageError(
+      'unavailable',
+      `Plugin "${pluginId}" was disposed; storage.${what} is no longer available`,
+    )
+    rejectLateCall(`storage.${what}`)
+    throw error
   }
 
   const requestHandlers = new Map<string, CorePluginRequestHandler>()
@@ -418,19 +439,25 @@ export function createCorePluginAPI<
      */
     storage: {
       dir(): string {
-        if (rejectLateCall('storage.dir')) return ''
+        rejectDisposedWrite('dir')
         return withStorageFailureReport('dir', () => requireStorage().dir())
       },
       readJson<T = unknown>(name: string, fallback?: T): T | undefined {
-        if (rejectLateCall('storage.readJson')) return fallback
+        if (state.disposed) {
+          rejectLateCall('storage.readJson')
+          return fallback
+        }
         return withStorageFailureReport('readJson', () => requireStorage().readJson<T>(name, fallback))
       },
       writeJson(name: string, value: unknown): void {
-        if (rejectLateCall('storage.writeJson')) return
+        rejectDisposedWrite('writeJson')
         withStorageFailureReport('writeJson', () => requireStorage().writeJson(name, value))
       },
       exists(name: string): boolean {
-        if (rejectLateCall('storage.exists')) return false
+        if (state.disposed) {
+          rejectLateCall('storage.exists')
+          return false
+        }
         return withStorageFailureReport('exists', () => requireStorage().exists(name))
       },
     },

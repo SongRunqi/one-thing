@@ -82,8 +82,21 @@ export interface CorePluginManagerHost<
   removePluginSource?(definition: TDefinition): { removed: boolean; error?: string }
   /** 清掉 plugin-settings 里该插件的 enabled/config/health 三键。 */
   clearPluginSettings?(pluginId: string): void
-  /** 扫无主数据并归档;返回被归档的 pluginId。 */
-  archiveOrphanPluginData?(knownPluginIds: string[]): string[]
+  /**
+   * 扫无主数据并归档;返回被归档的 pluginId。
+   *
+   * `scanTrusted` 为 false 时**必须什么都不做** —— 读不到插件目录不是
+   * "一个插件都没装"。
+   */
+  archiveOrphanPluginData?(input: {
+    knownPluginIds: string[]
+    scanTrusted: boolean
+    userPluginCount: number
+  }): string[]
+  /** 归档搬回原位(删源目录失败时的补偿)。 */
+  restorePluginDataArchive?(pluginId: string, archivePath: string): { restored: boolean; error?: string }
+  /** 一轮扫描的可信度与源目录实际条目(所有权判定用,不看能否加载)。 */
+  getPluginSourceScan?(): { trusted: boolean; reason?: string; presentEntryNames: string[] }
 }
 
 export interface CorePluginUninstallResult {
@@ -362,9 +375,23 @@ export class CorePluginManager<
       const removal = this.host.removePluginSource?.(definition) ?? { removed: false }
       if (removal.error) {
         this.logger.error(`[PluginManager] Uninstall could not remove source for "${pluginId}": ${removal.error}`)
+        // 补偿:数据已经搬走但插件还在 —— 把它搬回原位,否则用户看到的是
+        // 一个"还装着但数据全没了"的插件。
+        let message = `Uninstall failed while removing the plugin directory: ${removal.error}`
+        if (archive.archivePath) {
+          const restored = this.host.restorePluginDataArchive?.(pluginId, archive.archivePath)
+            ?? { restored: false, error: 'no restore hook on this host' }
+          if (restored.restored) {
+            message += '; its data was restored to the plugin data directory'
+          } else {
+            // 搬不回去时,归档路径必须一路带到调用方(它会进 toast)——
+            // 只写进 info.error 的话,下一次 refresh 就把它蒸发了。
+            message += `; its data is archived at ${archive.archivePath} (restore failed: ${restored.error})`
+          }
+        }
         const failed = this.plugins.get(pluginId)
-        if (failed) failed.error = `Uninstall failed while removing the plugin directory: ${removal.error}`
-        return { success: false, error: removal.error, archivePath: archive.archivePath }
+        if (failed) failed.error = message
+        return { success: false, error: message, archivePath: archive.archivePath }
       }
 
       this.host.clearPluginSettings?.(pluginId)
@@ -426,10 +453,28 @@ export class CorePluginManager<
 
     // 孤儿数据在加载之前扫:手删 `<store>/plugins/<id>/` 是真实存在的卸载路径,
     // 宿主对它零感知,数据就永远躺在 plugin-data 里。
+    //
+    // 所有权判定**与"能否加载"解耦**:源目录还在就是有主,哪怕 entry 缺失、
+    // plugin.json 坏了、或者它是个 symlink。只有源目录真的没了才算无主。
     try {
-      const archived = this.host.archiveOrphanPluginData?.(definitions.map(def => def.id)) ?? []
+      const scan = this.host.getPluginSourceScan?.() ?? { trusted: true, presentEntryNames: [] }
+      const known = new Set<string>([
+        ...definitions.map(def => def.id),
+        ...scan.presentEntryNames,
+      ])
+      const archived = this.host.archiveOrphanPluginData?.({
+        knownPluginIds: [...known],
+        scanTrusted: scan.trusted,
+        userPluginCount: definitions.filter(def => def.source !== 'builtin').length,
+      }) ?? []
       if (archived.length > 0) {
         this.logger.log(`[PluginManager] Archived orphaned plugin data: ${archived.join(', ')}`)
+      }
+      if (!scan.trusted) {
+        this.logger.error(
+          `[PluginManager] Plugin directory scan is not trustworthy (${scan.reason ?? 'unknown'}); `
+          + 'skipped orphaned-data archiving this round.',
+        )
       }
     } catch (error) {
       this.logger.error('[PluginManager] Orphan plugin data scan failed:', error)
