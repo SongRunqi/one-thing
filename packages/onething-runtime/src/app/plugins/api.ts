@@ -13,6 +13,8 @@ import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
 import { PluginStore, createPluginStorage } from './store.js'
 import { getDeclaredPanelIds } from './loader.js'
+import { registerIMConnector } from '../channel/connector-registry.js'
+import type { IMConnector } from '@shared/ipc.js'
 import {
   emitPluginStatusPart,
   getPluginStatusRegistry,
@@ -267,6 +269,15 @@ export function createPluginAPI(
       },
       notePluginStatusPending() {
         notePluginStatusPending()
+      },
+      /**
+       * R7 试点注册表:IM 连接器。
+       *
+       * 开放下一个注册表只需要两步 —— 在 core 的策略表里加一条(声明拆除语义
+       * 与"在飞的东西怎么办"),再在这里加一行转发。
+       */
+      registerIMConnector(_id, connector) {
+        return registerIMConnector(connector as IMConnector)
       },
       emitPluginEvent(id, eventName, payload) {
         // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast

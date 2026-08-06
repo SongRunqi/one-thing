@@ -60,6 +60,12 @@ export interface CorePluginAPIHost<
   /** 有被合并窗压住的状态变化 —— 宿主据此排一次 trailing flush。 */
   notePluginStatusPending?(): void
   /**
+   * IM 连接器注册表的转发口(R7)。返回退订函数。
+   *
+   * 宿主注入;core 不认识渠道。开放下一个注册表时照抄这一行 + 在策略表里加条目。
+   */
+  registerIMConnector?(pluginId: string, connector: unknown): (() => void) | undefined
+  /**
    * 插件自有配置的访问面(R3)。
    *
    * 宿主全权管理存储与校验;插件只读快照 —— 没有 registerSettings,
@@ -612,6 +618,51 @@ export function createCorePluginAPI<
         if (!part) return
         host.emitPluginStatus?.(pluginId, address, part)
       },
+    },
+
+    /**
+     * IM 连接器(R7 试点)。
+     *
+     * 三件宿主的事都在这里:disposed 闩(拆除之后再注册 = 往一个没人再会来清扫的
+     * 表里塞东西)、退订函数收进 disposeCallbacks(插件不调也能拆干净)、
+     * 失败进熔断账(scope `connector`,策略表判为 degrade-surface —— 一条渠道
+     * 坏掉不该放大成插件故障)。
+     */
+    registerIMConnector(connector: { id?: unknown }): () => void {
+      if (rejectLateCall('registerIMConnector')) return () => {}
+      const connectorId = String(connector?.id ?? '').trim()
+      if (!connectorId) {
+        logger.error(`[Plugin:${pluginId}] registerIMConnector needs a connector with an id`, undefined)
+        reportFailure('connector', new Error('connector without an id'))
+        return () => {}
+      }
+      let unregister: (() => void) | undefined
+      try {
+        unregister = host.registerIMConnector?.(pluginId, connector)
+      } catch (error) {
+        logger.error(`[Plugin:${pluginId}] registerIMConnector("${connectorId}") failed:`, error)
+        reportFailure('connector', error)
+        return () => {}
+      }
+      if (!unregister) {
+        // 宿主没接这条线(headless / server):安静地什么也不做,而不是假装成功。
+        logger.log(`[Plugin:${pluginId}] IM connectors are not available on this host; "${connectorId}" was ignored`)
+        return () => {}
+      }
+      let released = false
+      const release = (): void => {
+        if (released) return
+        released = true
+        try {
+          unregister?.()
+        } catch (error) {
+          logger.error(`[Plugin:${pluginId}] Failed to unregister IM connector "${connectorId}":`, error)
+        }
+      }
+      // 插件自己不调 release 也能拆干净 —— 拆除语义不建立在插件守规矩上。
+      disposeCallbacks.push(release)
+      logger.log(`[Plugin:${pluginId}] Registered IM connector: ${connectorId}`)
+      return release
     },
 
     ui: {

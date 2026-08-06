@@ -9,6 +9,8 @@
  */
 
 /** 提示词装配是每次发消息的热路径,预算必须小。 */
+import { describePluginSurface, resolvePluginScopeSeverity } from './policy.js'
+
 export const CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS = 5_000
 /** 上下文压缩 / 回合结束钩子。 */
 export const CORE_PLUGIN_LIFECYCLE_HOOK_TIMEOUT_MS = 5_000
@@ -87,6 +89,14 @@ export interface CorePluginRuntimeHealth {
   lastErrorScope?: string
   lastErrorAt?: number
   disabledReason?: string
+  /**
+   * 被降级的界面(R7)。
+   *
+   * 用户主动触发的失败(面板动作、插件请求、IM 连接器)达阈时**只标记这一个
+   * 界面不可用**,插件的工具/命令/提示词/定时任务照常 —— 罚则来自
+   * `PLUGIN_SEVERITY_TABLE`,不在上报点上写条件。
+   */
+  degradedSurfaces?: Array<{ surface: string; reason: string; at: number }>
 }
 
 export interface CorePluginHealthTrackerOptions {
@@ -94,6 +104,11 @@ export interface CorePluginHealthTrackerOptions {
   now?: () => number
   /** 熔断时回调一次(只回调一次,直到该插件被重新启用)。 */
   onTrip?(pluginId: string, health: CorePluginRuntimeHealth): void
+  /**
+   * 界面降级时回调(R7)。**插件不被禁用** —— 只有那一个界面不可用。
+   * 与 onTrip 一样只回调一次,直到该界面恢复。
+   */
+  onDegradeSurface?(pluginId: string, surface: string, health: CorePluginRuntimeHealth): void
 }
 
 function describePluginError(error: unknown): string {
@@ -110,6 +125,8 @@ interface PluginHealthEntry {
   lastErrorScope?: string
   lastErrorAt?: number
   disabledReason?: string
+  /** 降级中的界面 → 原因(R7)。插件本身不受影响。 */
+  degradedSurfaces?: Map<string, { reason: string; at: number }>
 }
 
 /**
@@ -146,13 +163,33 @@ export class CorePluginHealthTracker {
     const scopeFailures = (entry.scopes.get(scope) ?? 0) + 1
     entry.scopes.set(scope, scopeFailures)
 
+    // 罚则来自**一张表**,不在这里写条件。阈值也归表管:注册期违规是代码错误,
+    // 重试没有意义,它的阈值是 1。
+    const severity = resolvePluginScopeSeverity(scope)
+    const threshold = severity.threshold ?? this.threshold
     const alreadyDisabled = entry.status === 'disabled'
-    const tripped = !alreadyDisabled && scopeFailures >= this.threshold
+    const reached = !alreadyDisabled && scopeFailures >= threshold
+    const degrading = severity.remedy === 'degrade-surface'
+    const tripped = reached && !degrading
 
-    entry.status = alreadyDisabled || tripped ? 'disabled' : 'degraded'
     entry.lastError = describePluginError(error)
     entry.lastErrorScope = scope
     entry.lastErrorAt = this.now()
+
+    let newlyDegradedSurface: string | undefined
+    if (reached && degrading && severity.surface) {
+      entry.degradedSurfaces ??= new Map()
+      if (!entry.degradedSurfaces.has(severity.surface)) {
+        newlyDegradedSurface = severity.surface
+      }
+      entry.degradedSurfaces.set(severity.surface, {
+        reason: `${scopeFailures} consecutive failures in ${scope} (last: ${describePluginError(error)})`,
+        at: entry.lastErrorAt,
+      })
+    }
+
+    // 降级**不改插件状态为 disabled** —— 那正是这一期要治的连坐。
+    entry.status = alreadyDisabled || tripped ? 'disabled' : 'degraded'
     if (tripped) {
       entry.disabledReason = `${scopeFailures} consecutive failures in ${scope} (last: ${describePluginError(error)})`
     }
@@ -161,8 +198,15 @@ export class CorePluginHealthTracker {
     const projected = this.project(entry)
     if (tripped) {
       this.options.onTrip?.(pluginId, projected)
+    } else if (newlyDegradedSurface) {
+      this.options.onDegradeSurface?.(pluginId, newlyDegradedSurface, projected)
     }
     return projected
+  }
+
+  /** 某个界面当前是否处于降级态。 */
+  isSurfaceDegraded(pluginId: string, surface: string): boolean {
+    return Boolean(this.health.get(pluginId)?.degradedSurfaces?.has(surface))
   }
 
   /**
@@ -175,6 +219,13 @@ export class CorePluginHealthTracker {
     const entry = this.health.get(pluginId)
     if (!entry || entry.status === 'disabled') return
     if (!entry.scopes.get(scope)) return
+
+    // 一次成功就把界面从降级态放回来 —— 用户点了重试并且成功了,面板必须回来。
+    if (entry.degradedSurfaces?.size) {
+      const surface = describePluginSurface(scope)
+      entry.degradedSurfaces.delete(surface)
+      if (entry.degradedSurfaces.size === 0) entry.degradedSurfaces = undefined
+    }
 
     entry.scopes.set(scope, 0)
     if ([...entry.scopes.values()].every(count => count === 0)) {
@@ -236,6 +287,9 @@ export class CorePluginHealthTracker {
       lastErrorScope: entry.lastErrorScope,
       lastErrorAt: entry.lastErrorAt,
       disabledReason: entry.disabledReason,
+      degradedSurfaces: entry.degradedSurfaces?.size
+        ? [...entry.degradedSurfaces].map(([surface, info]) => ({ surface, ...info }))
+        : undefined,
     }
   }
 }

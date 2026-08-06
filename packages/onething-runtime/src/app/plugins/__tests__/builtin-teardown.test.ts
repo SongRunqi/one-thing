@@ -20,7 +20,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>
 
 async function loadModules() {
-  const [loader, api, tools, promptContext, skillRoots, lifecycle, scheduler, variables] = await Promise.all([
+  const [loader, api, tools, promptContext, skillRoots, lifecycle, scheduler, variables, connectors] = await Promise.all([
     import('../loader.js'),
     import('../api.js'),
     import('../../tools/index.js'),
@@ -29,8 +29,9 @@ async function loadModules() {
     import('../lifecycle.js'),
     import('../../scheduler/index.js'),
     import('../../variables/index.js'),
+    import('../../channel/connector-registry.js'),
   ])
-  return { loader, api, tools, promptContext, skillRoots, lifecycle, scheduler, variables }
+  return { loader, api, tools, promptContext, skillRoots, lifecycle, scheduler, variables, connectors }
 }
 
 /**
@@ -88,6 +89,8 @@ interface RegistrySnapshot {
   schedulerTaskIds: string[]
   /** 注册表之外的残留:note-skills 经 onVariableChange 挂的真订阅。 */
   variableSubscriptions: number
+  /** R7 开放的第一个既有注册表 —— 开一个就要进快照,否则守卫覆盖不到它。 */
+  imConnectorIds: string[]
 }
 
 /** Counting EventBus stand-in: subscriptions are a registry too, and a leaked
@@ -129,6 +132,14 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
   } catch {
     schedulerTaskIds = []
   }
+  // R7:新开放的注册表要进拆除快照,否则"开一个漏一个"—— 拆除测试的价值全在
+  // 它是**自动覆盖新成员**的,清单漏登记就等于守卫失效。
+  let imConnectorIds: string[] = []
+  try {
+    imConnectorIds = mods.connectors.listIMConnectorIds()
+  } catch {
+    imConnectorIds = []
+  }
   let variableSubscriptions = 0
   try {
     variableSubscriptions = mods.variables.getVariablesStore().listenerCount()
@@ -143,6 +154,7 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
     eventSubscriptions: bus.subscriptionCount,
     schedulerTaskIds,
     variableSubscriptions,
+    imConnectorIds,
   }
 }
 

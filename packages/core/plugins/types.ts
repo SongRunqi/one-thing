@@ -232,6 +232,7 @@ export interface CorePluginAPI<
   TStorage = CorePluginStorage,
   TPanelRegistration = CorePluginPanelRegistration,
   TStatus = CorePluginStatusAPI,
+  TIMConnector = unknown,
 > {
   readonly id: string
   registerTool(tool: TTool): void
@@ -308,6 +309,21 @@ export interface CorePluginAPI<
    * 一条 IM 消息,得到的是刷屏,而状态的价值恰恰在于它会消失。
    */
   status: TStatus
+  /**
+   * IM 连接器(R7 试点注册表)。
+   *
+   * 这是插件系统第一个对外开放的**既有注册表**。选它是因为它是候选里唯一自带
+   * 退订函数的 —— 形状最适配 onDispose(变量提供者恰恰相反:它至今没有
+   * unregister,原方案建议拿它当试点是选反了)。
+   *
+   * 拆除语义按策略表声明为 `degrade-to-default`:插件停用时连接优雅断开,
+   * 此后经该 connector 的回复会得到一个说得清的错误而不是静默丢消息;
+   * 已有会话不受影响(它们的历史与状态在会话存储里,与连接器无关)。
+   *
+   * 返回退订函数;插件不调也没关系,dispose 会兜底。
+   * **仅桌面宿主执行**(§6 方案 A)。
+   */
+  registerIMConnector(connector: TIMConnector): () => void
 }
 
 export type CorePluginEntry<TAPI> = (api: TAPI) => void | Promise<void>

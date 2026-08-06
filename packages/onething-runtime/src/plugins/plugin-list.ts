@@ -36,6 +36,8 @@ export interface OnethingPluginRuntimeHealthLike {
   lastErrorScope?: string
   lastErrorAt?: number
   disabledReason?: string
+  /** 降级中的界面(R7):只影响一个面板,插件其余能力照常。 */
+  degradedSurfaces?: Array<{ surface: string; reason: string; at: number }>
 }
 
 export interface OnethingPluginListItemLike {
@@ -102,6 +104,13 @@ export interface OnethingRendererPluginInfo {
   healthFailures: number
   /** 运行期失败原因(熔断说明优先,其次最后一次错误)—— 设置页据此亮红。 */
   healthReason: string
+  /**
+   * 降级中的界面(R7)。
+   *
+   * 插件卡片要如实说"某个面板暂不可用",而不是把整体标成 Failed —— 用户主动
+   * 触发的失败只连坐它自己那一个界面,插件的工具/命令/提示词照常。
+   */
+  degradedSurfaces: Array<{ surface: string; reason: string }>
 }
 
 export interface OnethingPluginCommandLike {
@@ -153,6 +162,8 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
       || (plugin.health?.lastError
         ? `${plugin.health.lastErrorScope ? `${plugin.health.lastErrorScope}: ` : ''}${plugin.health.lastError}`
         : ''),
+    degradedSurfaces: (plugin.health?.degradedSurfaces ?? [])
+      .map(entry => ({ surface: entry.surface, reason: entry.reason })),
   }))
 }
 

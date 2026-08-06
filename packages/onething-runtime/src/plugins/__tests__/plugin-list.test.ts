@@ -89,6 +89,7 @@ describe('projectOnethingPluginsForRenderer', () => {
         healthStatus: 'disabled',
         healthFailures: 3,
         healthReason: '3 consecutive failures (last: promptContext:notes — boom)',
+        degradedSurfaces: [],
       },
     ])
   })
@@ -115,6 +116,7 @@ describe('projectOnethingPluginsForRenderer', () => {
       healthStatus: 'degraded',
       healthFailures: 1,
       healthReason: 'promptContext:notes (timeout): timed out',
+      degradedSurfaces: [],
     })
   })
 
@@ -165,6 +167,7 @@ describe('projectOnethingPluginsForRenderer', () => {
         healthStatus: 'healthy',
         healthFailures: 0,
         healthReason: '',
+        degradedSurfaces: [],
       },
     ])
   })

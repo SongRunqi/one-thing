@@ -42,6 +42,22 @@ function toPersisted(health: CorePluginRuntimeHealth): PersistedPluginHealth | n
 }
 
 const tracker = new CorePluginHealthTracker({
+  /**
+   * 界面降级(R7):**不禁用插件**,只把那一个界面标红。
+   *
+   * 熔断存在的理由是"运行期失败不可见";而面板动作是用户刚点下、当场看到错误态
+   * 与重试按钮的 —— 前提不成立。面板只在打开时跑,失败自限于一个界面,不该连坐
+   * 掉插件的工具/命令/提示词/定时任务。罚则由 core 的策略表决定,不在这里判。
+   */
+  onDegradeSurface(pluginId, surface, health) {
+    const reason = health.degradedSurfaces?.find(entry => entry.surface === surface)?.reason ?? 'repeated failures'
+    console.warn(`[PluginHealth] Degrading surface "${surface}" of plugin "${pluginId}": ${reason}`)
+    try {
+      host?.notify(pluginId, `"${pluginId}" — ${surface} is temporarily unavailable: ${reason}`)
+    } catch (error) {
+      console.error('[PluginHealth] notify failed:', error)
+    }
+  },
   onTrip(pluginId, health) {
     const reason = health.disabledReason ?? health.lastError ?? 'repeated runtime failures'
     console.error(`[PluginHealth] Auto-disabling plugin "${pluginId}": ${reason}`)

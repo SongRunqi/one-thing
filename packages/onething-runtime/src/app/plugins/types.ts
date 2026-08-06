@@ -8,7 +8,12 @@
  */
 
 import type { z } from 'zod'
+import type { IMConnector } from '@shared/ipc.js'
 import type {
+  CorePluginPanelRegistration,
+  CorePluginRequestHandler,
+  CorePluginStatusAPI,
+  CorePluginStorage,
   CorePluginAPI,
   CorePluginCommandContext,
   CorePluginCommandDefinition,
@@ -115,7 +120,12 @@ export interface PluginAPI
     PluginSkillRootProvider,
     PluginStore,
     PluginSchedulerAPI,
-    MinimalPluginUI
+    MinimalPluginUI,
+    CorePluginRequestHandler,
+    CorePluginStorage,
+    CorePluginPanelRegistration,
+    CorePluginStatusAPI,
+    IMConnector
   > {
   registerTool<P extends z.ZodType, M extends ToolMetadata>(
     tool: PluginToolDefinition<P, M>,

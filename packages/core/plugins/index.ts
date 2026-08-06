@@ -94,6 +94,25 @@ export {
 } from './api-state.js'
 export { deepFreezeCorePluginValue } from './freeze.js'
 export {
+  PLUGIN_DEFERRED_REGISTRIES,
+  PLUGIN_OPEN_REGISTRIES,
+  PLUGIN_REGISTRY_POLICY,
+  PLUGIN_SCOPE_FAMILIES,
+  PLUGIN_SEVERITY_TABLE,
+  classifyPluginScope,
+  describePluginSurface,
+  resolvePluginScopeSeverity,
+} from './policy.js'
+export type {
+  PluginFailureRemedy,
+  PluginOpenRegistry,
+  PluginRegistryPolicy,
+  PluginRegistryTeardown,
+  PluginScopeFamily,
+  PluginSeverityRule,
+  ResolvedPluginSeverity,
+} from './policy.js'
+export {
   CORE_PLUGIN_STATUS_MAX_ID,
   CORE_PLUGIN_STATUS_MAX_LABEL,
   CORE_PLUGIN_STATUS_MAX_PER_PLUGIN,

@@ -80,6 +80,7 @@ describe('plugin IPC operations', () => {
         healthStatus: 'healthy',
         healthFailures: 0,
         healthReason: '',
+        degradedSurfaces: [],
       }],
     })
 

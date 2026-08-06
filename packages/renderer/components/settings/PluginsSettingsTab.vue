@@ -350,6 +350,8 @@ interface PluginInfo {
   healthStatus?: string
   healthFailures?: number
   healthReason?: string
+  /** 降级中的界面(R7):某个面板不可用,而插件其余能力照常。 */
+  degradedSurfaces?: Array<{ surface: string; reason: string }>
   minAppVersion?: string
   requestActions?: string[]
   contributes?: {
@@ -634,6 +636,13 @@ function contributesSummary(plugin: PluginInfo): string[] {
 
 /** 运行期故障文案:熔断说明优先,其次最后一次失败。'' = 没有故障。 */
 function runtimeFault(plugin: PluginInfo): string {
+  // 界面降级要如实说成"某个面板不可用",不能说成插件坏了 —— 插件的工具/命令/
+  // 提示词此刻完全正常,把它标成 Failed 是在撒谎。
+  const degraded = plugin.degradedSurfaces ?? []
+  if (degraded.length) {
+    const names = degraded.map(entry => entry.surface).join(', ')
+    return `${names} unavailable — ${degraded[0].reason}`
+  }
   if (!plugin.healthReason) return ''
   if (plugin.healthStatus === 'disabled') return `Auto-disabled — ${plugin.healthReason}`
   if (plugin.healthStatus === 'degraded') {
@@ -645,6 +654,8 @@ function runtimeFault(plugin: PluginInfo): string {
 function statusOf(plugin: PluginInfo): { label: string; tone: string } {
   if (plugin.healthStatus === 'installing') return { label: 'Installing', tone: 'installing' }
   if (plugin.healthStatus === 'disabled' && plugin.healthReason) return { label: 'Failed', tone: 'error' }
+  // 降级只影响一个界面 —— 卡片说 "Partly degraded",不是 Failed。
+  if (plugin.loaded && plugin.degradedSurfaces?.length) return { label: 'Partly degraded', tone: 'warning' }
   if (plugin.error) return { label: 'Error', tone: 'error' }
   if (plugin.loaded && plugin.healthStatus === 'degraded') return { label: 'Degraded', tone: 'warning' }
   if (plugin.loaded) return { label: 'Active', tone: 'loaded' }
