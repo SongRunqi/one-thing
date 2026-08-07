@@ -162,6 +162,30 @@ Notes:
   plugin; the Electron memory panel talks to it in-process (no server dependency).
   apps/server exposes the same `/api/memory/*` endpoints via the shared
   `createOnethingMemoryIpcHandlers` factory in `packages/onething-runtime/src/memory/ipc.ts`.
+- Plugin system (R0–R7 complete, 2026-08-07). The plugin's entire power is the injected
+  `api` object. Current surface:
+  - **AI capabilities**: tools, slash commands, events (+ plugin-namespaced custom events),
+    prompt-context providers, skill roots, lifecycle hooks, scheduler.
+  - **Its own product surface**: declarative workspace panels (`contributes.panels` +
+    `api.registerWorkspacePanel`, pure-data description tree — the UI never executes
+    plugin code), its own settings schema (`contributes.settings.schema`, JSON Schema
+    subset, host renders and validates it), a unified request channel
+    (`api.registerRequestHandler`, requestId/abort/progress), a per-plugin data directory
+    (`api.storage`) plus the legacy KV store, in-stream status lines (`api.status`), and
+    `ui.notify`.
+  - **One opened host registry**: `api.registerIMConnector` (pilot; ids are namespaced
+    `plugin:<id>:<name>`). Which registries are deliberately *not* open, and why, is in
+    `PLUGIN_DEFERRED_REGISTRIES` (`packages/core/plugins/policy.ts`) — read it before
+    opening another.
+  - **Isolation**: timeout budgets, per-`pluginId+scope` failure breaker, and a severity
+    policy table (`policy.ts`) deciding disable-plugin vs degrade-one-surface. Teardown is
+    two-sided (code registries + data footprint) and guarded by a CI teardown test.
+  - **Plugins execute on the Electron desktop host only** (plan A): server mirrors the
+    catalog read-only, CLI daemon has no UI surface.
+  Design doc: `docs/design/plugin-system-redesign-2026-08.md` (§5.x carries the per-phase
+  rulings and errata; §6 the multi-host decision).
+  `docs/design/plugin-system-capabilities-and-evolution.md` is the pre-R0 survey — useful
+  for history, superseded for current capabilities.
 - apps/server is single-user: one server process assembles one backend and pins
   `ONETHING_STORE_PATH` before boot. Bearer auth via `ONETHING_SERVER_TOKEN` (warns when
   binding non-loopback without it). Tools ship with desktop parity by default;
