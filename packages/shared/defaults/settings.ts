@@ -12,11 +12,6 @@ import type {
   ChatSettings,
   EditorSettings,
   NetworkSettings,
-  SoulMemoryCaptureSettings,
-  SoulMemoryLoggingSettings,
-  SoulMemoryReadSettings,
-  SoulMemoryReviewSettings,
-  SoulMemorySettings,
 } from '../ipc/settings.js'
 import type { VoiceSettings } from '../ipc/voice.js'
 import type { MusicRadioSource, MusicSettings } from '../ipc/music.js'
@@ -25,10 +20,6 @@ import type { ToolSettings } from '../ipc/tools.js'
 import type { ACPSettings } from '../ipc/acp.js'
 
 type ProviderConfigWithLocalAddress = ProviderConfig & { localAddress?: string }
-type LegacySoulMemoryCaptureSettings = SoulMemoryCaptureSettings & {
-  mode?: SoulMemoryCaptureSettings['mode'] | 'ask'
-  enabled?: boolean
-}
 
 // ============================================================================
 // Constants
@@ -48,45 +39,6 @@ export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
   composerMaxHeight: 200,
   markdownNoteAttachmentDirectory: '',
   markdownProjectAttachmentDirectory: '',
-}
-
-export const DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS: Required<SoulMemoryCaptureSettings> = {
-  mode: 'auto',
-  maxInputChars: 6000,
-  timeoutMs: 12000,
-}
-
-export const DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS: Required<SoulMemoryReviewSettings> = {
-  enabled: true,
-  interval: 10,
-  maxInputChars: 16000,
-  timeoutMs: 20000,
-  maxCandidates: 6,
-  minConfidence: 0.72,
-}
-
-export const DEFAULT_SOUL_MEMORY_READ_SETTINGS: Required<SoulMemoryReadSettings> = {
-  defaultLines: 200,
-  maxLines: 1000,
-}
-
-export const DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS: Required<SoulMemoryLoggingSettings> = {
-  enabled: true,
-  retentionDays: 7,
-  level: 'info',
-  maxPreviewChars: 600,
-  includeHttpErrorBody: true,
-}
-
-export const DEFAULT_SOUL_MEMORY_SETTINGS: Required<SoulMemorySettings> = {
-  enabled: true,
-  directoryMode: 'ai-note-dir',
-  customDirectory: '',
-  bootstrapMaxChars: 12000,
-  capture: DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS,
-  review: DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS,
-  read: DEFAULT_SOUL_MEMORY_READ_SETTINGS,
-  logging: DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS,
 }
 
 // ============================================================================
@@ -236,7 +188,6 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     useObsidianConfig: true,
     format: 'YYYY-MM-DD',
   },
-  soulMemory: DEFAULT_SOUL_MEMORY_SETTINGS,
   todoPlan: {
     enabled: true,
     directory: '',
@@ -524,7 +475,6 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...defaults.general.dailyNotes,
         ...settings.general?.dailyNotes,
       },
-      soulMemory: normalizeSoulMemorySettings(settings.general?.soulMemory),
       todoPlan: {
         ...defaults.general.todoPlan,
         ...settings.general?.todoPlan,
@@ -767,137 +717,6 @@ export function normalizeEditorSettings(settings?: EditorSettings): Required<Edi
     ),
     markdownNoteAttachmentDirectory: settings?.markdownNoteAttachmentDirectory ?? DEFAULT_EDITOR_SETTINGS.markdownNoteAttachmentDirectory,
     markdownProjectAttachmentDirectory: settings?.markdownProjectAttachmentDirectory ?? DEFAULT_EDITOR_SETTINGS.markdownProjectAttachmentDirectory,
-  }
-}
-
-export function normalizeSoulMemorySettings(settings?: SoulMemorySettings): Required<SoulMemorySettings> {
-  return {
-    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_SETTINGS.enabled,
-    directoryMode: settings?.directoryMode === 'custom' ? 'custom' : 'ai-note-dir',
-    customDirectory: settings?.customDirectory ?? DEFAULT_SOUL_MEMORY_SETTINGS.customDirectory,
-    bootstrapMaxChars: clampNumber(
-      settings?.bootstrapMaxChars,
-      1000,
-      50000,
-      DEFAULT_SOUL_MEMORY_SETTINGS.bootstrapMaxChars,
-    ),
-    capture: normalizeSoulMemoryCaptureSettings(settings?.capture),
-    review: normalizeSoulMemoryReviewSettings(settings?.review),
-    read: normalizeSoulMemoryReadSettings(settings?.read),
-    logging: normalizeSoulMemoryLoggingSettings(settings?.logging),
-  }
-}
-
-function normalizeSoulMemoryLoggingSettings(
-  settings?: SoulMemoryLoggingSettings,
-): Required<SoulMemoryLoggingSettings> {
-  const level = settings?.level === 'debug' ||
-    settings?.level === 'warn' ||
-    settings?.level === 'error' ||
-    settings?.level === 'info'
-    ? settings.level
-    : DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.level
-  return {
-    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.enabled,
-    retentionDays: clampNumber(
-      settings?.retentionDays,
-      1,
-      90,
-      DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.retentionDays,
-    ),
-    level,
-    maxPreviewChars: clampNumber(
-      settings?.maxPreviewChars,
-      120,
-      4000,
-      DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.maxPreviewChars,
-    ),
-    includeHttpErrorBody: settings?.includeHttpErrorBody ?? DEFAULT_SOUL_MEMORY_LOGGING_SETTINGS.includeHttpErrorBody,
-  }
-}
-
-function normalizeSoulMemoryCaptureSettings(
-  settings?: SoulMemoryCaptureSettings,
-): Required<SoulMemoryCaptureSettings> {
-  const legacy = settings as LegacySoulMemoryCaptureSettings | undefined
-  const rawMode = legacy?.mode
-  const normalizedMode = rawMode === 'explicit-only' ||
-    rawMode === 'auto' ||
-    rawMode === 'off'
-    ? rawMode
-    : rawMode === 'ask'
-      ? 'explicit-only'
-      : DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.mode
-  // Older settings encoded on/off in a separate enabled flag; fold it into mode.
-  const mode = legacy?.enabled === false ? 'off' : normalizedMode
-  return {
-    mode,
-    maxInputChars: clampNumber(
-      settings?.maxInputChars,
-      1000,
-      50000,
-      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.maxInputChars,
-    ),
-    timeoutMs: clampNumber(
-      settings?.timeoutMs,
-      1000,
-      60000,
-      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.timeoutMs,
-    ),
-  }
-}
-
-function normalizeSoulMemoryReviewSettings(
-  settings?: SoulMemoryReviewSettings,
-): Required<SoulMemoryReviewSettings> {
-  const rawInterval = typeof settings?.interval === 'number' ? settings.interval : undefined
-  return {
-    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.enabled,
-    interval: rawInterval === 0
-      ? 0
-      : clampNumber(
-        rawInterval,
-        1,
-        200,
-        DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.interval,
-      ),
-    maxInputChars: clampNumber(
-      settings?.maxInputChars,
-      4000,
-      80000,
-      DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.maxInputChars,
-    ),
-    timeoutMs: clampNumber(
-      settings?.timeoutMs,
-      1000,
-      120000,
-      DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.timeoutMs,
-    ),
-    maxCandidates: clampNumber(
-      settings?.maxCandidates,
-      1,
-      20,
-      DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.maxCandidates,
-    ),
-    minConfidence: clampFraction(
-      settings?.minConfidence,
-      0,
-      1,
-      DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.minConfidence,
-    ),
-  }
-}
-
-function normalizeSoulMemoryReadSettings(
-  settings?: SoulMemoryReadSettings,
-): Required<SoulMemoryReadSettings> {
-  const maxLines = clampNumber(settings?.maxLines, 50, 5000, DEFAULT_SOUL_MEMORY_READ_SETTINGS.maxLines)
-  return {
-    defaultLines: Math.min(
-      maxLines,
-      clampNumber(settings?.defaultLines, 20, 1000, DEFAULT_SOUL_MEMORY_READ_SETTINGS.defaultLines),
-    ),
-    maxLines,
   }
 }
 

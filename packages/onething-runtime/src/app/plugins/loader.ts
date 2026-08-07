@@ -44,7 +44,6 @@ import {
 import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
 import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
-import soulMemoryPlugin, { soulMemoryManifest } from './builtin/soul-memory.js'
 
 export function getPluginsDir(): string {
   return getCorePluginsDir({ storePath: getOnethingStorePath() })
@@ -165,12 +164,6 @@ function getBuiltinPlugins(): PluginDefinition[] {
       manifest: noteSkillsManifest,
       entry: noteSkillsPlugin,
       enabled: getPluginEnabled('note-skills'),
-    },
-    {
-      id: 'soul-memory',
-      manifest: soulMemoryManifest,
-      entry: soulMemoryPlugin,
-      enabled: getPluginEnabled('soul-memory'),
     },
   ]) as PluginDefinition[]
 }

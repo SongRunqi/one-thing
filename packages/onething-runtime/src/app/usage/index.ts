@@ -4,7 +4,7 @@
  * activity that made it (`source`). See docs/design/token-billing.md.
  *
  * Wired producers: the main chat turn (agent-loop-executor), session title
- * generation, soul-memory capture/review, the skill-review trigger, and evals.
+ * generation, the skill-review trigger, and evals.
  * Goal continuation and the radio DJ re-drive a full chat turn, so they bill
  * as 'chat'. Side-line calls run on the tool-call model in the background —
  * `source` is the only thing that makes that spend visible in the usage panel.
