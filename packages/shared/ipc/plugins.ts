@@ -70,7 +70,7 @@ export interface PluginNotificationPayload {
 	 * 保存是用户自己点的,再弹一条就是噪音。
 	 * `panel-refresh` 同理:插件说"我的面板该重画了",带 panelId。
 	 */
-	kind?: "config-changed" | "panel-refresh";
+	kind?: "config-changed" | "panel-refresh" | "catalog-changed";
 	/** kind = panel-refresh 时的面板 id。 */
 	panelId?: string;
 }

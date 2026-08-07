@@ -165,6 +165,24 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
     expect(degraded).toEqual(['connector:wechat-main'])
   })
 
+  it('half-opens a degraded surface after the cooldown, and throttles the probe', () => {
+    let clock = 1_000_000
+    const tracker = new CorePluginHealthTracker({ now: () => clock })
+    for (let i = 0; i < 3; i += 1) tracker.recordFailure('wechat', pluginScope.connector('main'), new Error('down'))
+    expect(tracker.isSurfaceDegraded('wechat', 'connector:main')).toBe(true)
+
+    // 冷却期内不放行。
+    expect(tracker.probeDegradedSurface('wechat', 'connector:main', 60_000)).toBe(false)
+
+    // 满一个间隔放行一次;放行会把计时推到现在,所以探测本身有节流。
+    clock += 60_000
+    expect(tracker.probeDegradedSurface('wechat', 'connector:main', 60_000)).toBe(true)
+    expect(tracker.probeDegradedSurface('wechat', 'connector:main', 60_000)).toBe(false)
+
+    // 没降级的界面一律放行(闸只在降级时存在)。
+    expect(tracker.probeDegradedSurface('wechat', 'connector:other', 60_000)).toBe(true)
+  })
+
   it('maps panel scopes to a surface a user can recognise', () => {
     expect(describePluginSurface('request:panel:render:logs')).toBe('panel:logs')
     expect(describePluginSurface('request:panel:action:logs')).toBe('panel:logs')

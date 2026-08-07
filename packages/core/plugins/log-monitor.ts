@@ -147,7 +147,7 @@ export interface CoreLogMonitorPluginApi<TToolParameters> {
     name: 'search_agent_logs'
     description: string
     parameters: TToolParameters
-    permissionGuard: 'safe'
+    permissionGuard: 'permission-gated'
     execute(args: CoreLogMonitorSearchArgs, ctx: CoreLogMonitorToolContext): Promise<ReturnType<CoreLogMonitorBuffer['search']>>
   }): void
   registerCommand(name: string, options: {
@@ -612,7 +612,9 @@ export function registerCoreLogMonitorPlugin<TToolParameters>(
     name: 'search_agent_logs',
     description: 'Search recent agent event logs. Use to investigate what tools ran, check for errors, or find what happened in previous turns.',
     parameters: options.searchToolParameters,
-    permissionGuard: 'safe',
+    // 插件注册的工具一律 permission-gated(宿主强制,见 app/plugins/api.ts)。
+    // 这里写什么都不影响判定 —— 留着只是为了让类型对得上。
+    permissionGuard: 'permission-gated',
     async execute(args, ctx) {
       ctx.metadata({ title: `Searching logs${args.eventType ? ` for "${args.eventType}"` : ''}...` })
       return logBuffer.search({

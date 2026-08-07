@@ -7,6 +7,7 @@ import {
   CorePluginManager,
   type CorePluginInfo,
   type CorePluginManagerHost,
+  type CorePluginUninstallResult,
 } from '@onething/core/plugins'
 import { createPluginAPI, disposePlugin, type PluginState } from './api.js'
 import {
@@ -44,6 +45,7 @@ import {
   clearPluginRuntimeHealth,
   describePluginSurfaceDegradation,
   isPluginSurfaceDegraded,
+  probePluginSurface,
   configurePluginHealthHost,
   getPluginRuntimeHealth,
   reportPluginRuntimeFailure,
@@ -219,6 +221,15 @@ export class PluginManager extends CorePluginManager<
     this.detachHostSubscriptions()
   }
 
+  async uninstallPlugin(pluginId: string): Promise<CorePluginUninstallResult> {
+    // 卸载同样改目录 —— 少了这条广播,主窗会留着一个已卸载插件的面板入口,
+    // 而 R5 加 catalog-changed 正是为了治这个(当时漏了卸载这条路径)。
+    invalidateDeclaredPanelIdsCache()
+    const result = await super.uninstallPlugin(pluginId)
+    this.emitCatalogChanged(pluginId)
+    return result
+  }
+
   async refreshPlugins(): Promise<void> {
     // 刷新就是"重新看盘上有什么" —— 缓存的清单先作废。
     invalidateDeclaredPanelIdsCache()
@@ -276,6 +287,7 @@ export class PluginManager extends CorePluginManager<
       // 降级闸的数据源 —— 与请求通道那道闸同源,connector 家族才真有牙齿。
       isSurfaceDegraded: isPluginSurfaceDegraded,
       describeDegradedSurface: describePluginSurfaceDegradation,
+      probeSurface: probePluginSurface,
     })
     configurePluginStatusHost({
       emitSessionEvent: (sessionId, event) => context.eventBus?.emit?.(sessionId, event),

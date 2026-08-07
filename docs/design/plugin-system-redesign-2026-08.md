@@ -457,7 +457,7 @@ R7 是最后一期。它交付的不是新能力,是**两张把判据收成一�
 开放的第一个既有注册表。
 
 **1. 严重度表(§5.5 拍板的实施)。** `core/plugins/policy.ts` 的
-`PLUGIN_SEVERITY_TABLE`:12 个 scope 家族,每个声明 `threshold` / `remedy` /
+`PLUGIN_SEVERITY_TABLE`:11 个 scope 家族,每个声明 `threshold` / `remedy` /
 `rationale`。
 
 - **用户主动触发的失败降级界面**(`ui-request` / `plugin-request` / `connector`):
@@ -467,8 +467,11 @@ R7 是最后一期。它交付的不是新能力,是**两张把判据收成一�
 - **每轮都跑的失败仍整体禁用**(`prompt-context` / `lifecycle-hook` /
   `event-handler` / `event-emit` / `storage` / `settings-change` /
   `conversation-control`):坏了拖垮全应用,禁用是较小的伤害。
-- **注册期违规阈值 1**(`registration` / `entry`):未声明的面板 id、抢占保留
-  命名空间是**代码错误**而非运行期抖动,重试没有意义。
+- **注册期违规阈值 1**(`registration`):未声明的面板 id、抢占保留命名空间、
+  连接器没有 id 都是**代码错误**而非运行期抖动,重试没有意义。
+  (加载期错误 —— entry import 失败、依赖装不上 —— **不在表里**:它们走
+  `markLoadError`,只写进健康态供设置页显示,不计连败、不触发罚则。
+  R7 第一版把它们当判决车道放进表,是纯死规则。)
 - 恢复是**一次成功就放回来** —— 用户点了重试并且成功了,面板必须回来。
 
 防漂移做了两层:表本身用 `Record<PluginScopeFamily, 规则>`,往家族联合里加成员

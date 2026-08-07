@@ -71,6 +71,7 @@ export {
   CorePluginBootstrapper,
   CorePluginManager,
 } from './manager.js'
+export type { CorePluginUninstallResult } from './manager.js'
 export {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
   CORE_PLUGIN_FAILURE_THRESHOLD,
@@ -99,6 +100,7 @@ export {
   PLUGIN_OPEN_REGISTRIES,
   PLUGIN_REGISTRY_POLICY,
   PLUGIN_SCOPE_FAMILIES,
+  PLUGIN_SURFACE_PROBE_INTERVAL_MS,
   PLUGIN_SEVERITY_TABLE,
   classifyPluginScope,
   describePluginSurface,

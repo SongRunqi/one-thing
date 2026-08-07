@@ -330,14 +330,15 @@ export function initializeIPCHub() {
     // panel-refresh 的 message 是 `plugin-panel-refresh:log-monitor:logs`
     // 这样的机器串,插件每次 ctx.refresh() 用户就看到一个弹窗。
     // 给人看的通知(api.ui.notify、熔断告警)不带 kind。
-    const isMechanical = Boolean((payload as { kind?: string }).kind)
+    // 契约里已声明 kind 的全部取值(shared/ipc/plugins.ts),不再需要 cast。
+    const isMechanical = Boolean(payload.kind)
     if (!isMechanical) {
       if (payload.level === 'error') toast.error(payload.message)
       else toast.info(payload.message)
     }
     // 面板清单只有**一条**重拉路径:派发 onething:plugins-changed,由下面那个
     // 唯一的监听器去拉。此前这里既直接调 refresh 又派发事件,同一条通知会拉两次。
-    if ((payload as { kind?: string }).kind !== 'panel-refresh') {
+    if (payload.kind !== 'panel-refresh') {
       window.dispatchEvent(new CustomEvent('onething:plugins-changed', {
         detail: { pluginId: payload.pluginId },
       }))

@@ -165,7 +165,12 @@ export function createPluginAPI(
   const store = new PluginStore(pluginId)
   const schedulerDisposeCallbacks: Array<() => void> = []
   // KV 的拆除闩:晚到的 store.set 会 ensureDir 把刚归档的目录复活成鬼目录。
-  schedulerDisposeCallbacks.push(() => store.dispose())
+  //
+  // **注意它必须排在最后**:这个数组同时是 onDispose 回调的队列,而插件最自然的
+  // 收尾写法就是在 onDispose 里存盘。放在最前面的话,插件的收尾写入会撞上一个
+  // 已经关掉的 store —— 数据静默丢失。用 push 之外的手段保证顺序不可靠,
+  // 所以这里改为在 createCorePluginAPI 返回后追加(见下方 dispose 顺序注释)。
+  const closeStore = () => store.dispose()
   // 拆除闸要能被 scheduler 看到,而 state 是 createCorePluginAPI 的返回值 ——
   // 用一个后填的引用把两者接上(register 只在调用时读它)。
   const stateRef: { current: PluginState | null } = { current: null }
@@ -206,13 +211,32 @@ export function createPluginAPI(
     },
     host: {
       registerTool(_, toolId, tool) {
+        /*
+         * **插件不能给自己发免检通行证。**
+         *
+         * `permissionGuard: 'safe'` 落在 CORE_AUTO_EXECUTE 集里 —— 声明它的工具
+         * 不弹权限提示、直接执行。上一版把它交给插件自己填(`?? 'permission-gated'`
+         * 只是缺省),于是任何插件写一行就绕过了整套权限系统,而 manifest 的
+         * `contributes.permissions` 纯装饰、不参与任何判定。示例插件正在教这个写法。
+         *
+         * 现在插件注册的工具**一律 permission-gated**:要不要执行由用户在提示里
+         * 决定。等 manifest 的 permissions 真正参与判定(H 线一起做)之后,
+         * 再考虑按声明降级。
+         */
+        if (tool.permissionGuard && tool.permissionGuard !== 'permission-gated') {
+          console.warn(
+            `[Plugin] Tool "${tool.name}" asked for permissionGuard "${tool.permissionGuard}"; `
+            + 'plugin tools are always permission-gated. Declare capabilities in '
+            + 'contributes.permissions instead.',
+          )
+        }
         registerToolInRegistry(
           Tool.define(toolId, {
             name: tool.name,
             description: tool.description,
             category: 'custom',
             parameters: tool.parameters,
-            permissionGuard: tool.permissionGuard ?? 'permission-gated',
+            permissionGuard: 'permission-gated',
             async execute(args: unknown, ctx: any) {
               return executeCorePluginTool(tool, args as any, {
                 sessionId: ctx.sessionId,
@@ -322,6 +346,15 @@ export function createPluginAPI(
   })
 
   stateRef.current = result.state
+  /*
+   * KV 的关闭排在**最后**。
+   *
+   * 这个数组同时是插件 onDispose 回调的队列(api.onDispose 往里 push),而插件
+   * 最自然的收尾写法就是在 onDispose 里存盘。上一版把 store.dispose() push 在
+   * **最前面**,于是插件的收尾写入必定撞上一个已经关掉的 store —— 静默丢数据。
+   * 内置插件恰好只在 onDispose 里关流,所以全套测试都是绿的。
+   */
+  schedulerDisposeCallbacks.push(closeStore)
   return result
 }
 

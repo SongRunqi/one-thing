@@ -212,6 +212,41 @@ describe('R7 IM connector — 开放一个既有注册表', () => {
     api.disposePlugin(state)
   })
 
+  it('half-opens after a cooldown so a degraded channel is not a one-way door', async () => {
+    /*
+     * 请求通道那侧的逃生口是用户点 "Try once more"(bypassDegraded);渠道投递
+     * 没人在旁边点按钮 —— 没有等价物的话,解除降级的唯一路径是投递成功,而闸
+     * 就在投递之前:**一扇单向的死门**,接上 gateway 那天就是一条永久哑掉的渠道。
+     */
+    const { api, registry } = await load()
+    let delivered = 0
+    let probeAllowed = false
+    registry.configureIMConnectorHooks({
+      isSurfaceDegraded: () => true,
+      describeDegradedSurface: () => 'broken',
+      probeSurface: () => probeAllowed,
+    })
+    const { api: pluginApi, state } = api.createPluginAPI('chat-bridge', bus as never, {} as never)
+    pluginApi.registerIMConnector({
+      id: 'wechat',
+      sendReply: async () => { delivered += 1 },
+      normalizeIncoming: async () => ({ content: '', origin: {} as never }),
+    } as never)
+
+    const target = { connector: 'plugin:chat-bridge:wechat', conversationId: 'c1' } as never
+
+    // 冷却期内:拦住,插件不被进入。
+    await expect(registry.sendIMReply(target, { text: 'x', sessionId: 's', messageId: 'm' })).rejects.toThrow(/switched off/)
+    expect(delivered).toBe(0)
+
+    // 冷却过后放行一次真投递 —— 成功则 onSendSuccess 解除降级。
+    probeAllowed = true
+    await registry.sendIMReply(target, { text: 'x', sessionId: 's', messageId: 'm2' })
+    expect(delivered).toBe(1)
+
+    api.disposePlugin(state)
+  })
+
   it('refuses a connector with no id instead of registering an unaddressable one', async () => {
     const { api, registry } = await load()
     const { api: pluginApi, state } = api.createPluginAPI('chat-bridge', bus as never, {} as never)

@@ -73,6 +73,13 @@ export const pluginScope = {
  */
 export const pluginLoadLabel = {
   npmInstall: () => brand('npm-install'),
+  /**
+   * entry import 失败。
+   *
+   * **当前零生产调用者**:manager 的加载失败路径直接写 `CorePluginInfo.error`,
+   * 健康态那侧什么也不知道。留着这个标签是为了让将来接线时有一个现成的名字,
+   * 而不是让读者以为它已经在用 —— 如实记在这里,免得又变成一条看不出来的死码。
+   */
   entry: () => brand('entry'),
 } as const
 
@@ -90,6 +97,15 @@ export const pluginLoadLabel = {
  * 后续调用直接返回带原因的错误,不再进插件。少了这一步,降级等于取消熔断
  * (R7 第一版就是这样 —— 必败的面板 action 照常一次次跑满 30s 预算)。
  */
+/**
+ * 降级界面的半开间隔。
+ *
+ * 有人在旁边点按钮的界面(面板)靠显式重试恢复(bypassDegraded);没人看着的
+ * 界面(IM 渠道)只能靠时间 —— 没有等价物的话,解除降级的唯一路径是投递成功,
+ * 而闸就在投递之前,那是一扇**单向的死门**。
+ */
+export const PLUGIN_SURFACE_PROBE_INTERVAL_MS = 60_000
+
 export type PluginFailureRemedy = 'disable-plugin' | 'degrade-surface'
 
 /**
@@ -191,8 +207,8 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
     remedy: 'degrade-surface',
     rationale: '面板动作是用户刚点下、当场看到错误态与重试按钮的 —— "运行期失败'
       + '不可见"这个前提不成立。面板只在打开时跑,失败自限于一个界面,'
-      + '不该连坐掉插件的工具/命令/提示词/定时任务。降级后该面板的请求被通道短路,'
-      + '不再一次次跑满超时预算。',
+      + '不该连坐掉插件的工具/命令/提示词/定时任务。降级后该面板的请求在'
+      + 'manager.handleRequest 上被短路,不再一次次跑满超时预算。',
   },
   'plugin-request': {
     threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
@@ -205,7 +221,9 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
     remedy: 'degrade-surface',
     rationale: '一条 IM 渠道坏掉只影响那条渠道;桌面端的会话与工具照常可用,'
       + '整体禁用会把渠道故障放大成插件故障。surface 带 connector id,'
-      + '插件注册了多条渠道时用户能看出是哪一条。',
+      + '插件注册了多条渠道时用户能看出是哪一条。'
+      + '闸不在请求通道上,而在 connector-registry 的投递口 —— 渠道投递不走那条通道。'
+      + '没有"用户点重试"这种逃生口,所以它靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
   },
 }
 

@@ -214,6 +214,24 @@ export class CorePluginHealthTracker {
   }
 
   /**
+   * 半开探测:降级满 `afterMs` 之后放行**一次**。
+   *
+   * 请求通道那侧的逃生口是用户点"Try once more"(bypassDegraded);而渠道投递
+   * 没有人在旁边点按钮 —— 没有等价物的话,连败降级之后解除降级的唯一路径是
+   * `onSendSuccess`,而它要求 sendReply 成功返回,而闸又在 sendReply 之前抛:
+   * **一扇单向的死门**,接上 gateway 那天就是一条永久哑掉的渠道。
+   *
+   * 放行时把 `at` 推到现在,所以探测本身是有节流的。
+   */
+  probeDegradedSurface(pluginId: string, surface: string, afterMs: number): boolean {
+    const info = this.health.get(pluginId)?.degradedSurfaces?.get(surface)
+    if (!info) return true
+    if (this.now() - info.at < afterMs) return false
+    info.at = this.now()
+    return true
+  }
+
+  /**
    * 只清 `scope` 这一条车道。
    *
    * 高频路径(每次发消息的 promptContext、每个事件 handler)都会调它,所以

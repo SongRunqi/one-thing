@@ -32,6 +32,12 @@ export interface RegisterIMConnectorOptions {
    */
   isSurfaceDegraded?(pluginId: string, surface: string): boolean
   describeDegradedSurface?(pluginId: string, surface: string): string | undefined
+  /**
+   * 半开探测:降级满一个间隔之后放行一次(R7 收官)。
+   *
+   * 没有它的话降级是**单向死门** —— 解除降级要靠投递成功,而闸就在投递之前。
+   */
+  probeSurface?(pluginId: string, surface: string): boolean
 }
 
 let hooks: RegisterIMConnectorOptions = {}
@@ -100,7 +106,11 @@ export async function sendIMReply(
   // 而不是未注册 —— 两者的处置完全不同(一个等恢复,一个是配置错了)。
   if (registered.ownerPluginId) {
     const surface = `connector:${target.connector}`
-    if (hooks.isSurfaceDegraded?.(registered.ownerPluginId, surface)) {
+    const degraded = hooks.isSurfaceDegraded?.(registered.ownerPluginId, surface)
+    // 半开:满一个间隔放行一次真投递。成功则 onSendSuccess 解除降级,
+    // 失败则重新计入熔断账 —— 这是这条渠道唯一可能自己走出来的路。
+    const probing = degraded ? hooks.probeSurface?.(registered.ownerPluginId, surface) ?? false : false
+    if (degraded && !probing) {
       const reason = hooks.describeDegradedSurface?.(registered.ownerPluginId, surface)
       throw new Error(
         `IM connector "${target.connector}" is switched off after repeated failures`

@@ -256,6 +256,9 @@ export function createCorePluginAPI<
    * 而且返回 '' 会让插件的 path.join 落进进程 CWD。
    */
   const rejectDisposedWrite = (what: string): void => {
+    // **onDispose 期间放行。** 插件最自然的收尾写法就是在 onDispose 里存盘;
+    // 拒掉它等于让插件静默丢数据,而且报的错("插件已拆除")还会误导排查方向。
+    if (state.disposing) return
     if (!state.disposed) return
     const error = new PluginStorageError(
       'unavailable',
@@ -320,6 +323,8 @@ export function createCorePluginAPI<
         reportFailure(scope, error)
       }
       const wrappedHandler = ((...args: unknown[]) => {
+        // 事件面**不**在 dispose 窗口里放行:拆除中的插件不该再被喂新事件。
+        // 放行的只有写面(storage / store),那是为了让 onDispose 能存盘。
         if (state.disposed) {
           // 拆除之后到达的事件不再进插件 —— 见 CorePluginAPIState.disposed。
           return
@@ -564,7 +569,7 @@ export function createCorePluginAPI<
         return withStorageFailureReport('dir', () => requireStorage().dir())
       },
       readJson<T = unknown>(name: string, fallback?: T): T | undefined {
-        if (state.disposed) {
+        if (state.disposed && !state.disposing) {
           rejectLateCall('storage.readJson')
           return fallback
         }
@@ -575,7 +580,7 @@ export function createCorePluginAPI<
         withStorageFailureReport('writeJson', () => requireStorage().writeJson(name, value))
       },
       exists(name: string): boolean {
-        if (state.disposed) {
+        if (state.disposed && !state.disposing) {
           rejectLateCall('storage.exists')
           return false
         }

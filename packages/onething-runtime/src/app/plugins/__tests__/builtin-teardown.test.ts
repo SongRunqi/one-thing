@@ -267,3 +267,37 @@ describe('built-in plugin teardown leaves no residue', () => {
     }
   })
 })
+
+describe('plugin tools cannot grant themselves an auto-execute pass', () => {
+  it('forces every plugin-registered tool to permission-gated', async () => {
+    /*
+     * `permissionGuard: 'safe'` 落在 CORE_AUTO_EXECUTE 集里 —— 声明它的工具不弹
+     * 权限提示、直接执行。上一版把这个字段交给插件自己填(宿主只提供缺省),
+     * 于是任何插件写一行就绕过了整套权限系统,而 manifest 的
+     * `contributes.permissions` 纯装饰、不参与任何判定 —— **示例插件正在教这个写法**。
+     */
+    const definitions = modules.loader.scanPlugins().filter(def => def.source === 'builtin')
+    const before = modules.tools.getAllTools().map((tool: { id: string }) => tool.id)
+
+    for (const definition of definitions) {
+      const { api, state } = modules.api.createPluginAPI(
+        definition.id,
+        eventBus as never,
+        createStreamEngineStub() as never,
+      )
+      const entry = definition.entry
+      if (typeof entry !== 'function') continue
+      await entry(api)
+
+      const added = modules.tools.getAllTools()
+        .filter((tool: { id: string }) => !before.includes(tool.id))
+      for (const tool of added) {
+        expect(
+          (tool as { permissionGuard?: string }).permissionGuard,
+          `${tool.id} must not be able to skip the permission prompt`,
+        ).toBe('permission-gated')
+      }
+      modules.api.disposePlugin(state)
+    }
+  })
+})

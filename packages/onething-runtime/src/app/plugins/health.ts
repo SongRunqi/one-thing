@@ -9,6 +9,7 @@
  * 不进任何用户可见状态 —— 一个每回合都抛错的插件会一直显示 Active。
  */
 import type { PluginFailureScope } from '@onething/core/plugins'
+import { PLUGIN_SURFACE_PROBE_INTERVAL_MS } from '@onething/core/plugins'
 import {
   CorePluginHealthTracker,
   type CorePluginRuntimeHealth,
@@ -139,6 +140,15 @@ export function listPluginRuntimeHealth(): Array<CorePluginRuntimeHealth & { plu
 /** 某个界面是否被降级(R7)—— 请求通道的短路判据。 */
 export function isPluginSurfaceDegraded(pluginId: string, surface: string): boolean {
   return tracker.isSurfaceDegraded(pluginId, surface)
+}
+
+/**
+ * 半开:降级满一个间隔之后放行一次探测(R7 收官)。
+ *
+ * 渠道投递没有"用户点重试"这种逃生口,只能靠时间 —— 否则降级是单向死门。
+ */
+export function probePluginSurface(pluginId: string, surface: string): boolean {
+  return tracker.probeDegradedSurface(pluginId, surface, PLUGIN_SURFACE_PROBE_INTERVAL_MS)
 }
 
 /** 降级原因,给用户看的一句话。 */

@@ -22,6 +22,17 @@ export interface CorePluginAPIState<TApi = unknown, TCommand = unknown> {
    * no-op。
    */
   disposed?: boolean
+  /**
+   * 正在跑 onDispose 回调。
+   *
+   * 这段窗口里**写面照常放行**:插件最自然的收尾写法就是在 onDispose 里存盘,
+   * 而 disposed 闩先落的话那次写入会被拒、数据静默丢失,报的错还是"插件已拆除"
+   * 这种误导性诊断。内置插件恰好只在 onDispose 里关流,所以全套测试都是绿的 ——
+   * 这条只有第三方插件会踩。
+   *
+   * 它**不**放行注册面:dispose 期间再注册工具仍然无人回收。
+   */
+  disposing?: boolean
 }
 
 export interface DisposeCorePluginStateOptions {
@@ -46,10 +57,22 @@ export function disposeCorePluginState<TApi, TCommand>(
   state: CorePluginAPIState<TApi, TCommand>,
   options: DisposeCorePluginStateOptions = {},
 ): void {
-  // 闩先落:dispose 过程中(以及此后任何时刻)插件再来注册一律 no-op。
+  /*
+   * 注册闩先落,**写面留到 onDispose 跑完之后再关**。
+   *
+   * 两件事必须分开:
+   *  - 注册面(registerTool / registerCommand / …)从这一刻起 no-op —— 拆除之后
+   *    再注册的东西没有任何人能回收,这是闩存在的理由;
+   *  - 写面(storage / store)在 onDispose 期间仍要能用 —— "收尾时把状态存下来"
+   *    是插件最自然的写法,拒掉它等于让插件静默丢数据。
+   */
   state.disposed = true
-
-  drainCallbacks(state.disposeCallbacks)
+  state.disposing = true
+  try {
+    drainCallbacks(state.disposeCallbacks)
+  } finally {
+    state.disposing = false
+  }
 
   for (const toolId of state.toolIds.splice(0)) {
     if (options.unregisterTool) {

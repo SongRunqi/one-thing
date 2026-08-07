@@ -158,7 +158,8 @@ describe('runtime log-monitor plugin', () => {
     try {
       expect(api.registerTool).toHaveBeenCalledWith(expect.objectContaining({
         name: 'search_agent_logs',
-        permissionGuard: 'safe',
+        // 插件注册的工具一律 permission-gated —— 宿主强制,插件不能自封免检。
+        permissionGuard: 'permission-gated',
       }))
       expect(commands.has('/log-tail')).toBe(true)
       expect(commands.has('/log-clear')).toBe(true)

@@ -82,6 +82,12 @@ describe('plugin catalog-changed signal', () => {
       expect(signal.level).toBe('info')
     }
 
+    // 卸载同样改目录 —— R5 加 catalog-changed 正是为了让主窗撤掉入口,
+    // 而卸载这条路径当时漏了(留着一个已卸载插件的面板入口)。
+    const beforeUninstall = catalogSignals().length
+    await manager.uninstallPlugin('definitely-not-installed')
+    expect(catalogSignals().length).toBe(beforeUninstall + 1)
+
     // 收尾:插件带着定时器(log-monitor 的 flush),不停掉的话临时目录被删之后
     // 它还会往一个不存在的路径写,变成一条 unhandled ENOENT。
     for (const info of manager.getPlugins()) {

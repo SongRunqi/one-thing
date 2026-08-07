@@ -150,6 +150,8 @@ export class CorePluginManager<
   ) {}
 
   async initialize(context: TContext): Promise<void> {
+    // 重新装配:把拆除闩放开,否则 shutdown 之后再 initialize 会一个插件也装不上。
+    this.shuttingDown = false
     this.context = context
     await this.refreshPlugins()
   }
@@ -209,6 +211,29 @@ export class CorePluginManager<
       await this.loadPlugin(info.definition)
     })
   }
+
+  /**
+   * 每插件的**加载轮次**。
+   *
+   * generation 只区分"哪一轮 refresh",区分不了同一轮里同一个插件的两次加载。
+   * 而 refresh 在飞时 disable→enable 恰好会产生两次:refresh 的 loadPlugin 还在
+   * await,enable 又发起一次并先落表;refresh 那次回来时只查了 `enabled === false`
+   * (此刻是 true),于是把自己的 state 盖上去 —— enable 那份成了**永远拆不掉的
+   * 孤儿**(事件双份处理、停用后仍写盘、注册的连接器无人撤下)。
+   * 战役里修过反方向(refresh 在飞时被 disable),正方向一直没修。
+   */
+  private loadTokens = new Map<string, number>()
+
+  /**
+   * 拆除闩。
+   *
+   * shutdown 只做 disposeAll + clear 是不够的:在飞的 doRefreshPlugins 跑完后
+   * `stale()` 为假(generation 没动)、`plugins.get(id)?.definition.enabled` 是
+   * undefined(`undefined === false` 不成立),于是照常落表 —— 插件在拆除之后
+   * 被复活,状态永不 dispose。R7 刚把 shutdownPlugins 接进 beforeQuit,而插件
+   * 装配是 post-window 非阻塞的,两者的窗口天然重叠。
+   */
+  private shuttingDown = false
 
   /** 热重载令牌 —— 宿主的 importEntry 拿它做 ESM cache-buster。 */
   getReloadToken(pluginId: string): number {
@@ -549,6 +574,12 @@ export class CorePluginManager<
   }
 
   shutdown(): void {
+    // 闩 + 推进代次:在飞的加载回来时一律作废,不许再落表。
+    this.shuttingDown = true
+    this.generation += 1
+    // 在飞的 refresh 不再被复用,也不再有人等它;它自己的写回会被闩挡掉。
+    this.refreshInFlight = null
+    this.loadTokens.clear()
     this.disposeAll()
     this.plugins.clear()
   }
@@ -562,14 +593,24 @@ export class CorePluginManager<
   }
 
   private async loadPlugin(def: TDefinition, generation = this.generation): Promise<void> {
+    // 领一个加载号:同一个插件后发起的加载会拿到更大的号,先发起的那次在写回时
+    // 发现自己已被超过,就自己拆掉而不是盖上去。
+    const loadToken = (this.loadTokens.get(def.id) ?? 0) + 1
+    this.loadTokens.set(def.id, loadToken)
+
     /** 旧一轮迟到的加载不许写进新一轮的表。 */
     const stale = (): boolean => {
+      if (this.shuttingDown) {
+        this.logger.log(`[PluginManager] Dropping load of "${def.id}": the plugin system is shutting down`)
+        return true
+      }
       if (generation === this.generation) return false
       this.logger.log(`[PluginManager] Dropping stale load of "${def.id}" (generation ${generation} → ${this.generation})`)
       return true
     }
 
     if (!def.enabled) {
+      if (stale()) return
       this.plugins.set(def.id, {
         definition: def,
         loaded: false,
@@ -660,6 +701,13 @@ export class CorePluginManager<
         this.host.disposePlugin(state)
         return
       }
+      // 被更晚的一次加载超过了:那一次已经(或即将)落表,这一份必须自己拆掉,
+      // 否则就是一个谁也不认识、谁也不会 dispose 的孤儿。
+      if (this.loadTokens.get(def.id) !== loadToken) {
+        this.logger.log(`[PluginManager] Dropping superseded load of "${def.id}"`)
+        this.host.disposePlugin(state)
+        return
+      }
       // 落表前复查最新的启停意图:这一轮 refresh 在飞期间用户可能把它关了,
       // 直接落表会得到一个 enabled=false 却 loaded=true 的插件。
       // 注意读的是表里那份 info(可能与 def 是同一个对象,也可能已被替换),
@@ -670,6 +718,17 @@ export class CorePluginManager<
         return
       }
 
+      // 兜底:万一还是有人占着这个位置,先把它拆掉再覆盖 —— Map.set 静默覆盖
+      // 的那一份不会有任何人再来 dispose。
+      const previous = this.pluginStates.get(def.id)
+      if (previous && previous !== state) {
+        this.logger.error(`[PluginManager] Replacing an orphaned state for "${def.id}"`, undefined)
+        try {
+          this.host.disposePlugin(previous)
+        } catch (error) {
+          this.logger.error(`[PluginManager] Error disposing orphaned state for "${def.id}":`, error)
+        }
+      }
       this.pluginStates.set(def.id, state)
       this.plugins.set(def.id, {
         definition: def,
