@@ -12,6 +12,14 @@ import {
 export interface PluginStoreOptions {
   /** plugin-data 的**根**目录;具体落点由 CorePluginStore 决定。 */
   dataDir: string
+  /**
+   * 是否正在跑 onDispose 回调。
+   *
+   * 这段窗口里写面放行 —— 插件在 onDispose 里存盘是最自然的收尾写法。
+   * 与 `api.storage` 的 `state.disposing` 同构:两个写面必须同时开窗,
+   * 否则插件用哪一半就在哪一半丢数据。
+   */
+  isDisposing?(): boolean
 }
 
 /**
@@ -28,7 +36,10 @@ export class CorePluginStore {
 
   private disposed = false
 
-  constructor(private readonly pluginId: string, options: PluginStoreOptions) {
+  constructor(
+    private readonly pluginId: string,
+    private readonly options: PluginStoreOptions,
+  ) {
     this.dataRoot = options.dataDir
     ensureDir(this.dataRoot)
   }
@@ -45,6 +56,11 @@ export class CorePluginStore {
   }
 
   private rejectIfDisposed(what: string): boolean {
+    // **onDispose 期间放行**,与 api.storage 同构:插件最自然的收尾写法就是在
+    // onDispose 里存盘,而 KV 是它最可能用的那一半。上一版只有 storage 那侧开了
+    // 窗口,`api.store.set` 仍撞在已关的 store 上 —— 而这里只 console.error、
+    // 不抛不落,正是要根除的那种静默丢数据。
+    if (this.options.isDisposing?.()) return false
     if (!this.disposed) return false
     console.error(
       `[PluginStore:${this.pluginId}] Ignoring store.${what} after dispose — the plugin resumed past its teardown.`,

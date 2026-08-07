@@ -48,7 +48,7 @@ Dev ports: Electron renderer dev server **5173**, web frontend **5174**, server 
 This is **onething**, an AI chat app with multi-provider support, tool calling, and an event-driven streaming engine. The product lives in packages; the apps are thin sockets. Three-layer mental model:
 
 - **packages/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
-- **packages/onething-runtime/src** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree.
+- **packages/onething-runtime/src** — the product itself (prompts, memory, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree.
 - **packages/onething-runtime/src/app** — the assembly layer (`@onething/app`). All migrated main-process glue (engine, events, stores, tool/provider/permission wiring). `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe.
 - **apps/\*** — thin sockets: Electron (window/IPC/native panel), server (HTTP/SSE), web (browser build of the renderer), CLI daemon.
 
@@ -67,7 +67,7 @@ apps/*  (thin sockets)
 │  configure*Host ports (never imports electron/@main/@preload)       │
 ├──────────────────────────────────────────────────────────────────────┤
 │ packages/onething-runtime/src/*          PRODUCT ('@onething/runtime')│
-│  prompts, sessions, agent-loop providers, tools, themes, …          │
+│  prompts, memory, sessions, agent-loop providers, tools, themes, …   │
 │  Electron-free; no @shared/ipc; MUST NOT import @onething/app        │
 ├──────────────────────────────────────────────────────────────────────┤
 │ packages/core                            SKELETON ('@onething/core') │
@@ -84,7 +84,7 @@ packages/core/               # Bottom layer, zero deps. No src/ — files at pac
                              # agent-loop/ (provider-agnostic loop), engine/ (CoreStreamEngine,
                              # HeadlessStreamEngine), events/, session/ (+storage/jsonl),
                              # permission/, tools/, plugins/, mcp/, storage/ primitives.
-packages/onething-runtime/   # src/ = the product (prompts, sessions, agent-loop
+packages/onething-runtime/   # src/ = the product (prompts, memory, sessions, agent-loop
                              # providers, tools, themes, voice, music, …). Electron-free.
                              # src/app/ = assembly layer: createOnethingBackend + all
                              # migrated main-process glue ('@onething/app').
@@ -158,11 +158,10 @@ Notes:
   `docs/design/session-storage-jsonl.md`; conversion: `scripts/convert-sessions.mjs`.
   Cross-session search/indexing belongs in apps/server — do not add a database to the
   Electron main process.
-- There is no memory subsystem. The soul-memory plugin (SOUL/MEMORY.md + daily notes,
-  panel, settings tab, `/api/memory/*`) was retired 2026-08-06 — see
-  `docs/audit/soul-memory-retirement-2026-08-06.md`. Nothing reads or writes those files;
-  leftover data is archived via `scripts/archive-soul-memory.mjs`. `usage` still accepts
-  `source: 'memory'` so historical ledger rows resolve.
+- Memory is plain markdown (SOUL/USER/MEMORY.md + daily notes) owned by the soul-memory
+  plugin; the Electron memory panel talks to it in-process (no server dependency).
+  apps/server exposes the same `/api/memory/*` endpoints via the shared
+  `createOnethingMemoryIpcHandlers` factory in `packages/onething-runtime/src/memory/ipc.ts`.
 - Plugin system (R0–R7 complete, 2026-08-07). The plugin's entire power is the injected
   `api` object. Current surface:
   - **AI capabilities**: tools, slash commands, events (+ plugin-namespaced custom events),
@@ -324,7 +323,7 @@ packages/onething-runtime/src/ # PRODUCT layer ('@onething/runtime')
 │   ├── sessions/              # session-repository, storage-driver (jsonl/legacy hybrid)
 │   ├── agent-loop/providers/  # hand-rolled fetch/SSE providers (claude/codex/deepseek/
 │   │                          # gemini/openai-compatible/acp) + factory + thinking-options
-│   ├── media/  scheduler/  agents/  auth/  settings/  storage/ (paths, store-lock)
+│   ├── memory/  media/  scheduler/  agents/  auth/  settings/  storage/ (paths, store-lock)
 │   ├── tools/  skills/  plugins/  providers/  themes/  variables/  goals/  voice/  music/
 │   ├── mcp/  acp/  external-agents/  files/  search/  usage/  evals/  headless/  …
 │   └── stream-engine.ts       # OnethingStreamEngine over CoreStreamEngine
@@ -341,7 +340,7 @@ packages/onething-runtime/src/app/  # ASSEMBLY layer ('@onething/app'; @shared a
 │   ├── stores/                # sessions (repository wiring), settings cache, app-state, paths
 │   ├── tools/                 # registry + builtin/ barrels + core/ (sandbox, bash-executor)
 │   ├── providers/  permission/  mcp/  acp/  skills/  plugins/  variables/  goals/
-│   ├── media/  music/  voice/  search/  scheduler/  agents/  external-agents/
+│   ├── memory/  media/  music/  voice/  search/  scheduler/  agents/  external-agents/
 │   ├── channel/               # gateway identity, session-router, outbound dispatch
 │   ├── headless/backend.ts    # HeadlessBackend for the CLI daemon
 │   └── logging/  auth/  session/  usage/  toc/  todo-plan/  practice/  …

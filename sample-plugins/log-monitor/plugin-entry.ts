@@ -272,7 +272,10 @@ export default function logMonitorPlugin(api) {
         .optional()
         .describe('Max results (default 30, max 100).'),
     }),
-    permissionGuard: 'safe',
+    // 宿主会把插件注册的工具**强制**改成 permission-gated —— 插件不能给自己发
+    // 免检通行证('safe' 落在自动执行集里)。这里写什么都不影响判定;
+    // 要声明能力请用 manifest 的 contributes.permissions。
+    permissionGuard: 'permission-gated',
     async execute(args, ctx) {
       ctx.metadata({
         title: `Searching logs${args.eventType ? ` for "${args.eventType}"` : ''}...`,

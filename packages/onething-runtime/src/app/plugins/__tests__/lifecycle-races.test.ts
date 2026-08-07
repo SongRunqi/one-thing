@@ -130,6 +130,43 @@ describe('plugin lifecycle races', () => {
     expect(liveStates.size, 'a resurrected state would never be disposed').toBe(0)
   })
 
+  it('disposes the superseded load itself — the token check, not the overwrite backstop', async () => {
+    /*
+     * 领号与"覆盖前先 dispose"的兜底在上一版里互为替身:关掉任一条,测试仍然绿。
+     * 那意味着将来有人"简化"掉其中一条不会有任何报警。这条只验领号:
+     * 被超过的那次加载必须**在写回之前**自己拆掉,而不是等兜底来收尸。
+     */
+    let release: (() => void) | undefined
+    const gate = new Promise<void>(resolve => { release = resolve })
+    let firstLoad = true
+    const { manager, disposedStates, liveStates } = createManager({
+      loadDelay: async () => {
+        if (!firstLoad) return
+        firstLoad = false
+        await gate
+      },
+    })
+
+    const refreshing = manager.initialize({ ready: true })
+    await Promise.resolve()
+    await manager.disablePlugin('demo')
+    const enabling = manager.enablePlugin('demo')
+    await enabling
+
+    // 此刻 enable 那份已经落表;refresh 那份还卡着。
+    const settledBefore = [...liveStates]
+    expect(settledBefore).toHaveLength(1)
+    const winner = settledBefore[0]
+
+    release?.()
+    await refreshing
+
+    // 被超过的那次自己拆了,而且**赢家没有被换掉** —— 如果只有兜底在起作用,
+    // 落表的会是后到的那份,赢家会先被 dispose 再替换。
+    expect([...liveStates]).toEqual([winner])
+    expect(disposedStates).not.toContain(winner)
+  })
+
   it('can be assembled again after shutdown', async () => {
     // 拆除闩不能是单向的 —— 否则 dev 热重载后一个插件也装不上。
     const { manager } = createManager()

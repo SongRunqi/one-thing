@@ -162,18 +162,23 @@ export function createPluginAPI(
   streamEngine: StreamEngine,
   options?: CreatePluginAPIOptions,
 ): { api: PluginAPI; state: PluginState } {
-  const store = new PluginStore(pluginId)
+  // stateRef 后填(createCorePluginAPI 的返回值才有 state),而 store 只在调用时
+  // 读它 —— 所以先建 store、后接 state 是安全的。
+  const stateRef: { current: PluginState | null } = { current: null }
+  const store = new PluginStore(pluginId, {
+    isDisposing: () => Boolean(stateRef.current?.disposing),
+  })
   const schedulerDisposeCallbacks: Array<() => void> = []
   // KV 的拆除闩:晚到的 store.set 会 ensureDir 把刚归档的目录复活成鬼目录。
   //
-  // **注意它必须排在最后**:这个数组同时是 onDispose 回调的队列,而插件最自然的
-  // 收尾写法就是在 onDispose 里存盘。放在最前面的话,插件的收尾写入会撞上一个
-  // 已经关掉的 store —— 数据静默丢失。用 push 之外的手段保证顺序不可靠,
-  // 所以这里改为在 createCorePluginAPI 返回后追加(见下方 dispose 顺序注释)。
+  //
+  // **它不进回调队列。** 那个数组同时是 onDispose 的队列,而插件的 onDispose 是
+  // 在 entry(api) 里注册的 —— 比这里晚得多,所以无论把 closeStore push 在哪儿,
+  // FIFO 下它都排在插件回调**前面**。上一轮"挪到函数末尾"没有改变这一点。
+  // 正确的做法是让它根本不参与排队:拆除流程 drain 完回调之后再显式关。
   const closeStore = () => store.dispose()
   // 拆除闸要能被 scheduler 看到,而 state 是 createCorePluginAPI 的返回值 ——
   // 用一个后填的引用把两者接上(register 只在调用时读它)。
-  const stateRef: { current: PluginState | null } = { current: null }
   const pluginScheduler = createScopedPluginScheduler({
     pluginId,
     scheduler: getScheduler(),
@@ -346,22 +351,30 @@ export function createPluginAPI(
   })
 
   stateRef.current = result.state
-  /*
-   * KV 的关闭排在**最后**。
-   *
-   * 这个数组同时是插件 onDispose 回调的队列(api.onDispose 往里 push),而插件
-   * 最自然的收尾写法就是在 onDispose 里存盘。上一版把 store.dispose() push 在
-   * **最前面**,于是插件的收尾写入必定撞上一个已经关掉的 store —— 静默丢数据。
-   * 内置插件恰好只在 onDispose 里关流,所以全套测试都是绿的。
-   */
-  schedulerDisposeCallbacks.push(closeStore)
+  // 拆除流程收尾时关 KV(见 disposePlugin)—— 不排进回调队列。
+  storeClosers.set(result.state, closeStore)
   return result
 }
+
+/**
+ * state → 关 KV 的收尾动作。
+ *
+ * 用 WeakMap 而不是 per-pluginId 的表:同一个 pluginId 在竞态窗口里可能同时存在
+ * 两份 state(refresh 与 enable 各一份),按 id 索引会关错那一份。
+ */
+const storeClosers = new WeakMap<PluginState, () => void>()
 
 export function disposePlugin(state: PluginState): void {
   disposeCorePluginState(state, {
     unregisterTool: unregisterToolInRegistry,
   })
+  // KV **在 onDispose 回调全部跑完之后**才关 —— 插件在 onDispose 里
+  // `api.store.set` 存盘是最自然的收尾写法,提前关掉就是静默丢数据。
+  try {
+    storeClosers.get(state)?.()
+  } catch (error) {
+    console.error('[Plugin] Failed to close the plugin KV store:', error)
+  }
   // R5 携带项:还没到点的面板刷新补发一并取消 —— 否则一个已停用的插件会在
   // 200ms 后要求重画一个已经不存在的面板。
   if (state.api?.id) cancelPanelRefreshWindows(state.api.id)

@@ -494,10 +494,14 @@ export class CorePluginManager<
     // 事件订阅从此双份。第二个调用者直接复用在飞的那一次。
     if (this.refreshInFlight) return this.refreshInFlight
 
-    this.refreshInFlight = this.doRefreshPlugins().finally(() => {
-      this.refreshInFlight = null
+    // finally 里要**认自己**再清槽位:shutdown 会把 refreshInFlight 置 null,
+    // 若随后的 initialize 已经开了新的一轮,旧那次的 finally 会把**新**那次的
+    // 槽位清掉 —— 去重失效,两轮 refresh 并发跑同一个目录。
+    const inFlight: Promise<void> = this.doRefreshPlugins().finally(() => {
+      if (this.refreshInFlight === inFlight) this.refreshInFlight = null
     })
-    return this.refreshInFlight
+    this.refreshInFlight = inFlight
+    return inFlight
   }
 
   private async doRefreshPlugins(): Promise<void> {
