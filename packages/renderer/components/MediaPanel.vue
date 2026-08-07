@@ -43,7 +43,7 @@
             role="tab"
             :aria-selected="activeNav === item.id"
             native-type="button"
-            @click="activeNav = item.id"
+            @click="selectNav(item.id)"
           >
             <component
               :is="item.icon"
@@ -462,23 +462,19 @@ import {
 } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 import {
-  PLUGIN_PANEL_ICON,
-  WORKSPACE_NAV_PANELS,
   isWorkspacePanelId,
   parsePluginPanelNavId,
   pluginPanelNavId,
   usePluginWorkspacePanels,
-  type WorkspacePanelId,
+  useWorkspaceNavEntries,
+  type WorkspaceNavId,
 } from '@/workspace/panel-registry'
 import PluginPanelHost from '@/components/plugins/PluginPanelHost.vue'
 
-// 内置面板是字面量联合;插件面板的 nav id 是运行期字符串,所以状态用 string。
-type WorkspacePanelNav = WorkspacePanelId | (string & {})
-
 const props = withDefaults(defineProps<{
   visible: boolean
-  activeTab?: WorkspacePanelNav | null
-  initialTab?: WorkspacePanelNav | ''
+  activeTab?: WorkspaceNavId | null
+  initialTab?: WorkspaceNavId | ''
   reserveSidebarActions?: boolean
 }>(), {
   activeTab: null,
@@ -486,11 +482,19 @@ const props = withDefaults(defineProps<{
   reserveSidebarActions: false,
 })
 
-defineEmits<{
+const emit = defineEmits<{
   close: []
   'toggle-sidebar': []
   'open-search': []
   'create-new-chat': []
+  /**
+   * 用户在面板内导航上切了一下。
+   *
+   * 必须回写给 App:⋯ 菜单与面板内导航现在覆盖同一组面板,不回写的话两个入口
+   * 会各说各话 —— 从菜单打开 media、面板内切到 archive、再点菜单里的 Media,
+   * `activeTab` 没变化、watch 不触发,面板就卡在 archive 上。
+   */
+  'switch-panel': [nav: WorkspaceNavId]
 }>()
 
 type SourceFilter = 'all' | 'user-upload' | 'ai-generated'
@@ -500,27 +504,25 @@ type SourceFilterOption = { value: SourceFilter; label: string }
 const mediaStore = useMediaStore()
 const { confirm } = useConfirm()
 const searchQuery = ref('')
-const activeNav = ref<WorkspacePanelNav>(normalizeNav(props.activeTab ?? props.initialTab) ?? 'media')
-const mountedNavs = ref<WorkspacePanelNav[]>([activeNav.value])
+const activeNav = ref<WorkspaceNavId>(normalizeNav(props.activeTab ?? props.initialTab) ?? 'media')
+const mountedNavs = ref<WorkspaceNavId[]>([activeNav.value])
 const activeKind = ref<MediaKind>('image')
 const activeSource = ref<SourceFilter>('all')
 
-// 导航条直接吃注册表 —— 抄第二份清单就是漂移的起点(`archive` 曾经只在这里
-// 存在,别处的联合都没有它)。
-const navItems: Array<{ id: WorkspacePanelNav; label: string; icon: Component }> = WORKSPACE_NAV_PANELS
-  .map(panel => ({ id: panel.id, label: panel.label, icon: panel.icon }))
+// 导航条与侧栏「⋯」菜单吃**同一份**清单(注册表里的 useWorkspaceNavEntries)——
+// 抄第二份就是漂移的起点(`archive` 曾经只在这里存在,别处的联合都没有它;
+// 而菜单吃另一份过滤结果,恰恰是 archive/practice/插件面板进不去菜单的原因)。
+const allNavItems = useWorkspaceNavEntries()
 
-// 插件面板与内置面板在导航条上并列。清单来自 manifest,所以入口在插件加载
-// 失败时也在(点开由 PluginPanelHost 说明原因);停用的插件不在清单里。
+// 插件面板清单来自 manifest,所以入口在插件加载失败时也在(点开由
+// PluginPanelHost 说明原因);停用的插件不在清单里。
 const pluginPanels = usePluginWorkspacePanels()
-const allNavItems = computed<Array<{ id: string; label: string; icon: Component }>>(() => [
-  ...navItems,
-  ...pluginPanels.value.map(panel => ({
-    id: pluginPanelNavId(panel.pluginId, panel.panelId),
-    label: panel.label,
-    icon: PLUGIN_PANEL_ICON,
-  })),
-])
+
+/** 面板内导航被点了 —— 本地切换,同时回写给 App 保持两个入口一致。 */
+function selectNav(nav: WorkspaceNavId): void {
+  activeNav.value = nav
+  emit('switch-panel', nav)
+}
 
 function normalizeNav(tab?: string | null): string | null {
   if (isWorkspacePanelId(tab)) return tab
@@ -544,13 +546,13 @@ watch(pluginPanels, (panels) => {
   mountedNavs.value = mountedNavs.value.filter(nav => !parsePluginPanelNavId(String(nav)) || live.has(String(nav)))
 })
 
-function markNavMounted(nav: WorkspacePanelNav) {
+function markNavMounted(nav: WorkspaceNavId) {
   if (!mountedNavs.value.includes(nav)) {
     mountedNavs.value = [...mountedNavs.value, nav]
   }
 }
 
-function hasMountedNav(nav: WorkspacePanelNav): boolean {
+function hasMountedNav(nav: WorkspaceNavId): boolean {
   return mountedNavs.value.includes(nav)
 }
 

@@ -423,10 +423,10 @@ describe('App container layout', () => {
     expect(mediaPanel).toContain('v-show="visible"')
     // 面板清单收编进注册表之后,这里不再钉住手抄的联合字面量 ——
     // 钉住它等于把"必须手抄"写成契约。改为断言它确实从注册表派生。
-    expect(mediaPanel).toContain('type WorkspacePanelNav = WorkspacePanelId')
+    expect(mediaPanel).toContain('type WorkspaceNavId')
     expect(mediaPanel).toContain("from '@/workspace/panel-registry'")
-    expect(mediaPanel).toContain('const mountedNavs = ref<WorkspacePanelNav[]>([activeNav.value])')
-    expect(mediaPanel).toContain('function hasMountedNav(nav: WorkspacePanelNav): boolean')
+    expect(mediaPanel).toContain('const mountedNavs = ref<WorkspaceNavId[]>([activeNav.value])')
+    expect(mediaPanel).toContain('function hasMountedNav(nav: WorkspaceNavId): boolean')
     expect(mediaPanel).toContain('v-if="hasMountedNav(\'agents\')"')
     expect(mediaPanel).toContain('data-workspace-panel-view="agents"')
     expect(mediaPanel).toContain('.workspace-panel-views {')

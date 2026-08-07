@@ -13,7 +13,7 @@
  * 手抄清单的问题不是"重复",是**漏一个就等于把一个面板弄没**,而且编译器不会
  * 提醒。所以这里定义一次,别处一律派生。
  */
-import { ref, type Component, type Ref } from 'vue'
+import { computed, ref, type Component, type ComputedRef, type Ref } from 'vue'
 import { Puzzle } from 'lucide-vue-next'
 import {
   Activity,
@@ -28,22 +28,8 @@ export interface WorkspacePanelDefinition {
   id: string
   label: string
   icon: Component
-  /**
-   * 出现在侧栏「⋯」工作区菜单里。
-   *
-   * dock 图标排在 workbench 形态下已经撤掉,这个菜单是这些面板**唯一**的
-   * 图标入口 —— 少一项就是少一个进得去的面板。
-   */
-  inSidebarMenu: boolean
   /** 出现在工作区面板顶部的导航条。 */
   inPanelNav: boolean
-  /**
-   * 能否成为 App 的 `activeWorkspacePanel`。
-   *
-   * `false` 的成员只能在面板内部切(`archive` 就是这种:它是 MediaPanel 的
-   * 一个 nav tab,不是一个可以从外面打开的工作区面板)。
-   */
-  openable: boolean
   /**
    * 深在组件树里、够不着 emit 链的地方用的 window 事件入口。
    * 收编进注册表是为了让"这个面板有几条进入路径"这件事有地方可查。
@@ -57,14 +43,12 @@ export interface WorkspacePanelDefinition {
  * 顺序即呈现顺序(侧栏菜单与面板导航条都按它排)。
  */
 export const BUILTIN_WORKSPACE_PANELS = [
-  { id: 'media', label: 'Media', icon: Images, inSidebarMenu: true, inPanelNav: true, openable: true },
+  { id: 'media', label: 'Media', icon: Images, inPanelNav: true },
   {
     id: 'agents',
     label: 'Agents',
     icon: Bot,
-    inSidebarMenu: true,
     inPanelNav: true,
-    openable: true,
     // Agent 空间页:群聊气泡、dm 房头够不着 openWorkspacePanel 的 emit 链。
     windowEvent: 'agents:open-workspace',
   },
@@ -72,31 +56,22 @@ export const BUILTIN_WORKSPACE_PANELS = [
     id: 'tasks',
     label: 'Tasks',
     icon: CalendarClock,
-    inSidebarMenu: true,
     inPanelNav: true,
-    openable: true,
     windowEvent: 'todo-plan:web-window-action',
   },
-  { id: 'music', label: 'Music', icon: Radio, inSidebarMenu: true, inPanelNav: true, openable: true },
+  { id: 'music', label: 'Music', icon: Radio, inPanelNav: true },
   {
     id: 'practice',
     label: 'Practice',
     icon: Activity,
-    // 注意:practice 至今**不在**侧栏菜单里 —— 这是勘误表记录的既有缺陷。
-    // 注册表如实记录现状;补入口是行为变化,不属于这次纯重构。
-    inSidebarMenu: false,
     inPanelNav: true,
-    openable: true,
     windowEvent: 'practice:open-workspace',
   },
   {
     id: 'archive',
     label: 'Archived Chats',
     icon: Archive,
-    inSidebarMenu: false,
     inPanelNav: true,
-    // 面板内部的 tab,不是可从外面打开的工作区面板(原先的 `archive` 特例)。
-    openable: false,
   },
 ] as const satisfies readonly WorkspacePanelDefinition[]
 
@@ -113,21 +88,6 @@ export type WorkspacePanelEntry = (typeof BUILTIN_WORKSPACE_PANELS)[number]
 export const WORKSPACE_NAV_PANELS: readonly WorkspacePanelEntry[] =
   BUILTIN_WORKSPACE_PANELS.filter(panel => panel.inPanelNav)
 
-/** 侧栏「⋯」菜单项。 */
-export const WORKSPACE_MENU_PANELS: readonly WorkspacePanelEntry[] =
-  BUILTIN_WORKSPACE_PANELS.filter(panel => panel.inSidebarMenu)
-
-/**
- * 可从外面打开的面板 id。
- *
- * 类型标注也要收紧到 `OpenableWorkspacePanelId[]`:标成 `string[]` 的话,
- * `isOpenableWorkspacePanelId` 的 `.includes(value)` 会接受任何字符串,
- * 而它是个类型守卫 —— 守卫比它守的类型宽,等于没守。
- */
-export const OPENABLE_WORKSPACE_PANEL_IDS: readonly OpenableWorkspacePanelId[] = BUILTIN_WORKSPACE_PANELS
-  .filter((panel): panel is Extract<WorkspacePanelEntry, { openable: true }> => panel.openable)
-  .map(panel => panel.id)
-
 /**
  * 面板 id 的类型。
  *
@@ -136,22 +96,8 @@ export const OPENABLE_WORKSPACE_PANEL_IDS: readonly OpenableWorkspacePanelId[] =
  */
 export type WorkspacePanelId = (typeof BUILTIN_WORKSPACE_PANELS)[number]['id']
 
-/**
- * 可从外面打开的面板 id。
- *
- * 从 `openable` 标志**派生**,不是手写 `Exclude<WorkspacePanelId, 'archive'>` ——
- * 后者是在单一事实源内部又抄了一份特例:哪天再加一个 openable:false 的面板,
- * 运行时清单(按标志过滤)会认得它,类型却不会,两个事实源当场分叉。
- */
-export type OpenableWorkspacePanelId = Extract<WorkspacePanelEntry, { openable: true }>['id']
-
 export function isWorkspacePanelId(value: unknown): value is WorkspacePanelId {
   return typeof value === 'string' && BUILTIN_WORKSPACE_PANELS.some(panel => panel.id === value)
-}
-
-export function isOpenableWorkspacePanelId(value: unknown): value is OpenableWorkspacePanelId {
-  return typeof value === 'string'
-    && OPENABLE_WORKSPACE_PANEL_IDS.includes(value as OpenableWorkspacePanelId)
 }
 
 export function findWorkspacePanel(id: string): WorkspacePanelEntry | undefined {
@@ -203,6 +149,46 @@ export function parsePluginPanelNavId(navId: string): { pluginId: string; panelI
 
 /** 插件面板在导航条上的图标 —— 宿主统一给,插件不塞组件(UI 不执行插件代码)。 */
 export const PLUGIN_PANEL_ICON = Puzzle
+
+/**
+ * 工作区面板的 nav id。
+ *
+ * 比 `WorkspacePanelId` 宽:插件面板的 id 是运行期字符串(`plugin:<id>:<panel>`),
+ * 编译期列不出来。`(string & {})` 让内置 id 仍有字面量补全,同时接受插件 id。
+ *
+ * 这个类型此前手抄在 MediaPanel 里 —— 现在侧栏菜单与面板内导航都要用它,
+ * 抄第二份就是下一次漂移的起点。
+ */
+export type WorkspaceNavId = WorkspacePanelId | (string & {})
+
+export interface WorkspaceNavEntry {
+  id: WorkspaceNavId
+  label: string
+  icon: Component
+}
+
+/**
+ * 工作区面板的**完整**导航清单:内置的 inPanelNav 成员 + 全部插件面板。
+ *
+ * 侧栏「⋯」菜单与面板内导航吃的是**同一份** —— 两个入口只是触发方式不同
+ * (菜单负责"打开面板并跳过去",面板内导航负责"在已打开的面板之间切"),
+ * 呈现的集合必须一致。此前菜单吃的是 `inSidebarMenu` 过滤后的子集,
+ * 于是 archive / practice / 全部插件面板在菜单里根本不存在。
+ */
+export function useWorkspaceNavEntries(): ComputedRef<WorkspaceNavEntry[]> {
+  return computed(() => [
+    ...WORKSPACE_NAV_PANELS.map(panel => ({
+      id: panel.id as WorkspaceNavId,
+      label: panel.label,
+      icon: panel.icon,
+    })),
+    ...pluginPanels.value.map(panel => ({
+      id: pluginPanelNavId(panel.pluginId, panel.panelId) as WorkspaceNavId,
+      label: panel.label,
+      icon: PLUGIN_PANEL_ICON,
+    })),
+  ])
+}
 
 export function workspacePanelWindowEvent(id: WorkspacePanelId): string {
   const panel = findWorkspacePanel(id) as WorkspacePanelDefinition | undefined

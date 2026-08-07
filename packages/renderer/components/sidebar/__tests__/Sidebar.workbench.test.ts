@@ -772,8 +772,11 @@ describe('工作区面板入口一个都不丢', () => {
       .find(tab => tab.attributes('aria-label') === '工作区面板')!
     await more.trigger('click')
     const menu = menuWithItem(wrapper, 'media')
+    // 菜单吃的是**全部 inPanelNav**(useWorkspaceNavEntries)—— 用户实测反馈
+    // 推翻了 inSidebarMenu 那个区分:从用户视角 ⋯ 就是"工作区面板列表",
+    // 里面缺 Practice / Archived Chats / 插件面板就是缺三项。
     expect((menu.props('items') as Array<{ id: string }>).map(item => item.id))
-      .toEqual(['media', 'agents', 'tasks', 'music'])
+      .toEqual(['media', 'agents', 'tasks', 'music', 'practice', 'archive'])
   })
 
   it('菜单每一项都真的把对应面板打开(没有一个面板变得进不去)', async () => {
@@ -782,11 +785,11 @@ describe('工作区面板入口一个都不丢', () => {
       .find(tab => tab.attributes('aria-label') === '工作区面板')!
     await more.trigger('click')
     const menu = menuWithItem(wrapper, 'media')
-    for (const id of ['media', 'agents', 'tasks', 'music']) {
+    for (const id of ['media', 'agents', 'tasks', 'music', 'practice', 'archive']) {
       menu.vm.$emit('select', id)
     }
     expect(wrapper.emitted('open-workspace-panel')?.flat())
-      .toEqual(['media', 'agents', 'tasks', 'music'])
+      .toEqual(['media', 'agents', 'tasks', 'music', 'practice', 'archive'])
   })
 
   it('新会话与设置照旧各占一枚(不进菜单)', async () => {

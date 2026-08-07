@@ -633,9 +633,8 @@ import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
 import { Check, ChevronDown, MoreVertical, Pencil, Pin, Plus, Settings, X } from 'lucide-vue-next'
 import {
-  WORKSPACE_MENU_PANELS,
-  isOpenableWorkspacePanelId,
-  type OpenableWorkspacePanelId,
+  useWorkspaceNavEntries,
+  type WorkspaceNavId,
 } from '@/workspace/panel-registry'
 import { buildRoomMemberEntries, type RoomMemberEntry } from '@/components/chat/room-member-strip'
 import SidebarHeader from './SidebarHeader.vue'
@@ -677,11 +676,11 @@ interface Props {
   // 这个 props 联合与同文件的本地联合曾经是**两份手抄清单**;soul-memory 退役
   // 期间的工作树里它们一度不同步(一边删了 'memory',另一边还留着)。
   // 现在两处都从注册表派生 —— 不同步这件事在类型上不再可能。
-  activeWorkspacePanel?: OpenableWorkspacePanelId | null
+  activeWorkspacePanel?: WorkspaceNavId | null
   width?: number
 }
 
-type WorkspacePanel = OpenableWorkspacePanelId
+type WorkspacePanel = WorkspaceNavId
 
 const props = withDefaults(defineProps<Props>(), {
   collapsed: false,
@@ -1104,16 +1103,21 @@ onUnmounted(() => {
 })
 
 // 直接吃注册表:这份清单漏一项就是少一个进得去的面板,而编译器不会提醒。
-const workspaceActions = WORKSPACE_MENU_PANELS
-
 // ── 「⋯」工作区面板菜单(R4,用户真机走查要求 4)──────────────────────────
-// 平铺的一排 dock 图标在 workbench 下撤掉了,但那是这五个面板**唯一**的入口 ——
-// 删掉就等于把功能弄没。清单直接吃 `workspaceActions`(不抄第二份:少一个就是
-// 少一个进不去的面板),菜单项 = 面板,一一对应。
+// 平铺的一排 dock 图标在 workbench 下撤掉了,但那是这些面板**唯一**的入口 ——
+// 删掉就等于把功能弄没。清单直接吃注册表(不抄第二份:少一个就是少一个进不去的
+// 面板),菜单项 = 面板,一一对应。
+//
+// 吃的是**全部 inPanelNav**,不再是 `inSidebarMenu` 过滤后的子集。用户实测反馈
+// 推翻了那个区分:从用户视角 ⋯ 就是"工作区面板列表",里面缺 Practice /
+// Archived Chats / 插件面板就是缺三项。`inSidebarMenu: false` 记录的其实是历史
+// 包袱(practice 走 window 事件进入、archive 是后加的、插件面板是新的),
+// 不是设计 —— 那个旗子已随之删除。
+const workspaceActions = useWorkspaceNavEntries()
 const workspaceMenu = ref<{ x: number; y: number } | null>(null)
 
 const workspaceMenuItems = computed<ContextMenuItem[]>(() =>
-  workspaceActions.map(action => ({
+  workspaceActions.value.map(action => ({
     id: action.id,
     label: action.label,
     icon: action.icon,
@@ -1130,8 +1134,10 @@ function openWorkspaceMenu(event: MouseEvent): void {
 
 function onWorkspaceMenuSelect(id: string): void {
   workspaceMenu.value = null
-  const action = workspaceActions.find(candidate => candidate.id === id)
-  if (!action || !isOpenableWorkspacePanelId(action.id)) return
+  // 不再按 `openable` 过滤:nav-only 的内置面板(archive / practice)与插件面板
+  // 现在也从这里进 —— "打开工作区面板 + 切到该 nav" 一步完成,由 App 承担。
+  const action = workspaceActions.value.find(candidate => candidate.id === id)
+  if (!action) return
   emit('open-workspace-panel', action.id)
 }
 

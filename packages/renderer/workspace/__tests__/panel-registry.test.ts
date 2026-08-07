@@ -10,14 +10,11 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   BUILTIN_WORKSPACE_PANELS,
-  OPENABLE_WORKSPACE_PANEL_IDS,
-  WORKSPACE_MENU_PANELS,
   WORKSPACE_NAV_PANELS,
   findWorkspacePanel,
-  isOpenableWorkspacePanelId,
   isWorkspacePanelId,
   workspacePanelWindowEvent,
-  type OpenableWorkspacePanelId,
+  type WorkspaceNavId,
   type WorkspacePanelId,
 } from '../panel-registry'
 
@@ -38,10 +35,28 @@ describe('workspace panel registry', () => {
     ])
   })
 
-  it('reproduces the sidebar menu exactly as it was (practice is still absent)', () => {
-    // 重构是零行为变化的:practice 至今不在侧栏菜单里是**既有缺陷**
-    // (设计文档 §2 勘误表 P2 行),注册表如实记录它,补入口是另一件事。
-    expect(WORKSPACE_MENU_PANELS.map(panel => panel.id)).toEqual(['media', 'agents', 'tasks', 'music'])
+  it('has no flag left that nobody reads', () => {
+    /*
+     * `inSidebarMenu` 与 `openable` 都已删除。
+     *
+     * 前者记录的是历史包袱而不是设计(practice 走 window 事件进入、archive 是
+     * 后加的、插件面板是新的),用户实测反馈推翻了那个区分 —— ⋯ 菜单现在覆盖
+     * 全部 inPanelNav 面板。后者随之失去唯一消费者(App 的 activeWorkspacePanel
+     * 类型),而**留一个没人读的旗子**正是 `mode: 'side'` 那次的病根:
+     * 以死枝为前提的条件看起来有意义,实际恒定。
+     */
+    for (const panel of BUILTIN_WORKSPACE_PANELS) {
+      expect(panel, panel.id).not.toHaveProperty('inSidebarMenu')
+      expect(panel, panel.id).not.toHaveProperty('openable')
+    }
+    // 只拦**字段定义形态**(带冒号):接口里再出现 `inSidebarMenu: boolean`
+    // 或常量里再出现 `inSidebarMenu: true` 才算旗子复活。解释性注释里提一句
+    // 旧旗子名(useWorkspaceNavEntries 的 JSDoc 就写了"此前菜单吃的是
+    // inSidebarMenu 过滤后的子集")是历史说明,不是复活 —— 全局 not.toContain
+    // 会把历史也误伤,那正是这个守卫自己不该犯的"以死枝为前提"的错。
+    const source = readRendererFile('workspace/panel-registry.ts')
+    expect(source).not.toContain('inSidebarMenu:')
+    expect(source).not.toContain('openable:')
   })
 
   it('reproduces the panel nav exactly as it was (archive included)', () => {
@@ -50,20 +65,23 @@ describe('workspace panel registry', () => {
     ])
   })
 
-  it('treats archive as nav-only — it was never an openable workspace panel', () => {
-    expect(OPENABLE_WORKSPACE_PANEL_IDS).toEqual(['media', 'agents', 'tasks', 'music', 'practice'])
+  it('puts every inPanelNav panel — including nav-only ones — in the shared nav list', () => {
+    // ⋯ 菜单与面板内导航吃同一份。archive 与 practice 都是 nav-only 的历史产物,
+    // 此前在主窗口**没有任何入口**。
+    const ids = WORKSPACE_NAV_PANELS.map(panel => panel.id)
+    expect(ids).toContain('archive')
+    expect(ids).toContain('practice')
     expect(isWorkspacePanelId('archive')).toBe(true)
-    expect(isOpenableWorkspacePanelId('archive')).toBe(false)
-    expect(isOpenableWorkspacePanelId('memory')).toBe(false)
+    expect(isWorkspacePanelId('nope')).toBe(false)
   })
 
-  it('derives the openable id type from the flag instead of re-listing the exception', () => {
-    // 手写 `Exclude<WorkspacePanelId, 'archive'>` 会在单一事实源内部再抄一份
-    // 特例:再加一个 openable:false 的面板,运行时清单认得它、类型不认得。
-    expectTypeOf<OpenableWorkspacePanelId>().toEqualTypeOf<'media' | 'agents' | 'tasks' | 'music' | 'practice'>()
-    expectTypeOf<OpenableWorkspacePanelId>().toExtend<WorkspacePanelId>()
-    // 运行时清单与类型必须是同一份事实。
-    expectTypeOf(OPENABLE_WORKSPACE_PANEL_IDS[0]).toEqualTypeOf<OpenableWorkspacePanelId>()
+  it('keeps literal completion for builtin ids while accepting runtime plugin ids', () => {
+    // 插件面板的 nav id 是运行期字符串(`plugin:<id>:<panel>`),编译期列不出来;
+    // `(string & {})` 让内置 id 仍有字面量补全,同时接受插件 id。
+    expectTypeOf<WorkspacePanelId>().toExtend<WorkspaceNavId>()
+    const builtin: WorkspaceNavId = 'archive'
+    const plugin: WorkspaceNavId = 'plugin:ui-demo:demo'
+    expect([builtin, plugin]).toHaveLength(2)
   })
 
   it('records the window-event entries for the panels that have them', () => {

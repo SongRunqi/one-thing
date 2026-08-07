@@ -291,9 +291,15 @@ describe('MediaPanel', () => {
 
     await tabFor('Archived Chats').trigger('click')
     expect(wrapper.find('[data-workspace-panel-view="archive"]').exists()).toBe(true)
+    // 面板内导航被点,必须回写给 App(emit switch-panel):⋯ 菜单与面板内导航
+    // 吃同一份清单后,不回写的话两个入口会各说各话 —— 从菜单打开 media、面板内
+    // 切到 archive、再点菜单里的 Media,activeTab 没变化、watch 不触发,面板就
+    // 卡在 archive 上。这条断言钉住的就是那个回写。
+    expect(wrapper.emitted('switch-panel')?.at(-1)).toEqual(['archive'])
 
     await tabFor('UI Demo').trigger('click')
     expect(wrapper.find('[data-workspace-panel-view="plugin:ui-demo:demo"]').exists()).toBe(true)
+    expect(wrapper.emitted('switch-panel')?.at(-1)).toEqual(['plugin:ui-demo:demo'])
 
     setPluginWorkspacePanels([])
   })

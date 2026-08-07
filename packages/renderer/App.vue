@@ -157,6 +157,7 @@
                     :active-tab="activeWorkspacePanel"
                     :reserve-sidebar-actions="reserveSidebarActions"
                     @close="closeWorkspacePanel"
+                    @switch-panel="openWorkspacePanel"
                     @toggle-sidebar="handleSidebarToggle"
                     @open-search="openSearch"
                     @create-new-chat="createNewChat"
@@ -246,7 +247,7 @@ import { platformApi } from '@/platform'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import {
   workspacePanelWindowEvent,
-  type OpenableWorkspacePanelId,
+  type WorkspaceNavId,
 } from '@/workspace/panel-registry'
 import {
   AGENT_OPEN_WORKSPACE_EVENT,
@@ -371,7 +372,14 @@ const sidebarWidth = ref(clampSidebarWidth(parseInt(localStorage.getItem('sideba
 const sidebarResizing = ref(false)
 
 // 面板 id 从注册表派生 —— 这条联合原先是 ≥6 处手抄之一。
-type WorkspacePanel = OpenableWorkspacePanelId
+/**
+ * 工作区面板的 nav id。
+ *
+ * 从 `OpenableWorkspacePanelId` 放宽到 `WorkspaceNavId`:⋯ 菜单现在覆盖全部
+ * inPanelNav 面板,而 nav-only 的内置面板(archive / practice)与插件面板
+ * 按老类型根本不能当 activeWorkspacePanel —— 那正是它们进不去的原因。
+ */
+type WorkspacePanel = WorkspaceNavId
 type TodoPlanWebWindowActionDetail = {
   action?: 'open' | 'hide' | 'toggle' | 'pin'
 }
