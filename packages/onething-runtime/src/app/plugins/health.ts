@@ -8,6 +8,7 @@
  * 为什么要熔断:加载期错误会写进 CorePluginInfo.error,**运行期**错误在此之前
  * 不进任何用户可见状态 —— 一个每回合都抛错的插件会一直显示 Active。
  */
+import type { PluginFailureScope } from '@onething/core/plugins'
 import {
   CorePluginHealthTracker,
   type CorePluginRuntimeHealth,
@@ -100,11 +101,18 @@ export function configurePluginHealthHost(next: PluginHealthHost | null): void {
   host = next
 }
 
-export function reportPluginRuntimeFailure(pluginId: string, scope: string, error: unknown): void {
+/**
+ * 运行期失败上报。
+ *
+ * scope 是**品牌类型**:只能由 `pluginScope.*` 工厂产出,裸字符串在 typecheck
+ * 就红。这是"新增 scope 必须在严重度表里有条目"的执行点 —— R7 第一版靠正则反查
+ * 源码,而正则只认两种写法 × 五个文件,`npm-install` 就那样漏了过去。
+ */
+export function reportPluginRuntimeFailure(pluginId: string, scope: PluginFailureScope, error: unknown): void {
   tracker.recordFailure(pluginId, scope, error)
 }
 
-export function reportPluginRuntimeSuccess(pluginId: string, scope: string): void {
+export function reportPluginRuntimeSuccess(pluginId: string, scope: PluginFailureScope): void {
   tracker.recordSuccess(pluginId, scope)
 }
 
@@ -122,6 +130,16 @@ export function getPluginRuntimeHealth(pluginId: string): CorePluginRuntimeHealt
 
 export function listPluginRuntimeHealth(): Array<CorePluginRuntimeHealth & { pluginId: string }> {
   return tracker.list()
+}
+
+/** 某个界面是否被降级(R7)—— 请求通道的短路判据。 */
+export function isPluginSurfaceDegraded(pluginId: string, surface: string): boolean {
+  return tracker.isSurfaceDegraded(pluginId, surface)
+}
+
+/** 降级原因,给用户看的一句话。 */
+export function describePluginSurfaceDegradation(pluginId: string, surface: string): string | undefined {
+  return tracker.get(pluginId)?.degradedSurfaces?.find(entry => entry.surface === surface)?.reason
 }
 
 /** 显式启用(或手动停用)是一次清账:熔断状态与失败计数都不跨越它,盘上也清掉。 */

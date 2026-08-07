@@ -77,23 +77,41 @@ export function emitPluginStatusPart(sessionId: string, part: CorePluginStatusPa
 // 恰恰是唯一必须送达的那条(R5 的 panel-refresh 犯过同一个错)。
 
 const TRAILING_FLUSH_MS = 220
-let trailingFlushTimer: ReturnType<typeof setTimeout> | undefined
 
-function clearTrailingFlush(): void {
-  if (trailingFlushTimer) clearTimeout(trailingFlushTimer)
-  trailingFlushTimer = undefined
+/**
+ * 补发定时器**按会话**。
+ *
+ * 上一版是模块级单定时器,而清扫是按会话触发的 —— 会话 A 结束时
+ * `clearTrailingFlush()` 会把会话 B 被合并窗压住的最终状态一起吞掉。
+ * 两个会话同时在跑是常态(群聊、并行回合),这不是边角情况。
+ */
+const trailingFlushTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function clearTrailingFlush(sessionId?: string): void {
+  if (sessionId === undefined) {
+    for (const timer of trailingFlushTimers.values()) clearTimeout(timer)
+    trailingFlushTimers.clear()
+    return
+  }
+  const timer = trailingFlushTimers.get(sessionId)
+  if (!timer) return
+  clearTimeout(timer)
+  trailingFlushTimers.delete(sessionId)
 }
 
 function scheduleTrailingFlush(): void {
-  if (trailingFlushTimer || !statusRegistry.hasPending()) return
-  trailingFlushTimer = setTimeout(() => {
-    trailingFlushTimer = undefined
-    for (const { sessionId, part } of statusRegistry.flushPending()) {
-      emitPluginStatusPart(sessionId, part)
-    }
-    scheduleTrailingFlush()
-  }, TRAILING_FLUSH_MS)
-  ;(trailingFlushTimer as unknown as { unref?: () => void }).unref?.()
+  for (const sessionId of statusRegistry.pendingSessionIds()) {
+    if (trailingFlushTimers.has(sessionId)) continue
+    const timer = setTimeout(() => {
+      trailingFlushTimers.delete(sessionId)
+      for (const { sessionId: target, part } of statusRegistry.flushPending(sessionId)) {
+        emitPluginStatusPart(target, part)
+      }
+      scheduleTrailingFlush()
+    }, TRAILING_FLUSH_MS)
+    ;(timer as unknown as { unref?: () => void }).unref?.()
+    trailingFlushTimers.set(sessionId, timer)
+  }
 }
 
 /** 插件 show 之后由 api 层调用 —— 有被压住的变化就排一次补发。 */
@@ -147,7 +165,8 @@ export function subscribePluginStatusSweep(bus: StatusSweepBus): () => void {
   // 终止事件的**前置**拦截:在 commit 与 fan-out 之前把 cleared 发出去。
   const unintercept = bus.intercept?.(async (event, sessionId) => {
     if ((SESSION_STREAM_TERMINAL_EVENTS as readonly string[]).includes(event.type)) {
-      clearTrailingFlush()
+      // 只取消**这个会话**的补发 —— 全局取消会吞掉别的会话的最终状态。
+      clearTrailingFlush(sessionId)
       await sweepPluginStatusForSession(sessionId)
     }
     return {}

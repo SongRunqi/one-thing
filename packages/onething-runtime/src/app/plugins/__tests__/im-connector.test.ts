@@ -65,9 +65,12 @@ describe('R7 IM connector — 开放一个既有注册表', () => {
 
     pluginApi.registerIMConnector(fakeConnector('fake-im', sent) as never)
 
-    expect(registry.listIMConnectorIds()).toContain('fake-im')
+    // id 带命名空间(与 registerTool 同构):插件不能占用一个全局 id。
+    expect(registry.listIMConnectorIds()).toContain('plugin:chat-bridge:fake-im')
+    expect(registry.listIMConnectorIds()).not.toContain('fake-im')
+    expect(registry.getIMConnectorOwner('plugin:chat-bridge:fake-im')).toBe('chat-bridge')
     await registry.sendIMReply(
-      { connector: 'fake-im', conversationId: 'c1' } as never,
+      { connector: 'plugin:chat-bridge:fake-im', conversationId: 'c1' } as never,
       { text: 'hello', sessionId: 's1', messageId: 'm1' },
     )
     expect(sent).toEqual(['hello'])
@@ -81,15 +84,16 @@ describe('R7 IM connector — 开放一个既有注册表', () => {
     pluginApi.registerIMConnector(fakeConnector('fake-im', sent) as never)
 
     // 停用 = dispose。声明的语义是 degrade-to-default。
-    expect(PLUGIN_REGISTRY_POLICY['im-connector'].teardown).toBe('degrade-to-default')
+    // 标签必须与实现一致:实现是 throw,所以标签是 fail-open。
+    expect(PLUGIN_REGISTRY_POLICY['im-connector'].teardown).toBe('fail-open')
     api.disposePlugin(state)
 
     // 注册表回到基线 —— 拆除测试的判据。
-    expect(registry.listIMConnectorIds()).not.toContain('fake-im')
+    expect(registry.listIMConnectorIds()).not.toContain('plugin:chat-bridge:fake-im')
 
     // 之后的回复要**说得清地失败**,不是静默丢消息。
     await expect(registry.sendIMReply(
-      { connector: 'fake-im', conversationId: 'c1' } as never,
+      { connector: 'plugin:chat-bridge:fake-im', conversationId: 'c1' } as never,
       { text: 'late', sessionId: 's1', messageId: 'm2' },
     )).rejects.toThrow(/not registered/)
     expect(sent).toEqual([])
@@ -104,7 +108,7 @@ describe('R7 IM connector — 开放一个既有注册表', () => {
     api.disposePlugin(state)
 
     // 拆除语义不建立在插件守规矩上 —— 这是整条战役的主线。
-    expect(registry.listIMConnectorIds()).not.toContain('forgetful')
+    expect(registry.listIMConnectorIds()).not.toContain('plugin:chat-bridge:forgetful')
   })
 
   it('is idempotent when the plugin does call unsubscribe as well', async () => {
@@ -113,26 +117,64 @@ describe('R7 IM connector — 开放一个既有注册表', () => {
     const release = pluginApi.registerIMConnector(fakeConnector('polite', sent) as never)
 
     release()
-    expect(registry.listIMConnectorIds()).not.toContain('polite')
+    expect(registry.listIMConnectorIds()).not.toContain('plugin:chat-bridge:polite')
     // 再调一次、再 dispose 一次都不该抛。
     expect(() => release()).not.toThrow()
     expect(() => api.disposePlugin(state)).not.toThrow()
   })
 
-  it('does not clobber another plugin connector that registered the same id later', async () => {
+  it('namespaces per plugin so two plugins can use the same connector name', async () => {
     const { api, registry } = await load()
     const first = api.createPluginAPI('a', bus as never, {} as never)
     const second = api.createPluginAPI('b', bus as never, {} as never)
 
-    first.api.registerIMConnector(fakeConnector('shared-id', sent) as never)
-    second.api.registerIMConnector(fakeConnector('shared-id', sent) as never)
+    first.api.registerIMConnector(fakeConnector('shared-name', sent) as never)
+    second.api.registerIMConnector(fakeConnector('shared-name', sent) as never)
 
-    // 撤下**先注册**的那个,不能把后来者一起摘掉(registry 的退订按实例比对)。
+    // 两条渠道各自成立 —— 没有命名空间的话,B 会静默劫持 A 的渠道而 A 侧毫无察觉。
+    expect(registry.listIMConnectorIds()).toEqual(
+      expect.arrayContaining(['plugin:a:shared-name', 'plugin:b:shared-name']),
+    )
+
     api.disposePlugin(first.state)
-    expect(registry.listIMConnectorIds()).toContain('shared-id')
+    expect(registry.listIMConnectorIds()).not.toContain('plugin:a:shared-name')
+    expect(registry.listIMConnectorIds()).toContain('plugin:b:shared-name')
 
     api.disposePlugin(second.state)
-    expect(registry.listIMConnectorIds()).not.toContain('shared-id')
+    expect(registry.listIMConnectorIds()).not.toContain('plugin:b:shared-name')
+  })
+
+  it('refuses to overwrite an id that is already taken', async () => {
+    const { registry } = await load()
+    const connector = fakeConnector('taken', sent)
+    registry.registerIMConnector(connector as never)
+
+    // 退订按实例比对只防住"撤下别人的",不防"顶掉别人的" —— 这里补上后者。
+    expect(() => registry.registerIMConnector(fakeConnector('taken', sent) as never))
+      .toThrow(/already registered/)
+  })
+
+  it('reports a delivery failure to the breaker so the connector family has a real producer', async () => {
+    const { api, registry } = await load()
+    const failures: Array<{ pluginId: string; connectorId: string }> = []
+    registry.configureIMConnectorHooks({
+      onSendFailure: (pluginId: string, connectorId: string) => failures.push({ pluginId, connectorId }),
+    })
+    const { api: pluginApi, state } = api.createPluginAPI('chat-bridge', bus as never, {} as never)
+    pluginApi.registerIMConnector({
+      id: 'flaky',
+      sendReply: async () => { throw new Error('socket closed') },
+      normalizeIncoming: async () => ({ content: '', origin: {} as never }),
+    } as never)
+
+    await expect(registry.sendIMReply(
+      { connector: 'plugin:chat-bridge:flaky', conversationId: 'c1' } as never,
+      { text: 'x', sessionId: 's1', messageId: 'm1' },
+    )).rejects.toThrow('socket closed')
+
+    // 运行期证据:没有它,connector 家族就只有注册期生产者。
+    expect(failures).toEqual([{ pluginId: 'chat-bridge', connectorId: 'plugin:chat-bridge:flaky' }])
+    api.disposePlugin(state)
   })
 
   it('refuses a connector with no id instead of registering an unaddressable one', async () => {
@@ -153,6 +195,6 @@ describe('R7 IM connector — 开放一个既有注册表', () => {
 
     // 拆除之后再注册 = 往一个没人再会来清扫的表里塞东西。
     pluginApi.registerIMConnector(fakeConnector('too-late', sent) as never)
-    expect(registry.listIMConnectorIds()).not.toContain('too-late')
+    expect(registry.listIMConnectorIds()).not.toContain('plugin:chat-bridge:too-late')
   })
 })

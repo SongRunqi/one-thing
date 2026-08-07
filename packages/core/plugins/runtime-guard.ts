@@ -8,9 +8,10 @@
  * 这里只放机制(零依赖纯 TS,四个宿主共享),接线在 app 层。
  */
 
-/** 提示词装配是每次发消息的热路径,预算必须小。 */
 import { describePluginSurface, resolvePluginScopeSeverity } from './policy.js'
+import { CORE_PLUGIN_FAILURE_THRESHOLD } from './runtime-guard-constants.js'
 
+/** 提示词装配是每次发消息的热路径,预算必须小。 */
 export const CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS = 5_000
 /** 上下文压缩 / 回合结束钩子。 */
 export const CORE_PLUGIN_LIFECYCLE_HOOK_TIMEOUT_MS = 5_000
@@ -33,8 +34,8 @@ export const CORE_PLUGIN_INSTALL_TIMEOUT_MS = 120_000
  * handler 会让 renderer 的 invoke 永远 pending,登记簿条目也永久滞留。
  */
 export const CORE_PLUGIN_REQUEST_TIMEOUT_MS = 30_000
-/** 连续失败到这个数就自动禁用。 */
-export const CORE_PLUGIN_FAILURE_THRESHOLD = 3
+/** 连续失败到这个数就触发罚则(罚则由 policy.ts 的严重度表决定)。 */
+export { CORE_PLUGIN_FAILURE_THRESHOLD } from './runtime-guard-constants.js'
 
 export class CorePluginTimeoutError extends Error {
   constructor(
@@ -145,7 +146,10 @@ export class CorePluginHealthTracker {
   private readonly now: () => number
 
   constructor(private readonly options: CorePluginHealthTrackerOptions = {}) {
-    this.threshold = options.threshold ?? CORE_PLUGIN_FAILURE_THRESHOLD
+    // 显式传入的 threshold **压过表**(测试与将来的宿主调参需要它)。
+    // 上一版写成 `severity.threshold ?? this.threshold`,而表里每一条都有
+    // threshold —— 右侧永远取不到,这个构造参数成了死配置。
+    this.threshold = options.threshold ?? 0
     this.now = options.now ?? (() => Date.now())
   }
 
@@ -166,7 +170,7 @@ export class CorePluginHealthTracker {
     // 罚则来自**一张表**,不在这里写条件。阈值也归表管:注册期违规是代码错误,
     // 重试没有意义,它的阈值是 1。
     const severity = resolvePluginScopeSeverity(scope)
-    const threshold = severity.threshold ?? this.threshold
+    const threshold = this.threshold > 0 ? this.threshold : severity.threshold
     const alreadyDisabled = entry.status === 'disabled'
     const reached = !alreadyDisabled && scopeFailures >= threshold
     const degrading = severity.remedy === 'degrade-surface'
@@ -218,13 +222,34 @@ export class CorePluginHealthTracker {
   recordSuccess(pluginId: string, scope: string): void {
     const entry = this.health.get(pluginId)
     if (!entry || entry.status === 'disabled') return
-    if (!entry.scopes.get(scope)) return
 
-    // 一次成功就把界面从降级态放回来 —— 用户点了重试并且成功了,面板必须回来。
+    /*
+     * 界面恢复必须**先于**车道早退判断。
+     *
+     * surface 是聚合的(render 与 action 折成同一个 `panel:<id>`),而计数键是
+     * 完整 scope。上一版把恢复写在 `if (!entry.scopes.get(scope)) return` 之后:
+     * action 连败降级之后,render 成功那条车道计数是 undefined,直接 return ——
+     * 降级永远解不开,而面板渲染完全正常。反向同理。
+     *
+     * 语义取"这块 UI 有一次成功就算恢复":用户点了重试并且成功了,面板必须回来。
+     * 于是同 surface 的所有车道一起归零。
+     */
     if (entry.degradedSurfaces?.size) {
       const surface = describePluginSurface(scope)
-      entry.degradedSurfaces.delete(surface)
-      if (entry.degradedSurfaces.size === 0) entry.degradedSurfaces = undefined
+      if (entry.degradedSurfaces.delete(surface)) {
+        for (const lane of [...entry.scopes.keys()]) {
+          if (describePluginSurface(lane) === surface) entry.scopes.set(lane, 0)
+        }
+        if (entry.degradedSurfaces.size === 0) entry.degradedSurfaces = undefined
+      }
+    }
+
+    if (!entry.scopes.get(scope)) {
+      if ([...entry.scopes.values()].every(count => count === 0)) {
+        entry.status = entry.status === 'installing' ? 'installing' : 'healthy'
+        entry.disabledReason = undefined
+      }
+      return
     }
 
     entry.scopes.set(scope, 0)

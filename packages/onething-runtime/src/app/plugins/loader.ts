@@ -9,6 +9,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import { pluginScope } from '@onething/core/plugins'
 import { spawn } from 'child_process'
 import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/runtime/storage'
 import { pathExists } from '@onething/core/storage'
@@ -299,8 +300,8 @@ export function installPluginDeps(dirPath: string, pluginId?: string): Promise<s
     },
     onInstallEnd(_dirPath, error) {
       if (!pluginId) return
-      if (error) markPluginLoadError(pluginId, 'npm-install', error)
-      else reportPluginRuntimeSuccess(pluginId, 'npm-install')
+      if (error) markPluginLoadError(pluginId, pluginScope.install(), error)
+      else reportPluginRuntimeSuccess(pluginId, pluginScope.install())
     },
   }).finally(() => {
     inFlightInstalls.delete(dirPath)

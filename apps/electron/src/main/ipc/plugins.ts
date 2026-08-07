@@ -159,6 +159,7 @@ export function registerPluginHandlers(): void {
         action: request.action,
         payload: request.payload,
         requestId: request.requestId,
+        bypassDegraded: request.bypassDegraded,
         // 定向回送给发起这次 invoke 的窗口。走 IPCBridge 的话只投主窗单 sender:
         // 设置窗(独立 BrowserWindow,R3 插件设置 UI 的宿主)发起的请求进度会
         // 永远静默,主窗关闭时更是全丢。

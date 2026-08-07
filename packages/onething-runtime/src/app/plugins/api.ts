@@ -14,6 +14,7 @@ import { z } from 'zod'
 import { PluginStore, createPluginStorage } from './store.js'
 import { getDeclaredPanelIds } from './loader.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
+import type { PluginFailureScope } from '@onething/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
 import {
   emitPluginStatusPart,
@@ -197,10 +198,10 @@ export function createPluginAPI(
     statusRegistry: getPluginStatusRegistry(),
     scheduler: pluginScheduler,
     disposeCallbacks: schedulerDisposeCallbacks,
-    onPluginFailure({ pluginId: id, scope, error }) {
+    onPluginFailure({ pluginId: id, scope, error }: { pluginId: string; scope: PluginFailureScope; error: unknown }) {
       reportPluginRuntimeFailure(id, scope, error)
     },
-    onPluginSuccess({ pluginId: id, scope }) {
+    onPluginSuccess({ pluginId: id, scope }: { pluginId: string; scope: PluginFailureScope }) {
       reportPluginRuntimeSuccess(id, scope)
     },
     host: {
@@ -276,8 +277,10 @@ export function createPluginAPI(
        * 开放下一个注册表只需要两步 —— 在 core 的策略表里加一条(声明拆除语义
        * 与"在飞的东西怎么办"),再在这里加一行转发。
        */
-      registerIMConnector(_id, connector) {
-        return registerIMConnector(connector as IMConnector)
+      registerIMConnector(id, connector) {
+        // 带上归属:运行期投递失败要记到**这个插件**的熔断账上,
+        // 而 registry 本身不认识 pluginId。
+        return registerIMConnector(connector as IMConnector, { ownerPluginId: id })
       },
       emitPluginEvent(id, eventName, payload) {
         // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast

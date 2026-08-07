@@ -1,3 +1,4 @@
+import { pluginScope } from '@onething/core/plugins'
 import {
   clearPromptContextProvidersForPlugin as clearRuntimePromptContextProvidersForPlugin,
   collectPluginPromptContext as collectRuntimePluginPromptContext,
@@ -81,13 +82,13 @@ export async function collectPluginPromptContext(
     onProviderFailure({ pluginId, providerId, error, timedOut }) {
       reportPluginRuntimeFailure(
         pluginId,
-        `promptContext:${providerId}`,
+        pluginScope.promptContext(providerId),
         timedOut ? new Error(`timed out: ${describeError(error)}`) : error,
       )
     },
     // 成功清同 scope 的账:没有它,这条车道的连败数永远只增不减。
     onProviderSuccess({ pluginId, providerId }) {
-      reportPluginRuntimeSuccess(pluginId, `promptContext:${providerId}`)
+      reportPluginRuntimeSuccess(pluginId, pluginScope.promptContext(providerId))
     },
   }) as Promise<PluginPromptContextFragmentInput[]>
 }

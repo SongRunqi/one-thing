@@ -245,10 +245,11 @@ export class CorePluginStatusRegistry {
    * 没有它的话,合并窗会丢掉突发的**最后**一条 —— 而最后一条恰恰是最终状态
    * (R5 的 panel-refresh 犯过同一个错,这里不再犯第二次)。
    */
-  flushPending(): Array<{ sessionId: string; part: CorePluginStatusPart }> {
+  flushPending(onlySessionId?: string): Array<{ sessionId: string; part: CorePluginStatusPart }> {
     const now = this.now()
     const pending: Array<{ sessionId: string; part: CorePluginStatusPart }> = []
-    for (const session of this.bySession.values()) {
+    for (const [sessionId, session] of this.bySession) {
+      if (onlySessionId !== undefined && sessionId !== onlySessionId) continue
       for (const record of session.values()) {
         if (!record.dirty) continue
         record.dirty = false
@@ -269,10 +270,21 @@ export class CorePluginStatusRegistry {
 
   /** 是否还有被合并窗压住的变化(宿主据此决定要不要排 trailing flush)。 */
   hasPending(): boolean {
-    for (const session of this.bySession.values()) {
-      for (const record of session.values()) if (record.dirty) return true
+    return this.pendingSessionIds().length > 0
+  }
+
+  /** 哪些会话还有被压住的变化 —— 补发定时器按会话排,不能一个定时器管全部。 */
+  pendingSessionIds(): string[] {
+    const ids: string[] = []
+    for (const [sessionId, session] of this.bySession) {
+      for (const record of session.values()) {
+        if (record.dirty) {
+          ids.push(sessionId)
+          break
+        }
+      }
     }
-    return false
+    return ids
   }
 
   /** 撤下一条。返回要投递的 part;本来就不存在时返回 null(不重复发)。 */

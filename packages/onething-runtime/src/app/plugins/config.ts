@@ -5,6 +5,7 @@
  * 默认值填充、变更推送全由宿主做,**不执行一行插件代码**。直接的红利:
  * 未启用(甚至从没加载过)的插件也能在设置页配置。
  */
+import { pluginScope } from '@onething/core/plugins'
 import {
   CORE_PLUGIN_SETTINGS_HOOK_TIMEOUT_MS,
   runWithPluginTimeout,
@@ -231,10 +232,10 @@ async function deliverPluginConfigChange(pluginId: string): Promise<void> {
         CORE_PLUGIN_SETTINGS_HOOK_TIMEOUT_MS,
         () => callback(snapshot),
       )
-      reportPluginRuntimeSuccess(pluginId, 'settings:onChange')
+      reportPluginRuntimeSuccess(pluginId, pluginScope.settingsChange())
     } catch (error) {
       console.error(`[PluginConfig] onChange failed for "${pluginId}":`, error)
-      reportPluginRuntimeFailure(pluginId, 'settings:onChange', error)
+      reportPluginRuntimeFailure(pluginId, pluginScope.settingsChange(), error)
     }
   }
 }

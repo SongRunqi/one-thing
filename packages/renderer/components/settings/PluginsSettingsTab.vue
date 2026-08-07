@@ -637,24 +637,28 @@ function contributesSummary(plugin: PluginInfo): string[] {
 /** 运行期故障文案:熔断说明优先,其次最后一次失败。'' = 没有故障。 */
 function runtimeFault(plugin: PluginInfo): string {
   // 界面降级要如实说成"某个面板不可用",不能说成插件坏了 —— 插件的工具/命令/
-  // 提示词此刻完全正常,把它标成 Failed 是在撒谎。
+  // 提示词此刻完全正常。但它**不能盖掉自动禁用的原因**:那是 R1 花一整期
+  // 持久化并暴露出来的字段,被一句面板文案顶掉就等于从 UI 上消失了。
+  // 两者都在时并列显示,禁用原因排前面(它更严重)。
+  const parts: string[] = []
+  if (plugin.healthReason) {
+    if (plugin.healthStatus === 'disabled') parts.push(`Auto-disabled — ${plugin.healthReason}`)
+    else if (plugin.healthStatus === 'degraded') {
+      parts.push(`${plugin.healthFailures ?? 1} consecutive failure(s) — ${plugin.healthReason}`)
+    } else parts.push(plugin.healthReason)
+  }
   const degraded = plugin.degradedSurfaces ?? []
   if (degraded.length) {
-    const names = degraded.map(entry => entry.surface).join(', ')
-    return `${names} unavailable — ${degraded[0].reason}`
+    parts.push(`${degraded.map(entry => entry.surface).join(', ')} switched off — ${degraded[0].reason}`)
   }
-  if (!plugin.healthReason) return ''
-  if (plugin.healthStatus === 'disabled') return `Auto-disabled — ${plugin.healthReason}`
-  if (plugin.healthStatus === 'degraded') {
-    return `${plugin.healthFailures ?? 1} consecutive failure(s) — ${plugin.healthReason}`
-  }
-  return plugin.healthReason
+  return parts.join(' · ')
 }
 
 function statusOf(plugin: PluginInfo): { label: string; tone: string } {
   if (plugin.healthStatus === 'installing') return { label: 'Installing', tone: 'installing' }
   if (plugin.healthStatus === 'disabled' && plugin.healthReason) return { label: 'Failed', tone: 'error' }
   // 降级只影响一个界面 —— 卡片说 "Partly degraded",不是 Failed。
+  // (排在 disabled 判断之后:插件真被禁用时那才是主要事实。)
   if (plugin.loaded && plugin.degradedSurfaces?.length) return { label: 'Partly degraded', tone: 'warning' }
   if (plugin.error) return { label: 'Error', tone: 'error' }
   if (plugin.loaded && plugin.healthStatus === 'degraded') return { label: 'Degraded', tone: 'warning' }

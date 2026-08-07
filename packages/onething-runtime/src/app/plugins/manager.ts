@@ -32,10 +32,18 @@ import {
   writePluginConfig,
 } from './loader.js'
 import { configurePluginConfigHost, invalidatePluginConfigCache } from './config.js'
-import { configurePluginStatusHost, subscribePluginStatusSweep } from './status.js'
+import {
+  configurePluginStatusHost,
+  resetPluginStatusHostForTests,
+  subscribePluginStatusSweep,
+} from './status.js'
+import { configureIMConnectorHooks } from '../channel/connector-registry.js'
+import { pluginScope } from '@onething/core/plugins'
 import { configurePluginConfigBroadcast } from './config-access.js'
 import {
   clearPluginRuntimeHealth,
+  describePluginSurfaceDegradation,
+  isPluginSurfaceDegraded,
   configurePluginHealthHost,
   getPluginRuntimeHealth,
   reportPluginRuntimeFailure,
@@ -74,6 +82,9 @@ function createHost(): CorePluginManagerHost<
     // 少了这条线,R3/R5 的 UI 轮询一个必败 action 会无限连败而插件永远 Active。
     onRequestFailure: reportPluginRuntimeFailure,
     onRequestSuccess: reportPluginRuntimeSuccess,
+    // R7:降级闸的数据源。没有这条线,"降级"就只是一个徽章。
+    isSurfaceDegraded: isPluginSurfaceDegraded,
+    describeDegradedSurface: describePluginSurfaceDegradation,
     // ── R4:数据目录与卸载 ──
     archivePluginData: pluginId => archiveCorePluginData(getPluginDataRoot(), pluginId),
     removePluginSource: (definition) => {
@@ -189,6 +200,11 @@ export class PluginManager extends CorePluginManager<
     this.unsubscribeStatusSweep?.()
     this.unsubscribeStatusSweep = undefined
     this.eventBus = null
+    // 五条宿主线一起拆 —— 上一版只拆了清扫订阅那一条,另外四条 late-bound
+    // 端口仍指着上一次装配的闭包(dev 热重载下是可观察的悬挂引用)。
+    resetPluginStatusHostForTests()
+    configurePluginConfigBroadcast(null)
+    configureIMConnectorHooks({})
   }
 
   override shutdown(): void {
@@ -242,6 +258,15 @@ export class PluginManager extends CorePluginManager<
     // 不是事后观察者:终止事件一旦过线,renderer 会自己把 transient 扫干净,
     // 后到的 cleared 就落在一条已经收尾的消息上,宿主清扫成了空转。
     // 与引擎内部实现仍然解耦 —— 判据是总线上的事件名,不是引擎的结束路径。
+    // R7:IM 渠道的**运行期**失败进熔断账(scope `connector:<id>`)。
+    // 没有这条线,connector 家族就只有注册期生产者 —— 而"降级而非禁用"这条
+    // 拍板最需要的恰恰是一个运行期证据。
+    configureIMConnectorHooks({
+      onSendFailure: (pluginId, connectorId, error) =>
+        reportPluginRuntimeFailure(pluginId, pluginScope.connector(connectorId), error),
+      onSendSuccess: (pluginId, connectorId) =>
+        reportPluginRuntimeSuccess(pluginId, pluginScope.connector(connectorId)),
+    })
     configurePluginStatusHost({
       emitSessionEvent: (sessionId, event) => context.eventBus?.emit?.(sessionId, event),
       // 状态只在流内有意义:没有正在跑的流,那条 content:part 在 renderer 侧

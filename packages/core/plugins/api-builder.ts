@@ -9,6 +9,7 @@ import {
   type CorePluginPanelRegistration,
 } from './panel.js'
 import type { CorePluginStatusPart, CorePluginStatusRegistry } from './status.js'
+import { pluginScope, type PluginFailureScope } from './policy.js'
 import {
   assertPluginPayloadSerializable,
   normalizePluginRequestAction,
@@ -197,10 +198,13 @@ export function createCorePluginAPI<
 ): { api: TApi; state: CorePluginAPIState<TApi, TCommand> } {
   const { pluginId, store, scheduler, host } = options
   const logger = options.logger ?? console
-  const reportFailure = (scope: string, error: unknown): void => {
+  // **签名收口**:scope 是品牌类型,只能由 pluginScope.* 工厂产出。
+  // 写裸字符串在这里就编译不过 —— 这是"新增 scope 必须登记"的执行点,
+  // 正则反查只当兜底(R7 第一版只有正则,npm-install 就那样漏了过去)。
+  const reportFailure = (scope: PluginFailureScope, error: unknown): void => {
     options.onPluginFailure?.({ pluginId, scope, error })
   }
-  const reportSuccess = (scope: string): void => {
+  const reportSuccess = (scope: PluginFailureScope): void => {
     options.onPluginSuccess?.({ pluginId, scope })
   }
 
@@ -233,7 +237,7 @@ export function createCorePluginAPI<
    * writeJson 的连败,插件级混计的假阴性会在 scope 内原样复现。
    */
   const withStorageFailureReport = <T>(what: string, run: () => T): T => {
-    const scope = `storage.${what}`
+    const scope = pluginScope.storage(what)
     try {
       const result = run()
       options.onPluginSuccess?.({ pluginId, scope })
@@ -310,7 +314,7 @@ export function createCorePluginAPI<
 
     on(eventType: string, handler: TEventHandler): () => void {
       if (rejectLateCall('on')) return () => {}
-      const scope = `event:${eventType}`
+      const scope = pluginScope.event(eventType)
       const onHandlerError = (error: unknown): void => {
         logger.error(`[Plugin:${pluginId}] Event handler error (${eventType}):`, error)
         reportFailure(scope, error)
@@ -343,7 +347,7 @@ export function createCorePluginAPI<
         host.steer(pluginId, sessionId, content)
       } catch (error) {
         logger.error(`[Plugin:${pluginId}] steer error:`, error)
-        reportFailure('steer', error)
+        reportFailure(pluginScope.steer(), error)
       }
     },
 
@@ -353,7 +357,7 @@ export function createCorePluginAPI<
         host.followUp(pluginId, sessionId, content)
       } catch (error) {
         logger.error(`[Plugin:${pluginId}] followUp error:`, error)
-        reportFailure('followUp', error)
+        reportFailure(pluginScope.followUp(), error)
       }
     },
 
@@ -416,7 +420,7 @@ export function createCorePluginAPI<
           + 'namespace belongs to the host. Use registerWorkspacePanel() to contribute a panel.',
           undefined,
         )
-        reportFailure('registerRequestHandler', new Error(`reserved action "${normalized}"`))
+        reportFailure(pluginScope.registration('RequestHandler'), new Error(`reserved action "${normalized}"`))
         return
       }
       if (requestHandlers.has(normalized)) {
@@ -470,7 +474,7 @@ export function createCorePluginAPI<
           + 'Declare it in plugin.json first — the host renders the entry from the manifest.',
           undefined,
         )
-        reportFailure('registerWorkspacePanel', new Error(`undeclared panel "${panelId}"`))
+        reportFailure(pluginScope.registration('WorkspacePanel'), new Error(`undeclared panel "${panelId}"`))
         return
       }
       if (typeof registration.render !== 'function') {
@@ -485,7 +489,7 @@ export function createCorePluginAPI<
           + 'one manifest panel id binds exactly one implementation.',
           undefined,
         )
-        reportFailure('registerWorkspacePanel', new Error(`duplicate panel "${panelId}"`))
+        reportFailure(pluginScope.registration('WorkspacePanel'), new Error(`duplicate panel "${panelId}"`))
         return
       }
 
@@ -532,14 +536,14 @@ export function createCorePluginAPI<
           assertPluginPayloadSerializable(payload, `plugin event "${name}" payload`)
         } catch (error) {
           logger.error(`[Plugin:${pluginId}] events.emit rejected:`, error)
-          reportFailure(`events.emit:${name}`, error)
+          reportFailure(pluginScope.eventEmit(name), error)
           return
         }
         try {
           host.emitPluginEvent?.(pluginId, name, payload)
         } catch (error) {
           logger.error(`[Plugin:${pluginId}] events.emit failed:`, error)
-          reportFailure(`events.emit:${name}`, error)
+          reportFailure(pluginScope.eventEmit(name), error)
         }
       },
     },
@@ -630,22 +634,27 @@ export function createCorePluginAPI<
      */
     registerIMConnector(connector: { id?: unknown }): () => void {
       if (rejectLateCall('registerIMConnector')) return () => {}
-      const connectorId = String(connector?.id ?? '').trim()
-      if (!connectorId) {
+      const rawId = String(connector?.id ?? '').trim()
+      if (!rawId) {
         logger.error(`[Plugin:${pluginId}] registerIMConnector needs a connector with an id`, undefined)
-        reportFailure('connector', new Error('connector without an id'))
+        // 注册期违规是**代码错误**,与未声明的 panel id 同构 —— 归 registration
+        // 家族(阈值 1),不是运行期的 connector 家族。
+        reportFailure(pluginScope.registration('IMConnector'), new Error('connector without an id'))
         return () => {}
       }
+      // 命名空间与 registerTool 同构:插件不能占用一个全局 id,更不能顶掉别人的。
+      const connectorId = `plugin:${pluginId}:${rawId}`
       let unregister: (() => void) | undefined
       try {
-        unregister = host.registerIMConnector?.(pluginId, connector)
+        unregister = host.registerIMConnector?.(pluginId, { ...connector, id: connectorId })
       } catch (error) {
         logger.error(`[Plugin:${pluginId}] registerIMConnector("${connectorId}") failed:`, error)
-        reportFailure('connector', error)
+        reportFailure(pluginScope.registration('IMConnector'), error)
         return () => {}
       }
       if (!unregister) {
-        // 宿主没接这条线(headless / server):安静地什么也不做,而不是假装成功。
+        // 宿主没接这条线(headless / server / CLI daemon —— §6 方案 A 下只有
+        // 桌面宿主执行插件)。如实告诉插件它被忽略了,而不是假装成功。
         logger.log(`[Plugin:${pluginId}] IM connectors are not available on this host; "${connectorId}" was ignored`)
         return () => {}
       }

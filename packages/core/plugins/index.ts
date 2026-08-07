@@ -95,16 +95,22 @@ export {
 export { deepFreezeCorePluginValue } from './freeze.js'
 export {
   PLUGIN_DEFERRED_REGISTRIES,
+  PLUGIN_DEFERRED_REGISTRY_IDS,
   PLUGIN_OPEN_REGISTRIES,
   PLUGIN_REGISTRY_POLICY,
   PLUGIN_SCOPE_FAMILIES,
   PLUGIN_SEVERITY_TABLE,
+  asPluginFailureScope,
   classifyPluginScope,
   describePluginSurface,
+  pluginScope,
   resolvePluginScopeSeverity,
 } from './policy.js'
 export type {
+  PluginDeferredRegistry,
+  PluginDeferredRegistryId,
   PluginFailureRemedy,
+  PluginFailureScope,
   PluginOpenRegistry,
   PluginRegistryPolicy,
   PluginRegistryTeardown,

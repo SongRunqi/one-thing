@@ -22,6 +22,7 @@ import {
   MAX_PANEL_DEPTH,
   createCorePluginAPI,
   describeNonSerializable,
+  describePluginSurface,
   disposeCorePluginState,
   validatePluginPanelTree,
   type CorePluginDefinition,
@@ -52,7 +53,10 @@ function silentLogger() {
  * 最小宿主 —— 与 app 层同构,但用真的 `createCorePluginAPI` 造 api,
  * 因为 `registerWorkspacePanel` 的清单校验与通道登记恰恰活在那里面。
  */
-function createManager(definitions: TestDefinition[]) {
+function createManager(
+  definitions: TestDefinition[],
+  hostOverrides: Partial<CorePluginManagerHost<TestDefinition, TestEntry, TestAPI, TestState, TestCommand, { ready: true }>> = {},
+) {
   const errors: string[] = []
   const failures: Array<{ pluginId: string; scope: string }> = []
   const refreshes: Array<{ pluginId: string; panelId: string }> = []
@@ -87,6 +91,7 @@ function createManager(definitions: TestDefinition[]) {
       disposeCorePluginState(state as any)
     },
     setPluginEnabled() {},
+    ...hostOverrides,
   }
 
   const manager = new CorePluginManager<TestAPI, TestEntry, TestCommand, TestState, TestDefinition, { ready: true }>(
@@ -197,7 +202,7 @@ describe('R5 declarative panels — manifest declares, code binds', () => {
 
     expect(manager.getRequestActions('logs')).toEqual([])
     expect(errors.join('\n')).toContain('does not match any panel declared in contributes.panels')
-    expect(failures).toEqual([{ pluginId: 'logs', scope: 'registerWorkspacePanel' }])
+    expect(failures).toEqual([{ pluginId: 'logs', scope: 'register:WorkspacePanel' }])
   })
 
   it('surfaces a render failure as a failed request instead of taking the shell down', async () => {
@@ -308,7 +313,7 @@ describe('R5 declarative panels — manifest declares, code binds', () => {
     await manager.initialize({ ready: true })
 
     expect(errors.join('\n')).toContain('the "panel:" action namespace belongs to the host')
-    expect(failures).toContainEqual({ pluginId: 'logs', scope: 'registerRequestHandler' })
+    expect(failures).toContainEqual({ pluginId: 'logs', scope: 'register:RequestHandler' })
 
     const result = await manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` })
     expect(result).toMatchObject({ success: true })
@@ -325,7 +330,7 @@ describe('R5 declarative panels — manifest declares, code binds', () => {
     await manager.initialize({ ready: true })
 
     expect(errors.join('\n')).toContain('was already registered')
-    expect(failures).toContainEqual({ pluginId: 'logs', scope: 'registerWorkspacePanel' })
+    expect(failures).toContainEqual({ pluginId: 'logs', scope: 'register:WorkspacePanel' })
     const result = await manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` })
     expect(JSON.stringify((result as { result: unknown }).result)).toContain('first')
   })
@@ -378,6 +383,93 @@ describe('R5 declarative panels — manifest declares, code binds', () => {
 
     await expect(manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` }))
       .resolves.toMatchObject({ success: false })
+  })
+})
+
+describe('R7 degradation gate — 降级必须有牙齿', () => {
+  it('short-circuits the channel once a surface is degraded, and says why', async () => {
+    /*
+     * **这是"降级"这个罚则的全部牙齿。**
+     *
+     * 没有短路的话,把 request:* 从 disable-plugin 改成 degrade-surface 的净效果
+     * 就是取消了这个命名空间的熔断:必败的面板 action 照常一次次进插件、一次次
+     * 跑满 30s 预算,用户只看到一个徽章。§5.2 第 1 条把请求通道纳入熔断账的理由
+     * 正是"UI 轮询必败 action 会无限连败"。
+     */
+    let calls = 0
+    const degradedSurfaces = new Set<string>()
+    const { manager } = createManager([
+      definition('logs', api => {
+        api.registerWorkspacePanel({
+          id: 'main',
+          render: () => { calls += 1; throw new Error('always broken') },
+        })
+      }, [{ id: 'main', label: 'Logs' }]),
+    ], {
+      isSurfaceDegraded: (_pluginId: string, surface: string) => degradedSurfaces.has(surface),
+      describeDegradedSurface: () => '3 consecutive failures',
+      onRequestFailure: (_pluginId: string, scope: string) => {
+        // 模拟熔断账:第三次失败把 surface 标红。
+        if (calls >= 3) degradedSurfaces.add(describePluginSurface(scope))
+      },
+    })
+    await manager.initialize({ ready: true })
+
+    const render = () => manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` })
+    for (let i = 0; i < 3; i += 1) await render()
+    expect(calls).toBe(3)
+
+    // 第四次:插件**根本没被调用**。
+    const blocked = await render()
+    expect(calls).toBe(3)
+    expect(blocked).toMatchObject({ success: false, degraded: true, surface: 'panel:main' })
+    expect((blocked as { error: string }).error).toContain('3 consecutive failures')
+  })
+
+  it('lets an explicit user retry through the gate exactly once', async () => {
+    let calls = 0
+    const { manager } = createManager([
+      definition('logs', api => {
+        api.registerWorkspacePanel({ id: 'main', render: () => { calls += 1; return simpleTree('back') } })
+      }, [{ id: 'main', label: 'Logs' }]),
+    ], {
+      isSurfaceDegraded: () => true,
+      describeDegradedSurface: () => 'broken',
+    })
+    await manager.initialize({ ready: true })
+
+    // 普通调用被挡。
+    await expect(manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` }))
+      .resolves.toMatchObject({ degraded: true })
+    expect(calls).toBe(0)
+
+    // 用户点"Try once more":放行**这一次**。成功之后 recordSuccess 会把界面放回来
+    // (那一段在 CorePluginHealthTracker 的用例里钉着)。
+    const retried = await manager.handleRequest({
+      pluginId: 'logs',
+      action: `${PLUGIN_PANEL_RENDER_ACTION}:main`,
+      bypassDegraded: true,
+    })
+    expect(retried).toMatchObject({ success: true })
+    expect(calls).toBe(1)
+  })
+
+  it('leaves a healthy surface of the same plugin untouched', async () => {
+    const { manager } = createManager([
+      definition('notes', api => {
+        api.registerWorkspacePanel({ id: 'inbox', render: () => simpleTree('inbox') })
+        api.registerWorkspacePanel({ id: 'archive', render: () => simpleTree('archive') })
+      }, [{ id: 'inbox', label: 'Inbox' }, { id: 'archive', label: 'Archive' }]),
+    ], {
+      isSurfaceDegraded: (_pluginId: string, surface: string) => surface === 'panel:inbox',
+    })
+    await manager.initialize({ ready: true })
+
+    await expect(manager.handleRequest({ pluginId: 'notes', action: `${PLUGIN_PANEL_RENDER_ACTION}:inbox` }))
+      .resolves.toMatchObject({ degraded: true })
+    // 同一个插件的另一个面板照常 —— 降级的粒度是界面,不是插件。
+    await expect(manager.handleRequest({ pluginId: 'notes', action: `${PLUGIN_PANEL_RENDER_ACTION}:archive` }))
+      .resolves.toMatchObject({ success: true })
   })
 })
 

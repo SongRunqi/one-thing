@@ -3,13 +3,68 @@
  *
  * 一张管"运行期失败该罚多重",一张管"注册表被拆掉时正在用它的东西怎么办"。
  * 它们放在一起,是因为它们犯的是同一种错:**判据一旦撒在各个上报点上,就必然
- * 漂移**。这条战役里同一个病已经出现过四次(熔断计数按插件还是按 scope、
- * transient 的两类、终止事件名单、白名单的补集写法),每一次的修法都是同一句话:
- * 把判据收进一张表,并让"漏登记"在编译期或测试里变红。
+ * 漂移**。这条战役里同一个病出现过五次(熔断计数按插件还是按 scope、transient
+ * 的两类、终止事件名单、白名单的补集写法、以及 R7 自己第一版的 scope 反查守卫),
+ * 每一次的修法都是同一句话:把判据收进一张表,并让"漏登记"变红。
  *
- * 所以两张表都用 `Record<联合, 规则>`:往联合里加一个成员而不给规则,typecheck
- * 当场失败;而"有没有漏掉一种真实存在的 scope"由测试用真实字符串反查。
+ * **"变红"必须靠类型,不能只靠正则。** R7 第一版用正则反查源码里的 scope 字面量,
+ * 结果它只认两种写法 × 五个硬编码文件,`npm-install` 这个真实 scope 就从缝里
+ * 漏了过去,而断言 `literals.size > 5` 永远是绿的 —— 一条自己失效了却看不出来的
+ * 守卫。现在 scope 是**带品牌的类型**,只能由下面的工厂产出:写裸字符串在
+ * typecheck 就红,正则只当兜底。
  */
+import { PLUGIN_PANEL_INVOKE_ACTION, PLUGIN_PANEL_RENDER_ACTION } from './panel.js'
+import { CORE_PLUGIN_FAILURE_THRESHOLD } from './runtime-guard-constants.js'
+
+// ── scope 的类型化构造 ──────────────────────────
+
+declare const PLUGIN_SCOPE_BRAND: unique symbol
+
+/**
+ * 失败车道的地址。
+ *
+ * 品牌类型:只能由 `pluginScope.*` 工厂产出。任何裸字符串传进上报口都会在
+ * typecheck 失败 —— 这就是"新增 scope 必须在表里有条目"的执行点。
+ */
+export type PluginFailureScope = string & { readonly [PLUGIN_SCOPE_BRAND]: true }
+
+const brand = (value: string): PluginFailureScope => value as PluginFailureScope
+
+/**
+ * 全部合法 scope 的构造口。
+ *
+ * 加一种失败面 = 在这里加一个工厂 + 在 `classifyPluginScope` 里归族 + 在
+ * `PLUGIN_SEVERITY_TABLE` 里给规则。少任何一步,要么 typecheck 红,要么
+ * "每个工厂的产出都能归族"那条测试红。
+ */
+export const pluginScope = {
+  promptContext: (providerId: string) => brand(`promptContext:${providerId}`),
+  beforeContextCompact: (hookId: string) => brand(`beforeContextCompact:${hookId}`),
+  afterAssistantResponse: (hookId: string) => brand(`afterAssistantResponse:${hookId}`),
+  /** 生命周期钩子的通用入口(宿主已有 scope 前缀时用它)。 */
+  lifecycleHook: (scope: string, hookId: string) => brand(`${scope}:${hookId}`),
+  event: (eventType: string) => brand(`event:${eventType}`),
+  eventEmit: (eventName: string) => brand(`events.emit:${eventName}`),
+  /** 插件自有请求通道。面板请求请用 panelRender / panelAction。 */
+  request: (action: string) => brand(`request:${action}`),
+  panelRender: (panelId: string) => brand(`request:${PLUGIN_PANEL_RENDER_ACTION}:${panelId}`),
+  panelAction: (panelId: string) => brand(`request:${PLUGIN_PANEL_INVOKE_ACTION}:${panelId}`),
+  storage: (operation: string) => brand(`storage.${operation}`),
+  settingsChange: () => brand('settings:onChange'),
+  steer: () => brand('steer'),
+  followUp: () => brand('followUp'),
+  /** 注册期违规:未声明的面板 id、抢占保留命名空间、连接器没有 id …… */
+  registration: (what: string) => brand(`register:${what}`),
+  /** 某条 IM 渠道的运行期失败。带 connector id —— 用户要知道是哪条渠道坏了。 */
+  connector: (connectorId: string) => brand(`connector:${connectorId}`),
+  /** 依赖安装。 */
+  install: () => brand('npm-install'),
+} as const
+
+/** 把一个已知合法的 scope 字符串重新贴牌(仅限宿主转发既有 scope 时使用)。 */
+export function asPluginFailureScope(scope: string): PluginFailureScope {
+  return brand(scope)
+}
 
 // ── 表一:失败严重度 ────────────────────────────
 
@@ -18,10 +73,26 @@
  *
  * - `disable-plugin`:整体禁用。用于**每轮都跑**的东西 —— 它坏了会拖垮全应用,
  *   禁用是较小的伤害。
- * - `degrade-surface`:只标记出问题的那一个界面不可用,插件的工具/命令/提示词/
+ * - `degrade-surface`:只把出问题的那一个界面停掉,插件的工具/命令/提示词/
  *   定时任务照常。用于**用户主动触发**的东西。
+ *
+ * `degrade-surface` **不是"少罚一点"**:被降级的界面会在请求通道上被短路,
+ * 后续调用直接返回带原因的错误,不再进插件。少了这一步,降级等于取消熔断
+ * (R7 第一版就是这样 —— 必败的面板 action 照常一次次跑满 30s 预算)。
  */
 export type PluginFailureRemedy = 'disable-plugin' | 'degrade-surface'
+
+/**
+ * **持久化上的语义分叉(有意为之,记录在案)。**
+ *
+ * `disable-plugin` 的结果会落盘(enabled:false + 原因),重启后仍然生效 ——
+ * 因为它改的是用户可见的启停开关,不落盘就成了"一个用户没关过、又没有任何解释
+ * 的关闭"。
+ *
+ * `degrade-surface` **不落盘**:它是一次运行期的自我保护,重启等于一次全新的
+ * 尝试机会。一个因为网络抖动降级的面板不该在重启后仍然是灰的,而"重启试试"
+ * 恰恰是用户遇到界面异常时的第一反应 —— 让它有效比让它一致更重要。
+ */
 
 export interface PluginSeverityRule {
   threshold: number
@@ -31,9 +102,12 @@ export interface PluginSeverityRule {
 }
 
 /**
- * scope 家族 —— 每一个都必须在下面的表里有条目。
+ * scope 家族 —— 每一个都必须在下面的表里有条目,并且**必须有真实生产者**。
  *
  * 加一个家族而忘了加规则 = typecheck 失败(Record 少键)。
+ * 加一个没有生产者的家族 = "表里停放死规则"那条测试失败 —— R7 第一版的 `entry`
+ * 家族就是这样一条死规则(加载失败全写进 CorePluginInfo.error,从不进熔断账),
+ * 而最能证明"降级而非禁用"这条拍板的 `connector` 家族当时也是死的。
  */
 export const PLUGIN_SCOPE_FAMILIES = [
   'prompt-context',
@@ -47,95 +121,103 @@ export const PLUGIN_SCOPE_FAMILIES = [
   'conversation-control',
   'registration',
   'connector',
-  'entry',
+  'install',
 ] as const
 
 export type PluginScopeFamily = (typeof PLUGIN_SCOPE_FAMILIES)[number]
 
-const DEFAULT_THRESHOLD = 3
-
+/**
+ * 默认阈值。
+ *
+ * 与 `CORE_PLUGIN_FAILURE_THRESHOLD` 是同一个数字 —— 后者是 R1 立的常量,这里
+ * 引它而不是再写一份(R7 第一版写了第二份,于是 tracker 的 `threshold` 选项被
+ * 表静默架空成了死配置)。
+ */
 export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule> = {
   // ── 每轮都跑的:坏了拖垮全应用,禁用是较小的伤害 ──
   'prompt-context': {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'disable-plugin',
     rationale: '每次发消息都跑;坏了每一轮对话都受影响,而用户看不到任何错误态。',
   },
   'lifecycle-hook': {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'disable-plugin',
     rationale: 'beforeContextCompact / afterAssistantResponse 每轮都跑,同上。',
   },
   'event-handler': {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'disable-plugin',
     rationale: '事件订阅是高频后台路径,失败完全不可见 —— 熔断存在的原始理由。',
   },
   'event-emit': {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'disable-plugin',
     rationale: '同上;而且发不出去的自定义事件会让别的插件静默失联。',
   },
   storage: {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'disable-plugin',
     rationale: '写不进盘的插件继续跑只会积累更多不一致;停下来比带病运行安全。',
   },
   'settings-change': {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'disable-plugin',
     rationale: '配置推送失败意味着插件在用一份过期配置工作,而没人会发现。',
   },
   'conversation-control': {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'disable-plugin',
     rationale: 'steer / followUp 直接改对话走向,失败是后台的,用户只会觉得"它没反应"。',
   },
   registration: {
     threshold: 1,
     remedy: 'disable-plugin',
-    rationale: '注册期违规(未声明的面板 id、抢占保留命名空间)是**代码错误**,'
-      + '不是运行期抖动,重试没有意义 —— 阈值 1,第一次就算数。',
+    rationale: '注册期违规(未声明的面板 id、抢占保留命名空间、连接器没有 id)是'
+      + '**代码错误**,不是运行期抖动,重试没有意义 —— 阈值 1,第一次就算数。',
   },
-  entry: {
+  install: {
     threshold: 1,
     remedy: 'disable-plugin',
-    rationale: '入口都没跑起来,后面注册的一切都无从谈起;继续重试只会一遍遍'
-      + '重放同一个加载错误。',
+    rationale: '依赖装不上,插件的代码根本跑不起来;重试由安装流程自己负责,'
+      + '熔断这里只需记一次账。',
   },
 
   // ── 用户主动触发的:失败当场可见,不该连坐 ──
   'ui-request': {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'degrade-surface',
     rationale: '面板动作是用户刚点下、当场看到错误态与重试按钮的 —— "运行期失败'
       + '不可见"这个前提不成立。面板只在打开时跑,失败自限于一个界面,'
-      + '不该连坐掉插件的工具/命令/提示词/定时任务。',
+      + '不该连坐掉插件的工具/命令/提示词/定时任务。降级后该面板的请求被通道短路,'
+      + '不再一次次跑满超时预算。',
   },
   'plugin-request': {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'degrade-surface',
-    rationale: '插件自有请求同样是用户触发形态(UI 发起、当场看到结果),'
-      + '与面板同族。',
+    rationale: '插件自有请求同样是用户触发形态(UI 发起、当场看到结果),与面板同族;'
+      + '同样在通道上被短路,所以不存在"取消了熔断"的问题。',
   },
   connector: {
-    threshold: DEFAULT_THRESHOLD,
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'degrade-surface',
-    rationale: 'IM 连接器坏掉只影响那条渠道;桌面端的会话与工具照常可用,'
-      + '整体禁用会把一个渠道故障放大成插件故障。',
+    rationale: '一条 IM 渠道坏掉只影响那条渠道;桌面端的会话与工具照常可用,'
+      + '整体禁用会把渠道故障放大成插件故障。surface 带 connector id,'
+      + '插件注册了多条渠道时用户能看出是哪一条。',
   },
 }
 
 /**
  * scope 字符串 → 家族。
  *
- * 顺序重要:`request:panel:*` 必须排在 `request:*` 前面,否则面板请求会被归进
- * 普通请求家族。返回 null 表示"这个 scope 不在任何家族里" —— 那是登记漏了,
- * 由测试用真实字符串反查兜住。
+ * 顺序重要:`request:panel:*` 必须排在 `request:*` 前面。返回 null 表示"这个
+ * scope 不在任何家族里" —— 品牌类型已经让裸字符串进不来,这里的 null 只可能
+ * 出现在工厂加了却忘了归族的情况,由测试逐个工厂产出反查。
  */
 export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (!scope) return null
-  if (scope.startsWith('request:panel:')) return 'ui-request'
+  if (scope.startsWith(`request:${PLUGIN_PANEL_RENDER_ACTION}:`)) return 'ui-request'
+  if (scope.startsWith(`request:${PLUGIN_PANEL_INVOKE_ACTION}:`)) return 'ui-request'
   if (scope.startsWith('request:')) return 'plugin-request'
   if (scope.startsWith('promptContext')) return 'prompt-context'
   if (scope.startsWith('beforeContextCompact') || scope.startsWith('afterAssistantResponse')) return 'lifecycle-hook'
@@ -146,26 +228,26 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (scope === 'steer' || scope === 'followUp') return 'conversation-control'
   if (scope.startsWith('register')) return 'registration'
   if (scope.startsWith('connector')) return 'connector'
-  if (scope === 'entry' || scope === 'install') return 'entry'
+  if (scope === 'npm-install') return 'install'
   return null
 }
 
 export interface ResolvedPluginSeverity extends PluginSeverityRule {
   family: PluginScopeFamily | null
   /**
-   * 降级时要标记哪一个界面。
+   * 降级时要停掉哪一个界面。
    *
-   * 对面板是 `panel:<panelId>`,对普通请求是 `request:<action>` —— 用户能据此
-   * 认出"是这一处坏了",而不是"这个插件坏了"。
+   * 对面板是 `panel:<panelId>`(render 与 action 折成同一个界面 —— 它们本来就是
+   * 一块 UI),对普通请求是 `request:<action>`,对渠道是 `connector:<id>`。
    */
   surface?: string
 }
 
 /** 未登记的 scope 一律按最保守处理(整体禁用)—— 与 R0–R6 的既有行为一致。 */
 const UNCLASSIFIED_RULE: PluginSeverityRule = {
-  threshold: DEFAULT_THRESHOLD,
+  threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
   remedy: 'disable-plugin',
-  rationale: '未登记的 scope:按既有行为整体禁用。登记漏了由测试反查兜住。',
+  rationale: '未登记的 scope:按既有行为整体禁用。品牌类型让它几乎不可能出现。',
 }
 
 export function resolvePluginScopeSeverity(scope: string): ResolvedPluginSeverity {
@@ -175,10 +257,16 @@ export function resolvePluginScopeSeverity(scope: string): ResolvedPluginSeverit
   return { family, ...rule, surface: describePluginSurface(scope) }
 }
 
-/** 从 scope 里截出"是哪一个界面坏了"。 */
+/**
+ * 从 scope 里截出"是哪一个界面坏了"。
+ *
+ * render 与 action 折成同一个 `panel:<id>` —— 它们是同一块 UI,分开降级会出现
+ * "画得出来但点不动"这种没人能理解的状态。**代价是恢复必须按 surface 聚合**
+ * (见 CorePluginHealthTracker:action 降级后 render 成功也要能解除),
+ * 否则会单向卡死。
+ */
 export function describePluginSurface(scope: string): string {
-  // request:panel:render:logs / request:panel:action:logs → panel:logs
-  const panel = /^request:panel:(?:render|action):(.+)$/.exec(scope)
+  const panel = new RegExp(`^request:(?:${PLUGIN_PANEL_RENDER_ACTION}|${PLUGIN_PANEL_INVOKE_ACTION}):(.+)$`).exec(scope)
   if (panel) return `panel:${panel[1]}`
   if (scope.startsWith('request:')) return scope
   if (scope.startsWith('connector')) return scope
@@ -190,11 +278,14 @@ export function describePluginSurface(scope: string): string {
 /**
  * 一个注册表被插件占用着、而插件被停用时,正在用它的东西怎么办。
  *
- * - `reject-disable`:拒绝停用。用于**停用即数据损坏**的注册表(有活跃依赖且
- *   没有安全的回退)。代价是用户会被一个插件卡住,所以要求非常高。
- * - `degrade-to-default`:优雅撤下,调用方回落宿主默认行为。
- * - `fail-open`:直接撤下,后续调用报错由调用方自理。用于调用方本来就必须处理
- *   "不存在"的注册表。
+ * - `reject-disable`:拒绝停用。用于**停用即数据损坏**的注册表。
+ * - `degrade-to-default`:优雅撤下,调用方**回落宿主默认行为**(调用仍然成功)。
+ * - `fail-open`:直接撤下,后续调用报错由调用方自理。
+ *
+ * 标签必须与实现一致 —— 测试会拿它反过来验行为(声明 degrade-to-default 的,
+ * teardown 之后调用必须 resolve 到默认路径而不是 reject)。R7 第一版把
+ * im-connector 标成 degrade-to-default 而实现是 throw,而当时的测试只断言
+ * "理由字符串长度 > 20",标签与行为完全没有绑定。
  */
 export type PluginRegistryTeardown = 'reject-disable' | 'degrade-to-default' | 'fail-open'
 
@@ -204,13 +295,28 @@ export interface PluginRegistryPolicy {
   inFlight: string
   /** 只在跑插件的宿主生效造成的行为分叉(§6 方案 A)。 */
   hostDivergence: string
+  /**
+   * 当前是否有**真实生产流量**流经它。
+   *
+   * 试点期为 false 时必须在这里说清楚 —— 否则文档与报告读起来会像它已经在工作,
+   * 而实际上只有契约被验证过。
+   */
+  hasProductionTraffic: boolean
+  /** 生产流量的现状说明。 */
+  trafficNote: string
 }
 
 /**
  * 已经对插件开放的注册表。
  *
- * **纪律:一次只开一个。** 原方案就定下这条,R7 继续守 —— 每开一个都要先回答
- * "停用时正在用它的东西怎么办",而那个答案只有在真正接线时才知道靠不靠谱。
+ * **纪律:一次只开一个。**
+ *
+ * 开放下一个要动的地方(如实列举,不是"两步"):
+ *  1. 本表加一条(声明拆除语义、在飞语义、宿主分叉、是否有真实流量);
+ *  2. `CorePluginAPI` 加方法 + `CorePluginAPIHost` 加转发口;
+ *  3. api-builder 里实现(disposed 闩 + 退订进 disposeCallbacks + 失败进熔断账);
+ *  4. app 层 host 对象加转发,必要时给注册表补 ownerPluginId 归属;
+ *  5. 拆除快照测试加一行,并确认 C17 那条"转发口 ↔ 开放清单"守卫仍然绿。
  */
 export const PLUGIN_OPEN_REGISTRIES = ['im-connector'] as const
 
@@ -218,31 +324,78 @@ export type PluginOpenRegistry = (typeof PLUGIN_OPEN_REGISTRIES)[number]
 
 export const PLUGIN_REGISTRY_POLICY: Record<PluginOpenRegistry, PluginRegistryPolicy> = {
   'im-connector': {
-    teardown: 'degrade-to-default',
+    // 实事求是:实现就是 fail-open —— sendIMReply 找不到 connector 直接抛,
+    // 调用方(OutboundReplyDispatcher)catch 并记 failed。没有"宿主默认渠道"
+    // 这种东西,把它标成 degrade-to-default 是在描述一个不存在的回退。
+    teardown: 'fail-open',
     inFlight: '停用时退订函数被调用,连接器从注册表摘除;此后 sendIMReply 对该 '
-      + 'connector id 抛一个说得清的错误,而不是静默丢消息。已有会话不受影响 —— '
-      + '它们的历史与状态都在会话存储里,与连接器无关。',
+      + 'connector id 抛一个说得清的错误(而不是静默丢消息),由调用方记为投递失败。'
+      + '已有会话不受影响 —— 它们的历史与状态都在会话存储里,与连接器无关。',
     hostDivergence: '仅桌面宿主执行插件(§6 方案 A):server 端镜像里插件注册的连接器'
       + '不存在,经该渠道的回复会落到"未注册"错误。',
+    hasProductionTraffic: false,
+    trafficNote: '**当前无生产流量**:没有内置插件注册连接器,入站 normalizeIncoming '
+      + '尚未接线(gateway 走自己的通路,OutboundReplyDispatcher 的 imOrigin 判定'
+      + '把 gateway 来源排除在外)。试点验证的是**契约与拆除语义**,不是投递链路。'
+      + '把 gateway 出站改走本注册表是下一步,不在 R7 范围内。',
   },
+}
+
+export interface PluginDeferredRegistry {
+  reason: string
+  /** 卡在什么东西上(有明确前置条件时填)。 */
+  blockedBy?: string
+  /** 什么时候值得重新考虑。 */
+  revisitWhen: string
+  /** 相关代码位置或文档锚点。 */
+  ref: string
 }
 
 /**
  * **明确不开**的注册表与理由。
  *
- * 写进代码而不只是文档:下一个人想开哪一个,第一站会撞见这里的理由,
- * 而不是从零重新论证一遍。
+ * 键从 `PLUGIN_DEFERRED_REGISTRY_IDS` 派生,拼错 key 会 typecheck 红 ——
+ * 上一版是无类型的 `Record<string, string>`,拼错了谁也不知道。
  */
-export const PLUGIN_DEFERRED_REGISTRIES: Record<string, string> = {
-  'ai-provider': '会话正在用一个 provider 时把它抽走,语义最复杂(在飞请求、'
-    + '历史重建、模型能力协商都要有答案)。等到有真实需求再设计,不为对称性而开。',
-  'variable-provider': 'VariableRegistry 至今没有 unregister —— 要先补上退订面。'
-    + '(原方案建议拿它当第一个试点,恰好选反了:它是五个里唯一拆不掉的。)',
-  'permission-capability': 'registerCapability 形状上可开,但它直接扩张安全面,'
-    + '与 H 线的硬隔离一起设计才说得清 —— 在插件还与宿主同进程时开放它,'
-    + '等于让插件自己定义自己的权限边界。',
-  'post-trigger': '触发器每轮都跑,属于 disable-plugin 那一族;开放前要先有'
-    + '"一个坏触发器不拖垮整条回合"的证据。',
-  'background-job': '与调度器职责重叠(api.scheduler 已经能表达绝大多数需求),'
-    + '先看有没有 scheduler 表达不了的真实用例。',
+export const PLUGIN_DEFERRED_REGISTRY_IDS = [
+  'ai-provider',
+  'variable-provider',
+  'permission-capability',
+  'post-trigger',
+  'background-job',
+] as const
+
+export type PluginDeferredRegistryId = (typeof PLUGIN_DEFERRED_REGISTRY_IDS)[number]
+
+export const PLUGIN_DEFERRED_REGISTRIES: Record<PluginDeferredRegistryId, PluginDeferredRegistry> = {
+  'ai-provider': {
+    reason: '会话正在用一个 provider 时把它抽走,语义最复杂:在飞请求、历史重建、'
+      + '模型能力协商都要有答案,而这三件事没有一件是局部的。',
+    revisitWhen: '有插件真的需要提供模型接入,而不是为了对称性而开。',
+    ref: 'runtime/src/providers/',
+  },
+  'variable-provider': {
+    reason: 'VariableRegistry 至今没有 unregister —— 开放它等于开放一个拆不掉的'
+      + '注册表。(原方案建议拿它当第一个试点,恰好选反了:它是五个里唯一拆不掉的。)',
+    blockedBy: 'VariableRegistry.unregister 尚不存在',
+    revisitWhen: '补上退订面之后。',
+    ref: 'runtime/src/variables/registry.ts',
+  },
+  'permission-capability': {
+    reason: 'registerCapability 形状上可开,但它直接扩张安全面。插件还与宿主同进程时'
+      + '开放它,等于让插件自己定义自己的权限边界。',
+    blockedBy: 'H 线硬隔离(子进程 ext host)',
+    revisitWhen: '与 H 线一起设计。',
+    ref: 'core/permission/capability-registry.ts',
+  },
+  'post-trigger': {
+    reason: '触发器每轮都跑,属 disable-plugin 那一族;一个坏触发器会拖垮整条回合。',
+    revisitWhen: '有"一个坏触发器不拖垮整条回合"的证据之后。',
+    ref: 'core/engine/triggers.ts',
+  },
+  'background-job': {
+    reason: '与调度器职责重叠 —— api.scheduler 已经能表达绝大多数需求。',
+    revisitWhen: '出现 scheduler 表达不了的真实用例。',
+    ref: 'runtime/src/scheduler/',
+  },
 }

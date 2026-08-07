@@ -29,7 +29,22 @@ export type CorePluginRequestHandler = (
 
 export type CorePluginRequestResult =
   | { success: true; requestId: string; result: unknown }
-  | { success: false; requestId: string; error: string; aborted?: boolean; timedOut?: boolean }
+  | {
+    success: false
+    requestId: string
+    error: string
+    aborted?: boolean
+    timedOut?: boolean
+    /**
+     * 这一次是被**降级短路**掉的,插件根本没有被调用(R7)。
+     *
+     * UI 据此渲染专门的降级态(而不是又一个普通错误 + Retry):
+     * 连败达阈之后再点一次没有意义,除非用户明确说"再试一次"。
+     */
+    degraded?: boolean
+    /** 被降级的界面,例如 `panel:logs`。 */
+    surface?: string
+  }
 
 export interface CorePluginRequestInput {
   pluginId: string
@@ -45,6 +60,13 @@ export interface CorePluginRequestInput {
   requestId?: string
   /** 进度上报的出口(宿主决定投到哪条通道)。 */
   onProgress?(input: { requestId: string; pluginId: string; action: string; payload: unknown }): void
+  /**
+   * 绕过降级闸放行**一次**(R7)。
+   *
+   * 只有用户在降级态上明确点"再试一次"时才为真 —— 自动重试、轮询、刷新都不带
+   * 它,否则降级就白降了。这一次若成功,recordSuccess 会把界面放回来。
+   */
+  bypassDegraded?: boolean
 }
 
 export const PLUGIN_REQUEST_ABORTED_ERROR = 'Plugin request aborted'

@@ -24,9 +24,27 @@
       <span>Loading…</span>
     </div>
 
-    <!-- 软隔离的呈现面:render 超时/抛错时面板显示错误态,外壳不崩。
-         连败达阈之后(R7)错误里会带上"这个面板已被降级"的说明 —— 但插件的
-         工具/命令/提示词仍在工作,所以这里说的是**面板**不可用,不是插件坏了。 -->
+    <!-- 降级态(R7):连败达阈之后请求被通道**短路**,插件不再被调用。
+         这与普通错误是两回事,所以给它专门的一态 —— 普通错误的 Retry 是"再试
+         一次同一件事",而这里再点一次会被闸挡掉,必须显式说"绕过一次"。
+         措辞只说**面板**不可用:插件的工具/命令/提示词此刻完全正常。 -->
+    <SettingsEmptyState
+      v-else-if="degraded"
+      :title="`${panel.label} is switched off after repeated failures`"
+      :description="degradedReason || `${panel.pluginName} kept failing here, so this panel stopped calling it. Everything else in the plugin still works.`"
+    >
+      <template #actions>
+        <Button
+          unstyled
+          class="panel-retry"
+          @click="render({ bypassDegraded: true })"
+        >
+          Try once more
+        </Button>
+      </template>
+    </SettingsEmptyState>
+
+    <!-- 软隔离的呈现面:render 超时/抛错时面板显示错误态,外壳不崩。 -->
     <ErrorNote
       v-else-if="error"
       variant="block"
@@ -69,6 +87,9 @@ const props = defineProps<{ panel: PluginWorkspacePanel }>()
 
 const tree = ref<PluginPanelTreeData | null>(null)
 const error = ref('')
+/** 这个面板已被降级闸关掉(R7)。与普通错误分开呈现。 */
+const degraded = ref(false)
+const degradedReason = ref('')
 const loading = ref(false)
 
 const isDesktop = platformApi.environment !== 'web'
@@ -94,7 +115,7 @@ const REFRESH_DEBOUNCE_MS = 150
  * 于是它们**免费**拿到 30s 预算、abort、以及 `request:<action>` 的熔断账 ——
  * 这里刻意不另起一套超时:两套超时语义迟早会打架。
  */
-async function render(): Promise<void> {
+async function render(options: { bypassDegraded?: boolean } = {}): Promise<void> {
   if (!isDesktop || !props.panel.loaded) return
   const token = ++renderToken
   loading.value = true
@@ -103,11 +124,21 @@ async function render(): Promise<void> {
     const result = await platformApi.pluginRequest({
       pluginId: props.panel.pluginId,
       action: `panel:render:${props.panel.panelId}`,
+      // 只有用户点"Try once more"才带 —— 自动重拉、通知触发的刷新都不带,
+      // 否则降级闸形同虚设。
+      ...(options.bypassDegraded ? { bypassDegraded: true } : {}),
     })
     // 期间又发过一次(或已经切走了):这次的结果作废。
     if (token !== renderToken) return
     if (result?.success) {
       tree.value = result.result as PluginPanelTreeData
+      degraded.value = false
+      degradedReason.value = ''
+    } else if (result?.degraded) {
+      // 被闸短路:插件根本没被调用。
+      degraded.value = true
+      degradedReason.value = result.error || ''
+      tree.value = null
     } else {
       error.value = result?.error || 'The plugin could not render this panel.'
     }
@@ -133,6 +164,13 @@ async function invoke(input: { actionId: string; payload?: unknown }): Promise<v
       payload: input,
     })
     if (!result?.success) {
+      if (result?.degraded) {
+        // 动作也被闸挡住了 —— 让面板整体进降级态,而不是弹一个每次都一样的 toast。
+        degraded.value = true
+        degradedReason.value = result.error || ''
+        tree.value = null
+        return
+      }
       toast.error(result?.error || 'The plugin could not handle that action.')
       return
     }
@@ -191,6 +229,8 @@ onErrorCaptured((e: unknown) => {
 watch(() => `${props.panel.pluginId}:${props.panel.panelId}`, () => {
   tree.value = null
   error.value = ''
+  degraded.value = false
+  degradedReason.value = ''
   void render()
 })
 </script>

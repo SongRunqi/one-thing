@@ -17,6 +17,13 @@ export interface PluginRequestPayload {
 	 * 同毫秒并发会撞号。真正生效的 id 随结果回传。
 	 */
 	requestId?: string;
+	/**
+	 * 绕过降级闸放行**一次**(R7)。
+	 *
+	 * 只有用户在降级态上明确点"再试一次"时才为真 —— 自动重试、轮询、刷新都不带它,
+	 * 否则降级就白降了。
+	 */
+	bypassDegraded?: boolean;
 }
 
 export interface PluginRequestResult {
@@ -29,6 +36,15 @@ export interface PluginRequestResult {
 	aborted?: boolean;
 	/** 超出请求预算。 */
 	timedOut?: boolean;
+	/**
+	 * 被**降级短路**掉的:插件根本没有被调用(R7)。
+	 *
+	 * UI 据此渲染专门的降级态,而不是又一个普通错误 + Retry —— 连败达阈之后
+	 * 再点一次没有意义,除非用户明确说"再试一次"(那一次带 bypassDegraded)。
+	 */
+	degraded?: boolean;
+	/** 被降级的界面,例如 `panel:logs`。 */
+	surface?: string;
 }
 
 export interface PluginRequestProgressPayload {

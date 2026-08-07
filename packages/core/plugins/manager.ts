@@ -1,5 +1,6 @@
 import type { CorePluginDefinition } from './types.js'
 import { describePluginPanelResultProblem } from './panel.js'
+import { describePluginSurface, pluginScope } from './policy.js'
 import {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
   CORE_PLUGIN_INSTALL_TIMEOUT_MS,
@@ -76,6 +77,13 @@ export interface CorePluginManagerHost<
    */
   onRequestFailure?(pluginId: string, scope: string, error: unknown): void
   onRequestSuccess?(pluginId: string, scope: string): void
+  /**
+   * 某个界面是否处于降级态(R7)。宿主接健康账本;core 不持有它。
+   * 不接这条线的宿主(headless / 测试替身)一律放行。
+   */
+  isSurfaceDegraded?(pluginId: string, surface: string): boolean
+  /** 降级原因,给用户看的一句话。 */
+  describeDegradedSurface?(pluginId: string, surface: string): string | undefined
   // ── R4:数据目录与卸载生命周期 ──
   /** 归档插件数据目录(移进 legacy-backup)。返回失败原因而不是抛。 */
   archivePluginData?(pluginId: string): { archived: boolean; archivePath?: string; error?: string }
@@ -216,7 +224,7 @@ export class CorePluginManager<
     // requestId 由 core 统一生成(带单调序列号)。宿主预生成的 `Date.now()` 在
     // 同毫秒并发下会撞号,而撞号意味着两个请求共用一个 AbortController 地址。
     const requestId = input.requestId || this.requests.nextRequestId(input.pluginId)
-    const scope = `request:${action}`
+    const scope = pluginScope.request(action)
 
     const fail = (error: string, extra: { aborted?: boolean; timedOut?: boolean } = {}): CorePluginRequestResult => ({
       success: false,
@@ -236,6 +244,28 @@ export class CorePluginManager<
     const handler = state.requestHandlers?.get(action)
     if (!handler) {
       return fail(`Plugin "${input.pluginId}" has no request handler for action "${action}"`)
+    }
+
+    /*
+     * 降级闸(R7)。**这一步是"降级"这个罚则的全部牙齿。**
+     *
+     * 没有它的话,把 request:* 从 disable-plugin 改成 degrade-surface 的净效果
+     * 就是**取消了这个命名空间的熔断**:一个必败的面板 action 照常一次次进插件、
+     * 一次次跑满 30s 预算,而用户只看到一个徽章。§5.2 第 1 条把请求通道纳入
+     * 熔断账的理由正是"UI 轮询必败 action 会无限连败",不能在这里丢掉。
+     */
+    const surface = describePluginSurface(action.startsWith('request:') ? action : `request:${action}`)
+    if (!input.bypassDegraded && this.host.isSurfaceDegraded?.(input.pluginId, surface)) {
+      const reason = this.host.describeDegradedSurface?.(input.pluginId, surface)
+      return {
+        success: false,
+        requestId,
+        error: reason
+          ? `"${surface}" is disabled after repeated failures: ${reason}`
+          : `"${surface}" is disabled after repeated failures.`,
+        degraded: true,
+        surface,
+      }
     }
 
     try {

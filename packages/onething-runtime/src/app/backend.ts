@@ -244,6 +244,21 @@ export async function createOnethingBackend(
         await ACPManager.shutdown()
         await MCPManager.shutdown()
       }
+      /*
+       * 插件系统必须在 **shutdownEventSystem 之前**拆。
+       *
+       * 插件 dispose 会往总线上发 cleared(R6 的状态清扫)、发 catalog-changed;
+       * 总线先关的话那些事件发进一个已经没人听的地方,而账本里留着记录。
+       * 这行此前一直是缺的 —— `CorePluginManager.shutdown` 与
+       * `PluginManager.shutdown` 生产代码零调用者,R6 尾巴清理只是把那句
+       * 不兑现的契约往上挪了一层。
+       */
+      try {
+        const plugins = await import('./plugins/manager.js')
+        plugins.getPluginManager()?.shutdown()
+      } catch (error) {
+        console.error('[Backend] plugin manager shutdown error:', error)
+      }
       killTrackedDetachedChildren()
       // No-op unless a host actually created terminals. NOTE: the Electron
       // host quits through its beforeQuit cleanup table, not this shutdown —

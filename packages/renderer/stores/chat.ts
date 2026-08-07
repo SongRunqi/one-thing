@@ -1325,6 +1325,12 @@ export const useChatStore = defineStore("chat", () => {
 				chunk.type === "content_part" &&
 				chunk.contentPart?.type === "plugin-status"
 			) {
+				if (import.meta.env?.DEV) {
+					console.debug(
+						"[Chat Store] Dropped an out-of-stream plugin status",
+						{ sessionId, part: chunk.contentPart },
+					);
+				}
 				return;
 			}
 			queuePendingStreamChunk(sessionId, "", chunk);

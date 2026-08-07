@@ -248,6 +248,8 @@ export interface OnethingPluginRequestForIpcOptions<
   action: string
   payload?: unknown
   requestId?: string
+  /** R7:绕过降级闸放行一次(仅用户显式重试)。 */
+  bypassDegraded?: boolean
   onProgress?: CorePluginRequestInput['onProgress']
 }
 
@@ -276,6 +278,8 @@ export async function handleOnethingPluginRequestForIpc<
       action: options.action,
       payload: options.payload,
       requestId: options.requestId,
+      // R7:用户在降级态上明确点了"再试一次"才透传。
+      bypassDegraded: options.bypassDegraded,
       onProgress: options.onProgress,
     })
   } catch (error) {

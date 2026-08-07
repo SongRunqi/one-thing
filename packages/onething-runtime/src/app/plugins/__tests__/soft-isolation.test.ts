@@ -6,6 +6,7 @@
  *   2. 一个挂起的 promptContextProvider 不阻塞消息发送路径(提示词装配超时后返回);
  *   3. 连续失败的插件被自动禁用,且状态可查。
  */
+import { pluginScope } from '@onething/core/plugins'
 import { describe, expect, it, vi } from 'vitest'
 import {
   CORE_PLUGIN_FAILURE_THRESHOLD,
@@ -440,7 +441,7 @@ describe('R1 soft isolation — app wiring', () => {
     })
 
     for (let i = 0; i < CORE_PLUGIN_FAILURE_THRESHOLD; i += 1) {
-      health.reportPluginRuntimeFailure('flaky', 'promptContext:notes', new Error('boom'))
+      health.reportPluginRuntimeFailure('flaky', pluginScope.promptContext('notes'), new Error('boom'))
     }
     await vi.waitFor(() => expect(disabled).toEqual(['flaky']))
 
@@ -523,7 +524,7 @@ describe('R1 soft isolation — app wiring', () => {
     expect(manager.getPlugins()[0]).toMatchObject({ loaded: true, commands: ['/flaky'] })
 
     for (let i = 0; i < CORE_PLUGIN_FAILURE_THRESHOLD; i += 1) {
-      health.reportPluginRuntimeFailure('flaky', 'promptContext:notes', new Error('provider hung'))
+      health.reportPluginRuntimeFailure('flaky', pluginScope.promptContext('notes'), new Error('provider hung'))
     }
     await vi.waitFor(() => expect(settings.enabled?.flaky).toBe(false))
 
