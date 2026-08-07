@@ -1324,6 +1324,8 @@ onUnmounted(() => {
 .app-shell {
   --app-sidebar-transition-duration: var(--duration-slow);
   --app-sidebar-transition-ease: var(--ease-default);
+  /* 区域之间的接缝线。窗口边框不归任何人画 —— 交给系统投影收口。 */
+  --app-seam-line: color-mix(in srgb, var(--ui-border-subtle-border) 52%, transparent);
 
   height: 100%;
   width: 100%;
@@ -1356,6 +1358,22 @@ onUnmounted(() => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+/*
+ * 接缝归邻居画,而不是归中间的聊天面板画。
+ *
+ * 左栏 region 只在 sidebarDockedVisible 时才进 DOM,右栏 region 收起时挂
+ * is-collapsed(宽度 0)—— 两者都做到了"邻居不在,线就不在",所以线永远落在
+ * 两块内容之间,绝不会跑到窗口边上去跟系统投影叠成一条粗边。
+ * 全局 box-sizing: border-box,这 1px 不会把面板挤宽。
+ */
+.app-shell :deep(.app-left-sidebar-region) {
+  border-right: 1px solid var(--app-seam-line);
+}
+
+.app-shell :deep(.app-right-sidebar-region:not(.is-collapsed)) {
+  border-left: 1px solid var(--app-seam-line);
 }
 
 .app-shell :deep(.app-shell-main-region),

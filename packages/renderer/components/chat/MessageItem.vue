@@ -193,7 +193,6 @@
           :reasoning="topReasoning"
           :thinking-start-time="message.thinkingStartTime"
           :thinking-time="message.thinkingTime"
-          :loading-memory="isLoadingMemory"
           @update-thinking-time="handleUpdateThinkingTime"
         />
 
@@ -586,12 +585,6 @@ const showLegacyStepsPanel = computed(() =>
   !props.message.contentParts?.some(p => p.type === 'data-steps')
 )
 
-// Check if message is loading memory (has loading-memory contentPart)
-const isLoadingMemory = computed(() => {
-  if (!props.message.contentParts) return false
-  return props.message.contentParts.some(part => part.type === 'loading-memory')
-})
-
 // Engine-injected goal continuation prompts persist as user messages so
 // history rebuilds replay them; the UI renders them as a hairline tick.
 const isGoalInjected = computed(
@@ -878,7 +871,6 @@ const messageHasContent = computed(() => {
   // (否则 waiting 指示器会被顶掉,用户看到插件在忙却看不到"在等模型")。
   return props.message.contentParts?.some(part =>
     part.type !== 'waiting' &&
-    part.type !== 'loading-memory' &&
     part.type !== 'image-loading' &&
     part.type !== 'plugin-status'
   ) ?? false

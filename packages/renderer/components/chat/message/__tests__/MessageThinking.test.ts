@@ -47,24 +47,6 @@ describe('MessageThinking', () => {
     wrapper.unmount()
   })
 
-  it('shows memory retrieval status before content starts', () => {
-    const wrapper = mount(MessageThinking, {
-      props: {
-        isStreaming: true,
-        hasContent: false,
-        reasoning: '',
-        loadingMemory: true,
-      },
-    })
-
-    expect(wrapper.text()).toContain('Extracting memory')
-    expect(wrapper.text()).not.toContain('Waiting')
-    expect(wrapper.find('.thinking-panel').classes()).toContain('collapse-panel')
-    expect(wrapper.find('.collapse-panel-content').exists()).toBe(false)
-
-    wrapper.unmount()
-  })
-
   it('does not persist waiting time as thinking time', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(0)

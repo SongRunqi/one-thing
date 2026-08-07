@@ -7,7 +7,6 @@ import {
   popTrailingTransient,
   pushDataStepsIfMissing,
   pushImageLoading,
-  pushLoadingMemory,
   pushWaiting,
   removeTransientIndicators,
   upsertToolCall,
@@ -34,12 +33,6 @@ describe('content-parts helpers', () => {
       expect(parts).toEqual([{ type: 'text', content: 'hi' }])
     })
 
-    it('removes trailing loading-memory', () => {
-      const parts: ContentPart[] = [{ type: 'loading-memory' }]
-      popTrailingTransient(parts)
-      expect(parts).toEqual([])
-    })
-
     it('removes trailing image-loading', () => {
       const parts: ContentPart[] = [{ type: 'image-loading', label: 'Generating image' }]
       popTrailingTransient(parts)
@@ -60,12 +53,11 @@ describe('content-parts helpers', () => {
   })
 
   describe('removeTransientIndicators', () => {
-    it('removes all waiting, loading-memory, and image-loading parts', () => {
+    it('removes all waiting and image-loading parts', () => {
       const parts: ContentPart[] = [
         { type: 'text', content: 'a' },
         { type: 'waiting' },
         { type: 'data-steps', turnIndex: 1 },
-        { type: 'loading-memory' },
         { type: 'image-loading', turnIndex: 2 },
         { type: 'waiting' },
       ]
@@ -370,32 +362,6 @@ describe('content-parts helpers', () => {
         { type: 'data-steps', turnIndex: 1 },
         { type: 'waiting', turnIndex: 2 },
       ])
-    })
-
-    it('replaces loading-memory with waiting when recall finishes', () => {
-      const parts: ContentPart[] = [{ type: 'loading-memory' }]
-      pushWaiting(parts)
-      expect(parts).toEqual([{ type: 'waiting' }])
-    })
-  })
-
-  describe('pushLoadingMemory', () => {
-    it('appends a loading-memory part', () => {
-      const parts: ContentPart[] = []
-      pushLoadingMemory(parts)
-      expect(parts).toEqual([{ type: 'loading-memory' }])
-    })
-
-    it('does not append duplicate adjacent loading-memory parts', () => {
-      const parts: ContentPart[] = [{ type: 'loading-memory' }]
-      pushLoadingMemory(parts)
-      expect(parts).toEqual([{ type: 'loading-memory' }])
-    })
-
-    it('replaces trailing waiting with loading-memory', () => {
-      const parts: ContentPart[] = [{ type: 'waiting' }]
-      pushLoadingMemory(parts)
-      expect(parts).toEqual([{ type: 'loading-memory' }])
     })
   })
 

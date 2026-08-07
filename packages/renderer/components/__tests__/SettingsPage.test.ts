@@ -73,7 +73,6 @@ function mountSettingsPage() {
         SkillsSettingsPanel: { template: '<div class="stub-skills">skills tab</div>' },
         PromptsSettingsPanel: { template: '<div class="stub-prompts">prompts tab</div>' },
         PluginsSettingsTab: { template: '<div class="stub-plugins">plugins tab</div>' },
-        MemorySettingsTab: { template: '<div class="stub-memory">memory tab</div>' },
         UsageSettingsPanel: { template: '<div class="stub-usage">usage tab</div>' },
         CustomProviderDialog: { template: '<div />' },
       },
@@ -121,12 +120,6 @@ describe('SettingsPage shell', () => {
 
     expect(wrapper.find('.content-header h1').text()).toBe('Prompts')
     expect(wrapper.find('.stub-prompts').exists()).toBe(true)
-
-    await wrapper.find('[data-index="memory"]').trigger('click')
-    await settle()
-
-    expect(wrapper.find('.content-header h1').text()).toBe('Memory')
-    expect(wrapper.find('.stub-memory').exists()).toBe(true)
 
     await wrapper.find('[data-index="usage"]').trigger('click')
     await settle()

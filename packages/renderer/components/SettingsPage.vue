@@ -211,12 +211,6 @@
               @update:settings="handleSettingsUpdate"
             />
 
-            <MemorySettingsTab
-              v-else-if="activeTab === 'memory'"
-              :settings="localSettings"
-              @update:settings="handleSettingsUpdate"
-            />
-
             <ShortcutsSettingsTab
               v-else-if="activeTab === 'shortcuts'"
               :settings="localSettings"
@@ -278,7 +272,6 @@ import SubMenu from '@/components/common/SubMenu.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import {
   Boxes,
-  Brain,
   ChartColumn,
   Code2,
   MessageCircle,
@@ -315,7 +308,6 @@ import { MCPSettingsPanel } from './settings/mcp'
 import { SkillsSettingsPanel } from './settings/skills'
 import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
 import PromptsSettingsPanel from './settings/PromptsSettingsPanel.vue'
-import MemorySettingsTab from './settings/MemorySettingsTab.vue'
 import UsageSettingsPanel from './settings/UsageSettingsPanel.vue'
 import EvalsSettingsTab from './settings/evals/EvalsSettingsTab.vue'
 
@@ -416,14 +408,6 @@ const navItems = [
     icon: MessageCircle,
     sections: ['Channels', 'Profiles', 'Sessions'],
     keywords: 'wechat telegram gateway login',
-  },
-  {
-    id: 'memory',
-    label: 'Memory',
-    hint: 'Memory capture, review, and diagnostics',
-    icon: Brain,
-    sections: ['Basics', 'Capture', 'Review', 'Diagnostics'],
-    keywords: 'recall daily notes soul memory',
   },
   {
     id: 'shortcuts',
@@ -1829,7 +1813,7 @@ onUnmounted(() => {
 }
 
 /* Segmented controls drawn once here so tabs without local styles
-   (e.g. Memory's directory mode) still get a visible active state. */
+   still get a visible active state. */
 :deep(.segmented-control) {
   display: inline-flex;
   border: 1px solid var(--settings-rule);

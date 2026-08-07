@@ -434,16 +434,18 @@ defineExpose({
   overflow: hidden;
 }
 
+/*
+ * 这两块和 ChatWindow 一样铺满内容区、四边贴死窗口边,所以它们的 border /
+ * radius / 投影画的其实是"窗口边框",不是卡片:圆角撞上窗口的直角、外投影被
+ * 祖先 overflow:hidden 裁掉、border 又和系统投影叠成一条粗边(而且 84% 比
+ * ChatWindow 那条 52% 更深,空状态下窗口边看着比聊天里还重)。
+ * 卡片语义在这里没有立足点 —— 只留底色,窗口边交给系统投影收口。
+ */
 /* Full page container for CreateAgent, etc. */
 .full-page-container {
   flex: 1;
   display: flex;
   background: var(--ui-surface-chat-bg);
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 84%, transparent);
-  border-radius: 10px;
-  box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg) 5%, transparent);
   overflow: hidden;
 }
 
@@ -454,11 +456,6 @@ defineExpose({
   align-items: center;
   justify-content: center;
   background: var(--ui-surface-chat-bg);
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 84%, transparent);
-  border-radius: 10px;
-  box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg) 5%, transparent);
   position: relative;
   -webkit-app-region: drag;
   overflow: hidden;

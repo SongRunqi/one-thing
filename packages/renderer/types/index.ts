@@ -254,19 +254,6 @@ import type {
 	PluginCommandInfo,
 	GetPluginCommandsResponse,
 	ExecutePluginCommandResponse,
-	MemoryAppendRequest,
-	MemoryAppendResponse,
-	MemoryCaptureDecisionRequest,
-	MemoryCaptureDecisionResponse,
-	MemoryOverviewResponse,
-	MemoryLogsCleanupResponse,
-	MemoryLogsListRequest,
-	MemoryLogsListResponse,
-	MemoryLogsStatsResponse,
-	MemoryReadRequest,
-	MemoryReadResponse,
-	MemorySaveFileRequest,
-	MemorySaveFileResponse,
 	AbortPluginRequestResult,
 	PluginNotificationPayload,
 	PluginRequestPayload,
@@ -610,19 +597,6 @@ export type {
 	PluginCommandInfo,
 	GetPluginCommandsResponse,
 	ExecutePluginCommandResponse,
-	MemoryAppendRequest,
-	MemoryAppendResponse,
-	MemoryCaptureDecisionRequest,
-	MemoryCaptureDecisionResponse,
-	MemoryOverviewResponse,
-	MemoryLogsCleanupResponse,
-	MemoryLogsListRequest,
-	MemoryLogsListResponse,
-	MemoryLogsStatsResponse,
-	MemoryReadRequest,
-	MemoryReadResponse,
-	MemorySaveFileRequest,
-	MemorySaveFileResponse,
 	AbortPluginRequestResult,
 	PluginNotificationPayload,
 	PluginRequestPayload,
@@ -2042,25 +2016,6 @@ export interface ElectronAPI {
 		sessionId: string,
 	) => Promise<ExecutePluginCommandResponse>;
 
-	// Soul / Memory panel
-	getMemoryOverview: (agentId?: string) => Promise<MemoryOverviewResponse>;
-	readMemoryFile: (request: MemoryReadRequest) => Promise<MemoryReadResponse>;
-	appendMemory: (request: MemoryAppendRequest) => Promise<MemoryAppendResponse>;
-	saveMemoryFile: (
-		request: MemorySaveFileRequest,
-	) => Promise<MemorySaveFileResponse>;
-	listMemoryLogs: (
-		request?: MemoryLogsListRequest,
-	) => Promise<MemoryLogsListResponse>;
-	getMemoryLogStats: () => Promise<MemoryLogsStatsResponse>;
-	openMemoryLogFolder: () => Promise<{ success: boolean; error?: string }>;
-	cleanupMemoryLogs: () => Promise<MemoryLogsCleanupResponse>;
-	saveMemoryCapture: (
-		request?: MemoryCaptureDecisionRequest,
-	) => Promise<MemoryCaptureDecisionResponse>;
-	discardMemoryCapture: (
-		request?: MemoryCaptureDecisionRequest,
-	) => Promise<MemoryCaptureDecisionResponse>;
 	listSchedulerTasks: () => Promise<SchedulerListResponse>;
 	getSchedulerTask: (
 		request: SchedulerGetRequest,

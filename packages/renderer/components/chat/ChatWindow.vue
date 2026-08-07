@@ -2,9 +2,8 @@
   <BorderBox
     as="main"
     class="chat"
-    border-style="solid"
+    border-style="hidden"
     radius-value="0"
-    :border-color="chatBorderColor"
     background="var(--chat-surface)"
     :shadow-value="chatPanelShadowValue"
   >
@@ -148,7 +147,16 @@ const props = withDefaults(defineProps<Props>(), {
   panelFocused: true,
 })
 
-const chatBorderColor = 'color-mix(in srgb, var(--ui-border-subtle-border) 52%, transparent)'
+/*
+ * 面板不画边框。`.chat` 铺满内容区,它的上/下两边永远就是窗口边,左/右在没有
+ * 邻居时也是窗口边 —— 于是这一圈 border 实际充当了"窗口边框",而窗口边框本该
+ * 由系统投影收口。实测(DPR2,亮度值)顶边:
+ *   侧栏上方  234 227 205 [163] │ 248        ← 只有投影渐变,干净
+ *   聊天上方  234 227 205 [163] │ 239 237 │ 255  ← 投影 + 这条 border,宽出 1 CSS px
+ * 暗-亮-白三段被眼睛读成一条 ~2.5 CSS px 的粗边,而侧栏那侧没有,整圈还不对称。
+ * 接缝改由"只在邻居存在时才存在"的元素来画(App.vue 的左右两个 region、分屏的
+ * splitter 墨线),边框就不会跑到窗口边上去。
+ */
 const chatPanelShadowFallback = [
   '0 10px 28px rgba(0, 0, 0, 0.11)',
   '0 1px 5px rgba(0, 0, 0, 0.055)',

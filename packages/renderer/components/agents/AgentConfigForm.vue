@@ -912,8 +912,9 @@ defineExpose({ saving })
    hairline and the caret. This is the footprint `.agent-ledger .ledger-select`
    used to give them — a NEW class on purpose: reusing `.ledger-select` would
    hand the component root that rule's `appearance/border/padding` paint too,
-   and at (0,2,0) it would win over the component's own (0,1,0). The old class
-   stays in styles/agent-space.css for MemorySettingsTab, which still uses it. */
+   and at (0,2,0) it would win over the component's own (0,1,0). The old
+   `.agent-ledger .ledger-select` rules were removed with soul-memory (2026-08-06),
+   which was their last consumer. */
 .ledger-select-field {
   flex: 1;
   min-width: 0;

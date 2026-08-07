@@ -1313,22 +1313,6 @@ const webApi = {
 	openImageGallery: (mediaId: string) =>
 		postJson("/api/media/gallery/open", { mediaId }),
 
-	getMemoryOverview: (agentId?: string) =>
-		postJson("/api/memory/overview", agentId ? { agentId } : {}),
-	readMemoryFile: (request: unknown) => postJson("/api/memory/read", request),
-	appendMemory: (request: unknown) => postJson("/api/memory/append", request),
-	saveMemoryFile: (request: unknown) =>
-		postJson("/api/memory/save-file", request),
-	listMemoryLogs: (request?: unknown) =>
-		postJson("/api/memory/logs/list", request ?? {}),
-	getMemoryLogStats: () => postJson("/api/memory/logs/stats", {}),
-	openMemoryLogFolder: () => postJson("/api/memory/logs/open-folder", {}),
-	cleanupMemoryLogs: () => postJson("/api/memory/logs/cleanup", {}),
-	saveMemoryCapture: (request?: unknown) =>
-		postJson("/api/memory/capture/save", request ?? {}),
-	discardMemoryCapture: (request?: unknown) =>
-		postJson("/api/memory/capture/discard", request ?? {}),
-
 	getSessionsList: () => requestJson("/api/sessions"),
 	// 会话列表一律元数据(与 Electron IPC GET_SESSIONS 行为一致);消息经
 	// activate/分页接口按会话加载,不存在全量含消息的列表请求。

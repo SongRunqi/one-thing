@@ -23,20 +23,7 @@
               mode="out-in"
             >
               <div
-                v-if="loadingMemory && isStreaming && !hasContent && !reasoning"
-                key="loading-memory"
-                class="thinking-status-row status-live"
-              >
-                <span
-                  class="thinking-dot"
-                  aria-hidden="true"
-                />
-                <span class="thinking-text flowing">Extracting memory</span>
-                <span class="thinking-time">{{ formatThinkingTime(waitingElapsed) }}</span>
-              </div>
-
-              <div
-                v-else-if="isStreaming && !hasContent && !reasoning"
+                v-if="isStreaming && !hasContent && !reasoning"
                 key="waiting"
                 class="thinking-status-row status-live"
               >
@@ -120,7 +107,6 @@ interface Props {
   reasoning?: string
   thinkingStartTime?: number
   thinkingTime?: number
-  loadingMemory?: boolean
 }
 
 const props = defineProps<Props>()
@@ -163,10 +149,9 @@ watch(
 const useLiveMarkdown = computed(() => props.isStreaming || hasBeenStreaming.value)
 
 const shouldShowStatus = computed(() => {
-  const showLoadingMemory = props.loadingMemory && props.isStreaming && !props.hasContent && !props.reasoning
   const showWaiting = props.isStreaming && !props.hasContent && !props.reasoning
   const showReasoning = !!props.reasoning
-  return showLoadingMemory || showWaiting || showReasoning
+  return showWaiting || showReasoning
 })
 
 const isWaitingLive = computed(() => props.isStreaming && !props.hasContent && !props.reasoning)

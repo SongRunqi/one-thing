@@ -398,16 +398,8 @@ describe('App container layout', () => {
     expect(todoProgress).toContain('flex: 1 1 auto;')
   })
 
-  it('lets workspace loading states fill memory and media panels', () => {
+  it('lets workspace loading states fill the media panel', () => {
     const mediaPanel = readRendererFile('components/MediaPanel.vue')
-    const memoryPanel = readRendererFile('components/memory/MemoryPanelContent.vue')
-
-    expect(memoryPanel).toContain('type="grid"')
-    expect(memoryPanel).toContain('.memory-page-shell :deep(.page-shell-body) {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  overflow: hidden;')
-    expect(memoryPanel).toContain('flex: 1 1 auto;\n  width: 100%;\n  height: 100%;')
-    expect(memoryPanel).toContain('class="ledger-note loading-note"')
-    expect(memoryPanel).toContain('.ledger-note {')
-    expect(memoryPanel).not.toContain('LoadingSpinner')
 
     expect(mediaPanel).toContain('.media-panel {\n  width: 560px;\n  height: 100%;\n  min-height: 0;\n  min-width: 0;')
     expect(mediaPanel).toContain('.media-panel.mode-main {\n  flex: 1 1 auto;\n  width: auto;\n  height: 100%;')

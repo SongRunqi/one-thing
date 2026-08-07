@@ -35,7 +35,6 @@ import {
 	popTrailingTransient,
 	pushImageLoading,
 	pushDataStepsIfMissing,
-	pushLoadingMemory,
 	pushWaiting,
 	removeTransientIndicators,
 	upsertToolCall,
@@ -439,10 +438,7 @@ export const useChatStore = defineStore("chat", () => {
 				.find(
 					(m) =>
 						m.role === "assistant" &&
-						m.contentParts?.some(
-							(part) =>
-								part.type === "waiting" || part.type === "loading-memory",
-						),
+						m.contentParts?.some((part) => part.type === "waiting"),
 				)
 		);
 	}
@@ -1478,9 +1474,6 @@ export const useChatStore = defineStore("chat", () => {
 				}
 			} else if (newPart.type === "image-loading") {
 				pushImageLoading(parts, newPart.turnIndex, newPart.label);
-				message.contentParts = [...parts];
-			} else if (newPart.type === "loading-memory") {
-				pushLoadingMemory(parts);
 				message.contentParts = [...parts];
 			} else if (newPart.type === "waiting") {
 				if (hasActiveToolWork(message, newPart.turnIndex)) {

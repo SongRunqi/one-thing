@@ -338,7 +338,7 @@ const otherPartEntries = computed(() => {
   const entries: { part: ContentPart; key: string }[] = []
 
   parts.forEach((p, sourceIndex) => {
-    if (p.type === 'loading-memory' || p.type === 'provider-data') {
+    if (p.type === 'provider-data') {
       return
     }
     // 已撤下的插件状态留在数组里(保持 append-only,见 applyPluginStatus),

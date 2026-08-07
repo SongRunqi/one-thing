@@ -14,7 +14,7 @@ type TurnTextPart = Extract<ContentPart, { type: 'text' | 'reasoning' }>
 // 判据直接用 shared 契约那一份 —— 这里曾经是一份**手抄镜像**,而 shared 那份
 // 当时零消费者,于是"两份必须同改"的守卫其实是在给死代码对账。现在只有一份。
 
-/** Pop the trailing placeholder indicator (waiting / loading-memory) if any. */
+/** Pop the trailing placeholder indicator (waiting / image-loading) if any. */
 export function popTrailingTransient(parts: ContentPart[]): void {
   const last = parts[parts.length - 1]
   // **只弹占位型**。流内型(plugin-status)要活到流结束:插件还在干活时,
@@ -203,14 +203,6 @@ export function applyPluginStatus(
   // waiting 指示器,而两者说的是不同的事(等模型 vs 插件在忙)。
   parts.push({ type: 'plugin-status', pluginId: status.pluginId, id: status.id, label: status.label })
   return true
-}
-
-/** Push a memory-loading indicator before the main provider request starts. */
-export function pushLoadingMemory(parts: ContentPart[]): void {
-  const last = parts[parts.length - 1]
-  if (last?.type === 'loading-memory') return
-  popTrailingTransient(parts)
-  parts.push({ type: 'loading-memory' })
 }
 
 /** Push an image-generation skeleton, avoiding duplicate adjacent skeletons. */

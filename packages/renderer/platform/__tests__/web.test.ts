@@ -1112,59 +1112,6 @@ describe('createWebPlatformApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/tools/background-jobs?includeInactive=true', expect.any(Object))
   })
 
-  it('maps memory platform methods to server REST endpoints', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url === '/api/capabilities') {
-        return new Response(JSON.stringify({}), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
-      return new Response(JSON.stringify({ success: true, url }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    vi.stubGlobal('navigator', {})
-
-    const { createWebPlatformApi } = await import('../web.js')
-    const api = createWebPlatformApi()
-
-    await expect(api.getMemoryOverview('agent-1')).resolves.toEqual({ success: true, url: '/api/memory/overview' })
-    await expect(api.readMemoryFile({ path: 'MEMORY.md' })).resolves.toEqual({ success: true, url: '/api/memory/read' })
-    await expect(api.appendMemory({ content: 'remember this', heading: 'Notes' })).resolves.toEqual({ success: true, url: '/api/memory/append' })
-    await expect(api.saveMemoryFile({ path: 'MEMORY.md', content: '# Memory' })).resolves.toEqual({ success: true, url: '/api/memory/save-file' })
-    await expect(api.listMemoryLogs({ subsystem: 'ipc' } as any)).resolves.toEqual({ success: true, url: '/api/memory/logs/list' })
-    await expect(api.getMemoryLogStats()).resolves.toEqual({ success: true, url: '/api/memory/logs/stats' })
-    await expect(api.openMemoryLogFolder()).resolves.toEqual({ success: true, url: '/api/memory/logs/open-folder' })
-    await expect(api.cleanupMemoryLogs()).resolves.toEqual({ success: true, url: '/api/memory/logs/cleanup' })
-    await expect(api.saveMemoryCapture({ id: 'capture-1' })).resolves.toEqual({ success: true, url: '/api/memory/capture/save' })
-    await expect(api.discardMemoryCapture({ id: 'capture-2' })).resolves.toEqual({ success: true, url: '/api/memory/capture/discard' })
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/memory/overview', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ agentId: 'agent-1' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/memory/save-file', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ path: 'MEMORY.md', content: '# Memory' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/memory/logs/list', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ subsystem: 'ipc' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/memory/capture/save', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ id: 'capture-1' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/memory/capture/discard', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ id: 'capture-2' }),
-    }))
-  })
-
   it('maps permission platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -1521,7 +1468,7 @@ describe('createWebPlatformApi', () => {
       success: true,
       url: '/api/plugins',
     })
-    await expect(api.enablePlugin('soul-memory')).resolves.toEqual({
+    await expect(api.enablePlugin('note-skills')).resolves.toEqual({
       success: true,
       url: '/api/plugins/enable',
     })
@@ -1880,7 +1827,7 @@ describe('createWebPlatformApi', () => {
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/enable', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ pluginId: 'soul-memory' }),
+      body: JSON.stringify({ pluginId: 'note-skills' }),
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/disable', expect.objectContaining({
       method: 'POST',
