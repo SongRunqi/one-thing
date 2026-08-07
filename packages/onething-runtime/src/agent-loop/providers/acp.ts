@@ -237,6 +237,8 @@ function createACPToolCallTracker(turn: number) {
 export function createACPAgentProvider(options: CoreACPAgentProviderOptions): AgentProvider {
   return {
     id: 'acp',
+    // Capabilities come from the connected agent, not the model ledger.
+    capabilitiesAreSelfDeclared: true,
     capabilities: {
       capabilities: ['text-input', 'text-output', 'streaming', 'reasoning'],
       inputModalities: ['text'],

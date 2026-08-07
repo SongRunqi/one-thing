@@ -21,15 +21,16 @@ import type {
 	ExternalAgentConnector,
 	ExternalAgentSessionLink,
 } from "../../external-agents/types.js";
-import {
-	resolveOnethingProviderBaseUrl,
-	type OnethingZhipuApiMode,
-} from "../../providers/zhipu.js";
+import { resolveOnethingZhipuBaseUrl } from "../../providers/zhipu.js";
 import {
 	ONETHING_QWEN_DEFAULT_BASE_URL,
-	type OnethingQwenApiMode,
-	type OnethingQwenRegion,
+	resolveOnethingQwenBaseUrl,
 } from "../../providers/qwen.js";
+import {
+	readOnethingQwenOptions,
+	readOnethingZhipuOptions,
+	type OnethingProviderOptions,
+} from "../../providers/provider-options.js";
 import { resolveOnethingModelCapabilities } from "../../providers/model-capability.js";
 
 export interface AgentProviderRuntimeOAuthToken {
@@ -44,9 +45,13 @@ export interface AgentProviderRuntimeAuthContext {
 export interface AgentProviderRuntimeConfig {
 	apiKey?: string;
 	baseUrl?: string;
-	zhipuApiMode?: OnethingZhipuApiMode;
-	qwenApiMode?: OnethingQwenApiMode;
-	qwenRegion?: OnethingQwenRegion;
+	/**
+	 * Provider-private knobs (zhipu api mode, qwen region, …), opaque to every
+	 * layer between the settings store and the owning provider's factory. Only
+	 * that factory unpacks it — adding a provider with its own dial must not
+	 * touch this interface. See providers/provider-options.ts.
+	 */
+	providerOptions?: OnethingProviderOptions;
 	model?: string;
 	apiType?: "openai" | "anthropic";
 	oauthToken?: AgentProviderRuntimeOAuthToken;
@@ -77,15 +82,22 @@ export interface CreateAgentProviderFromRuntimeOptions {
 	fetchImpl?: typeof globalThis.fetch;
 	acpStreamPrompt?: CoreACPAgentProviderOptions["streamPrompt"];
 	acpCwd?: CoreACPAgentProviderOptions["cwd"];
-	codexRefreshOAuthToken?: CodexAgentProviderOptions["refreshOAuthToken"];
+	/**
+	 * Refreshes an OAuth-backed provider's access token. Keyed by provider id
+	 * rather than one field per provider: codex is simply the only builtin that
+	 * needs it today, and the next OAuth provider must not have to widen this
+	 * interface to get one.
+	 */
+	refreshOAuthToken?: (
+		providerId: string,
+		forceRefresh: boolean,
+	) => Promise<AgentProviderRuntimeOAuthToken | undefined>;
 	/**
 	 * Writes each outgoing request body to disk for diagnostics. Applied to
 	 * every HTTP-speaking provider; ACP/external-agent providers have no request
 	 * body of their own and are not covered.
 	 */
 	requestDumper?: AgentProviderRequestDumper;
-	/** @deprecated Use `requestDumper` — kept so existing hosts keep working. */
-	codexRequestDumper?: CodexAgentProviderOptions["requestDumper"];
 	/** Host-provided external agent connectors keyed by provider id. */
 	externalAgentConnectors?: Record<string, ExternalAgentConnector | undefined>;
 	resolveExternalAgentSessionLink?: (
@@ -103,7 +115,7 @@ export type AgentProviderRuntimeFactory = (
 function resolveRequestDumper(
 	options: CreateAgentProviderFromRuntimeOptions,
 ): AgentProviderRequestDumper | undefined {
-	return options.requestDumper ?? options.codexRequestDumper;
+	return options.requestDumper;
 }
 
 export interface RegisterAgentProviderRuntimeOptions {
@@ -223,9 +235,10 @@ export function createAgentProviderFromRuntime(
 		agentProviderRuntimeFactories.get(providerId)?.(config, options) ??
 		createCustomAgentProviderFromRuntime(providerId, config, options);
 	if (!provider) return undefined;
-	// ACP/external-agent capabilities come from the connected agent itself —
-	// the model ledger has nothing to say about them.
-	if (providerId === "acp" || providerId === "claude-code-agent") return provider;
+	// Capabilities that the provider declares as its own bypass the ledger
+	// overlay entirely. Asking the provider beats keeping a list of provider ids
+	// here: connecting another external agent used to mean editing this line.
+	if (provider.capabilitiesAreSelfDeclared) return provider;
 	return withPerModelCapabilities(provider, providerId, config);
 }
 
@@ -507,7 +520,9 @@ registerAgentProviderRuntime(
 			authContext: config.authContext,
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
-			refreshOAuthToken: options.codexRefreshOAuthToken,
+			refreshOAuthToken: options.refreshOAuthToken
+				? forceRefresh => options.refreshOAuthToken!("codex", forceRefresh)
+				: undefined,
 		}),
 	{ replace: true },
 );
@@ -570,7 +585,10 @@ registerAgentProviderRuntime(
 		createOpenAICompatibleAgentProvider({
 			providerId: "zhipu",
 			apiKey: config.apiKey,
-			baseUrl: resolveOnethingProviderBaseUrl("zhipu", config),
+			baseUrl: resolveOnethingZhipuBaseUrl({
+				baseUrl: config.baseUrl,
+				...readOnethingZhipuOptions(config.providerOptions),
+			}),
 			defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
@@ -587,7 +605,10 @@ registerAgentProviderRuntime(
 		createOpenAICompatibleAgentProvider({
 			providerId: "qwen",
 			apiKey: config.apiKey,
-			baseUrl: resolveOnethingProviderBaseUrl("qwen", config),
+			baseUrl: resolveOnethingQwenBaseUrl({
+				baseUrl: config.baseUrl,
+				...readOnethingQwenOptions(config.providerOptions),
+			}),
 			defaultBaseUrl: ONETHING_QWEN_DEFAULT_BASE_URL,
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),

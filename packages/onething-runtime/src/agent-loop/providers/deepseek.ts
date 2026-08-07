@@ -98,6 +98,33 @@ interface DeepSeekRequestBody {
 	reasoning_effort?: "high" | "max";
 }
 
+/**
+ * DeepSeek's reasoner-class models think by default; the rest do not. A caller
+ * that says nothing about thinking means "whatever this model normally does",
+ * and only this file knows what that is per model.
+ *
+ * This lived in the old facade's deepseek-only generate route, which is exactly
+ * why that route could not be deleted: dropping it would have silently turned
+ * thinking off for callers that never opted in (context compaction, most
+ * visibly). Owning it here makes the generic path produce the same request.
+ */
+export function isDeepSeekThinkingModel(modelId: string): boolean {
+	const lower = modelId.toLowerCase();
+	return (
+		lower.includes("reasoner") ||
+		lower.includes("thinking") ||
+		/(^|[^a-z])v4/.test(lower)
+	);
+}
+
+function resolveDeepSeekThinking(
+	modelId: string,
+	requested: "enabled" | "disabled" | undefined,
+): "enabled" | "disabled" | undefined {
+	if (requested) return requested;
+	return isDeepSeekThinkingModel(modelId) ? "enabled" : undefined;
+}
+
 interface DeepSeekStreamChunk {
 	choices?: Array<{
 		index: number;
@@ -365,12 +392,20 @@ export function createDeepSeekAgentProvider(
 			body.tool_choice = request.toolChoice ?? "auto";
 		}
 		if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens;
-		if (request.thinking) body.thinking = { type: request.thinking };
-		if (request.thinking === "enabled" && request.reasoningEffort) {
+		const thinking = resolveDeepSeekThinking(request.model, request.thinking);
+		if (thinking) body.thinking = { type: thinking };
+		if (thinking === "enabled") {
+			// Effort defaults to high only when the caller actually asked to think.
+			// Thinking that was merely INFERRED from the model name sends no effort
+			// at all, which is what the chat path has always done — defaulting there
+			// too would start spending on a dial nobody turned.
+			const effort =
+				request.reasoningEffort ??
+				(request.thinking === "enabled" ? "high" : undefined);
 			// DeepSeek only accepts high/max; anything lower clamps to high.
-			body.reasoning_effort = request.reasoningEffort === "max" ? "max" : "high";
+			if (effort) body.reasoning_effort = effort === "max" ? "max" : "high";
 		}
-		if (request.temperature !== undefined && request.thinking !== "enabled") {
+		if (request.temperature !== undefined && thinking !== "enabled") {
 			body.temperature = request.temperature;
 		}
 

@@ -70,19 +70,6 @@ function getKimiThinkingOptions(
   return {}
 }
 
-function getDeepSeekThinkingOptions(
-  config: OnethingAgentLoopThinkingProviderConfig,
-): OnethingAgentLoopThinkingOptions {
-  const model = config.model
-  const enabled = config.thinkingByModel?.[model]
-  if (enabled === false) return { thinking: 'disabled' }
-  if (enabled !== true) return {}
-  return {
-    thinking: 'enabled',
-    reasoningEffort:
-      normalizeDeepSeekReasoningEffort(config.thinkingEffortByModel?.[model]) ?? 'high',
-  }
-}
 
 /**
  * Generic user-intent resolution: `thinkingByModel` decides on/off,
@@ -108,6 +95,5 @@ export function getOnethingAgentLoopThinkingOptions(
   ctx: OnethingAgentLoopThinkingContext,
 ): OnethingAgentLoopThinkingOptions {
   if (ctx.providerId === 'kimi') return getKimiThinkingOptions(ctx.providerConfig)
-  if (ctx.providerId === 'deepseek') return getDeepSeekThinkingOptions(ctx.providerConfig)
   return getGenericThinkingOptions(ctx.providerConfig)
 }

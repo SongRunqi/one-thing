@@ -17,7 +17,6 @@ import {
 import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
 import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
-import { CODEX_PROVIDER_ID } from '../../providers/builtin/codex.js'
 import { dumpProviderRequest } from '../../providers/request-dump.js'
 import type { AgentProvider } from '@onething/core/agent-loop'
 
@@ -52,18 +51,23 @@ export function registerAgentProviderRuntime(
   )
 }
 
-function hasCodexOAuthCredentials(config: AgentProviderRuntimeConfig): boolean {
+function hasOAuthCredentials(config: AgentProviderRuntimeConfig): boolean {
   return config.authContext?.kind === 'oauth' || Boolean(config.oauthToken)
 }
 
-function createCodexRefreshOAuthToken(
+/**
+ * authService is already keyed by provider id, so nothing here is codex-specific
+ * — it used to be only because the option was. Providers that never ask for a
+ * refresh simply never call it.
+ */
+function createRefreshOAuthToken(
   config: AgentProviderRuntimeConfig,
-): CreateAgentProviderFromRuntimeOptions['codexRefreshOAuthToken'] | undefined {
-  if (!hasCodexOAuthCredentials(config)) return undefined
+): CreateAgentProviderFromRuntimeOptions['refreshOAuthToken'] | undefined {
+  if (!hasOAuthCredentials(config)) return undefined
 
-  return forceRefresh => forceRefresh
-    ? authService.refreshToken(CODEX_PROVIDER_ID) as Promise<OAuthToken | undefined>
-    : authService.refreshTokenIfNeeded(CODEX_PROVIDER_ID) as Promise<OAuthToken | undefined>
+  return (providerId, forceRefresh) => forceRefresh
+    ? authService.refreshToken(providerId) as Promise<OAuthToken | undefined>
+    : authService.refreshTokenIfNeeded(providerId) as Promise<OAuthToken | undefined>
 }
 
 export function createAgentProviderFromRuntime(
@@ -81,7 +85,7 @@ export function createAgentProviderFromRuntime(
       options.resolveExternalAgentSessionLink ?? resolveExternalAgentSessionLink,
     onExternalAgentSessionLink:
       options.onExternalAgentSessionLink ?? persistExternalAgentSessionLink,
-    codexRefreshOAuthToken: options.codexRefreshOAuthToken ?? createCodexRefreshOAuthToken(config),
-    requestDumper: options.requestDumper ?? options.codexRequestDumper ?? dumpProviderRequest,
+    refreshOAuthToken: options.refreshOAuthToken ?? createRefreshOAuthToken(config),
+    requestDumper: options.requestDumper ?? dumpProviderRequest,
   })
 }
