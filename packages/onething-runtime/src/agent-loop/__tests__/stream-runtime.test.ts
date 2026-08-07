@@ -20,15 +20,6 @@ interface TestSettings {
     contextCompactEnabled?: boolean
     contextCompactKeepRecentTurns?: number
   }
-  general?: {
-    soulMemory?: {
-      enabled?: boolean
-      activeMemory?: {
-        enabled?: boolean
-        timeoutMs?: number
-      }
-    }
-  }
 }
 
 interface TestProviderConfig {
@@ -104,7 +95,6 @@ describe('onething agent-loop stream runtime', () => {
     }
     const promptInputs: CoreBuildPromptOptions[] = []
     const initializedSkills: string[][] = []
-    const activeMemoryParts: string[] = []
     const emittedEvents: unknown[] = []
     const persistedMessages: TestMessage[] = []
     const toolExecutionContexts: Array<{
@@ -130,7 +120,6 @@ describe('onething agent-loop stream runtime', () => {
           skills: { enableSkills: true },
           tools: { enableToolCalls: true },
           chat: { maxTokens: 4096, contextCompactThreshold: 80 },
-          general: { soulMemory: { activeMemory: { timeoutMs: 50 } } },
         },
         steeringQueue,
       },
@@ -196,9 +185,6 @@ describe('onething agent-loop stream runtime', () => {
         emitEvent: async (_sessionId, event) => {
           emittedEvents.push(event)
         },
-        sendActiveMemoryPart: part => {
-          activeMemoryParts.push(part.type)
-        },
         logger: {
           info: vi.fn(),
           warn: vi.fn(),
@@ -218,7 +204,6 @@ describe('onething agent-loop stream runtime', () => {
     expect(result.mcpToolNames).toEqual(['mcp_search'])
     expect(result.enabledSkills.map(skill => skill.id)).toEqual(['skill-docs'])
     expect(initializedSkills).toEqual([['skill-docs']])
-    expect(activeMemoryParts).toEqual(['loading-memory', 'waiting'])
     expect(promptInputs[0]).toMatchObject({
       sessionId: 's1',
       agentId: 'agent-1',

@@ -14,6 +14,7 @@
 import type { AgentProvider } from "@onething/core/agent-loop";
 import type { AppSettings } from "@shared/ipc.js";
 import { createAgentProviderFromRuntime } from "../agent-loop/index.js";
+import { pickOnethingProviderOptions } from "@onething/runtime/providers";
 import {
 	getProviderApiType,
 	resolveProviderAuth,
@@ -97,6 +98,14 @@ export async function createUtilityProvider(
 		resolved.providerId,
 		{
 			...providerConfig,
+			// Background work reads settings directly rather than going through
+			// getEffectiveProviderConfig, so it has to pack the provider's own
+			// dials itself — otherwise a zhipu coding-plan / qwen intl account
+			// would quietly bill its side-line calls to the wrong endpoint.
+			providerOptions: pickOnethingProviderOptions(
+				resolved.providerId,
+				providerConfig as unknown as Record<string, unknown>,
+			),
 			model: resolved.model,
 			apiKey: authContext.kind === "api-key" ? authContext.apiKey : "",
 			authContext,

@@ -126,12 +126,6 @@ const providerFacade = createOnethingProviderFacade<RuntimeProviderConfig, Agent
   logger: console,
 })
 
-export async function getOAuthProviderConfig(
-  providerId: string,
-  baseConfig: { baseUrl?: string; model?: string },
-): Promise<{ apiKey: string; baseUrl?: string } | null> {
-  return providerFacade.getOAuthProviderConfig(providerId, baseConfig)
-}
 
 export async function generateChatResponse(
   providerId: string,
@@ -153,60 +147,9 @@ export async function generateChatResponse(
   return providerFacade.generateChatResponse(providerId, config, messages, options)
 }
 
-export async function* streamChatResponse(
-  providerId: string,
-  config: RuntimeProviderConfig,
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
-  options: { temperature?: number; maxTokens?: number } = {},
-): AsyncGenerator<{ text: string; reasoning?: string }, void, void> {
-  yield* providerFacade.streamChatResponse(providerId, config, messages, options)
-}
 
-export async function* streamChatResponseWithReasoning(
-  providerId: string,
-  config: RuntimeProviderConfig,
-  messages: Array<{
-    role: 'user' | 'assistant' | 'system'
-    content: AIMessageContent
-    reasoningContent?: string
-  }>,
-  options: {
-    temperature?: number
-    maxTokens?: number
-    abortSignal?: AbortSignal
-    thinking?: boolean
-    thinkingEffort?: ThinkingEffort
-    serviceTier?: string
-  } = {},
-): AsyncGenerator<ReasoningStreamChunk, void, void> {
-  yield* providerFacade.streamChatResponseWithReasoning(providerId, config, messages, options)
-}
 
-export async function generateChatResponseWithReasoning(
-  providerId: string,
-  config: RuntimeProviderConfig,
-  messages: Array<{
-    role: 'user' | 'assistant' | 'system'
-    content: AIMessageContent
-    reasoningContent?: string
-  }>,
-  options: {
-    temperature?: number
-    maxTokens?: number
-    abortSignal?: AbortSignal
-    thinking?: boolean
-    thinkingEffort?: ThinkingEffort
-    serviceTier?: string
-    debugPurpose?: string
-    debugSessionId?: string
-  } = {},
-): Promise<ChatResponseResult> {
-  return providerFacade.generateChatResponseWithReasoning(providerId, config, messages, options)
-}
 
-export function shouldUseStreaming(providerId: string, modelId: string): boolean {
-  return providerFacade.shouldUseStreaming(providerId, modelId)
-}
 
 export async function generateChatTitle(
   providerId: string,
@@ -220,52 +163,8 @@ export async function generateChatTitle(
   return providerFacade.generateChatTitle(providerId, config, userMessage, options)
 }
 
-export async function* streamChatResponseWithTools(
-  providerId: string,
-  config: RuntimeProviderConfig,
-  messages: ToolChatMessage[],
-  tools: ProviderToolDefinitionMap,
-  options: {
-    temperature?: number
-    maxTokens?: number
-    abortSignal?: AbortSignal
-    thinking?: boolean
-    thinkingEffort?: ThinkingEffort
-    serviceTier?: string
-    codexNativeTools?: string[]
-    debugSessionId?: string
-    debugTurn?: number
-    workingDirectory?: string
-  } = {},
-): AsyncGenerator<StreamChunkWithTools, void, void> {
-  yield* providerFacade.streamChatResponseWithTools(providerId, config, messages, tools, options)
-}
 
-export function convertToolDefinitionsForProvider(
-  toolDefinitions: ProviderToolSourceDefinition[],
-): ProviderToolDefinitionMap {
-  return providerFacade.convertToolDefinitionsForProvider(toolDefinitions)
-}
 
-export async function* streamChatWithUIMessages(
-  providerId: string,
-  config: RuntimeProviderConfig,
-  uiMessages: UIMessage[],
-  tools: ProviderToolDefinitionMap,
-  options: {
-    temperature?: number
-    maxTokens?: number
-    abortSignal?: AbortSignal
-  } = {},
-): AsyncGenerator<StreamChunkWithTools, void, void> {
-  yield* providerFacade.streamChatWithUIMessages(
-    providerId,
-    config,
-    uiMessages as unknown as Parameters<typeof providerFacade.streamChatWithUIMessages>[2],
-    tools,
-    options,
-  )
-}
 
 export const providerRegistry: Record<string, ProviderInfo> =
   Object.fromEntries(getProvidersFromRegistry().map(provider => [provider.id, provider]))

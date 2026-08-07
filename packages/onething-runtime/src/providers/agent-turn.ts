@@ -14,7 +14,6 @@ import {
 } from '@onething/core/agent-loop'
 import { createDeepSeekAgentProvider } from '../agent-loop/providers/deepseek.js'
 import {
-  onethingDeepSeekAgentMessagesFromMessages,
   onethingAgentMessagesFromToolChatMessages,
   onethingUtilityAgentMessagesFromMessages,
   type OnethingAIMessageContent,
@@ -64,11 +63,6 @@ export interface OnethingUtilityAgentConfig {
   model: string
 }
 
-export interface OnethingDeepSeekAgentConfig extends OnethingUtilityAgentConfig {
-  apiKey?: string
-  baseUrl?: string
-  fetchImpl?: typeof globalThis.fetch
-}
 
 export interface OnethingUtilityAgentOptions {
   temperature?: number
@@ -120,34 +114,8 @@ export interface OnethingUtilityAgentTurnRunnerOptions {
   onRequestPrepared?: (context: OnethingProviderRequestDumpContext) => void | Promise<void>
 }
 
-export interface OnethingAgentProviderToolTurnRunnerOptions {
-  providerId: string
-  provider: AgentProvider
-  config: OnethingUtilityAgentConfig
-  messages: OnethingToolChatMessage[]
-  tools: OnethingProviderToolDefinitionMap
-  options?: OnethingUtilityAgentOptions
-  mode?: OnethingProviderRequestDumpMode
-  metadata?: Record<string, OnethingProviderRequestDumpValue>
-  onRequestPrepared?: (context: OnethingProviderRequestDumpContext) => void | Promise<void>
-}
 
-export interface OnethingDeepSeekAgentGenerateOptions {
-  config: OnethingDeepSeekAgentConfig
-  messages: OnethingUtilityAgentMessage[]
-  options?: OnethingUtilityAgentOptions
-  onRequestPrepared?: (context: OnethingProviderRequestDumpContext) => void | Promise<void>
-}
 
-export interface OnethingDeepSeekAgentStreamOptions {
-  config: OnethingDeepSeekAgentConfig
-  messages: OnethingDeepSeekAgentSourceMessage[]
-  tools?: OnethingProviderToolDefinitionMap
-  options?: OnethingUtilityAgentOptions
-  mode?: OnethingProviderRequestDumpMode
-  metadata?: Record<string, OnethingProviderRequestDumpValue>
-  onRequestPrepared?: (context: OnethingProviderRequestDumpContext) => void | Promise<void>
-}
 
 interface PreparedUtilityAgentTurn {
   agentMessages: AgentMessage[]
@@ -242,45 +210,6 @@ function utilityAgentRequestDumpContext(options: {
   }
 }
 
-function deepSeekAgentRequestDumpContext(options: {
-  config: OnethingDeepSeekAgentConfig
-  messages: AgentMessage[]
-  tools?: AgentTool[]
-  temperature?: number
-  maxTokens?: number
-  thinking?: OnethingAgentThinking
-  reasoningEffort?: OnethingAgentReasoningEffort
-  mode: OnethingProviderRequestDumpMode
-  metadata?: Record<string, OnethingProviderRequestDumpValue>
-}): OnethingProviderRequestDumpContext {
-  return {
-    providerId: 'deepseek',
-    model: options.config.model,
-    mode: options.mode,
-    metadata: options.metadata,
-    requestBody: {
-      model: options.config.model,
-      messages: options.messages,
-      stream: true,
-      stream_options: { include_usage: true },
-      tools: options.tools?.length
-        ? options.tools.map((tool) => ({
-            type: 'function',
-            function: {
-              name: tool.name,
-              description: tool.description,
-              parameters: tool.parameters,
-            },
-          }))
-        : undefined,
-      tool_choice: options.tools?.length ? 'auto' : undefined,
-      temperature: options.thinking === 'enabled' ? undefined : options.temperature,
-      max_tokens: options.maxTokens,
-      thinking: options.thinking ? { type: options.thinking } : undefined,
-      reasoning_effort: options.thinking === 'enabled' ? options.reasoningEffort : undefined,
-    },
-  }
-}
 
 function metadataFromOptions(
   options: OnethingUtilityAgentOptions | undefined,
@@ -328,189 +257,7 @@ export async function runOnethingUtilityAgentTurn(
   }
 }
 
-export async function* streamOnethingUtilityAgentTurn(
-  runnerOptions: OnethingUtilityAgentTurnRunnerOptions,
-): AsyncGenerator<OnethingReasoningStreamChunk, void, void> {
-  const options = runnerOptions.options ?? {}
-  const agentMessages = onethingUtilityAgentMessagesFromMessages(runnerOptions.messages)
-  const prepared = prepareUtilityAgentTurn({
-    config: runnerOptions.config,
-    messages: agentMessages,
-    runnerOptions: options,
-    toolChoice: 'none',
-  })
 
-  await runnerOptions.onRequestPrepared?.(utilityAgentRequestDumpContext({
-    providerId: runnerOptions.providerId,
-    config: runnerOptions.config,
-    mode: runnerOptions.mode,
-    prepared,
-    metadata: metadataFromOptions(options),
-  }))
 
-  for await (const event of streamAgentProviderTurnEvents(runnerOptions.provider, prepared.request)) {
-    if (event.type === 'reasoning-delta' && event.delta) {
-      yield { type: 'text', text: '', reasoning: event.delta }
-    } else if (event.type === 'text-delta' && event.delta) {
-      yield { type: 'text', text: event.delta }
-    } else if (event.type === 'finish') {
-      yield {
-        type: 'finish',
-        usage: event.usage ?? {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-        },
-      }
-    }
-  }
-}
 
-export async function* streamOnethingAgentProviderToolTurn(
-  runnerOptions: OnethingAgentProviderToolTurnRunnerOptions,
-): AsyncGenerator<AgentProviderStreamChunk, void, void> {
-  const options = runnerOptions.options ?? {}
-  const agentMessages = onethingAgentMessagesFromToolChatMessages(runnerOptions.messages)
-  const agentTools = agentModelToolsFromDefinitions(runnerOptions.tools)
-  const prepared = prepareUtilityAgentTurn({
-    config: runnerOptions.config,
-    messages: agentMessages,
-    agentTools,
-    runnerOptions: options,
-    toolChoice: agentTools.length > 0 ? 'auto' : 'none',
-    turn: options.debugTurn ?? 1,
-  })
 
-  await runnerOptions.onRequestPrepared?.(utilityAgentRequestDumpContext({
-    providerId: runnerOptions.providerId,
-    config: runnerOptions.config,
-    mode: runnerOptions.mode ?? 'stream-tools',
-    prepared,
-    metadata: {
-      ...runnerOptions.metadata,
-      sessionId: options.debugSessionId,
-      turn: options.debugTurn,
-      originalMessageCount: runnerOptions.messages.length,
-      convertedMessageCount: agentMessages.length,
-    },
-  }))
-
-  const events = streamAgentProviderTurnEvents(runnerOptions.provider, prepared.request)
-  for await (const chunk of agentEventsToProviderStreamChunks(events)) {
-    if (chunk.type === 'turn-start' || chunk.type === 'tool-metadata' || chunk.type === 'tool-partial-result') {
-      continue
-    }
-    yield chunk
-  }
-}
-
-function createOnethingDeepSeekAgentProvider(config: OnethingDeepSeekAgentConfig): AgentProvider {
-  return createDeepSeekAgentProvider({
-    apiKey: config.apiKey ?? '',
-    baseUrl: config.baseUrl,
-    fetchImpl: config.fetchImpl,
-  })
-}
-
-export async function generateWithOnethingDeepSeekAgent(
-  runnerOptions: OnethingDeepSeekAgentGenerateOptions,
-): Promise<OnethingChatResponseResult> {
-  const options = runnerOptions.options ?? {}
-  const agentMessages = onethingDeepSeekAgentMessagesFromMessages(runnerOptions.messages)
-  const maxTokens = options.maxTokens || 4096
-  const thinking = resolveOnethingDeepSeekAgentThinking(runnerOptions.config.model, options)
-  const reasoningEffort = normalizeOnethingDeepSeekAgentReasoningEffort(options.thinkingEffort)
-
-  await runnerOptions.onRequestPrepared?.(deepSeekAgentRequestDumpContext({
-    config: runnerOptions.config,
-    messages: agentMessages,
-    maxTokens,
-    temperature: options.temperature,
-    thinking,
-    reasoningEffort,
-    mode: 'stream-reasoning',
-    metadata: options.debugPurpose || options.debugSessionId
-      ? {
-          purpose: options.debugPurpose,
-          sessionId: options.debugSessionId,
-          transport: 'deepseek-agent',
-        }
-      : { transport: 'deepseek-agent' },
-  }))
-
-  const provider = createOnethingDeepSeekAgentProvider(runnerOptions.config)
-  const turn = await collectAgentTurnFromStream(streamAgentProviderTurnEvents(provider, {
-    model: runnerOptions.config.model,
-    messages: agentMessages,
-    toolChoice: 'none',
-    maxTokens,
-    temperature: thinking === 'enabled' ? undefined : options.temperature,
-    thinking,
-    reasoningEffort,
-    abortSignal: options.abortSignal,
-    turn: 1,
-  }))
-
-  return {
-    text: agentContentToText(turn.message.content),
-    reasoning: turn.message.reasoningContent || undefined,
-    // 2026-08-02:这一行本来是漏的。`generateOnethingTextChatResponse` 靠
-    // `if (result.usage) onUsage(...)` 计费,而 deepseek 这条 generate 路径
-    // 一直不带 usage —— 于是每一个走它的**旁路调用**(意愿判定、标题、摘要…)
-    // 都从账本上消失了。真机实证:`collab-willingness` 从这个标签存在至今一条
-    // 记录都没有,而判定其实一直在跑。兄弟函数 `runOnethingUtilityAgentTurn`
-    // 一直是带的,两条路就这么分了家。
-    usage: turn.usage,
-  }
-}
-
-export async function* streamOnethingDeepSeekAgentTurn(
-  runnerOptions: OnethingDeepSeekAgentStreamOptions,
-): AsyncGenerator<AgentProviderStreamChunk, void, void> {
-  const options = runnerOptions.options ?? {}
-  const metadata = runnerOptions.metadata ?? {}
-  const tools = runnerOptions.tools ?? {}
-  const agentMessages = onethingDeepSeekAgentMessagesFromMessages(runnerOptions.messages)
-  const agentTools = agentModelToolsFromDefinitions(tools)
-  const maxTokens = options.maxTokens || 4096
-  const thinking = resolveOnethingDeepSeekAgentThinking(runnerOptions.config.model, options)
-  const reasoningEffort = normalizeOnethingDeepSeekAgentReasoningEffort(options.thinkingEffort)
-
-  await runnerOptions.onRequestPrepared?.(deepSeekAgentRequestDumpContext({
-    config: runnerOptions.config,
-    messages: agentMessages,
-    tools: agentTools,
-    maxTokens,
-    temperature: options.temperature,
-    thinking,
-    reasoningEffort,
-    mode: runnerOptions.mode ?? 'stream-tools',
-    metadata: {
-      ...metadata,
-      sessionId: options.debugSessionId,
-      turn: options.debugTurn,
-      transport: 'deepseek-agent',
-    },
-  }))
-
-  const provider = createOnethingDeepSeekAgentProvider(runnerOptions.config)
-  const events = streamAgentProviderTurnEvents(provider, {
-    model: runnerOptions.config.model,
-    messages: agentMessages,
-    tools: agentTools,
-    toolChoice: agentTools.length > 0 ? 'auto' : 'none',
-    maxTokens,
-    temperature: thinking === 'enabled' ? undefined : options.temperature,
-    thinking,
-    reasoningEffort,
-    abortSignal: options.abortSignal,
-    turn: options.debugTurn ?? 1,
-  })
-
-  for await (const chunk of agentEventsToProviderStreamChunks(events)) {
-    if (chunk.type === 'turn-start' || chunk.type === 'tool-metadata' || chunk.type === 'tool-partial-result') {
-      continue
-    }
-    yield chunk
-  }
-}

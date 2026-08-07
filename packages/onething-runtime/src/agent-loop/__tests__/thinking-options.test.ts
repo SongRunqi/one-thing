@@ -9,12 +9,16 @@ function options(providerId: string, model: string, thinkingByModel?: Record<str
 }
 
 describe('getOnethingAgentLoopThinkingOptions', () => {
-  it('keeps deepseek behavior: explicit toggle drives thinking and effort', () => {
+  // deepseek used to have a branch here purely to default the effort to 'high'.
+  // That default is deepseek's own business and now lives in deepseek.ts, which
+  // also clamps anything below high — so this layer just carries user intent.
+  // The wire-level guarantees are asserted in the deepseek provider's own tests.
+  it('carries plain user intent for deepseek', () => {
     expect(options('deepseek', 'deepseek-v4')).toEqual({})
     expect(options('deepseek', 'deepseek-v4', { 'deepseek-v4': false })).toEqual({ thinking: 'disabled' })
     expect(options('deepseek', 'deepseek-v4', { 'deepseek-v4': true })).toEqual({
       thinking: 'enabled',
-      reasoningEffort: 'high',
+      reasoningEffort: undefined,
     })
     expect(options('deepseek', 'deepseek-v4', { 'deepseek-v4': true }, { 'deepseek-v4': 'max' })).toEqual({
       thinking: 'enabled',

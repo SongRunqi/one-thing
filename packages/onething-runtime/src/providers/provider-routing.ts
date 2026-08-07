@@ -176,23 +176,6 @@ export interface GenerateOnethingTextChatResponseOptions<
   ): Promise<TResult>
 }
 
-export interface StreamOnethingTextChatResponseOptions<
-  TConfig = unknown,
-  TMessage = unknown,
-  TOptions = unknown,
-  TChunk extends OnethingReasoningTextStreamChunk = OnethingReasoningTextStreamChunk,
-> {
-  providerId: string
-  config: TConfig
-  messages: TMessage[]
-  options: TOptions
-  streamWithReasoning(
-    providerId: string,
-    config: TConfig,
-    messages: TMessage[],
-    options: TOptions,
-  ): AsyncIterable<TChunk | { type: string }>
-}
 
 export interface GenerateOnethingChatResponseWithReasoningOptions<
   TConfig extends { baseUrl?: string } = { baseUrl?: string },
@@ -219,11 +202,6 @@ export interface GenerateOnethingChatResponseWithReasoningOptions<
     providerId: string,
     config: TConfig,
   ): OnethingProviderRuntimeChatRoute<TProvider>
-  generateWithDeepSeek(
-    config: TConfig,
-    messages: TMessage[],
-    options: TOptions,
-  ): Promise<TResult>
   runUtilityAgentTurn(
     providerId: string,
     provider: TProvider,
@@ -234,82 +212,7 @@ export interface GenerateOnethingChatResponseWithReasoningOptions<
   ): Promise<TResult | undefined>
 }
 
-export interface StreamOnethingChatResponseWithReasoningOptions<
-  TConfig = unknown,
-  TMessage = unknown,
-  TOptions = unknown,
-  TProvider = unknown,
-  TSourceChunk extends OnethingProviderReasoningSourceStreamChunk = OnethingProviderReasoningSourceStreamChunk,
-  TResultChunk extends OnethingChatReasoningStreamChunk = OnethingChatReasoningStreamChunk,
-> {
-  providerId: string
-  config: TConfig
-  messages: TMessage[]
-  options: TOptions
-  mergeMessagesForGenerate(providerId: string, messages: TMessage[]): TMessage[]
-  resolveRuntimeRoute(
-    providerId: string,
-    config: TConfig,
-  ): OnethingProviderRuntimeChatRoute<TProvider>
-  streamDeepSeekTurn(
-    config: TConfig,
-    messages: TMessage[],
-    options: TOptions,
-    mode: 'stream-reasoning',
-  ): AsyncIterable<TSourceChunk>
-  streamUtilityAgentTurn(
-    providerId: string,
-    provider: TProvider,
-    config: TConfig,
-    messages: TMessage[],
-    options: TOptions,
-    mode: 'stream-reasoning',
-  ): AsyncIterable<TResultChunk>
-}
 
-export interface StreamOnethingChatResponseWithToolsOptions<
-  TConfig = unknown,
-  TMessage = unknown,
-  TTools = unknown,
-  TOptions = unknown,
-  TProvider = unknown,
-  TChunk = unknown,
-> {
-  providerId: string
-  config: TConfig
-  messages: TMessage[]
-  tools: TTools
-  options: TOptions
-  mode: OnethingProviderToolStreamMode
-  metadata?: Record<string, unknown>
-  resolveRuntimeRoute(
-    providerId: string,
-    config: TConfig,
-  ): OnethingProviderRuntimeChatRoute<TProvider>
-  streamACPResponse?(
-    config: TConfig,
-    messages: TMessage[],
-    options: TOptions,
-  ): AsyncIterable<TChunk>
-  streamDeepSeekTurn(
-    config: TConfig,
-    messages: TMessage[],
-    tools: TTools,
-    options: TOptions,
-    mode: OnethingProviderToolStreamMode,
-    metadata: Record<string, unknown>,
-  ): AsyncIterable<TChunk>
-  streamAgentToolTurn(
-    providerId: string,
-    provider: TProvider,
-    config: TConfig,
-    messages: TMessage[],
-    tools: TTools,
-    options: TOptions,
-    mode: OnethingProviderToolStreamMode,
-    metadata: Record<string, unknown>,
-  ): AsyncIterable<TChunk>
-}
 
 export function isOnethingProviderDeepSeekThinkingModel(modelId: string): boolean {
   const lower = modelId.toLowerCase()
@@ -530,14 +433,6 @@ export async function generateOnethingChatResponseWithReasoning<
     options.messages,
   )
 
-  if (runtimeRoute.kind === 'deepseek') {
-    return options.generateWithDeepSeek(
-      options.config,
-      effectiveMessages,
-      options.options,
-    )
-  }
-
   if (runtimeRoute.kind === 'agent') {
     const agentResult = await options.runUtilityAgentTurn(
       options.providerId,
@@ -555,132 +450,7 @@ export async function generateOnethingChatResponseWithReasoning<
   )
 }
 
-export async function* streamOnethingChatResponseWithReasoning<
-  TConfig = unknown,
-  TMessage = unknown,
-  TOptions = unknown,
-  TProvider = unknown,
-  TSourceChunk extends OnethingProviderReasoningSourceStreamChunk = OnethingProviderReasoningSourceStreamChunk,
-  TResultChunk extends OnethingChatReasoningStreamChunk = OnethingChatReasoningStreamChunk,
->(
-  options: StreamOnethingChatResponseWithReasoningOptions<
-    TConfig,
-    TMessage,
-    TOptions,
-    TProvider,
-    TSourceChunk,
-    TResultChunk
-  >,
-): AsyncGenerator<TResultChunk, void, void> {
-  const effectiveMessages = options.mergeMessagesForGenerate(
-    options.providerId,
-    options.messages,
-  )
-  const runtimeRoute = options.resolveRuntimeRoute(options.providerId, options.config)
 
-  if (runtimeRoute.kind === 'deepseek') {
-    for await (const chunk of options.streamDeepSeekTurn(
-      options.config,
-      effectiveMessages,
-      options.options,
-      'stream-reasoning',
-    )) {
-      if (chunk.type === 'reasoning' && chunk.reasoning) {
-        yield { type: 'text', text: '', reasoning: chunk.reasoning } as TResultChunk
-      } else if (chunk.type === 'text' && chunk.text) {
-        yield { type: 'text', text: chunk.text } as TResultChunk
-      } else if (chunk.type === 'finish') {
-        yield {
-          type: 'finish',
-          usage: chunk.usage ?? {
-            inputTokens: 0,
-            outputTokens: 0,
-            totalTokens: 0,
-          },
-        } as TResultChunk
-      }
-    }
-    return
-  }
-
-  if (runtimeRoute.kind === 'agent') {
-    for await (const chunk of options.streamUtilityAgentTurn(
-      options.providerId,
-      runtimeRoute.provider,
-      options.config,
-      effectiveMessages,
-      options.options,
-      'stream-reasoning',
-    )) {
-      yield chunk
-    }
-    return
-  }
-
-  throw new Error(
-    `Provider ${options.providerId} does not have an AgentProvider runtime for stream-reasoning.`,
-  )
-}
-
-export async function* streamOnethingChatResponseWithTools<
-  TConfig = unknown,
-  TMessage = unknown,
-  TTools = unknown,
-  TOptions = unknown,
-  TProvider = unknown,
-  TChunk = unknown,
->(
-  options: StreamOnethingChatResponseWithToolsOptions<
-    TConfig,
-    TMessage,
-    TTools,
-    TOptions,
-    TProvider,
-    TChunk
-  >,
-): AsyncGenerator<TChunk, void, void> {
-  const runtimeRoute = options.resolveRuntimeRoute(options.providerId, options.config)
-  const metadata = options.metadata ?? {}
-
-  if (runtimeRoute.kind === 'acp' && options.streamACPResponse) {
-    yield* options.streamACPResponse(
-      options.config,
-      options.messages,
-      options.options,
-    )
-    return
-  }
-
-  if (runtimeRoute.kind === 'deepseek') {
-    yield* options.streamDeepSeekTurn(
-      options.config,
-      options.messages,
-      options.tools,
-      options.options,
-      options.mode,
-      metadata,
-    )
-    return
-  }
-
-  if (runtimeRoute.kind === 'agent') {
-    yield* options.streamAgentToolTurn(
-      options.providerId,
-      runtimeRoute.provider,
-      options.config,
-      options.messages,
-      options.tools,
-      options.options,
-      options.mode,
-      metadata,
-    )
-    return
-  }
-
-  throw new Error(
-    `Provider ${options.providerId} does not have an AgentProvider runtime for ${options.mode}.`,
-  )
-}
 
 export async function* streamOnethingACPChatResponseWithTools<
   TConfig extends { model: string; baseUrl?: string } = { model: string; baseUrl?: string },
@@ -757,29 +527,6 @@ export function* projectOnethingACPPromptStreamEvent(
   }
 }
 
-export async function* streamOnethingTextChatResponse<
-  TConfig = unknown,
-  TMessage = unknown,
-  TOptions = unknown,
-  TChunk extends OnethingReasoningTextStreamChunk = OnethingReasoningTextStreamChunk,
->(
-  options: StreamOnethingTextChatResponseOptions<TConfig, TMessage, TOptions, TChunk>,
-): AsyncGenerator<{ text: string; reasoning?: string }, void, void> {
-  for await (const chunk of options.streamWithReasoning(
-    options.providerId,
-    options.config,
-    options.messages,
-    options.options,
-  )) {
-    if (chunk.type === 'text' && ('text' in chunk || 'reasoning' in chunk)) {
-      const text = typeof chunk.text === 'string' ? chunk.text : ''
-      const reasoning = typeof chunk.reasoning === 'string' ? chunk.reasoning : undefined
-      if (text || reasoning) {
-        yield { text, reasoning }
-      }
-    }
-  }
-}
 
 export function formatOnethingACPPlan(update: unknown): string {
   const updateRecord = recordFromValue(update)

@@ -16,7 +16,6 @@ export type OnethingAgentRuntimeProviderConfig = AgentProviderRuntimeConfig & {
 
 export type OnethingProviderRuntimeRoute =
   | { kind: 'acp' }
-  | { kind: 'deepseek' }
   | { kind: 'agent'; provider: AgentProvider }
   | { kind: 'unsupported' }
 
@@ -38,24 +37,24 @@ export function isOnethingACPProviderRuntime(providerId: string): boolean {
   return providerId === ONETHING_ACP_RUNTIME_PROVIDER_ID
 }
 
-export function isOnethingDeepSeekProviderRuntime(providerId: string): boolean {
-  return providerId === ONETHING_DEEPSEEK_RUNTIME_PROVIDER_ID
-}
 
 export function createOnethingUtilityAgentProvider(
   providerId: string,
   config: OnethingAgentRuntimeProviderConfig,
   adapters: OnethingProviderRuntimeRouteAdapters,
 ): AgentProvider | undefined {
-  if (isOnethingACPProviderRuntime(providerId) || isOnethingDeepSeekProviderRuntime(providerId)) {
+  // deepseek used to be excluded here and served by a route of its own. The
+  // only thing that route did differently was infer thinking from the model
+  // name; deepseek.ts owns that now, so the generic path builds the same
+  // request — and the two paths can no longer drift apart the way they did
+  // when one of them quietly stopped reporting usage.
+  if (isOnethingACPProviderRuntime(providerId)) {
     return undefined
   }
   return adapters.createAgentProvider(providerId, {
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
-    zhipuApiMode: config.zhipuApiMode,
-    qwenApiMode: config.qwenApiMode,
-    qwenRegion: config.qwenRegion,
+    providerOptions: config.providerOptions,
     model: config.model,
     apiType: config.apiType,
     oauthToken: config.oauthToken,
@@ -65,20 +64,6 @@ export function createOnethingUtilityAgentProvider(
   })
 }
 
-export function createOnethingDeepSeekAgentRuntimeProvider(
-  config: OnethingAgentRuntimeProviderConfig,
-  adapters: OnethingProviderRuntimeRouteAdapters,
-): AgentProvider {
-  const provider = adapters.createAgentProvider(ONETHING_DEEPSEEK_RUNTIME_PROVIDER_ID, {
-    apiKey: config.apiKey ?? '',
-    baseUrl: config.baseUrl,
-    model: config.model,
-  })
-  if (!provider) {
-    throw new Error('DeepSeek AgentProvider runtime is not registered')
-  }
-  return provider
-}
 
 export function resolveOnethingProviderRuntimeRoute(
   providerId: string,
@@ -86,7 +71,6 @@ export function resolveOnethingProviderRuntimeRoute(
   adapters: OnethingProviderRuntimeRouteAdapters,
 ): OnethingProviderRuntimeRoute {
   if (isOnethingACPProviderRuntime(providerId)) return { kind: 'acp' }
-  if (isOnethingDeepSeekProviderRuntime(providerId)) return { kind: 'deepseek' }
   const provider = createOnethingUtilityAgentProvider(providerId, config, adapters)
   return provider ? { kind: 'agent', provider } : { kind: 'unsupported' }
 }

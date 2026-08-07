@@ -7,6 +7,7 @@ import {
   createOnethingProviderFacade,
   type OnethingProviderRequestDumpContext,
 } from '../index.js'
+import { createDeepSeekAgentProvider } from '../../agent-loop/providers/deepseek.js'
 
 function fakeProvider(onRequest?: (request: AgentTurnRequest) => void): AgentProvider {
   return {
@@ -56,64 +57,6 @@ function deepSeekResponse(lines: string[]): Response {
 }
 
 describe('onething provider facade', () => {
-  it('owns agent tool-stream orchestration behind host adapters', async () => {
-    let request: AgentTurnRequest | undefined
-    const dumps: OnethingProviderRequestDumpContext[] = []
-    const provider = fakeProvider(next => { request = next })
-    const facade = createOnethingProviderFacade({
-      requiresOAuth: () => false,
-      refreshOAuthToken: async () => ({ accessToken: 'unused' }),
-      requiresSystemMerge: () => false,
-      resolveRuntimeRoute: () => ({ kind: 'agent', provider }),
-      createRequiredFetch: () => {
-        throw new Error('fetch should not be used for agent tool stream')
-      },
-      dumpProviderRequest: context => {
-        dumps.push(context)
-      },
-      async *streamACPPrompt() {},
-      defaultWorkingDirectory: () => '/workspace',
-    })
-
-    const chunks = await collect(facade.streamChatResponseWithTools(
-      'openai',
-      { apiKey: 'key', baseUrl: 'https://example.test', model: 'gpt-test' },
-      [{ role: 'user', content: 'read file' }],
-      {
-        read: {
-          description: 'Read a file',
-          parameters: [],
-          parameterSchema: { type: 'object', properties: { path: { type: 'string' } } },
-        },
-      },
-      { debugSessionId: 'session_1', debugTurn: 3 },
-    ))
-
-    expect(chunks.map(chunk => chunk.type)).toEqual([
-      'reasoning',
-      'text',
-      'tool-input-start',
-      'tool-input-delta',
-      'tool-input-delta',
-      'tool-input-end',
-      'finish',
-    ])
-    expect(request).toMatchObject({
-      model: 'gpt-test',
-      toolChoice: 'auto',
-      turn: 3,
-    })
-    expect(dumps[0]).toMatchObject({
-      providerId: 'openai',
-      model: 'gpt-test',
-      mode: 'stream-tools',
-      metadata: {
-        sessionId: 'session_1',
-        turn: 3,
-      },
-    })
-  })
-
   it('injects host fetch into DeepSeek generation from the runtime facade', async () => {
     const dumps: OnethingProviderRequestDumpContext[] = []
     const fetchCalls: Array<{ url: string; body?: string }> = []
@@ -133,7 +76,17 @@ describe('onething provider facade', () => {
       requiresOAuth: () => false,
       refreshOAuthToken: async () => ({ accessToken: 'unused' }),
       requiresSystemMerge: () => false,
-      resolveRuntimeRoute: () => ({ kind: 'deepseek' }),
+      // deepseek is an ordinary agent route now — it used to have one of its
+      // own, and that separation is precisely how this path lost its usage
+      // reporting in the first place (see the assertion below).
+      resolveRuntimeRoute: (_providerId, config) => ({
+        kind: 'agent',
+        provider: createDeepSeekAgentProvider({
+          apiKey: String(config.apiKey ?? ''),
+          baseUrl: config.baseUrl,
+          fetchImpl,
+        }),
+      }),
       createRequiredFetch: () => fetchImpl,
       dumpProviderRequest: context => {
         dumps.push(context)
@@ -141,7 +94,8 @@ describe('onething provider facade', () => {
       async *streamACPPrompt() {},
     })
 
-    const result = await facade.generateChatResponseWithReasoning(
+    const usages: Array<{ inputTokens: number; outputTokens: number; totalTokens: number }> = []
+    const text = await facade.generateChatResponse(
       'deepseek',
       {
         apiKey: 'api-key',
@@ -154,17 +108,16 @@ describe('onething provider facade', () => {
         thinking: true,
         thinkingEffort: 'xhigh',
         debugSessionId: 'session_1',
+        onUsage: usage => { usages.push(usage) },
       },
     )
 
     // usage 必须一路带到门口(2026-08-02):`generateOnethingTextChatResponse` 靠
     // `if (result.usage) onUsage(...)` 计费,而 deepseek 这条 generate 路径此前
     // 把它丢在了最后一步 —— 于是走它的旁路调用在账本上一条都不留。
-    expect(result).toEqual({
-      text: 'hello',
-      reasoning: 'think',
-      usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
-    })
+    // 走 generateChatResponse 而不是内部的 …WithReasoning:计费真正发生在这条路上。
+    expect(text).toBe('hello')
+    expect(usages).toEqual([{ inputTokens: 3, outputTokens: 2, totalTokens: 5 }])
     expect(fetchCalls[0].url).toBe('https://deepseek.test/chat/completions')
     expect(JSON.parse(fetchCalls[0].body ?? '{}')).toMatchObject({
       model: 'deepseek-reasoner',
@@ -177,10 +130,9 @@ describe('onething provider facade', () => {
     expect(dumps[0]).toMatchObject({
       providerId: 'deepseek',
       model: 'deepseek-reasoner',
-      mode: 'stream-reasoning',
+      mode: 'generate',
       metadata: {
         sessionId: 'session_1',
-        transport: 'deepseek-agent',
       },
     })
   })

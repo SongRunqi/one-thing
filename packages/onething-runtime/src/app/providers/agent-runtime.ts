@@ -5,11 +5,8 @@ import type {
 } from '@onething/core/agent-loop'
 import {
   ONETHING_ACP_RUNTIME_PROVIDER_ID,
-  ONETHING_DEEPSEEK_RUNTIME_PROVIDER_ID,
-  createOnethingDeepSeekAgentRuntimeProvider,
   createOnethingUtilityAgentProvider,
   isOnethingACPProviderRuntime,
-  isOnethingDeepSeekProviderRuntime,
   resolveOnethingProviderRuntimeRoute,
   type OnethingProviderExecutableToolDefinition,
   type OnethingProviderRuntimeRoute,
@@ -20,7 +17,6 @@ import {
 } from '@onething/runtime/providers'
 
 export const ACP_PROVIDER_ID = ONETHING_ACP_RUNTIME_PROVIDER_ID
-export const DEEPSEEK_PROVIDER_ID = ONETHING_DEEPSEEK_RUNTIME_PROVIDER_ID
 
 export { createAgentProviderFromRuntime }
 
@@ -39,9 +35,6 @@ export function isACPProviderRuntime(providerId: string): boolean {
   return isOnethingACPProviderRuntime(providerId)
 }
 
-export function isDeepSeekProviderRuntime(providerId: string): boolean {
-  return isOnethingDeepSeekProviderRuntime(providerId)
-}
 
 export function createUtilityAgentProvider(
   providerId: string,
@@ -52,11 +45,6 @@ export function createUtilityAgentProvider(
   }) as AgentProvider | undefined
 }
 
-export function createDeepSeekAgentRuntimeProvider(config: AgentRuntimeProviderConfig): AgentProvider {
-  return createOnethingDeepSeekAgentRuntimeProvider(config, {
-    createAgentProvider: createAgentProviderFromRuntime,
-  }) as AgentProvider
-}
 
 export function resolveProviderRuntimeRoute(
   providerId: string,

@@ -18,9 +18,6 @@ import {
   resolveOnethingDeepSeekAgentThinking,
   resolveOnethingAgentThinking,
   streamOnethingACPChatResponseWithTools,
-  streamOnethingChatResponseWithReasoning,
-  streamOnethingChatResponseWithTools,
-  streamOnethingTextChatResponse,
 } from '../provider-routing.js'
 
 describe('onething provider routing helpers', () => {
@@ -209,7 +206,6 @@ describe('onething provider routing helpers', () => {
       streamACPResponse,
       mergeMessagesForGenerate,
       resolveRuntimeRoute: () => ({ kind: 'acp' }),
-      generateWithDeepSeek: vi.fn(),
       runUtilityAgentTurn: vi.fn(),
     })).resolves.toEqual({
       text: 'hello world',
@@ -228,33 +224,6 @@ describe('onething provider routing helpers', () => {
     expect(mergeMessagesForGenerate).not.toHaveBeenCalled()
   })
 
-  it('owns DeepSeek generate-with-reasoning route orchestration', async () => {
-    const config = { model: 'deepseek-reasoner' }
-    const messages = [{ role: 'system', content: 'rules' }, { role: 'user', content: 'hello' }]
-    const mergedMessages = [{ role: 'user', content: 'merged hello' }]
-    const generateWithDeepSeek = vi.fn(async () => ({ text: 'deepseek response' }))
-    const runUtilityAgentTurn = vi.fn()
-
-    await expect(generateOnethingChatResponseWithReasoning({
-      providerId: 'deepseek',
-      config,
-      messages,
-      options: { temperature: 0.2 },
-      streamACPResponse: vi.fn(),
-      mergeMessagesForGenerate: vi.fn(() => mergedMessages),
-      resolveRuntimeRoute: () => ({ kind: 'deepseek' }),
-      generateWithDeepSeek,
-      runUtilityAgentTurn,
-    })).resolves.toEqual({ text: 'deepseek response' })
-
-    expect(generateWithDeepSeek).toHaveBeenCalledWith(
-      config,
-      mergedMessages,
-      { temperature: 0.2 },
-    )
-    expect(runUtilityAgentTurn).not.toHaveBeenCalled()
-  })
-
   it('owns utility agent generate-with-reasoning route orchestration', async () => {
     const provider = { id: 'agent-provider' }
     const config = { model: 'agent-model' }
@@ -262,7 +231,11 @@ describe('onething provider routing helpers', () => {
     const mergedMessages = [{ role: 'user', content: 'merged hello' }]
     const runUtilityAgentTurn = vi.fn(async () => ({ text: 'agent response' }))
 
-    await expect(generateOnethingChatResponseWithReasoning({
+    await expect(generateOnethingChatResponseWithReasoning<
+      { baseUrl?: string; model?: string },
+      { role: string; content: string },
+      { maxTokens?: number; abortSignal?: AbortSignal; debugSessionId?: string }
+    >({
       providerId: 'openai',
       config,
       messages,
@@ -270,7 +243,6 @@ describe('onething provider routing helpers', () => {
       streamACPResponse: vi.fn(),
       mergeMessagesForGenerate: vi.fn(() => mergedMessages),
       resolveRuntimeRoute: () => ({ kind: 'agent', provider }),
-      generateWithDeepSeek: vi.fn(),
       runUtilityAgentTurn,
     })).resolves.toEqual({ text: 'agent response' })
 
@@ -293,137 +265,8 @@ describe('onething provider routing helpers', () => {
       streamACPResponse: vi.fn(),
       mergeMessagesForGenerate: vi.fn(inputMessages => inputMessages),
       resolveRuntimeRoute: () => ({ kind: 'unsupported' }),
-      generateWithDeepSeek: vi.fn(),
       runUtilityAgentTurn: vi.fn(),
     })).rejects.toThrow('Provider unknown does not have an AgentProvider runtime for generate.')
-  })
-
-  it('owns DeepSeek stream-with-reasoning chunk projection', async () => {
-    const config = { model: 'deepseek-reasoner' }
-    const messages = [{ role: 'system', content: 'rules' }, { role: 'user', content: 'hello' }]
-    const mergedMessages = [{ role: 'user', content: 'merged hello' }]
-    const streamDeepSeekTurn = vi.fn(() => (async function* () {
-      yield { type: 'reasoning', reasoning: 'think' }
-      yield { type: 'text', text: 'answer' }
-      yield {
-        type: 'finish',
-        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
-      }
-    })())
-
-    const chunks = []
-    for await (const chunk of streamOnethingChatResponseWithReasoning({
-      providerId: 'deepseek',
-      config,
-      messages,
-      options: { temperature: 0.2 },
-      mergeMessagesForGenerate: vi.fn(() => mergedMessages),
-      resolveRuntimeRoute: () => ({ kind: 'deepseek' }),
-      streamDeepSeekTurn,
-      streamUtilityAgentTurn: vi.fn(),
-    })) {
-      chunks.push(chunk)
-    }
-
-    expect(chunks).toEqual([
-      { type: 'text', text: '', reasoning: 'think' },
-      { type: 'text', text: 'answer' },
-      {
-        type: 'finish',
-        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
-      },
-    ])
-    expect(streamDeepSeekTurn).toHaveBeenCalledWith(
-      config,
-      mergedMessages,
-      { temperature: 0.2 },
-      'stream-reasoning',
-    )
-  })
-
-  it('owns utility agent stream-with-reasoning route orchestration', async () => {
-    const provider = { id: 'agent-provider' }
-    const config = { model: 'agent-model' }
-    const messages = [{ role: 'user', content: 'hello' }]
-    const mergedMessages = [{ role: 'user', content: 'merged hello' }]
-    const streamUtilityAgentTurn = vi.fn(() => (async function* () {
-      yield { type: 'text' as const, text: 'agent answer' }
-    })())
-
-    const chunks = []
-    for await (const chunk of streamOnethingChatResponseWithReasoning({
-      providerId: 'openai',
-      config,
-      messages,
-      options: { maxTokens: 100 },
-      mergeMessagesForGenerate: vi.fn(() => mergedMessages),
-      resolveRuntimeRoute: () => ({ kind: 'agent', provider }),
-      streamDeepSeekTurn: vi.fn(),
-      streamUtilityAgentTurn,
-    })) {
-      chunks.push(chunk)
-    }
-
-    expect(chunks).toEqual([{ type: 'text', text: 'agent answer' }])
-    expect(streamUtilityAgentTurn).toHaveBeenCalledWith(
-      'openai',
-      provider,
-      config,
-      mergedMessages,
-      { maxTokens: 100 },
-      'stream-reasoning',
-    )
-  })
-
-  it('fails unsupported stream-with-reasoning routes from runtime', async () => {
-    async function collectUnsupported() {
-      for await (const _chunk of streamOnethingChatResponseWithReasoning({
-        providerId: 'unknown',
-        config: { model: 'unknown' },
-        messages: [{ role: 'user', content: 'hello' }],
-        options: {},
-        mergeMessagesForGenerate: vi.fn(inputMessages => inputMessages),
-        resolveRuntimeRoute: () => ({ kind: 'unsupported' }),
-        streamDeepSeekTurn: vi.fn(),
-        streamUtilityAgentTurn: vi.fn(),
-      })) {
-        // Drain the generator to surface the error.
-      }
-    }
-
-    await expect(collectUnsupported()).rejects.toThrow(
-      'Provider unknown does not have an AgentProvider runtime for stream-reasoning.',
-    )
-  })
-
-  it('owns ACP tool-stream route orchestration', async () => {
-    const streamACPResponse = vi.fn(() => (async function* () {
-      yield { type: 'text', text: 'acp answer' }
-    })())
-    const chunks = []
-
-    for await (const chunk of streamOnethingChatResponseWithTools({
-      providerId: 'acp',
-      config: { model: 'acp-agent' },
-      messages: [{ role: 'user', content: 'hello' }],
-      tools: {},
-      options: { workingDirectory: '/workspace/project' },
-      mode: 'stream-tools',
-      metadata: { originalMessageCount: 1 },
-      resolveRuntimeRoute: () => ({ kind: 'acp' }),
-      streamACPResponse,
-      streamDeepSeekTurn: vi.fn(),
-      streamAgentToolTurn: vi.fn(),
-    })) {
-      chunks.push(chunk)
-    }
-
-    expect(chunks).toEqual([{ type: 'text', text: 'acp answer' }])
-    expect(streamACPResponse).toHaveBeenCalledWith(
-      { model: 'acp-agent' },
-      [{ role: 'user', content: 'hello' }],
-      { workingDirectory: '/workspace/project' },
-    )
   })
 
   it('owns ACP prompt stream request assembly and event projection', async () => {
@@ -536,119 +379,4 @@ describe('onething provider routing helpers', () => {
     await expect(collectEmptyPrompt()).rejects.toThrow('ACP prompt is empty')
   })
 
-  it('owns DeepSeek tool-stream route orchestration', async () => {
-    const streamDeepSeekTurn = vi.fn(() => (async function* () {
-      yield { type: 'text', text: 'deepseek tool answer' }
-    })())
-    const metadata = { originalMessageCount: 2, convertedMessageCount: 2 }
-    const chunks = []
-
-    for await (const chunk of streamOnethingChatResponseWithTools({
-      providerId: 'deepseek',
-      config: { model: 'deepseek-chat' },
-      messages: [{ role: 'user', content: 'hello' }],
-      tools: { read: { description: 'read files' } },
-      options: { debugTurn: 3 },
-      mode: 'stream-tools',
-      metadata,
-      resolveRuntimeRoute: () => ({ kind: 'deepseek' }),
-      streamACPResponse: vi.fn(),
-      streamDeepSeekTurn,
-      streamAgentToolTurn: vi.fn(),
-    })) {
-      chunks.push(chunk)
-    }
-
-    expect(chunks).toEqual([{ type: 'text', text: 'deepseek tool answer' }])
-    expect(streamDeepSeekTurn).toHaveBeenCalledWith(
-      { model: 'deepseek-chat' },
-      [{ role: 'user', content: 'hello' }],
-      { read: { description: 'read files' } },
-      { debugTurn: 3 },
-      'stream-tools',
-      metadata,
-    )
-  })
-
-  it('owns agent UI-message tool-stream route orchestration', async () => {
-    const provider = { id: 'agent-provider' }
-    const streamAgentToolTurn = vi.fn(() => (async function* () {
-      yield { type: 'text', text: 'agent ui answer' }
-    })())
-    const metadata = { uiMessageCount: 1, modelMessageCount: 2 }
-    const chunks = []
-
-    for await (const chunk of streamOnethingChatResponseWithTools({
-      providerId: 'openai',
-      config: { model: 'gpt-test' },
-      messages: [{ role: 'user', content: 'hello' }],
-      tools: {},
-      options: { maxTokens: 100 },
-      mode: 'stream-ui-messages',
-      metadata,
-      resolveRuntimeRoute: () => ({ kind: 'agent', provider }),
-      streamDeepSeekTurn: vi.fn(),
-      streamAgentToolTurn,
-    })) {
-      chunks.push(chunk)
-    }
-
-    expect(chunks).toEqual([{ type: 'text', text: 'agent ui answer' }])
-    expect(streamAgentToolTurn).toHaveBeenCalledWith(
-      'openai',
-      provider,
-      { model: 'gpt-test' },
-      [{ role: 'user', content: 'hello' }],
-      {},
-      { maxTokens: 100 },
-      'stream-ui-messages',
-      metadata,
-    )
-  })
-
-  it('fails unsupported tool-stream routes from runtime', async () => {
-    async function collectUnsupported() {
-      for await (const _chunk of streamOnethingChatResponseWithTools({
-        providerId: 'unknown',
-        config: { model: 'unknown' },
-        messages: [{ role: 'user', content: 'hello' }],
-        tools: {},
-        options: {},
-        mode: 'stream-ui-messages',
-        resolveRuntimeRoute: () => ({ kind: 'unsupported' }),
-        streamDeepSeekTurn: vi.fn(),
-        streamAgentToolTurn: vi.fn(),
-      })) {
-        // Drain the generator to surface the error.
-      }
-    }
-
-    await expect(collectUnsupported()).rejects.toThrow(
-      'Provider unknown does not have an AgentProvider runtime for stream-ui-messages.',
-    )
-  })
-
-  it('owns text stream projection over reasoning-capable adapters', async () => {
-    async function* streamWithReasoning() {
-      yield { type: 'text' as const, text: 'hello' }
-      yield { type: 'text' as const, text: '', reasoning: 'thinking' }
-      yield { type: 'finish' as const }
-    }
-
-    const chunks = []
-    for await (const chunk of streamOnethingTextChatResponse({
-      providerId: 'openai',
-      config: {},
-      messages: [{ role: 'user', content: 'hello' }],
-      options: {},
-      streamWithReasoning,
-    })) {
-      chunks.push(chunk)
-    }
-
-    expect(chunks).toEqual([
-      { text: 'hello', reasoning: undefined },
-      { text: '', reasoning: 'thinking' },
-    ])
-  })
 })

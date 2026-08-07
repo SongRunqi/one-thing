@@ -25,7 +25,6 @@ import {
 	createCoreId,
 	getAgentLoopTransientTail,
 	maybeCompactAgentLoopContextWithAdapters,
-	planAgentLoopActiveMemoryLoading,
 	planAgentLoopPromptBuildOptions,
 	planAgentLoopRuntimePreparation,
 	planAgentLoopTools,
@@ -91,15 +90,6 @@ export interface OnethingAgentLoopRuntimeSettings<
 		| undefined,
 > extends CoreAgentLoopRuntimeSettingsLike<TToolSettings> {
 	chat?: OnethingAgentLoopChatSettings;
-	general?: {
-		soulMemory?: {
-			enabled?: boolean;
-			activeMemory?: {
-				enabled?: boolean;
-				timeoutMs?: number;
-			};
-		};
-	};
 }
 
 export interface OnethingAgentLoopRuntimeContext<
@@ -282,9 +272,6 @@ export interface OnethingAgentLoopRuntimeAdapters<
 		session: TSession;
 		modelContextLength: number;
 	}): boolean;
-	sendActiveMemoryPart?(
-		part: { type: "loading-memory" } | { type: "waiting" },
-	): void;
 	goal?: OnethingAgentLoopGoalHooks;
 	logger?: OnethingAgentLoopLogger;
 	createId?(): string;
@@ -393,9 +380,6 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 		session: TSession;
 		modelContextLength: number;
 	}): boolean;
-	sendActiveMemoryPart?(
-		part: { type: "loading-memory" } | { type: "waiting" },
-	): void;
 	goal?: OnethingAgentLoopGoalHooks;
 	logger?: OnethingAgentLoopLogger;
 	createId?(): string;
@@ -498,7 +482,6 @@ export function createOnethingAgentLoopRuntimeAdapters<
 		compactSessionContext: host.compactSessionContext,
 		emitEvent: host.emitEvent,
 		shouldSkipProviderUsageMismatch: host.shouldSkipProviderUsageMismatch,
-		sendActiveMemoryPart: host.sendActiveMemoryPart,
 		goal: host.goal,
 		logger: host.logger,
 		createId: host.createId,
@@ -739,27 +722,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 				historyMessages: nextHistoryMessages,
 			}),
 		);
-	const activeMemoryLoading = planAgentLoopActiveMemoryLoading({
-		hasEmitter: Boolean(adapters.sendActiveMemoryPart),
-		settings: ctx.settings,
-	});
-	const promptContextStartedAt = Date.now();
-
-	if (activeMemoryLoading.shouldShow) {
-		adapters.logger?.info?.(
-			`[ActiveMemory] agent-loop ui loading-memory session=${ctx.sessionId.slice(0, 8)} timeoutMs=${activeMemoryLoading.timeoutMs}`,
-		);
-		adapters.sendActiveMemoryPart?.(activeMemoryLoading.startPart);
-	}
-
 	const requestMessages = await buildPromptForHistory(historyMessages);
-
-	if (activeMemoryLoading.shouldShow) {
-		adapters.logger?.info?.(
-			`[ActiveMemory] agent-loop ui waiting session=${ctx.sessionId.slice(0, 8)} promptContextDurationMs=${Date.now() - promptContextStartedAt}`,
-		);
-		adapters.sendActiveMemoryPart?.(activeMemoryLoading.waitingPart);
-	}
 
 	const rebuildAgentMessagesFromSession = async (
 		messages: AgentMessage[],

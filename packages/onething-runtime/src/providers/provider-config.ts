@@ -1,4 +1,5 @@
 import { toJsonObject, type JsonObject, type JsonValue } from '@onething/core'
+import { pickOnethingProviderOptions, type OnethingProviderOptions } from './provider-options.js'
 import { resolveOnethingProviderBaseUrl } from './zhipu.js'
 // 鉴权豁免改问执行器能力面(E0):判据是「它是不是外部执行体」,
 // 不是「它的 id 在不在某张名单里」。表在 agents/executor/capabilities.ts。
@@ -71,9 +72,12 @@ export interface CoreProviderConfigLike {
   model?: string
   selectedModels?: string[]
   baseUrl?: string
+  /** Stored, user-editable dials. The settings UI owns these names. */
   zhipuApiMode?: 'standard' | 'coding-plan'
   qwenApiMode?: 'standard' | 'token-plan' | 'coding-plan'
   qwenRegion?: 'cn' | 'intl'
+  /** Runtime-only: packed by withResolvedProviderBaseUrl, never persisted. */
+  providerOptions?: OnethingProviderOptions
   temperature?: number
   oauthToken?: unknown
 }
@@ -405,14 +409,31 @@ export function getEffectiveProviderConfig<TProvider extends CoreProviderConfigL
   }
 }
 
+/**
+ * Stored shape → runtime shape. Two things happen here and nowhere else:
+ * the endpoint is resolved from the provider's own dials, and those dials are
+ * packed into the opaque `providerOptions` bag the runtime carries.
+ *
+ * This is the boundary: above it configs are what the user saved (flat, named
+ * fields the settings UI edits); below it they are what the runtime forwards
+ * (one bag nobody in between opens). See providers/provider-options.ts.
+ */
 export function withResolvedProviderBaseUrl<TProvider extends CoreProviderConfigLike>(
   providerId: string,
   providerConfig: TProvider | undefined,
 ): TProvider | undefined {
   if (!providerConfig) return providerConfig
   const baseUrl = resolveOnethingProviderBaseUrl(providerId, providerConfig)
-  if (baseUrl === providerConfig.baseUrl) return providerConfig
-  return { ...providerConfig, baseUrl }
+  const providerOptions = pickOnethingProviderOptions(
+    providerId,
+    providerConfig as unknown as Record<string, unknown>,
+  )
+  if (baseUrl === providerConfig.baseUrl && !providerOptions) return providerConfig
+  return {
+    ...providerConfig,
+    baseUrl,
+    ...(providerOptions ? { providerOptions } : {}),
+  }
 }
 
 export function getCustomProviderConfig(
