@@ -31,7 +31,8 @@ export const ONETHING_USAGE_SOURCES = {
   chat: 'chat',
   /** Session title generation. */
   title: 'title',
-  /** soul-memory capture + idle review. */
+  /** Legacy: soul-memory capture + idle review (plugin retired 2026-08-06).
+   *  Kept so historical ledger entries still resolve to a known source. */
   memory: 'memory',
   /** Skill review trigger. */
   skill: 'skill',

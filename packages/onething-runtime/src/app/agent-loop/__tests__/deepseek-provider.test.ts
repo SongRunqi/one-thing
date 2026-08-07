@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createDeepSeekAgentProvider } from '../providers/deepseek.js'
+import { createAgentProviderFromRuntime } from '../providers/factory.js'
+import type { AgentProvider } from '@onething/core/agent-loop'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()
@@ -149,5 +151,54 @@ describe('DeepSeek agent provider', () => {
       value: { type: 'finish', turn: 1, finishReason: 'stop', usage: undefined },
     })
     expect(await iterator.next()).toEqual({ done: true, value: undefined })
+  })
+
+  it('thinks by default on reasoner-class models and drops temperature when it does', async () => {
+    // The old facade carried this rule in a deepseek-only generate route.
+    // Owning it in the provider is what lets that route be deleted without
+    // silently turning thinking off for callers that never opted in.
+    async function bodyFor(model: string, request: Partial<Parameters<NonNullable<AgentProvider['streamTurn']>>[0]> = {}) {
+      let sent: Record<string, unknown> = {}
+      const provider = createAgentProviderFromRuntime('deepseek', { apiKey: 'k', model }, {
+        fetchImpl: async (_input, init) => {
+          sent = JSON.parse(String(init?.body ?? '{}'))
+          return new Response('', { status: 200, headers: { 'content-type': 'text/event-stream' } })
+        },
+      })
+      for await (const _ of provider!.streamTurn!({
+        turn: 1,
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+        temperature: 0,
+        ...request,
+      })) { /* drain */ }
+      return sent
+    }
+
+    // Unspecified thinking on a reasoner: on, and temperature is withheld.
+    const reasoner = await bodyFor('deepseek-reasoner')
+    expect(reasoner.thinking).toEqual({ type: 'enabled' })
+    expect(reasoner.temperature).toBeUndefined()
+
+    // Unspecified on a chat model: left to the server default, temperature kept.
+    const chat = await bodyFor('deepseek-chat')
+    expect(chat.thinking).toBeUndefined()
+    expect(chat.temperature).toBe(0)
+
+    // An explicit request always wins over the model-name inference.
+    const forcedOff = await bodyFor('deepseek-reasoner', { thinking: 'disabled' })
+    expect(forcedOff.thinking).toEqual({ type: 'disabled' })
+    expect(forcedOff.temperature).toBe(0)
+
+    // Effort defaults to high only when thinking was actually asked for.
+    // Inferred thinking sends none — defaulting there would start spending on a
+    // dial nobody turned, which the chat path has never done.
+    const asked = await bodyFor('deepseek-chat', { thinking: 'enabled' })
+    expect(asked.reasoning_effort).toBe('high')
+    expect(reasoner.reasoning_effort).toBeUndefined()
+
+    // Anything below high clamps up; max is passed through.
+    expect((await bodyFor('deepseek-chat', { thinking: 'enabled', reasoningEffort: 'low' })).reasoning_effort).toBe('high')
+    expect((await bodyFor('deepseek-chat', { thinking: 'enabled', reasoningEffort: 'max' })).reasoning_effort).toBe('max')
   })
 })

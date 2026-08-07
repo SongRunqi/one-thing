@@ -7,6 +7,7 @@ import {
 } from "../providers/factory.js";
 import { builtinProviders } from "../../providers/builtin/index.js";
 import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
+import { resolveAgentModelCapabilities } from "@onething/core/agent-loop";
 
 describe("agent provider runtime factory", () => {
 	const emptyFetch: typeof globalThis.fetch = async () => new Response("");
@@ -411,13 +412,15 @@ describe("agent provider runtime factory", () => {
 	});
 
 	it("points the qwen runtime at the host its mode + region select", async () => {
+		// The dials travel in the opaque providerOptions bag now, not as named
+		// fields on the runtime config — see providers/provider-options.ts.
 		async function requestedUrl(
-			config: Record<string, unknown>,
+			providerOptions: Record<string, unknown>,
 		): Promise<string> {
 			let url = "";
 			const provider = createAgentProviderFromRuntime(
 				"qwen",
-				{ apiKey: "k", ...config },
+				{ apiKey: "k", providerOptions },
 				{
 					fetchImpl: async (input) => {
 						url = String(input);
@@ -490,5 +493,49 @@ describe("agent provider runtime factory", () => {
 		}
 
 		expect(isAgentProviderRuntimeSupported("plugin-agent")).toBe(false);
+	});
+
+	it("lets a provider keep its own capabilities out of the ledger overlay", async () => {
+		// The ledger says this model has no tools. A provider whose capabilities
+		// come from a live backend must not be overruled by that — the ledger has
+		// never seen the model. Previously this was a hardcoded list of provider
+		// ids inside the factory, so every new external agent had to be added to it.
+		const selfDeclared = registerAgentProviderRuntime("self-declared-agent", () => ({
+			id: "self-declared-agent",
+			capabilitiesAreSelfDeclared: true,
+			capabilities: {
+				capabilities: ["text-input", "text-output", "tool-calls"],
+				inputModalities: ["text"],
+				outputModalities: ["text"],
+				supportsTools: true,
+			},
+		}));
+		const ledgerRuled = registerAgentProviderRuntime("ledger-ruled-agent", () => ({
+			id: "ledger-ruled-agent",
+			capabilities: {
+				capabilities: ["text-input", "text-output", "tool-calls"],
+				inputModalities: ["text"],
+				outputModalities: ["text"],
+				supportsTools: true,
+			},
+		}));
+
+		try {
+			const denyTools = {
+				model: "m1",
+				modelCapabilitiesByModel: { m1: { tools: false } },
+			};
+
+			// resolveAgentModelCapabilities is what real consumers call: it prefers
+			// getModelCapabilities and falls back to the provider's own declaration.
+			const kept = createAgentProviderFromRuntime("self-declared-agent", denyTools)!;
+			expect((await resolveAgentModelCapabilities(kept, "m1")).supportsTools).toBe(true);
+
+			const overruled = createAgentProviderFromRuntime("ledger-ruled-agent", denyTools)!;
+			expect((await resolveAgentModelCapabilities(overruled, "m1")).supportsTools).toBe(false);
+		} finally {
+			selfDeclared();
+			ledgerRuled();
+		}
 	});
 });
