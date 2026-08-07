@@ -36,23 +36,26 @@ export interface CoreAgentLoopProviderConfig {
 export interface CoreAgentLoopProviderRuntimeConfigLike extends CoreAgentLoopProviderConfig {
   apiKey?: unknown
   baseUrl?: unknown
-  zhipuApiMode?: unknown
-  qwenApiMode?: unknown
-  qwenRegion?: unknown
   apiType?: unknown
   oauthToken?: unknown
   authContext?: unknown
   modelCapabilitiesByModel?: unknown
   models?: unknown
+  /**
+   * Provider-private knobs, forwarded verbatim and never inspected here. core
+   * used to name `zhipuApiMode` / `qwenApiMode` / `qwenRegion` in this
+   * interface AND in the Pick below — so every provider that grew its own dial
+   * forced an edit to the provider-agnostic layer, and forgetting one dropped
+   * the field silently (the Pick is a whitelist; typecheck stays green).
+   */
+  providerOptions?: unknown
 }
 
 export type CoreAgentLoopProviderRuntimeConfigFor<TProviderConfig extends CoreAgentLoopProviderRuntimeConfigLike> =
   Pick<TProviderConfig,
     | 'apiKey'
     | 'baseUrl'
-    | 'zhipuApiMode'
-    | 'qwenApiMode'
-    | 'qwenRegion'
+    | 'providerOptions'
     | 'model'
     | 'apiType'
     | 'oauthToken'
@@ -161,30 +164,6 @@ export interface CoreAgentLoopThinkingContext {
   providerId: string
   providerConfig: CoreAgentLoopProviderConfig
 }
-
-export interface CoreAgentLoopActiveMemorySettings {
-  general?: {
-    soulMemory?: {
-      enabled?: boolean
-      activeMemory?: {
-        enabled?: boolean
-        timeoutMs?: number
-      }
-    }
-  }
-}
-
-export type CoreAgentLoopActiveMemoryLoadingPlan =
-  | {
-      shouldShow: false
-      timeoutMs: number
-    }
-  | {
-      shouldShow: true
-      timeoutMs: number
-      startPart: { type: 'loading-memory' }
-      waitingPart: { type: 'waiting' }
-    }
 
 export interface CoreAgentLoopMessage {
   role: string
@@ -619,9 +598,7 @@ export function planAgentLoopRuntimePreparation<
     providerRuntimeConfig: {
       apiKey: input.ctx.providerConfig.apiKey,
       baseUrl: input.ctx.providerConfig.baseUrl,
-      zhipuApiMode: input.ctx.providerConfig.zhipuApiMode,
-      qwenApiMode: input.ctx.providerConfig.qwenApiMode,
-      qwenRegion: input.ctx.providerConfig.qwenRegion,
+      providerOptions: input.ctx.providerConfig.providerOptions,
       model: input.ctx.providerConfig.model,
       apiType: input.ctx.providerConfig.apiType,
       oauthToken: input.ctx.providerConfig.oauthToken,
@@ -739,31 +716,6 @@ export function buildAgentLoopDirectToolsWithAdapters<
       data: toJsonValue(result.data),
     }
   })
-}
-
-export function shouldEmitActiveMemoryLoading(ctx: { settings: CoreAgentLoopActiveMemorySettings }): boolean {
-  const soulMemory = ctx.settings.general?.soulMemory
-  return soulMemory?.enabled !== false && soulMemory?.activeMemory?.enabled !== false
-}
-
-export function planAgentLoopActiveMemoryLoading(input: {
-  hasEmitter: boolean
-  settings: CoreAgentLoopActiveMemorySettings
-}): CoreAgentLoopActiveMemoryLoadingPlan {
-  const timeoutMs = input.settings.general?.soulMemory?.activeMemory?.timeoutMs ?? 15000
-  const shouldShow = input.hasEmitter && shouldEmitActiveMemoryLoading({ settings: input.settings })
-  if (!shouldShow) {
-    return {
-      shouldShow: false,
-      timeoutMs,
-    }
-  }
-  return {
-    shouldShow: true,
-    timeoutMs,
-    startPart: { type: 'loading-memory' },
-    waitingPart: { type: 'waiting' },
-  }
 }
 
 export function shouldStartAgentLoopContextCompact(options: {

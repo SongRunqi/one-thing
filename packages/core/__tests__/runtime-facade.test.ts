@@ -93,10 +93,6 @@ describe('createOnethingRuntimeFacade', () => {
           return unsubscribe
         }),
       },
-      memory: {
-        captureSave: vi.fn(async request => ({ success: true, target: request })),
-        captureDiscard: vi.fn(async request => ({ success: true, request })),
-      },
       scheduler: {
         listTasks: vi.fn(async () => ({ success: true, tasks: [] })),
       },
@@ -245,14 +241,6 @@ describe('createOnethingRuntimeFacade', () => {
     const offMedia = runtime.media?.subscribeImageGenerated?.(eventHandler)
     expect(eventHandler).toHaveBeenCalledWith({ id: 'image-1' })
     offMedia?.()
-    await expect(runtime.memory?.captureSave?.({ id: 'capture-1' })).resolves.toEqual({
-      success: true,
-      target: { id: 'capture-1' },
-    })
-    await expect(runtime.memory?.captureDiscard?.({ id: 'capture-1' })).resolves.toEqual({
-      success: true,
-      request: { id: 'capture-1' },
-    })
     await expect(runtime.scheduler?.listTasks()).resolves.toEqual({ success: true, tasks: [] })
     await expect(runtime.plugins?.list?.()).resolves.toEqual({ success: true, plugins: [] })
     await expect(runtime.plugins?.enable?.('demo')).resolves.toEqual({ success: true, pluginId: 'demo' })
@@ -384,7 +372,6 @@ describe('createOnethingRuntimeFacade', () => {
     expect(runtime.projectDirs).toBeUndefined()
     expect(runtime.variables).toBeUndefined()
     expect(runtime.media).toBeUndefined()
-    expect(runtime.memory).toBeUndefined()
     expect(runtime.scheduler).toBeUndefined()
     expect(runtime.plugins).toBeUndefined()
     expect(runtime.oauth).toBeUndefined()

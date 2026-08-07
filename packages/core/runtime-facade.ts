@@ -234,19 +234,6 @@ export interface RuntimeMediaAdapter {
   ): RuntimeUnsubscribe
 }
 
-export interface RuntimeMemoryAdapter {
-  overview?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  read?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  append?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  saveFile?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  logsList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  logsStats?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  logsOpenFolder?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  logsCleanup?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  captureSave?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  captureDiscard?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-}
-
 export interface RuntimeTodoPlanAdapter<
   TGetRequest = unknown,
   TCreateRequest = unknown,
@@ -512,7 +499,6 @@ export interface OnethingRuntimeFacadeOptions<
   projectDirs?: RuntimeProjectDirsAdapter
   variables?: RuntimeVariablesAdapter
   media?: RuntimeMediaAdapter
-  memory?: RuntimeMemoryAdapter
   todoPlan?: RuntimeTodoPlanAdapter
   scheduler?: RuntimeSchedulerAdapter
   agents?: RuntimeAgentsAdapter
@@ -595,7 +581,6 @@ export interface OnethingRuntimeFacade<
   readonly projectDirs?: RuntimeProjectDirsAdapter
   readonly variables?: RuntimeVariablesAdapter
   readonly media?: RuntimeMediaAdapter
-  readonly memory?: RuntimeMemoryAdapter
   readonly todoPlan?: RuntimeTodoPlanAdapter
   readonly scheduler?: RuntimeSchedulerAdapter
   readonly agents?: RuntimeAgentsAdapter
@@ -749,7 +734,6 @@ export function createOnethingRuntimeFacade<
     projectDirs: options.projectDirs ? Object.freeze({ ...options.projectDirs }) : undefined,
     variables: options.variables ? Object.freeze({ ...options.variables }) : undefined,
     media: options.media ? Object.freeze({ ...options.media }) : undefined,
-    memory: options.memory ? Object.freeze({ ...options.memory }) : undefined,
     todoPlan: options.todoPlan ? Object.freeze({ ...options.todoPlan }) : undefined,
     scheduler: options.scheduler ? Object.freeze({ ...options.scheduler }) : undefined,
     agents: options.agents ? Object.freeze({ ...options.agents }) : undefined,

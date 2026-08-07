@@ -93,6 +93,37 @@ describe('architecture boundaries', () => {
       appSourceImportPattern,
     ])).toEqual([])
   })
+
+  /**
+   * The provider-agnostic layers must not name a provider.
+   *
+   * They used to: core's agent-loop runtime listed `zhipuApiMode` /
+   * `qwenApiMode` / `qwenRegion` by name in an interface AND in a `Pick<>`
+   * whitelist, and the provider factory bypassed its capability ledger with
+   * `providerId === 'acp' || providerId === 'claude-code-agent'`. Both meant
+   * that adding a provider forced an edit to code that has no business knowing
+   * providers exist — and in the `Pick<>` case, forgetting the edit dropped the
+   * field silently with a green typecheck.
+   *
+   * Knobs travel in the opaque `providerOptions` bag; capabilities are asked
+   * for, not looked up. See docs/design/provider-abstraction.md.
+   */
+  it('keeps the provider-agnostic layers free of provider names', () => {
+    const providerNames = [
+      'codex', 'claude-code-agent', 'deepseek', 'gemini',
+      'openai-compatible', 'qwen', 'zhipu', 'github-copilot', 'openrouter',
+    ]
+    const idComparison = new RegExp(
+      `(providerId|provider\\.id|providerType)\\s*===\\s*['"](${providerNames.join('|')})['"]`,
+    )
+    const namedKnob = /\b(zhipuApiMode|qwenApiMode|qwenRegion|codexNativeTools|codexRefreshOAuthToken|codexRequestDumper)\b/
+
+    // Comments are stripped first: the point is that no code branches on a
+    // provider, not that the history cannot be written down next to it.
+    expect(findForbiddenReferencesInCode('packages/core/agent-loop', [idComparison, namedKnob])).toEqual([])
+    expect(findForbiddenReferencesInCode('packages/core/engine', [idComparison, namedKnob])).toEqual([])
+  })
+
 })
 
 /** Matches import/require/export-from of `src/main|renderer|preload` from any relative depth. */
@@ -131,6 +162,24 @@ function findForbiddenReferences(
         .filter(pattern => pattern.test(content))
         .map(pattern => `${filePath} matched ${pattern}`)
     })
+}
+
+function stripComments(content: string): string {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+}
+
+function findForbiddenReferencesInCode(
+  relativeDirectory: string,
+  patterns: RegExp[],
+): string[] {
+  return collectSourceFiles(relativeDirectory).flatMap(filePath => {
+    const code = stripComments(readFileSync(join(projectRoot, filePath), 'utf8'))
+    return patterns
+      .filter(pattern => pattern.test(code))
+      .map(pattern => `${filePath} matched ${pattern}`)
+  })
 }
 
 function collectSourceFiles(relativeDirectory: string): string[] {

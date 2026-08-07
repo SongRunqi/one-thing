@@ -330,7 +330,6 @@ export {
 	maybeCompactAgentLoopContextWithAdapters,
 	planAgentLoopContextCompactFinal,
 	planAgentLoopContextCompactPass,
-	planAgentLoopActiveMemoryLoading,
 	planAgentLoopPromptBuildOptions,
 	planAgentLoopRuntimePreparation,
 	planAgentLoopTools,
@@ -341,11 +340,8 @@ export {
 	runAgentLoopAfterTurnWithAdapters,
 	runAgentLoopBeforeTurnWithAdapters,
 	shouldStartAgentLoopContextCompact,
-	shouldEmitActiveMemoryLoading,
 } from "./agent-loop-runtime.js";
 export type {
-	CoreAgentLoopActiveMemorySettings,
-	CoreAgentLoopActiveMemoryLoadingPlan,
 	CoreAgentLoopCompactLogger,
 	CoreAgentLoopCompactSessionLike,
 	CoreAgentLoopCompactionAdapters,

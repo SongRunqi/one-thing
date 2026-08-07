@@ -368,6 +368,19 @@ export interface AgentProvider {
   id: string
   capabilities?: AgentModelCapabilities
   getModelCapabilities?: (model: string) => AgentModelCapabilities | Promise<AgentModelCapabilities>
+  /**
+   * This provider's capabilities come from the live backend it is attached to
+   * — a connected ACP agent, an external agent CLI — not from any model
+   * ledger. Hosts that overlay ledger verdicts on top of a provider's own
+   * declaration must skip that overlay here: the ledger has nothing true to
+   * say about a model it has never seen, and guessing produces exactly the
+   * `supportsTools: false` class of bug where a capable agent is silently
+   * denied its tools.
+   *
+   * Declared by the provider itself so that connecting another external agent
+   * never means editing a list of provider ids somewhere else.
+   */
+  capabilitiesAreSelfDeclared?: boolean
   streamTurn?: (request: AgentTurnRequest) => AsyncIterable<AgentTurnStreamEvent>
   runTurn?: (request: AgentTurnRequest) => Promise<AgentTurn>
 }
