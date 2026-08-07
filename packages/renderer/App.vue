@@ -153,7 +153,6 @@
                   <MediaPanel
                     v-show="workspacePanelOpen"
                     class="workspace-view workspace-view-panel"
-                    mode="main"
                     :visible="workspacePanelOpen"
                     :active-tab="activeWorkspacePanel"
                     :reserve-sidebar-actions="reserveSidebarActions"

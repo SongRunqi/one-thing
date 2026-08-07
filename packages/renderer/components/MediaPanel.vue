@@ -2,54 +2,9 @@
   <div
     v-show="visible"
     class="media-panel"
-    :class="`mode-${mode}`"
   >
-    <div
-      v-if="mode !== 'main'"
-      class="media-nav"
-    >
-      <div class="traffic-lights-space" />
-      <div class="nav-items">
-        <Button
-          v-for="item in allNavItems"
-          :key="item.id"
-          unstyled
-          class="nav-item"
-          :class="{ active: activeNav === item.id }"
-          :aria-pressed="activeNav === item.id"
-          @click="activeNav = item.id"
-        >
-          <component
-            :is="item.icon"
-            :size="20"
-            :stroke-width="1.5"
-            class="nav-icon"
-          />
-          <span class="nav-label">{{ item.label }}</span>
-          <span
-            v-if="item.id === 'media' && mediaStore.assets.length > 0"
-            class="nav-count"
-          >
-            {{ mediaStore.assets.length }}
-          </span>
-        </Button>
-      </div>
-      <div class="nav-footer">
-        <Button
-          unstyled
-          class="text-action nav-close"
-          @click="$emit('close')"
-        >
-          close
-        </Button>
-      </div>
-    </div>
-
     <div class="media-content">
-      <div
-        v-if="mode === 'main'"
-        class="main-panel-header"
-      >
+      <div class="main-panel-header">
         <!-- 侧栏收起时按钮住在这里 —— .main-panel-header 是 drag,按钮是它的
              真实子孙,自身 no-drag 才挖得动洞。整槽不再是一整块 no-drag 死带。 -->
         <div class="main-panel-sidebar-actions-slot">
@@ -66,6 +21,38 @@
             @open-search="$emit('open-search')"
             @create-new-chat="$emit('create-new-chat')"
           />
+        </div>
+        <!-- 面板内导航。**两个入口的分工**:
+             · 侧栏「⋯」菜单 = 打开工作区面板并跳到某个 inSidebarMenu 的面板;
+             · 这条导航 = 在**已打开**的面板之间切换,覆盖面更大 —— 它吃的是
+               inPanelNav,所以 nav-only 的内置面板(archive)与全部插件面板
+               都在这里,而它们按定义进不了 ⋯ 菜单。
+             在这条补上之前,主窗口的 v-if="mode !== 'main'" 让导航从不渲染,
+             于是 archive 与所有插件面板在主窗口**根本没有入口**。 -->
+        <div
+          class="workspace-tabs"
+          role="tablist"
+          aria-label="Workspace panels"
+        >
+          <Button
+            v-for="item in allNavItems"
+            :key="item.id"
+            unstyled
+            class="workspace-tab"
+            :class="{ active: activeNav === item.id }"
+            role="tab"
+            :aria-selected="activeNav === item.id"
+            native-type="button"
+            @click="activeNav = item.id"
+          >
+            <component
+              :is="item.icon"
+              :size="14"
+              :stroke-width="1.5"
+              class="workspace-tab-icon"
+            />
+            <span class="workspace-tab-label">{{ item.label }}</span>
+          </Button>
         </div>
         <div
           class="main-panel-header-spacer"
@@ -492,12 +479,10 @@ const props = withDefaults(defineProps<{
   visible: boolean
   activeTab?: WorkspacePanelNav | null
   initialTab?: WorkspacePanelNav | ''
-  mode?: 'side' | 'main'
   reserveSidebarActions?: boolean
 }>(), {
   activeTab: null,
   initialTab: '',
-  mode: 'side',
   reserveSidebarActions: false,
 })
 
@@ -818,14 +803,17 @@ onUnmounted(() => {
  * Workspace panel shell + media view — 画线风 (ledger / ink-line).
  * No background fills, no radii: state lives in the line.
  */
+/* 只有一种形态了 —— `side` 是零使用点的死枝,已随竖直 nav 一起删除。
+   这条规则是原先 `.media-panel` 与 `.media-panel.mode-main` 合并后的结果:
+   几何取 main 那一份(侧栏形态的 560px 定宽随死枝一起走)。 */
 .media-panel {
-  width: 560px;
+  flex: 1 1 auto;
+  width: auto;
   height: 100%;
   min-height: 0;
   min-width: 0;
-  flex-shrink: 0;
   display: flex;
-  background: var(--ui-surface-panel-bg, var(--ui-surface-app-bg));
+  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg));
   overflow: hidden;
   animation: ledger-fade 0.15s ease;
 }
@@ -833,116 +821,6 @@ onUnmounted(() => {
 @keyframes ledger-fade {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-.media-panel.mode-main {
-  flex: 1 1 auto;
-  width: auto;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg));
-}
-
-/* ---- nav rail ---- */
-.media-nav {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-right: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 72%, transparent);
-  z-index: 1;
-}
-
-.traffic-lights-space {
-  height: 52px;
-  flex-shrink: 0;
-  -webkit-app-region: drag;
-}
-
-.nav-items {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 8px 0;
-  gap: 2px;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.nav-footer {
-  display: flex;
-  justify-content: center;
-  padding: 10px 8px 12px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--ui-border-subtle-border)) 32%, transparent);
-}
-
-.nav-close {
-  padding: 4px 6px;
-}
-
-.nav-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 11px 10px;
-  min-width: 68px;
-  border: none;
-  background: transparent;
-  color: var(--ui-text-muted-fg);
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-default);
-}
-
-/* Active nav item hangs a tick on the rail — no fill. */
-.nav-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 2px;
-  height: 0;
-  background: var(--ui-accent-primary-fg);
-  transition: height var(--duration-fast) var(--ease-default);
-}
-
-.nav-item:hover {
-  color: var(--ui-text-primary-fg);
-}
-
-.nav-item:focus-visible {
-  outline: 1px solid var(--ui-accent-primary-fg);
-  outline-offset: -1px;
-}
-
-.nav-item.active {
-  color: var(--ui-text-primary-fg);
-}
-
-.nav-item.active::before {
-  height: 22px;
-}
-
-.nav-label {
-  font-size: 11px;
-  font-weight: var(--font-weight-medium, 500);
-  max-width: 76px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.nav-count {
-  position: absolute;
-  top: 5px;
-  right: 8px;
-  font-family: var(--font-mono, monospace);
-  font-variant-numeric: tabular-nums;
-  font-size: 10px;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 /* ---- content column ---- */
@@ -953,8 +831,10 @@ onUnmounted(() => {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  padding: 12px;
-  padding-top: 0;
+  /* 主窗口形态下内容区不自带内边距(各视图自己排版)。
+     这原本是 `.mode-main .media-content { padding: 0 }` 的覆盖,
+     side 形态删掉之后只剩这一种,直接写进基础规则。 */
+  padding: 0;
   position: relative;
 }
 
@@ -985,10 +865,6 @@ onUnmounted(() => {
   position: relative;
 }
 
-.mode-main .media-content {
-  padding: 0;
-}
-
 .main-panel-header {
   height: 40px;
   flex-shrink: 0;
@@ -1015,6 +891,84 @@ onUnmounted(() => {
 
 .main-panel-traffic-lights-space.reserved {
   width: 84px;
+}
+
+/* ---- 面板内导航(主窗口唯一的面板切换入口) ----
+   住在 .main-panel-header 里,不另占一条横带 —— 那条带已经有红绿灯让位、
+   侧栏动作与 close。header 自身是 drag 区,所以每个 tab 必须 no-drag,
+   且它们是 header 的真实子孙(app-region 只对同分支子孙生效)。 */
+.workspace-tabs {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  /* 条目多起来(内置 + 任意多个插件面板)时自己横向滚,不把 header 撑破。 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-app-region: no-drag;
+}
+
+.workspace-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.workspace-tab {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: none;
+  background: transparent;
+  color: var(--ui-text-muted-fg);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: color var(--duration-fast) var(--ease-default);
+}
+
+/* 选中态在下沿挂一道尺 —— 与竖直 rail 当年那道 tick 同一个配方,只是转了 90°。 */
+.workspace-tab::after {
+  content: '';
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 0;
+  height: 0;
+  background: var(--ui-accent-primary-fg);
+  transition: height var(--duration-fast) var(--ease-default);
+}
+
+.workspace-tab:hover {
+  color: var(--ui-text-primary-fg);
+}
+
+.workspace-tab:focus-visible {
+  outline: 1px solid var(--ui-accent-primary-fg);
+  outline-offset: -2px;
+}
+
+.workspace-tab.active {
+  color: var(--ui-text-primary-fg);
+}
+
+.workspace-tab.active::after {
+  height: 2px;
+}
+
+.workspace-tab-icon {
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
+.workspace-tab-label {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .main-panel-header-spacer {
@@ -1055,18 +1009,6 @@ onUnmounted(() => {
 .media-source-filter {
   flex: 0 1 136px;
   min-width: 120px;
-}
-
-.mode-side .media-search-control {
-  flex: 1 1 100%;
-  width: 100%;
-  max-width: none;
-}
-
-.mode-side .media-kind-filter,
-.mode-side .media-source-filter {
-  flex: 1 1 calc(50% - 5px);
-  min-width: 0;
 }
 
 /* Ledger-ify shared toolbar controls: transparent, bottom rule only. */
@@ -1172,7 +1114,7 @@ onUnmounted(() => {
   padding-bottom: 16px;
 }
 
-.mode-main .media-grid {
+.media-grid {
   column-width: 168px;
 }
 
@@ -1399,11 +1341,6 @@ onUnmounted(() => {
   flex-direction: column;
   z-index: var(--z-dropdown);
   overflow: hidden;
-}
-
-.mode-side .inspector-drawer {
-  width: 100%;
-  border-left: none;
 }
 
 .drawer-header {

@@ -135,8 +135,12 @@ describe('MediaPanel', () => {
     expect(wrapper.text()).toContain('Uploaded')
 
     await wrapper.find('.media-source-filter .app-select-control').trigger('click')
+    // 来源下拉的选项就这三个。上一版这里还断言过 'Tasks' —— 而 'Tasks' 根本不是
+    // 来源选项,它是被**当时默认渲染的那条竖直导航**的标签偶然满足的
+    // (测试没传 mode,默认走的是 side 形态)。改成钉真正的选项集合;
+    // 导航标签由专门的导航用例去钉。
+    expect(wrapper.text()).toContain('Uploaded')
     expect(wrapper.text()).toContain('Generated')
-    expect(wrapper.text()).toContain('Tasks')
     expect(wrapper.text()).not.toContain('OK')
     expect(wrapper.findAll('.media-item')).toHaveLength(2)
   })
@@ -237,6 +241,101 @@ describe('MediaPanel', () => {
     expect(wrapper.find('[data-workspace-panel-view="tasks"]').exists()).toBe(true)
     expect(wrapper.find('[data-workspace-panel-view="media"]').exists()).toBe(true)
     expect(wrapper.find('[data-workspace-panel-view="agents"]').exists()).toBe(true)
+  })
+
+  it('gives every inPanelNav entry a clickable tab in the main window', async () => {
+    /*
+     * **真机走查抓到的缺陷的回归防线。**
+     *
+     * 面板内导航此前的条件是 `v-if="mode !== 'main'"`,而唯一的使用点
+     * (App.vue)传的正是 `mode="main"` —— 导航条从不渲染。后果:
+     *  · 内置的 `archive` 是 nav-only(inSidebarMenu: false),侧栏 ⋯ 菜单按定义
+     *    不含它 —— 主窗口里**根本进不去**;
+     *  · 全部插件面板同理(它们也进不了 ⋯ 菜单)。
+     * 两个入口丢失是同一个原因,而这个缺陷早于插件系统存在。
+     */
+    const { setPluginWorkspacePanels } = await import('@/workspace/panel-registry')
+    setPluginWorkspacePanels([
+      { pluginId: 'ui-demo', pluginName: 'UI Demo', panelId: 'demo', label: 'UI Demo', loaded: true },
+    ])
+
+    const wrapper = mount(MediaPanel, {
+      props: { visible: true, activeTab: 'media' },
+      global: { stubs: { ArchivedChatsContent: true, PluginPanelHost: true } },
+    })
+    await nextTick()
+
+    const labels = wrapper.findAll('.workspace-tab').map(tab => tab.text())
+    // nav-only 的内置面板与插件面板都必须在导航里 —— 它们没有别的入口。
+    expect(labels).toContain('Archived Chats')
+    expect(labels).toContain('UI Demo')
+    // 侧栏菜单里的那些当然也在(面板内导航是超集)。
+    expect(labels).toContain('Media')
+
+    setPluginWorkspacePanels([])
+  })
+
+  it('switches to a nav-only builtin and to a plugin panel by clicking its tab', async () => {
+    const { setPluginWorkspacePanels } = await import('@/workspace/panel-registry')
+    setPluginWorkspacePanels([
+      { pluginId: 'ui-demo', pluginName: 'UI Demo', panelId: 'demo', label: 'UI Demo', loaded: true },
+    ])
+
+    const wrapper = mount(MediaPanel, {
+      props: { visible: true, activeTab: 'media' },
+      global: { stubs: { ArchivedChatsContent: true, PluginPanelHost: true } },
+    })
+    await nextTick()
+
+    const tabFor = (label: string) => wrapper.findAll('.workspace-tab').find(tab => tab.text() === label)!
+
+    await tabFor('Archived Chats').trigger('click')
+    expect(wrapper.find('[data-workspace-panel-view="archive"]').exists()).toBe(true)
+
+    await tabFor('UI Demo').trigger('click')
+    expect(wrapper.find('[data-workspace-panel-view="plugin:ui-demo:demo"]').exists()).toBe(true)
+
+    setPluginWorkspacePanels([])
+  })
+
+  it('keeps the tab of an enabled-but-broken plugin — declaration precedes code', async () => {
+    // 加载失败的插件入口要留着:清单来自 manifest,不需要插件跑起来,
+    // 点开由 PluginPanelHost 说明原因。
+    const { setPluginWorkspacePanels } = await import('@/workspace/panel-registry')
+    setPluginWorkspacePanels([
+      { pluginId: 'broken', pluginName: 'Broken', panelId: 'p', label: 'Broken Panel', loaded: false },
+    ])
+
+    const wrapper = mount(MediaPanel, {
+      props: { visible: true, activeTab: 'media' },
+      global: { stubs: { ArchivedChatsContent: true, PluginPanelHost: true } },
+    })
+    await nextTick()
+
+    expect(wrapper.findAll('.workspace-tab').map(tab => tab.text())).toContain('Broken Panel')
+    setPluginWorkspacePanels([])
+  })
+
+  it('drops the tab when the plugin is disabled, and falls back if it was open', async () => {
+    const { setPluginWorkspacePanels } = await import('@/workspace/panel-registry')
+    setPluginWorkspacePanels([
+      { pluginId: 'ui-demo', pluginName: 'UI Demo', panelId: 'demo', label: 'UI Demo', loaded: true },
+    ])
+
+    const wrapper = mount(MediaPanel, {
+      props: { visible: true, activeTab: 'plugin:ui-demo:demo' },
+      global: { stubs: { ArchivedChatsContent: true, PluginPanelHost: true } },
+    })
+    await nextTick()
+    expect(wrapper.findAll('.workspace-tab').map(tab => tab.text())).toContain('UI Demo')
+
+    // 停用 → 清单里没有它了(R5 的回落在新入口下仍要成立)。
+    setPluginWorkspacePanels([])
+    await nextTick()
+
+    expect(wrapper.findAll('.workspace-tab').map(tab => tab.text())).not.toContain('UI Demo')
+    expect(wrapper.find('[data-workspace-panel-view="media"]').exists()).toBe(true)
+    expect(wrapper.find('[data-workspace-panel-view="plugin:ui-demo:demo"]').exists()).toBe(false)
   })
 
   it('falls back to media when the open plugin panel disappears', async () => {

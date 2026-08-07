@@ -401,8 +401,11 @@ describe('App container layout', () => {
   it('lets workspace loading states fill the media panel', () => {
     const mediaPanel = readRendererFile('components/MediaPanel.vue')
 
-    expect(mediaPanel).toContain('.media-panel {\n  width: 560px;\n  height: 100%;\n  min-height: 0;\n  min-width: 0;')
-    expect(mediaPanel).toContain('.media-panel.mode-main {\n  flex: 1 1 auto;\n  width: auto;\n  height: 100%;')
+    // `side` 形态已删(零使用点的死枝),两条规则合并成一条,几何取 main 那一份。
+    expect(mediaPanel).toContain('.media-panel {\n  flex: 1 1 auto;\n  width: auto;\n  height: 100%;\n  min-height: 0;\n  min-width: 0;')
+    // 钉的是**选择器**,不是散文 —— 注释里还会提这段历史。
+    expect(mediaPanel).not.toMatch(/^\s*\.[\w.-]*mode-(main|side)/m)
+    expect(mediaPanel).not.toContain('`mode-${mode}`')
     expect(mediaPanel).toContain('.media-content {\n  flex: 1 1 auto;\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n  min-width: 0;')
     expect(mediaPanel).toContain('.content-body {\n  position: relative;\n  z-index: 0;\n  flex: 1 1 auto;\n  display: flex;\n  flex-direction: column;\n  min-height: 0;')
     expect(mediaPanel).toContain('.ledger-note {')
