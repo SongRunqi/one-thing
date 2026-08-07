@@ -115,6 +115,7 @@ describe('electron app bootstrap', () => {
         shutdownEventSystem: vi.fn(),
         flushAllPendingSaves: vi.fn(),
         shutdownAppLogging: vi.fn(),
+        shutdownPlugins: vi.fn(),
         releaseDesktopStoreLock: vi.fn(),
       },
       createMainWindowOptions: () => ({

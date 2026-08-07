@@ -1,6 +1,6 @@
 import type { CorePluginDefinition } from './types.js'
 import { describePluginPanelResultProblem } from './panel.js'
-import { describePluginSurface, pluginScope } from './policy.js'
+import { describePluginSurface, pluginScope, type PluginFailureScope } from './policy.js'
 import {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
   CORE_PLUGIN_INSTALL_TIMEOUT_MS,
@@ -75,8 +75,12 @@ export interface CorePluginManagerHost<
    * scope 形如 `request:<action>`:同一个 action 连败达阈才熔断,
    * 与 promptContext / 生命周期钩子各记各的账。
    */
-  onRequestFailure?(pluginId: string, scope: string, error: unknown): void
-  onRequestSuccess?(pluginId: string, scope: string): void
+  /**
+   * 用**属性签名**而不是方法简写:TS 的方法参数是双变的,方法写法下宿主从这条
+   * 端口塞一个裸字符串不会红 —— 品牌类型在这里就漏了一个口。属性签名走逆变检查。
+   */
+  onRequestFailure?: (pluginId: string, scope: PluginFailureScope, error: unknown) => void
+  onRequestSuccess?: (pluginId: string, scope: PluginFailureScope) => void
   /**
    * 某个界面是否处于降级态(R7)。宿主接健康账本;core 不持有它。
    * 不接这条线的宿主(headless / 测试替身)一律放行。

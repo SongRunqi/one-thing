@@ -100,9 +100,9 @@ export {
   PLUGIN_REGISTRY_POLICY,
   PLUGIN_SCOPE_FAMILIES,
   PLUGIN_SEVERITY_TABLE,
-  asPluginFailureScope,
   classifyPluginScope,
   describePluginSurface,
+  pluginLoadLabel,
   pluginScope,
   resolvePluginScopeSeverity,
 } from './policy.js'

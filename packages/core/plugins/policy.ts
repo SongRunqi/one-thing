@@ -57,14 +57,24 @@ export const pluginScope = {
   registration: (what: string) => brand(`register:${what}`),
   /** 某条 IM 渠道的运行期失败。带 connector id —— 用户要知道是哪条渠道坏了。 */
   connector: (connectorId: string) => brand(`connector:${connectorId}`),
-  /** 依赖安装。 */
-  install: () => brand('npm-install'),
 } as const
 
-/** 把一个已知合法的 scope 字符串重新贴牌(仅限宿主转发既有 scope 时使用)。 */
-export function asPluginFailureScope(scope: string): PluginFailureScope {
-  return brand(scope)
-}
+/**
+ * **显示标签**,不是判决车道。
+ *
+ * 加载期错误(依赖装不上、entry import 失败)走 `markLoadError`:它把原因写进
+ * 健康态供设置页显示,**从不进 `recordFailure`** —— 不计连败、不触发罚则。
+ * 所以严重度表里没有它们的家族。
+ *
+ * 之所以单独一族而不是塞进 `pluginScope`:R7 第一版把 `install` 当成判决车道
+ * 放进了表,阈值 1 / disable-plugin,而它永远不生效 —— 一条纯死规则。
+ * 更糟的是当时的守卫判据是"工厂被调用过",对这种"调用了但不进判决路径"的死法
+ * 完全失明。两套词汇分开,这种事在类型上就说得清了。
+ */
+export const pluginLoadLabel = {
+  npmInstall: () => brand('npm-install'),
+  entry: () => brand('entry'),
+} as const
 
 // ── 表一:失败严重度 ────────────────────────────
 
@@ -121,7 +131,6 @@ export const PLUGIN_SCOPE_FAMILIES = [
   'conversation-control',
   'registration',
   'connector',
-  'install',
 ] as const
 
 export type PluginScopeFamily = (typeof PLUGIN_SCOPE_FAMILIES)[number]
@@ -176,13 +185,6 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
     rationale: '注册期违规(未声明的面板 id、抢占保留命名空间、连接器没有 id)是'
       + '**代码错误**,不是运行期抖动,重试没有意义 —— 阈值 1,第一次就算数。',
   },
-  install: {
-    threshold: 1,
-    remedy: 'disable-plugin',
-    rationale: '依赖装不上,插件的代码根本跑不起来;重试由安装流程自己负责,'
-      + '熔断这里只需记一次账。',
-  },
-
   // ── 用户主动触发的:失败当场可见,不该连坐 ──
   'ui-request': {
     threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
@@ -228,7 +230,6 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (scope === 'steer' || scope === 'followUp') return 'conversation-control'
   if (scope.startsWith('register')) return 'registration'
   if (scope.startsWith('connector')) return 'connector'
-  if (scope === 'npm-install') return 'install'
   return null
 }
 
@@ -265,8 +266,15 @@ export function resolvePluginScopeSeverity(scope: string): ResolvedPluginSeverit
  * (见 CorePluginHealthTracker:action 降级后 render 成功也要能解除),
  * 否则会单向卡死。
  */
+// 模块级常量:describePluginSurface 被 recordSuccess 的逐车道循环调用,
+// 而 recordSuccess 每次发消息、每个事件都跑(它自己的注释强调"快路径必须零分配")。
+// 每次现编一个 RegExp 正好违反那条。
+const PANEL_SURFACE_PATTERN = new RegExp(
+  `^request:(?:${PLUGIN_PANEL_RENDER_ACTION}|${PLUGIN_PANEL_INVOKE_ACTION}):(.+)$`,
+)
+
 export function describePluginSurface(scope: string): string {
-  const panel = new RegExp(`^request:(?:${PLUGIN_PANEL_RENDER_ACTION}|${PLUGIN_PANEL_INVOKE_ACTION}):(.+)$`).exec(scope)
+  const panel = PANEL_SURFACE_PATTERN.exec(scope)
   if (panel) return `panel:${panel[1]}`
   if (scope.startsWith('request:')) return scope
   if (scope.startsWith('connector')) return scope

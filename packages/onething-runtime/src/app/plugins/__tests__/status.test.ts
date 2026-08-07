@@ -341,6 +341,47 @@ describe('R6 status — 装配层接线', () => {
     }
   })
 
+  it('does not let one session ending swallow another session pending final label', async () => {
+    /*
+     * 补发定时器曾经是**模块级单个**,而清扫是按会话触发的 —— 会话 A 结束时
+     * 一句 clearTrailingFlush() 会把会话 B 被合并窗压住的最终状态一起吞掉。
+     * 两个会话同时在跑是常态(群聊、并行回合),不是边角情况。
+     */
+    vi.useFakeTimers()
+    try {
+      const { module, emitted } = await loadStatus()
+      const registry = module.getPluginStatusRegistry()
+      const interceptors: Array<(event: any, sessionId: string) => Promise<any>> = []
+      module.subscribePluginStatusSweep({ intercept: (handler: any) => { interceptors.push(handler); return () => {} } })
+
+      // 两个会话各挂一条,各自再压住一次变化。
+      for (const sessionId of ['s-a', 's-b']) {
+        const first = registry.show({ pluginId: 'p', sessionId, id: 'x', label: '1/9' })
+        module.emitPluginStatusPart(sessionId, first!)
+        registry.show({ pluginId: 'p', sessionId, id: 'x', label: '9/9' })
+        module.notePluginStatusPending()
+      }
+      emitted.length = 0
+
+      // 会话 A 结束。
+      for (const intercept of interceptors) await intercept({ type: 'stream:complete' }, 's-a')
+      await vi.advanceTimersByTimeAsync(1000)
+
+      const forA = emitted.filter(entry => entry.sessionId === 's-a')
+      const forB = emitted.filter(entry => entry.sessionId === 's-b')
+
+      // A:只有清扫发出的 cleared,没有迟到的 9/9。
+      expect(forA).toHaveLength(1)
+      expect(forA[0].event.part).toMatchObject({ cleared: true })
+      // B:**最终状态照常送达** —— 这正是上一版会吞掉的那条。
+      expect(forB).toHaveLength(1)
+      expect(forB[0].event.part).toMatchObject({ label: '9/9' })
+      expect(forB[0].event.part.cleared).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('cancels a pending trailing flush when the stream ends', async () => {
     // 终止事件之后再补一条状态,等于在一条已经收尾的消息上重新点亮。
     vi.useFakeTimers()

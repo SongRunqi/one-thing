@@ -18,6 +18,19 @@ export interface ElectronBeforeQuitCleanupOptions {
   killTrackedDetachedChildren: CleanupFn
   killAllTerminals: CleanupFn
   killAllBrowserTabs: CleanupFn
+  /**
+   * 拆插件系统。
+   *
+   * 必须排在 shutdownEventSystem **之前**:插件 dispose 还要往总线发 cleared
+   * (R6 的状态清扫)与 catalog-changed,总线先关的话那些事件发进一个没人听的
+   * 地方,而账本里留着记录。
+   *
+   * 这一项此前是缺的:`backend.shutdown()` 里那句
+   * `getPluginManager()?.shutdown()` 只有 apps/server 会走到,而 server 从不
+   * bootstrap 插件(那里恒为 null);真正跑插件的 Electron 主进程退出走的是本表,
+   * 表里没有插件项 —— 又一次"结构对了但没接到真实作用点上"。
+   */
+  shutdownPlugins: CleanupFn
   shutdownStreamEngine: CleanupFn
   shutdownPermission: CleanupFn
   shutdownSessionLayer: CleanupFn
@@ -57,6 +70,7 @@ export async function runElectronBeforeQuitCleanup(
   options.killAllTerminals()
   options.killAllBrowserTabs()
 
+  await options.shutdownPlugins()
   await options.shutdownStreamEngine()
   options.shutdownPermission()
   options.shutdownSessionLayer()

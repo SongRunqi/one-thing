@@ -32,6 +32,7 @@ describe('electron before-quit cleanup', () => {
         killTrackedDetachedChildren: fn('killTrackedDetachedChildren'),
         killAllTerminals: fn('killAllTerminals'),
         killAllBrowserTabs: fn('killAllBrowserTabs'),
+        shutdownPlugins: asyncFn('shutdownPlugins'),
         shutdownStreamEngine: asyncFn('shutdownStreamEngine'),
         shutdownPermission: fn('shutdownPermission'),
         shutdownSessionLayer: fn('shutdownSessionLayer'),
@@ -63,6 +64,7 @@ describe('electron before-quit cleanup', () => {
       'killTrackedDetachedChildren',
       'killAllTerminals',
       'killAllBrowserTabs',
+      'shutdownPlugins',
       'shutdownStreamEngine',
       'shutdownPermission',
       'shutdownSessionLayer',
@@ -100,5 +102,22 @@ describe('electron before-quit cleanup', () => {
     registerElectronBeforeQuitCleanup(options)
 
     expect(mocks.on).toHaveBeenCalledWith('before-quit', expect.any(Function))
+  })
+
+  it('tears the plugin system down before the event bus closes', async () => {
+    /*
+     * 桌面宿主是**唯一真的跑插件的宿主**,它的退出路径就是这张表 ——
+     * `backend.shutdown()` 里那句 `getPluginManager()?.shutdown()` 只有
+     * apps/server 走得到,而 server 从不 bootstrap 插件。这条用例钉住两件事:
+     * 插件项真的在表里跑到,且排在总线关闭之前(插件 dispose 还要发 cleared)。
+     */
+    const { runElectronBeforeQuitCleanup } = await import('../before-quit.js')
+    const { calls, options } = createOptions()
+
+    await runElectronBeforeQuitCleanup(options as never)
+
+    expect(calls).toContain('shutdownPlugins')
+    expect(calls.indexOf('shutdownPlugins')).toBeLessThan(calls.indexOf('shutdownEventSystem'))
+    expect(calls.indexOf('shutdownPlugins')).toBeLessThan(calls.indexOf('shutdownSessionLayer'))
   })
 })

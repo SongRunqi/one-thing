@@ -177,6 +177,41 @@ describe('R7 IM connector — 开放一个既有注册表', () => {
     api.disposePlugin(state)
   })
 
+  it('blocks delivery once the connector surface is degraded — the badge must not lie', async () => {
+    /*
+     * 三个 degrade-surface 家族里,ui-request / plugin-request 被请求闸拦住,
+     * 而 connector 此前没有对应的闸:连败降级之后照样每次进插件的 sendReply,
+     * 只多一个写着 "switched off" 的假徽章 —— 与返工前批判的第一版形状完全相同。
+     */
+    const { api, registry } = await load()
+    let delivered = 0
+    const degraded = new Set<string>()
+    registry.configureIMConnectorHooks({
+      isSurfaceDegraded: (_pluginId: string, surface: string) => degraded.has(surface),
+      describeDegradedSurface: () => '3 consecutive failures',
+    })
+    const { api: pluginApi, state } = api.createPluginAPI('chat-bridge', bus as never, {} as never)
+    pluginApi.registerIMConnector({
+      id: 'wechat',
+      sendReply: async () => { delivered += 1 },
+      normalizeIncoming: async () => ({ content: '', origin: {} as never }),
+    } as never)
+
+    const target = { connector: 'plugin:chat-bridge:wechat', conversationId: 'c1' } as never
+    await registry.sendIMReply(target, { text: 'ok', sessionId: 's', messageId: 'm' })
+    expect(delivered).toBe(1)
+
+    degraded.add('connector:plugin:chat-bridge:wechat')
+
+    // 降级之后**不再进插件**,且错误要说清是降级而不是未注册
+    // (两者的处置完全不同:一个等恢复,一个是配置错了)。
+    await expect(registry.sendIMReply(target, { text: 'blocked', sessionId: 's', messageId: 'm2' }))
+      .rejects.toThrow(/switched off after repeated failures.*3 consecutive failures/)
+    expect(delivered).toBe(1)
+
+    api.disposePlugin(state)
+  })
+
   it('refuses a connector with no id instead of registering an unaddressable one', async () => {
     const { api, registry } = await load()
     const { api: pluginApi, state } = api.createPluginAPI('chat-bridge', bus as never, {} as never)

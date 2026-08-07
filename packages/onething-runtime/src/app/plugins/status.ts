@@ -58,11 +58,21 @@ export function configurePluginStatusHost(options: StatusHostPorts): void {
   ports = options
 }
 
-/** 测试用:拆掉接线并清空账本。 */
-export function resetPluginStatusHostForTests(): void {
+/**
+ * 拆掉宿主接线并停掉在飞的补发。**生产 shutdown 路径调用它。**
+ *
+ * 与 `resetPluginStatusHostForTests` 分开命名:一个叫 ForTests 的函数出现在
+ * 生产 shutdown 里,下一个做清理的人会理所当然地删掉它。
+ */
+export function detachPluginStatusHost(): void {
   ports = null
-  statusRegistry.reset()
   clearTrailingFlush()
+}
+
+/** 测试用:拆掉接线、停掉补发,并清空账本。 */
+export function resetPluginStatusHostForTests(): void {
+  detachPluginStatusHost()
+  statusRegistry.reset()
 }
 
 export function emitPluginStatusPart(sessionId: string, part: CorePluginStatusPart): void {

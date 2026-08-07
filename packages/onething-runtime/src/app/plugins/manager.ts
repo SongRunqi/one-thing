@@ -34,7 +34,7 @@ import {
 import { configurePluginConfigHost, invalidatePluginConfigCache } from './config.js'
 import {
   configurePluginStatusHost,
-  resetPluginStatusHostForTests,
+  detachPluginStatusHost,
   subscribePluginStatusSweep,
 } from './status.js'
 import { configureIMConnectorHooks } from '../channel/connector-registry.js'
@@ -200,11 +200,18 @@ export class PluginManager extends CorePluginManager<
     this.unsubscribeStatusSweep?.()
     this.unsubscribeStatusSweep = undefined
     this.eventBus = null
-    // 五条宿主线一起拆 —— 上一版只拆了清扫订阅那一条,另外四条 late-bound
-    // 端口仍指着上一次装配的闭包(dev 热重载下是可观察的悬挂引用)。
-    resetPluginStatusHostForTests()
+    /*
+     * 全部 late-bound 端口一起拆。
+     *
+     * 漏掉的两个持的引用比拆掉的更重:`configurePluginHealthHost` 的闭包持
+     * `this.disablePlugin`(**即这个实例本身**),`configurePluginConfigHost` 的
+     * 闭包持 `this.getPlugins()` —— 不拆的话每次重启都多留一个活的旧 manager。
+     */
+    detachPluginStatusHost()
     configurePluginConfigBroadcast(null)
     configureIMConnectorHooks({})
+    configurePluginHealthHost(null)
+    configurePluginConfigHost(null)
   }
 
   override shutdown(): void {
@@ -266,6 +273,9 @@ export class PluginManager extends CorePluginManager<
         reportPluginRuntimeFailure(pluginId, pluginScope.connector(connectorId), error),
       onSendSuccess: (pluginId, connectorId) =>
         reportPluginRuntimeSuccess(pluginId, pluginScope.connector(connectorId)),
+      // 降级闸的数据源 —— 与请求通道那道闸同源,connector 家族才真有牙齿。
+      isSurfaceDegraded: isPluginSurfaceDegraded,
+      describeDegradedSurface: describePluginSurfaceDegradation,
     })
     configurePluginStatusHost({
       emitSessionEvent: (sessionId, event) => context.eventBus?.emit?.(sessionId, event),

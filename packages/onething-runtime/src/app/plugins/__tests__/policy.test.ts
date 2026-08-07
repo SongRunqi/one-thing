@@ -24,6 +24,7 @@ import {
   PLUGIN_SEVERITY_TABLE,
   classifyPluginScope,
   describePluginSurface,
+  pluginLoadLabel,
   pluginScope,
   resolvePluginScopeSeverity,
 } from '@onething/core/plugins'
@@ -31,7 +32,7 @@ import {
 const REPO_ROOT = fileURLToPath(new URL('../../../../../..', import.meta.url))
 
 /** 目录遍历,不再硬编码文件清单(上一版只看五个文件,npm-install 就那样漏了)。 */
-function readSourceCorpus(roots: string[]): string {
+function readSourceFiles(roots: string[]): string[] {
   const chunks: string[] = []
   const walk = (dir: string): void => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -42,7 +43,49 @@ function readSourceCorpus(roots: string[]): string {
     }
   }
   for (const root of roots) walk(root)
-  return chunks.join('\n')
+  return chunks
+}
+
+/**
+ * 抵达判决的出口名。
+ *
+ * 除了直接的 recordFailure/上报函数,还要认宿主转发口 `onRequestFailure` /
+ * `onPluginFailure` —— core 不认识健康账本,请求通道与 api 层的失败都是经它们
+ * 转出去的,漏掉就会把两条真活着的车道误判成死规则。
+ */
+const FAILURE_SINKS = [
+  'reportFailure',
+  'reportPluginRuntimeFailure',
+  'recordFailure',
+  'onRequestFailure',
+  'onPluginFailure',
+]
+
+/**
+ * 这个工厂的产出**有没有一条路径抵达 recordFailure**。
+ *
+ * 两种形态都要认:
+ *  a) 直接内联进上报调用 —— `reportFailure(pluginScope.steer(), error)`;
+ *  b) 先存进变量再上报 —— `const scope = pluginScope.event(t)` … `reportFailure(scope, …)`。
+ * 逐文件判断(变量作用域只在文件内才说得通)。
+ */
+function reachesJudgement(factory: string, files: string[]): boolean {
+  const call = new RegExp(`pluginScope\\.${factory}\\(`, 'g')
+  for (const file of files) {
+    for (const match of file.matchAll(call)) {
+      const before = file.slice(Math.max(0, match.index - 200), match.index)
+      // 可选链调用也算:`this.host.onRequestFailure?.(…)`。
+      if (FAILURE_SINKS.some(sink => before.includes(`${sink}(`) || before.includes(`${sink}?.(`))) return true
+
+      // 形态 b:抓住 `const <name> = pluginScope.X(`,再看该变量是否进过上报口。
+      const assign = /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*$/.exec(before)
+      if (!assign) continue
+      const variable = assign[1]
+      const passed = new RegExp(`(?:${FAILURE_SINKS.join('|')})\\??\\.?\\([^)]*\\b${variable}\\b`)
+      if (passed.test(file)) return true
+    }
+  }
+  return false
 }
 
 describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
@@ -163,10 +206,13 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       pluginScope.followUp(),
       pluginScope.registration('WorkspacePanel'),
       pluginScope.connector('wechat'),
-      pluginScope.install(),
     ]
     // 工厂数量与样本数量对齐 —— 加了工厂却忘了在这里取样,这条会红。
     expect(samples).toHaveLength(Object.keys(pluginScope).length)
+    // 加载期标签是另一套词汇:它**不该**归族(见 markLoadError 不查表)。
+    for (const label of Object.values(pluginLoadLabel)) {
+      expect(classifyPluginScope(label()), label()).toBeNull()
+    }
     const unclassified = samples.filter(scope => classifyPluginScope(scope) === null)
     expect(unclassified, `unclassified: ${unclassified.join(', ')}`).toEqual([])
   })
@@ -201,7 +247,6 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       { factory: 'followUp', scope: pluginScope.followUp(), family: 'conversation-control' },
       { factory: 'registration', scope: pluginScope.registration('WorkspacePanel'), family: 'registration' },
       { factory: 'connector', scope: pluginScope.connector('wechat'), family: 'connector' },
-      { factory: 'install', scope: pluginScope.install(), family: 'install' },
     ]
 
     // 声明本身要对。
@@ -211,19 +256,32 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
     // 每个工厂都要在样本表里出现 —— 加了工厂却忘了取样,这条会红。
     expect(new Set(SAMPLES.map(entry => entry.factory)).size).toBe(Object.keys(pluginScope).length)
 
-    const corpus = readSourceCorpus([
+    const files = readSourceFiles([
       path.join(REPO_ROOT, 'packages/core/plugins'),
       path.join(REPO_ROOT, 'packages/onething-runtime/src/app'),
     ])
-    const calledFactories = new Set(
-      Object.keys(pluginScope).filter(name => new RegExp(`pluginScope\\.${name}\\(`).test(corpus)),
-    )
+
+    /*
+     * 判据是"该 scope 至少有一条路径**抵达 recordFailure**",不是"工厂被调用过"。
+     *
+     * 后者对一种死法完全失明:R7 第一版的 `install` 家族,工厂确实被调用了
+     * (markLoadError),但 markLoadError 从不查严重度表 —— 阈值与罚则永远不生效,
+     * 而守卫是绿的。那是同一个病的第三次,所以判据必须钉在判决路径上。
+     */
+    const judgedFactories = new Set(Object.keys(pluginScope).filter(name => reachesJudgement(name, files)))
     const producedFamilies = new Set(
-      SAMPLES.filter(sample => calledFactories.has(sample.factory)).map(sample => sample.family),
+      SAMPLES.filter(sample => judgedFactories.has(sample.factory)).map(sample => sample.family),
     )
 
     const dead = PLUGIN_SCOPE_FAMILIES.filter(family => !producedFamilies.has(family))
-    expect(dead, `these families have no producer: ${dead.join(', ')}`).toEqual([])
+    expect(dead, `these families never reach recordFailure: ${dead.join(', ')}`).toEqual([])
+
+    // 反过来钉住上一次的死法:加载期标签是**另一套词汇**,它不进判决路径,
+    // 所以严重度表里不该有它的家族。
+    expect(classifyPluginScope(pluginLoadLabel.npmInstall())).toBeNull()
+    expect(classifyPluginScope(pluginLoadLabel.entry())).toBeNull()
+    expect(PLUGIN_SCOPE_FAMILIES as readonly string[]).not.toContain('install')
+    expect(PLUGIN_SCOPE_FAMILIES as readonly string[]).not.toContain('entry')
   })
 
   it('falls back to the safest remedy for a scope nobody registered', () => {

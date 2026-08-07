@@ -22,6 +22,16 @@ export interface RegisterIMConnectorOptions {
    */
   onSendFailure?(pluginId: string, connectorId: string, error: unknown): void
   onSendSuccess?(pluginId: string, connectorId: string): void
+  /**
+   * 这条渠道是否已被降级(R7)。
+   *
+   * **降级必须有牙齿。** 请求通道那两个 degrade-surface 家族在
+   * `manager.handleRequest` 上被短路,而 connector 家族此前没有对应的闸 ——
+   * 连败降级之后照样每次进插件的 sendReply,只多一个写着 "switched off" 的
+   * 假徽章。那正是本期返工前批判的第一版形状。
+   */
+  isSurfaceDegraded?(pluginId: string, surface: string): boolean
+  describeDegradedSurface?(pluginId: string, surface: string): string | undefined
 }
 
 let hooks: RegisterIMConnectorOptions = {}
@@ -84,6 +94,19 @@ export async function sendIMReply(
     // fail-open(策略表已如实声明):说得清地失败,由调用方记为投递失败,
     // 而不是静默丢消息。没有"宿主默认渠道"可以回落。
     throw new Error(`IM connector "${target.connector}" is not registered`)
+  }
+
+  // 降级闸:与"未注册"走同一条 fail-open 路径,但错误信息要说清是**降级**
+  // 而不是未注册 —— 两者的处置完全不同(一个等恢复,一个是配置错了)。
+  if (registered.ownerPluginId) {
+    const surface = `connector:${target.connector}`
+    if (hooks.isSurfaceDegraded?.(registered.ownerPluginId, surface)) {
+      const reason = hooks.describeDegradedSurface?.(registered.ownerPluginId, surface)
+      throw new Error(
+        `IM connector "${target.connector}" is switched off after repeated failures`
+        + (reason ? `: ${reason}` : '.'),
+      )
+    }
   }
   try {
     await registered.connector.sendReply(target, payload)

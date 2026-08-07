@@ -640,18 +640,30 @@ function runtimeFault(plugin: PluginInfo): string {
   // 提示词此刻完全正常。但它**不能盖掉自动禁用的原因**:那是 R1 花一整期
   // 持久化并暴露出来的字段,被一句面板文案顶掉就等于从 UI 上消失了。
   // 两者都在时并列显示,禁用原因排前面(它更严重)。
-  const parts: string[] = []
-  if (plugin.healthReason) {
-    if (plugin.healthStatus === 'disabled') parts.push(`Auto-disabled — ${plugin.healthReason}`)
-    else if (plugin.healthStatus === 'degraded') {
-      parts.push(`${plugin.healthFailures ?? 1} consecutive failure(s) — ${plugin.healthReason}`)
-    } else parts.push(plugin.healthReason)
-  }
   const degraded = plugin.degradedSurfaces ?? []
-  if (degraded.length) {
-    parts.push(`${degraded.map(entry => entry.surface).join(', ')} switched off — ${degraded[0].reason}`)
+  const degradedLine = degraded.length
+    ? `${degraded.map(entry => entry.surface).join(', ')} switched off — ${degraded[0].reason}`
+    : ''
+
+  // 自动禁用的原因**永远优先**:那是 R1 花一整期持久化并暴露的字段,
+  // 被一句面板文案顶掉就等于从 UI 上消失。
+  if (plugin.healthStatus === 'disabled' && plugin.healthReason) {
+    return degradedLine
+      ? `Auto-disabled — ${plugin.healthReason} · ${degradedLine}`
+      : `Auto-disabled — ${plugin.healthReason}`
   }
-  return parts.join(' · ')
+
+  // **纯面板降级只说一句。** healthReason 在没有 disabledReason 时会回退到
+  // `lastErrorScope: lastError`,而那恰恰是同一次降级的原始错误 —— 两句都印
+  // 会得到 "3 consecutive failure(s) — request:panel:render:logs: boom ·
+  // panel:logs switched off — 3 consecutive failures in …",同一件事说两遍。
+  if (degradedLine) return degradedLine
+
+  if (!plugin.healthReason) return ''
+  if (plugin.healthStatus === 'degraded') {
+    return `${plugin.healthFailures ?? 1} consecutive failure(s) — ${plugin.healthReason}`
+  }
+  return plugin.healthReason
 }
 
 function statusOf(plugin: PluginInfo): { label: string; tone: string } {

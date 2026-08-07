@@ -174,9 +174,11 @@ Notes:
     (`api.storage`) plus the legacy KV store, in-stream status lines (`api.status`), and
     `ui.notify`.
   - **One opened host registry**: `api.registerIMConnector` (pilot; ids are namespaced
-    `plugin:<id>:<name>`). Which registries are deliberately *not* open, and why, is in
-    `PLUGIN_DEFERRED_REGISTRIES` (`packages/core/plugins/policy.ts`) — read it before
-    opening another.
+    `plugin:<id>:<name>`). **No production traffic flows through it yet** — no built-in
+    plugin registers a connector and inbound is not wired, so the pilot validates the
+    contract and teardown semantics, not the delivery path. Which registries are
+    deliberately *not* open, and why, is in `PLUGIN_DEFERRED_REGISTRIES`
+    (`packages/core/plugins/policy.ts`) — read it before opening another.
   - **Isolation**: timeout budgets, per-`pluginId+scope` failure breaker, and a severity
     policy table (`policy.ts`) deciding disable-plugin vs degrade-one-surface. Teardown is
     two-sided (code registries + data footprint) and guarded by a CI teardown test.

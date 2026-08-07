@@ -274,8 +274,9 @@ export function createPluginAPI(
       /**
        * R7 试点注册表:IM 连接器。
        *
-       * 开放下一个注册表只需要两步 —— 在 core 的策略表里加一条(声明拆除语义
-       * 与"在飞的东西怎么办"),再在这里加一行转发。
+       * 开放下一个注册表要动五处,清单在 core 的 `PLUGIN_OPEN_REGISTRIES`
+       * 注释里(策略表 / API+Host 类型 / api-builder 实现 / 这里的转发 /
+       * 拆除快照测试)。这里是其中的第四处。
        */
       registerIMConnector(id, connector) {
         // 带上归属:运行期投递失败要记到**这个插件**的熔断账上,

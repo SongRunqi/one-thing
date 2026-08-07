@@ -19,6 +19,7 @@ import { getSettings } from "@onething/app/stores/settings.js";
 import { startTodoPlanWatcher } from "@onething/app/todo-plan/store.js";
 import { configureSandboxHost } from "@onething/app/tools/core/sandbox.js";
 import { configurePluginAppVersion } from "@onething/app/plugins/app-version.js";
+import { getPluginManager } from "@onething/app/plugins/manager.js";
 import {
 	getConversationRuntime,
 	getStreamEngine,
@@ -391,6 +392,8 @@ export function startOnethingElectronMain(): void {
 			killTrackedDetachedChildren,
 			killAllTerminals,
 			killAllBrowserTabs,
+			// 插件系统:桌面宿主是**唯一真的跑插件的宿主**,它的退出路径就是这张表。
+			shutdownPlugins: () => getPluginManager()?.shutdown(),
 			shutdownStreamEngine,
 			shutdownPermission: () => Permission.shutdown(),
 			shutdownSessionLayer,

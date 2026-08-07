@@ -70,6 +70,14 @@ function createManagerHost(definitions: TestDefinition[]) {
   return { host, disposed, states }
 }
 
+/**
+ * 测试里构造任意 scope 的口子。
+ *
+ * 生产代码只能用 `pluginScope.*` 工厂(品牌类型),但这些用例要验的正是
+ * tracker 对**任意 scope 字符串**的行为,所以在测试里显式贴一次牌。
+ */
+const asScope = (scope: string) => scope as never
+
 describe('R1 soft isolation — timeout budget', () => {
   it('rejects with a timeout error instead of hanging forever', async () => {
     await expect(runWithPluginTimeout('never', 20, () => new Promise(() => {})))
@@ -337,12 +345,12 @@ describe('R1 soft isolation — failure counting circuit breaker', () => {
     })
 
     for (let i = 0; i < CORE_PLUGIN_FAILURE_THRESHOLD - 1; i += 1) {
-      tracker.recordFailure('flaky', 'promptContext:notes', new Error('boom'))
+      tracker.recordFailure('flaky', asScope('promptContext:notes'), new Error('boom'))
     }
     expect(tracker.get('flaky')).toMatchObject({ status: 'degraded' })
     expect(tripped).toEqual([])
 
-    tracker.recordFailure('flaky', 'promptContext:notes', new Error('boom'))
+    tracker.recordFailure('flaky', asScope('promptContext:notes'), new Error('boom'))
     expect(tripped).toHaveLength(1)
     expect(tripped[0].pluginId).toBe('flaky')
     expect(tracker.get('flaky')).toMatchObject({
@@ -354,15 +362,15 @@ describe('R1 soft isolation — failure counting circuit breaker', () => {
     expect(tracker.get('flaky')?.disabledReason).toContain('consecutive failures')
 
     // 熔断后再失败不重复触发禁用。
-    tracker.recordFailure('flaky', 'promptContext:notes', new Error('boom'))
+    tracker.recordFailure('flaky', asScope('promptContext:notes'), new Error('boom'))
     expect(tripped).toHaveLength(1)
   })
 
   it('counts consecutive failures only — one success in the same scope clears the tally', () => {
     const tracker = new CorePluginHealthTracker({ onTrip: () => {} })
-    tracker.recordFailure('flaky', 'event:tool:result', new Error('boom'))
-    tracker.recordFailure('flaky', 'event:tool:result', new Error('boom'))
-    tracker.recordSuccess('flaky', 'event:tool:result')
+    tracker.recordFailure('flaky', asScope('event:tool:result'), new Error('boom'))
+    tracker.recordFailure('flaky', asScope('event:tool:result'), new Error('boom'))
+    tracker.recordSuccess('flaky', asScope('event:tool:result'))
     expect(tracker.get('flaky')).toMatchObject({ status: 'healthy', consecutiveFailures: 0 })
   })
 
@@ -374,9 +382,9 @@ describe('R1 soft isolation — failure counting circuit breaker', () => {
     const tracker = new CorePluginHealthTracker({ onTrip: pluginId => tripped.push(pluginId) })
 
     for (let i = 0; i < CORE_PLUGIN_FAILURE_THRESHOLD; i += 1) {
-      tracker.recordFailure('mixed', 'promptContext:notes', new Error('hang'))
+      tracker.recordFailure('mixed', asScope('promptContext:notes'), new Error('hang'))
       // 同一插件的另一条车道每回合都成功 —— 它清不掉上面那条的账。
-      tracker.recordSuccess('mixed', 'afterAssistantResponse:capture')
+      tracker.recordSuccess('mixed', asScope('afterAssistantResponse:capture'))
     }
 
     expect(tripped).toEqual(['mixed'])
@@ -390,9 +398,9 @@ describe('R1 soft isolation — failure counting circuit breaker', () => {
     const tripped: string[] = []
     const tracker = new CorePluginHealthTracker({ onTrip: pluginId => tripped.push(pluginId) })
 
-    tracker.recordFailure('spread', 'event:a', new Error('boom'))
-    tracker.recordFailure('spread', 'event:b', new Error('boom'))
-    tracker.recordFailure('spread', 'event:c', new Error('boom'))
+    tracker.recordFailure('spread', asScope('event:a'), new Error('boom'))
+    tracker.recordFailure('spread', asScope('event:b'), new Error('boom'))
+    tracker.recordFailure('spread', asScope('event:c'), new Error('boom'))
 
     // 三条车道各败一次:插件级混算会在这里误禁,分车道则不会。
     expect(tripped).toEqual([])
@@ -417,7 +425,7 @@ describe('R1 soft isolation — failure counting circuit breaker', () => {
 
   it('clears the breaker state on explicit re-enable', () => {
     const tracker = new CorePluginHealthTracker({ threshold: 1, onTrip: () => {} })
-    tracker.recordFailure('flaky', 'entry', new Error('boom'))
+    tracker.recordFailure('flaky', asScope('entry'), new Error('boom'))
     expect(tracker.get('flaky')?.status).toBe('disabled')
     tracker.clear('flaky')
     expect(tracker.get('flaky')).toBeUndefined()

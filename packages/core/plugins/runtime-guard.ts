@@ -8,7 +8,7 @@
  * 这里只放机制(零依赖纯 TS,四个宿主共享),接线在 app 层。
  */
 
-import { describePluginSurface, resolvePluginScopeSeverity } from './policy.js'
+import { describePluginSurface, resolvePluginScopeSeverity, type PluginFailureScope } from './policy.js'
 import { CORE_PLUGIN_FAILURE_THRESHOLD } from './runtime-guard-constants.js'
 
 /** 提示词装配是每次发消息的热路径,预算必须小。 */
@@ -162,7 +162,7 @@ export class CorePluginHealthTracker {
     return [...this.health.entries()].map(([pluginId, entry]) => ({ pluginId, ...this.project(entry) }))
   }
 
-  recordFailure(pluginId: string, scope: string, error: unknown): CorePluginRuntimeHealth {
+  recordFailure(pluginId: string, scope: PluginFailureScope, error: unknown): CorePluginRuntimeHealth {
     const entry = this.health.get(pluginId) ?? { scopes: new Map<string, number>(), status: 'healthy' as CorePluginHealthStatus }
     const scopeFailures = (entry.scopes.get(scope) ?? 0) + 1
     entry.scopes.set(scope, scopeFailures)
@@ -219,7 +219,7 @@ export class CorePluginHealthTracker {
    * 高频路径(每次发消息的 promptContext、每个事件 handler)都会调它,所以
    * 快路径必须零分配:从没失败过的插件在这里直接返回。
    */
-  recordSuccess(pluginId: string, scope: string): void {
+  recordSuccess(pluginId: string, scope: PluginFailureScope): void {
     const entry = this.health.get(pluginId)
     if (!entry || entry.status === 'disabled') return
 
@@ -265,7 +265,14 @@ export class CorePluginHealthTracker {
     this.health.set(pluginId, entry)
   }
 
-  markLoadError(pluginId: string, scope: string, error: unknown): void {
+  /**
+   * 加载期错误。
+   *
+   * **不查严重度表,也不计连败** —— 它只把"为什么没加载起来"写进健康态供设置页
+   * 显示。所以 policy.ts 里不该为它的 scope 停放家族规则(曾经有过一条 install,
+   * 是纯死规则)。scope 仍收成品牌类型,免得这里成为裸字符串的后门。
+   */
+  markLoadError(pluginId: string, scope: PluginFailureScope, error: unknown): void {
     const entry = this.health.get(pluginId) ?? { scopes: new Map<string, number>(), status: 'healthy' as CorePluginHealthStatus }
     if (entry.status !== 'disabled') entry.status = 'degraded'
     entry.lastError = describePluginError(error)
