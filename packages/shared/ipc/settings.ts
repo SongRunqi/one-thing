@@ -93,47 +93,6 @@ export interface EditorSettings {
 	markdownProjectAttachmentDirectory?: string;
 }
 
-export interface SoulMemoryCaptureSettings {
-	mode?: "explicit-only" | "auto" | "off";
-	maxInputChars?: number;
-	timeoutMs?: number;
-}
-
-export interface SoulMemoryReviewSettings {
-	enabled?: boolean;
-	interval?: number;
-	maxInputChars?: number;
-	timeoutMs?: number;
-	maxCandidates?: number;
-	minConfidence?: number;
-}
-
-export interface SoulMemoryReadSettings {
-	defaultLines?: number;
-	maxLines?: number;
-}
-
-export type SoulMemoryLogLevel = "debug" | "info" | "warn" | "error";
-
-export interface SoulMemoryLoggingSettings {
-	enabled?: boolean;
-	retentionDays?: number;
-	level?: SoulMemoryLogLevel;
-	maxPreviewChars?: number;
-	includeHttpErrorBody?: boolean;
-}
-
-export interface SoulMemorySettings {
-	enabled?: boolean;
-	directoryMode?: "ai-note-dir" | "custom";
-	customDirectory?: string;
-	bootstrapMaxChars?: number;
-	capture?: SoulMemoryCaptureSettings;
-	review?: SoulMemoryReviewSettings;
-	read?: SoulMemoryReadSettings;
-	logging?: SoulMemoryLoggingSettings;
-}
-
 export interface GeneralSettings {
 	animationSpeed: number; // 0.1 - 0.5 seconds, default 0.25
 	sendShortcut: "enter" | "ctrl-enter" | "cmd-enter"; // Legacy, kept for compatibility
@@ -148,7 +107,6 @@ export interface GeneralSettings {
 	messageLineHeight?: number; // Message line height, 1.2-2.2, default 1.6
 	quickCommands?: QuickCommandConfig[]; // Quick command buttons shown above InputBox
 	dailyNotes?: DailyNoteSettings;
-	soulMemory?: SoulMemorySettings;
 	todoPlan?: TodoPlanSettings;
 	editor?: EditorSettings;
 	// User profile for lightweight context injection

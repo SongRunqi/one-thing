@@ -326,18 +326,6 @@ export const IPC_CHANNELS = {
 	PLUGINS_REFRESH: "plugins:refresh",
 	PLUGINS_COMMANDS: "plugins:commands",
 	PLUGINS_EXECUTE_COMMAND: "plugins:execute-command",
-
-	// Soul / Memory panel
-	MEMORY_OVERVIEW: "memory:overview",
-	MEMORY_READ: "memory:read",
-	MEMORY_APPEND: "memory:append",
-	MEMORY_SAVE_FILE: "memory:save-file",
-	MEMORY_CAPTURE_SAVE: "memory:capture-save",
-	MEMORY_CAPTURE_DISCARD: "memory:capture-discard",
-	MEMORY_LOGS_LIST: "memory.logs:list",
-	MEMORY_LOGS_STATS: "memory.logs:stats",
-	MEMORY_LOGS_OPEN_FOLDER: "memory.logs:open-folder",
-	MEMORY_LOGS_CLEANUP: "memory.logs:cleanup",
 	// main → renderer 推送:api.ui.notify 与熔断自动禁用都走它。
 	// 在此之前 'plugin:notification' 只被 emitGlobal 到全局总线上,而全局总线
 	// 在 core/events 之外零订阅者 —— 插件的唯一 UI 触点其实从未接通。

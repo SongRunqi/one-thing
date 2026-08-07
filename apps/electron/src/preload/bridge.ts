@@ -1444,54 +1444,6 @@ const electronAPI = {
 			sessionId,
 		}),
 
-	// ── Soul / Memory panel ────────────────────────
-	getMemoryOverview: (agentId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_OVERVIEW, { agentId }),
-
-	readMemoryFile: (request: {
-		path: string;
-		agentId?: string;
-		startLine?: number;
-		endLine?: number;
-		lines?: number;
-		full?: boolean;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_READ, request),
-
-	appendMemory: (request: {
-		content: string;
-		agentId?: string;
-		target?: "daily";
-		heading?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_APPEND, request),
-
-	saveMemoryFile: (request: {
-		path: string;
-		content: string;
-		agentId?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SAVE_FILE, request),
-
-	listMemoryLogs: (request?: {
-		limit?: number;
-		query?: string;
-		level?: string;
-		subsystem?: string;
-		status?: string;
-		since?: number;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LOGS_LIST, request),
-
-	getMemoryLogStats: () => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LOGS_STATS),
-
-	openMemoryLogFolder: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LOGS_OPEN_FOLDER),
-
-	cleanupMemoryLogs: () => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_LOGS_CLEANUP),
-
-	saveMemoryCapture: (request?: { id?: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_CAPTURE_SAVE, request),
-
-	discardMemoryCapture: (request?: { id?: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_CAPTURE_DISCARD, request),
-
 	listSchedulerTasks: () => ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_LIST),
 
 	getSchedulerTask: (request: { id: string }) =>

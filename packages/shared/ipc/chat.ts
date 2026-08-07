@@ -52,7 +52,6 @@ export type ContentPart =
   | { type: 'reasoning'; content: string; turnIndex?: number }
   | { type: 'tool-call'; toolCalls: ToolCall[] }
   | { type: 'waiting'; turnIndex?: number }      // Waiting for AI continuation after tool call
-  | { type: 'loading-memory' }                   // Loading memory before generation begins
   | { type: 'image-loading'; turnIndex?: number; label?: string } // Image generation skeleton
   | { type: 'data-steps'; turnIndex: number }    // Placeholder for steps panel (rendered inline)
   | { type: 'provider-data'; provider: string; encryptedReasoning?: string; turnIndex?: number } // Hidden provider context
@@ -76,7 +75,7 @@ export type ContentPart =
  * 末尾的这类 part 弹掉。
  */
 export function isPlaceholderTransientPart(part: ContentPart): boolean {
-  return part.type === 'waiting' || part.type === 'loading-memory' || part.type === 'image-loading'
+  return part.type === 'waiting' || part.type === 'image-loading'
 }
 
 /**

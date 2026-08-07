@@ -468,32 +468,6 @@ export type {
 	PluginFootprintResponse,
 } from "./plugins.js";
 
-// Memory panel types
-export type {
-	MemoryDiagnosticLevel,
-	MemoryDiagnosticLogEntry,
-	MemoryDiagnosticStatus,
-	MemoryDiagnosticSubsystem,
-	MemoryLogsCleanupResponse,
-	MemoryLogsListRequest,
-	MemoryLogsListResponse,
-	MemoryLogsStatsResponse,
-	MemoryManagedFileKind,
-	MemoryManagedFile,
-	MemoryRuntimeStatus,
-	MemoryCapturePending,
-	MemoryOverview,
-	MemoryReadRequest,
-	MemoryReadResponse,
-	MemoryAppendRequest,
-	MemoryAppendResponse,
-	MemoryOverviewResponse,
-	MemoryCaptureDecisionRequest,
-	MemoryCaptureDecisionResponse,
-	MemorySaveFileRequest,
-	MemorySaveFileResponse,
-} from "./memory.js";
-
 // Scheduler types
 export type {
 	SchedulerRunReason,
@@ -535,12 +509,6 @@ export type {
 	KeyboardShortcut,
 	ShortcutSettings,
 	EditorSettings,
-	SoulMemoryLogLevel,
-	SoulMemoryLoggingSettings,
-	SoulMemoryCaptureSettings,
-	SoulMemoryReviewSettings,
-	SoulMemoryReadSettings,
-	SoulMemorySettings,
 	GeneralSettings,
 	ChatSettings,
 	NetworkSettings,

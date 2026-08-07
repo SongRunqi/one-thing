@@ -24,7 +24,6 @@ import { registerVariableHandlers } from "./variables.js";
 import { registerProjectDirsHandlers } from "./project-dirs.js";
 import { registerPluginHandlers } from "./plugins.js";
 import { registerPromptHandlers } from "./prompts.js";
-import { registerMemoryHandlers } from "./memory.js";
 import { registerSchedulerHandlers } from "./scheduler.js";
 import { registerFilesHandlers } from "./files.js";
 import { registerMarkdownHandlers } from "./markdown.js";
@@ -70,7 +69,6 @@ export function initializeIPC() {
 	registerProjectDirsHandlers();
 	registerPluginHandlers();
 	registerPromptHandlers();
-	registerMemoryHandlers();
 	registerSchedulerHandlers();
 	registerFilesHandlers();
 	registerMarkdownHandlers();
