@@ -393,7 +393,21 @@ export function startOnethingElectronMain(): void {
 			killAllTerminals,
 			killAllBrowserTabs,
 			// 插件系统:桌面宿主是**唯一真的跑插件的宿主**,它的退出路径就是这张表。
-			shutdownPlugins: () => getPluginManager()?.shutdown(),
+			//
+			// 两条日志都是有意的:`shutdown()` 自己一行不打,于是真机走查时
+			// "app.log 里没有 [PluginManager]"既可能是没跑到、也可能是跑了但沉默 ——
+			// 那次诊断为此多花了一整轮。现在退出路径在日志里是可判定的。
+			shutdownPlugins: () => {
+				const manager = getPluginManager();
+				if (!manager) {
+					console.log(
+						"[PluginManager] Shutdown skipped: the plugin system was never bootstrapped",
+					);
+					return;
+				}
+				manager.shutdown();
+				console.log("[PluginManager] Shut down");
+			},
 			shutdownStreamEngine,
 			shutdownPermission: () => Permission.shutdown(),
 			shutdownSessionLayer,

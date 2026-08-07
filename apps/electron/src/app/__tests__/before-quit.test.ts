@@ -32,7 +32,7 @@ describe('electron before-quit cleanup', () => {
         killTrackedDetachedChildren: fn('killTrackedDetachedChildren'),
         killAllTerminals: fn('killAllTerminals'),
         killAllBrowserTabs: fn('killAllBrowserTabs'),
-        shutdownPlugins: asyncFn('shutdownPlugins'),
+        shutdownPlugins: fn('shutdownPlugins'),
         shutdownStreamEngine: asyncFn('shutdownStreamEngine'),
         shutdownPermission: fn('shutdownPermission'),
         shutdownSessionLayer: fn('shutdownSessionLayer'),
@@ -54,6 +54,7 @@ describe('electron before-quit cleanup', () => {
 
     expect(app.on).toHaveBeenCalledWith('before-quit', expect.any(Function))
     expect(calls).toEqual([
+      'shutdownPlugins',
       'markVoiceQuitRequested',
       'shutdownVoiceService',
       'shutdownMusicService',
@@ -64,7 +65,6 @@ describe('electron before-quit cleanup', () => {
       'killTrackedDetachedChildren',
       'killAllTerminals',
       'killAllBrowserTabs',
-      'shutdownPlugins',
       'shutdownStreamEngine',
       'shutdownPermission',
       'shutdownSessionLayer',
@@ -102,6 +102,32 @@ describe('electron before-quit cleanup', () => {
     registerElectronBeforeQuitCleanup(options)
 
     expect(mocks.on).toHaveBeenCalledWith('before-quit', expect.any(Function))
+  })
+
+  it('tears the plugin system down inside the synchronous prefix — before any await', async () => {
+    /*
+     * **这条是真机走查抓到的那个缺陷的回归防线。**
+     *
+     * `before-quit` 的监听器不被 Electron await,所以这张表只有第一个 await
+     * 之前的同步段是有保证的。实测:一次 Cmd+Q 里链条断在 `shutdownMCP` 里,
+     * `[EventSystem] Shut down` 与 store lock 释放都没跑到 —— 而插件拆除当时
+     * 排在第 11 位,插件在 onDispose 里写的数据全丢。
+     *
+     * 判据不是"顺序在前",而是"**不 await 也已经跑过**":只要有人把它挪到
+     * 任何一个 await 后面,这条立刻红。
+     */
+    const { runElectronBeforeQuitCleanup } = await import('../before-quit.js')
+    const { calls, options } = createOptions()
+    // 第一个异步步骤永不 resolve —— 模拟进程在那里被杀掉。
+    options.shutdownVoiceService = vi.fn(() => new Promise<void>(() => {})) as never
+
+    // **刻意不 await**:同步段应当已经跑完了。
+    void runElectronBeforeQuitCleanup(options as never)
+
+    expect(calls, 'plugin teardown must complete before the first await').toContain('shutdownPlugins')
+    // 而后面的东西确实还没跑 —— 证明我们真的卡在第一个 await 上。
+    expect(calls).not.toContain('shutdownEventSystem')
+    expect(calls).not.toContain('releaseDesktopStoreLock')
   })
 
   it('tears the plugin system down before the event bus closes', async () => {
