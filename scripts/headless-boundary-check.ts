@@ -1125,21 +1125,7 @@ const MAIN_PROVIDER_GENERATE_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[
   /Provider \$\{providerId\} does not have an AgentProvider runtime for generate\./,
 ]
 
-const MAIN_PROVIDER_STREAM_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
-  /const\s+effectiveMessages\s*=\s*mergeSystemMessagesForGenerateIfNeeded\(/,
-  /for await\s*\(const chunk of streamDeepSeekAgentTurn\(/,
-  /yield\*\s+streamUtilityAgentTurn\(/,
-  /Provider \$\{providerId\} does not have an AgentProvider runtime for stream-reasoning\./,
-]
 
-const MAIN_PROVIDER_TOOL_STREAM_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
-  /const\s+runtimeRoute\s*=\s*resolveProviderRuntimeRoute\(providerId,\s*config\)/,
-  /runtimeRoute\.kind === ["']acp["']/,
-  /runtimeRoute\.kind === ["']deepseek["']/,
-  /runtimeRoute\.kind === ["']agent["']/,
-  /Provider \$\{providerId\} does not have an AgentProvider runtime for stream-tools\./,
-  /Provider \$\{providerId\} does not have an AgentProvider runtime for stream-ui-messages\./,
-]
 
 const MAIN_PROVIDER_ACP_STREAM_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
   /getLatestUserMessageText\(messages\)/,
@@ -1152,7 +1138,6 @@ const MAIN_PROVIDER_ACP_STREAM_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
 ]
 
 const MAIN_EMBEDDINGS_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
-  /resolveSoulMemoryEmbeddingTarget/,
   /function\s+configForProvider/,
   /function\s+firstOpenAICompatibleCustom/,
   /function\s+resolveConfiguredProvider/,
@@ -2314,371 +2299,27 @@ const MAIN_VARIABLES_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
   /ipcMain\.handle/,
 ]
 
-const MAIN_MEMORY_REVIEW_FORBIDDEN_PATTERNS: RegExp[] = [
-  /countMemoryReviewUserTurns/,
-  /formatMemoryReviewConversation\s+as\s+formatCoreMemoryReviewConversation/,
-  /getMemoryReviewProgress\s+as\s+getCoreMemoryReviewProgress/,
-  /parseMemoryReviewModelResult\s+as\s+parseCoreMemoryReviewModelResult/,
-  /function\s+asCoreMessages/,
-  /function\s+countUserTurns/,
-  /function\s+getMemoryReviewProgress/,
-  /function\s+parseMemoryReviewModelResult/,
-  /function\s+formatMemoryReviewConversation/,
-  /coreApplyMemoryReviewCandidate/,
-  /coreBuildSoulMemoryReviewInputWithAdapters/,
-  /coreRunSoulMemoryReview/,
-  /coreResolveSoulMemoryPlainReviewFilePath/,
-  /memoryReviewLastTurnKey\s+as\s+coreMemoryReviewLastTurnKey/,
-  /splitHermesMemoryEntries/,
-  /readPlain:\s*target\s*=>\s*readPlainReviewFile\(workspace,\s*target\)/,
-  /readHermes:\s*async\s+target/,
-  /applyCandidate:\s*\(candidate,\s*minConfidence\)/,
-]
 
-const MAIN_MEMORY_HERMES_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]node:fs['"]/,
-  /from\s+['"]node:fs\/promises['"]/,
-  /CORE_HERMES_MEMORY_DELIMITER/,
-  /CORE_HERMES_USER_MEMORY_FILENAME/,
-  /CORE_HERMES_LONG_TERM_MEMORY_FILENAME/,
-  /function\s+getHermesMemoryFile/,
-  /function\s+splitHermesMemoryEntries/,
-  /function\s+readRaw/,
-  /function\s+readHermesMemoryFile/,
-  /function\s+addHermesMemoryEntry/,
-  /function\s+replaceHermesMemoryText/,
-  /function\s+removeHermesMemoryText/,
-  /function\s+getHermesMemoryStatus/,
-  /function\s+buildHermesMemoryPromptFragment/,
-]
 
-const MAIN_MEMORY_DIAGNOSTICS_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]node:crypto['"]/,
-  /from\s+['"]node:fs['"]/,
-  /from\s+['"]node:fs\/promises['"]/,
-  /toJsonObject/,
-  /const\s+DEFAULT_CONFIG/,
-  /const\s+LEVEL_WEIGHT/,
-  /SENSITIVE_KEY_RE/,
-  /SENSITIVE_QUERY_RE/,
-  /MAX_BUFFER/,
-  /FLUSH_INTERVAL_MS/,
-  /CLEANUP_INTERVAL_MS/,
-  /function\s+dayKey/,
-  /function\s+safeJson/,
-  /function\s+sanitizeUrlForMemoryLog/,
-  /function\s+sanitizeForMemoryLog/,
-  /function\s+cleanError/,
-  /function\s+requestMeta/,
-  /function\s+responsePreview/,
-  /function\s+parseLogLine/,
-  /private\s+queueWrite/,
-  /private\s+flush/,
-  /private\s+ensureCleanupTimer/,
-  /private\s+listLogFiles/,
-  /private\s+readRecentEntries/,
-  /private\s+matches/,
-]
 
-const MAIN_MEMORY_TYPES_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"].*shared\/ipc/,
-  /interface\s+MemoryWorkspace/,
-  /interface\s+MemoryChunk/,
-  /interface\s+MemoryIndexFile/,
-  /interface\s+SearchHit/,
-  /type\s+CaptureCandidateKind/,
-  /interface\s+CaptureCandidate/,
-  /interface\s+CanonicalMemoryInput/,
-  /interface\s+CanonicalUpsertResult/,
-  /interface\s+GraphEvidenceInput/,
-  /interface\s+GraphEntityInput/,
-  /interface\s+GraphObservationInput/,
-  /interface\s+GraphRelationInput/,
-  /interface\s+GraphMergeResult/,
-  /interface\s+DreamingSource/,
-  /interface\s+IndexStatus/,
-  /import\('\.\.\/\.\.\/shared\/ipc\.js'\)/,
-]
 
-const MAIN_MEMORY_DATABASE_CANONICAL_GRAPH_FORBIDDEN_PATTERNS: RegExp[] = [
-  /better-sqlite3/,
-  /from\s+['"].*shared\/ipc/,
-  /from\s+['"].*shared\/json/,
-  /CREATE TABLE IF NOT EXISTS/,
-  /CREATE VIRTUAL TABLE/,
-  /canonical_memories/,
-  /memory_entities/,
-  /memory_observations/,
-  /memory_relations/,
-  /memory_possible_duplicates/,
-  /memory_events/,
-  /function\s+getDb/,
-  /function\s+ensureFtsTable/,
-  /function\s+ensureCanonicalFtsTable/,
-  /function\s+ensureGraphFtsTable/,
-  /function\s+syncCanonicalFts/,
-  /function\s+appendCanonicalAudit/,
-  /function\s+findCanonicalDuplicate/,
-  /function\s+upsertCanonicalMemory/,
-  /function\s+upsertCanonicalCandidates/,
-  /function\s+listCanonicalMemories/,
-  /function\s+buildCanonicalProfileSummary/,
-  /function\s+buildGraphProfileSummary/,
-  /function\s+appendMemoryEvent/,
-  /function\s+appendGraphEvidence/,
-  /function\s+syncGraphFts/,
-  /function\s+ensureUserSelfEntity/,
-  /function\s+upsertGraphEntity/,
-  /function\s+upsertGraphObservation/,
-  /function\s+upsertGraphRelation/,
-  /function\s+upsertGraphCandidates/,
-  /function\s+mergeGraphMemory/,
-]
 
-const MAIN_MEMORY_IPC_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"].*\bshell\b/,
-  /shell\.openPath/,
-  /toJsonObject/,
-  /function\s+errorMessage/,
-  /function\s+withMemoryIpcLog/,
-  /try\s*\{/,
-  /catch\s*\(error\)/,
-  /success:\s*false/,
-  /logMemoryDiagnostic\(\{/,
-  /stage:\s*'request'/,
-  /stage:\s*'response'/,
-  /status:\s*'started'/,
-  /status:\s*'error'/,
-]
 
-const MAIN_MEMORY_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /ipcMain\.handle/,
-  /Electron\.IpcMainInvokeEvent/,
-]
 
-const MAIN_SOUL_MEMORY_GRAPH_DECISION_FORBIDDEN_PATTERNS: RegExp[] = [
-  /function\s+applyGraphDecisionPlan/,
-  /CoreSoulMemoryGraphDeletePlan/,
-  /CoreSoulMemoryGraphDuplicateDecisionPlan/,
-  /corePlanSoulMemoryGraphEntityDelete/,
-  /corePlanSoulMemoryGraphObservationDelete/,
-  /corePlanSoulMemoryGraphRelationDelete/,
-  /corePlanSoulMemoryGraphDuplicateMerge/,
-  /corePlanSoulMemoryGraphDuplicateIgnore/,
-  /UPDATE memory_observations SET entity_id/,
-  /UPDATE memory_relations SET from_entity_id/,
-  /UPDATE memory_relations SET to_entity_id/,
-  /UPDATE memory_entities SET deleted_at/,
-  /UPDATE memory_observations SET status = \?/,
-  /UPDATE memory_relations SET status = \?/,
-  /DELETE FROM graph_memory_fts WHERE owner_id/,
-  /SELECT \* FROM memory_possible_duplicates WHERE id = \?/,
-  /SELECT \* FROM memory_events WHERE memory_id = \?/,
-  /appendMemoryEvent\(database,\s*event\.memoryId/,
-]
 
-const MAIN_SOUL_MEMORY_GRAPH_CANONICAL_SEARCH_FORBIDDEN_PATTERNS: RegExp[] = [
-  /async function searchGraphMemory/,
-  /async function searchCanonicalMemory/,
-  /coreBuildSoulMemoryGraphSearchHits/,
-  /coreBuildSoulMemoryCanonicalSearchHits/,
-  /graph_memory_fts/,
-  /canonical_memories_fts/,
-  /FROM memory_entities\s*\n\s*WHERE deleted_at IS NULL/,
-  /FROM memory_observations\s*\n\s*WHERE deleted_at IS NULL/,
-  /FROM memory_relations\s*\n\s*WHERE deleted_at IS NULL/,
-  /FROM canonical_memories\s*\n\s*WHERE deleted_at IS NULL/,
-  /SELECT m\.\*, bm25\(canonical_memories_fts\)/,
-  /SELECT owner_type, owner_id, content, bm25\(graph_memory_fts\)/,
-]
 
-const MAIN_SOUL_MEMORY_MARKDOWN_SEARCH_FORBIDDEN_PATTERNS: RegExp[] = [
-  /async function searchMarkdownMemoryChunks/,
-  /coreBuildSoulMemoryMarkdownSearchHits/,
-  /rowToSoulMemoryChunk/,
-  /CoreSoulMemoryIndexedChunkRow/,
-  /SELECT c\.\*, bm25\(chunks_fts\)/,
-  /FROM chunks_fts\s*\n\s*JOIN chunks c/,
-  /SELECT \* FROM chunks WHERE content LIKE/,
-  /SELECT \* FROM chunks WHERE embedding_json IS NOT NULL/,
-]
 
-const MAIN_SOUL_MEMORY_MARKDOWN_INDEX_FORBIDDEN_PATTERNS: RegExp[] = [
-  /async function listMemoryFiles/,
-  /coreCreateSoulMemoryDailyIndexFile/,
-  /coreCreateSoulMemoryRootMemoryIndexFile/,
-  /coreIsSoulMemoryIndexMarkdownFileName/,
-  /coreShouldSkipSoulMemoryIndexDirectoryName/,
-  /function readIndexCounts/,
-  /async function inspectIndexFreshness/,
-  /async function indexFile/,
-  /coreChunkSoulMemoryText/,
-  /corePlanSoulMemoryIndexFileWrite/,
-  /corePlanSoulMemoryIndexFreshness/,
-  /coreShouldSkipSoulMemoryIndexFileWrite/,
-  /SELECT hash, mtime_ms, size FROM files WHERE path = \?/,
-  /SELECT path, mtime_ms, size FROM files/,
-  /SELECT id FROM chunks WHERE path = \?/,
-  /DELETE FROM chunks WHERE id = \?/,
-  /DELETE FROM chunks_fts WHERE id = \?/,
-  /INSERT INTO chunks\s*\(/,
-  /INSERT INTO chunks_fts/,
-  /INSERT INTO files \(path, kind, absolute_path, mtime_ms, size, hash, indexed_at\)/,
-  /DELETE FROM files; DELETE FROM chunks; DELETE FROM chunks_fts;/,
-]
 
-const MAIN_SOUL_MEMORY_MANAGED_FILES_FORBIDDEN_PATTERNS: RegExp[] = [
-  /async function listManagedMemoryFiles/,
-  /coreListSoulMemoryManagedFilesWithAdapters/,
-  /coreReadSoulMemoryManagedFileWithAdapters/,
-  /coreSaveSoulMemoryManagedFileWithAdapters/,
-  /listSoulMemoryManagedFilesWithAdapters\s+as/,
-  /readSoulMemoryManagedFileWithAdapters\s+as/,
-  /saveSoulMemoryManagedFileWithAdapters\s+as/,
-]
 
-const MAIN_SOUL_MEMORY_DAILY_CONTEXT_FORBIDDEN_PATTERNS: RegExp[] = [
-  /async function buildRecentDailyContextFragment/,
-  /coreBuildSoulMemoryRecentDailyContextFragmentWithAdapters/,
-  /buildSoulMemoryRecentDailyContextFragmentWithAdapters\s+as/,
-  /dateForDaysAgo:\s*dateStringDaysAgo/,
-  /readContent:\s*readLimited/,
-  /listEntries\(\)/,
-]
 
-const MAIN_SOUL_MEMORY_PROMPT_CONTEXT_FORBIDDEN_PATTERNS: RegExp[] = [
-  /coreBuildSoulMemoryPromptFragments/,
-  /buildSoulMemoryPromptFragments\s+as/,
-  /buildHermesMemoryPromptFragment\(workspace,\s*maxChars\)/,
-  /buildGraphProfileSummary\(workspace\)/,
-  /runtimeBuildRecentDailyContextFragment/,
-  /rulesPrompt:\s*SOUL_MEMORY_RULES_PROMPT/,
-  /soulContent:\s*readLimited\(workspace\.soulPath,\s*maxChars\)/,
-]
 
-const MAIN_SOUL_MEMORY_ACTIVE_MEMORY_FORBIDDEN_PATTERNS: RegExp[] = [
-  /CoreSoulMemoryActiveMemoryRuntime/,
-  /activeMemoryRuntime/,
-  /coreRunSoulMemoryActiveMemoryRecall/,
-  /runSoulMemoryActiveMemoryRecall\s+as/,
-  /pluginEnabled:\s*resolved\.enabled/,
-  /searchMaxResults:\s*resolved\.search\.maxResults/,
-  /hash:\s*sha/,
-  /preview:\s*previewLine/,
-]
 
-const MAIN_SOUL_MEMORY_APPEND_NOTE_FORBIDDEN_PATTERNS: RegExp[] = [
-  /coreBuildSoulMemoryAppendPayload/,
-  /coreResolveSoulMemoryAppendTarget/,
-  /buildSoulMemoryAppendPayload\s+as/,
-  /resolveSoulMemoryAppendTarget\s+as/,
-  /operation:\s*'append-note'/,
-  /appendTextFile\(target\.absolutePath,\s*payload\.text\)/,
-  /contentHash:\s*sha\(payload\.content\)/,
-]
 
-const MAIN_SOUL_MEMORY_CAPTURE_INPUT_FORBIDDEN_PATTERNS: RegExp[] = [
-  /coreBuildSoulMemoryCaptureInputWithAdapters/,
-  /buildSoulMemoryCaptureInputWithAdapters\s+as/,
-  /readDailyContent:\s*\(\)\s*=>\s*readTextFileAsync\(workspace\.todayPath\)/,
-]
 
-const MAIN_SOUL_MEMORY_CAPTURE_RUN_FORBIDDEN_PATTERNS: RegExp[] = [
-  /coreRunSoulMemoryCapture/,
-  /runSoulMemoryCapture\s+as/,
-  /readDailyContent:\s*\(\)\s*=>\s*readTextFileIfExists\(workspace\.todayPath\)/,
-  /applyDailyActions:\s*candidates/,
-]
 
-const MAIN_SOUL_MEMORY_DAILY_CAPTURE_ACTIONS_FORBIDDEN_PATTERNS: RegExp[] = [
-  /coreApplyDailyNoteCaptureActionsWithAdapters/,
-  /corePlanSoulMemoryDailyNoteAppend/,
-  /coreDedupeSoulMemoryDailyNoteBulletsWithAdapters/,
-  /applyDailyNoteCaptureActionsWithAdapters\s+as/,
-  /planSoulMemoryDailyNoteAppend\s+as/,
-  /dedupeSoulMemoryDailyNoteBulletsWithAdapters\s+as/,
-  /readMemoryContent:\s*\(\)\s*=>\s*readTextFileAsync\(workspace\.memoryPath\)/,
-  /writeDailyContent:\s*async\s+content/,
-  /operation:\s*'daily-note-actions'/,
-]
 
-const MAIN_SOUL_MEMORY_DREAMING_FORBIDDEN_PATTERNS: RegExp[] = [
-  /coreApplyDreamingMemoryActions/,
-  /coreBuildSoulMemoryExistingMemorySummary/,
-  /coreCollectSoulMemoryDailyDreamingSourcesWithAdapters/,
-  /coreRunSoulMemoryDreamingSweep/,
-  /applyDreamingMemoryActions\s+as\s+coreApplyDreamingMemoryActions/,
-  /buildSoulMemoryExistingMemorySummary\s+as\s+coreBuildSoulMemoryExistingMemorySummary/,
-  /collectSoulMemoryDailyDreamingSourcesWithAdapters\s+as\s+coreCollectSoulMemoryDailyDreamingSourcesWithAdapters/,
-  /runSoulMemoryDreamingSweep\s+as\s+coreRunSoulMemoryDreamingSweep/,
-  /statFile:\s*absolutePath\s*=>\s*statPath\(absolutePath\)/,
-  /readFile:\s*absolutePath\s*=>\s*readTextFileAsync\(absolutePath\)/,
-  /getExistingMemory:\s*\(\)\s*=>\s*buildDreamingExistingMemorySummary\(workspace\)/,
-  /applyMemoryActions:\s*\(result,\s*runAt\)/,
-  /operation:\s*'memory-actions'/,
-]
 
-const MAIN_SOUL_MEMORY_FLUSH_FORBIDDEN_PATTERNS: RegExp[] = [
-  /coreFormatSoulMemoryMessagesForFlush/,
-  /formatSoulMemoryMessagesForFlush\s+as/,
-  /const\s+formatted\s*=\s*coreFormatSoulMemoryMessagesForFlush/,
-  /CORE_SOUL_MEMORY_MEMORY_FLUSH_SYSTEM_PROMPT,\s*\n\s*\}/,
-  /operation:\s*'before-context-compact'/,
-  /stage:\s*'model-request'/,
-  /Flush model returned no daily-note-worthy bullets/,
-  /dedupeDailyNoteBullets\(workspace,\s*parseDailyNoteBullets\(output\)\)/,
-  /appendDailyNoteBullets\(\{/,
-]
 
-const MAIN_MEMORY_WORKSPACE_HELPERS_FORBIDDEN_PATTERNS: RegExp[] = [
-  /canonicalSoulMemoryTokens\s+as\s+coreCanonicalSoulMemoryTokens/,
-  /canonicalSoulMemoryKindFromCaptureKind\s+as\s+coreCanonicalSoulMemoryKindFromCaptureKind/,
-  /buildSoulMemoryFtsQuery\s+as\s+coreBuildSoulMemoryFtsQuery/,
-  /CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID/,
-  /cosineSoulMemoryVector\s+as\s+coreCosineSoulMemoryVector/,
-  /estimateSoulMemoryTokens\s+as\s+coreEstimateSoulMemoryTokens/,
-  /extractSoulMemoryCandidateValue\s+as\s+coreExtractSoulMemoryCandidateValue/,
-  /formatSoulMemoryDateString\s+as\s+coreFormatSoulMemoryDateString/,
-  /hashSoulMemoryText\s+as\s+coreHashSoulMemoryText/,
-  /isSoulMemoryIndexableMarkdownRelativePath\s+as\s+coreIsSoulMemoryIndexableMarkdownRelativePath/,
-  /normalizeSoulMemoryBulletText\s+as\s+coreNormalizeSoulMemoryBulletText/,
-  /normalizeSoulMemoryForDedupe\s+as\s+coreNormalizeSoulMemoryForDedupe/,
-  /normalizeSoulMemoryRelativePath\s+as\s+coreNormalizeSoulMemoryRelativePath/,
-  /previewSoulMemoryLine\s+as\s+corePreviewSoulMemoryLine/,
-  /slugifySoulMemoryKeyPart\s+as\s+coreSlugifySoulMemoryKeyPart/,
-  /soulMemoryAsBullet\s+as\s+coreSoulMemoryAsBullet/,
-  /soulMemoryTokenJaccard\s+as\s+coreSoulMemoryTokenJaccard/,
-  /truncateSoulMemoryText\s+as\s+coreTruncateSoulMemoryText/,
-  /readTextFileLimited/,
-  /writeTextFileAtomic/,
-  /writeTextFileIfMissing/,
-  /export\s+const\s+SOUL_MEMORY_PLUGIN_ID/,
-  /export\s+const\s+SOUL_MEMORY_RULES_PROMPT/,
-  /export\s+const\s+SOUL_TEMPLATE/,
-  /export\s+const\s+USER_SELF_ENTITY_ID/,
-  /function\s+normalizeMemoryRelativePath/,
-  /function\s+isIndexableMarkdownPath/,
-  /function\s+todayString/,
-  /function\s+dateString/,
-  /function\s+sha/,
-  /function\s+truncate/,
-  /function\s+estimateTokens/,
-  /function\s+writeIfMissing/,
-  /function\s+readLimited/,
-  /function\s+normalizeBulletText/,
-  /function\s+asBullet/,
-  /function\s+slugifyMemoryKeyPart/,
-  /function\s+sanitizeMemoryKey/,
-  /function\s+extractCandidateValue/,
-  /function\s+looksLikeNameValue/,
-  /function\s+canonicalTokens/,
-  /function\s+tokenJaccard/,
-  /function\s+normalizeForDedupe/,
-  /function\s+previewLine/,
-  /function\s+cosine/,
-  /function\s+ftsQuery/,
-]
 
 const CORE_TOOL_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
   /executeCoreTimeTool/,
@@ -2780,21 +2421,10 @@ const CORE_TOOL_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
 
 interface WalkFilesOptions {
   includeTests?: boolean
-  /**
-   * 覆盖默认的扩展名集合。
-   *
-   * 默认集合是**所有既有守卫**共用的,别去动它 —— 那会悄悄改掉每一条规则的
-   * 扫描面。需要更宽的面时传这个参数(控制字符守卫就要看 .vue:SFC 里的裸 NUL
-   * 同样让 git 判二进制、同样不可审)。
-   */
-  extensions?: RegExp
 }
-
-const DEFAULT_WALK_EXTENSIONS = /\.(ts|tsx|js|mjs|cjs|json)$/
 
 function walkFiles(dir: string, output: string[] = [], options: WalkFilesOptions = {}): string[] {
   if (!fs.existsSync(dir)) return output
-  const extensions = options.extensions ?? DEFAULT_WALK_EXTENSIONS
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if ((!options.includeTests && entry.name === '__tests__')
       || entry.name === 'node_modules'
@@ -2802,7 +2432,7 @@ function walkFiles(dir: string, output: string[] = [], options: WalkFilesOptions
     const fullPath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
       walkFiles(fullPath, output, options)
-    } else if (extensions.test(entry.name)) {
+    } else if (/\.(ts|tsx|js|mjs|cjs|json)$/.test(entry.name)) {
       output.push(fullPath)
     }
   }
@@ -7612,85 +7242,6 @@ function checkElectronHostOwnsSessionsIpcHost(): void {
   assertNoMatches('apps/electron owns Electron sessions IPC host operations', lines)
 }
 
-function checkElectronHostOwnsMemoryIpcHost(): void {
-  const electronPackage = path.join(root, 'apps/electron/package.json')
-  const electronMemoryFile = path.join(root, 'apps/electron/src/ipc/memory.ts')
-  const mainMemoryFile = path.join(root, 'apps/electron/src/main/ipc/memory.ts')
-  const viteConfig = path.join(root, 'onething.aliases.ts')
-  const vitestConfig = path.join(root, 'onething.aliases.ts')
-  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
-  const electronMemoryContent = fs.existsSync(electronMemoryFile)
-    ? fs.readFileSync(electronMemoryFile, 'utf-8')
-    : ''
-  const mainMemoryContent = fs.existsSync(mainMemoryFile) ? fs.readFileSync(mainMemoryFile, 'utf-8') : ''
-  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
-  const requiredHostSymbols = [
-    'registerElectronMemoryIpcHandlers',
-    'options.ipcMain ?? ipcMain',
-    'host.handle',
-    'ElectronMemoryIpcHandlerDefinition',
-  ]
-  const requiredFacadeSymbols = [
-    '@onething/electron-host/ipc/memory',
-    'registerElectronMemoryIpcHandlers',
-    'IPC_CHANNELS.MEMORY_OVERVIEW',
-    'IPC_CHANNELS.MEMORY_READ',
-    'IPC_CHANNELS.MEMORY_SEARCH',
-    'IPC_CHANNELS.MEMORY_APPEND',
-    'IPC_CHANNELS.MEMORY_SAVE_FILE',
-    'IPC_CHANNELS.MEMORY_INDEX',
-    'IPC_CHANNELS.MEMORY_RUN_DREAMING',
-    'IPC_CHANNELS.MEMORY_CAPTURE_SAVE',
-    'IPC_CHANNELS.MEMORY_CAPTURE_DISCARD',
-    'IPC_CHANNELS.MEMORY_PROFILE_LIST',
-    'IPC_CHANNELS.MEMORY_PROFILE_SEARCH',
-    'IPC_CHANNELS.MEMORY_PROFILE_UPSERT',
-    'IPC_CHANNELS.MEMORY_PROFILE_DELETE',
-    'IPC_CHANNELS.MEMORY_PROFILE_AUDIT',
-    'IPC_CHANNELS.MEMORY_PROFILE_EXPORT',
-    'IPC_CHANNELS.MEMORY_GRAPH_OVERVIEW',
-    'IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_LIST',
-    'IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_UPSERT',
-    'IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_DELETE',
-    'IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_LIST',
-    'IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_UPSERT',
-    'IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_DELETE',
-    'IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_LIST',
-    'IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_UPSERT',
-    'IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_DELETE',
-    'IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_LIST',
-    'IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_MERGE',
-    'IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_IGNORE',
-    'IPC_CHANNELS.MEMORY_GRAPH_AUDIT',
-    'IPC_CHANNELS.MEMORY_LOGS_LIST',
-    'IPC_CHANNELS.MEMORY_LOGS_STATS',
-    'IPC_CHANNELS.MEMORY_LOGS_OPEN_FOLDER',
-    'IPC_CHANNELS.MEMORY_LOGS_CLEANUP',
-  ]
-  const lines = [
-    ...(!packageContent.includes('./ipc/memory')
-      ? [`${rel(electronPackage)}: missing memory IPC host export`]
-      : []),
-    ...requiredHostSymbols
-      .filter(symbol => !electronMemoryContent.includes(symbol))
-      .map(symbol => `${rel(electronMemoryFile)}: missing Electron memory IPC host symbol ${symbol}`),
-    ...requiredFacadeSymbols
-      .filter(symbol => !mainMemoryContent.includes(symbol))
-      .map(symbol => `${rel(mainMemoryFile)}: missing memory IPC host delegation ${symbol}`),
-    ...(!viteContent.includes('@onething/electron-host/ipc/memory')
-      ? [`${rel(viteConfig)}: missing electron memory IPC package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/ipc/memory')
-      ? [`${rel(vitestConfig)}: missing electron memory IPC test alias`]
-      : []),
-    ...(fs.existsSync(mainMemoryFile)
-      ? matchingLines(mainMemoryFile, MAIN_MEMORY_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/ipc/memory.ts: missing memory IPC adapter']),
-  ]
-
-  assertNoMatches('apps/electron owns Electron memory IPC host operations', lines)
-}
 
 function checkCorePromptAssemblyOwnedByRuntime(): void {
   const files = [
@@ -8186,12 +7737,15 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  // The stream-side facade members (streamChatResponseWithTools /
+  // streamChatWithUIMessages / streamChatResponse*) were deleted in P0 of
+  // docs/design/provider-abstraction.md — they had zero production callers.
+  // What this rule still guards: the facade itself lives in runtime and the
+  // app layer only delegates to it.
   const requiredRuntimeSymbols = [
     'createOnethingProviderFacade',
     'OnethingProviderFacadeAdapters',
-    'streamChatResponseWithTools',
     'generateChatResponseWithReasoning',
-    'streamChatWithUIMessages',
   ]
   const lines = [
     ...(!fs.existsSync(runtimeFile)
@@ -8242,9 +7796,10 @@ function checkRuntimeOwnsProviderTextResponseProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  // streamOnethingTextChatResponse was deleted in P0 (zero callers); the
+  // generate-side projection is still the live one.
   const requiredRuntimeSymbols = [
     'generateOnethingTextChatResponse',
-    'streamOnethingTextChatResponse',
   ]
   const lines = [
     ...requiredRuntimeSymbols
@@ -8280,49 +7835,7 @@ function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
   assertNoMatches('packages/onething-runtime owns provider generate-with-reasoning orchestration', lines)
 }
 
-function checkRuntimeOwnsProviderStreamReasoningOrchestration(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/providers/index.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'streamOnethingChatResponseWithReasoning',
-    'streamDeepSeekTurn',
-    'streamUtilityAgentTurn',
-    'stream-reasoning',
-  ]
-  const lines = [
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider stream-with-reasoning orchestration ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_PROVIDER_STREAM_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/providers/index.ts: missing provider facade']),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns provider stream-with-reasoning orchestration', lines)
-}
-
-function checkRuntimeOwnsProviderToolStreamOrchestration(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/providers/index.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'streamOnethingChatResponseWithTools',
-    'OnethingProviderToolStreamMode',
-    'streamAgentToolTurn',
-    'streamACPResponse',
-  ]
-  const lines = [
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider tool-stream orchestration ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_PROVIDER_TOOL_STREAM_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/app/providers/index.ts: missing provider facade']),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns provider tool-stream orchestration', lines)
-}
 
 function checkRuntimeOwnsProviderAcpStreamProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
@@ -9595,8 +9108,7 @@ function checkCoreKnowsNoConcreteFeatures(): void {
  * 起因是一次真事故:R6 的状态账本用了一个裸 NUL 做 Map 键的分隔符,git 据此把
  * 整个文件判成二进制 —— 那一期最核心的 188 行在 diff 里**完全不可审**,评审只能
  * 看到 `Bin 0 -> 7524 bytes`。代码看起来完全正常,测试全绿,而审查这一环被静默
- * 掐掉了。这条守卫上线当天就在 collab 的 envelope-fold.ts 里抓到同一个病
- * (`Bin 0 -> 10439 bytes`,10KB 核心逻辑同样从未被审过)。
+ * 掐掉了。
  *
  * 需要控制字符时写转义(`\u0000`),不要把字节本身放进文件。
  * 制表符/换行/回车(0x09/0x0a/0x0d)照常放行。
@@ -10640,682 +10152,25 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
   assertNoMatches('packages/onething-runtime owns variables store and pure helpers', lines)
 }
 
-function checkRuntimeOwnsMemoryReviewHelpers(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/review.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/memory/review.ts')
-  const pluginFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'MemoryReviewMessageLike',
-    'countUserTurns',
-    'getMemoryReviewProgress',
-    'parseMemoryReviewModelResult',
-    'formatMemoryReviewConversation',
-    'getPlainReviewFile',
-    'readPlainReviewFile',
-    'buildMemoryReviewInput',
-    'applyMemoryReviewCandidate',
-    'runMemoryReview',
-    'coreBuildSoulMemoryReviewInputWithAdapters',
-    'coreApplyMemoryReviewCandidate',
-    'coreRunSoulMemoryReview',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned memory review module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? [`${rel(mainFile)}: memory review facade should be removed; import @onething/runtime/memory/review directly`]
-      : []),
-    ...(fs.existsSync(pluginFile)
-      ? matchingLines(pluginFile, MAIN_MEMORY_REVIEW_FORBIDDEN_PATTERNS)
-      : [`${rel(pluginFile)}: missing soul-memory plugin adapter`]),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns memory review helpers', lines)
-}
 
-function checkRuntimeOwnsMemoryDiagnosticsLogger(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/diagnostics-logger.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/memory/diagnostics-logger.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'MemoryDiagnosticsLogger',
-    'sanitizeUrlForMemoryLog',
-    'sanitizeForMemoryLog',
-    'createMemoryDiagnosticsFetch',
-    'configureMemoryDiagnosticsLogger',
-    'logMemoryDiagnostic',
-    'MemoryDiagnosticsLoggerOptions',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned memory diagnostics logger module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_MEMORY_DIAGNOSTICS_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing memory diagnostics logger adapter`]),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns memory diagnostics logger service', lines)
-}
 
-function checkRuntimeOwnsMemoryTypes(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/types.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/memory/types.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'ResolvedSoulMemorySettings',
-    'MemoryWorkspace',
-    'CaptureCandidate',
-    'CanonicalMemoryInput',
-    'CanonicalMemoryRecord',
-    'GraphMergeResult',
-    'MemoryGraphEntity',
-    'MemoryGraphObservation',
-    'MemoryGraphRelation',
-    'IndexStatus',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned memory types module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? [`${rel(mainFile)}: memory types facade should be removed; import @onething/runtime/memory/types directly`]
-      : []),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns memory runtime type contracts', lines)
-}
 
-function checkRuntimeOwnsMemoryDatabaseCanonicalGraph(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/database.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/canonical.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/graph.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFiles = [
-    path.join(root, 'packages/onething-runtime/src/app/memory/database.ts'),
-    path.join(root, 'packages/onething-runtime/src/app/memory/canonical.ts'),
-    path.join(root, 'packages/onething-runtime/src/app/memory/graph.ts'),
-  ]
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'getDb',
-    'getFtsTokenizer',
-    'upsertCanonicalMemory',
-    'upsertCanonicalCandidates',
-    'listCanonicalMemories',
-    'deleteCanonicalMemory',
-    'getCanonicalMemoryAudit',
-    'searchCanonicalMemory',
-    'buildCanonicalProfileSummary',
-    'buildGraphProfileSummary',
-    'upsertGraphEntity',
-    'upsertGraphObservation',
-    'upsertGraphRelation',
-    'upsertGraphCandidates',
-    'mergeGraphMemory',
-    'searchGraphMemory',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned memory database/canonical/graph module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
-    ...mainFiles.flatMap(file => fs.existsSync(file)
-      ? [`${rel(file)}: memory database/canonical/graph facade should be removed; import @onething/runtime/memory/* directly`]
-      : []),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns memory database, canonical, and graph operations', lines)
-}
 
-function checkRuntimeOwnsSoulMemoryGraphDecisionOperations(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/memory/graph.ts')
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'applyGraphDecisionPlan',
-    'deleteGraphEntity',
-    'deleteGraphObservation',
-    'deleteGraphRelation',
-    'mergeGraphDuplicate',
-    'ignoreGraphDuplicate',
-    'getGraphAudit',
-  ]
-  const lines = [
-    ...(!fs.existsSync(runtimeFile)
-      ? [`${rel(runtimeFile)}: missing runtime-owned graph decision operations`]
-      : []),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/graph.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_GRAPH_DECISION_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns soul-memory graph decision operations', lines)
-}
 
-function checkRuntimeOwnsSoulMemoryGraphCanonicalSearch(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/graph.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/canonical.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'searchGraphMemory',
-    'searchCanonicalMemory',
-    'coreBuildSoulMemoryGraphSearchHits',
-    'coreBuildSoulMemoryCanonicalSearchHits',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned graph/canonical search module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_GRAPH_CANONICAL_SEARCH_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns soul-memory graph and canonical search operations', lines)
-}
 
-function checkRuntimeOwnsSoulMemoryMarkdownSearch(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/search.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'searchMarkdownMemoryChunks',
-    'rowToMemoryChunk',
-    'coreBuildSoulMemoryMarkdownSearchHits',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned markdown search module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/search.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_MARKDOWN_SEARCH_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns soul-memory markdown search operations', lines)
-}
 
-function checkRuntimeOwnsSoulMemoryMarkdownIndexPersistence(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/indexer.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'indexMemoryFile',
-    'listMemoryIndexFiles',
-    'inspectMemoryIndexFreshness',
-    'readMemoryIndexCounts',
-    'deleteMemoryIndexPaths',
-    'clearMemoryIndex',
-    'corePlanSoulMemoryIndexFileWrite',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned markdown index persistence module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/indexer.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_MARKDOWN_INDEX_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns soul-memory markdown index persistence', lines)
-}
 
-function checkRuntimeOwnsSoulMemoryManagedFiles(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/managed-files.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'listManagedMemoryFiles',
-    'readManagedMemoryFile',
-    'saveManagedMemoryFile',
-    'coreListSoulMemoryManagedFilesWithAdapters',
-    'coreReadSoulMemoryManagedFileWithAdapters',
-    'coreSaveSoulMemoryManagedFileWithAdapters',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned managed-files module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/managed-files.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_MANAGED_FILES_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns soul-memory managed file operations', lines)
-}
 
-function checkRuntimeOwnsSoulMemoryDailyContext(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/daily-context.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'buildRecentDailyContextFragment',
-    'coreBuildSoulMemoryRecentDailyContextFragmentWithAdapters',
-    'dateStringDaysAgo',
-    'readLimited',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned daily-context module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/daily-context.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_DAILY_CONTEXT_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
 
-  assertNoMatches('packages/onething-runtime owns soul-memory daily context prompt assembly', lines)
-}
-
-function checkRuntimeOwnsSoulMemoryPromptContext(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/prompt-context.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'buildSoulMemoryPromptContext',
-    'coreBuildSoulMemoryPromptFragments',
-    'buildHermesMemoryPromptFragment',
-    'buildGraphProfileSummary',
-    'buildRecentDailyContextFragment',
-    'SOUL_MEMORY_RULES_PROMPT',
-    'readLimited',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned prompt-context module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/prompt-context.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_PROMPT_CONTEXT_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns soul-memory prompt context assembly', lines)
-}
-
-function checkRuntimeOwnsSoulMemoryActiveMemoryRecall(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/active-memory.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'runMemoryActiveMemoryRecall',
-    'coreRunSoulMemoryActiveMemoryRecall',
-    'CoreSoulMemoryActiveMemoryRuntime',
-    'coreFormatSoulMemoryHits',
-    'searchMaxResults',
-    'hash: sha',
-    'preview: previewLine',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned active-memory module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/active-memory.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_ACTIVE_MEMORY_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns soul-memory active memory recall', lines)
-}
-
-function checkRuntimeOwnsSoulMemoryAppendNote(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/append.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'appendMemoryNote',
-    'coreBuildSoulMemoryAppendPayload',
-    'coreResolveSoulMemoryAppendTarget',
-    'appendTextFile',
-    'append-note',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned append module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/append.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_APPEND_NOTE_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns soul-memory append note operations', lines)
-}
-
-function checkRuntimeOwnsSoulMemoryCaptureInput(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/capture-actions.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'buildMemoryCaptureInput',
-    'coreBuildSoulMemoryCaptureInputWithAdapters',
-    'CoreSoulMemoryCaptureInputContext',
-    'readTextFileAsync',
-    'dailyRelativePath',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned capture input module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/capture-actions.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_CAPTURE_INPUT_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns soul-memory capture input prompt assembly', lines)
-}
-
-function checkRuntimeOwnsSoulMemoryCaptureRun(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/capture-actions.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'runMemoryCapture',
-    'coreRunSoulMemoryCapture',
-    'readTextFileIfExists',
-    'applyDailyActions',
-    'hash: sha',
-    'preview: previewLine',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned capture run module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/capture-actions.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_CAPTURE_RUN_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns soul-memory capture run orchestration', lines)
-}
-
-function checkRuntimeOwnsSoulMemoryDailyCaptureActions(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/capture-actions.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'applyDailyNoteCaptureActions',
-    'appendDailyNoteCaptureBullets',
-    'dedupeDailyNoteCaptureBullets',
-    'coreApplyDailyNoteCaptureActionsWithAdapters',
-    'corePlanSoulMemoryDailyNoteAppend',
-    'coreDedupeSoulMemoryDailyNoteBulletsWithAdapters',
-    'readTextFileAsync',
-    'replaceFileAtomic',
-    'daily-note-actions',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned daily capture actions module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/capture-actions.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_DAILY_CAPTURE_ACTIONS_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns soul-memory daily capture action operations', lines)
-}
-
-function checkRuntimeOwnsSoulMemoryDreamingOperations(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/dreaming.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'collectDailyDreamingSources',
-    'collectDreamingSources',
-    'buildDreamingExistingMemorySummary',
-    'applyDreamingMemoryActions',
-    'runMemoryDreamingSweep',
-    'coreCollectSoulMemoryDailyDreamingSourcesWithAdapters',
-    'coreBuildSoulMemoryExistingMemorySummary',
-    'coreApplyDreamingMemoryActions',
-    'coreRunSoulMemoryDreamingSweep',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned dreaming module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/dreaming.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_DREAMING_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns soul-memory dreaming operations', lines)
-}
-
-function checkRuntimeOwnsSoulMemoryFlushOperations(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/flush.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/plugins/builtin/soul-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'runMemoryFlush',
-    'coreFormatSoulMemoryMessagesForFlush',
-    'CORE_SOUL_MEMORY_MEMORY_FLUSH_SYSTEM_PROMPT',
-    'coreParseDailyNoteBullets',
-    'dedupeDailyNoteCaptureBullets',
-    'appendDailyNoteCaptureBullets',
-    'before-context-compact',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned flush module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory/flush.ts: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_FLUSH_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns soul-memory memory flush operations', lines)
-}
-
-function checkRuntimeOwnsMemoryIpcPresentation(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/ipc.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'apps/electron/src/main/ipc/memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'createOnethingMemoryIpcHandlers',
-    'OnethingMemoryIpcAdapters',
-    'OnethingMemoryIpcHandlers',
-    'withMemoryIpcLog',
-    'logsOpenFolder',
-    'graphEntitiesUpsert',
-    'captureDiscard',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned memory IPC presentation module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_MEMORY_IPC_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing memory IPC adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns memory IPC presentation and logging flow', lines)
-}
-
-function checkRuntimeOwnsMemoryWorkspaceHelpers(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/workspace.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/memory/workspace.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'SOUL_MEMORY_PLUGIN_ID',
-    'SOUL_MEMORY_RULES_PROMPT',
-    'normalizeMemoryRelativePath',
-    'isIndexableMarkdownPath',
-    'dateStringDaysAgo',
-    'sanitizeAgentPathSegment',
-    'writeIfMissing',
-    'readLimited',
-    'normalizeBulletText',
-    'canonicalKindFromCaptureKind',
-    'isDurableCandidate',
-    'normalizeForDedupe',
-    'replaceFileAtomic',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned memory workspace helper module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_MEMORY_WORKSPACE_HELPERS_FORBIDDEN_PATTERNS)
-      : [`${rel(mainFile)}: missing memory workspace adapter`]),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns memory workspace pure helpers', lines)
-}
 
 function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
   const runtimeStoreFile = path.join(root, 'packages/onething-runtime/src/agents/store.ts')
@@ -12070,7 +10925,6 @@ checkElectronHostOwnsPluginsIpcHost()
 checkElectronHostOwnsThemesIpcHost()
 checkElectronHostOwnsProvidersIpcHost()
 checkElectronHostOwnsModelsIpcHost()
-checkElectronHostOwnsMemoryIpcHost()
 checkElectronHostOwnsMcpIpcHost()
 checkElectronHostOwnsAcpIpcHost()
 checkElectronHostOwnsMediaIpcHost()
@@ -12130,8 +10984,6 @@ checkRuntimeOwnsProviderFacadeOrchestration()
 checkRuntimeOwnsProviderTitleOrchestration()
 checkRuntimeOwnsProviderTextResponseProjection()
 checkRuntimeOwnsProviderGenerateReasoningOrchestration()
-checkRuntimeOwnsProviderStreamReasoningOrchestration()
-checkRuntimeOwnsProviderToolStreamOrchestration()
 checkRuntimeOwnsProviderAcpStreamProjection()
 checkRuntimeOwnsAcpIpcOperations()
 checkRuntimeOwnsAcpClientRuntime()
@@ -12202,26 +11054,6 @@ checkRuntimeOwnsPromptsStore()
 checkRuntimeOwnsSystemPromptSnapshot()
 checkRuntimeOwnsProjectDirsStore()
 checkRuntimeOwnsVariablesStoreAndHelpers()
-checkRuntimeOwnsMemoryReviewHelpers()
-checkRuntimeOwnsMemoryDiagnosticsLogger()
-checkRuntimeOwnsMemoryTypes()
-checkRuntimeOwnsMemoryDatabaseCanonicalGraph()
-checkRuntimeOwnsSoulMemoryGraphDecisionOperations()
-checkRuntimeOwnsSoulMemoryGraphCanonicalSearch()
-checkRuntimeOwnsSoulMemoryMarkdownSearch()
-checkRuntimeOwnsSoulMemoryMarkdownIndexPersistence()
-checkRuntimeOwnsSoulMemoryManagedFiles()
-checkRuntimeOwnsSoulMemoryDailyContext()
-checkRuntimeOwnsSoulMemoryPromptContext()
-checkRuntimeOwnsSoulMemoryActiveMemoryRecall()
-checkRuntimeOwnsSoulMemoryAppendNote()
-checkRuntimeOwnsSoulMemoryCaptureInput()
-checkRuntimeOwnsSoulMemoryCaptureRun()
-checkRuntimeOwnsSoulMemoryDailyCaptureActions()
-checkRuntimeOwnsSoulMemoryDreamingOperations()
-checkRuntimeOwnsSoulMemoryFlushOperations()
-checkRuntimeOwnsMemoryIpcPresentation()
-checkRuntimeOwnsMemoryWorkspaceHelpers()
 checkRuntimeOwnsAgentsStoreAndIpcOperations()
 checkRuntimeOwnsAppStateUiSave()
 checkRuntimeOwnsSchedulerIpcOperations()
