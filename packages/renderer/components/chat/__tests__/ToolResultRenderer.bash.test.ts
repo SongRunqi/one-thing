@@ -35,7 +35,7 @@ function bashResult(lineCount: number) {
   return {
     toolName: 'bash',
     renderKind: 'bash' as const,
-    result: { content: [{ type: 'text', text }] },
+    result: { content: [{ type: 'text' as const, text }] },
   }
 }
 

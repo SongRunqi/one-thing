@@ -9,7 +9,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const baselinePath = path.join(root, 'docs/audit/boundary-baseline-2026-07-25.txt')
+const baselinePath = path.join(root, 'docs/audit/boundary-baseline-2026-08-07.txt')
 
 // 检查脚本给失败行上了色,而且色码在被管道接走时照样写出来(它不判 isTTY)。
 // 于是每条红实际长这样:`ESC[0m ESC[31m [boundary] failed: … ESC[0m` —— 原先的

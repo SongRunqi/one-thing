@@ -16,12 +16,11 @@
 [ui] failed: components/chat/PracticeStrip.vue:606 transition-literal
 [ui] failed: components/chat/SkillPicker.vue:4 title-attr
 [ui] failed: components/chat/composer/AttachmentRow.vue:33 title-attr
-[ui] failed: components/chat/message/MessageBubble.vue:178 title-attr
-[ui] failed: components/chat/message/MessageBubble.vue:184 title-attr
+[ui] failed: components/chat/message/MessageBubble.vue:189 title-attr
+[ui] failed: components/chat/message/MessageBubble.vue:195 title-attr
 [ui] failed: components/common/MenuItem.vue:15 title-attr
 [ui] failed: components/common/SubMenu.vue:17 title-attr
 [ui] failed: components/settings/BackgroundJobsPanel.vue:3 title-attr
-[ui] failed: components/settings/BackgroundJobsPanel.vue:29 title-attr
 [ui] failed: components/settings/ChannelsSettingsTab.vue:4 title-attr
 [ui] failed: components/settings/ChannelsSettingsTab.vue:219 title-attr
 [ui] failed: components/settings/ChannelsSettingsTab.vue:396 title-attr
@@ -46,29 +45,25 @@
 [ui] failed: components/settings/MusicSettingsTab.vue:312 title-attr
 [ui] failed: components/settings/NetworkSettingsTab.vue:4 title-attr
 [ui] failed: components/settings/PromptsSettingsPanel.vue:4 title-attr
-[ui] failed: components/settings/PromptsSettingsPanel.vue:63 title-attr
-[ui] failed: components/settings/PromptsSettingsPanel.vue:83 title-attr
 [ui] failed: components/settings/ShortcutInput.vue:190 focus-bare
 [ui] failed: components/settings/ToolsSettingsTab.vue:5 title-attr
 [ui] failed: components/settings/ToolsSettingsTab.vue:39 title-attr
 [ui] failed: components/settings/ToolsSettingsTab.vue:106 title-attr
-[ui] failed: components/settings/ToolsSettingsTab.vue:110 title-attr
 [ui] failed: components/settings/ToolsSettingsTab.vue:143 title-attr
 [ui] failed: components/settings/UsageSettingsPanel.vue:3 title-attr
-[ui] failed: components/settings/UsageSettingsPanel.vue:99 title-attr
 [ui] failed: components/settings/VoiceSettingsTab.vue:4 title-attr
 [ui] failed: components/settings/VoiceSettingsTab.vue:547 title-attr
 [ui] failed: components/settings/VoiceSettingsTab.vue:601 title-attr
 [ui] failed: components/settings/provider/ConnectionsSection.vue:238 native-select
 [ui] failed: components/settings/provider/ConnectionsSection.vue:331 native-select
 
-[ui] 63 violation(s) across 10 rules:
+[ui] 58 violation(s) across 10 rules:
   z-literal: 0
   z-fallback: 0
   raw-teleport: 0
   native-select: 2
   native-confirm: 0
-  title-attr: 53
+  title-attr: 48
   ui-hex-fallback: 0
   transition-literal: 1
   shadow-literal-floating: 0

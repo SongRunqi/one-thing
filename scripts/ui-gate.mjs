@@ -21,7 +21,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const baselinePath = path.join(root, 'docs/audit/ui-baseline-2026-08-06.txt')
+const baselinePath = path.join(root, 'docs/audit/ui-baseline-2026-08-07.txt')
 
 const ANSI_CSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g')
 const FAILURE_PREFIX = '[ui] failed:'

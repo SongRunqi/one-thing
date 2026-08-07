@@ -310,7 +310,7 @@ bun run ui:check   # 全量清单(存量 + 新增),按规则分类计数
 bun run ui:gate    # 棘轮:只对基线之外的新增 exit 1;治愈的行会打印出来
 ```
 
-基线:`docs/audit/ui-baseline-2026-08-06.txt`(**70 条**存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
+基线:`docs/audit/ui-baseline-2026-08-07.txt`(**58 条**存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
 P0 首录 1144 条 → P2 实测 1044(`native-confirm` 归零、`raw-teleport` 12→4,未重录)
 → P4 收官 768(`ui-hex-fallback` 151→0、`focus-bare` 65→27,已重录)
 → P5 第一波 376(`title-attr` 455→63)→ **P5 收官 70,此处已重录**

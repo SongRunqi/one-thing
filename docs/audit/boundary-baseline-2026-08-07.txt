@@ -1,4 +1,3 @@
-$ bun scripts/headless-boundary-check.ts
 [boundary] ok: packages/core has no Electron/main/shared/native npm forbidden imports
 [boundary] ok: packages/onething-runtime has no Electron/main/shared IPC forbidden imports
 [boundary] failed: packages/gateway has no Electron/main/shared IPC forbidden imports
@@ -18,7 +17,7 @@ $ bun scripts/headless-boundary-check.ts
 [boundary] ok: apps/electron owns Electron ready handler
 [boundary] ok: apps/electron owns Electron activate handler
 [boundary] failed: apps/electron owns Electron main-window binding
-  apps/electron/src/app/main-process.ts:271: warmTodoPlanWindow({
+  apps/electron/src/app/main-process.ts:274: warmTodoPlanWindow({
 [boundary] failed: apps/electron owns Electron application menu
   apps/electron/src/window/index.ts: window creation must delegate application menu setup to apps/electron
 [boundary] ok: apps/electron owns Electron session security
@@ -78,16 +77,24 @@ $ bun scripts/headless-boundary-check.ts
   packages/onething-runtime/src/app/index.ts: legacy Electron main facade must re-export app/main-process
 [boundary] ok: apps/electron owns Electron preload entrypoint
 [boundary] failed: Electron main and tests import onething-runtime via package public entrypoints
+  packages/onething-runtime/src/app/plugins/__tests__/policy.test.ts:279: path.join(REPO_ROOT, 'packages/onething-runtime/src/app'),
+  packages/onething-runtime/src/app/plugins/__tests__/soft-isolation.test.ts:235: // packages/onething-runtime/src/prompts/__tests__/plugin-context-timeout.test.ts
+  packages/onething-runtime/src/app/plugins/__tests__/config.test.ts:8: * (packages/onething-runtime/src/plugins/__tests__/config-schema.test.ts):
   packages/onething-runtime/src/app/agents/store.ts:25: * `packages/onething-runtime/src/agents/__tests__/model.test.ts` 的
 [boundary] ok: Vite/Vitest aliases cover used @onething/runtime subpaths
 [boundary] ok: Electron main facades use apps/electron host imports instead of direct electron imports
 [boundary] failed: Electron main and tests import headless core via package public entrypoints
   packages/onething-runtime/src/app/goals/__tests__/kick.test.ts:4: * (packages/core/permission/index.ts) and reject responses from any other
+  packages/onething-runtime/src/app/plugins/__tests__/policy.test.ts:278: path.join(REPO_ROOT, 'packages/core/plugins'),
+  packages/onething-runtime/src/app/plugins/__tests__/policy.test.ts:367: const hostSource = fs.readFileSync(path.join(REPO_ROOT, 'packages/core/plugins/api-builder.ts'), 'utf-8')
   packages/onething-runtime/src/app/engine/__tests__/core-provider-config.test.ts:93: // The send path (packages/core/engine/core-stream-engine.ts resolveProvider)
 [boundary] ok: Electron main and tests import gateway via package public entrypoints
 [boundary] ok: packages/core package dependencies are limited to approved runtime dependencies
 [boundary] failed: main core-system directories only keep explicit adapter imports
+  apps/electron/src/main/bridges/ipc-bridge-lifecycle.ts:1: import { BrowserWindow } from 'electron'
   packages/onething-runtime/src/app/stores/sessions.ts:16: import { join } from "node:path";
+  packages/onething-runtime/src/app/plugins/loader.ts:10: import fs from 'fs'
+  packages/onething-runtime/src/app/plugins/loader.ts:11: import path from 'path'
 [boundary] ok: packages/core/index.ts exports required public core interfaces
 [boundary] ok: packages/core owns core tool helper tests
 [boundary] ok: packages/core owns legacy tool schema projection
@@ -126,8 +133,6 @@ $ bun scripts/headless-boundary-check.ts
 [boundary] ok: packages/onething-runtime owns provider title orchestration
 [boundary] ok: packages/onething-runtime owns provider text response projection
 [boundary] ok: packages/onething-runtime owns provider generate-with-reasoning orchestration
-[boundary] ok: packages/onething-runtime owns provider stream-with-reasoning orchestration
-[boundary] ok: packages/onething-runtime owns provider tool-stream orchestration
 [boundary] ok: packages/onething-runtime owns provider ACP stream projection
 [boundary] ok: packages/onething-runtime owns ACP IPC operations
 [boundary] ok: packages/onething-runtime owns ACP client runtime
@@ -172,9 +177,12 @@ $ bun scripts/headless-boundary-check.ts
 [boundary] ok: packages/onething-runtime owns plugin command projection
 [boundary] ok: packages/onething-runtime owns plugin command execution orchestration
 [boundary] failed: packages/onething-runtime owns plugin IPC operations
-  apps/electron/src/main/ipc/plugins.ts:45: if (!manager) return { success: true, commands: [] }
-[boundary] ok: packages/onething-runtime owns log-monitor plugin registration
-[boundary] ok: packages/onething-runtime owns note-skills plugin runtime
+  apps/electron/src/main/ipc/plugins.ts:61: if (!manager) return { success: true, commands: [] }
+[boundary] ok: plugin logic stays out of the host assembly tree
+[boundary] ok: plugins reach the host only through the injected api object
+[boundary] ok: packages/core knows no concrete plugin or feature names
+[boundary] ok: onething.aliases.ts targets exist
+[boundary] ok: source files carry no raw control characters
 [boundary] ok: packages/onething-runtime owns skills runtime cache and settings projection
 [boundary] ok: packages/onething-runtime owns skills IPC operations
 [boundary] ok: packages/onething-runtime owns skill_manage operations
@@ -227,4 +235,3 @@ $ bun scripts/headless-boundary-check.ts
 [boundary] ok: packages/onething-runtime owns tool sandbox runtime
 [boundary] ok: packages/onething-runtime owns tool edit engine
 [boundary] ok: packages/onething-runtime owns concrete builtin tool implementations
-error: script "boundary" exited with code 1
