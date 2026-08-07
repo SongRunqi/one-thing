@@ -25,7 +25,6 @@
     "./ipc/gateway": "./src/ipc/gateway.ts",
     "./ipc/markdown": "./src/ipc/markdown.ts",
     "./ipc/media": "./src/ipc/media.ts",
-    "./ipc/memory": "./src/ipc/memory.ts",
     "./ipc/mcp": "./src/ipc/mcp.ts",
     "./ipc/models": "./src/ipc/models.ts",
     "./ipc/oauth": "./src/ipc/oauth.ts",
