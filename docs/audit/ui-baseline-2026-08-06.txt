@@ -1,24 +1,21 @@
 [ui] failed: components/SettingsPage.vue:93 title-attr
-[ui] failed: components/SettingsPage.vue:1824 focus-bare
-[ui] failed: components/SettingsPage.vue:1825 focus-bare
-[ui] failed: components/SettingsPage.vue:2009 focus-bare
-[ui] failed: components/SettingsPage.vue:2011 focus-bare
-[ui] failed: components/SettingsPage.vue:2019 focus-bare
-[ui] failed: components/SettingsPage.vue:2021 focus-bare
+[ui] failed: components/SettingsPage.vue:1808 focus-bare
+[ui] failed: components/SettingsPage.vue:1809 focus-bare
+[ui] failed: components/SettingsPage.vue:1993 focus-bare
+[ui] failed: components/SettingsPage.vue:1995 focus-bare
+[ui] failed: components/SettingsPage.vue:2003 focus-bare
+[ui] failed: components/SettingsPage.vue:2005 focus-bare
 [ui] failed: components/agents/AgentSpace.vue:23 title-attr
 [ui] failed: components/chat/AgentSelector.vue:42 title-attr
 [ui] failed: components/chat/CommandPicker.vue:4 title-attr
 [ui] failed: components/chat/FilePicker.vue:4 title-attr
 [ui] failed: components/chat/InputBox.vue:151 title-attr
 [ui] failed: components/chat/InputBox.vue:166 title-attr
-[ui] failed: components/chat/MessageList.vue:113 raw-teleport
 [ui] failed: components/chat/ModelSelector.vue:55 title-attr
 [ui] failed: components/chat/PathPicker.vue:4 title-attr
 [ui] failed: components/chat/PracticeStrip.vue:606 transition-literal
 [ui] failed: components/chat/SkillPicker.vue:4 title-attr
 [ui] failed: components/chat/composer/AttachmentRow.vue:33 title-attr
-[ui] failed: components/chat/message/MessageActions.vue:64 raw-teleport
-[ui] failed: components/chat/message/MessageActions.vue:168 raw-teleport
 [ui] failed: components/chat/message/MessageBubble.vue:178 title-attr
 [ui] failed: components/chat/message/MessageBubble.vue:184 title-attr
 [ui] failed: components/common/MenuItem.vue:15 title-attr
@@ -40,10 +37,6 @@
 [ui] failed: components/settings/GeneralSettingsTab.vue:243 title-attr
 [ui] failed: components/settings/GeneralSettingsTab.vue:290 title-attr
 [ui] failed: components/settings/GeneralSettingsTab.vue:382 title-attr
-[ui] failed: components/settings/MemorySettingsTab.vue:4 title-attr
-[ui] failed: components/settings/MemorySettingsTab.vue:84 title-attr
-[ui] failed: components/settings/MemorySettingsTab.vue:138 title-attr
-[ui] failed: components/settings/MemorySettingsTab.vue:172 title-attr
 [ui] failed: components/settings/MusicSettingsTab.vue:4 title-attr
 [ui] failed: components/settings/MusicSettingsTab.vue:60 title-attr
 [ui] failed: components/settings/MusicSettingsTab.vue:94 title-attr
@@ -69,13 +62,13 @@
 [ui] failed: components/settings/provider/ConnectionsSection.vue:238 native-select
 [ui] failed: components/settings/provider/ConnectionsSection.vue:331 native-select
 
-[ui] 70 violation(s) across 10 rules:
+[ui] 63 violation(s) across 10 rules:
   z-literal: 0
   z-fallback: 0
-  raw-teleport: 3
+  raw-teleport: 0
   native-select: 2
   native-confirm: 0
-  title-attr: 57
+  title-attr: 53
   ui-hex-fallback: 0
   transition-literal: 1
   shadow-literal-floating: 0

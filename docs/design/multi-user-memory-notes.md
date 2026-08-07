@@ -1,6 +1,10 @@
 # 多用户记忆：memory/users/&lt;userId&gt;/ 方案
 
-状态：设计待确认（2026-07-07）
+> ⚠️ **已失效 —— 记忆子系统于 2026-08-06 整树退役**，本方案所依附的
+> soul-memory 插件已不存在。见 `docs/audit/soul-memory-retirement-2026-08-06.md`。
+> 保留为历史设计记录。
+
+状态：设计待确认（2026-07-07）→ **作废（2026-08-06，随记忆系统退役）**
 取代：c4bff4a4 中随 channel identity routing 一起落地的 per-profile agentsDir workspace + canonical scope 前缀双层隔离。
 
 ## 1. 背景与目标
