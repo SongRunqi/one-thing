@@ -167,33 +167,14 @@ import {
 	type OnethingMediaQuery,
 } from "@onething/runtime/media";
 import {
-	MemoryDiagnosticsLogger,
-	appendMemoryNote,
-	CAPTURE_MAX_PENDING,
-	CAPTURE_PENDING_STORE_KEY,
-	createOnethingMemoryIpcHandlers,
-	listManagedMemoryFiles,
-	readManagedMemoryFile,
-	saveManagedMemoryFile,
-	SOUL_MEMORY_PLUGIN_ID,
-	type MemoryWorkspace,
-	type ResolvedSoulMemorySettings,
-} from "@onething/runtime/memory";
-import {
-	CORE_SOUL_MEMORY_MANIFEST,
 	ONETHING_LOG_MONITOR_MANIFEST,
 	ONETHING_NOTE_SKILLS_MANIFEST,
-	applySoulMemoryStatusMutationPlan,
-	discardSoulMemoryPendingCaptureWithAdapters,
 	executeOnethingPluginCommandForIpc,
 	disableOnethingPluginForIpc,
 	enableOnethingPluginForIpc,
-	getSoulMemoryPublicPendingCaptures,
 	listOnethingPluginCommandsForIpc,
 	listOnethingPluginsForIpc,
-	planSoulMemoryWorkspacePaths,
 	refreshOnethingPluginsForIpc,
-	saveSoulMemoryPendingCaptureWithAdapters,
 } from "@onething/runtime/plugins";
 import {
 	createOnethingAgentFromRequestForIpc,
@@ -395,10 +376,7 @@ import {
 	writeJsonFile as writeCoreJsonFile,
 	writeJsonFileAsync as writeCoreJsonFileAsync,
 } from "@onething/core/storage";
-import {
-	mergeWithDefaults,
-	normalizeSoulMemorySettings,
-} from "@shared/defaults/settings.js";
+import { mergeWithDefaults } from "@shared/defaults/settings.js";
 import { toJsonValue } from "@shared/json.js";
 import type {
 	ACPAgentConfig,
@@ -479,12 +457,6 @@ import type {
 	ProxySettings,
 	TestProxyResponse,
 } from "@shared/ipc/settings.js";
-import type {
-	MemoryAppendRequest,
-	MemoryLogsListRequest,
-	MemoryReadRequest,
-	MemorySaveFileRequest,
-} from "@shared/ipc/memory.js";
 import type {
 	ChannelReplyDeliveryRecord,
 	ChannelUserLink,
@@ -1051,12 +1023,6 @@ class ServerPluginCatalogManager {
 					entry: noopEntry,
 					enabled: this.getEnabled("note-skills", true),
 				},
-				{
-					id: "soul-memory",
-					manifest: CORE_SOUL_MEMORY_MANIFEST,
-					entry: noopEntry,
-					enabled: this.getEnabled("soul-memory", true),
-				},
 			]);
 
 		return scanCorePlugins<ServerPluginCatalogEntry>({
@@ -1282,15 +1248,10 @@ export async function createDevelopmentOnethingServerRuntime(
 		string,
 		ServerPluginCatalogManager
 	>();
-	const memoryPluginStoresByOwner = new Map<string, CorePluginStore>();
 	const mediaServicesByOwner = new Map<string, MediaLibraryService>();
 	const mediaImageGeneratedHandlersByOwner = new Map<
 		string,
 		Set<(payload: unknown) => void>
-	>();
-	const memoryDiagnosticsLoggersByOwner = new Map<
-		string,
-		MemoryDiagnosticsLogger
 	>();
 	const schedulerRuntimesByOwner = new Map<string, ServerSchedulerRuntime>();
 	const variableRuntimesByOwner = new Map<string, ServerVariablesRuntime>();
@@ -1815,20 +1776,6 @@ export async function createDevelopmentOnethingServerRuntime(
 		return store;
 	};
 
-	const getMemoryDiagnosticsLoggerForContext = (
-		context = defaultRequestContext(),
-	): MemoryDiagnosticsLogger => {
-		const key = ownerKey(context);
-		let logger = memoryDiagnosticsLoggersByOwner.get(key);
-		if (!logger) {
-			logger = new MemoryDiagnosticsLogger({
-				logDir: () => serverMemoryLogDir(dataRoot, context),
-			});
-			memoryDiagnosticsLoggersByOwner.set(key, logger);
-		}
-		return logger;
-	};
-
 	const getAuthServiceForContext = (
 		context = defaultRequestContext(),
 	): OnethingAuthService<OnethingOAuthToken> => {
@@ -1854,224 +1801,6 @@ export async function createDevelopmentOnethingServerRuntime(
 		}
 		return service;
 	};
-
-	const getMemoryPluginStoreForContext = (
-		context = defaultRequestContext(),
-	): CorePluginStore => {
-		const key = ownerKey(context);
-		let store = memoryPluginStoresByOwner.get(key);
-		if (!store) {
-			store = new CorePluginStore("soul-memory", {
-				dataDir: join(
-					dataRoot,
-					"owners",
-					safePathSegment(context.userId),
-					safePathSegment(context.workspaceId),
-					"plugin-data",
-				),
-			});
-			memoryPluginStoresByOwner.set(key, store);
-		}
-		return store;
-	};
-
-
-	const applyMemoryStatusMutationForContext = (
-		context: RuntimeRequestContext,
-		plan: Parameters<typeof applySoulMemoryStatusMutationPlan>[0]["plan"],
-	): void => {
-		applySoulMemoryStatusMutationPlan({
-			store: getMemoryPluginStoreForContext(context),
-			plan,
-		});
-	};
-
-	const ensureMemoryWorkspaceForContext = async (
-		context = defaultRequestContext(),
-		agentId = DEFAULT_ONETHING_AGENT_ID,
-	): Promise<MemoryWorkspace> => {
-		const ownerSettings = await getOwnerSettings(
-			settingsByOwner,
-			settingsStore,
-			context,
-		);
-		const settings = {
-			...normalizeSoulMemorySettings(ownerSettings.general?.soulMemory),
-		} as ResolvedSoulMemorySettings;
-		const workspace: MemoryWorkspace = isDefaultContext(context)
-			? {
-					settings,
-					...planSoulMemoryWorkspacePaths({
-						settings,
-						agentId: agentId || DEFAULT_ONETHING_AGENT_ID,
-						defaultAgentId: DEFAULT_ONETHING_AGENT_ID,
-						agentsDir: getOnethingAgentsDir({ storePath }),
-						storePath,
-						aiNoteDir: readDesktopAiNoteDir(),
-						expandPath: expandOnethingToolSandboxPath,
-					}),
-				}
-			: (() => {
-					const root = serverMemoryRoot(dataRoot, context, agentId);
-					const scopedSettings = {
-						...settings,
-						directoryMode: "custom" as const,
-						customDirectory: root,
-					} as ResolvedSoulMemorySettings;
-					const memoryDir = join(root, "memory");
-					return {
-						settings: scopedSettings,
-						agentId: agentId || DEFAULT_ONETHING_AGENT_ID,
-						root,
-						memoryDir,
-						soulPath: join(root, "SOUL.md"),
-						userPath: join(root, "USER.md"),
-						memoryPath: join(root, "MEMORY.md"),
-						dreamsPath: join(root, "DREAMS.md"),
-						todayPath: join(memoryDir, `${serverDateString(new Date())}.md`),
-						dbPath: join(root, "plugin-data", "soul-memory.sqlite"),
-					};
-				})();
-
-		await mkdir(workspace.memoryDir, { recursive: true });
-		if (!existsSync(workspace.soulPath)) {
-			await writeFile(workspace.soulPath, "# SOUL.md\n\n", "utf-8");
-		}
-		getMemoryDiagnosticsLoggerForContext(context).configure(
-			workspace.settings.logging,
-		);
-		return workspace;
-	};
-
-	const buildMemoryOverviewForContext = async (
-		context = defaultRequestContext(),
-		agentId = DEFAULT_ONETHING_AGENT_ID,
-	): Promise<unknown> => {
-		const workspace = await ensureMemoryWorkspaceForContext(context, agentId);
-		const files = await listManagedMemoryFiles(workspace);
-		const pluginStore = getMemoryPluginStoreForContext(context);
-		return {
-			enabled: workspace.settings.enabled,
-			agentId: workspace.agentId,
-			root: workspace.root,
-			memoryDir: workspace.memoryDir,
-			soulPath: workspace.soulPath,
-			userPath: workspace.userPath,
-			memoryPath: workspace.memoryPath,
-			dreamsPath: workspace.dreamsPath,
-			todayPath: workspace.todayPath,
-			settings: workspace.settings,
-			status: {
-				lastCaptureAt: pluginStore.get("lastCaptureAt"),
-				lastCaptureError: pluginStore.get("lastCaptureError"),
-				lastCaptureStatus: pluginStore.get("lastCaptureStatus"),
-			},
-			pendingCaptures: getSoulMemoryPublicPendingCaptures(pluginStore, {
-				key: CAPTURE_PENDING_STORE_KEY,
-				maxPending: CAPTURE_MAX_PENDING,
-				agentId: workspace.agentId,
-				defaultAgentId: DEFAULT_ONETHING_AGENT_ID,
-			}),
-			files,
-		};
-	};
-
-	const createMemoryHandlersForContext = (context = defaultRequestContext()) =>
-		createOnethingMemoryIpcHandlers({
-			logDiagnostic: (input) => {
-				getMemoryDiagnosticsLoggerForContext(context).log(input);
-			},
-			diagnosticsLogger: getMemoryDiagnosticsLoggerForContext(context),
-			onError: (operation, error) => {
-				console.error(`[ServerMemory] ${operation} error:`, error);
-			},
-
-			getOverview: (agentId) =>
-				buildMemoryOverviewForContext(
-					context,
-					agentId || DEFAULT_ONETHING_AGENT_ID,
-				),
-			readManagedFile: async (request) => {
-				const typedRequest = request as MemoryReadRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return readManagedMemoryFile({
-					workspace,
-					path: typedRequest.path,
-					startLine: typedRequest.startLine,
-					endLine: typedRequest.endLine,
-					lines: typedRequest.lines,
-					full: typedRequest.full,
-				});
-			},
-			appendPanel: async (request) => {
-				const typedRequest = request as MemoryAppendRequest & {
-					filePath?: string;
-				};
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return appendMemoryNote({
-					workspace,
-					content: typedRequest.content,
-					target: typedRequest.target,
-					filePath: typedRequest.filePath,
-					heading: typedRequest.heading,
-					logDiagnostic: (event) =>
-						getMemoryDiagnosticsLoggerForContext(context).log(event),
-				});
-			},
-			saveManagedFile: async (request) => {
-				const typedRequest = request as MemorySaveFileRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return saveManagedMemoryFile({
-					workspace,
-					path: typedRequest.path,
-					content: typedRequest.content,
-				});
-			},
-
-
-
-			savePendingCapture: async (id) => {
-				const pluginStore = getMemoryPluginStoreForContext(context);
-				return saveSoulMemoryPendingCaptureWithAdapters({
-					store: pluginStore,
-					key: CAPTURE_PENDING_STORE_KEY,
-					maxPending: CAPTURE_MAX_PENDING,
-					id,
-					saveSelectedCapture: async (capture) => {
-						const agentId = capture.agentId || DEFAULT_ONETHING_AGENT_ID;
-						const workspace = await ensureMemoryWorkspaceForContext(
-							context,
-							agentId,
-						);
-						return appendMemoryNote({
-							workspace,
-							content: capture.content,
-							target: capture.target,
-							heading: capture.heading,
-							logDiagnostic: (event) =>
-								getMemoryDiagnosticsLoggerForContext(context).log(event),
-						});
-					},
-				});
-			},
-			discardPendingCapture: async (id) => {
-				discardSoulMemoryPendingCaptureWithAdapters({
-					store: getMemoryPluginStoreForContext(context),
-					key: CAPTURE_PENDING_STORE_KEY,
-					maxPending: CAPTURE_MAX_PENDING,
-					id,
-				});
-			},
-		});
 
 	const getSchedulerRuntimeForContext = (
 		context = defaultRequestContext(),
@@ -3948,36 +3677,6 @@ export async function createDevelopmentOnethingServerRuntime(
 				});
 			},
 		},
-		memory: {
-			overview: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).overview(
-					request as { agentId?: string } | undefined,
-				),
-			read: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).read(request),
-			append: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).append(request),
-			saveFile: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).saveFile(request),
-			logsList: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).logsList(
-					request as MemoryLogsListRequest | undefined,
-				),
-			logsStats: (_request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).logsStats(),
-			logsOpenFolder: (_request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).logsOpenFolder(),
-			logsCleanup: (_request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).logsCleanup(),
-			captureSave: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).captureSave(
-					request as { id?: string } | undefined,
-				),
-			captureDiscard: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).captureDiscard(
-					request as { id?: string } | undefined,
-				),
-		},
 		projectDirs: {
 			async list(context = defaultRequestContext()) {
 				const store = projectDirsStoreForContext(context);
@@ -5754,7 +5453,6 @@ export async function createDevelopmentOnethingServerRuntime(
 			mediaImageGeneratedHandlersByOwner.clear();
 			agentStoresByOwner.clear();
 			promptStoresByOwner.clear();
-			memoryPluginStoresByOwner.clear();
 			pluginCatalogManagersByOwner.clear();
 		},
 	});
@@ -8890,34 +8588,6 @@ function serverVariablesFilePath(
 		safePathSegment(context.userId),
 		safePathSegment(context.workspaceId),
 		"variables.json",
-	);
-}
-
-function serverMemoryRoot(
-	dataRoot: string,
-	context = defaultRequestContext(),
-	agentId = DEFAULT_ONETHING_AGENT_ID,
-): string {
-	return join(
-		dataRoot,
-		"owners",
-		safePathSegment(context.userId),
-		safePathSegment(context.workspaceId),
-		"memory",
-		safePathSegment(agentId || DEFAULT_ONETHING_AGENT_ID),
-	);
-}
-
-function serverMemoryLogDir(
-	dataRoot: string,
-	context = defaultRequestContext(),
-): string {
-	return join(
-		dataRoot,
-		"owners",
-		safePathSegment(context.userId),
-		safePathSegment(context.workspaceId),
-		"memory-logs",
 	);
 }
 

@@ -57,7 +57,6 @@ interface RouteContext {
 }
 
 type RouteHandler = (context: RouteContext) => Promise<void> | void
-type RuntimeMemoryMethod = keyof NonNullable<OnethingRuntimeFacade['memory']>
 type RuntimeChannelIdentityApi = {
   listProfiles(): ChannelUserProfile[]
   createProfile(input: ChannelIdentityCreateProfileRequest): ChannelUserProfile
@@ -263,16 +262,6 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/media/preview/get') return handleGetImagePreview
   if (method === 'POST' && pathname === '/api/media/gallery/open') return handleOpenImageGallery
   if (method === 'GET' && pathname === '/api/media/events') return handleMediaEvents
-  if (method === 'POST' && pathname === '/api/memory/overview') return handleMemoryOverview
-  if (method === 'POST' && pathname === '/api/memory/read') return handleMemoryRead
-  if (method === 'POST' && pathname === '/api/memory/append') return handleMemoryAppend
-  if (method === 'POST' && pathname === '/api/memory/save-file') return handleMemorySaveFile
-  if (method === 'POST' && pathname === '/api/memory/logs/list') return handleMemoryLogsList
-  if (method === 'POST' && pathname === '/api/memory/logs/stats') return handleMemoryLogsStats
-  if (method === 'POST' && pathname === '/api/memory/logs/open-folder') return handleMemoryLogsOpenFolder
-  if (method === 'POST' && pathname === '/api/memory/logs/cleanup') return handleMemoryLogsCleanup
-  if (method === 'POST' && pathname === '/api/memory/capture/save') return handleMemoryCaptureSave
-  if (method === 'POST' && pathname === '/api/memory/capture/discard') return handleMemoryCaptureDiscard
   if (method === 'POST' && pathname === '/api/channel-identity/profiles/list') return handleChannelIdentityListProfiles
   if (method === 'POST' && pathname === '/api/channel-identity/profiles/create') return handleChannelIdentityCreateProfile
   if (method === 'POST' && pathname === '/api/channel-identity/profiles/update') return handleChannelIdentityUpdateProfile
@@ -836,17 +825,6 @@ async function handleOpenImageGallery(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await adapter.openGallery(body?.mediaId ?? '', context.requestContext), context.corsOrigin)
 }
 
-async function handleMemoryCall(
-  context: RouteContext,
-  methodName: RuntimeMemoryMethod,
-  featureName: string,
-): Promise<void> {
-  const adapter = context.runtime.memory
-  const handler = adapter?.[methodName]
-  if (typeof handler !== 'function') return sendNotImplemented(context, featureName)
-  sendJson(context.response, 200, await handler(await readJson(context.request), context.requestContext), context.corsOrigin)
-}
-
 function getChannelIdentityApi(context: RouteContext): RuntimeChannelIdentityApi | undefined {
   return getServerChannelIdentityApi(context.runtime) as RuntimeChannelIdentityApi | undefined
 }
@@ -906,27 +884,6 @@ function handleChannelDeliveryList(context: RouteContext): void {
   if (!api) return sendNotImplemented(context, 'channelIdentity.deliveries')
   sendJson(context.response, 200, { success: true, deliveries: api.listDeliveries() }, context.corsOrigin)
 }
-
-const handleMemoryOverview = (context: RouteContext) =>
-  handleMemoryCall(context, 'overview', 'memory.overview')
-const handleMemoryRead = (context: RouteContext) =>
-  handleMemoryCall(context, 'read', 'memory.read')
-const handleMemoryAppend = (context: RouteContext) =>
-  handleMemoryCall(context, 'append', 'memory.append')
-const handleMemorySaveFile = (context: RouteContext) =>
-  handleMemoryCall(context, 'saveFile', 'memory.saveFile')
-const handleMemoryLogsList = (context: RouteContext) =>
-  handleMemoryCall(context, 'logsList', 'memory.logsList')
-const handleMemoryLogsStats = (context: RouteContext) =>
-  handleMemoryCall(context, 'logsStats', 'memory.logsStats')
-const handleMemoryLogsOpenFolder = (context: RouteContext) =>
-  handleMemoryCall(context, 'logsOpenFolder', 'memory.logsOpenFolder')
-const handleMemoryLogsCleanup = (context: RouteContext) =>
-  handleMemoryCall(context, 'logsCleanup', 'memory.logsCleanup')
-const handleMemoryCaptureSave = (context: RouteContext) =>
-  handleMemoryCall(context, 'captureSave', 'memory.captureSave')
-const handleMemoryCaptureDiscard = (context: RouteContext) =>
-  handleMemoryCall(context, 'captureDiscard', 'memory.captureDiscard')
 
 async function handleReadMediaFile(context: RouteContext): Promise<void> {
   const adapter = context.runtime.media

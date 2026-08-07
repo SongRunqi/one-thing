@@ -848,186 +848,8 @@ describe('createOnethingHttpServer', () => {
       headers: aliceHeaders,
     })
     expect(afterRemove.agents.some((agent: any) => agent.config.id === 'web-acp')).toBe(false)
+
   })
-
-  it('serves owner-scoped memory files, captures, and logs through the development runtime', async () => {
-    const dataRoot = await createTempDir('onething-memory-data-')
-    const workspaceRoot = await createTempDir('onething-memory-workspace-')
-    const serverRuntime = await createTestServerRuntime({
-      dataRoot,
-      workspaceRoot,
-    })
-    runtimes.push(serverRuntime)
-    const server = await listen(createOnethingHttpServer({
-      authToken: TEST_SERVER_AUTH_TOKEN,
-      runtime: serverRuntime.runtime,
-    }))
-    const baseUrlValue = baseUrl(server)
-    const aliceHeaders = contextHeaders('alice', 'memory-workspace')
-    const bobHeaders = contextHeaders('bob', 'memory-workspace')
-
-    const alicePluginDataDir = join(dataRoot, 'owners', 'alice', 'memory-workspace', 'plugin-data')
-    await mkdir(alicePluginDataDir, { recursive: true })
-    await writeFile(join(alicePluginDataDir, 'soul-memory.json'), JSON.stringify({
-      pendingCaptures: [
-        {
-          id: 'capture-save',
-          sessionId: 'session-1',
-          agentId: 'default',
-          createdAt: Date.now(),
-          target: 'daily',
-          heading: 'Captured notes',
-          content: 'Pending capture saved from the web runtime.',
-          confidence: 0.9,
-          explicit: true,
-          userPreview: 'User asked to remember a web runtime note.',
-          assistantPreview: 'Assistant acknowledged the memory.',
-        },
-        {
-          id: 'capture-discard',
-          sessionId: 'session-1',
-          agentId: 'default',
-          createdAt: Date.now() - 1,
-          target: 'daily',
-          heading: 'Captured notes',
-          content: 'Pending capture discarded from the web runtime.',
-          confidence: 0.7,
-          explicit: false,
-          userPreview: 'Discard me.',
-          assistantPreview: 'Discarded.',
-        },
-      ],
-    }), 'utf-8')
-
-    const overview = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(overview.success).toBe(true)
-    expect(overview.overview.root).toContain(dataRoot)
-
-    const managedText = `Durable web memory ${Date.now()}`
-    const savedFile = await fetchJson(`${baseUrlValue}/api/memory/save-file`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        path: 'MEMORY.md',
-        content: `# Memory\n\n- ${managedText}\n`,
-      }),
-    })
-    expect(savedFile.success).toBe(true)
-    expect(savedFile.file.relativePath).toBe('MEMORY.md')
-
-    const readFileResponse = await fetchJson(`${baseUrlValue}/api/memory/read`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: 'MEMORY.md', full: true }),
-    })
-    expect(readFileResponse.success).toBe(true)
-    expect(readFileResponse.file.text).toContain(managedText)
-
-    const bobReadResponse = await fetchJson(`${baseUrlValue}/api/memory/read`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: 'MEMORY.md', full: true }),
-    })
-    expect(bobReadResponse.file?.text ?? '').not.toContain(managedText)
-
-    const appended = await fetchJson(`${baseUrlValue}/api/memory/append`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        content: 'Appended from the web runtime.',
-        heading: 'Runtime notes',
-      }),
-    })
-    expect(appended.success).toBe(true)
-    expect(appended.target.relativePath).toMatch(/^memory\/\d{4}-\d{2}-\d{2}\.md$/)
-
-    const overviewWithCaptures = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(overviewWithCaptures.success).toBe(true)
-    expect(overviewWithCaptures.overview.pendingCaptures.map((capture: { id: string }) => capture.id)).toEqual([
-      'capture-save',
-      'capture-discard',
-    ])
-
-    const bobOverviewWithCaptures = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(bobOverviewWithCaptures.success).toBe(true)
-    expect(bobOverviewWithCaptures.overview.pendingCaptures).toEqual([])
-
-    const savedCapture = await fetchJson(`${baseUrlValue}/api/memory/capture/save`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 'capture-save' }),
-    })
-    expect(savedCapture.success).toBe(true)
-    expect(savedCapture.target.relativePath).toMatch(/^memory\/\d{4}-\d{2}-\d{2}\.md$/)
-
-    const savedCaptureFile = await fetchJson(`${baseUrlValue}/api/memory/read`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: savedCapture.target.relativePath, full: true }),
-    })
-    expect(savedCaptureFile.success).toBe(true)
-    expect(savedCaptureFile.file.text).toContain('Pending capture saved from the web runtime.')
-
-    const discardedCapture = await fetchJson(`${baseUrlValue}/api/memory/capture/discard`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 'capture-discard' }),
-    })
-    expect(discardedCapture).toEqual({ success: true })
-
-    const overviewAfterDecisions = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(overviewAfterDecisions.overview.pendingCaptures).toEqual([])
-
-    const logStats = await fetchJson(`${baseUrlValue}/api/memory/logs/stats`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(logStats.success).toBe(true)
-    expect(logStats.stats.entriesInBuffer).toBeGreaterThan(0)
-    expect(logStats.stats.bySubsystem.ipc).toBeGreaterThan(0)
-
-    const logList = await fetchJson(`${baseUrlValue}/api/memory/logs/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ subsystem: 'ipc', limit: 5 }),
-    })
-    expect(logList.success).toBe(true)
-    expect(logList.entries.some((entry: { operation: string }) => entry.operation === 'memory-save-file')).toBe(true)
-
-    const openedLogFolder = await fetchJson(`${baseUrlValue}/api/memory/logs/open-folder`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(openedLogFolder.success).toBe(true)
-    expect(openedLogFolder.logDir).toContain(dataRoot)
-
-    const cleanup = await fetchJson(`${baseUrlValue}/api/memory/logs/cleanup`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(cleanup.success).toBe(true)
-    expect(Array.isArray(cleanup.deleted)).toBe(true)
-  })
-
   it('serves owner-scoped plugin catalog state through the development runtime', async () => {
     const dataRoot = await createTempDir('onething-plugin-data-')
     const workspaceRoot = await createTempDir('onething-plugin-workspace-')
@@ -1050,9 +872,9 @@ describe('createOnethingHttpServer', () => {
     })
     expect(alicePlugins.success).toBe(true)
     expect(alicePlugins.plugins.map((plugin: { id: string }) => plugin.id)).toEqual(
-      expect.arrayContaining(['log-monitor', 'note-skills', 'soul-memory']),
+      expect.arrayContaining(['log-monitor', 'note-skills']),
     )
-    expect(alicePlugins.plugins.find((plugin: { id: string }) => plugin.id === 'soul-memory')).toEqual(
+    expect(alicePlugins.plugins.find((plugin: { id: string }) => plugin.id === 'note-skills')).toEqual(
       expect.objectContaining({
         enabled: true,
         loaded: false,
@@ -1063,33 +885,33 @@ describe('createOnethingHttpServer', () => {
     await expect(fetchJson(`${baseUrlValue}/api/plugins/disable`, {
       method: 'POST',
       headers: aliceJsonHeaders,
-      body: JSON.stringify({ pluginId: 'soul-memory' }),
+      body: JSON.stringify({ pluginId: 'note-skills' }),
     })).resolves.toEqual({ success: true })
 
     const aliceAfterDisable = await fetchJson(`${baseUrlValue}/api/plugins`, {
       headers: aliceHeaders,
     })
-    expect(aliceAfterDisable.plugins.find((plugin: { id: string }) => plugin.id === 'soul-memory')).toEqual(
+    expect(aliceAfterDisable.plugins.find((plugin: { id: string }) => plugin.id === 'note-skills')).toEqual(
       expect.objectContaining({ enabled: false }),
     )
 
     const bobPlugins = await fetchJson(`${baseUrlValue}/api/plugins`, {
       headers: bobHeaders,
     })
-    expect(bobPlugins.plugins.find((plugin: { id: string }) => plugin.id === 'soul-memory')).toEqual(
+    expect(bobPlugins.plugins.find((plugin: { id: string }) => plugin.id === 'note-skills')).toEqual(
       expect.objectContaining({ enabled: true }),
     )
 
     await expect(fetchJson(`${baseUrlValue}/api/plugins/enable`, {
       method: 'POST',
       headers: aliceJsonHeaders,
-      body: JSON.stringify({ pluginId: 'soul-memory' }),
+      body: JSON.stringify({ pluginId: 'note-skills' }),
     })).resolves.toEqual({ success: true })
 
     const aliceAfterEnable = await fetchJson(`${baseUrlValue}/api/plugins`, {
       headers: aliceHeaders,
     })
-    expect(aliceAfterEnable.plugins.find((plugin: { id: string }) => plugin.id === 'soul-memory')).toEqual(
+    expect(aliceAfterEnable.plugins.find((plugin: { id: string }) => plugin.id === 'note-skills')).toEqual(
       expect.objectContaining({ enabled: true }),
     )
 
