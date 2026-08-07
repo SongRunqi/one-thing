@@ -22,7 +22,6 @@ export {
 export * from './plugin-command-execution.js'
 export * from './ipc-operations.js'
 export * from './plugin-list.js'
-export * from './soul-memory.js'
 export * from './config-schema.js'
 export type {
   OnethingLogMonitorConfig,
