@@ -61,6 +61,8 @@ export function createExternalAgentProvider(
 ): AgentProvider {
   return {
     id: options.providerId,
+    // Capabilities come from the connected agent, not the model ledger.
+    capabilitiesAreSelfDeclared: true,
     capabilities: {
       capabilities: ['text-input', 'text-output', 'streaming', 'reasoning'],
       inputModalities: ['text'],

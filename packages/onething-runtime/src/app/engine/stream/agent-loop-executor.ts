@@ -293,11 +293,11 @@ export function runAgentLoopPostResponseHooks(options: {
 		getSession: (sessionId) => store.getSession(sessionId),
 		// Collab sessions (room/work) skip the builtin post-response lanes
 		// (docs/design/multi-agent-collab.md P0 门控三件套): goal-continuation
-		// would re-drive the room outside the coordinator, and soul-memory's
-		// after-response capture resolves session.agentId at hook time — the
-		// coordinator flips it per activation, so X's turn could be written
-		// into Y's private memory workspace. The coordinator owns collab
-		// post-turn behavior by observing stream:complete on the bus.
+		// would re-drive the room outside the coordinator. Any plugin lane that
+		// resolves session.agentId at hook time has the same hazard — the
+		// coordinator flips it per activation, so X's turn could be attributed
+		// to Y. The coordinator owns collab post-turn behavior by observing
+		// stream:complete on the bus.
 		runTriggerContext: (context) => {
 			if (isCollabSession(options.state.ctx.sessionId)) return Promise.resolve();
 			return triggerManager.runPostResponse(

@@ -195,8 +195,6 @@ function createAgentLoopRuntimeAdapters(
       modelContextLength: number
       inputTokens?: number
     }) => shouldSkipAutoCompactForProviderUsageMismatchSafe(input),
-    sendActiveMemoryPart: (part: { type: 'loading-memory' } | { type: 'waiting' }) =>
-      options.emitter?.sendContentPart(part),
     goal: goalRuntimeHooks,
     logger: console,
     createId: undefined,

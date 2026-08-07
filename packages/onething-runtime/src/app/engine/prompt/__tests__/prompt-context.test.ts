@@ -154,9 +154,9 @@ describe('Pi-style prompt builder', () => {
   })
 
   it('normalizes plugin user-role context to developer so only real history is user', async () => {
-    const unregister = registerPromptContextProvider('soul-memory', 'graph-profile', async () => ({
+    const unregister = registerPromptContextProvider('note-skills', 'graph-profile', async () => ({
       role: 'user',
-      source: 'plugins/soul-memory/graph-profile',
+      source: 'plugins/note-skills/graph-profile',
       content: 'Graph memory context',
     }))
     const result = await buildPrompt({

@@ -66,8 +66,8 @@ export interface BuildPromptResult extends Omit<CoreBuildPromptResult, 'messages
  * 评审修订「模拟房间」): the product prompt's assistant identity + tool/memory/
  * workspace sections make the model "an app assistant simulating a chat",
  * not the person itself. baseSystemPrompt becomes the persona + roster, and
- * every product developer section (plugins included — soul-memory rules must
- * not leak into personas) is disabled. Mirrors the probe-validated setup.
+ * every product developer section (plugin-contributed rules included — they
+ * must not leak into personas) is disabled. Mirrors the probe-validated setup.
  */
 function collabRoomOverrides(
   ctx: BuildPromptContextOptions,
@@ -140,7 +140,7 @@ function collabRoomOverrides(
       dmPair: isAgentPairDmRoom(room.room),
     }),
     toolGuidelines: [],
-    // 禁用整批产品段的理由是「soul-memory rules must not leak into personas」——
+    // 禁用整批产品段的理由是「插件贡献的规则不得渗入 persona」——
     // 防的是**产品说明文案**污染 persona。而 `<context-variables>` 不是产品说明,
     // 它是通往运行时状态板的那句指路,正是群聊里最该有的东西
     // (agent-self-state-variables.md §5):此前群房里模型看不到任何变量的值,

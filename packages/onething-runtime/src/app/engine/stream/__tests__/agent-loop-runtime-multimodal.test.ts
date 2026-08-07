@@ -3,7 +3,6 @@ import { runAgentLoop } from '@onething/core/agent-loop'
 import { PendingMessageQueue } from '../message-queue.js'
 import {
   createDefaultSettings,
-  DEFAULT_SOUL_MEMORY_SETTINGS,
 } from '@shared/defaults/settings.js'
 import type { AppSettings, SkillDefinition, ToolDefinition, ToolSettings } from '@shared/ipc.js'
 import type {
@@ -91,20 +90,6 @@ function testSkill(): SkillDefinition {
     path: '/skills/repo-skill/SKILL.md',
     directoryPath: '/skills/repo-skill',
     enabled: true,
-  }
-}
-
-function activeMemorySettings(): AppSettings {
-  const settings = testSettings(false)
-  return {
-    ...settings,
-    general: {
-      ...settings.general,
-      soulMemory: {
-        ...DEFAULT_SOUL_MEMORY_SETTINGS,
-        enabled: true,
-      },
-    },
   }
 }
 
@@ -420,21 +405,6 @@ describe('agent loop stream runtime multimodal input', () => {
       reason: 'Provider deepseek AgentProvider runtime does not implement streamTurn or runTurn',
     })
   })
-
-  it('emits active-memory prompt loading indicators while building the initial prompt', async () => {
-    const context = ctx()
-    context.settings = activeMemorySettings()
-    const emitter = testEmitter()
-
-    const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
-      { role: 'user', content: 'hello' },
-    ] satisfies HistoryMessage[], { emitter })
-
-    expect(prepared.supported).toBe(true)
-    expect(emitter.sendContentPart).toHaveBeenNthCalledWith(1, { type: 'loading-memory' })
-    expect(emitter.sendContentPart).toHaveBeenNthCalledWith(2, { type: 'waiting' })
-  })
-
   it('does not load or inject skills when skill settings are disabled', async () => {
     mocks.getSkillsForSession.mockReturnValueOnce([testSkill()])
 

@@ -44,6 +44,8 @@ import {
 type ProviderConfigWithAuth = ProviderConfig & {
   authContext?: ProviderAuthContext
   oauthToken?: OAuthToken
+  /** Packed upstream by withResolvedProviderBaseUrl; forwarded, never read here. */
+  providerOptions?: Record<string, unknown>
 }
 
 function providerRuntimeApiType(providerConfig: ProviderConfigWithAuth): 'openai' | 'anthropic' | undefined {
@@ -67,6 +69,7 @@ async function resolveModelSupportsToolsForSnapshot(options: {
         : undefined,
       model: options.provider.model,
       apiType: providerRuntimeApiType(options.provider.providerConfig),
+      providerOptions: options.provider.providerConfig.providerOptions,
       oauthToken: options.provider.providerConfig.oauthToken,
       authContext: options.provider.providerConfig.authContext,
       modelCapabilitiesByModel: options.provider.providerConfig.modelCapabilitiesByModel,

@@ -4,7 +4,7 @@
  * Deferred, never inline. `CoreTriggerManager.runPostResponse` awaits its
  * triggers in series, so doing a model call here synchronously would stretch
  * every turn's teardown — the user sees "finished replying but still spinning".
- * The work is handed to a timer instead, using soul-memory's idle pattern:
+ * The work is handed to a timer instead, using an idle pattern:
  * the timer is re-armed on each response, and on firing it re-checks that the
  * assistant message it was armed for is still the newest one. The second check
  * is what makes it safe if a clearTimeout is ever missed.

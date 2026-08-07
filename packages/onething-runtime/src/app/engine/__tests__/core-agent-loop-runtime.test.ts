@@ -12,7 +12,6 @@ import {
   getAgentLoopContextBlockReason,
   getAgentLoopTransientTail,
   maybeCompactAgentLoopContextWithAdapters,
-  planAgentLoopActiveMemoryLoading,
   planAgentLoopContextCompactFinal,
   planAgentLoopContextCompactPass,
   planAgentLoopPromptBuildOptions,
@@ -25,7 +24,6 @@ import {
   runAgentLoopAfterTurnWithAdapters,
   runAgentLoopBeforeTurnWithAdapters,
   shouldStartAgentLoopContextCompact,
-  shouldEmitActiveMemoryLoading,
 } from '@onething/core/engine'
 import { getOnethingAgentLoopThinkingOptions } from '@onething/runtime/agent-loop/providers'
 
@@ -436,13 +434,6 @@ describe('core agent-loop runtime helpers', () => {
       thresholdPercent: 75,
     })
     expect(result.error).toBeInstanceOf(Error)
-  })
-
-  it('decides whether to show active memory loading UI', () => {
-    expect(shouldEmitActiveMemoryLoading({ settings: {} })).toBe(true)
-    expect(shouldEmitActiveMemoryLoading({
-      settings: { general: { soulMemory: { activeMemory: { enabled: false } } } },
-    })).toBe(false)
   })
 
   it('keeps the current in-memory tool turn tail when rebuilding compacted messages', () => {
@@ -1015,49 +1006,5 @@ describe('core agent-loop runtime helpers', () => {
       { role: 'assistant', content: 'done' },
       { role: 'user', content: 'steer after' },
     ])
-  })
-
-  it('plans active-memory loading UI without emitter access', () => {
-    expect(planAgentLoopActiveMemoryLoading({
-      hasEmitter: true,
-      settings: {
-        general: {
-          soulMemory: {
-            enabled: true,
-            activeMemory: {
-              enabled: true,
-              timeoutMs: 4321,
-            },
-          },
-        },
-      },
-    })).toEqual({
-      shouldShow: true,
-      timeoutMs: 4321,
-      startPart: { type: 'loading-memory' },
-      waitingPart: { type: 'waiting' },
-    })
-
-    expect(planAgentLoopActiveMemoryLoading({
-      hasEmitter: false,
-      settings: {},
-    })).toEqual({
-      shouldShow: false,
-      timeoutMs: 15000,
-    })
-
-    expect(planAgentLoopActiveMemoryLoading({
-      hasEmitter: true,
-      settings: {
-        general: {
-          soulMemory: {
-            enabled: false,
-          },
-        },
-      },
-    })).toEqual({
-      shouldShow: false,
-      timeoutMs: 15000,
-    })
   })
 })
