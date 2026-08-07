@@ -156,12 +156,32 @@ function scheduleRender(): void {
   refreshTimer = setTimeout(() => { void render() }, REFRESH_DEBOUNCE_MS)
 }
 
+/**
+ * 把 payload 脱成纯数据再过线。
+ *
+ * 描述树存在 `ref` 里,而 `ref` 对对象是**深层响应式** —— 从树上读出来的
+ * `item.payload` 是一个 Vue Proxy,而 Electron 的 structured clone 克隆不了
+ * Proxy,直接 DataCloneError("an object could not be cloned")。表单那侧同理:
+ * `{ ...formState }` 是浅拷贝,嵌套的数组/对象仍然是 proxy。
+ *
+ * 用 JSON 往返而不是 `toRaw`:`toRaw` 只脱一层(对 list payload 恰好够,对
+ * formState 的嵌套值不够),而 JSON 往返同时保证了**两个传输面看到的是同一份
+ * 东西** —— R2 立的规矩是"过线皆 JSON-可序列化",web 那侧本来就走 JSON。
+ *
+ * 这是在脱**我们自己造出来的**那层壳:插件给的是纯数据,是渲染层把它包了起来,
+ * 所以在送回去之前拆掉是我们的事,不是插件的事。
+ */
+function toPlainPayload(value: unknown): unknown {
+  if (value === undefined) return undefined
+  return JSON.parse(JSON.stringify(value))
+}
+
 async function invoke(input: { actionId: string; payload?: unknown }): Promise<void> {
   try {
     const result = await platformApi.pluginRequest({
       pluginId: props.panel.pluginId,
       action: `panel:action:${props.panel.panelId}`,
-      payload: input,
+      payload: { actionId: input.actionId, payload: toPlainPayload(input.payload) },
     })
     if (!result?.success) {
       if (result?.degraded) {

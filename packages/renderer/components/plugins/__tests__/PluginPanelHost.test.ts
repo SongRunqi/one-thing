@@ -110,6 +110,74 @@ describe('PluginPanelHost', () => {
     expect(wrapper.text()).toContain('after')
   })
 
+  it('sends a payload that can actually cross the process boundary', async () => {
+    /*
+     * **真机走查抓到的缺陷的回归防线。**
+     *
+     * 描述树存在 `ref` 里,而 `ref` 对对象是深层响应式 —— 从树上读出来的
+     * `item.payload` 是 Vue Proxy,Electron 的 structured clone 克隆不了它,
+     * 点任何带 payload 的元素都会得到 "an object could not be cloned"。
+     *
+     * 既有用例喂的是**手搓的 plain object**,所以它们从来碰不到这条路径 ——
+     * 这也正是它们没抓到的原因。这条用例让 payload 走真实的那条路:
+     * 由 pluginRequest 返回 → 进 ref → 被渲染 → 点击回传。
+     */
+    const listTree = {
+      version: 1,
+      body: {
+        type: 'list',
+        title: 'Files',
+        items: [
+          { id: 'a', title: 'a.log', actionId: 'select', payload: { name: 'a.log', meta: { size: 12 } } },
+        ],
+      },
+    }
+    platformState.pluginRequest
+      .mockResolvedValueOnce({ success: true, result: listTree })
+      .mockResolvedValueOnce({ success: true, result: { refresh: false } })
+
+    const wrapper = mount(PluginPanelHost, { props: { panel } })
+    await flushPromises()
+
+    await wrapper.find('.panel-list-row').trigger('click')
+    await flushPromises()
+
+    const sent = platformState.pluginRequest.mock.calls[1][0]
+    // 判据就是真机上炸掉的那一步:能不能被结构化克隆。
+    expect(() => structuredClone(sent)).not.toThrow()
+    // 而且内容不能在脱壳过程中走样。
+    expect(sent.payload).toEqual({ actionId: 'select', payload: { name: 'a.log', meta: { size: 12 } } })
+  })
+
+  it('sends a cloneable payload from a form submit too', async () => {
+    // `{ ...formState }` 是浅拷贝 —— 嵌套的数组/对象仍是 proxy,
+    // 所以表单这条路和 list 那条路要分别钉住。
+    const formTree = {
+      version: 1,
+      body: {
+        type: 'form',
+        submitActionId: 'save',
+        fields: [
+          { key: 'tags', label: 'Tags', control: 'string-list', value: ['a', 'b'] },
+          { key: 'enabled', label: 'Enabled', control: 'switch', value: true },
+        ],
+      },
+    }
+    platformState.pluginRequest
+      .mockResolvedValueOnce({ success: true, result: formTree })
+      .mockResolvedValueOnce({ success: true, result: { refresh: false } })
+
+    const wrapper = mount(PluginPanelHost, { props: { panel } })
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === 'Save')!.trigger('click')
+    await flushPromises()
+
+    const sent = platformState.pluginRequest.mock.calls[1][0]
+    expect(() => structuredClone(sent)).not.toThrow()
+    expect(sent.payload).toEqual({ actionId: 'save', payload: { tags: ['a', 'b'], enabled: true } })
+  })
+
   it('re-pulls when the plugin pushes a panel-refresh notification', async () => {
     platformState.pluginRequest
       .mockResolvedValueOnce({ success: true, result: tree('first') })
