@@ -7,6 +7,7 @@ import {
   type InstallCorePluginPackageInput,
   type InstallCorePluginPackageResult,
 } from './install.js'
+import { unscopedPluginIdFromPackageName } from './loader.js'
 import { describePluginSurface, pluginScope, type PluginFailureScope } from './policy.js'
 import {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
@@ -558,6 +559,15 @@ export class CorePluginManager<
     const spec = input.tarballUrl ?? (input.path ? `file:${path.resolve(input.path)}` : undefined)
     if (!spec) {
       return { success: false, error: 'installPlugin needs either a tarballUrl or a path' }
+    }
+    // 防撞闸:包名去 scope 后的 id 撞上内置时,扫描的 seen 集是内置先占位
+    // (loader.scanCorePlugins)—— npm 包装得上、账也记了,却永远不会出现
+    // 在插件表里。付了钱买空气不如装前明说。(legacy/用户插件同 id 不拦:
+    // 那是设计好的转正与重装路径。)
+    const incomingId = unscopedPluginIdFromPackageName(input.pkg)
+    const existing = this.plugins.get(incomingId)
+    if (existing?.definition.source === 'builtin') {
+      return { success: false, error: `"${incomingId}" is a built-in plugin id; user plugins cannot shadow built-ins` }
     }
     return this.runLifecycleExclusive(async () => {
       const result = await this.host.installPluginPackage!({

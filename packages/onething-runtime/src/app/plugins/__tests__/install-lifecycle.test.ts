@@ -12,6 +12,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   CorePluginManager,
+  createBuiltinPluginDefinitions,
   installCorePluginPackage,
   readPluginLedgerSpec,
   scanCorePlugins,
@@ -114,6 +115,8 @@ async function createManager(input: {
   npm: FakeNpm
   index?: CorePluginMarketIndex | null
   logger?: CorePluginManagerLogger
+  /** 内置定义(测防撞闸用);扫描时先于一切用户插件占位。 */
+  builtin?: TestDefinition[]
 }) {
   const logger = input.logger ?? { log: () => {}, warn: () => {}, error: () => {} }
   const host: CorePluginManagerHost<
@@ -121,7 +124,7 @@ async function createManager(input: {
   > = {
     ensurePluginDirs: () => fs.mkdirSync(input.pluginsDir, { recursive: true }),
     scanPlugins: () => scanCorePlugins<TestEntry>({
-      builtinPlugins: [],
+      builtinPlugins: input.builtin ?? [],
       pluginsDir: input.pluginsDir,
       getEnabled: () => true,
       appVersion: HOST_APP_VERSION,
@@ -324,6 +327,32 @@ describe('updatePlugin / checkPluginUpdates', () => {
 })
 
 describe('互斥:生命周期命令与 refresh 共用单飞', () => {
+  it('包名去 scope 撞上内置 id = 装前拒绝:npm 不起、账不动(防"付钱买空气")', async () => {
+    const root = tempRoot()
+    const pluginsDir = path.join(root, 'plugins')
+    const catalog = new Map<string, FakePackage>([
+      ['file:/market/log-monitor', { pkg: '@onething-plugins/log-monitor', version: '1.0.0' }],
+    ])
+    const npm = createFakeNpm(pluginsDir, catalog)
+    const manager = await createManager({
+      pluginsDir,
+      npm,
+      builtin: createBuiltinPluginDefinitions<TestEntry>([{
+        id: 'log-monitor',
+        manifest: { name: 'log-monitor', version: '1.0.0' },
+        entry: () => {},
+        enabled: true,
+      }]) as TestDefinition[],
+    })
+
+    const result = await manager.installPlugin({ pkg: '@onething-plugins/log-monitor', path: '/market/log-monitor' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('built-in')
+    // 装前闸:npm 根本不该被起动,账本自然一字未动。
+    expect(npm.calls).toHaveLength(0)
+    expect(fs.existsSync(path.join(pluginsDir, 'package.json'))).toBe(false)
+  })
+
   it('install 占住单飞期间,refreshPlugins 复用同一张票', async () => {
     const pluginsDir = tempRoot()
     const catalog = new Map([[PLAN_V1_URL, { pkg: 'plan-status', version: '1.0.0' }]])
