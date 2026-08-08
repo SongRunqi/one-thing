@@ -61,6 +61,12 @@
   (`@onething-plugins`),跨 scope 冲突拒绝加载并在日志明说
    —— pluginId 要当目录名用(`assertSafePluginDirName` 拒 `/`),
    全名含 `/` 的映射不在本期发明。
+8. **install/update/uninstall 依赖本机 npm —— v1 面向开发者**。
+   安装原语是 spawn 系统 PATH 的 npm;用户机器没有 npm 时这三个
+   动作不可用,UI 检测置灰并明示,不静默失败。v1 的目标用户是
+   开发者,有 npm 是合理前提;面向非开发者时"随应用自带 npm"
+   是升级路径(§12),自写下载+解压安装器**否决**(重造 npm 的
+   轮子,违背窄腰)。
 
 ## 3. 目标形态
 
@@ -160,18 +166,27 @@ npm 形态下的**强制文件**,字段增:
    已装版本读 `node_modules/<dep>/package.json` 的 `version`(比解析
    dependencies 里的 URL 可靠);
 3. pluginId = 包名去 scope;同 id 冲突(两个 scope 装了同名包)拒绝
-   后到的那个,日志明说。
+   后到的那个,日志明说;
+4. 扫描语义做成宿主选项:`scanMode: 'directory' | 'npm-ledger'`,
+   desktop 传 npm-ledger;server 等只投影的宿主保持 directory 不变
+   —— core 是共享的,扫描语义不可无条件换(server 接入评估见
+   §12.0)。
 
 ### 5.2 入口加载
 
 不变:`import(buildPluginEntryImportSpecifier(entryPath, reloadToken))`,
 缓存破坏 token 照旧支持 refresh 重载。
 
-### 5.3 废除运行时 npm install
+### 5.3 废除运行时 npm install(npm 形态)
 
-`checkPluginNeedsInstall` 与首载 install 路径**整段删除**。tarball 在
-install 时已带全部依赖(bundle 进入口),加载期出现缺失依赖 =
- 包没打好,按加载失败记账(既有熔断),不再现装。
+npm 形态插件的 `checkPluginNeedsInstall` 与首载 install 路径
+**整段删除** —— tarball 在 install 时已带全部依赖(bundle 进入口),
+加载期出现缺失依赖 = 包没打好,按加载失败记账(既有熔断),
+不再现装。
+
+**唯一例外**:legacy 目录路径(§5.4)在清零前**门控保留**安装机器 ——
+它只服务 legacy 插件(新拷贝、无 node_modules 的老目录),随 legacy
+兼容路径同死。
 
 ### 5.4 存量兼容(手工目录插件)
 
@@ -183,6 +198,9 @@ install 时已带全部依赖(bundle 进入口),加载期出现缺失依赖 =
 - 注意与裁决 5 的交叠:`plugins/<id>/` 同时是数据家目录。**判别顺序**:
   有 plugin.json = legacy 代码目录(其数据仍在 `plugin-data/<id>/`,
   不搬,直到用户重装为 npm 形态);没有 = 纯数据家目录。
+- legacy 插件若 needsInstall(新拷贝、无 node_modules):走 §5.3
+  门控保留的安装机器,或用户手工 `npm install`;npm 形态插件永远
+  不进这条路径。
 - 这条兼容路径在市场落地后保留一个版本周期,之后随 legacy 插件清零
   再删。
 
@@ -191,13 +209,26 @@ install 时已带全部依赖(bundle 进入口),加载期出现缺失依赖 =
 core manager 增(`PluginManager`,与 uninstallPlugin 对称):
 
 ```ts
-installPlugin(input: { pkg: string; tarballUrl: string; sha256?: string }
+installPlugin(input: { pkg: string; tarballUrl: string; integrity?: string }
                     | { pkg: string; path: string }        // 本地 file: 开发通道
 ): Promise<InstallResult>
-// 1. 在 plugins/ 下跑 npm install <tarballUrl | file:path>(install 是显式动作,联网合理)
-// 2. sha256 给定时比对安装产物,不符即回滚并拒载(§9.2)
-// 3. refreshPlugins()(既有,含 catalog-changed 广播,R5 为面板加的通道直接复用)
-// 4. 新装插件默认 enabled;失败回滚 npm 状态,错误原样透传
+// 0. 脚手架:plugins/package.json 不存在时先写
+//    {"private": true, "name": "onething-installed-plugins", "dependencies": {}}
+//    —— npm 在无 package.json 的目录里建账不可靠;private 防误发布。
+// 1. npm install <tarballUrl | file:path> --ignore-scripts --no-audit --no-fund
+//    —— **--ignore-scripts 是安全底线**:tarball 的 pre/postinstall 会在
+//    熔断、manifest 审查、用户确认之前执行,那是装插件即得任意代码
+//    执行的后门;bundle 规则(§9.4)下插件本就不需要 install 脚本。
+// 2. 完整性:装后读 package-lock 该条目的 integrity 与输入值(市场索引
+//    给的 sha512-SRI,§8.1)比对,不符即 npm uninstall 回滚并拒载(§9.2)。
+// 3. 装前校验:包内 package.json 不得有运行时 dependencies(bundle 规则),
+//    有则拒载 —— 有依赖 = npm 会去 registry 现拉,供应链与网络都不确定。
+// 4. refreshPlugins()(既有,含 catalog-changed 广播,R5 为面板加的通道直接复用)。
+// 5. 新装插件默认 enabled;失败回滚 npm 状态,错误原样透传。
+//
+// 互斥:install/update/uninstall 与 refreshPlugins 共用 manager 已有的
+// refreshInFlight 单飞 —— npm 对 package.json 没有跨进程原子性;且
+// refresh 撞上写了一半的 node_modules 会把半成品按加载失败记熔断账。
 
 updatePlugin(pluginId: string): Promise<UpdateResult>
 // 从市场索引取该插件最新 tarball URL,npm install <new-url>;
@@ -230,6 +261,10 @@ IPC(`shared/ipc/plugins.ts` + preload + 主进程 handler):新增
 | api.storage scratch | `plugin-data/<id>/` | `plugins/<id>/storage/` |
 | 启用开关/熔断账 | `plugin-settings.json` | **不动** |
 
+内置插件(log-monitor/note-skills,`builtin://` 编程注册)的 config 行
+同规则搬家 → `plugins/<builtin-id>/config.json` —— 存储规则不按插件
+来源分叉。
+
 ### 7.2 迁移(惰性,KV 迁移先例 `migrateLegacyPluginKv`)
 
 - **配置**:首次读写某插件配置时,若 `plugins/<id>/config.json` 不存在
@@ -254,6 +289,16 @@ IPC(`shared/ipc/plugins.ts` + preload + 主进程 handler):新增
 断言,storage/config/KV 三条写路径各调一次;测试用例:试图把
 config 写进 node_modules 必须当场抛。
 
+### 7.4 拆除闩的扩展
+
+今天的拆除闩只管 KV(卸载后晚到的 `store.set` 会 `ensureDir` 把刚归档
+的目录复活成鬼目录,api.ts)。配置搬进 `plugins/<id>/` 后,同样的鬼
+换条路径复活:卸载后晚到的**配置写**(config.ts 的 pendingConfigs
+合流定时器)会 `ensureDir` 重建刚归档的家目录。
+
+config / KV / storage 三条写路径统一挂拆除闩(代次戳或已卸载集合):
+卸载完成后到的任何写 = 静默丢弃 + warn,测试用例钉住。
+
 ## 8. 市场(v1:能搜、能装、能更新)
 
 ### 8.1 索引
@@ -274,7 +319,7 @@ CI 在每个插件发布时重生成根 `index.json`,应用经
     "minAppVersion": "1.4.0",
     "contributes": { "uiSlots": [{ "anchor": "composer.above", "label": "Plan 执行状态" }] },
     "tarballUrl": "https://github.com/<you>/onething-plugins/releases/download/plan-status-v1.1.0/plan-status-1.1.0.tgz",
-    "sha256": "…",                    // CI 对 tarball 实体算的哈希
+    "integrity": "sha512-…",            // CI 对 tarball 实体算的 SRI(npm integrity 原生格式)
     "repository": "https://github.com/<you>/onething-plugins/tree/main/packages/plan-status"
   }]
 }
@@ -300,9 +345,12 @@ release,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前�
 1. **装插件 = 远程执行代码**,文档与 UI 都必须明说,不粉饰。兜底
    体系已就位:R6/R7 的熔断/降级账、权限声明、请求通道预算,对
    npm 形态插件原样生效。
-2. **完整性**:index.json 带 tarball 的 sha256,install 时对下载产物
-   验哈希,不符即拒载并提示;`npm install <url>` 自身的 integrity
-   记账(package-lock)是第二道。签名(PGP/sigstore)不在本期。
+2. **完整性**:index.json 带 tarball 的 **sha512-SRI**(npm integrity
+   原生格式),install 后读 package-lock 对应条目的 integrity 与之比对,
+   不符即 `npm uninstall` 拒载并提示(§6);签名(PGP/sigstore)不在本期。
+3. **install 期脚本**:`npm install` 一律 `--ignore-scripts`(§6)——
+   tarball 的 pre/postinstall 会在任何审查之前执行,那是装插件即得
+   任意代码执行的后门,必须关死。
 3. **凭证**:公开仓库**零凭证** —— raw.githubusercontent.com 与
    Release assets 都不要 auth,这是选 Releases 通道的直接收益。
    私有仓库/需要 token 的形态不在本期(见 §12)。
@@ -327,6 +375,10 @@ release,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前�
   update → config.json 原样保留 → uninstall → 家目录归档、
   node_modules 无残留;`plugin-data/` 空壳进 legacy-backup;
   全量 vitest + 双端 typecheck 绿。
+  附带验收:`plugins/package.json` 脚手架自动创建;带 postinstall 的
+  测试 tarball 装上后脚本未执行(--ignore-scripts);卸载后晚到的
+  配置写不重建家目录(§7.4);legacy 目录插件 needsInstall 走门控的
+  安装机器(§5.3);设置页在无 npm 环境下 Install 置灰并说明(裁决 8)。
 
 ### P2:GitHub 仓库 + CI 模板
 
@@ -337,14 +389,14 @@ release,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前�
   log-monitor 作为 bundle 示范第二例);
 - **验收**:推 tag 触发 release 后,应用以 tarball URL 安装 plan-status,
   功能与 file: 形态逐字节一致;包内无运行时 node_modules 依赖;
-  index.json 的 sha256 与 release asset 实体一致。
+  index.json 的 integrity 与 release asset 实体一致。
 
 ### P3:市场 UI
 
 - index.json 拉取/缓存/搜索;装前确认页(contributes + permissions);
 - 有更新徽标(checkPluginUpdates);
 - **验收**:断网时市场区显示上次缓存 + 明示过期;minAppVersion 不够
-  的插件 Install 置灰并说明;sha256 不符拒载有测试。
+  的插件 Install 置灰并说明;integrity 不符拒载有测试。
 
 ### P4:收尾
 
@@ -357,13 +409,15 @@ release,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前�
 
 | 风险 | 对策 |
 | --- | --- |
+| 用户机器无 npm,install/update/uninstall 不可用 | v1 面向开发者(裁决 8);设置页检测 npm 不可用即置灰并说明,不静默失败 |
+| legacy 插件 id 与 npm 包名不一致 | 熔断/健康旧账成孤儿(可接受);同名则自然延续,迁移指南引导同名 |
 | install 时网络失败 | install 是显式动作,错误原样透传到 UI;已装插件不受影响(加载期零网络) |
 | 用户手编 plugins/package.json 搞坏账 | 读失败 = 空账 + warn,不删任何文件;设置页给"修复"(npm install 全量重装)入口 |
 | 两个 scope 同名包装出同 pluginId | 拒绝后到者,日志明说;v1 引导单 scope |
 | npm 重装抹 node_modules 连带数据 | 铁律 4 + assertNotInNodeModules 断言 + 测试(§7.3) |
 | legacy 目录插件与数据家目录撞名 | §5.4 判别顺序:有 plugin.json = 代码目录,数据留 plugin-data 不搬 |
 | 老插件配置没搬完就回滚版本 | legacy-backup 有尸;中央文件只在实际搬移时重写,不会半吊子 |
-| CI 生成的 index.json 与 release 实际版本漂移 | CI 同一 job 内 release → 重算 sha256 → 才写 index.json |
+| CI 生成的 index.json 与 release 实际版本漂移 | CI 同一 job 内 release → 重算 integrity → 才写 index.json |
 | raw.githubusercontent.com 不可达 | 市场区用上次缓存 + 明示过期;已装插件照常(加载期零网络) |
 
 ## 12. 不在本期(含被否方案的登记)
@@ -407,6 +461,8 @@ CLI 待场景 → H 线按 server 实际风险决定是否提前。
   也要 PAT(GitHub 官方文档明示),市场用户的凭证成本不可接受。
   哪天它放开公开包免 token,可无缝切回(tarball URL 换成 registry
   解析,loader 与安装账不变)。
+- **随应用自带 npm**:面向非开发者的市场才需要(裁决 8 的升级
+  路径);打包体积与 Windows/mac 兼容测试成本不小,届时单独立项。
 - 包签名/可信发布者体系;
 - 私有插件仓库(要 token 的形态整体不在本期);
 - 付费插件与许可校验;
