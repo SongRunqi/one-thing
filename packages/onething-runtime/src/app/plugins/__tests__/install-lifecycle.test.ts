@@ -36,6 +36,8 @@ interface FakePackage {
   minAppVersion?: string
   /** 写进 package-lock 的 integrity(装错包时可以故意与索引不符)。 */
   integrity?: string
+  /** 包内 package.json 实际写的 name(默认 = pkg;货不对版模拟)。 */
+  innerName?: string
 }
 
 interface FakeNpm {
@@ -54,7 +56,7 @@ function createFakeNpm(pluginsDir: string, catalog: Map<string, FakePackage>): F
       const dir = path.join(pluginsDir, 'node_modules', entry.pkg)
       fs.mkdirSync(dir, { recursive: true })
       fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
-        name: entry.pkg,
+        name: entry.innerName ?? entry.pkg,
         version: entry.version,
         ...(entry.runtimeDeps ? { dependencies: entry.runtimeDeps } : {}),
       }))
@@ -351,6 +353,47 @@ describe('互斥:生命周期命令与 refresh 共用单飞', () => {
     // 装前闸:npm 根本不该被起动,账本自然一字未动。
     expect(npm.calls).toHaveLength(0)
     expect(fs.existsSync(path.join(pluginsDir, 'package.json'))).toBe(false)
+  })
+
+  it('非 https/file: 的 spec 协议 = 装前拒(git+ssh、http 都不收),npm 不起', async () => {
+    const root = tempRoot()
+    const pluginsDir = path.join(root, 'plugins')
+    const npm = createFakeNpm(pluginsDir, new Map())
+    const manager = await createManager({ pluginsDir, npm })
+
+    for (const spec of ['git+ssh://git@example.com/x.git', 'http://insecure.example/x.tgz']) {
+      const result = await manager.installPlugin({ pkg: '@onething-plugins/demo', tarballUrl: spec })
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('https://')
+    }
+    expect(npm.calls).toHaveLength(0)
+    expect(fs.existsSync(path.join(pluginsDir, 'package.json'))).toBe(false)
+  })
+
+  it('包内 name 与 pkg 不符 = 拒载并回滚(账货一致性)', async () => {
+    const root = tempRoot()
+    const pluginsDir = path.join(root, 'plugins')
+    const catalog = new Map<string, FakePackage>([
+      ['https://releases.example/wrong-name-1.0.0.tgz', {
+        pkg: '@onething-plugins/plan-status',
+        version: '1.0.0',
+        innerName: '@evil/impostor',
+      }],
+    ])
+    const npm = createFakeNpm(pluginsDir, catalog)
+    const manager = await createManager({ pluginsDir, npm })
+
+    const result = await manager.installPlugin({
+      pkg: '@onething-plugins/plan-status',
+      tarballUrl: 'https://releases.example/wrong-name-1.0.0.tgz',
+    })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('name mismatch')
+    // 回滚:uninstall 起过,账与包都清干净。
+    expect(npm.calls.some(args => args[0] === 'uninstall')).toBe(true)
+    const ledger = JSON.parse(fs.readFileSync(path.join(pluginsDir, 'package.json'), 'utf-8')) as { dependencies?: Record<string, string> }
+    expect(ledger.dependencies?.['@onething-plugins/plan-status']).toBeUndefined()
+    expect(fs.existsSync(path.join(pluginsDir, 'node_modules', '@onething-plugins', 'plan-status'))).toBe(false)
   })
 
   it('install 占住单飞期间,refreshPlugins 复用同一张票', async () => {

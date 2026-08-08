@@ -477,7 +477,13 @@ export type {
 	PluginLifecycleInfoResponse,
 	PluginDataFootprint,
 	PluginFootprintResponse,
+	PluginMarketEntryView,
+	GetPluginMarketRequest,
+	GetPluginMarketResponse,
 } from "./plugins.js";
+
+// Plugin market index URL(P3 裁决:纯硬编码;唯一事实源)
+export { PLUGIN_MARKET_INDEX_URL } from "./plugins.js";
 
 // Scheduler types
 export type {

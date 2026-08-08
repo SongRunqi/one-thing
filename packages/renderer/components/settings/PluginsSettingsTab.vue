@@ -323,6 +323,197 @@
       </div>
     </section>
 
+    <!-- Market(P3):声明先于代码在分发环节的延伸 —— 装前确认看到的就是
+         manifest 的 contributes/permissions,不是营销文案。断网回上次缓存并明示过期。 -->
+    <section class="settings-section">
+      <h3 class="section-title">
+        Plugin Market
+      </h3>
+      <p class="section-desc">
+        The official market. What you review before installing is the plugin's manifest —
+        its declared contributions and permissions.
+      </p>
+
+      <!-- 连缓存都没有才是真失败;有缓存时主进程走 success+stale,不会到这。 -->
+      <ErrorNote
+        v-if="marketError && marketEntries.length === 0"
+        variant="block"
+        size="sm"
+        :message="marketError"
+      >
+        <template #actions>
+          <Button
+            unstyled
+            class="btn-sm"
+            @click="loadMarket(true)"
+          >
+            Retry
+          </Button>
+        </template>
+      </ErrorNote>
+
+      <template v-else-if="marketEntries.length || !marketLoading">
+        <div class="market-toolbar">
+          <Input
+            v-model="marketQuery"
+            placeholder="Search by name, description, or author"
+            aria-label="Search the plugin market"
+          />
+          <Button
+            unstyled
+            class="btn-sm refresh-btn"
+            :disabled="marketLoading"
+            @click="loadMarket(true)"
+          >
+            <RefreshCw :size="13" />
+            <span>{{ marketLoading ? 'Refreshing…' : 'Refresh' }}</span>
+          </Button>
+        </div>
+        <p
+          v-if="marketStale"
+          class="hint market-stale"
+        >
+          Offline — showing the index fetched at {{ marketFetchedAtText }} (may be outdated).
+        </p>
+
+        <div
+          v-if="filteredMarket.length === 0"
+          class="empty-state"
+        >
+          <p>No plugins match your search.</p>
+        </div>
+
+        <div
+          v-else
+          class="settings-card plugin-list market-list"
+        >
+          <div
+            v-for="entry in filteredMarket"
+            :key="entry.id"
+            class="plugin-item"
+          >
+            <div class="plugin-body">
+              <div class="plugin-header">
+                <div class="plugin-name-row">
+                  <span class="plugin-name">{{ entry.id }}</span>
+                  <span class="plugin-version">v{{ entry.version }}</span>
+                  <span
+                    v-if="entry.installedVersion && !entry.hasUpdate"
+                    class="status-badge loaded"
+                  >Installed</span>
+                  <span
+                    v-if="entry.hasUpdate"
+                    class="status-badge warning"
+                  >v{{ entry.version }} available</span>
+                </div>
+                <p
+                  v-if="entry.description"
+                  class="plugin-desc"
+                >
+                  {{ entry.description }}
+                </p>
+                <div class="plugin-meta">
+                  <span
+                    v-if="entry.author"
+                    class="meta-tag"
+                  >by {{ entry.author }}</span>
+                  <span class="meta-tag">{{ entry.pkg }}</span>
+                </div>
+                <ErrorNote
+                  v-if="entry.versionBlockedReason"
+                  size="sm"
+                  :message="`Cannot install: ${entry.versionBlockedReason}`"
+                />
+
+                <!-- 装前确认:用户点头前看到的就是 manifest -->
+                <div
+                  v-if="confirmingMarket === entry.id"
+                  class="market-confirm"
+                >
+                  <p class="market-confirm-title">
+                    This plugin declares:
+                  </p>
+                  <ul class="market-confirm-list">
+                    <li
+                      v-for="item in marketDeclares(entry)"
+                      :key="item"
+                    >
+                      {{ item }}
+                    </li>
+                    <li v-if="marketDeclares(entry).length === 0">
+                      No contributions declared.
+                    </li>
+                  </ul>
+                  <p
+                    v-if="entry.integrity"
+                    class="hint"
+                  >
+                    Integrity (sha512) will be verified against the market index.
+                  </p>
+                  <p
+                    v-else
+                    class="hint"
+                  >
+                    No integrity hash published — verification will be skipped.
+                  </p>
+                  <div class="market-confirm-actions">
+                    <Button
+                      unstyled
+                      class="btn-sm install-btn"
+                      :disabled="installingMarket.has(entry.id)"
+                      @click="installFromMarket(entry)"
+                    >
+                      {{ installingMarket.has(entry.id) ? 'Installing…' : 'Confirm install' }}
+                    </Button>
+                    <Button
+                      unstyled
+                      class="btn-sm"
+                      @click="confirmingMarket = null"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="plugin-toggle">
+              <Button
+                v-if="entry.installedVersion && entry.hasUpdate"
+                unstyled
+                class="btn-sm update-btn"
+                :disabled="npmAvailable === false || updatingPlugins.has(entry.id)"
+                :title="npmAvailable === false ? 'npm is not available on this machine' : `Update to v${entry.version}`"
+                @click="updateMarketPlugin(entry)"
+              >
+                {{ updatingPlugins.has(entry.id) ? 'Updating…' : 'Update' }}
+              </Button>
+              <Button
+                v-else-if="!entry.installedVersion"
+                unstyled
+                class="btn-sm install-btn"
+                :disabled="npmAvailable === false || Boolean(entry.versionBlockedReason) || installingMarket.has(entry.id)"
+                :title="npmAvailable === false
+                  ? 'npm is not available on this machine'
+                  : (entry.versionBlockedReason ?? 'Review the manifest, then install')"
+                @click="confirmingMarket = confirmingMarket === entry.id ? null : entry.id"
+              >
+                Install
+              </Button>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <div
+        v-else
+        class="loading-row"
+      >
+        <div class="spinner" />
+        <span>Loading the market…</span>
+      </div>
+    </section>
+
     <!-- Install(P1:npm 形态命令链;先吃 file: 开发通道与本地 tarball) -->
     <section class="settings-section">
       <h3 class="section-title">
@@ -379,7 +570,7 @@ import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
 import { SettingRow, SettingsField, SettingsGroup } from './settings-primitives'
 import type { PluginConfigErrorDetail, PluginConfigFieldDescriptor } from '@shared/ipc/plugins.js'
-import { ref, onBeforeUnmount, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 import { isUiSlotTruncated } from '@/workspace/ui-anchor-registry'
@@ -895,6 +1086,148 @@ async function updatePlugin(plugin: PluginInfo): Promise<void> {
   }
 }
 
+// ── P3:市场 —— 索引视图主进程 join 好,这里只渲染与过滤。──
+
+/** 共享契约的 renderer 本地形:contributes 收窄成结构化声明。 */
+interface MarketEntry {
+  id: string
+  pkg: string
+  version: string
+  description?: string
+  author?: string
+  minAppVersion?: string
+  contributes?: PluginInfo['contributes']
+  tarballUrl: string
+  integrity?: string
+  repository?: string
+  installedVersion: string | null
+  hasUpdate: boolean
+  versionBlockedReason: string | null
+}
+
+const marketEntries = ref<MarketEntry[]>([])
+const marketLoading = ref(false)
+const marketError = ref('')
+/** 主进程把"展示的是上次缓存"算好送过来(stale),renderer 不猜。 */
+const marketStale = ref(false)
+const marketFetchedAt = ref<number | null>(null)
+const marketQuery = ref('')
+/** 装前确认展开中的条目 id —— 一次只确认一个,心智负担小。 */
+const confirmingMarket = ref<string | null>(null)
+const installingMarket = ref<Set<string>>(new Set())
+
+const marketFetchedAtText = computed(() =>
+  marketFetchedAt.value ? new Date(marketFetchedAt.value).toLocaleString() : 'unknown time')
+
+/** 纯前端过滤(§8.2):id/description/author,索引就这么大,不值得服务端。 */
+const filteredMarket = computed(() => {
+  const query = marketQuery.value.trim().toLowerCase()
+  if (!query) return marketEntries.value
+  return marketEntries.value.filter(entry =>
+    entry.id.toLowerCase().includes(query)
+    || (entry.description ?? '').toLowerCase().includes(query)
+    || (entry.author ?? '').toLowerCase().includes(query))
+})
+
+/** 装前确认页的声明清单 —— contributesSummary 的市场版(未装,无截断/运行期事实)。 */
+function marketDeclares(entry: MarketEntry): string[] {
+  const contributes = entry.contributes
+  const declares: string[] = []
+  if (contributes?.panels?.length) {
+    declares.push(`${contributes.panels.length} panel${contributes.panels.length > 1 ? 's' : ''}`)
+  }
+  for (const slot of contributes?.uiSlots ?? []) {
+    declares.push(
+      slot.unsupported
+        ? `ui slot "${slot.label}" on anchor "${slot.anchor}" (unsupported by this app version)`
+        : `ui slot "${slot.label}" on anchor "${slot.anchor}"`,
+    )
+  }
+  if (contributes?.commands?.length) {
+    declares.push(`${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)
+  }
+  if (contributes?.hasSettingsSchema) declares.push('settings schema')
+  if (contributes?.permissions?.length) {
+    declares.push(`permissions: ${contributes.permissions.join(', ')}`)
+  }
+  if (contributes?.activationEvents?.length) {
+    declares.push(`activation: ${contributes.activationEvents.join(', ')}`)
+  }
+  if (entry.minAppVersion) declares.push(`needs app >= ${entry.minAppVersion}`)
+  return declares
+}
+
+async function loadMarket(refresh = false): Promise<void> {
+  marketLoading.value = true
+  try {
+    const result = await platformApi.getPluginMarket({ refresh })
+    if (result?.success) {
+      marketEntries.value = (result.entries ?? []) as MarketEntry[]
+      marketStale.value = result.stale
+      marketFetchedAt.value = result.fetchedAt
+      marketError.value = ''
+    } else {
+      // 真空失败(连缓存都没有)才走这;有缓存时主进程是 success+stale。
+      marketError.value = result?.error || 'Failed to load the plugin market'
+      marketEntries.value = []
+    }
+  } catch (e: any) {
+    marketError.value = e?.message || 'Failed to load the plugin market'
+    marketEntries.value = []
+  } finally {
+    marketLoading.value = false
+  }
+}
+
+async function installFromMarket(entry: MarketEntry): Promise<void> {
+  if (installingMarket.value.has(entry.id) || npmAvailable.value === false) return
+  installingMarket.value = withId(installingMarket.value, entry.id)
+  try {
+    const result = await platformApi.installPlugin({
+      pkg: entry.pkg,
+      tarballUrl: entry.tarballUrl,
+      ...(entry.integrity ? { integrity: entry.integrity } : {}),
+    })
+    if (result?.success) {
+      toast.success(`Installed ${result.pluginId ?? entry.id}`)
+      confirmingMarket.value = null
+      await loadPlugins()
+      await loadMarket()
+      await loadUpdateOffers()
+      emit('plugins-changed')
+    } else {
+      toast.error(result?.error || `Failed to install ${entry.id}`)
+    }
+  } catch (e: any) {
+    toast.error(e?.message || `Failed to install ${entry.id}`)
+  } finally {
+    installingMarket.value = withoutId(installingMarket.value, entry.id)
+  }
+}
+
+async function updateMarketPlugin(entry: MarketEntry): Promise<void> {
+  if (updatingPlugins.value.has(entry.id) || npmAvailable.value === false) return
+  updatingPlugins.value = new Set(updatingPlugins.value).add(entry.id)
+  try {
+    const result = await platformApi.updatePlugin(entry.id)
+    if (result?.success) {
+      toast.success(`Updated ${entry.id} to v${result.version}`)
+    } else {
+      toast.error(result?.error || `Failed to update ${entry.id}`)
+    }
+    await loadPlugins()
+    await loadMarket()
+    await loadUpdateOffers()
+    emit('plugins-changed')
+  } catch (e: any) {
+    toast.error(e?.message || `Failed to update ${entry.id}`)
+  } finally {
+    const next = new Set(updatingPlugins.value)
+    next.delete(entry.id)
+    updatingPlugins.value = next
+  }
+}
+
 // 熔断自动禁用发生在后台(没有用户操作),设置页必须被推着刷新,否则卡片
 // 会一直停在 Active —— "运行期错误不可见"正是 R1 要治的病。
 function handlePluginsChanged(): void {
@@ -905,6 +1238,8 @@ onMounted(() => {
   loadPlugins()
   loadLifecycleInfo()
   loadUpdateOffers()
+  // 启动时拉一次(缓存优先,主进程有缓存则秒回;§8.2 "启动时 + 手动刷新")。
+  loadMarket()
   window.addEventListener('onething:plugins-changed', handlePluginsChanged)
 })
 
@@ -1202,6 +1537,44 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 10px;
   max-width: 460px;
+}
+
+/* P3 市场区:与插件台账同一张画线皮,确认区只是卡内的一段发线。 */
+.market-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.market-toolbar :first-child {
+  flex: 1;
+}
+
+.market-stale {
+  margin: 0 0 8px;
+}
+
+.market-confirm {
+  margin-top: 8px;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--line, currentColor);
+}
+
+.market-confirm-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.market-confirm-list {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+
+.market-confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .install-btn {

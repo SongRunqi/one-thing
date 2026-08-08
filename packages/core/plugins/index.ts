@@ -68,6 +68,7 @@ export {
   findPluginUpdate,
   installCorePluginPackage,
   readInstalledRuntimeDeps,
+  readInstalledPackageName,
   readPackageLockIntegrity,
   readPluginLedgerSpec,
   uninstallCorePluginPackage,

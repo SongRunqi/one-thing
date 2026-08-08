@@ -1,0 +1,198 @@
+// @vitest-environment happy-dom
+/**
+ * P3 市场区组件测试:卡片渲染/徽标、纯前端搜索、装前确认流、minAppVersion
+ * 置灰、断网缓存明示 —— 全部走假 platformApi(主进程 join 语义另由
+ * runtime 的 market.test.ts 钉住,这里只验渲染与交互)。
+ */
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import PluginsSettingsTab from '../PluginsSettingsTab.vue'
+
+const MARKET_ENTRIES = [
+  {
+    id: 'plan-status',
+    pkg: '@onething-plugins/plan-status',
+    version: '2.0.0',
+    description: 'status chip above the composer',
+    author: 'onething',
+    tarballUrl: 'https://releases.example/plan-status-2.0.0.tgz',
+    integrity: 'sha512-AAA',
+    installedVersion: '1.0.0',
+    hasUpdate: true,
+    versionBlockedReason: null,
+  },
+  {
+    id: 'fresh-plugin',
+    pkg: '@onething-plugins/fresh-plugin',
+    version: '1.0.0',
+    description: 'brand new',
+    tarballUrl: 'https://releases.example/fresh-plugin-1.0.0.tgz',
+    integrity: 'sha512-BBB',
+    contributes: {
+      uiSlots: [{ anchor: 'composer.above', id: 'fresh-plugin', label: 'Plan 执行状态' }],
+      permissions: ['session:read'],
+    },
+    installedVersion: null,
+    hasUpdate: false,
+    versionBlockedReason: null,
+  },
+  {
+    id: 'too-new',
+    pkg: '@onething-plugins/too-new',
+    version: '1.0.0',
+    description: 'needs a future app',
+    tarballUrl: 'https://releases.example/too-new-1.0.0.tgz',
+    minAppVersion: '9.9.9',
+    installedVersion: null,
+    hasUpdate: false,
+    versionBlockedReason: 'requires app >= 9.9.9 (current 1.4.0)',
+  },
+]
+
+const platform = vi.hoisted(() => {
+  interface MarketResponse {
+    success: boolean
+    entries: unknown[]
+    fetchedAt: number | null
+    stale: boolean
+    error?: string
+  }
+  return {
+    getPlugins: vi.fn(async () => ({ success: true, plugins: [] })),
+    getPluginLifecycleInfo: vi.fn(async () => ({ success: true, npmAvailable: true })),
+    checkPluginUpdates: vi.fn(async () => ({ success: true, offers: [] })),
+    getPluginMarket: vi.fn(async (): Promise<MarketResponse> => ({
+      success: true,
+      entries: MARKET_ENTRIES,
+      fetchedAt: 1_754_000_000_000,
+      stale: false,
+    })),
+    installPlugin: vi.fn(async () => ({ success: true, pluginId: 'fresh-plugin' })),
+    updatePlugin: vi.fn(async () => ({ success: true, pluginId: 'plan-status', version: '2.0.0' })),
+    refreshPlugins: vi.fn(async () => ({ success: true })),
+    environment: 'electron',
+  }
+})
+
+vi.mock('@/platform', () => ({ platformApi: platform }))
+
+function mountTab() {
+  return mount(PluginsSettingsTab)
+}
+
+describe('PluginsSettingsTab 市场区(P3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    platform.getPluginMarket.mockResolvedValue({
+      success: true,
+      entries: MARKET_ENTRIES,
+      fetchedAt: 1_754_000_000_000,
+      stale: false,
+    })
+  })
+
+  it('渲染索引卡片:描述/作者/包名;已装与有更新徽标分置', async () => {
+    const wrapper = mountTab()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Plugin Market')
+    expect(wrapper.text()).toContain('status chip above the composer')
+    expect(wrapper.text()).toContain('by onething')
+    expect(wrapper.text()).toContain('@onething-plugins/plan-status')
+    // plan-status:已装 1.0.0、索引 2.0.0 → 有更新徽标
+    expect(wrapper.text()).toContain('v2.0.0 available')
+    // 启动时拉取走缓存优先(refresh 缺省)
+    expect(platform.getPluginMarket).toHaveBeenCalledWith({ refresh: false })
+    wrapper.unmount()
+  })
+
+  it('搜索框纯前端过滤:id/description/author', async () => {
+    const wrapper = mountTab()
+    await flushPromises()
+
+    const search = wrapper.get('input[aria-label="Search the plugin market"]')
+    await search.setValue('future app')
+    expect(wrapper.text()).toContain('too-new')
+    expect(wrapper.text()).not.toContain('status chip above the composer')
+    await search.setValue('zzz-nothing-matches-this')
+    expect(wrapper.text()).toContain('No plugins match your search.')
+    await search.setValue('')
+    expect(wrapper.text()).toContain('plan-status')
+    wrapper.unmount()
+  })
+
+  it('装前确认:声明清单(contributes+permissions)展开;Confirm 以索引事实安装', async () => {
+    const wrapper = mountTab()
+    await flushPromises()
+
+    // fresh-plugin 的 Install(未被置灰的第一个可装条目)
+    const installButtons = wrapper.findAll('.market-list .plugin-toggle .install-btn')
+    // 三个条目:plan-status 有更新(无 Install)、fresh-plugin 可装、too-new 置灰
+    expect(installButtons.length).toBe(2)
+    const tooNewButton = installButtons[1]
+    expect(tooNewButton.attributes('disabled')).toBeDefined()
+
+    await installButtons[0].trigger('click')
+    // 声明先于代码:清单里是 manifest 的 contributes/permissions,不是营销文案
+    expect(wrapper.text()).toContain('This plugin declares:')
+    expect(wrapper.text()).toContain('ui slot "Plan 执行状态" on anchor "composer.above"')
+    expect(wrapper.text()).toContain('permissions: session:read')
+    expect(wrapper.text()).toContain('Integrity (sha512) will be verified')
+
+    // 确认安装 → installPlugin 带索引三件套(pkg/tarballUrl/integrity)
+    const confirmBtn = wrapper.findAll('.market-confirm-actions .install-btn')[0]
+    await confirmBtn.trigger('click')
+    await flushPromises()
+    expect(platform.installPlugin).toHaveBeenCalledWith({
+      pkg: '@onething-plugins/fresh-plugin',
+      tarballUrl: 'https://releases.example/fresh-plugin-1.0.0.tgz',
+      integrity: 'sha512-BBB',
+    })
+    wrapper.unmount()
+  })
+
+  it('minAppVersion 不足:Install 置灰且说明;npm 缺失时一并置灰', async () => {
+    const wrapper = mountTab()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Cannot install: requires app >= 9.9.9 (current 1.4.0)')
+    const buttons = wrapper.findAll('.market-list .plugin-toggle .install-btn')
+    const tooNew = buttons[1]
+    expect(tooNew.attributes('disabled')).toBeDefined()
+    expect(tooNew.attributes('title')).toContain('requires app >= 9.9.9')
+    wrapper.unmount()
+  })
+
+  it('拉取失败有缓存 = stale:离线明示过期而不是市场消失', async () => {
+    platform.getPluginMarket.mockResolvedValue({
+      success: true,
+      entries: MARKET_ENTRIES.slice(0, 1),
+      fetchedAt: 1_754_000_000_000,
+      stale: true,
+    })
+    const wrapper = mountTab()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Offline — showing the index fetched at')
+    expect(wrapper.text()).toContain('may be outdated')
+    expect(wrapper.text()).toContain('plan-status')
+    wrapper.unmount()
+  })
+
+  it('连缓存都没有 = 真空失败:错误块 + Retry', async () => {
+    platform.getPluginMarket.mockResolvedValue({
+      success: false,
+      entries: [],
+      fetchedAt: null,
+      stale: false,
+      error: 'HTTP 503',
+    })
+    const wrapper = mountTab()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('HTTP 503')
+    expect(wrapper.text()).toContain('Retry')
+    expect(wrapper.text()).not.toContain('market-list')
+    wrapper.unmount()
+  })
+})

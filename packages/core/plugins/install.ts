@@ -91,6 +91,16 @@ export function readInstalledRuntimeDeps(dirPath: string): Record<string, string
   }
 }
 
+/** 包内 package.json 的 name(账货一致性校验:装上的必须是要装的)。 */
+export function readInstalledPackageName(dirPath: string): string | undefined {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf-8')) as { name?: unknown }
+    return typeof pkg.name === 'string' ? pkg.name : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** 读账本里某包当前的 spec(update 回滚旧版用 —— 我们的版本真相在账本,不在 registry)。 */
 export function readPluginLedgerSpec(pluginsDir: string, pkg: string): string | undefined {
   try {
@@ -128,6 +138,17 @@ export async function installCorePluginPackage(
   const logger = adapters.logger ?? console
   const pluginId = unscopedPluginIdFromPackageName(input.pkg)
 
+  // spec 协议白名单(端到端审查 S3):市场 URL 只走 https,开发通道走 file:。
+  // git+/ssh/ftp/http 等 npm 支持的其它协议一律不收 —— 索引内容真被写坏时,
+  // 纵深防御在这里拦最后一道(信任根是索引仓库,但闸多一道不亏)。
+  if (!input.spec.startsWith('https://') && !input.spec.startsWith('file:')) {
+    return {
+      ok: false,
+      pluginId,
+      error: `Refusing to install ${input.pkg}: spec must be an https:// tarball URL or a file: path (got "${input.spec.slice(0, 64)}")`,
+    }
+  }
+
   // 0. 脚手架
   const scaffold = ensurePluginLedgerScaffold(pluginsDir)
   if (scaffold.error) {
@@ -154,6 +175,15 @@ export async function installCorePluginPackage(
   const dirPath = path.join(pluginsDir, 'node_modules', input.pkg)
   if (!fs.existsSync(path.join(dirPath, 'package.json'))) {
     return rollback(`npm reported success but ${input.pkg} is not present under node_modules`)
+  }
+
+  // 1.5 包名一致性(端到端审查 S4):node_modules/<pkg>/package.json 的 name
+  // 必须等于 pkg —— 索引把 pkg 写错名时会装成第二个包,账货分叉。
+  const installedName = readInstalledPackageName(dirPath)
+  if (installedName !== input.pkg) {
+    return rollback(
+      `Package name mismatch for ${input.pkg}: the installed package is named "${installedName ?? 'unreadable'}"`,
+    )
   }
 
   // 2a. 零运行时 dependencies(bundle 规则)。有则拒载并回滚。

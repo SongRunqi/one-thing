@@ -265,3 +265,48 @@ export interface ExecutePluginCommandResponse {
   message?: string
   error?: string
 }
+
+// ── P3:市场 ──
+
+/**
+ * 市场索引 URL(裁决:纯硬编码;fork/私有市场改这一处)。
+ * 桌面宿主启动时经 configurePluginMarketIndex 注入;测试走注入覆盖。
+ */
+export const PLUGIN_MARKET_INDEX_URL =
+	'https://raw.githubusercontent.com/monotasking/plugin/main/index.json'
+
+/** 市场条目视图(主进程 join 好:索引声明 + 本机安装态 + 版本兼容)。 */
+export interface PluginMarketEntryView {
+	id: string
+	pkg: string
+	version: string
+	description?: string
+	author?: string
+	minAppVersion?: string
+	/** 原始 contributes 声明 —— 装前确认页呈现的就是 manifest,不是营销文案。 */
+	contributes?: unknown
+	tarballUrl: string
+	integrity?: string
+	repository?: string
+	/** 已装版本;未装 = null。 */
+	installedVersion: string | null
+	/** 已装且索引版本更新。 */
+	hasUpdate: boolean
+	/** minAppVersion 不满足时的说明(Install 置灰依据);满足 = null。 */
+	versionBlockedReason: string | null
+}
+
+export interface GetPluginMarketRequest {
+	/** true = 强制重新拉取;省略/false = 有缓存先用缓存。 */
+	refresh?: boolean
+}
+
+export interface GetPluginMarketResponse {
+	success: boolean
+	entries: PluginMarketEntryView[]
+	/** 上次成功拉取时间(epoch ms);从未成功 = null。 */
+	fetchedAt: number | null
+	/** 本次拉取失败、展示的是上次缓存(断网容忍)。 */
+	stale: boolean
+	error?: string
+}

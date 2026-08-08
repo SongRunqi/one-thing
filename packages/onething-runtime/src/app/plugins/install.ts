@@ -129,6 +129,8 @@ export function packageNameFromNodeModulesPath(pluginsDir: string, dirPath: stri
 let marketIndexUrl: string | null = null
 /** 上次成功拉取的索引缓存(P3:断网时市场区显示上次缓存 + 明示过期)。 */
 let marketIndexCache: { at: number; index: CorePluginMarketIndex } | null = null
+/** 上次拉取失败时刻 —— stale 判定:failureAt > cache.at 说明缓存已过期。 */
+let marketIndexLastFailureAt: number | null = null
 
 /** P1:市场索引 URL 由宿主装配期注入(未配置 = 更新通道关闭);P3 接设置页。 */
 export function configurePluginMarketIndex(url: string | null): void {
@@ -139,6 +141,7 @@ export function configurePluginMarketIndex(url: string | null): void {
 /** 测试用:直接塞一份索引当"拉取成功",不起网络。 */
 export function setPluginMarketIndexForTest(index: CorePluginMarketIndex | null): void {
   marketIndexCache = index ? { at: Date.now(), index } : null
+  marketIndexLastFailureAt = null
   if (index) marketIndexUrl = marketIndexUrl ?? 'test://market'
 }
 
@@ -153,21 +156,60 @@ function isMarketIndexShape(value: unknown): value is CorePluginMarketIndex {
     && typeof (entry as { tarballUrl?: unknown }).tarballUrl === 'string')
 }
 
+async function fetchFreshMarketIndex(): Promise<CorePluginMarketIndex> {
+  const response = await fetch(marketIndexUrl!, { signal: AbortSignal.timeout(15_000) })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const body: unknown = await response.json()
+  if (!isMarketIndexShape(body)) throw new Error('unexpected index shape')
+  return body
+}
+
 /** host 端口:拉市场索引;未配置/拉取失败/形状不对 = null(失败时用上次缓存)。 */
 export async function fetchPluginMarketIndex(): Promise<CorePluginMarketIndex | null> {
-  if (!marketIndexUrl) return null
+  const snapshot = await getPluginMarketIndexSnapshot()
+  return snapshot.index
+}
+
+/**
+ * P3 市场区视图用的快照:比 host 端口多带缓存龄与过期标记。
+ *
+ * stale 语义:本次想拉拉不到、展示的是上次缓存 —— 设置页据此明示
+ * "上次更新于 X,可能是旧货",而不是让市场区在断网时直接消失。
+ */
+export async function getPluginMarketIndexSnapshot(input?: { refresh?: boolean }): Promise<{
+  index: CorePluginMarketIndex | null
+  fetchedAt: number | null
+  stale: boolean
+  error: string | null
+}> {
+  if (!marketIndexUrl) {
+    return { index: null, fetchedAt: null, stale: false, error: 'market index URL is not configured' }
+  }
+  // 非强制刷新且有缓存:先用缓存(启动时设置页秒开;后台刷新走 refresh:true)。
+  if (!input?.refresh && marketIndexCache) {
+    return {
+      index: marketIndexCache.index,
+      fetchedAt: marketIndexCache.at,
+      stale: marketIndexLastFailureAt !== null && marketIndexLastFailureAt > marketIndexCache.at,
+      error: null,
+    }
+  }
   try {
-    const response = await fetch(marketIndexUrl, { signal: AbortSignal.timeout(15_000) })
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const body: unknown = await response.json()
-    if (!isMarketIndexShape(body)) throw new Error('unexpected index shape')
-    marketIndexCache = { at: Date.now(), index: body }
-    return body
+    const index = await fetchFreshMarketIndex()
+    marketIndexCache = { at: Date.now(), index }
+    return { index, fetchedAt: marketIndexCache.at, stale: false, error: null }
   } catch (error) {
+    marketIndexLastFailureAt = Date.now()
+    const message = error instanceof Error ? error.message : String(error)
     console.warn(
       `[PluginMarket] Failed to fetch the market index (${marketIndexUrl}):`,
-      error instanceof Error ? error.message : error,
+      message,
     )
-    return marketIndexCache?.index ?? null
+    return {
+      index: marketIndexCache?.index ?? null,
+      fetchedAt: marketIndexCache?.at ?? null,
+      stale: marketIndexCache !== null,
+      error: message,
+    }
   }
 }

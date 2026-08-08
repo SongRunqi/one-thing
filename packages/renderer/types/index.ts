@@ -269,6 +269,8 @@ import type {
 	InstallPluginResponse,
 	UpdatePluginResponse,
 	CheckPluginUpdatesResponse,
+	GetPluginMarketRequest,
+	GetPluginMarketResponse,
 	PluginLifecycleInfoResponse,
 	PluginFootprintResponse,
 	SchedulerSchedule,
@@ -1219,6 +1221,8 @@ export interface ElectronAPI {
 
 	/** 生命周期能力面:无 npm 时设置页把 Install/Update 置灰并说明。 */
 	getPluginLifecycleInfo: () => Promise<PluginLifecycleInfoResponse>;
+	/** 市场(P3):索引视图;断网回缓存并 stale 置位。 */
+	getPluginMarket: (request?: GetPluginMarketRequest) => Promise<GetPluginMarketResponse>;
 
 	/** 落盘足迹(R4 枚举 + R5 出口):卸载确认框展示"将被归档的东西"。 */
 	getPluginFootprint: (pluginId: string) => Promise<PluginFootprintResponse>;

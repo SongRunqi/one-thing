@@ -21,6 +21,7 @@ import {
 } from '@onething/electron-host/ipc/plugins'
 import {
   abortOnethingPluginRequestForIpc,
+  getOnethingPluginMarketForIpc,
   disableOnethingPluginForIpc,
   getOnethingPluginConfigForIpc,
   getOnethingPluginFootprintForIpc,
@@ -42,7 +43,8 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getPluginManager } from '@onething/app/plugins/index.js'
 import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
 import { getPluginFootprint } from '@onething/app/plugins/loader.js'
-import { probePluginNpmAvailability } from '@onething/app/plugins/install.js'
+import { getPluginMarketIndexSnapshot, probePluginNpmAvailability } from '@onething/app/plugins/install.js'
+import { getPluginAppVersion } from '@onething/app/plugins/app-version.js'
 import { getEventBus } from '@onething/app/events/index.js'
 import * as store from '@onething/app/store.js'
 
@@ -129,6 +131,7 @@ export function registerPluginHandlers(): void {
       update: IPC_CHANNELS.PLUGINS_UPDATE,
       checkUpdates: IPC_CHANNELS.PLUGINS_CHECK_UPDATES,
       lifecycleInfo: IPC_CHANNELS.PLUGINS_LIFECYCLE_INFO,
+      market: IPC_CHANNELS.PLUGINS_MARKET,
     },
     listPlugins: () => {
       return listOnethingPluginsForIpc({
@@ -259,6 +262,17 @@ export function registerPluginHandlers(): void {
     // 裁决 8:v1 依赖本机 npm —— 能力面先行,设置页据此置灰并说明。
     getPluginLifecycleInfo: async () => {
       return { success: true as const, npmAvailable: await probePluginNpmAvailability() }
+    },
+    // P3:市场 —— 索引视图在主进程 join 好(安装态 + 版本兼容 + 缓存龄),
+    // renderer 只渲染;拉取失败回上次缓存并 stale 置位(断网容忍)。
+    getPluginMarket: (request) => {
+      return getOnethingPluginMarketForIpc({
+        manager: getPluginManager(),
+        logger: console,
+        refresh: request?.refresh === true,
+        getMarketSnapshot: getPluginMarketIndexSnapshot,
+        appVersion: getPluginAppVersion(),
+      })
     },
     listCommands: () => {
       return listOnethingPluginCommandsForIpc({

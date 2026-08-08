@@ -349,6 +349,9 @@ export const IPC_CHANNELS = {
 	PLUGINS_UPDATE: "plugins:update",
 	PLUGINS_CHECK_UPDATES: "plugins:check-updates",
 	PLUGINS_LIFECYCLE_INFO: "plugins:lifecycle-info",
+	// 市场(P3):索引视图(声明 + 本机安装态 + 版本兼容 join 好),
+	// 拉取失败回上次缓存并 stale 置位 —— 断网时市场区明示过期而非消失。
+	PLUGINS_MARKET: "plugins:market",
 	// 落盘足迹(R4 建枚举,R5 接出口):卸载确认框据此展示"将被归档的东西"。
 	PLUGINS_FOOTPRINT: "plugins:footprint",
 

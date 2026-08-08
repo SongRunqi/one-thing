@@ -20,6 +20,7 @@ import type {
 	InstallPluginResponse,
 	UpdatePluginResponse,
 	CheckPluginUpdatesResponse,
+	GetPluginMarketResponse,
 	PluginLifecycleInfoResponse,
 } from "@shared/ipc/plugins.js";
 import type { PlatformApi, PlatformCapabilities } from "./types";
@@ -1259,6 +1260,13 @@ const webApi = {
 		error: "Plugins are updated on the desktop host only.",
 	}),
 
+	getPluginMarket: async (): Promise<GetPluginMarketResponse> => ({
+		success: false,
+		entries: [],
+		fetchedAt: null,
+		stale: false,
+		error: 'Plugin market is unavailable in the web host',
+	}),
 	checkPluginUpdates: async (): Promise<CheckPluginUpdatesResponse> => ({
 		success: true,
 		offers: [],

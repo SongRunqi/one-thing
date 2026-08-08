@@ -16,6 +16,8 @@ import type {
   UpdatePluginResponse,
   CheckPluginUpdatesResponse,
   PluginLifecycleInfoResponse,
+  GetPluginMarketRequest,
+  GetPluginMarketResponse,
 } from '@shared/ipc/plugins.js'
 
 export interface ElectronIpcMainLike {
@@ -43,6 +45,8 @@ export interface ElectronPluginsIpcChannels {
   update: string
   checkUpdates: string
   lifecycleInfo: string
+  // P3:市场(索引视图,主进程 join 好安装态与版本兼容)
+  market: string
 }
 
 export interface ElectronPluginToggleRequest {
@@ -95,6 +99,7 @@ export interface RegisterElectronPluginsIpcHandlersOptions {
   updatePlugin(request: UpdatePluginRequest): Promise<UpdatePluginResponse> | UpdatePluginResponse
   checkPluginUpdates(): Promise<CheckPluginUpdatesResponse> | CheckPluginUpdatesResponse
   getPluginLifecycleInfo(): Promise<PluginLifecycleInfoResponse> | PluginLifecycleInfoResponse
+  getPluginMarket(request: GetPluginMarketRequest): Promise<GetPluginMarketResponse> | GetPluginMarketResponse
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -167,5 +172,9 @@ export function registerElectronPluginsIpcHandlers(
 
   host.handle(options.channels.lifecycleInfo, () => {
     return options.getPluginLifecycleInfo()
+  })
+
+  host.handle(options.channels.market, (_event, request: GetPluginMarketRequest) => {
+    return options.getPluginMarket(request)
   })
 }

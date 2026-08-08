@@ -19,6 +19,7 @@ import { getSettings } from "@onething/app/stores/settings.js";
 import { startTodoPlanWatcher } from "@onething/app/todo-plan/store.js";
 import { configureSandboxHost } from "@onething/app/tools/core/sandbox.js";
 import { configurePluginAppVersion } from "@onething/app/plugins/app-version.js";
+import { configureMCPClientIdentity } from "@onething/app/mcp/identity.js";
 import { getPluginManager } from "@onething/app/plugins/manager.js";
 import {
 	getConversationRuntime,
@@ -202,6 +203,11 @@ function formatElectronDesktopStoreLockError(error: unknown): string {
 function startPostWindowServices(): void {
 	const pluginsReady = (async () => {
 		const { bootstrapPluginSystem } = await import("@onething/app/plugins/index.js");
+		// P3:市场索引 URL(共享层死常量,裁决"纯硬编码")——装配期注入,
+		// 更新通道与市场区同这一条供给线;测试经 configurePluginMarketIndex 覆盖。
+		const { configurePluginMarketIndex } = await import("@onething/app/plugins/install.js");
+		const { PLUGIN_MARKET_INDEX_URL } = await import("@shared/ipc/plugins.js");
+		configurePluginMarketIndex(PLUGIN_MARKET_INDEX_URL);
 		await bootstrapPluginSystem(getEventBus(), getStreamEngine());
 	})().catch((err) => {
 		console.error("[Plugins] Bootstrap failed (non-blocking):", err);
@@ -347,6 +353,8 @@ export function startOnethingElectronMain(): void {
 	// 宿主版本是 minAppVersion 判定的唯一输入 —— 只有宿主自己知道它
 	// (打包后 package.json 不在可预测的相对位置)。没配 = 判定跳过。
 	configurePluginAppVersion(getElectronAppVersion());
+	// MCP clientInfo 同一条晚绑线:产品名固定在 identity 默认值里,版本只有宿主知道。
+	configureMCPClientIdentity({ version: getElectronAppVersion() });
 
 	// Suppress security warnings in development mode. Vite HMR needs unsafe-eval;
 	// production builds use strict CSP and do not show these warnings.

@@ -27,6 +27,7 @@ describe('electron plugins IPC host', () => {
     const updatePlugin = vi.fn().mockResolvedValue({ success: true, pluginId: 'plan-status', version: '2.0.0' })
     const checkPluginUpdates = vi.fn().mockResolvedValue({ success: true, offers: [] })
     const getPluginLifecycleInfo = vi.fn().mockResolvedValue({ success: true, npmAvailable: true })
+    const getPluginMarket = vi.fn().mockResolvedValue({ success: true, entries: [], fetchedAt: null, stale: false })
 
     registerElectronPluginsIpcHandlers({
       channels: {
@@ -46,6 +47,7 @@ describe('electron plugins IPC host', () => {
         update: 'plugins:update',
         checkUpdates: 'plugins:check-updates',
         lifecycleInfo: 'plugins:lifecycle-info',
+        market: 'plugins:market',
       },
       listPlugins,
       enablePlugin,
@@ -63,10 +65,11 @@ describe('electron plugins IPC host', () => {
       updatePlugin,
       checkPluginUpdates,
       getPluginLifecycleInfo,
+      getPluginMarket,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(16)
+    expect(handle).toHaveBeenCalledTimes(17)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'plugins:list',
       'plugins:enable',
@@ -84,6 +87,7 @@ describe('electron plugins IPC host', () => {
       'plugins:update',
       'plugins:check-updates',
       'plugins:lifecycle-info',
+      'plugins:market',
     ])
 
     const toggleRequest = { pluginId: 'notes' }
@@ -109,6 +113,9 @@ describe('electron plugins IPC host', () => {
       },
     })
     expect(getPluginFootprint).toHaveBeenCalledWith(toggleRequest)
+    await expect(handle.mock.calls[16][1]({}, { refresh: true }))
+      .resolves.toEqual({ success: true, entries: [], fetchedAt: null, stale: false })
+    expect(getPluginMarket).toHaveBeenCalledWith({ refresh: true })
 
     expect(listPlugins).toHaveBeenCalledWith()
     expect(enablePlugin).toHaveBeenCalledWith(toggleRequest)

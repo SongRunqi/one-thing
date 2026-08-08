@@ -1,9 +1,11 @@
 import type {
   CorePluginCommandContext,
   CorePluginCommandDefinition,
+  CorePluginMarketIndex,
   CorePluginRequestInput,
   CorePluginRequestResult,
 } from '@onething/core/plugins'
+import { compareCoreSemver, unscopedPluginIdFromPackageName } from '@onething/core/plugins'
 import {
   executeOnethingPluginCommand,
   type ExecuteOnethingPluginCommandOptions,
@@ -268,6 +270,122 @@ export async function checkOnethingPluginUpdatesForIpc<
   } catch (error) {
     const failed = pluginIpcError(options.logger, 'check-updates', error, 'Failed to check plugin updates')
     return { ...failed, offers: [] }
+  }
+}
+
+// ── P3:市场 ──
+
+/** 市场条目视图(主进程 join 好:索引声明 + 本机安装态 + 版本兼容;renderer 只渲染)。 */
+export interface OnethingPluginMarketEntry {
+  id: string
+  pkg: string
+  version: string
+  description?: string
+  author?: string
+  minAppVersion?: string
+  /** 原始 contributes 声明 —— 装前确认页呈现的就是 manifest,不是营销文案。 */
+  contributes?: unknown
+  tarballUrl: string
+  integrity?: string
+  repository?: string
+  /** 已装版本;未装 = null。 */
+  installedVersion: string | null
+  /** 已装且索引版本更新。 */
+  hasUpdate: boolean
+  /** minAppVersion 不满足时的说明(Install 置灰依据);满足 = null。 */
+  versionBlockedReason: string | null
+}
+
+/** 宿主注入的索引快照形状(实现:app/plugins/install.ts 的 getPluginMarketIndexSnapshot)。 */
+export interface OnethingPluginMarketSnapshot {
+  index: CorePluginMarketIndex | null
+  fetchedAt: number | null
+  stale: boolean
+  error: string | null
+}
+
+export type GetOnethingPluginMarketForIpcResult =
+  | { success: true; entries: OnethingPluginMarketEntry[]; fetchedAt: number | null; stale: boolean }
+  | { success: false; entries: []; fetchedAt: number | null; stale: boolean; error: string }
+
+export interface GetOnethingPluginMarketForIpcOptions<
+  TPlugin extends OnethingPluginListItemLike = OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike = OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext> =
+    CorePluginCommandDefinition<CorePluginCommandContext>,
+> extends OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand> {
+  /** true = 强制重新拉取;省略/false = 有缓存先用缓存。 */
+  refresh?: boolean
+  /** 宿主注入:索引快照口;省略 = 市场不可用。 */
+  getMarketSnapshot?: (input: { refresh: boolean }) => Promise<OnethingPluginMarketSnapshot>
+  /** 宿主版本 —— minAppVersion 比对;省略 = 跳过比对(不置灰)。 */
+  appVersion?: string
+}
+
+export async function getOnethingPluginMarketForIpc<
+  TPlugin extends OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext>,
+>(
+  options: GetOnethingPluginMarketForIpcOptions<TPlugin, TCommandInfo, TCommand>,
+): Promise<GetOnethingPluginMarketForIpcResult> {
+  try {
+    const manager = requireOnethingPluginManager(options.manager)
+    if (!options.getMarketSnapshot) {
+      return {
+        success: false as const,
+        entries: [],
+        fetchedAt: null,
+        stale: false,
+        error: 'Plugin market is unavailable on this host',
+      }
+    }
+    const snapshot = await options.getMarketSnapshot({ refresh: options.refresh === true })
+    if (!snapshot.index) {
+      // 连缓存都没有 = 真空失败;有缓存时 snapshot.index 非空,
+      // 走成功 + stale 路径(断网容忍)。
+      return {
+        success: false as const,
+        entries: [],
+        fetchedAt: snapshot.fetchedAt,
+        stale: false,
+        error: snapshot.error ?? 'market index unavailable',
+      }
+    }
+    const installed = new Map(manager.getPlugins().map(info => [info.definition.id, info]))
+    const entries: OnethingPluginMarketEntry[] = []
+    for (const entry of snapshot.index.plugins) {
+      // 索引内部一致性(端到端审查 S4 的展示侧):id 必须等于 pkg 去 scope,
+      // 不一致的条目会把"已装/有更新"join 到错误的插件上 —— 滤掉并警告。
+      if (unscopedPluginIdFromPackageName(entry.pkg) !== entry.id) {
+        console.warn(`[PluginMarket] Index entry "${entry.id}" has inconsistent pkg "${entry.pkg}" — skipped`)
+        continue
+      }
+      const info = installed.get(entry.id)
+      const installedVersion = info?.definition.manifest.version ?? null
+      entries.push({
+        id: entry.id,
+        pkg: entry.pkg,
+        version: entry.version,
+        ...(entry.description ? { description: entry.description } : {}),
+        ...(entry.author ? { author: entry.author } : {}),
+        ...(entry.minAppVersion ? { minAppVersion: entry.minAppVersion } : {}),
+        ...(entry.contributes !== undefined ? { contributes: entry.contributes } : {}),
+        tarballUrl: entry.tarballUrl,
+        ...(entry.integrity ? { integrity: entry.integrity } : {}),
+        ...(entry.repository ? { repository: entry.repository } : {}),
+        installedVersion,
+        hasUpdate: installedVersion !== null && compareCoreSemver(entry.version, installedVersion) > 0,
+        versionBlockedReason: entry.minAppVersion && options.appVersion
+          && compareCoreSemver(options.appVersion, entry.minAppVersion) < 0
+          ? `requires app >= ${entry.minAppVersion} (current ${options.appVersion})`
+          : null,
+      })
+    }
+    return { success: true as const, entries, fetchedAt: snapshot.fetchedAt, stale: snapshot.stale }
+  } catch (error) {
+    const failed = pluginIpcError(options.logger, 'market', error, 'Failed to load the plugin market')
+    return { ...failed, entries: [], fetchedAt: null, stale: false }
   }
 }
 
