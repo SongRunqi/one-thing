@@ -433,6 +433,13 @@ release,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前�
   (`owners/<uid>/<wid>/plugin-store/plugins`)登记为"本期不动",
   其 npm 化随 server 插件策略单独立项。
 
+> **P4 已落地(2026-08-08)**:作者指南 `docs/guides/plugin-authoring.md`
+> (manifest 字段表/打包铁规/发布流/更新通道语义/家目录约定/排障);
+> CLAUDE.md 插件条目补 Distribution 段;legacy 清零计划
+> `docs/design/plugin-legacy-retirement-plan-2026-08.md`(三处兼容设施的
+> 撤除时间表 + 存量转正操作单 + server 独立插件树登记"本期不动")。
+> 至此 P1–P4 全部完成。
+
 ## 11. 风险与对策
 
 | 风险 | 对策 |

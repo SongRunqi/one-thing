@@ -189,6 +189,21 @@ Notes:
   - **Isolation**: timeout budgets, per-`pluginId+scope` failure breaker, and a severity
     policy table (`policy.ts`) deciding disable-plugin vs degrade-one-surface. Teardown is
     two-sided (code registries + data footprint) and guarded by a CI teardown test.
+  - **Distribution (npm form, P1–P3 complete, 2026-08-08)**: plugins install as zero-runtime-dep
+    npm tarballs from the market repo's GitHub Releases (`monotasking/plugin`,
+    index `raw.githubusercontent.com/monotasking/plugin/main/index.json`). The ledger is
+    `~/.onething/plugins/package.json` dependencies; code lives in `plugins/node_modules/`
+    (a pure code zone — no data ever); each plugin's data lives in its home dir
+    `plugins/<id>/` (`config.json`, `kv.json`, `storage/`). Lifecycle commands
+    (install/update/uninstall/check-updates) run through npm with `--ignore-scripts`
+    (lifecycle scripts never execute), SRI-vs-lockfile verification, and rollback on any
+    failed gate (runtime deps / integrity / package-name mismatch / built-in id collision).
+    Settings page has an Install form (file: dev channel) and a **Plugin Market** section
+    (search, manifest-first confirm page, offline cache with stale notice). Directory-installed
+    plugins (no package.json entry) still load as **legacy** — same runtime, but no update
+    channel and data stays in old locations; `plugin-data/` is retired (lazy migration,
+    empty shells auto-archived). Author guide: `docs/guides/plugin-authoring.md`;
+    distribution design: `docs/design/plugin-distribution-npm-2026-08.md`.
   - **Plugins execute on the Electron desktop host only** (plan A). Two caveats the
     earlier wording got wrong: apps/server is *not* a read-only mirror — its
     `/api/plugins/{enable,disable,refresh}` routes do write enable-flags to disk, and it
