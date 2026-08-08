@@ -93,6 +93,27 @@ git tag my-plugin-v1.1.0 && git push origin main --tags
 - 数据不随更新动:config/KV/storage 住在家目录(见下),npm 只碰
   node_modules。
 
+## 事件订阅(api.on)
+
+`api.on(type, handler)` 订阅宿主事件面(`stream:start`、`stream:complete`、
+`stream:aborted`、`stream:error`、`step:updated` …)。handler 收到的是**信封**:
+
+```js
+api.on('stream:start', (env) => {
+  env.sessionId   // 事件所属会话(顶层字段)
+  env.sequence    // 会话内单调序号
+  env.timestamp   // 提交时间戳
+  env.event       // 事件本体 —— 不是 env.payload!
+  env.event.type        // 如 'stream:start'
+  env.event.messageId   // stream:start 携带;stream:complete 不携
+  env.event.data        // stream:complete/error 的业务载荷(usage 在 data.usage)
+})
+```
+
+> 教训实录:`env.payload` 不存在,用它取字段会得到一串静默 undefined
+> (tps-meter / plan-status 1.0.0 都咬过)。跨事件关联靠 `env.sessionId` +
+> 自己记账(stream:complete 无 messageId,需拿最近一次 stream:start 归属)。
+
 ## 数据落盘约定
 
 - 插件家目录 = `~/.onething/plugins/<id>/`:`config.json`(宿主写,

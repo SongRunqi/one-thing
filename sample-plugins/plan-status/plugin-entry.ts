@@ -63,7 +63,8 @@ export default function planStatusPlugin(api) {
   })
 
   api.on('step:updated', (env) => {
-    const step = env?.payload ?? env
+    // 信封 = { sessionId, sequence, timestamp, event } —— 事件本体在 env.event。
+    const step = env?.event ?? {}
     if (!step?.stepId) return
     const state = stateOf(env?.sessionId)
     const previous = state.steps.get(step.stepId) ?? {}
@@ -85,7 +86,7 @@ export default function planStatusPlugin(api) {
   api.on('stream:error', (env) => {
     const state = stateOf(env?.sessionId)
     state.phase = 'error'
-    state.error = String(env?.payload?.data?.message ?? env?.payload?.message ?? 'stream error')
+    state.error = String(env?.event?.data?.error ?? env?.event?.data?.message ?? 'stream error')
     refresh(env?.sessionId)
   })
 
