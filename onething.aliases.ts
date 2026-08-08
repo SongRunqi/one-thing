@@ -38,6 +38,10 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/core/json', replacement: resolve(projectRoot, 'packages/core/json.ts') },
   { find: '@onething/core/mcp', replacement: resolve(projectRoot, 'packages/core/mcp/index.ts') },
   { find: '@onething/core/permission', replacement: resolve(projectRoot, 'packages/core/permission/index.ts') },
+  // Browser-safe leaf module (zero imports, pure serialization logic) — must be
+  // registered BEFORE the plugins barrel so the renderer never drags loader.ts
+  // (node:url 的 pathToFileURL) into the bundle;桶一进浏览器包就在求值时炸。
+  { find: '@onething/core/plugins/request-channel', replacement: resolve(projectRoot, 'packages/core/plugins/request-channel.ts') },
   { find: '@onething/core/plugins', replacement: resolve(projectRoot, 'packages/core/plugins/index.ts') },
   { find: '@onething/core/session/storage', replacement: resolve(projectRoot, 'packages/core/session/storage/index.ts') },
   { find: '@onething/core/session', replacement: resolve(projectRoot, 'packages/core/session/index.ts') },

@@ -1,4 +1,7 @@
-import { describeNonSerializable } from '@onething/core/plugins'
+// 叶子路径,不走桶:@onething/core/plugins 的 index 会把 loader(node:url 的
+// pathToFileURL)整只拽进浏览器包,Vite externalize 之后运行即炸。
+// request-channel.ts 零依赖、纯逻辑,是 renderer 可以吃的最小单元。
+import { describeNonSerializable } from '@onething/core/plugins/request-channel'
 import type { ElectronAPI } from '@/types'
 import type { PlatformApi, PlatformCapabilities } from './types'
 
