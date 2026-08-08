@@ -2004,7 +2004,13 @@ async function handleGetActiveStreams(context: RouteContext): Promise<void> {
 
 function handleEvents(context: RouteContext): void {
   const sessionId = context.url.searchParams.get('sessionId') || '*'
-  const afterSeq = Number.parseInt(context.url.searchParams.get('after') || '', 10)
+  // Resume support for mobile/weak-network clients: explicit ?after=<seq> wins;
+  // the standard Last-Event-ID header (sent automatically by EventSource
+  // polyfills on reconnect) is the fallback. Both mean "events after this seq".
+  const afterParam = Number.parseInt(context.url.searchParams.get('after') || '', 10)
+  const lastEventIdValue = context.request.headers['last-event-id']
+  const lastEventIdHeader = Number.parseInt(typeof lastEventIdValue === 'string' ? lastEventIdValue : '', 10)
+  const afterSeq = Number.isFinite(afterParam) ? afterParam : lastEventIdHeader
   const options = Number.isFinite(afterSeq) ? { afterSeq } : undefined
   const unsubs: RuntimeUnsubscribe[] = []
 
@@ -2030,7 +2036,9 @@ function handleEvents(context: RouteContext): void {
 
   unsubs.push(context.runtime.events.subscribe(sessionId, (envelope: RuntimeEventEnvelope) => {
     coalescer.handleEvent(envelope as unknown as SessionEventEnvelope)
-    writeSse(context.response, 'session:event', envelope)
+    // Stamp the SSE id from the committed sequence so clients can resume
+    // with Last-Event-ID after a reconnect.
+    writeSse(context.response, 'session:event', envelope, envelope.sequence)
   }, options, context.requestContext))
 
   if (context.runtime.streams) {
@@ -2266,7 +2274,8 @@ function sendJson(response: ServerResponse, status: number, body: unknown, corsO
   response.end(JSON.stringify(body))
 }
 
-function writeSse(response: ServerResponse, eventName: string, payload: unknown): void {
+function writeSse(response: ServerResponse, eventName: string, payload: unknown, id?: number): void {
+  if (typeof id === 'number' && Number.isFinite(id)) response.write(`id: ${id}\n`)
   response.write(`event: ${eventName}\n`)
   response.write(`data: ${JSON.stringify(payload)}\n\n`)
 }

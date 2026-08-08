@@ -163,6 +163,62 @@ describe('createOnethingHttpServer', () => {
     })
   })
 
+  it('replays session events after Last-Event-ID and stamps SSE id fields', async () => {
+    let backendBus: { emit(sessionId: string, event: unknown): Promise<unknown> } | undefined
+    const serverRuntime = await createTestServerRuntime({
+      createBackend: async () => {
+        const backend = await createEchoServerBackend()
+        backendBus = backend.eventBus as unknown as typeof backendBus
+        return backend
+      },
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const created = await fetchJson(`${baseUrl(server)}/api/sessions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'sse resume target' }),
+    }) as { session?: { id?: string } }
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    // Commit two events before any client connects; replay must serve the gap.
+    await backendBus!.emit(sessionId!, {
+      type: 'stream:start',
+      assistantMessageId: 'assistant-1',
+      userMessageId: 'user-1',
+    })
+    await backendBus!.emit(sessionId!, { type: 'stream:aborted' })
+
+    // Learn the committed sequences via a full replay (?after=0).
+    const full = await fetch(`${baseUrl(server)}/api/sessions/${sessionId}/events?after=0`)
+    const fullReplay = await readUntil(full, text => text.includes('stream:aborted'))
+    const startSeq = sseIdFor(fullReplay, 'stream:start')
+    const abortedSeq = sseIdFor(fullReplay, 'stream:aborted')
+    expect(abortedSeq).toBeGreaterThan(startSeq)
+
+    // (a) Last-Event-ID alone resumes strictly after it → replay yields the next event.
+    const headerOnly = await fetch(`${baseUrl(server)}/api/sessions/${sessionId}/events`, {
+      headers: { 'last-event-id': String(startSeq) },
+    })
+    expect(headerOnly.headers.get('content-type')).toContain('text/event-stream')
+    const headerReplay = await readUntil(headerOnly, text => text.includes('event: session:event'))
+    expect(headerReplay).toContain(`id: ${abortedSeq}\n`)
+    expect(headerReplay).toContain('stream:aborted')
+    expect(headerReplay).not.toContain(`id: ${startSeq}\n`)
+
+    // (b) Explicit ?after= beats a stale Last-Event-ID header.
+    const queryWins = await fetch(
+      `${baseUrl(server)}/api/sessions/${sessionId}/events?after=${startSeq}`,
+      { headers: { 'last-event-id': String(abortedSeq) } },
+    )
+    const queryReplay = await readUntil(queryWins, text => text.includes('event: session:event'))
+    expect(queryReplay).toContain(`id: ${abortedSeq}\n`)
+  })
+
   it('routes proxy tests through the network runtime facade with owner context', async () => {
     const testProxy = vi.fn(async () => ({ success: false, error: 'Proxy is disabled.' }))
     const runtime = createOnethingRuntimeFacade({
@@ -4206,6 +4262,13 @@ async function readUntil(
   } finally {
     await reader.cancel().catch(() => {})
   }
+}
+
+/** Extracts the SSE id of the frame whose data mentions the given event type. */
+function sseIdFor(sseText: string, eventType: string): number {
+  const match = new RegExp(`id: (\\d+)\\nevent: session:event\\ndata: [^\\n]*${eventType}`).exec(sseText)
+  if (!match) throw new Error(`missing SSE frame for ${eventType}: ${sseText}`)
+  return Number(match[1])
 }
 
 async function readFor(response: Response, durationMs: number): Promise<string> {
