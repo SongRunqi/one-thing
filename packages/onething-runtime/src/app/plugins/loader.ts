@@ -12,7 +12,7 @@ import path from 'path'
 import { pluginLoadLabel } from '@onething/core/plugins'
 import { spawn } from 'child_process'
 import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/runtime/storage'
-import { pathExists } from '@onething/core/storage'
+import { pathExists, writeJsonFile } from '@onething/core/storage'
 import {
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,
@@ -28,6 +28,8 @@ import {
   loadCorePluginEntry,
   readPluginSettingsFile,
   scanCorePlugins,
+  getCorePluginConfigPath,
+  assertNotInNodeModules,
   setPluginConfigInSettings,
   setPluginEnabledWithAdapters,
   setPluginHealthInSettings,
@@ -133,12 +135,93 @@ export function getPluginFootprint(pluginId: string): CorePluginDataFootprint {
 }
 
 /** 插件自有配置的原始值(未校验);校验与默认值填充在 config.ts。 */
+/**
+ * 配置落盘位置的判别(§5.4 与 §7.1 的交叠):
+ * `plugins/<id>/` 里有 plugin.json = legacy 代码目录 —— 数据(含配置)不搬,
+ * 直到重装为 npm 形态;否则(纯数据家目录 / 内置插件 / 尚未写过数据的
+ * npm 插件)配置住 `plugins/<id>/config.json`。存储规则不按插件来源分叉,
+ * 只按这个判别分叉。
+ */
+export function isLegacyPluginCodeDir(pluginId: string): boolean {
+  return fs.existsSync(path.join(getPluginsDir(), pluginId, 'plugin.json'))
+}
+
+// ── §7.4 拆除闩 ──
+//
+// 卸载(归档)完成后到的写 = warn + 静默丢弃:config.ts 的 pendingConfigs
+// 合流定时器会晚到,而一次写就会 ensureDir 把刚归档的家目录复活成鬼目录。
+// 扫描里再现 = 已重装,闩自动解除(scanPlugins 里抬闩)。
+const demolishedPluginIds = new Set<string>()
+
+export function markPluginDemolished(pluginId: string): void {
+  demolishedPluginIds.add(pluginId)
+}
+
+export function isPluginDemolished(pluginId: string): boolean {
+  return demolishedPluginIds.has(pluginId)
+}
+
 export function readPluginConfig(pluginId: string): Record<string, unknown> {
-  return getPluginConfigFromSettings(readPluginSettings(), pluginId)
+  if (isLegacyPluginCodeDir(pluginId)) {
+    return getPluginConfigFromSettings(readPluginSettings(), pluginId)
+  }
+  const configPath = getCorePluginConfigPath(getPluginsDir(), pluginId)
+  if (fs.existsSync(configPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+      console.error(`[PluginLoader] config.json for "${pluginId}" is not a JSON object; treating it as empty`)
+    } catch (error) {
+      console.error(`[PluginLoader] Failed to read config for "${pluginId}" from its home dir:`, error)
+    }
+    return {}
+  }
+  // 惰性搬家(§7.2):新文件不在且中央有行 → 写新文件,从中央抹掉该行
+  // (中央文件只在有实际搬移时重写)。已拆的插件不重建家目录(§7.4)。
+  const central = getPluginConfigFromSettings(readPluginSettings(), pluginId)
+  if (Object.keys(central).length === 0) return {}
+  if (isPluginDemolished(pluginId)) return central
+  try {
+    assertNotInNodeModules(getPluginsDir(), configPath)
+    writeJsonFile(configPath, central)
+    writePluginSettings(setPluginConfigInSettings(readPluginSettings(), pluginId, null))
+  } catch (error) {
+    console.error(`[PluginLoader] Failed to migrate config for "${pluginId}" into its home dir:`, error)
+  }
+  return central
 }
 
 export function writePluginConfig(pluginId: string, config: Record<string, unknown> | null): void {
-  writePluginSettings(setPluginConfigInSettings(readPluginSettings(), pluginId, config))
+  if (isLegacyPluginCodeDir(pluginId)) {
+    writePluginSettings(setPluginConfigInSettings(readPluginSettings(), pluginId, config))
+    return
+  }
+  // §7.4 拆除闩。
+  if (isPluginDemolished(pluginId)) {
+    console.warn(
+      `[PluginLoader] Ignoring a config write for "${pluginId}" — `
+      + 'the plugin was uninstalled and its home directory has been archived.',
+    )
+    return
+  }
+  const configPath = getCorePluginConfigPath(getPluginsDir(), pluginId)
+  if (config === null) {
+    try {
+      fs.rmSync(configPath, { force: true })
+    } catch (error) {
+      console.error(`[PluginLoader] Failed to remove config for "${pluginId}":`, error)
+    }
+  } else {
+    assertNotInNodeModules(getPluginsDir(), configPath)
+    writeJsonFile(configPath, config)
+  }
+  // 中央残留行顺手抹掉 —— 有行才重写中央文件。
+  const settings = readPluginSettings()
+  if (settings.config?.[pluginId] !== undefined) {
+    writePluginSettings(setPluginConfigInSettings(settings, pluginId, null))
+  }
 }
 
 export function setPluginEnabled(pluginId: string, enabled: boolean): void {
@@ -231,13 +314,21 @@ export function invalidateDeclaredPanelIdsCache(): void {
 export function scanPlugins(): PluginDefinition[] {
   // desktop 用 npm-ledger 扫描语义(P1 拍板):以 plugins/package.json 为账
   // 扫 npm 插件,再补一轮 legacy 兼容扫描。server 等只投影的宿主不调这里。
-  return scanCorePlugins<PluginEntry>({
+  const definitions = scanCorePlugins<PluginEntry>({
     builtinPlugins: getBuiltinPlugins(),
     pluginsDir: getPluginsDir(),
     getEnabled: pluginId => getPluginEnabled(pluginId),
     appVersion: getPluginAppVersion(),
     scanMode: 'npm-ledger',
   }) as PluginDefinition[]
+  // 拆除闩的解除(§7.4):扫描里再现 = 已重装,闩自动放开。
+  if (demolishedPluginIds.size > 0) {
+    const found = new Set(definitions.map(def => def.id))
+    for (const id of [...demolishedPluginIds]) {
+      if (found.has(id)) demolishedPluginIds.delete(id)
+    }
+  }
+  return definitions
 }
 
 export const PLUGIN_NPM_INSTALL_TIMEOUT_MS = 120_000

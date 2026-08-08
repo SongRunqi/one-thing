@@ -53,11 +53,11 @@ describe('onDispose persistence through the real plugin API', () => {
     expect(failures.store, `store.set was rejected: ${String(failures.store)}`).toBeUndefined()
 
     // 真的落盘了 —— 不是"没抛错"就算数(KV 那侧只 console.error 不抛,
-    // 光看异常永远发现不了它在丢数据)。
-    const dataDir = path.join(storeRoot, 'plugin-data', 'closer')
-    expect(JSON.parse(fs.readFileSync(path.join(dataDir, 'final.json'), 'utf-8'))).toEqual({ closedAt: 1 })
+    // 光看异常永远发现不了它在丢数据)。P1 之后住家目录(§7.1)。
+    const homeDir = path.join(storeRoot, 'plugins', 'closer')
+    expect(JSON.parse(fs.readFileSync(path.join(homeDir, 'storage', 'final.json'), 'utf-8'))).toEqual({ closedAt: 1 })
 
-    const kvPath = path.join(dataDir, 'kv.json')
+    const kvPath = path.join(homeDir, 'kv.json')
     expect(fs.existsSync(kvPath), 'the KV write must reach disk, not just avoid throwing').toBe(true)
     expect(JSON.parse(fs.readFileSync(kvPath, 'utf-8'))).toMatchObject({ lastSeen: 42 })
   })
@@ -72,9 +72,9 @@ describe('onDispose persistence through the real plugin API', () => {
     expect(() => api.storage.writeJson('too-late.json', {})).toThrow()
     api.store.set('too-late', 1)
 
-    const dataDir = path.join(storeRoot, 'plugin-data', 'late-writer')
-    expect(fs.existsSync(path.join(dataDir, 'too-late.json'))).toBe(false)
-    const kvPath = path.join(dataDir, 'kv.json')
+    const homeDir = path.join(storeRoot, 'plugins', 'late-writer')
+    expect(fs.existsSync(path.join(homeDir, 'storage', 'too-late.json'))).toBe(false)
+    const kvPath = path.join(homeDir, 'kv.json')
     if (fs.existsSync(kvPath)) {
       expect(JSON.parse(fs.readFileSync(kvPath, 'utf-8'))).not.toHaveProperty('too-late')
     }

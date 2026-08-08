@@ -330,6 +330,12 @@ export interface CreateCorePluginStorageOptions {
    * 不给 = 旧布局(整个目录即 scratch),行为与 R4 一致。
    */
   homeRoot?: string
+  /**
+   * §7.4 拆除闩:卸载/停用完成后到的写 = warn + 静默丢弃 —— 晚到的写会
+   * ensureDir 把刚归档的家目录复活成鬼目录。纯读不受影响(不建目录、
+   * 不触发迁移)。
+   */
+  isDisposed?: () => boolean
 }
 
 export function createCorePluginStorage(options: CreateCorePluginStorageOptions): CorePluginStorage {
@@ -339,11 +345,26 @@ export function createCorePluginStorage(options: CreateCorePluginStorageOptions)
     ? getCorePluginScratchDir(homeRoot, pluginId)
     : getCorePluginDataDir(dataRoot, pluginId)
 
+  let demolitionWarned = false
+  const demolished = (): boolean => {
+    if (!options.isDisposed?.()) return false
+    if (!demolitionWarned) {
+      demolitionWarned = true
+      console.warn(
+        `[PluginStorage:${pluginId}] Ignoring storage writes after teardown — `
+        + 'late writes must not resurrect the archived home directory.',
+      )
+    }
+    return true
+  }
+
   /** 惰性迁移只做一次;失败不阻塞本次访问(旧物原地还在,下次再试)。 */
   let migrationDone = false
   const migrateOnce = (): void => {
     if (!homeRoot || migrationDone) return
     migrationDone = true
+    // 拆除闩:已拆的插件不做迁移 —— 迁移会重建家目录。
+    if (demolished()) return
     migratePluginDataToHome({ legacyDataRoot: dataRoot, homeRoot, pluginId })
   }
 
@@ -360,7 +381,8 @@ export function createCorePluginStorage(options: CreateCorePluginStorageOptions)
   }
 
   return {
-    dir: ensuredDir,
+    // 拆除闩:已拆的插件调 dir() 只拿路径不建目录(契约破例,注释即本行)。
+    dir: () => (demolished() ? dirPath() : ensuredDir()),
 
     readJson<T = unknown>(name: string, fallback?: T): T | undefined {
       migrateOnce()
@@ -394,6 +416,8 @@ export function createCorePluginStorage(options: CreateCorePluginStorageOptions)
     },
 
     writeJson(name: string, value: unknown): void {
+      // 拆除闩(§7.4):晚到的写静默丢弃,不重建家目录。
+      if (demolished()) return
       const safeName = assertSafePluginFileName(name)
       // 过线皆可序列化(宪法第 2 条)—— 写盘也是一条"线":一个 Map 落进 JSON
       // 会静默变成 `{}`,那是最难查的一类数据丢失。
@@ -629,6 +653,53 @@ export function findCorePluginDataOrphans(dataRoot: string, knownPluginIds: Iter
       }
     } catch (error) {
       console.warn(`[PluginStorage] Skipping unusable plugin-data entry "${entry.name}":`, error)
+    }
+  }
+
+  return orphans.sort((a, b) => a.pluginId.localeCompare(b.pluginId))
+}
+
+/**
+ * P1:`plugins/` 下的**家目录孤儿**。
+ *
+ * 家目录的"主"是码,不是目录本身:npm 形态的码在 node_modules(账 + 包),
+ * legacy 的码就在 `plugins/<id>/`(有 plugin.json)。所以家目录孤儿 =
+ * 无 plugin.json 且 id 不在存活集合里的纯数据目录。`legacy-backup` 自身
+ * 永远不是候选 —— 把归档目录归档进它自己是最难看的一种死循环。
+ *
+ * 调用方负责传**可信**的存活集合(账本不可信时整轮弃权,见 manager)。
+ */
+export function findCorePluginHomeOrphans(
+  pluginsDir: string,
+  alivePluginIds: Iterable<string>,
+): CorePluginDataOrphan[] {
+  if (!isDirectory(pluginsDir)) return []
+  const alive = new Set([...alivePluginIds].map(id => id.normalize('NFC').toLowerCase()))
+  const orphans: CorePluginDataOrphan[] = []
+
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(pluginsDir, { withFileTypes: true })
+  } catch (error) {
+    // 与 plugin-data 同一条:读失败不是"这里没有插件"。
+    console.error(`[PluginStorage] Cannot scan ${pluginsDir} for orphaned plugin homes:`, error)
+    return []
+  }
+
+  for (const entry of entries) {
+    try {
+      if (entry.name.startsWith('.')) continue
+      if (entry.name === 'node_modules' || entry.name === PLUGIN_DATA_LEGACY_BACKUP_DIR) continue
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
+      const dirPath = path.join(pluginsDir, entry.name)
+      // 有 plugin.json = legacy 代码目录,不是家目录 —— 死活由扫描语义判。
+      if (pathExists(path.join(dirPath, 'plugin.json'))) continue
+      assertSafePluginDirName(entry.name)
+      if (!alive.has(entry.name.normalize('NFC').toLowerCase())) {
+        orphans.push({ pluginId: entry.name, kind: 'directory' })
+      }
+    } catch (error) {
+      console.warn(`[PluginStorage] Skipping unusable plugins entry "${entry.name}":`, error)
     }
   }
 

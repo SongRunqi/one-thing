@@ -246,6 +246,7 @@ export {
   createCorePluginStorage,
   decidePluginOrphanArchive,
   findCorePluginDataOrphans,
+  findCorePluginHomeOrphans,
   getCorePluginConfigPath,
   getCorePluginDataDir,
   getCorePluginDataFootprint,

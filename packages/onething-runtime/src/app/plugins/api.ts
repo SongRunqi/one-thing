@@ -179,6 +179,11 @@ export function createPluginAPI(
   // FIFO 下它都排在插件回调**前面**。上一轮"挪到函数末尾"没有改变这一点。
   // 正确的做法是让它根本不参与排队:拆除流程 drain 完回调之后再显式关。
   const closeStore = () => store.dispose()
+  // §7.4 拆除闩(storage 侧):与 KV 同一个时机哲学 —— onDispose 里的
+  // api.storage.writeJson 是自然的收尾写法,不能提前闩;闩在拆除流程
+  // drain 完回调之后才落下(见 storeClosers 的注册)。
+  const storageGate = { demolished: false }
+  const closeStorage = () => { storageGate.demolished = true }
   // 拆除闸要能被 scheduler 看到,而 state 是 createCorePluginAPI 的返回值 ——
   // 用一个后填的引用把两者接上(register 只在调用时读它)。
   const pluginScheduler = createScopedPluginScheduler({
@@ -203,7 +208,11 @@ export function createPluginAPI(
   >({
     pluginId,
     store,
-    storage: createPluginStorage(pluginId),
+    // §7.4 拆除闩:卸载后晚到的 storage 写(合流定时器/在飞回调)不重建
+    // 刚归档的家目录。闩的时机与 KV 相同 —— 拆除 drain 完之后才落下。
+    storage: createPluginStorage(pluginId, {
+      isDisposed: () => storageGate.demolished,
+    }),
     // 声明先于代码:面板注册要跟 manifest 对得上,清单是权威。
     declaredPanelIds: options?.declaredPanelIds ?? getDeclaredPanelIds(pluginId),
     declaredUiSlots: options?.declaredUiSlots ?? getDeclaredUiSlots(pluginId),
@@ -354,8 +363,11 @@ export function createPluginAPI(
   })
 
   stateRef.current = result.state
-  // 拆除流程收尾时关 KV(见 disposePlugin)—— 不排进回调队列。
-  storeClosers.set(result.state, closeStore)
+  // 拆除流程收尾时关 storage 闩 + 关 KV(见 disposePlugin)—— 不排进回调队列。
+  storeClosers.set(result.state, () => {
+    closeStorage()
+    closeStore()
+  })
   return result
 }
 

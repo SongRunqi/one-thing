@@ -14,6 +14,8 @@ import {
   archiveCorePluginData,
   decidePluginOrphanArchive,
   findCorePluginDataOrphans,
+  findCorePluginHomeOrphans,
+  readPluginLedger,
   restoreCorePluginDataArchive,
   scanPluginSourceEntries,
 } from '@onething/core/plugins'
@@ -25,7 +27,9 @@ import {
   getPluginDataRoot,
   getPluginsDir,
   invalidateDeclaredPanelIdsCache,
+  isLegacyPluginCodeDir,
   loadPersistedPluginHealth,
+  markPluginDemolished,
   persistPluginHealth,
   readPluginConfig,
   removePluginSourceDir,
@@ -95,7 +99,14 @@ function createHost(): CorePluginManagerHost<
     isSurfaceDegraded: isPluginSurfaceDegraded,
     describeDegradedSurface: describePluginSurfaceDegradation,
     // ── R4:数据目录与卸载 ──
-    archivePluginData: pluginId => archiveCorePluginData(getPluginDataRoot(), pluginId),
+    archivePluginData: pluginId => {
+      // §7.4:归档完成后到的写(config/KV/storage)= warn + 丢弃,不重建家目录。
+      markPluginDemolished(pluginId)
+      // 归档目标(P1 适配):npm 形态的家在 plugins/<id>/;legacy 代码目录的
+      // 数据仍在 plugin-data/<id>/(判别顺序:plugin.json 在场 = 代码目录)。
+      const root = isLegacyPluginCodeDir(pluginId) ? getPluginDataRoot() : getPluginsDir()
+      return archiveCorePluginData(root, pluginId)
+    },
     removePluginSource: async (definition) => {
       // 源目录没了,清单也就变了 —— 面板声明缓存必须跟着失效。
       invalidateDeclaredPanelIdsCache()
@@ -113,8 +124,10 @@ function createHost(): CorePluginManagerHost<
       invalidatePluginConfigCache(pluginId)
       clearPluginRuntimeHealth(pluginId)
     },
-    restorePluginDataArchive: (pluginId, archivePath) =>
-      restoreCorePluginDataArchive(getPluginDataRoot(), pluginId, archivePath),
+    restorePluginDataArchive: (pluginId, archivePath) => {
+      const root = isLegacyPluginCodeDir(pluginId) ? getPluginDataRoot() : getPluginsDir()
+      return restoreCorePluginDataArchive(root, pluginId, archivePath)
+    },
     // ── P1:npm 生命周期(裁决 8:v1 依赖本机 npm)──
     installPluginPackage: input => installPluginPackage(getPluginsDir(), input),
     readInstalledPluginSpec: pkg => readInstalledPluginSpec(getPluginsDir(), pkg),
@@ -124,36 +137,57 @@ function createHost(): CorePluginManagerHost<
       const dataRoot = getPluginDataRoot()
       const orphans = findCorePluginDataOrphans(dataRoot, knownPluginIds)
 
+      // 家目录孤儿(P1):plugins/<id>/ 无 plugin.json = 纯数据家目录,它的
+      // "主"是账 + 包。账不可信 = 整轮弃权 —— 拿空账当真会把全部 npm 插件
+      // 的家目录判成孤儿(与扫描不可信同一条安全闸)。
+      const ledger = readPluginLedger(getPluginsDir())
+      let homeOrphans: ReturnType<typeof findCorePluginHomeOrphans> = []
+      if (ledger.trusted) {
+        homeOrphans = findCorePluginHomeOrphans(
+          getPluginsDir(),
+          scanPlugins().map(definition => definition.id),
+        )
+      } else {
+        console.warn(`[PluginManager] ${ledger.reason}; skipping the plugin-home orphan scan this round.`)
+      }
+
       // 自动归档的安全闸:扫描不可信 / 一个用户插件都没有 / 候选超阈值,
       // 一律不动手,改为请人来看。误归档一次就是把用户的数据从插件脚下搬走。
-      const decision = decidePluginOrphanArchive({ orphans, scanTrusted, userPluginCount })
+      const decision = decidePluginOrphanArchive({
+        orphans: [...orphans, ...homeOrphans],
+        scanTrusted: scanTrusted && ledger.trusted,
+        userPluginCount,
+      })
       if (!decision.proceed) {
         console.warn(
-          `[PluginManager] Refusing to auto-archive ${orphans.length} orphan plugin data candidate(s) `
-          + `(${orphans.map(orphan => orphan.pluginId).join(', ')}): ${decision.reason}. `
+          `[PluginManager] Refusing to auto-archive ${orphans.length + homeOrphans.length} orphan plugin data candidate(s) `
+          + `(${[...orphans, ...homeOrphans].map(orphan => orphan.pluginId).join(', ')}): ${decision.reason}. `
           + 'Nothing was moved; please check the plugins directory manually.',
         )
         return []
       }
 
       const archived: string[] = []
-      for (const orphan of orphans) {
-        const result = archiveCorePluginData(dataRoot, orphan.pluginId)
+      const archiveOne = (root: string, pluginId: string, kind: string): void => {
+        const result = archiveCorePluginData(root, pluginId)
         if (result.archived) {
-          archived.push(orphan.pluginId)
+          archived.push(pluginId)
           // 孤儿的 plugin-settings 三键也是它的足迹 —— 数据搬走了键还留着,
           // 下一个同名插件装上来会继承一具前世的启停位与配置。
-          clearPluginSettingsKeys(orphan.pluginId)
-          invalidatePluginConfigCache(orphan.pluginId)
-          clearPluginRuntimeHealth(orphan.pluginId)
+          markPluginDemolished(pluginId)
+          clearPluginSettingsKeys(pluginId)
+          invalidatePluginConfigCache(pluginId)
+          clearPluginRuntimeHealth(pluginId)
           console.warn(
-            `[PluginManager] "${orphan.pluginId}" has plugin data but is no longer installed `
-            + `(${orphan.kind}); archived to ${result.archivePath}`,
+            `[PluginManager] "${pluginId}" has plugin data but is no longer installed `
+            + `(${kind}); archived to ${result.archivePath}`,
           )
         } else if (result.error) {
-          console.error(`[PluginManager] Failed to archive orphaned data for "${orphan.pluginId}": ${result.error}`)
+          console.error(`[PluginManager] Failed to archive orphaned data for "${pluginId}": ${result.error}`)
         }
       }
+      for (const orphan of orphans) archiveOne(dataRoot, orphan.pluginId, orphan.kind)
+      for (const orphan of homeOrphans) archiveOne(getPluginsDir(), orphan.pluginId, `home ${orphan.kind}`)
       return archived
     },
   }
