@@ -644,6 +644,12 @@ export function planAgentLoopTools<TTool extends AgentSourceToolDefinition>(inpu
   toolLoadingEnabled: boolean
   allEnabledTools: TTool[]
   mcpRouterTool?: AgentSourceToolDefinition | null
+  /**
+   * 决策点 #1 hybrid: the mode-resolved MCP tool definitions (flat array OR
+   * the single router, mutually exclusive upstream). Takes precedence over
+   * the legacy singular `mcpRouterTool` when provided.
+   */
+  mcpTools?: readonly AgentSourceToolDefinition[]
   toolSettings?: CoreAgentLoopToolSettings
   /**
    * Per-agent tool allowlist (tool ids). null/undefined = no restriction.
@@ -658,14 +664,15 @@ export function planAgentLoopTools<TTool extends AgentSourceToolDefinition>(inpu
     ? input.allEnabledTools.filter(tool =>
         !tool.id.startsWith('mcp:') && (!allowed || allowed.has(tool.id)))
     : []
-  const mcpRouterToolEnabled = Boolean(
-    input.toolLoadingEnabled &&
-    input.mcpRouterTool &&
-    input.toolSettings?.tools?.[input.mcpRouterTool.id]?.enabled !== false &&
-    (!allowed || allowed.has(input.mcpRouterTool.id)),
-  )
-  const mcpToolDefinitions = mcpRouterToolEnabled && input.mcpRouterTool
-    ? agentToolDefinitionsFromSourceTools([input.mcpRouterTool])
+  const mcpCandidates: readonly AgentSourceToolDefinition[] =
+    input.mcpTools ?? (input.mcpRouterTool ? [input.mcpRouterTool] : [])
+  const visibleMCPTools = input.toolLoadingEnabled
+    ? mcpCandidates.filter(tool =>
+        input.toolSettings?.tools?.[tool.id]?.enabled !== false
+        && (!allowed || allowed.has(tool.id)))
+    : []
+  const mcpToolDefinitions = visibleMCPTools.length > 0
+    ? agentToolDefinitionsFromSourceTools(visibleMCPTools)
     : {}
   const hasTools = Boolean(
     input.toolLoadingEnabled &&

@@ -15,7 +15,9 @@ import {
   mcpConnectionTimeoutMessage,
   mcpConnectTimeoutMs,
   mcpToolCallTimeoutMessage,
+  mcpToolToCoreToolDefinition,
   mergeMCPEnvironment,
+  planJsonSchemaValidation,
   normalizeMCPPromptInfos,
   normalizeMCPPromptMessages,
   normalizeMCPResourceInfos,
@@ -309,6 +311,21 @@ describe('core MCP client state helpers', () => {
       logMessage: 'Connecting via SSE: https://example.test/mcp',
     })
 
+    expect(buildMCPTransportPlan({
+      id: 'http',
+      name: 'HTTP',
+      enabled: true,
+      transport: 'http',
+      url: 'https://example.test/mcp',
+      headers: { Authorization: 'Bearer token' },
+    }, {})).toEqual({
+      transport: 'http',
+      url: 'https://example.test/mcp',
+      headers: { Authorization: 'Bearer token' },
+      timeoutMs: 30000,
+      logMessage: 'Connecting via Streamable HTTP: https://example.test/mcp',
+    })
+
     expect(() => buildMCPTransportPlan({
       ...config,
       command: undefined,
@@ -319,6 +336,12 @@ describe('core MCP client state helpers', () => {
       enabled: true,
       transport: 'sse',
     }, {})).toThrow('URL is required for SSE transport')
+    expect(() => buildMCPTransportPlan({
+      id: 'http',
+      name: 'HTTP',
+      enabled: true,
+      transport: 'http',
+    }, {})).toThrow('URL is required for Streamable HTTP transport')
   })
 
   it('refreshes MCP capabilities through an injected client adapter', async () => {
@@ -642,12 +665,17 @@ describe('core MCP client state helpers', () => {
     await expect(callMCPToolWithTimeout({
       async callTool(input) {
         expect(input).toEqual({ name: 'search', arguments: { query: 'core' } })
-        return { content: [{ type: 'text', text: 'ok' }], isError: false }
+        return {
+          content: [{ type: 'text', text: 'ok' }],
+          isError: false,
+          structuredContent: { hits: 3 },
+        }
       },
     }, 'search', { query: 'core' }, 1000)).resolves.toEqual({
       success: true,
       content: [{ type: 'text', text: 'ok' }],
       isError: false,
+      structuredContent: { hits: 3 },
     })
 
     await expect(callMCPToolWithTimeout({
@@ -658,6 +686,108 @@ describe('core MCP client state helpers', () => {
       success: false,
       error: 'boom',
     })
+
+    // Timeout drives an ABORT (not a local race): the in-flight request sees
+    // the signal, and the caller gets the timeout message — the SDK then
+    // tells the server (cancelled notification / stream abort) so the
+    // serialized queue never releases onto a live request.
+    let observedSignal: AbortSignal | undefined
+    const timedOut = await callMCPToolWithTimeout({
+      callTool(_input, options) {
+        observedSignal = options?.signal
+        // Real SDK behavior on abort: the request rejects.
+        return new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(options.signal?.reason))
+        })
+      },
+    }, 'slow-tool', {}, 20)
+    expect(timedOut.success).toBe(false)
+    expect(timedOut.error).toContain('slow-tool')
+    expect(timedOut.error).toContain('timed out')
+    expect(observedSignal?.aborted).toBe(true)
+  })
+
+  it('flags uninvited MCP task handles instead of stringifying them (P2-4)', async () => {
+    // Result carrying a `task` object: readable notice prepended, isError.
+    const withTask = await callMCPToolWithTimeout({
+      async callTool() {
+        return {
+          content: [{ type: 'text', text: 'accepted' }],
+          task: { taskId: 'task-123', status: 'working', statusMessage: 'grinding' },
+        }
+      },
+    }, 'slow-op', {}, 1000)
+    expect(withTask.isError).toBe(true)
+    expect(withTask.content?.[0]?.type).toBe('text')
+    expect(withTask.content?.[0]?.text).toContain('task-123')
+    expect(withTask.content?.[0]?.text).toContain('working')
+    expect(withTask.content?.[0]?.text).toContain('accepted-but-unresolved')
+    // The server's own content is preserved after the notice.
+    expect(withTask.content?.[1]?.text).toBe('accepted')
+
+    // The `_meta` related-task marker alone triggers the same defense.
+    const withMeta = await callMCPToolWithTimeout({
+      async callTool() {
+        return {
+          content: [{ type: 'text', text: 'queued' }],
+          _meta: { 'io.modelcontextprotocol/related-task': { taskId: 'task-456' } },
+        }
+      },
+    }, 'slow-op', {}, 1000)
+    expect(withMeta.isError).toBe(true)
+    expect(withMeta.content?.[0]?.text).toContain('task-456')
+
+    // Ordinary results are untouched.
+    const plain = await callMCPToolWithTimeout({
+      async callTool() {
+        return { content: [{ type: 'text', text: 'done' }] }
+      },
+    }, 'fast-op', {}, 1000)
+    expect(plain.isError).toBe(false)
+    expect(plain.content?.[0]?.text).toBe('done')
+  })
+
+  it('marks unsupported schema constructs instead of silently degrading (P2-3)', () => {
+    const definition = mcpToolToCoreToolDefinition({
+      serverId: 'srv',
+      name: 'fancy',
+      inputSchema: {
+        type: 'object',
+        required: ['mode'],
+        properties: {
+          mode: { type: 'string', description: 'plain' },
+          ref: { $ref: '#/$defs/thing' } as never,
+          choice: { anyOf: [{ type: 'string' }, { type: 'number' }] } as never,
+          union: { type: ['string', 'number'] } as never,
+        },
+      },
+    })
+    const byName = Object.fromEntries(definition.parameters.map(p => [p.name, p]))
+    expect(byName.mode?.description).toBe('plain')
+    expect(byName.ref?.description).toContain('schema caveat')
+    expect(byName.ref?.description).toContain('$ref')
+    expect(byName.choice?.description).toContain('anyOf')
+    expect(byName.union?.description).toContain('union type')
+
+    // The validation plan for a $ref-only schema is passthrough JSON, not a
+    // fake string.
+    const plan = planJsonSchemaValidation({ $ref: '#/$defs/thing' } as never)
+    expect(plan.kind).toBe('json')
+    expect(plan.caveats?.[0]).toContain('$ref')
+    // Same for combinator-only schemas.
+    expect(planJsonSchemaValidation({ anyOf: [{ type: 'string' }] } as never).kind).toBe('json')
+  })
+
+  it('maps -32602 to a readable resource-not-found error', async () => {
+    const result = await readMCPResource({
+      async readResource() {
+        const error = new Error('MCP error -32602: Invalid params') as Error & { code: number }
+        error.code = -32602
+        throw error
+      },
+    }, 'file:///missing.txt')
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Resource not found: file:///missing.txt')
 
     await expect(readMCPResource({
       async readResource(input) {

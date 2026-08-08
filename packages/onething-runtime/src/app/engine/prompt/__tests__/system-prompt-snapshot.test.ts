@@ -71,6 +71,7 @@ const mocks = vi.hoisted(() => ({
   initializeAsyncTools: vi.fn(async () => undefined),
   setInitContext: vi.fn(),
   getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
+  getMCPToolDefinitionsForModel: vi.fn<() => ToolDefinition[]>(() => []),
   createAgentProviderFromRuntime: vi.fn(() => deepseekProviderWithCapabilities(deepseekTextCapabilities)),
   resolveAgentModelCapabilities: vi.fn(async (provider: AgentProvider) => provider.capabilities),
   agentSupportsTools: vi.fn((capabilities: AgentModelCapabilities) => capabilities.capabilities.includes('tool-calls')),
@@ -112,6 +113,7 @@ vi.mock('../../stream/codex-native-tools.js', () => ({
 
 vi.mock('../../../mcp/index.js', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
+  getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
 
 vi.mock('../../../providers/agent-runtime.js', () => ({
@@ -213,7 +215,7 @@ describe('system prompt snapshot agent-loop route', () => {
       deepseekProviderWithCapabilities(deepseekToolCapabilities),
     )
     mocks.getEnabledToolsAsync.mockResolvedValueOnce([readToolDefinition])
-    mocks.getMCPRouterToolDefinition.mockReturnValueOnce({
+    mocks.getMCPToolDefinitionsForModel.mockReturnValueOnce([{
       id: 'mcp_search',
       name: 'MCP Search',
       description: 'Search MCP tools',
@@ -222,7 +224,7 @@ describe('system prompt snapshot agent-loop route', () => {
       category: 'custom',
       source: 'mcp',
       parameters: [],
-    })
+    }])
 
     const snapshot = await buildSystemPromptSnapshot('s1')
 

@@ -240,7 +240,19 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
 
     return runMCPConnectedClientOperation(this.client, async client => {
       logger?.log?.(`[MCP:${this.id}] Calling tool: ${toolName}`, args)
-      const result = await callMCPToolWithTimeout(client, toolName, args, timeoutMs)
+      // P2-5: hand the SDK our cached definition so a 2026-07-28 Streamable
+      // HTTP connection mirrors the spec-required Mcp-Method/Mcp-Name
+      // (Mcp-Param-*) headers; legacy connections ignore it.
+      const known = this._state.tools.find(tool => tool.name === toolName)
+      const result = await callMCPToolWithTimeout(
+        client,
+        toolName,
+        args,
+        timeoutMs,
+        known
+          ? { name: known.name, description: known.description, inputSchema: known.inputSchema }
+          : undefined,
+      )
       logger?.log?.(`[MCP:${this.id}] Tool result:`, result)
       if (!result.success) {
         logger?.error?.(`[MCP:${this.id}] Tool call failed:`, result.error)

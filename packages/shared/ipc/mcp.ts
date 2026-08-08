@@ -1,72 +1,36 @@
 /**
  * MCP Module
  * MCP (Model Context Protocol) server-related type definitions for IPC communication
+ *
+ * Base types (`MCPTransportType`, `MCPServerConfig`, …) are re-exported from
+ * `@onething/core/mcp` — the engine is the single source of truth. Only the
+ * IPC request/response envelopes are defined locally here. Extend transports
+ * in `packages/core/mcp/types.ts` and every layer follows.
  */
 
-import type { JsonArray, JsonObject, JsonSchemaObject, JsonValue } from '../json.js'
+import type { JsonArray, JsonObject, JsonValue } from '../json.js'
+import type { CoreMCPProbeResult, MCPToolCallResult } from '@onething/core/mcp'
 
-// MCP related types
-export type MCPTransportType = 'stdio' | 'sse'
+export type {
+  MCPConnectionStatus,
+  MCPPromptInfo,
+  MCPResourceInfo,
+  MCPServerConfig,
+  MCPServerState,
+  MCPSettings,
+  MCPToolCallRequest,
+  MCPToolCallResult,
+  MCPToolInfo,
+  MCPTransportType,
+} from '@onething/core/mcp'
 
-export interface MCPServerConfig {
-  id: string
-  name: string
-  transport: MCPTransportType
-  enabled: boolean
-  command?: string
-  args?: string[]
-  env?: Record<string, string>
-  cwd?: string
-  url?: string
-  headers?: Record<string, string>
-}
-
-export type MCPConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
-
-export interface MCPToolInfo {
-  name: string
-  description?: string
-  inputSchema: {
-    type: 'object'
-    properties?: Record<string, JsonSchemaObject>
-    required?: string[]
-  }
-  serverId: string
-}
-
-export interface MCPResourceInfo {
-  uri: string
-  name: string
-  description?: string
-  mimeType?: string
-  serverId: string
-}
-
-export interface MCPPromptInfo {
-  name: string
-  description?: string
-  arguments?: Array<{
-    name: string
-    description?: string
-    required?: boolean
-  }>
-  serverId: string
-}
-
-export interface MCPServerState {
-  config: MCPServerConfig
-  status: MCPConnectionStatus
-  error?: string
-  tools: MCPToolInfo[]
-  resources: MCPResourceInfo[]
-  prompts: MCPPromptInfo[]
-  connectedAt?: number
-}
-
-export interface MCPSettings {
-  enabled: boolean
-  servers: MCPServerConfig[]
-}
+import type {
+  MCPServerConfig,
+  MCPServerState,
+  MCPToolInfo,
+  MCPResourceInfo,
+  MCPPromptInfo,
+} from '@onething/core/mcp'
 
 // MCP IPC Request/Response types
 export interface MCPGetServersResponse {
@@ -123,6 +87,24 @@ export interface MCPDisconnectServerResponse {
   error?: string
 }
 
+export interface MCPLogoutServerRequest {
+  serverId: string
+}
+
+export interface MCPLogoutServerResponse {
+  success: boolean
+  error?: string
+}
+
+/**
+ * P2-2 preflight probe: dry-run a candidate config before adding it.
+ */
+export interface MCPProbeServerRequest {
+  config: MCPServerConfig
+}
+
+export type MCPProbeServerResponse = CoreMCPProbeResult
+
 export interface MCPRefreshServerRequest {
   serverId: string
 }
@@ -147,12 +129,7 @@ export interface MCPCallToolRequest {
 
 export interface MCPCallToolResponse {
   success: boolean
-  content?: Array<{
-    type: 'text' | 'image' | 'resource'
-    text?: string
-    data?: string
-    mimeType?: string
-  }>
+  content?: MCPToolCallResult['content']
   error?: string
   isError?: boolean
 }

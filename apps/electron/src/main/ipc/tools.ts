@@ -34,7 +34,7 @@ import {
 	setInitContext,
 	initializeAsyncTools,
 } from "@onething/app/tools/index.js";
-import { getMCPRouterToolDefinition } from "@onething/app/mcp/index.js";
+import { getMCPToolDefinitionsForModel } from "@onething/app/mcp/index.js";
 import {
 	listBackgroundJobs,
 	stopBackgroundJob,
@@ -65,7 +65,7 @@ export function registerToolHandlers() {
 				getSessionsList: () => store.getSessionsList(),
 				getSession: (sessionId) => store.getSession(sessionId),
 				getAllToolsAsync,
-				getMCPRouterToolDefinition,
+				getMCPToolDefinitions: getMCPToolDefinitionsForModel,
 				setInitContext: (context) =>
 					setInitContext(context as Parameters<typeof setInitContext>[0]),
 				cwd: () => process.cwd(),

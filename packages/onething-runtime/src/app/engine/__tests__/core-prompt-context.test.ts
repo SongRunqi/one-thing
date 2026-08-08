@@ -255,7 +255,7 @@ describe('core prompt context helpers', () => {
       getSkills: () => [skill],
       initializeTools,
       getEnabledTools: () => [builtinTool],
-      getMCPRouterTool: () => mcpRouterTool,
+      getMCPToolDefinitions: () => [mcpRouterTool],
       sourceToolsToModelDefinitions: tools => Object.fromEntries(tools.map(tool => [
         tool.id,
         {

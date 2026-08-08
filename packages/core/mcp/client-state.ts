@@ -58,7 +58,7 @@ export type CoreMCPTransportPlan =
       logMessage: string
     }
   | {
-      transport: 'sse'
+      transport: 'sse' | 'http'
       url: string
       headers?: Record<string, string>
       timeoutMs: number
@@ -69,7 +69,23 @@ export interface CoreMCPClientOperations {
   listTools(): Promise<{ tools?: unknown }>
   listResources(): Promise<{ resources?: unknown }>
   listPrompts(): Promise<{ prompts?: unknown }>
-  callTool(input: { name: string; arguments: JsonObject }): Promise<unknown>
+  callTool(
+    input: { name: string; arguments: JsonObject },
+    options?: {
+      signal?: AbortSignal
+      /**
+       * The caller's cached definition of this tool (P2-5): on a 2026-07-28
+       * Streamable HTTP connection the SDK mirrors it into the spec-required
+       * `Mcp-Method`/`Mcp-Name` (and `Mcp-Param-*`) headers and uses its
+       * outputSchema to validate the result. Legacy connections ignore it.
+       */
+      toolDefinition?: {
+        name: string
+        description?: string
+        inputSchema?: unknown
+      }
+    },
+  ): Promise<unknown>
   readResource(input: { uri: string }): Promise<{ contents?: unknown }>
   getPrompt(input: { name: string; arguments?: Record<string, string> }): Promise<{ messages?: unknown }>
 }
@@ -85,6 +101,13 @@ export interface CoreMCPConnectAdapters<TClient, TTransport> {
   createClient(): TClient
   connectClient(client: TClient, transport: TTransport): Promise<void>
   refreshCapabilities(serverId: string, client: TClient, logger?: CoreMCPLogger): Promise<CoreMCPRefreshCapabilitiesResult>
+  /**
+   * Read the protocol revision the SDK negotiated for this connection
+   * (`2026-07-28`, `2025-11-25`, …). Optional — hosts on the v2 MCP client
+   * wire `client.getNegotiatedProtocolVersion()` here so the result lands in
+   * `MCPServerState.protocolVersion` for the UI to show.
+   */
+  getNegotiatedProtocolVersion?(client: TClient): string | undefined
   onStateChange?: (state: MCPServerState) => void
   logger?: CoreMCPLogger
   now?: () => number
@@ -212,6 +235,7 @@ export function markMCPServerDisconnected(state: MCPServerState): MCPServerState
     resources: [],
     prompts: [],
     connectedAt: undefined,
+    protocolVersion: undefined,
   }
 }
 
@@ -224,7 +248,9 @@ export function markMCPServerError(state: MCPServerState, error: unknown): MCPSe
 }
 
 export function mcpConnectTimeoutMs(transport: MCPTransportType): number {
-  return transport === 'sse' ? 30000 : 60000
+  // Local stdio processes may cold-start (npx download); remote transports
+  // (SSE legacy, Streamable HTTP) get the shorter network budget.
+  return transport === 'stdio' ? 60000 : 30000
 }
 
 export function mcpConnectionTimeoutMessage(timeoutMs: number): string {
@@ -325,15 +351,16 @@ export function buildMCPTransportPlan(
   }
 
   const { url, headers } = config
+  const transport = config.transport // 'sse' | 'http'
   if (!url) {
-    throw new Error('URL is required for SSE transport')
+    throw new Error(`URL is required for ${transport === 'http' ? 'Streamable HTTP' : 'SSE'} transport`)
   }
   return {
-    transport: 'sse',
+    transport,
     url,
     headers,
     timeoutMs,
-    logMessage: `Connecting via SSE: ${url}`,
+    logMessage: `Connecting via ${transport === 'http' ? 'Streamable HTTP' : 'SSE'}: ${url}`,
   }
 }
 
@@ -370,11 +397,13 @@ export async function connectMCPClientWithAdapters<TClient, TTransport>(
     )
 
     const capabilities = await adapters.refreshCapabilities(serverId, client, logger)
+    const protocolVersion = adapters.getNegotiatedProtocolVersion?.(client)
     state = markMCPServerConnected({
       ...state,
       tools: capabilities.tools,
       resources: capabilities.resources,
       prompts: capabilities.prompts,
+      protocolVersion,
     }, (adapters.now ?? Date.now)())
     adapters.onStateChange?.(state)
 
@@ -391,6 +420,113 @@ export async function connectMCPClientWithAdapters<TClient, TTransport>(
     adapters.onStateChange?.(state)
     logger.error?.(`[MCP:${serverId}] Connection failed:`, error)
     throw error
+  }
+}
+
+/**
+ * P2-2 preflight probe ("server/discover" pre-check): connect a THROWAWAY
+ * client to a candidate server and report what it actually is — negotiated
+ * protocol revision, server identity, advertised capabilities — instead of
+ * the old "add it and see". UnsupportedProtocolVersionError is parsed into
+ * a structured `requiredProtocol` so the UI can say "此服务器要求协议 X".
+ * State stores are untouched: nothing here persists anything.
+ */
+export interface CoreMCPProbeAdapters<TClient, TTransport> {
+  createTransport(plan: CoreMCPTransportPlan): TTransport | Promise<TTransport>
+  createClient(): TClient
+  connectClient(client: TClient, transport: TTransport): Promise<void>
+  closeClient(client: TClient): Promise<void>
+  closeTransport(transport: TTransport): Promise<void>
+  getNegotiatedProtocolVersion?(client: TClient): string | undefined
+  getServerInfo?(client: TClient): { name?: string; version?: string } | undefined
+  getServerCapabilities?(client: TClient): unknown
+}
+
+export interface CoreMCPProbeResult {
+  ok: boolean
+  protocolVersion?: string
+  serverName?: string
+  serverVersion?: string
+  /** Advertised capability surface, e.g. ['tools(listChanged)','resources']. */
+  capabilities?: string[]
+  error?: string
+  /** Set when the server demands a protocol revision we cannot speak. */
+  requiredProtocol?: string
+  /** Set when the server demands OAuth (the 401 path primed the flow). */
+  authRequired?: boolean
+}
+
+const MCP_PROBE_TIMEOUT_MS = 15_000
+
+function summarizeMCPProbeCapabilities(capabilities: unknown): string[] | undefined {
+  if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities)) return undefined
+  const summary: string[] = []
+  for (const [key, value] of Object.entries(capabilities as Record<string, unknown>)) {
+    if (value && typeof value === 'object' && !Array.isArray(value) && (value as { listChanged?: unknown }).listChanged === true) {
+      summary.push(`${key}(listChanged)`)
+    } else {
+      summary.push(key)
+    }
+  }
+  return summary.length > 0 ? summary : undefined
+}
+
+export async function probeMCPServerWithAdapters<TClient, TTransport>(
+  config: MCPServerConfig,
+  baseEnv: Record<string, string | undefined>,
+  adapters: CoreMCPProbeAdapters<TClient, TTransport>,
+  logger: CoreMCPLogger = console,
+): Promise<CoreMCPProbeResult> {
+  let client: TClient | undefined
+  let transport: TTransport | undefined
+  try {
+    const plan = buildMCPTransportPlan(config, baseEnv)
+    transport = await adapters.createTransport(plan)
+    client = adapters.createClient()
+    await withMCPTimeout(
+      adapters.connectClient(client, transport),
+      MCP_PROBE_TIMEOUT_MS,
+      mcpConnectionTimeoutMessage(MCP_PROBE_TIMEOUT_MS),
+    )
+
+    const serverInfo = adapters.getServerInfo?.(client)
+    return {
+      ok: true,
+      protocolVersion: adapters.getNegotiatedProtocolVersion?.(client),
+      serverName: serverInfo?.name,
+      serverVersion: serverInfo?.version,
+      capabilities: summarizeMCPProbeCapabilities(adapters.getServerCapabilities?.(client)),
+    }
+  } catch (error) {
+    const name = error && typeof error === 'object' ? (error as { name?: unknown }).name : undefined
+    const message = errorMessage(error)
+    if (name === 'UnsupportedProtocolVersionError') {
+      const data = error && typeof error === 'object'
+        ? (error as { data?: { supportedVersions?: unknown } }).data
+        : undefined
+      const supported = Array.isArray(data?.supportedVersions)
+        ? data.supportedVersions.filter((v): v is string => typeof v === 'string')
+        : []
+      return {
+        ok: false,
+        error: message,
+        requiredProtocol: supported[0] ?? message,
+      }
+    }
+    if (name === 'UnauthorizedError' || /unauthorized/i.test(message)) {
+      // The OAuth flow has been primed by the transport already — a probe
+      // answering "login first" is a SUCCESS of the preflight's real job.
+      return { ok: false, error: message, authRequired: true }
+    }
+    logger.warn?.(`[MCP:${config.id}] Probe failed:`, error)
+    return { ok: false, error: message }
+  } finally {
+    if (client) {
+      try { await adapters.closeClient(client) } catch { /* probe best-effort */ }
+    }
+    if (transport) {
+      try { await adapters.closeTransport(transport) } catch { /* probe best-effort */ }
+    }
   }
 }
 
@@ -577,16 +713,62 @@ export function normalizeMCPPromptArguments(args: unknown): MCPPromptInfo['argum
 }
 
 export function normalizeMCPToolCallSuccessResult(raw: RawMCPToolCallResult | unknown): MCPToolCallResult {
-  const record = raw && typeof raw === 'object'
-    ? raw as RawMCPToolCallResult
+  const record: Record<string, unknown> = raw && typeof raw === 'object'
+    ? raw as Record<string, unknown>
     : {}
+  const structuredContent = toJsonValue((record as { structuredContent?: unknown }).structuredContent)
+  const content = normalizeMCPContent(Array.isArray(record.content)
+    ? record.content.filter((item): item is object => item !== null && typeof item === 'object')
+    : undefined)
+  // P2-4 Tasks defense: see mcpTaskHandleNotice below.
+  const taskNotice = mcpTaskHandleNotice(record)
   return {
     success: true,
-    content: normalizeMCPContent(Array.isArray(record.content)
-      ? record.content.filter((item): item is object => item !== null && typeof item === 'object')
-      : undefined),
-    isError: record.isError === true,
+    content: taskNotice
+      ? [{ type: 'text' as const, text: taskNotice }, ...(content ?? [])]
+      : content,
+    ...(structuredContent !== undefined ? { structuredContent } : {}),
+    isError: taskNotice ? true : record.isError === true,
   }
+}
+
+/**
+ * P2-4 Tasks defense: a server may answer `tools/call` with an uninvited
+ * task handle — either a `task` object on the result or the
+ * `io.modelcontextprotocol/related-task` marker in `_meta`. Without this
+ * guard the handle was silently dropped (or worse, JSON-stringified into
+ * the transcript), and the model believed the call had FINISHED when it
+ * had only been ACCEPTED. Render a readable notice instead, marked as an
+ * error so nothing downstream treats the outcome as final.
+ */
+export function mcpTaskHandleNotice(record: Record<string, unknown>): string | undefined {
+  const task = record.task
+  const taskFromResult = task && typeof task === 'object' && !Array.isArray(task)
+    ? (task as { taskId?: unknown; status?: unknown; statusMessage?: unknown })
+    : undefined
+  const meta = record._meta
+  const relatedTask = meta && typeof meta === 'object' && !Array.isArray(meta)
+    ? (meta as Record<string, unknown>)['io.modelcontextprotocol/related-task']
+    : undefined
+  const relatedTaskId = relatedTask && typeof relatedTask === 'object' && !Array.isArray(relatedTask)
+    ? (relatedTask as { taskId?: unknown }).taskId
+    : undefined
+
+  const taskId = typeof taskFromResult?.taskId === 'string'
+    ? taskFromResult.taskId
+    : typeof relatedTaskId === 'string'
+      ? relatedTaskId
+      : undefined
+  if (!taskId) return undefined
+
+  const status = typeof taskFromResult?.status === 'string' ? taskFromResult.status : undefined
+  const statusMessage = typeof taskFromResult?.statusMessage === 'string' ? taskFromResult.statusMessage : undefined
+  const statusPart = status ? ` (status: ${status}${statusMessage ? ` — ${statusMessage}` : ''})` : ''
+  return (
+    `[MCP task handle: the server accepted this call as background task "${taskId}"${statusPart}. `
+    + 'onething does not poll MCP tasks yet (P3), so the eventual result will NOT arrive on its own — '
+    + 'treat the operation as accepted-but-unresolved, not finished.]'
+  )
 }
 
 export function normalizeMCPResourceReadContent(contents: unknown): JsonValue | undefined {
@@ -654,22 +836,37 @@ export async function callMCPToolWithTimeout(
   toolName: string,
   args: JsonObject,
   timeoutMs: number,
+  toolDefinition?: { name: string; description?: string; inputSchema?: unknown },
 ): Promise<MCPToolCallResult> {
+  // Abort-driven, not a Promise.race: a raced timeout would resolve locally
+  // while the server keeps running the tool — and the serialized call queue
+  // (client-runtime) would release the lock onto a transport that still has
+  // an in-flight request. Aborting instead makes the SDK reject the request
+  // AND tell the server (Streamable HTTP: per-request stream abort; stdio /
+  // SSE: `notifications/cancelled`), so the lock releases only when the call
+  // is actually dead.
+  const timeoutMessage = mcpToolCallTimeoutMessage(toolName, timeoutMs)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(new Error(timeoutMessage)), timeoutMs)
   try {
-    const result = await withMCPTimeout(
-      client.callTool({
+    const result = await client.callTool(
+      {
         name: toolName,
         arguments: args,
-      }),
-      timeoutMs,
-      mcpToolCallTimeoutMessage(toolName, timeoutMs),
+      },
+      { signal: controller.signal, ...(toolDefinition ? { toolDefinition } : {}) },
     )
     return normalizeMCPToolCallSuccessResult(result)
   } catch (error) {
+    if (controller.signal.aborted) {
+      return { success: false, error: timeoutMessage }
+    }
     return {
       success: false,
       error: errorMessage(error),
     }
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -686,9 +883,22 @@ export async function readMCPResource(
   } catch (error) {
     return {
       success: false,
-      error: errorMessage(error),
+      error: mcpResourceReadErrorMessage(error, uri),
     }
   }
+}
+
+/**
+ * Error-code alignment: the spec says a missing resource is reported as
+ * JSON-RPC `-32602` (Invalid params). Surface that as "not found" instead
+ * of the raw code dump.
+ */
+function mcpResourceReadErrorMessage(error: unknown, uri: string): string {
+  const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined
+  if (code === -32602) {
+    return `Resource not found: ${uri}`
+  }
+  return errorMessage(error)
 }
 
 export async function getMCPPromptMessages(

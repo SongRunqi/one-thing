@@ -8,6 +8,7 @@ import {
   getOnethingFileMutationsDir,
   getOnethingLastSystemPromptDebugPath,
   getOnethingLogDir,
+  getOnethingMCPOAuthCredentialsPath,
   getOnethingMCPToolsCatalogPath,
   getOnethingMacOSAutomationDocsPath,
   getOnethingMediaDir,
@@ -191,6 +192,10 @@ export function getToolOutputPath(filename: string, options?: OnethingStorePathO
 
 export function getMCPToolsCatalogPath(options?: OnethingStorePathOptions): string {
   return getOnethingMCPToolsCatalogPath(options)
+}
+
+export function getMCPOAuthCredentialsPath(options?: OnethingStorePathOptions): string {
+  return getOnethingMCPOAuthCredentialsPath(options)
 }
 
 export function getPluginDataDir(options?: OnethingStorePathOptions): string {

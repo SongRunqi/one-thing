@@ -156,6 +156,7 @@ const mocks = vi.hoisted(() => ({
   })),
   getSkillsForSession: vi.fn<() => SkillDefinition[]>(() => []),
   getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
+  getMCPToolDefinitionsForModel: vi.fn<() => ToolDefinition[]>(() => []),
   getModelContextLength: vi.fn(async () => 128000),
   getModelMaxOutputTokens: vi.fn(async () => 8192),
   getEnabledToolsAsync: vi.fn<() => Promise<ToolDefinition[]>>(async () => []),
@@ -172,6 +173,7 @@ vi.mock('../../../store.js', () => ({
 
 vi.mock('../../../mcp/index.js', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
+  getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
 
 vi.mock('../../../providers/model-registry.js', () => ({
@@ -461,7 +463,7 @@ describe('agent loop stream runtime multimodal input', () => {
       supportsTools: true,
     }
     mocks.getEnabledToolsAsync.mockResolvedValueOnce([])
-    mocks.getMCPRouterToolDefinition.mockReturnValueOnce({
+    mocks.getMCPToolDefinitionsForModel.mockReturnValueOnce([{
       id: 'mcp_search',
       name: 'MCP Search',
       description: 'Search and call MCP tools',
@@ -482,7 +484,7 @@ describe('agent loop stream runtime multimodal input', () => {
         },
         required: ['action'],
       },
-    })
+    }])
 
     try {
       const context = ctx()

@@ -67,6 +67,9 @@ import {
 	configureMCPClientHost,
 	registerMCPTools as registerAppMCPTools,
 } from "@onething/app/mcp/index.js";
+import { getMCPOAuthFlowManager } from "@onething/app/mcp/oauth/index.js";
+import { configureMCPClientIdentity } from "@onething/app/mcp/identity.js";
+import { configureMCPCapabilitiesChangedHandler } from "@onething/app/mcp/capabilities-changed.js";
 import {
 	createBranchSession as createAppStoreBranchSession,
 	createSession as createAppStoreSession,
@@ -102,6 +105,7 @@ import {
 } from "@onething/core/plugins";
 import {
 	createMCPServerState,
+	DEFAULT_MCP_SETTINGS,
 	HeadlessMCPManager,
 	type MCPClientLike,
 } from "@onething/core/mcp";
@@ -110,6 +114,8 @@ import {
 	callOnethingMCPToolForIpc,
 	connectOnethingMCPServerForIpc,
 	disconnectOnethingMCPServerForIpc,
+	logoutOnethingMCPServerForIpc,
+	probeOnethingMCPServerForIpc,
 	getOnethingMCPPromptForIpc,
 	getOnethingMCPServersForIpc,
 	listOnethingMCPPromptsForIpc,
@@ -427,6 +433,8 @@ import type {
 	MCPCallToolResponse,
 	MCPConnectServerResponse,
 	MCPDisconnectServerResponse,
+	MCPLogoutServerResponse,
+	MCPProbeServerResponse,
 	MCPGetPromptResponse,
 	MCPGetPromptsResponse,
 	MCPGetResourcesResponse,
@@ -472,7 +480,7 @@ import type {
 	ToolCall,
 	ToolDefinition,
 } from "@shared/ipc/tools.js";
-import { ServerMCPClient } from "./mcp-client.js";
+import { ServerMCPClient, probeServerMCPConfig } from "./mcp-client.js";
 
 type ServerChatSession = ChatSession & {
 	userId?: string;
@@ -1556,7 +1564,7 @@ export async function createDevelopmentOnethingServerRuntime(
 			settingsStore,
 			context,
 		);
-		return cloneJson(settings.mcp ?? { enabled: true, servers: [] });
+		return cloneJson(settings.mcp ?? DEFAULT_MCP_SETTINGS);
 	};
 
 	const saveMCPSettingsForContext = async (
@@ -1587,6 +1595,7 @@ export async function createDevelopmentOnethingServerRuntime(
 		registerTools: useAppSubsystems(context)
 			? registerAppMCPTools
 			: async () => {},
+		logoutOAuth: (serverId: string) => getMCPOAuthFlowManager().logout(serverId),
 		logger: console,
 	});
 
@@ -1596,7 +1605,25 @@ export async function createDevelopmentOnethingServerRuntime(
 	// (same class of split as the session double-repository above).
 	// Scoped owners keep their isolated server-local managers.
 	if (backend.persistsMessages) {
+		// clientInfo version: workspace packages all say 0.0.0 — only the repo
+		// root package.json carries the product version, and this host runs
+		// from the repo (a packaged form would configure its own).
+		try {
+			const rootPkg = JSON.parse(
+				readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+			) as { version?: unknown };
+			configureMCPClientIdentity({
+				version: typeof rootPkg.version === "string" ? rootPkg.version : undefined,
+			});
+		} catch {
+			// Root package.json unreadable → identity default stays.
+		}
 		configureMCPClientHost(mcpClientFactory);
+		// P2-1: server-pushed list changes re-read into state by the client;
+		// regenerate the model-facing catalog through the same path.
+		configureMCPCapabilitiesChangedHandler(() => {
+			void registerAppMCPTools();
+		});
 		mcpManagersByOwner.set(
 			ownerKey(defaultRequestContext()),
 			appMCPManager as ServerMCPManager,
@@ -5291,6 +5318,25 @@ export async function createDevelopmentOnethingServerRuntime(
 					...mcpAdaptersForContext(context),
 					serverId,
 				}) as Promise<MCPDisconnectServerResponse>;
+			},
+			async logoutServer(
+				serverId: string,
+				context = defaultRequestContext(),
+			): Promise<MCPLogoutServerResponse> {
+				return logoutOnethingMCPServerForIpc({
+					...mcpAdaptersForContext(context),
+					serverId,
+				}) as Promise<MCPLogoutServerResponse>;
+			},
+			async probeServer(
+				config: MCPServerConfig,
+				_context = defaultRequestContext(),
+			): Promise<MCPProbeServerResponse> {
+				return probeOnethingMCPServerForIpc({
+					config,
+					probe: candidate => probeServerMCPConfig(candidate, { allowStdio: allowMCPStdio }),
+					logger: console,
+				}) as Promise<MCPProbeServerResponse>;
 			},
 			async refreshServer(
 				serverId: string,

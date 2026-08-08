@@ -26,15 +26,25 @@ export type {
 export { DEFAULT_MCP_SETTINGS } from './types.js'
 
 // Export client
-export { MCPClient } from './client.js'
+export { MCPClient, probeMCPServerConfig } from './client.js'
 
 // Export manager
 export { MCPManager, configureMCPClientHost } from './manager.js'
+
+// Export OAuth flow management
+export { getMCPOAuthFlowManager } from './oauth/index.js'
+
+// Export client identity (late-bound host version)
+export { configureMCPClientIdentity, getMCPClientIdentity } from './identity.js'
+
+// Export capabilities-changed fan-out (P2-1 push-driven refresh)
+export { configureMCPCapabilitiesChangedHandler, notifyMCPCapabilitiesChanged } from './capabilities-changed.js'
 
 // Export bridge functions
 export {
   mcpToolToToolDefinition,
   getMCPRouterToolDefinition,
+  getMCPToolDefinitionsForModel,
   mcpInputSchemaToZod,
   getMCPToolsForAI,
   registerMCPTools,

@@ -6,6 +6,7 @@ import {
   getMCPRouterDefinition,
   planMCPToolRegistration,
   planMCPToolsCatalogWrite,
+  resolveMCPToolExposure,
   type MCPFunctionRef,
   type MCPModelFacingToolDefinition,
   type MCPRegisteredToolLike,
@@ -25,6 +26,11 @@ export interface CoreMCPBridgeRuntimeHost {
   getServerState(serverId: string): Pick<MCPServerState, 'config'> | undefined
   getServerStates(): Array<Pick<MCPServerState, 'config' | 'tools'>>
   callTool(serverId: string, toolName: string, args: JsonObject): Promise<MCPToolCallResult>
+  /**
+   * Hybrid flat-mode threshold from settings (决策点 #1). Undefined = default
+   * (20); 0 = always router.
+   */
+  getFlatToolThreshold?(): number | undefined
 }
 
 export interface WriteMCPToolsCatalogWithAdaptersOptions
@@ -81,6 +87,37 @@ export class CoreMCPBridgeRuntime {
     return mcpRouterToCoreToolDefinition(getMCPRouterDefinition())
   }
 
+  /**
+   * The model-facing MCP tool definitions for THIS turn (决策点 #1 hybrid):
+   * at or below the flat threshold each connected tool is its own definition
+   * (keyed by the sanitized `mcp_<server>_<tool>` ids the execution path
+   * parses); above it the single `mcp_search` router. Modes are mutually
+   * exclusive — `resolveMCPToolExposure` is the single decision point.
+   */
+  getMCPToolDefinitionsForModel(): CoreMCPToolDefinition[] {
+    const mcpTools = this.host.getAllTools()
+    const exposure = resolveMCPToolExposure({
+      enabled: this.host.isEnabled(),
+      toolCount: mcpTools.length,
+      flatThreshold: this.host.getFlatToolThreshold?.(),
+    })
+    if (exposure.mode === 'none') return []
+    if (exposure.mode === 'router') {
+      const router = mcpRouterToCoreToolDefinition(getMCPRouterDefinition())
+      return router ? [router] : []
+    }
+
+    const toolIds = this.mcpToolIdRegistry.getToolIds(
+      mcpTools,
+      serverId => this.getServerName(serverId),
+    )
+    return mcpTools.map(mcpTool => {
+      const definition = mcpToolToCoreToolDefinition(mcpTool)
+      const toolId = toolIds.get(mcpTool)
+      return toolId ? { ...definition, id: toolId } : definition
+    })
+  }
+
   planToolsCatalogWrite(options: Omit<MCPToolsCatalogOptions, 'getServerName'> = {}): MCPToolsCatalogWritePlan {
     return planMCPToolsCatalogWrite({
       ...options,
@@ -128,6 +165,11 @@ export class CoreMCPBridgeRuntime {
       mcpTools,
       toolsSettings,
       routerDefinition,
+      flatThreshold: this.host.getFlatToolThreshold?.(),
+      toolIds: this.mcpToolIdRegistry.getToolIds(
+        mcpTools,
+        serverId => this.getServerName(serverId),
+      ),
     })
 
     if (result.shouldRememberTools) {
@@ -169,6 +211,7 @@ export class CoreMCPBridgeRuntime {
       enabled: this.host.isEnabled(),
       existingTools,
       mcpTools: this.host.getAllTools(),
+      flatThreshold: this.host.getFlatToolThreshold?.(),
     })
   }
 

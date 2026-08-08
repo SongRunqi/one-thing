@@ -29,12 +29,11 @@
     <div class="dialog-content">
       <div class="form-group">
         <label class="form-label">Server Name</label>
-        <input
+        <Input
           v-model="form.name"
-          type="text"
-          class="form-input"
+          variant="underline"
           placeholder="My MCP Server"
-        >
+        />
       </div>
 
       <div class="form-group">
@@ -97,6 +96,35 @@
           </Button>
           <Button
             unstyled
+            :class="['transport-option', { active: form.transport === 'http' }]"
+            @click="form.transport = 'http'"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+              />
+              <line
+                x1="2"
+                y1="12"
+                x2="22"
+                y2="12"
+              />
+              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+            </svg>
+            <span>HTTP</span>
+            <span class="transport-desc">Remote server</span>
+          </Button>
+          <Button
+            unstyled
             :class="['transport-option', { active: form.transport === 'sse' }]"
             @click="form.transport = 'sse'"
           >
@@ -122,16 +150,17 @@
               <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
             </svg>
             <span>SSE</span>
-            <span class="transport-desc">HTTP endpoint</span>
+            <span class="transport-desc">Legacy (deprecated)</span>
           </Button>
         </div>
       </div>
 
       <!--
-        两个 transport 的字段区叠在同一 grid 格子里:高度恒等于较高的一档,
+        三个 transport 的字段区叠在同一 grid 格子里:高度恒等于较高的一档,
         切换时对话框不再跳高(实测 504↔355 的 149px 跳动);隐藏侧只隐形不
         卸载,顺带保住来回切换时已填的值。visibility:hidden 会把隐藏侧从
         焦点链与可访问性树里摘掉,不需要再管 tabindex。
+        http 与 sse 共用同一份 URL 字段区。
       -->
       <div class="transport-fields">
         <!-- Stdio Configuration -->
@@ -141,49 +170,45 @@
         >
           <div class="form-group">
             <label class="form-label">Command</label>
-            <input
+            <Input
               v-model="form.command"
-              type="text"
-              class="form-input"
+              variant="underline"
               placeholder="npx, python, node..."
-            >
+            />
           </div>
           <div class="form-group">
             <label class="form-label">Arguments</label>
-            <input
+            <Input
               v-model="form.argsString"
-              type="text"
-              class="form-input"
+              variant="underline"
               placeholder="-y @modelcontextprotocol/server-everything"
-            >
+            />
             <p class="form-hint">
               Space-separated arguments
             </p>
           </div>
           <div class="form-group">
             <label class="form-label">Working Directory (optional)</label>
-            <input
+            <Input
               v-model="form.cwd"
-              type="text"
-              class="form-input"
+              variant="underline"
               placeholder="/path/to/working/dir"
-            >
+            />
           </div>
         </div>
 
-        <!-- SSE Configuration -->
+        <!-- Remote configuration (Streamable HTTP / legacy SSE share the URL field) -->
         <div
           class="transport-pane"
-          :class="{ 'is-hidden': form.transport !== 'sse' }"
+          :class="{ 'is-hidden': form.transport === 'stdio' }"
         >
           <div class="form-group">
             <label class="form-label">Server URL</label>
-            <input
+            <Input
               v-model="form.url"
-              type="text"
-              class="form-input"
-              placeholder="http://localhost:3000/sse"
-            >
+              variant="underline"
+              :placeholder="form.transport === 'http' ? 'https://example.com/mcp' : 'http://localhost:3000/sse'"
+            />
           </div>
         </div>
       </div>
@@ -193,9 +218,40 @@
         class="error-message"
         :message="error"
       />
+
+      <!-- P2-2 preflight probe result -->
+      <div
+        v-if="probeResult"
+        class="probe-result"
+        :class="{ 'is-ok': probeResult.ok }"
+      >
+        <template v-if="probeResult.ok">
+          {{ probeResult.serverName ?? 'Server' }}{{ probeResult.serverVersion ? `@${probeResult.serverVersion}` : '' }}
+          · protocol {{ probeResult.protocolVersion ?? 'unknown' }}<span
+            v-if="probeResult.capabilities?.length"
+          > · {{ probeResult.capabilities.join(', ') }}</span>
+        </template>
+        <template v-else-if="probeResult.requiredProtocol">
+          This server requires protocol {{ probeResult.requiredProtocol }}.
+        </template>
+        <template v-else-if="probeResult.authRequired">
+          Reachable — this server requires OAuth login (connect after adding to start authorization).
+        </template>
+        <template v-else>
+          {{ probeResult.error || 'Probe failed' }}
+        </template>
+      </div>
     </div>
 
     <template #actions>
+      <button
+        type="button"
+        class="app-dialog-text-btn"
+        :disabled="isProbing"
+        @click="handleProbe"
+      >
+        {{ isProbing ? 'Probing...' : 'Test' }}
+      </button>
       <button
         type="button"
         class="app-dialog-text-btn"
@@ -219,8 +275,10 @@
 import Button from '@/components/common/Button.vue'
 import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Input from '@/components/common/Input.vue'
+import { platformApi } from '@/platform'
 import { ref, watch } from 'vue'
-import type { MCPServerConfig } from '@/types'
+import type { MCPServerConfig, MCPProbeServerResponse } from '@/types'
 import type { ServerForm } from './useMCPServers'
 
 interface Props {
@@ -238,6 +296,8 @@ const emit = defineEmits<Emits>()
 
 const error = ref('')
 const isSaving = ref(false)
+const isProbing = ref(false)
+const probeResult = ref<MCPProbeServerResponse | null>(null)
 
 const form = ref<ServerForm>({
   name: '',
@@ -254,6 +314,7 @@ watch(
   () => {
     if (props.show) {
       error.value = ''
+      probeResult.value = null
       if (props.editingServer) {
         form.value = {
           name: props.editingServer.name,
@@ -299,6 +360,45 @@ function handleSave() {
 
   error.value = ''
   emit('save', { ...form.value })
+}
+
+/**
+ * P2-2 preflight: dry-run the current form against the real server and show
+ * protocol/identity/capabilities (or a readable failure) BEFORE adding.
+ */
+async function handleProbe() {
+  if (form.value.transport === 'stdio' && !form.value.command.trim()) {
+    error.value = 'Command is required'
+    return
+  }
+  if (form.value.transport !== 'stdio' && !form.value.url.trim()) {
+    error.value = 'Server URL is required'
+    return
+  }
+
+  error.value = ''
+  probeResult.value = null
+  isProbing.value = true
+  try {
+    const config: MCPServerConfig = {
+      id: `probe-${Date.now()}`,
+      name: form.value.name.trim() || 'probe',
+      transport: form.value.transport,
+      enabled: true,
+    }
+    if (form.value.transport === 'stdio') {
+      config.command = form.value.command.trim()
+      config.args = form.value.argsString.trim().split(/\s+/).filter(Boolean)
+      if (form.value.cwd.trim()) config.cwd = form.value.cwd.trim()
+    } else {
+      config.url = form.value.url.trim()
+    }
+    probeResult.value = await platformApi.mcpProbeServer(config)
+  } catch (probeError) {
+    probeResult.value = { ok: false, error: String(probeError) }
+  } finally {
+    isProbing.value = false
+  }
 }
 
 // Expose for parent to set error and loading state
@@ -358,30 +458,7 @@ defineExpose({
   margin-top: 5px;
 }
 
-/* Underline inputs: the line is the control. */
-.form-input {
-  width: 100%;
-  min-width: 0;
-  appearance: none;
-  padding: 4px 0 5px;
-  border: none;
-  border-bottom: 1px solid var(--ui-border-default-border);
-  border-radius: 0;
-  font-size: 13px;
-  background: transparent;
-  color: var(--ui-text-primary-fg);
-  transition: border-color var(--duration-fast) var(--ease-default);
-}
-
-input.form-input:focus {
-  outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg);
-  box-shadow: none;
-}
-
-.form-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-}
+/* Underline inputs: the line is the control, drawn by `<Input variant="underline">`. */
 
 .transport-selector {
   display: grid;
@@ -449,6 +526,25 @@ input.form-input:focus {
 /* positioning only — visuals come from ErrorNote */
 .error-message {
   margin-top: 16px;
+}
+
+.probe-result {
+  margin: 10px 24px 0;
+  padding: 8px 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ui-status-error-fg, var(--ui-text-muted-fg));
+  border-top: 1px dashed var(--ui-border-muted, currentColor);
+}
+
+.probe-result.is-ok {
+  color: var(--ui-status-success-fg, var(--ui-text-fg));
+}
+
+.app-dialog-text-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* Footer buttons are `.app-dialog-text-btn` (published by Dialog.vue's

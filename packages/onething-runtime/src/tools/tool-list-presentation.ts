@@ -33,7 +33,11 @@ export interface ListOnethingSettingsToolsOptions<
   getSessionsList(): TSessionListItem[]
   getSession(sessionId: string): TSession | null | undefined
   getAllToolsAsync(): MaybePromise<TTool[]>
-  getMCPRouterToolDefinition(): TTool | null | undefined
+  /**
+   * 决策点 #1 hybrid: mode-resolved MCP tool defs for the settings tool list
+   * — flat array at/below the threshold, single router above it.
+   */
+  getMCPToolDefinitions(): TTool[]
   setInitContext(context: OnethingToolInitContext): MaybePromise<unknown>
   cwd(): string
 }
@@ -68,12 +72,14 @@ export async function listOnethingSettingsTools<
       source: tool.id.startsWith('plugin:') ? 'plugin' : 'builtin',
     }) as OnethingVisibleTool<TTool>)
 
-  const mcpRouterTool = options.getMCPRouterToolDefinition()
-  if (mcpRouterTool && !visibleTools.some(tool => tool.id === mcpRouterTool.id)) {
-    visibleTools.push({
-      ...mcpRouterTool,
-      source: 'mcp',
-    } as OnethingVisibleTool<TTool>)
+  const mcpToolDefinitions = options.getMCPToolDefinitions()
+  for (const mcpTool of mcpToolDefinitions) {
+    if (!visibleTools.some(tool => tool.id === mcpTool.id)) {
+      visibleTools.push({
+        ...mcpTool,
+        source: 'mcp',
+      } as OnethingVisibleTool<TTool>)
+    }
   }
 
   return visibleTools

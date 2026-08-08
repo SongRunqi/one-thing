@@ -29,6 +29,15 @@ export interface CoreMCPJsonSchemaValidationPlan {
   enumValues?: string[]
   items?: CoreMCPJsonSchemaValidationPlan
   properties?: Record<string, CoreMCPJsonSchemaValidationPlan>
+  /**
+   * Explicit downgrade markers (P2-3): the spec widened schemas to arbitrary
+   * JSON Schema 2020-12 + `$ref`, and this planner only understands the
+   * flat subset. Unsupported constructs used to degrade SILENTLY (a `$ref`
+   * or `anyOf` became a plain `string`); now they are named here so the
+   * tool definition can tell the model validation is loose instead of
+   * dropping the constraint on the floor.
+   */
+  caveats?: string[]
 }
 
 export interface CoreMCPToolDefinition {
@@ -93,6 +102,23 @@ function jsonSchemaPrimaryType(schema: JsonSchemaObject): string {
     : schema.type || 'string'
 }
 
+/** Constructs this planner cannot faithfully map (see caveats on the plan). */
+function jsonSchemaCaveats(schema: JsonSchemaObject): string[] | undefined {
+  const caveats: string[] = []
+  const record = schema as Record<string, unknown>
+  if (typeof record.$ref === 'string') caveats.push(`$ref (${record.$ref}) not resolved`)
+  for (const keyword of ['anyOf', 'oneOf', 'allOf', 'not'] as const) {
+    if (record[keyword] !== undefined) caveats.push(`${keyword} collapsed to the loose plan`)
+  }
+  if (Array.isArray(schema.type)) {
+    const nonNull = schema.type.filter(type => type !== 'null')
+    if (nonNull.length > 1) {
+      caveats.push(`union type [${nonNull.join(', ')}] treated as ${nonNull[0]}`)
+    }
+  }
+  return caveats.length > 0 ? caveats : undefined
+}
+
 export function planJsonSchemaValidation(
   schema: JsonSchemaObject,
   options: { required?: boolean } = {},
@@ -100,30 +126,43 @@ export function planJsonSchemaValidation(
   const description = jsonSchemaDescription(schema) || undefined
   const required = options.required !== false
   const type = jsonSchemaPrimaryType(schema)
+  const caveats = jsonSchemaCaveats(schema)
+  // A schema whose ONLY signal is an unsupported construct must not pretend
+  // to be a plain string (the old default): plan it as passthrough JSON.
+  const record = schema as Record<string, unknown>
+  const hasUnsupportedShape = schema.type === undefined && (
+    record.$ref !== undefined
+    || record.anyOf !== undefined
+    || record.oneOf !== undefined
+    || record.allOf !== undefined
+    || record.not !== undefined
+  )
 
-  switch (type) {
+  switch (hasUnsupportedShape ? 'json' : type) {
     case 'string':
       return {
         kind: 'string',
         description,
         required,
         enumValues: jsonSchemaStringEnum(schema),
+        ...(caveats ? { caveats } : {}),
       }
     case 'number':
     case 'integer':
-      return { kind: 'number', description, required }
+      return { kind: 'number', description, required, ...(caveats ? { caveats } : {}) }
     case 'boolean':
-      return { kind: 'boolean', description, required }
+      return { kind: 'boolean', description, required, ...(caveats ? { caveats } : {}) }
     case 'array':
       return {
         kind: 'array',
         description,
         required,
         items: schema.items ? planJsonSchemaValidation(schema.items) : undefined,
+        ...(caveats ? { caveats } : {}),
       }
     case 'object':
       if (!schema.properties) {
-        return { kind: 'object', description, required }
+        return { kind: 'object', description, required, ...(caveats ? { caveats } : {}) }
       }
       return {
         kind: 'object',
@@ -135,9 +174,10 @@ export function planJsonSchemaValidation(
             required: (schema.required || []).includes(name),
           }),
         ])),
+        ...(caveats ? { caveats } : {}),
       }
     default:
-      return { kind: 'json', description, required }
+      return { kind: 'json', description, required, ...(caveats ? { caveats } : {}) }
   }
 }
 
@@ -158,10 +198,17 @@ export function mcpToolToCoreToolDefinition(mcpTool: MCPToolInfo): CoreMCPToolDe
     const required = mcpTool.inputSchema.required || []
 
     for (const [name, schema] of Object.entries(mcpTool.inputSchema.properties)) {
+      // P2-3: unsupported schema constructs are named in the parameter
+      // description instead of silently degrading (a $ref is NOT a string).
+      const caveats = jsonSchemaCaveats(schema)
+      const baseDescription = jsonSchemaDescription(schema)
+      const description = caveats
+        ? `${baseDescription ? `${baseDescription} ` : ''}[schema caveat: ${caveats.join('; ')} — validation is loose]`
+        : baseDescription
       parameters.push({
         name,
         type: mapJsonSchemaToolParameterType(schema.type),
-        description: jsonSchemaDescription(schema),
+        description,
         required: required.includes(name),
         enum: jsonSchemaStringEnum(schema),
         default: jsonSchemaDefault(schema),

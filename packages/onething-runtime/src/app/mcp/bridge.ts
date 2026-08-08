@@ -27,6 +27,9 @@ const coreMCPBridgeRuntime = new CoreMCPBridgeRuntime({
   getServerState: serverId => MCPManager.getServerState(serverId),
   getServerStates: () => MCPManager.getServerStates(),
   callTool: (serverId, toolName, args) => MCPManager.callTool(serverId, toolName, args),
+  // 决策点 #1: hybrid flat-mode threshold lives in MCP settings; 0 pins the
+  // pre-hybrid router-only behavior.
+  getFlatToolThreshold: () => MCPManager.getSettings().flatToolThreshold,
 })
 
 export function mcpToolToToolDefinition(mcpTool: MCPToolInfo): ToolDefinition {
@@ -35,6 +38,16 @@ export function mcpToolToToolDefinition(mcpTool: MCPToolInfo): ToolDefinition {
 
 export function getMCPRouterToolDefinition(): ToolDefinition | null {
   return coreMCPBridgeRuntime.getMCPRouterToolDefinition() as ToolDefinition | null
+}
+
+/**
+ * 决策点 #1 hybrid: the model-facing MCP tool definitions for this turn —
+ * N flat tool definitions at or below the threshold, or the single router
+ * above it (mutually exclusive). Recomputed live every call, so mode flips
+ * (connect/disconnect/list-changed) take effect on the next turn.
+ */
+export function getMCPToolDefinitionsForModel(): ToolDefinition[] {
+  return coreMCPBridgeRuntime.getMCPToolDefinitionsForModel() as ToolDefinition[]
 }
 
 /**
@@ -161,13 +174,24 @@ export async function registerMCPTools(): Promise<void> {
     unregisterTool(toolId)
   }
 
-  if (!plan.shouldGenerateCatalog) {
+  if (plan.mode === 'none') {
     return
   }
 
   // The connected tool set just changed — refresh the tool-id mapping that
-  // parseMCPToolId/findMCPToolIdByShortName resolve against.
+  // parseMCPToolId/findMCPToolIdByShortName resolve against. Needed in BOTH
+  // hybrid modes (决策点 #1): flat ids are parsed on every execution.
   coreMCPBridgeRuntime.rememberToolIds()
+
+  // The catalog file documents tools hidden behind the router; flat tools
+  // are self-describing, so catalog generation only runs in router mode.
+  if (!plan.shouldGenerateCatalog) {
+    coreMCPBridgeRuntime.markToolsCatalogGenerated(false)
+    if (plan.logMessage) {
+      console.log(plan.logMessage)
+    }
+    return
+  }
 
   // Generate the tools catalog file for AI reference
   generateToolsCatalog()

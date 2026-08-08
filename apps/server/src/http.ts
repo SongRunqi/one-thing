@@ -341,6 +341,15 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
     if (method === 'POST' && action === 'refresh') return withMCPServerId(mcpServerMatch[1], handleMCPRefreshServer)
   }
 
+  const mcpOAuthLogoutMatch = pathname.match(/^\/api\/mcp\/servers\/([^/]+)\/oauth\/logout$/)
+  if (mcpOAuthLogoutMatch && method === 'POST') {
+    return withMCPServerId(mcpOAuthLogoutMatch[1], handleMCPLogoutServer)
+  }
+
+  if (pathname === '/api/mcp/probe' && method === 'POST') {
+    return handleMCPProbeServer
+  }
+
   const backgroundJobMatch = pathname.match(/^\/api\/tools\/background-jobs\/([^/]+)\/stop$/)
   if (backgroundJobMatch && method === 'POST') {
     return withBackgroundJobId(backgroundJobMatch[1], handleStopBackgroundJob)
@@ -1714,6 +1723,23 @@ async function handleMCPDisconnectServer(context: RouteContext): Promise<void> {
   const adapter = context.runtime.mcp
   if (!adapter) return sendNotImplemented(context, 'mcp.disconnectServer')
   sendJson(context.response, 200, await adapter.disconnectServer(readMCPServerId(context), context.requestContext), context.corsOrigin)
+}
+
+async function handleMCPLogoutServer(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.mcp
+  if (!adapter?.logoutServer) return sendNotImplemented(context, 'mcp.logoutServer')
+  sendJson(context.response, 200, await adapter.logoutServer(readMCPServerId(context), context.requestContext), context.corsOrigin)
+}
+
+async function handleMCPProbeServer(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.mcp
+  if (!adapter?.probeServer) return sendNotImplemented(context, 'mcp.probeServer')
+  // The web client posts the candidate config as the raw body (same shape as
+  // POST /api/mcp/servers); an envelope form {config: …} is also accepted to
+  // match the electron IPC request shape.
+  const body = await readJson<JsonObject & { config?: JsonObject }>(context.request)
+  const config = body?.config ?? body ?? {}
+  sendJson(context.response, 200, await adapter.probeServer(config, context.requestContext), context.corsOrigin)
 }
 
 async function handleMCPRefreshServer(context: RouteContext): Promise<void> {

@@ -14,7 +14,7 @@ import {
 import { defaultAgent, findAgent } from '../../agents/index.js'
 import { resolveAgentProfileForSession } from '../../agents/profile.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
-import { getMCPRouterToolDefinition } from '../../mcp/index.js'
+import { getMCPToolDefinitionsForModel } from '../../mcp/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import {
   isProviderSupported,
@@ -135,7 +135,7 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
       await initializeAsyncTools()
     },
     getEnabledTools: toolSettings => getEnabledToolsAsync(toolSettings),
-    getMCPRouterTool: getMCPRouterToolDefinition,
+    getMCPToolDefinitions: getMCPToolDefinitionsForModel,
     sourceToolsToModelDefinitions: tools => agentToolDefinitionsFromSourceTools(tools),
     resolveModelSupportsTools: resolveModelSupportsToolsForSnapshot,
     getNativeProviderTools: getCodexNativeToolsForConfig,

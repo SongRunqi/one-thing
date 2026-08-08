@@ -4,6 +4,8 @@
  * Common MCP servers with pre-configured settings
  */
 
+import type { MCPTransportType } from '@shared/ipc'
+
 export interface MCPPresetParameter {
   name: string
   key: string
@@ -21,7 +23,7 @@ export interface MCPPreset {
   icon: 'folder' | 'github' | 'globe' | 'database' | 'search' | 'download' | 'brain' | 'lightbulb' | 'star' | 'code' | 'terminal'
   category: 'filesystem' | 'database' | 'web' | 'development' | 'other'
   config: {
-    transport: 'stdio' | 'sse'
+    transport: MCPTransportType
     command?: string
     args?: string[]
     url?: string

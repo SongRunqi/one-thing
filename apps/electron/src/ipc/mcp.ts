@@ -14,6 +14,8 @@ export interface ElectronMCPIpcChannels {
   removeServer: string
   connectServer: string
   disconnectServer: string
+  logoutServer: string
+  probeServer: string
   refreshServer: string
   getTools: string
   callTool: string
@@ -32,6 +34,8 @@ export interface RegisterElectronMCPIpcHandlersOptions {
   removeServer(request: unknown): unknown
   connectServer(request: unknown): unknown
   disconnectServer(request: unknown): unknown
+  logoutServer(request: unknown): unknown
+  probeServer(request: unknown): unknown
   refreshServer(request: unknown): unknown
   getTools(): unknown
   callTool(request: unknown): unknown
@@ -70,6 +74,14 @@ export function registerElectronMCPIpcHandlers(
 
   host.handle(options.channels.disconnectServer, (_event, request: unknown) => {
     return options.disconnectServer(request)
+  })
+
+  host.handle(options.channels.logoutServer, (_event, request: unknown) => {
+    return options.logoutServer(request)
+  })
+
+  host.handle(options.channels.probeServer, (_event, request: unknown) => {
+    return options.probeServer(request)
   })
 
   host.handle(options.channels.refreshServer, (_event, request: unknown) => {

@@ -141,6 +141,7 @@ const mocks = vi.hoisted(() => ({
 	runAfterAssistantResponseHooks: vi.fn(async () => undefined),
 	getSkillsForSession: vi.fn<() => SkillDefinition[]>(() => []),
 	getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
+	getMCPToolDefinitionsForModel: vi.fn<() => ToolDefinition[]>(() => []),
 	getEnabledToolsAsync: vi.fn<() => Promise<ToolDefinition[]>>(async () => []),
 	initializeAsyncTools: vi.fn(async () => undefined),
 	setInitContext: vi.fn(),
@@ -230,6 +231,7 @@ vi.mock("../../../skills/session-skills.js", () => ({
 
 vi.mock("../../../mcp/index.js", () => ({
 	getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
+	getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 	isMCPTool: vi.fn(() => false),
 	parseMCPToolId: vi.fn(() => null),
 	findMCPToolIdByShortName: vi.fn(() => null),

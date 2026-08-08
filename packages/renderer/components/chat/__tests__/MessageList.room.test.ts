@@ -140,7 +140,10 @@ vi.mock('../assistant-message-outline', () => ({
   shouldShowAssistantMessageOutline: vi.fn(() => false),
 }))
 
-const T0 = Date.now()
+// Local NOON today: Date.now() + relative offsets crosses midnight in the
+// 23:4x–23:59 window and the capsule flips from 今天 to an absolute date.
+// Noon keeps every offset same-day against the component's real clock.
+const T0 = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d.getTime() })()
 const MINUTE = 60 * 1000
 
 function mountList(messages: unknown[]) {

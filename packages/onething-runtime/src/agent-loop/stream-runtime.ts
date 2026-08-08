@@ -205,6 +205,8 @@ export interface OnethingAgentLoopRuntimeAdapters<
 		toolSettings?: CoreAgentLoopToolSettings["tools"],
 	): Promise<TTool[]>;
 	getMCPRouterToolDefinition?(): TTool | null;
+	/** 决策点 #1 hybrid: mode-resolved MCP tool defs (flat array or router). */
+	getMCPToolDefinitionsForModel?(): TTool[];
 	/**
 	 * Per-agent tool allowlist (tool ids). Return null/undefined for no
 	 * restriction. Hosts without agent-scoped tools can omit this. The session
@@ -316,6 +318,8 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 		toolSettings?: CoreAgentLoopToolSettings["tools"],
 	): Promise<TTool[]>;
 	getMCPRouterToolDefinition?(): TTool | null;
+	/** 决策点 #1 hybrid: mode-resolved MCP tool defs (flat array or router). */
+	getMCPToolDefinitionsForModel?(): TTool[];
 	/**
 	 * Per-agent tool allowlist (tool ids). Return null/undefined for no
 	 * restriction. Hosts without agent-scoped tools can omit this. The session
@@ -443,6 +447,7 @@ export function createOnethingAgentLoopRuntimeAdapters<
 		resolveModelMaxOutputTokens: host.resolveModelMaxOutputTokens,
 		getEnabledTools: host.getEnabledTools,
 		getMCPRouterToolDefinition: host.getMCPRouterToolDefinition,
+		getMCPToolDefinitionsForModel: host.getMCPToolDefinitionsForModel,
 		getAgentToolAllowlist: host.getAgentToolAllowlist,
 		buildProjectPromptVars: host.buildProjectPromptVars,
 		buildPrompt: host.buildPrompt,
@@ -672,9 +677,10 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	const allEnabledTools = toolLoadingEnabled
 		? await adapters.getEnabledTools(effectiveToolSettings?.tools)
 		: [];
-	const mcpRouterTool = toolLoadingEnabled
-		? (adapters.getMCPRouterToolDefinition?.() ?? null)
-		: null;
+	const mcpToolDefinitions = toolLoadingEnabled
+		? (adapters.getMCPToolDefinitionsForModel?.()
+			?? (adapters.getMCPRouterToolDefinition?.() ? [adapters.getMCPRouterToolDefinition()!] : []))
+		: [];
 	// The profile snapshot is authoritative when the host resolved one: it was
 	// computed from the same agent the prompt was built from, so a mid-turn
 	// agent edit cannot hand this run a new prompt with an old allowlist.
@@ -686,7 +692,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	const toolPlan = planAgentLoopTools({
 		toolLoadingEnabled,
 		allEnabledTools,
-		mcpRouterTool,
+		mcpTools: mcpToolDefinitions,
 		toolSettings: effectiveToolSettings,
 		allowedToolIds: agentToolAllowlist,
 	});

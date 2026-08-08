@@ -6,12 +6,12 @@ import { platformApi } from '@/platform'
  */
 
 import { ref, computed } from 'vue'
-import type { MCPServerConfig, MCPServerState, MCPSettings } from '@/types'
+import type { MCPServerConfig, MCPServerState, MCPSettings, MCPTransportType } from '@/types'
 import { v4 as uuidv4 } from 'uuid'
 
 export interface ServerForm {
   name: string
-  transport: 'stdio' | 'sse'
+  transport: MCPTransportType
   command: string
   argsString: string
   cwd: string
@@ -69,6 +69,40 @@ export function useMCPServers(
       }
     } catch (error) {
       console.error('Failed to toggle server:', error)
+    }
+  }
+
+  /**
+   * OAuth login: the backend already stashed the authorization URL when the
+   * server answered 401. Open it (system browser on desktop via the
+   * window-open interceptor, new tab on web), then poll until the callback
+   * lands and the card flips from "required" — the backend reconnects itself.
+   */
+  function handleOAuthLogin(server: MCPServerState) {
+    const url = server.oauth?.authorizationUrl
+    if (!url) return
+    window.open(url, '_blank')
+
+    const serverId = server.config.id
+    const startedAt = Date.now()
+    const poll = async () => {
+      await loadServers()
+      const current = servers.value.find(s => s.config.id === serverId)
+      if (current?.oauth?.status !== 'required') return // authorized (or flow dropped)
+      if (Date.now() - startedAt > 10 * 60 * 1000) return // give up after 10 min
+      setTimeout(poll, 3000)
+    }
+    setTimeout(poll, 3000)
+  }
+
+  // "重新授权": forget issuer-keyed credentials and disconnect
+  async function handleOAuthLogout(serverId: string) {
+    try {
+      await platformApi.mcpLogoutServer(serverId)
+    } catch (error) {
+      console.error('Failed to log out of MCP server:', error)
+    } finally {
+      await loadServers()
     }
   }
 
@@ -239,6 +273,8 @@ export function useMCPServers(
     toggleServerExpanded,
     toggleServerEnabled,
     handleConnectToggle,
+    handleOAuthLogin,
+    handleOAuthLogout,
     saveServer,
     deleteServer,
     importServers,
@@ -282,12 +318,19 @@ export function parseConfigFile(content: any): MCPServerConfig[] {
 }
 
 export function parseServerEntry(name: string, config: any): MCPServerConfig {
-  const isSSE = !!config.url && !config.command
+  // A url means a remote server: Streamable HTTP by default (the modern
+  // transport); only an explicit `type: 'sse'` keeps the legacy SSE channel.
+  // Claude-style configs declare this via their `type` field.
+  const transport: MCPServerConfig['transport'] = config.command
+    ? 'stdio'
+    : config.type === 'sse'
+      ? 'sse'
+      : 'http'
 
   const server: MCPServerConfig = {
     id: uuidv4(),
     name: name,
-    transport: isSSE ? 'sse' : 'stdio',
+    transport,
     enabled: true,
   }
 
@@ -372,7 +415,7 @@ export function parseCommandParts(input: string): string[] {
 }
 
 export function getServerSummary(server: MCPServerConfig): string {
-  if (server.transport === 'sse') {
+  if (server.transport !== 'stdio') {
     return server.url || ''
   }
   return `${server.command} ${(server.args || []).join(' ')}`

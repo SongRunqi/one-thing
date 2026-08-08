@@ -28,11 +28,36 @@
             >
               {{ server.config.transport.toUpperCase() }}
             </span>
+            <Tooltip
+              v-if="server.status === 'connected' && server.protocolVersion"
+              :text="`MCP protocol revision ${server.protocolVersion}${isLegacyProtocol ? ' (legacy 2025-era server)' : ''}`"
+            >
+              <span
+                class="protocol-version"
+                :class="{ legacy: isLegacyProtocol }"
+              >
+                {{ server.protocolVersion }}
+              </span>
+            </Tooltip>
             <span
               v-if="server.status === 'connected'"
               class="capability-count"
             >
               {{ server.tools.length }} tools
+            </span>
+            <button
+              v-if="server.oauth?.status === 'required'"
+              class="oauth-login-btn"
+              @click.stop="$emit('oauth-login')"
+            >
+              Log in
+            </button>
+            <span
+              v-else-if="server.oauth?.status === 'authorized'"
+              class="oauth-authorized"
+              :title="`Authorized with ${server.oauth.issuer}`"
+            >
+              Authorized
             </span>
           </div>
         </div>
@@ -174,6 +199,19 @@
           <span class="info-label">Connected:</span>
           <span class="info-value">{{ formatTime(server.connectedAt) }}</span>
         </div>
+        <div
+          v-if="server.oauth?.status === 'authorized'"
+          class="info-row"
+        >
+          <span class="info-label">OAuth:</span>
+          <code class="info-value">{{ server.oauth.issuer }}</code>
+          <button
+            class="oauth-reauth-btn"
+            @click="$emit('oauth-logout')"
+          >
+            Re-authorize
+          </button>
+        </div>
       </div>
 
       <!-- Tools List -->
@@ -241,6 +279,8 @@ interface Emits {
   (e: 'toggle-expand'): void
   (e: 'toggle-enabled', enabled: boolean): void
   (e: 'toggle-connect'): void
+  (e: 'oauth-login'): void
+  (e: 'oauth-logout'): void
   (e: 'edit'): void
   (e: 'delete'): void
 }
@@ -256,6 +296,13 @@ const statusText = computed(() => {
     case 'error': return 'Error'
     default: return props.server.status
   }
+})
+
+// ISO date revisions compare correctly as strings: anything older than the
+// 2026-07-28 stateless revision is a legacy 2025-era server.
+const isLegacyProtocol = computed(() => {
+  const version = props.server.protocolVersion
+  return version !== undefined && version < '2026-07-28'
 })
 
 function formatTime(timestamp: number): string {
@@ -414,9 +461,15 @@ function formatTime(timestamp: number): string {
 }
 
 .transport-badge.stdio,
-.transport-badge.sse {
+.transport-badge.http {
   border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 65%, transparent);
   color: var(--ui-accent-primary-fg);
+}
+
+/* SSE is the deprecated legacy transport — keep it visually quieter. */
+.transport-badge.sse {
+  border-color: var(--ui-status-warning-border, var(--ui-text-muted-fg));
+  color: var(--ui-status-warning-fg, var(--ui-text-muted-fg));
 }
 
 .capability-count {
@@ -428,6 +481,55 @@ function formatTime(timestamp: number): string {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+.protocol-version {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+  white-space: nowrap;
+}
+
+.protocol-version.legacy {
+  color: var(--ui-status-warning-fg, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
+}
+
+.oauth-login-btn {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 2px 10px 3px;
+  border: 1px solid var(--ui-accent-primary-fg);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ui-accent-primary-fg);
+  cursor: pointer;
+}
+
+.oauth-login-btn:hover {
+  background: var(--ui-accent-primary-bg, transparent);
+}
+
+.oauth-authorized {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--ui-status-success-fg, var(--ui-text-faint-fg));
+  white-space: nowrap;
+}
+
+.oauth-reauth-btn {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 1px 8px 2px;
+  border: 1px solid color-mix(in srgb, var(--ui-text-muted-fg) 55%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ui-text-muted-fg);
+  cursor: pointer;
+}
+
+.oauth-reauth-btn:hover {
+  color: var(--ui-text-fg);
 }
 
 .server-actions {

@@ -23,6 +23,7 @@ const tools: MCPToolInfo[] = [
 
 let enabled = true
 let callTool = vi.fn()
+let flatThreshold: number | undefined = undefined
 
 function states(): MCPServerState[] {
   return [
@@ -48,12 +49,14 @@ function createRuntime(): CoreMCPBridgeRuntime {
     getServerState: serverId => states().find(state => state.config.id === serverId),
     getServerStates: () => states(),
     callTool,
+    getFlatToolThreshold: () => flatThreshold,
   })
 }
 
 beforeEach(() => {
   enabled = true
   callTool = vi.fn()
+  flatThreshold = undefined
 })
 
 describe('CoreMCPBridgeRuntime', () => {
@@ -125,7 +128,23 @@ describe('CoreMCPBridgeRuntime', () => {
     expect(errors[0]?.[0]).toBe('[MCPBridge] Failed to write tools catalog:')
   })
 
-  it('builds model-facing router tools and remembers MCP tool ids', () => {
+  it('builds flat model-facing tools at/below the threshold and remembers ids (决策点 #1)', () => {
+    const runtime = createRuntime()
+
+    const result = runtime.buildToolsForAI()
+
+    // One tool → flat mode: the tool itself under its sanitized id, no router.
+    expect(Object.keys(result.tools)).toEqual(['mcp_Search_query'])
+    expect(result.tools['mcp_Search_query'].description).toBe('Search things')
+    expect(runtime.parseMCPToolId('mcp_Search_query')).toEqual({
+      serverId: 'server-a',
+      toolName: 'query',
+    })
+    expect(runtime.findMCPToolIdByShortName('query')).toBe('mcp_Search_query')
+  })
+
+  it('builds the single router when the threshold is exceeded or pinned to 0', () => {
+    flatThreshold = 0
     const runtime = createRuntime()
 
     const result = runtime.buildToolsForAI()
@@ -135,7 +154,20 @@ describe('CoreMCPBridgeRuntime', () => {
       serverId: 'server-a',
       toolName: 'query',
     })
-    expect(runtime.findMCPToolIdByShortName('query')).toBe('mcp_Search_query')
+  })
+
+  it('resolves model definitions per mode via getMCPToolDefinitionsForModel', () => {
+    const runtime = createRuntime()
+
+    const flat = runtime.getMCPToolDefinitionsForModel()
+    expect(flat.map(def => def.id)).toEqual(['mcp_Search_query'])
+
+    flatThreshold = 0
+    const routed = runtime.getMCPToolDefinitionsForModel()
+    expect(routed.map(def => def.id)).toEqual([MCP_ROUTER_TOOL_ID])
+
+    enabled = false
+    expect(runtime.getMCPToolDefinitionsForModel()).toEqual([])
   })
 
   it('executes routed MCP calls through host adapters', async () => {

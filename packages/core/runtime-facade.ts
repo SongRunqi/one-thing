@@ -435,6 +435,10 @@ export interface RuntimeMCPAdapter<
   removeServer(serverId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
   connectServer(serverId: string, context?: RuntimeRequestContext): Promise<TMutationResult>
   disconnectServer(serverId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  /** "重新授权": drop issuer-keyed OAuth credentials, then disconnect. */
+  logoutServer?(serverId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  /** P2-2 preflight: dry-run a candidate config, report protocol/identity/capabilities. */
+  probeServer?(config: TServerConfig, context?: RuntimeRequestContext): Promise<unknown>
   refreshServer(serverId: string, context?: RuntimeRequestContext): Promise<TMutationResult>
   getTools?(context?: RuntimeRequestContext): Promise<{ success: boolean; tools?: TTool[]; error?: string }>
   callTool?(serverId: string, toolName: string, args: TToolCallArgs, context?: RuntimeRequestContext): Promise<TToolCallResult>

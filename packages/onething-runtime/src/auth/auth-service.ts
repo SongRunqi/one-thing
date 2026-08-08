@@ -38,6 +38,8 @@ export interface OnethingAuthCallbackRegistration {
   onCallback: (params: {
     code: string
     state: string
+    /** RFC 9207 issuer identifier, when the AS stamped it on the redirect. */
+    iss?: string
     flowId: string
     providerId: string
   }) => Promise<void>

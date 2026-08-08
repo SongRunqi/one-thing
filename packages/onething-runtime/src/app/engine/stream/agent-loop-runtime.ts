@@ -21,7 +21,7 @@ import * as store from '../../store.js'
 import { goalRuntimeHooks } from '../../goals/runtime-hooks.js'
 import { resolveAgentProfileForSessionObject } from '../../agents/profile.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
-import { getMCPRouterToolDefinition } from '../../mcp/index.js'
+import { getMCPToolDefinitionsForModel } from '../../mcp/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 import { createAgentProviderFromRuntime } from '../../providers/agent-runtime.js'
 import {
@@ -149,7 +149,7 @@ function createAgentLoopRuntimeAdapters(
     resolveModelContextLength: modelRegistry.getModelContextLength,
     resolveModelMaxOutputTokens: modelRegistry.getModelMaxOutputTokens,
     getEnabledTools: getEnabledToolsAsync,
-    getMCPRouterToolDefinition,
+    getMCPToolDefinitionsForModel,
     getAgentToolAllowlist: (agentId: string | undefined, session?: unknown) => {
       // Fallback only: a run with a resolved profile reads the snapshot
       // instead (see stream-runtime.ts)。真链路恒在回合入口解析好快照

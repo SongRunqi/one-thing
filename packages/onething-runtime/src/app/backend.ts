@@ -55,6 +55,7 @@ import './tools/builtin/headless.js'
 import './tools/builtin/readonly.js'
 import { initializeSessionSkills } from './skills/session-skills.js'
 import { MCPManager, registerMCPTools } from './mcp/index.js'
+import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from './acp/index.js'
 import { killTrackedDetachedChildren } from './tools/core/bash-executor.js'
 import { killAllTerminals } from './terminal/service.js'
@@ -202,7 +203,7 @@ export async function createOnethingBackend(
 
   if (options.mcpAcp) {
     const settings = getSettings()
-    await MCPManager.initialize(settings.mcp || { enabled: true, servers: [] })
+    await MCPManager.initialize(settings.mcp || DEFAULT_MCP_SETTINGS)
     await registerMCPTools()
     ACPManager.initialize(settings.acp || { enabled: true, agents: [] })
   }

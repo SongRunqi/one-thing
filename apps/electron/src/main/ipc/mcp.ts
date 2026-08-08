@@ -7,6 +7,7 @@
  */
 
 import { registerElectronMCPIpcHandlers } from '@onething/electron-host/ipc/mcp'
+import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import * as fs from 'fs'
 import {
   addOnethingMCPServerForIpc,
@@ -18,6 +19,8 @@ import {
   listOnethingMCPPromptsForIpc,
   listOnethingMCPResourcesForIpc,
   listOnethingMCPToolsForIpc,
+  logoutOnethingMCPServerForIpc,
+  probeOnethingMCPServerForIpc,
   readOnethingMCPConfigFileForIpc,
   readOnethingMCPResourceForIpc,
   refreshOnethingMCPServerForIpc,
@@ -34,6 +37,10 @@ import {
   type MCPConnectServerResponse,
   type MCPDisconnectServerRequest,
   type MCPDisconnectServerResponse,
+  type MCPLogoutServerRequest,
+  type MCPLogoutServerResponse,
+  type MCPProbeServerRequest,
+  type MCPProbeServerResponse,
   type MCPGetPromptRequest,
   type MCPGetPromptResponse,
   type MCPGetPromptsResponse,
@@ -52,12 +59,14 @@ import {
   type MCPUpdateServerRequest,
   type MCPUpdateServerResponse,
 } from '@shared/ipc.js'
-import { MCPManager, registerMCPTools } from '@onething/app/mcp/index.js'
+import { MCPManager, probeMCPServerConfig, registerMCPTools } from '@onething/app/mcp/index.js'
+import { configureMCPCapabilitiesChangedHandler } from '@onething/app/mcp/capabilities-changed.js'
+import { getMCPOAuthFlowManager } from '@onething/app/mcp/oauth/index.js'
 import { getSettings, saveSettings } from '@onething/app/stores/settings.js'
 
 function getMCPSettings() {
   const settings = getSettings()
-  return settings.mcp || { enabled: true, servers: [] }
+  return settings.mcp || DEFAULT_MCP_SETTINGS
 }
 
 async function saveMCPSettings(mcpSettings: { enabled: boolean; servers: MCPServerConfig[] }) {
@@ -72,11 +81,18 @@ function mcpServerAdapters() {
     saveSettings: saveMCPSettings,
     manager: MCPManager,
     registerTools: registerMCPTools,
+    logoutOAuth: (serverId: string) => getMCPOAuthFlowManager().logout(serverId),
     logger: console,
   }
 }
 
 export function registerMCPHandlers(): void {
+  // P2-1: server-pushed list changes re-read into state by the client; the
+  // model-facing catalog regenerates through the same path connect uses.
+  configureMCPCapabilitiesChangedHandler(() => {
+    void registerMCPTools()
+  })
+
   registerElectronMCPIpcHandlers({
     channels: {
       getServers: IPC_CHANNELS.MCP_GET_SERVERS,
@@ -85,6 +101,8 @@ export function registerMCPHandlers(): void {
       removeServer: IPC_CHANNELS.MCP_REMOVE_SERVER,
       connectServer: IPC_CHANNELS.MCP_CONNECT_SERVER,
       disconnectServer: IPC_CHANNELS.MCP_DISCONNECT_SERVER,
+      logoutServer: IPC_CHANNELS.MCP_LOGOUT_SERVER,
+      probeServer: IPC_CHANNELS.MCP_PROBE_SERVER,
       refreshServer: IPC_CHANNELS.MCP_REFRESH_SERVER,
       getTools: IPC_CHANNELS.MCP_GET_TOOLS,
       callTool: IPC_CHANNELS.MCP_CALL_TOOL,
@@ -134,6 +152,21 @@ export function registerMCPHandlers(): void {
         ...mcpServerAdapters(),
         serverId: typedRequest.serverId,
       })
+    },
+    logoutServer: async (request: unknown): Promise<MCPLogoutServerResponse> => {
+      const typedRequest = request as MCPLogoutServerRequest
+      return logoutOnethingMCPServerForIpc({
+        ...mcpServerAdapters(),
+        serverId: typedRequest.serverId,
+      })
+    },
+    probeServer: async (request: unknown): Promise<MCPProbeServerResponse> => {
+      const typedRequest = request as MCPProbeServerRequest
+      return probeOnethingMCPServerForIpc({
+        config: typedRequest.config,
+        probe: config => probeMCPServerConfig(config),
+        logger: console,
+      }) as Promise<MCPProbeServerResponse>
     },
     refreshServer: async (request: unknown): Promise<MCPRefreshServerResponse> => {
       const typedRequest = request as MCPRefreshServerRequest

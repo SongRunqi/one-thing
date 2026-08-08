@@ -42,6 +42,11 @@ export interface OnethingMCPServerOrchestrationAdapters<
   manager: OnethingMCPServerManagerLike<TConfig, TState>
   registerTools(): MaybePromise<unknown>
   createId?(): string
+  /**
+   * Forget the OAuth credentials a server authenticated with (issuer-keyed).
+   * Optional — hosts without the OAuth flow manager simply omit logout.
+   */
+  logoutOAuth?(serverId: string): MaybePromise<unknown>
 }
 
 export interface AddOnethingMCPServerOptions<
@@ -203,6 +208,22 @@ export async function disconnectOnethingMCPServer<
 >(
   options: ServerIdOnethingMCPServerOptions<TConfig, TState>,
 ): Promise<OnethingMCPSimpleMutationResult> {
+  await options.manager.disconnectServer(options.serverId)
+  await options.registerTools()
+  return { success: true }
+}
+
+/**
+ * "重新授权": drop the OAuth credentials for this server's issuer, then
+ * disconnect. The next connect runs a fresh authorization flow from scratch.
+ */
+export async function logoutOnethingMCPServer<
+  TConfig extends OnethingMCPServerConfigLike,
+  TState extends OnethingMCPServerStateLike<TConfig>,
+>(
+  options: ServerIdOnethingMCPServerOptions<TConfig, TState>,
+): Promise<OnethingMCPSimpleMutationResult> {
+  await options.logoutOAuth?.(options.serverId)
   await options.manager.disconnectServer(options.serverId)
   await options.registerTools()
   return { success: true }

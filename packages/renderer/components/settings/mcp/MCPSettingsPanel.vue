@@ -33,6 +33,8 @@
       @toggle-expand="mcpServers.toggleServerExpanded"
       @toggle-enabled="mcpServers.toggleServerEnabled"
       @toggle-connect="mcpServers.handleConnectToggle"
+      @oauth-login="mcpServers.handleOAuthLogin"
+      @oauth-logout="mcpServers.handleOAuthLogout"
       @edit="openEditServerDialog"
       @delete="confirmDeleteServer"
     />

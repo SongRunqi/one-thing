@@ -101,6 +101,8 @@
         @toggle-expand="$emit('toggle-expand', server.config.id)"
         @toggle-enabled="(enabled) => $emit('toggle-enabled', server.config.id, enabled)"
         @toggle-connect="$emit('toggle-connect', server)"
+        @oauth-login="$emit('oauth-login', server)"
+        @oauth-logout="$emit('oauth-logout', server.config.id)"
         @edit="$emit('edit', server.config)"
         @delete="$emit('delete', server.config.id)"
       />
@@ -125,6 +127,8 @@ interface Emits {
   (e: 'toggle-expand', serverId: string): void
   (e: 'toggle-enabled', serverId: string, enabled: boolean): void
   (e: 'toggle-connect', server: MCPServerState): void
+  (e: 'oauth-login', server: MCPServerState): void
+  (e: 'oauth-logout', serverId: string): void
   (e: 'edit', config: MCPServerConfig): void
   (e: 'delete', serverId: string): void
 }

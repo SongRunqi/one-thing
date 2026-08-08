@@ -239,6 +239,12 @@ export function getOnethingMCPToolsCatalogPath(
 	return path.join(getOnethingStorePath(options), "mcp-tools-catalog.md");
 }
 
+export function getOnethingMCPOAuthCredentialsPath(
+	options: OnethingStorePathOptions = {},
+): string {
+	return path.join(getOnethingStorePath(options), "mcp-oauth-credentials.json");
+}
+
 export function getOnethingPluginDataDir(
 	options: OnethingStorePathOptions = {},
 ): string {

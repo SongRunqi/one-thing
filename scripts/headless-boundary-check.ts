@@ -13,6 +13,7 @@ const CORE_FORBIDDEN_PATTERNS: RegExp[] = [
   /\.\.\/\.\.\/\.\.\/shared/,
   /better-sqlite3/,
   /@modelcontextprotocol\/sdk/,
+  /@modelcontextprotocol\/client/,
   /@agentclientprotocol\/sdk/,
   /from\s+['"]zod['"]/,
   /from\s+['"]diff['"]/,
@@ -554,11 +555,12 @@ const MAIN_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
   /from\s+['"]path['"]/,
   /better-sqlite3/,
   /@modelcontextprotocol\/sdk/,
+  /@modelcontextprotocol\/client/,
   /@agentclientprotocol\/sdk/,
 ]
 
 const MAIN_ADAPTER_ALLOWLIST = new Map<string, RegExp[]>([
-  ['packages/onething-runtime/src/app/mcp/client.ts', [/@modelcontextprotocol\/sdk/]],
+  ['packages/onething-runtime/src/app/mcp/client.ts', [/@modelcontextprotocol\/(sdk|client)/]],
 ])
 
 const CORE_PROMPT_ASSEMBLY_FORBIDDEN_PATTERNS: RegExp[] = [

@@ -19,6 +19,7 @@ import { applyNetworkProxySettings, testProxy } from './network-proxy.js'
 import { registerGlobalWindowShortcuts } from '@onething/electron-host/shortcuts/global-shortcuts'
 import { getVoiceServiceSafe } from '@onething/app/voice/service.js'
 import { MCPManager, registerMCPTools } from '@onething/app/mcp/index.js'
+import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from '@onething/app/acp/index.js'
 import { applyGatewaySettings } from '@onething/electron-host/gateway/lifecycle'
 import { startTodoPlanWatcher } from '@onething/app/todo-plan/store.js'
@@ -36,7 +37,7 @@ async function saveSettingsFromIpc(settings: SaveSettingsRequest, event: Electro
     updateMCPSettings: nextSettings => MCPManager.updateSettings(nextSettings),
     registerMCPTools,
     updateACPSettings: nextSettings => ACPManager.updateSettings(nextSettings),
-    defaultMCPSettings: { enabled: true, servers: [] },
+    defaultMCPSettings: DEFAULT_MCP_SETTINGS,
     defaultACPSettings: { enabled: true, agents: [] },
     logger: console,
   })

@@ -11,6 +11,7 @@ import {
   mcpContentToString,
   planMCPToolRegistration,
   planMCPToolsCatalogWrite,
+  resolveMCPToolExposure,
   resolveMCPRouterAction,
 } from '@onething/core/mcp'
 import {
@@ -197,9 +198,11 @@ describe('core MCP router helpers', () => {
       toolIdsToUnregister: ['mcp:server:old-tool'],
       shouldGenerateCatalog: false,
       shouldExposeRouter: false,
+      mode: 'none',
       toolCount: 2,
     })
 
+    // 2 tools ≤ default threshold 20 → flat mode: no router, no catalog.
     expect(planMCPToolRegistration({
       enabled: true,
       mcpTools: tools,
@@ -209,11 +212,41 @@ describe('core MCP router helpers', () => {
       ],
     })).toEqual({
       toolIdsToUnregister: ['mcp:server:old-tool'],
+      shouldGenerateCatalog: false,
+      shouldExposeRouter: false,
+      mode: 'flat',
+      toolCount: 2,
+      logMessage: '[MCPBridge] MCP flat exposure (2 tools, threshold not exceeded)',
+    })
+
+    // Threshold 0 pins the pre-hybrid router behavior (catalog included).
+    expect(planMCPToolRegistration({
+      enabled: true,
+      mcpTools: tools,
+      existingTools: [{ id: 'mcp:server:old-tool' }],
+      flatThreshold: 0,
+    })).toEqual({
+      toolIdsToUnregister: ['mcp:server:old-tool'],
       shouldGenerateCatalog: true,
       shouldExposeRouter: true,
+      mode: 'router',
       toolCount: 2,
       logMessage: '[MCPBridge] MCP router ready (2 functions)',
     })
+  })
+
+  it('resolves the hybrid exposure mode boundaries in core (决策点 #1)', () => {
+    // Boundary: exactly AT the threshold stays flat; one over flips to router.
+    expect(resolveMCPToolExposure({ enabled: true, toolCount: 20, flatThreshold: 20 })).toEqual({ mode: 'flat' })
+    expect(resolveMCPToolExposure({ enabled: true, toolCount: 21, flatThreshold: 20 })).toEqual({ mode: 'router' })
+    // Undefined threshold applies the default 20.
+    expect(resolveMCPToolExposure({ enabled: true, toolCount: 20 })).toEqual({ mode: 'flat' })
+    expect(resolveMCPToolExposure({ enabled: true, toolCount: 21 })).toEqual({ mode: 'router' })
+    // 0 = always router.
+    expect(resolveMCPToolExposure({ enabled: true, toolCount: 1, flatThreshold: 0 })).toEqual({ mode: 'router' })
+    // Off / empty stay none.
+    expect(resolveMCPToolExposure({ enabled: false, toolCount: 5 })).toEqual({ mode: 'none', skipReason: 'mcp-disabled' })
+    expect(resolveMCPToolExposure({ enabled: true, toolCount: 0 })).toEqual({ mode: 'none', skipReason: 'no-tools' })
   })
 
   it('plans provider-facing MCP router exposure in core', () => {
@@ -247,9 +280,22 @@ describe('core MCP router helpers', () => {
       skipReason: 'router-disabled',
     })
 
+    // ≤ threshold (default 20): flat exposure, keyed by sanitized ids.
+    const flatPlan = buildMCPToolsForAI({
+      enabled: true,
+      mcpTools: tools,
+    })
+    expect(flatPlan.shouldRememberTools).toBe(true)
+    expect(Object.keys(flatPlan.tools)).toEqual(tools.map(tool => `mcp:${tool.serverId}:${tool.name}`))
+    expect(flatPlan.tools[`mcp:${tools[0]!.serverId}:${tools[0]!.name}`].parameterSchema).toMatchObject({
+      type: 'object',
+    })
+
+    // Router mode (threshold 0): single router, tools hidden inside.
     const plan = buildMCPToolsForAI({
       enabled: true,
       mcpTools: tools,
+      flatThreshold: 0,
     })
     expect(plan.shouldRememberTools).toBe(true)
     expect(Object.keys(plan.tools)).toEqual(['mcp_search'])
@@ -331,6 +377,34 @@ describe('core MCP router helpers', () => {
     ])
 
     expect(normalizeMCPContent(undefined)).toBeUndefined()
+  })
+
+  it('keeps audio / resource_link / embedded-resource fidelity (P2-3)', () => {
+    expect(normalizeMCPContent([
+      { type: 'audio', data: 'YXVkaW8=', mimeType: 'audio/mpeg' },
+      { type: 'resource_link', uri: 'https://example.com/spec.pdf', name: 'Spec', description: 'The spec', mimeType: 'application/pdf' },
+      // Spec-shaped embedded resource: nested object, blob payload.
+      { type: 'resource', resource: { uri: 'file:///tmp/a.bin', blob: 'Ymlu', mimeType: 'application/octet-stream' } },
+      // Spec-shaped embedded resource carrying text.
+      { type: 'resource', resource: { uri: 'file:///tmp/a.txt', text: 'inner', mimeType: 'text/plain' } },
+    ])).toEqual([
+      { type: 'audio', data: 'YXVkaW8=', mimeType: 'audio/mpeg' },
+      { type: 'resource_link', uri: 'https://example.com/spec.pdf', name: 'Spec', description: 'The spec', mimeType: 'application/pdf' },
+      { type: 'resource', uri: 'file:///tmp/a.bin', data: 'Ymlu', mimeType: 'application/octet-stream' },
+      { type: 'resource', uri: 'file:///tmp/a.txt', text: 'inner', mimeType: 'text/plain' },
+    ])
+
+    // The model-visible rendering stays readable for the new parts.
+    const rendered = mcpContentToString([
+      { type: 'audio', data: 'YXVkaW8=', mimeType: 'audio/mpeg' },
+      { type: 'resource_link', uri: 'https://example.com/spec.pdf', name: 'Spec' },
+      { type: 'resource', uri: 'file:///tmp/a.bin', data: 'Ymlu', mimeType: 'application/octet-stream' },
+      { type: 'resource', uri: 'file:///tmp/a.txt', text: 'inner' },
+    ])
+    expect(rendered).toContain('[audio: audio/mpeg]')
+    expect(rendered).toContain('[resource_link: Spec (https://example.com/spec.pdf)]')
+    expect(rendered).toContain('[resource: application/octet-stream file:///tmp/a.bin]')
+    expect(rendered).toContain('inner')
   })
 
   it('resolves router actions without invoking transport', () => {

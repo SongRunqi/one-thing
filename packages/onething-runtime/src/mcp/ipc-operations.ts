@@ -10,6 +10,7 @@ import {
   addOnethingMCPServer,
   connectOnethingMCPServer,
   disconnectOnethingMCPServer,
+  logoutOnethingMCPServer,
   refreshOnethingMCPServer,
   removeOnethingMCPServer,
   updateOnethingMCPServer,
@@ -118,6 +119,38 @@ export async function disconnectOnethingMCPServerForIpc<
     return await disconnectOnethingMCPServer(options)
   } catch (error) {
     return mcpIpcError(options.logger, 'disconnect server', error, 'Failed to disconnect server')
+  }
+}
+
+export async function logoutOnethingMCPServerForIpc<
+  TConfig extends OnethingMCPServerConfigLike,
+  TState extends OnethingMCPServerStateLike<TConfig>,
+>(
+  options: OnethingMCPServerIpcAdapters<TConfig, TState> & { serverId: string },
+) {
+  try {
+    return await logoutOnethingMCPServer(options)
+  } catch (error) {
+    return mcpIpcError(options.logger, 'logout server', error, 'Failed to log out of server')
+  }
+}
+
+/**
+ * P2-2 preflight probe: the host injects its probe (electron: the desktop
+ * wiring; web server: the stdio-gated ServerMCPClient wiring) so transport
+ * policy stays host-owned. Nothing persists — the probe is read-only.
+ */
+export async function probeOnethingMCPServerForIpc<TConfig extends OnethingMCPServerConfigLike>(
+  options: {
+    config: TConfig
+    probe(config: TConfig): Promise<unknown>
+    logger?: OnethingMCPIpcLogger
+  },
+) {
+  try {
+    return await options.probe(options.config)
+  } catch (error) {
+    return mcpIpcError(options.logger, 'probe server', error, 'Failed to probe server')
   }
 }
 

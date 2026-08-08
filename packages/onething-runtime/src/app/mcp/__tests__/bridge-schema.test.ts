@@ -6,6 +6,7 @@ const mockMCPManager = vi.hoisted(() => ({
   tools: [] as MCPToolInfo[],
   states: new Map<string, MCPServerState>(),
   callTool: vi.fn(),
+  settings: { enabled: true, servers: [], flatToolThreshold: 20 as number | undefined },
 }))
 
 vi.mock('../manager.js', () => ({
@@ -18,6 +19,7 @@ vi.mock('../manager.js', () => ({
     getServerStates: () => Array.from(mockMCPManager.states.values()),
     callTool: (serverId: string, toolName: string, args: Record<string, unknown>) =>
       mockMCPManager.callTool(serverId, toolName, args),
+    getSettings: () => mockMCPManager.settings,
   },
 }))
 
@@ -49,6 +51,7 @@ beforeEach(() => {
   mockMCPManager.tools = []
   mockMCPManager.states.clear()
   mockMCPManager.callTool.mockReset()
+  mockMCPManager.settings.flatToolThreshold = 20
 })
 
 describe('MCP bridge schema conversion', () => {
@@ -90,7 +93,7 @@ describe('MCP bridge schema conversion', () => {
     })
   })
 
-  it('exposes a single model-facing MCP search tool', () => {
+  it('exposes flat model-facing tool definitions at/below the threshold (决策点 #1)', () => {
     addMockServer('5be43c21-ddfb-4362-ac94-fe19b6fd0458', 'MCP_DOCKER', [
       {
         name: 'brave_web_search',
@@ -104,6 +107,27 @@ describe('MCP bridge schema conversion', () => {
         },
       },
     ])
+
+    const tools = getMCPToolsForAI(undefined, false)
+
+    // Flat mode: the tool itself, under its sanitized id — no mcp_search.
+    expect(Object.keys(tools)).toEqual(['mcp_MCP_DOCKER_brave_web_search'])
+    expect(tools.mcp_MCP_DOCKER_brave_web_search.description).toBe('Search with Brave')
+    expect(tools.mcp_MCP_DOCKER_brave_web_search.parameterSchema).toMatchObject({
+      type: 'object',
+      required: ['query'],
+    })
+  })
+
+  it('falls back to the single router above the threshold (and at threshold 0)', () => {
+    addMockServer('MCP_DOCKER', 'Docker', [
+      {
+        name: 'brave_web_search',
+        description: 'Search with Brave',
+        inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+      },
+    ])
+    mockMCPManager.settings.flatToolThreshold = 0
 
     const tools = getMCPToolsForAI(undefined, false)
 

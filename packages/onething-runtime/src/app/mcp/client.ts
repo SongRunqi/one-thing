@@ -1,12 +1,14 @@
 /**
  * MCP Client Wrapper
  *
- * Wraps the MCP SDK client for easier integration
+ * Wraps the MCP SDK v2 client (`@modelcontextprotocol/client`) for easier
+ * integration. Version negotiation runs in `auto` mode: 2026-07-28 servers
+ * are probed via `server/discover`, legacy servers fall back to the 2025
+ * `initialize` handshake byte-identically.
  */
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { Client, SSEClientTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import type {
   MCPServerConfig,
   MCPServerState,
@@ -15,11 +17,16 @@ import type {
 } from './types.js'
 import {
   CoreMCPClientRuntime,
+  probeMCPServerWithAdapters,
   refreshMCPClientCapabilities,
+  type CoreMCPProbeResult,
 } from '@onething/core/mcp'
 import type { JsonArray, JsonObject, JsonValue } from '@onething/core'
+import { getMCPOAuthFlowManager } from './oauth/index.js'
+import { getMCPClientIdentity } from './identity.js'
+import { notifyMCPCapabilitiesChanged } from './capabilities-changed.js'
 
-type MCPTransport = StdioClientTransport | SSEClientTransport
+type MCPTransport = StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport
 
 /**
  * MCP Client wrapper class
@@ -32,7 +39,7 @@ export class MCPClient {
       config,
       getBaseEnv: () => process.env,
       adapters: {
-        createTransport: (plan) => {
+        createTransport: async (plan) => {
           if (plan.transport === 'stdio') {
             return new StdioClientTransport({
               command: plan.command,
@@ -41,21 +48,57 @@ export class MCPClient {
               cwd: plan.cwd,
             })
           }
-          return new SSEClientTransport(new URL(plan.url), {
+          // Remote transports carry an OAuth provider: on a 401 the SDK drives
+          // discovery + PKCE + (DCR) registration through it, stashes the
+          // authorization URL for the UI, and later refreshes tokens on its
+          // own. Static headers still ride along for non-OAuth servers.
+          const oauth = getMCPOAuthFlowManager()
+          const authProvider = await oauth.prepareProvider(config.id, getMCPClientIdentity().name)
+          if (plan.transport === 'http') {
+            const transport = new StreamableHTTPClientTransport(new URL(plan.url), {
+              requestInit: plan.headers ? { headers: plan.headers } : undefined,
+              authProvider,
+            })
+            oauth.attachTransport(config.id, transport)
+            return transport
+          }
+          const transport = new SSEClientTransport(new URL(plan.url), {
             requestInit: plan.headers ? { headers: plan.headers } : undefined,
+            authProvider,
           })
+          oauth.attachTransport(config.id, transport)
+          return transport
         },
         createClient: () => new Client(
-          {
-            name: 'one-thing',
-            version: '1.0.0',
-          },
+          getMCPClientIdentity(),
           {
             capabilities: {},
+            // `auto` probes server/discover first and falls back to the 2025
+            // initialize handshake. The default probe timeout is the standard
+            // 60s request timeout — far too long to sit on when the server is
+            // a legacy one that never answers unknown pre-initialize requests
+            // (stdio: timeout means "legacy, fall back"; HTTP: timeout means
+            // "outage, reject"). 10s is long enough for a healthy server to
+            // answer, short enough not to wreck connect UX.
+            versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
+            // P2-1: era-transparent list-changed tracking. Legacy era: the SDK
+            // registers unsolicited `notifications/*/list_changed` handlers
+            // (only when the server advertises the capability); modern era:
+            // it auto-opens `subscriptions/listen` on every connect — which is
+            // also the re-subscribe, since each (re)connect builds a fresh
+            // Client. autoRefresh stays false: our runtime owns the refresh
+            // (state merge + onStateChange) and the fan-out below regenerates
+            // the model-facing catalog.
+            listChanged: {
+              tools: { autoRefresh: false, onChanged: () => { void this.handleCapabilitiesChanged() } },
+              prompts: { autoRefresh: false, onChanged: () => { void this.handleCapabilitiesChanged() } },
+              resources: { autoRefresh: false, onChanged: () => { void this.handleCapabilitiesChanged() } },
+            },
           },
         ),
         connectClient: (client, transport) => client.connect(transport),
         refreshCapabilities: (serverId, client, logger) => refreshMCPClientCapabilities(serverId, client, logger),
+        getNegotiatedProtocolVersion: client => client.getNegotiatedProtocolVersion(),
         closeClient: client => client.close(),
         closeTransport: transport => transport.close(),
         // The SDK reports a dead connection on both objects: `onclose` when the
@@ -89,6 +132,21 @@ export class MCPClient {
    */
   get id(): string {
     return this.runtime.id
+  }
+
+  /**
+   * P2-1: server pushed a list-changed notification. Re-read the capability
+   * lists into state (the SDK only nudges us; autoRefresh stays off), then
+   * fan out so the host regenerates the model-facing tools catalog.
+   */
+  private async handleCapabilitiesChanged(): Promise<void> {
+    if (this.status !== 'connected') return
+    try {
+      await this.runtime.refreshCapabilities()
+      notifyMCPCapabilitiesChanged(this.id)
+    } catch (error) {
+      console.warn?.(`[MCP:${this.id}] Capability refresh after list-changed failed:`, error)
+    }
   }
 
   /**
@@ -145,5 +203,70 @@ export class MCPClient {
    */
   async updateConfig(config: MCPServerConfig): Promise<void> {
     await this.runtime.updateConfig(config)
+  }
+}
+
+/**
+ * P2-2 preflight probe: connect a throwaway client to a candidate config and
+ * report protocol/identity/capabilities (or a structured failure) without
+ * touching the manager, settings, or the model-facing catalog. OAuth servers
+ * answer `authRequired`; "probe then add" does not double-register because
+ * DCR registrations persist issuer-keyed in the credential store (the
+ * probe's own ephemeral flow entry is dropped when the probe returns — the
+ * dialog probes under a throwaway id).
+ */
+export async function probeMCPServerConfig(config: MCPServerConfig): Promise<CoreMCPProbeResult> {
+  try {
+    return await probeMCPServerWithAdapters<Client, MCPTransport>(
+    config,
+    process.env,
+    {
+      createTransport: async (plan) => {
+        if (plan.transport === 'stdio') {
+          return new StdioClientTransport({
+            command: plan.command,
+            args: plan.args,
+            env: plan.env,
+            cwd: plan.cwd,
+          })
+        }
+        const oauth = getMCPOAuthFlowManager()
+        const authProvider = await oauth.prepareProvider(config.id, getMCPClientIdentity().name)
+        if (plan.transport === 'http') {
+          const transport = new StreamableHTTPClientTransport(new URL(plan.url), {
+            requestInit: plan.headers ? { headers: plan.headers } : undefined,
+            authProvider,
+          })
+          oauth.attachTransport(config.id, transport)
+          return transport
+        }
+        const transport = new SSEClientTransport(new URL(plan.url), {
+          requestInit: plan.headers ? { headers: plan.headers } : undefined,
+          authProvider,
+        })
+        oauth.attachTransport(config.id, transport)
+        return transport
+      },
+      createClient: () => new Client(
+        getMCPClientIdentity(),
+        {
+          capabilities: {},
+          versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
+        },
+      ),
+      connectClient: (client, transport) => client.connect(transport),
+      closeClient: client => client.close(),
+      closeTransport: transport => transport.close(),
+      getNegotiatedProtocolVersion: client => client.getNegotiatedProtocolVersion(),
+      getServerInfo: client => client.getServerVersion(),
+      getServerCapabilities: client => client.getServerCapabilities(),
+    },
+    )
+  } finally {
+    // Drop the probe's ephemeral OAuth flow entry (loopback registration +
+    // stashed URL); without this every probe click leaves a zombie in the
+    // flow manager until process exit. Durable credentials live in the
+    // issuer-keyed store and are untouched by `clear`.
+    getMCPOAuthFlowManager().clear(config.id)
   }
 }

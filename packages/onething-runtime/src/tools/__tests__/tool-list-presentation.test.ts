@@ -43,7 +43,7 @@ describe('listOnethingSettingsTools', () => {
         { id: 'plugin:notes', name: 'Notes' },
         { id: 'mcp:legacy-server:tool', name: 'Legacy MCP' },
       ],
-      getMCPRouterToolDefinition: () => ({ id: 'mcp-router', name: 'MCP Router' }),
+      getMCPToolDefinitions: () => [{ id: 'mcp-router', name: 'MCP Router' }],
       setInitContext,
       cwd: () => '/cwd',
     })).resolves.toEqual([
@@ -65,7 +65,7 @@ describe('listOnethingSettingsTools', () => {
       getSessionsList: () => [],
       getSession: vi.fn(),
       getAllToolsAsync: () => [],
-      getMCPRouterToolDefinition: () => null,
+      getMCPToolDefinitions: () => [],
       setInitContext,
       cwd: () => '/cwd',
     })
@@ -81,7 +81,7 @@ describe('listOnethingSettingsTools', () => {
       getSessionsList: () => [],
       getSession: vi.fn(),
       getAllToolsAsync: () => [{ id: 'mcp-router', name: 'MCP Router' }],
-      getMCPRouterToolDefinition: () => ({ id: 'mcp-router', name: 'MCP Router' }),
+      getMCPToolDefinitions: () => [{ id: 'mcp-router', name: 'MCP Router' }],
       setInitContext: vi.fn(),
       cwd: () => '/cwd',
     })).resolves.toEqual([
@@ -98,7 +98,7 @@ describe('listOnethingSettingsTools', () => {
       getAllToolsAsync: () => {
         throw new Error('tools failed')
       },
-      getMCPRouterToolDefinition: () => null,
+      getMCPToolDefinitions: () => [],
       setInitContext: vi.fn(),
       cwd: () => '/cwd',
       logger,

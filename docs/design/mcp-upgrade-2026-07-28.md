@@ -104,76 +104,131 @@ MCP tunnels（内网 server 免公网暴露）；connectors 目录已有 950+ se
 
 ### P0 — 迁移到 v2 客户端（一切的前置）
 
-**P0-1 依赖替换**
-- `@modelcontextprotocol/sdk@^1.25.0` → `@modelcontextprotocol/client@^2.0.0`（+ 传递依赖 `core@2.0.0`）。
-- zod 无摩擦：v2 要求 `zod ^4.2.0`，我们正好是 `^4.2.0`（实装 4.2.1）。
-- 官方提供 `@modelcontextprotocol/codemod` 辅助迁移，以及 `server-legacy` 兼容包（我们不做 server，用不到）。
-- 影响面只有**两个文件**——这是我们 adapters 架构的红利：
-  `packages/onething-runtime/src/app/mcp/client.ts`、`apps/server/src/mcp-client.ts`。
-  `packages/core/mcp/` 因为从不 import SDK，理论上零改动（只需确认 `CoreMCPClientOperations` 的方法签名仍对得上）。
-- **验收**：现有 stdio + SSE server 全部照常连通，`bun run test` 不回归。
+**P0-1 依赖替换** — ✅ 已完成（2026-08-06）
+- ~~`@modelcontextprotocol/sdk@^1.25.0`~~ → 已迁到 `@modelcontextprotocol/client@^2.0.0`（实装 2.0.0，传递依赖 `core@2.0.0`）。
+- 改动面如预期只有两个 SDK 落点：`packages/onething-runtime/src/app/mcp/client.ts`、`apps/server/src/mcp-client.ts`；
+  `packages/core/mcp/` 零改动（adapters 架构兑现）。
+- 边界检查同步：`@modelcontextprotocol/client` 加入 core 禁入模式与 main 层禁入模式（`app/mcp/client.ts` 维持白名单放行）。
+- **验收已过**：typecheck 干净、全量 7596 例不回归、真机冒烟（假 legacy stdio server）走通 connect → tools/list → tools/call → disconnect。
 
-**P0-2 协商模式选型**
-v2 提供 `versionNegotiation: { mode: 'auto' | 'legacy' }`。
-建议 `auto`（新服务端走 2026-07-28，老服务端自动回落），并把协商结果落进 `MCPServerState` 供 UI 显示
-"此服务器协议版本：2026-07-28 / 2025-11-25（旧）"。
+**P0-2 协商模式选型** — ✅ 已完成（2026-08-06）
+按文档建议选 `versionNegotiation: { mode: 'auto' }`（两个 SDK 落点同步）。
+协商结果经新增适配口 `CoreMCPConnectAdapters.getNegotiatedProtocolVersion` 落进 `MCPServerState.protocolVersion`（断开时清空），
+UI 在 server 卡片上以徽标显示协议版本，旧版服务器（< 2026-07-28）用警示色区分。
+冒烟实测：legacy server 回落 initialize 后记录为 `2025-11-25`。
 
-**P0-3 类型收敛（与 P0-1 并行做）**
-`'stdio' | 'sse'` 在仓库里重复 4 处且无一致性测试
-（`core/mcp/types.ts:3`、`shared/ipc/mcp.ts:8`、`useMCPServers.ts:14`、`mcpPresets.ts:24`）。
-下一步要加 `http` 传输，不先收敛必漏。
+**P0-3 类型收敛（与 P0-1 并行做）** — ✅ 已完成（2026-08-06）
+~~`'stdio' | 'sse'` 在仓库里重复 4 处且无一致性测试~~
+已收敛为单一真源：`packages/core/mcp/types.ts` 定义，`packages/shared/ipc/mcp.ts` 改为 re-export，
+`useMCPServers.ts` / `mcpPresets.ts` 改用 `MCPTransportType`；
+新增 `packages/shared/ipc/__tests__/mcp-types.test.ts` 钉住一致性（transport 联合被字面 pin，
+扩 `'http'` 时会在此处强制停下）。下一步加 `http` 传输只需从 core 改起。
 
 ### P1 — 传输与鉴权（补上两块最大空白）
 
-**P1-1 Streamable HTTP**
-- 传输类型扩到 `'stdio' | 'sse' | 'http'`；`CoreMCPTransportPlan`（`core/mcp/client-state.ts:50`）加分支；
-  两个 SDK 落点各接 `StreamableHTTPClientTransport`。
-- UI：`MCPServerDialog.vue` 传输选择从两个变三个；把现在误导性的 "SSE / HTTP endpoint" 文案改对，
-  SSE 明确标注"旧版（将废弃）"。
-- 导入判定升级：`useMCPServers.ts:290` 现在是"有 url 就 sse"，应改为"有 url 默认 http，
-  显式 `type: 'sse'` 才 sse"。
-- **验收**：能连上一个只提供 Streamable HTTP 的 server 并成功 `tools/call`。
+**P1-1 Streamable HTTP** — ✅ 已完成（2026-08-06）
+- 传输类型扩到 `'stdio' | 'sse' | 'http'`（core 单点改，全层自动跟随——P0-3 红利）；
+  `CoreMCPTransportPlan` 加 http 分支（与 sse 同形 url/headers），超时归并为 stdio 60s / 远程 30s。
+- 两个 SDK 落点各接 `StreamableHTTPClientTransport`（静态 headers 走 `requestInit`，与 SSE 同构）。
+- UI：`MCPServerDialog.vue` 传输选择变为三个——**HTTP / SSE / Stdio**；SSE 标注 "Legacy (deprecated)"，
+  徽标用警示色 token；http 与 sse 共用同一份 URL 字段区。导入判定反转：有 url 默认 **http**，
+  仅显式 `type: 'sse'` 才走旧版。一致性测试的 union pin 同步更新（tripwire 按设计触发了一次）。
+- **验收已过**：假 Streamable HTTP-only server 真机冒烟——connect → tools/list → tools/call → disconnect 全通，
+  `protocolVersion` 正确记录为 `2025-11-25`（legacy 回落）；全量测试修复 1 例 token 违规后全绿。
 
-**P1-2 OAuth**
-- 用 v2 客户端的 auth 能力；注册机制**直接做 Client ID Metadata Documents**，DCR 只作兼容回退。
-- 硬性约束：校验授权响应 `iss`；凭据**按 issuer 分键存储**，换授权服务器必须重新注册。
-- token 不进 `settings.json` 明文，走独立凭据存储
-  （可参考 `packages/onething-runtime/src/app/providers/auth/oauth-manager.ts` 那条线）。
-- UI：server 卡片需要"登录 / 已连接为 X / 重新授权"三态。
-- **验收**：连上一个需要 OAuth 的公开 connector，token 过期自动刷新且无需重配。
+**P1-2 OAuth** — ✅ 已完成（2026-08-06）
+- 新增 `app/mcp/oauth/` 模块（runtime 侧）：
+  - `credential-store.ts`——凭据**按 issuer 分键**的独立 JSON 存储
+    （`mcp-oauth-credentials.json`，原子写 + 0600，不进 settings.json）；
+  - `provider.ts`——结构实现 v2 SDK `OAuthClientProvider`（PKCE verifier 实例级存活、
+    DCR 注册信息按 issuer 持久化、`redirectToAuthorization` 不直接开浏览器而是暂存 URL、
+    `invalidateCredentials` 按最近 issuer 限定范围）；SDK 类型一律走本地镜像类型，边界不破。
+  - `flow-manager.ts`——回环回调注册（专用端口 51823-51825，与 provider OAuth 的 1455/1457/54545 隔离）、
+    **provider 实例跨连接尝试复用**（PKCE verifier 必须从 401 活到回调）、
+    `finishAuth` 在**原发起 401 的 transport** 上兑现授权码 → 关旧 transport → `onAuthorized` 重连。
+- 两个 SDK 落点（桌面 + web server）的 http/sse transport 均挂 `authProvider`；stdio 不动。
+- 注册机制说明：**Client ID Metadata Documents 需要公网可托管的 metadata URL**，桌面/本地 server 形态
+  不满足，`clientMetadataUrl` 留空走 **DCR**（SDK 自动回退，代码内有注释说明）。
+- `MCPServerState.oauth` 三态面：`required`（带暂存的授权 URL）/ `authorized`（带 issuer）；
+  UI 卡片对应 **Log in**（开 URL + 轮询直到翻转）/ **Authorized** / 展开区 **Re-authorize**
+  （`mcp:logout-server` IPC + `POST /api/mcp/servers/:id/oauth/logout` REST，双宿主同构）。
+- **验收已过**：假 AS（discovery + DCR + authorize/token，真 PKCE S256 校验）+ 假 Bearer MCP server
+  真机冒烟 **12/12**——401→暂存 URL→模拟浏览器重定向→回环回调→自动重连→带 token tools/call→
+  **吊销 token 后 SDK 自动 refresh_token 换新，无需重配**→logout 后重新要求登录→凭据文件 0600。
+  全量测试 7610 绿，boundary 无新增违规。
 
-**P1-3 连接自愈与身份**
-- `HeadlessMCPManager` 加重连（指数退避 + 上限），连接失败进 UI 而不只是 `console.error`（`manager.ts:118`）。
-- 客户端身份换成真实 app name + version（`client.ts:52`），喂给新协议的 `clientInfo`。
-- 工具调用超时后向服务端发取消，补现状 R4（现在超时只是本地丢弃，服务端还在跑）。
+**P1-3 连接自愈与身份** — ✅ 已完成（2026-08-06）
+- **身份**：新增 `app/mcp/identity.ts` 晚绑端口（默认 `{name:'onething', version:'0.0.0'}`——
+  workspace 包全是 0.0.0，只有根 package.json 有产品版本）。两个 SDK 落点的 `Client` 实现和
+  OAuth `client_name` 统一改用它；Electron 启动时注入 `app.getVersion()`，server 读根 package.json。
+  替换掉了硬编码 `one-thing@1.0.0` / `onething-web-server@1.0.0`。
+- **超时→真取消**（同时关闭遗留 bug P1-4）：`callMCPToolWithTimeout` 从 Promise.race 本地丢弃
+  改为 AbortController——超时 abort 使 SDK 拒绝请求**并通知服务端**（Streamable HTTP 按规范 abort
+  每请求流；stdio/SSE 发 `notifications/cancelled`）。串行锁只在请求真正死亡后释放，
+  不再放活到还在飞的请求上。`CoreMCPClientOperations.callTool` 签名加可选 `{signal}`。
+- 重连半套（指数退避 1s→60s ×10）此前已在 core runtime 就位；连接失败进 UI 也已在
+  server-orchestration 就位（`connectServer` 吞错后从 state 读回 error 返回 success:false）。
+- **顺手补洞**：review 发现 `apps/server/src/mcp-client.ts` 从未挂上 OAuth provider（P1-2 只接了
+  桌面落点）——已对齐 client.ts 接线（authProvider + attachTransport + 身份）。已知限制：
+  web server 多 owner 场景下 OAuth 完成后的自动重连只覆盖默认 owner 的共享 manager。
+- **验收已过**：6/6 真机冒烟（clientInfo=onething@9.9.9-smoke 出现在 initialize；hang 工具 500ms
+  超时收到规范错误消息；服务端观测到挂起请求死亡；下一条调用 2ms 内放行）+ OAuth 冒烟 18/18 回归
+  + 全量 7632 绿 + boundary 无新增。
 
 ### P2 — 新协议能力落地
 
-**P2-1 `subscriptions/listen`**
-订阅 `toolsListChanged` / `promptsListChanged` / `resourcesListChanged`，
-从根上解决工具表漂移（现状 R3）。这是我们第一次引入 server→client 推送通道，
-需同时设计**断流重订阅**。
+**P2-1 `subscriptions/listen`** — ✅ 已完成（2026-08-06）
+- 两个 SDK 落点的 `Client` 构造接入 **`ClientOptions.listChanged`**（tools/prompts/resources 三项，
+  `autoRefresh: false`）：legacy 时代 SDK 自动注册 `notifications/*/list_changed` 处理器（仅在服务端
+  声明能力时），2026-07-28 时代 SDK 每次 connect 自动 `subscriptions/listen` —— 断流重订阅由构造保证
+  （每次（重）连都是新 Client）。SDK 默认 300ms 防抖。
+- 变更到达 → client 侧 `handleCapabilitiesChanged`：`runtime.refreshCapabilities()` 重读并入 state
+  （经 onStateChange 广播）→ 新晚绑端口 `capabilities-changed.ts` 扇出 → 两个宿主 IPC 装配层接到各自的
+  `registerTools` 再生成模型侧目录。cycle（bridge←manager←client）用晚绑端口绕开。
+- **验收已过**：假 Streamable HTTP server（声明 tools.listChanged + 常驻 GET SSE 流）推送
+  `notifications/tools/list_changed` → 6/6 冒烟（tool-b 无重连出现、扇出计数、状态始终 connected）。
 
-**P2-2 `server/discover` 预检**
-"添加 server"时先探测版本/能力/身份，替代现在"连上去才知道行不行"；
-处理 `UnsupportedProtocolVersionError`，UI 给"此服务器要求协议 X"。
+**P2-2 `server/discover` 预检** — ✅ 已完成（2026-08-06）
+- core 新增 `probeMCPServerWithAdapters`（15s 超时）：一次性 throwaway client 连上候选 server，回报
+  协商协议版本 / serverInfo / 能力摘要（含 listChanged 标注）；`UnsupportedProtocolVersionError`
+  解析出 `requiredProtocol`，401 识别为 `authRequired`（探针 401 顺带预热了 OAuth 流，接着添加
+  不会重复注册）。不落任何存储。
+- 双落点：`probeMCPServerConfig`（桌面）/ `probeServerMCPConfig`（web server，stdio 门禁一致）。
+  IPC 全链：`mcp:probe-server`（electron 三层）+ `POST /api/mcp/probe`（server，`RuntimeMCPAdapter.probeServer`）。
+- UI：`MCPServerDialog` 新增 **Test** 按钮，结果内联——成功显示 `name@version · protocol X · 能力表`；
+  失败区分"此服务器要求协议 X"/"需要 OAuth 登录（添加后连接即发起授权）"/原始错误。
+- **验收已过**：4/4 冒烟（健康 server 全字段、OAuth server authRequired、死端口可读错误）。
 
-**P2-3 缓存、顺序与保真**
-- `CacheableResult` 的 `ttlMs`/`cacheScope` 接管能力刷新策略。
-- `getAllTools()`（`manager.ts:141`）目前按 Map 插入序拼装，随连接顺序抖动 →
-  按 `(serverId, toolName)` 稳定排序。**投入极小、直接提 prompt cache 命中率**。
-- `normalizeMCPContent`（`content.ts`）补 `audio`、`resource_link`，embedded resource 别压扁；
-  `structuredContent` 透传。
-- schema→zod（`app/mcp/bridge.ts`）：规范放宽到任意 JSON Schema 2020-12 + `$ref` 后，
-  现有转换沉默降级的面会变大 —— 不支持的 schema 要明确标注，别静默丢字段。
-- 错误码对齐（resource not found 认 `-32602`）。
+**P2-3 缓存、顺序与保真** — ✅ 已完成（2026-08-06，缓存项评估后决定不引入）
+- 确定性排序：早前 bug 修复已落地（`getAllTools` 等经 `sortedByServerAndName`）。
+- **内容保真**：`normalizeMCPContent` 重写——`audio` 保留 data/mimeType（agent loop 的
+  `mediaPartFromData` 会自动挂成真 audio part）；`resource_link` 保留 uri/name/description；
+  `resource` 按规范读**嵌套** resource 对象（blob→data、保留 uri，旧扁平形兼容）；
+  `structuredContent` 透传（SEP-2106）。`mcpContentToString` 新类型可读渲染
+  （`[audio: mime]` / `[resource_link: name (uri)]` / resource 带 uri）。
+- **缓存决策**：`CacheableResult.ttlMs/cacheScope` 评估后**不引入**——P2-1 的推送驱动失效才是
+  漂移的正解，再叠一层 TTL 缓存会制造双失效源。SDK 侧 `InMemoryResponseCacheStore` 留作未来
+  清单类请求优化，需要时单评。
+- **schema 降级显式化**：`planJsonSchemaValidation` 新增 `caveats`——`$ref`/`anyOf`/`oneOf`/
+  `allOf`/`not`/union 类型不再静默降级（`$ref`-only schema 现在规划为 passthrough JSON 而非假
+  string）；caveat 写进模型侧参数描述（"[schema caveat: … validation is loose]"）。
+- **错误码对齐**：`readMCPResource` 把 `-32602` 映射为可读的 "Resource not found: <uri>"。
+- **验收已过**：10 例新单测 + 全量回归。
 
-**P2-4 Tasks 防御**
-即便不实现 Tasks，也要能识别服务端**不请自来的 task handle**，
-给出可读错误而不是把 handle 压成字符串塞给模型。做完防御再评估是否实现 `tasks/get` 轮询。
+**P2-4 Tasks 防御** — ✅ 已完成（2026-08-06）
+- `mcpTaskHandleNotice`：识别两种不请自来的 task handle 载体——结果上的 `task` 对象与
+  `_meta["io.modelcontextprotocol/related-task"]`。命中时前置可读告示（taskId + status +
+  "accepted-but-unresolved, 不会自动到达"）并标 `isError`，模型不会再把 handle 当成完成态，
+  服务端自带内容保留在告示之后。
+- 是否实现 `tasks/get` 轮询：属 P3 产品决策，防御已就位可随时后评。
 
-**P2-5 Streamable HTTP 规范头**
-必带 `Mcp-Method` / `Mcp-Name`；评估 `x-mcp-header`（工具参数注入头）——**新注入面，需白名单**。
+**P2-5 Streamable HTTP 规范头** — ✅ 已完成（2026-08-06，注入面评估后保持关闭）
+- `CoreMCPClientOperations.callTool` 选项加 `toolDefinition`；runtime 从 state.tools 查缓存定义
+  （name/description/inputSchema）传给 SDK——2026-07-28 Streamable HTTP 连接上 SDK 自动镜像
+  `Mcp-Method`/`Mcp-Name`（`Mcp-Param-*`）头并用 outputSchema 校验结果；legacy 连接忽略。
+- **`x-mcp-header` 工具参数注入头**：评估后**保持关闭**——那是服务端经 toolDefinition 声明的
+  新注入面，要做必须带白名单，当前无需求支撑，不在此开。
+- **验收已过**：单测 + P1-3 冒烟回归 6/6。
 
 ### P3 — 生态扩展（需产品决策）
 
@@ -204,15 +259,25 @@ SDK 只在两个文件里出现。这次架构分层的收益在这里兑现了�
 
 ## 5. 待拍板的决策点
 
-1. **单路由工具 `mcp_search` 是否保留？**
+1. **单路由工具 `mcp_search` 是否保留？** — ✅ 已按建议落地混合模式（2026-08-09）
    规范正往"工具平铺 + 确定性顺序 + 客户端缓存 + prompt cache 命中"的方向优化，前提是工具直接进 tools 列表。
    我们的 router 省 token 但绕开了这条路径，且多一跳。
-   建议：保留 router 作为大规模场景的降级，支持"少于 N 个工具时直接平铺"的混合模式。
+   **落地形态**：`resolveMCPToolExposure`（core/mcp/router.ts）为唯一模式决策点——已连接工具总数
+   ≤ `flatToolThreshold`（`MCPSettings.flatToolThreshold`，默认 20，`0` = 永远 router 即旧行为）时，
+   每个工具以消毒 id（`mcp_<server>_<tool>`）直接进模型 tools 列表，不暴露 `mcp_search`；超过阈值回退
+   单 router。两模式互斥。`planAgentLoopTools` 泛化为 MCP 工具数组（per-tool enabled + agent 白名单
+   对每项生效）；stream-runtime / prompt 快照 / 设置页工具列表三处接缝统一走
+   `getMCPToolDefinitionsForModel`（每回合实时计算，connect/disconnect/list_changed 后下一回合自动翻转）。
+   catalog 文件只在 router 模式生成（flat 工具自描述）；平铺执行复用既有 `mcp_*` id 解析直连。
+   **验收**：单测（阈值边界 20/21、阈值 0、互斥、禁用行为）+ 真机冒烟 5/5
+   （2 工具平铺无 router、平铺直连执行、21 工具翻回 router-only、阈值 0 钉死 router）。
 
-2. **协商模式选 `auto` 还是显式分档？** 建议 `auto` + UI 显示实际协商结果。
+2. **协商模式选 `auto` 还是显式分档？** — ✅ 已按建议落地（P0-2）：`auto` + UI 显示实际协商结果。
 
 3. **Tasks 做到哪一层？** 只做防御识别，还是完整轮询（`tasks/get` + `tasks/update`）？
 
 4. **MCP Apps 要不要？** Claude 侧主推，但对我们意味着一套新的渲染沙箱与安全模型。
 
-5. **OAuth 凭据存哪？** 复用 provider OAuth 的存储线还是 MCP 单开？涉及多 profile 隔离。
+5. **OAuth 凭据存哪？** — ✅ 已落地为 MCP 单开（P1-2）：issuer 键控的独立文件
+   `mcp-oauth-credentials.json`（0600、tmp+rename 原子写、与 settings.json 分离），
+   含 serverId→issuer 持久绑定；不复用 provider OAuth 存储线。

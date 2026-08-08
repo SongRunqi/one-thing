@@ -1,4 +1,4 @@
-export { DEFAULT_MCP_SETTINGS } from './types.js'
+export { DEFAULT_MCP_SETTINGS, MCP_DEFAULT_FLAT_TOOL_THRESHOLD } from './types.js'
 export { HeadlessMCPManager } from './manager.js'
 export {
   CoreMCPBridgeRuntime,
@@ -14,6 +14,8 @@ export {
 export {
   buildMCPToolsCatalog,
   buildMCPToolsForAI,
+  resolveMCPToolExposure,
+  mcpToolToModelFacingDefinition,
   describeMCPFunction,
   executeMCPBridgeTool,
   findMCPFunctionRef,
@@ -55,10 +57,12 @@ export {
   normalizeMCPResourceInfos,
   normalizeMCPResourceReadContent,
   normalizeMCPToolCallSuccessResult,
+  mcpTaskHandleNotice,
   normalizeMCPToolInfo,
   normalizeMCPToolInfos,
   readMCPResource,
   refreshMCPClientCapabilities,
+  probeMCPServerWithAdapters,
   runMCPConnectedClientOperation,
   setMCPServerStatus,
   updateMCPClientConfigWithAdapters,
@@ -103,6 +107,8 @@ export type {
   MCPToolsForAISkipReason,
   MCPToolsCatalogWritePlan,
   MCPToolRegistrationPlan,
+  MCPToolExposure,
+  MCPToolExposureMode,
   MCPRouterInput,
   MCPToolsCatalogOptions,
 } from './router.js'
@@ -120,6 +126,8 @@ export type {
   RawMCPToolCallResult,
   CoreMCPClientOperations,
   CoreMCPConnectAdapters,
+  CoreMCPProbeAdapters,
+  CoreMCPProbeResult,
   ConnectMCPClientResult,
   ConnectMCPClientWithAdaptersOptions,
   DisconnectMCPClientAdapters,

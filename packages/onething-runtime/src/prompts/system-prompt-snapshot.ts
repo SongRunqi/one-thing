@@ -211,7 +211,8 @@ export interface BuildSystemPromptSnapshotWithAdaptersOptions<
   getSkills(workingDirectory?: string, agentId?: string): TSkill[]
   initializeTools?(context: CoreSystemPromptSnapshotToolInitContext<TSkill>): Promise<void> | void
   getEnabledTools(toolSettings?: CoreSystemPromptSnapshotToolMap<TSettings>): Promise<TTool[]> | TTool[]
-  getMCPRouterTool(): TTool | null
+  /** 决策点 #1 hybrid: mode-resolved MCP tool defs (flat array or router). */
+  getMCPToolDefinitions(): TTool[]
   sourceToolsToModelDefinitions(tools: TTool[]): Record<string, CoreSnapshotMCPDefinition>
   resolveModelSupportsTools(input: {
     provider: CoreSystemPromptSnapshotProvider<TProviderConfig>
@@ -450,14 +451,16 @@ export async function buildSystemPromptSnapshotWithAdapters<
   const builtinTools = allEnabledTools
     .filter(tool => !tool.id.startsWith('mcp:'))
     .filter(tool => !allowedToolIds || allowedToolIds.has(tool.id))
-  const mcpRouterTool = enableToolCalls ? options.getMCPRouterTool() : null
-  const mcpRouterVisible = Boolean(
-    mcpRouterTool
-    && settings.tools?.tools?.[mcpRouterTool.id]?.enabled !== false
-    && (!allowedToolIds || allowedToolIds.has(mcpRouterTool.id)),
+  // 决策点 #1 hybrid: the MCP side arrives mode-resolved (flat array OR the
+  // single router, mutually exclusive upstream); the same per-tool settings
+  // and allowlist filters apply to each entry.
+  const mcpToolDefinitions = enableToolCalls ? options.getMCPToolDefinitions() : []
+  const visibleMCPTools = mcpToolDefinitions.filter(tool =>
+    settings.tools?.tools?.[tool.id]?.enabled !== false
+    && (!allowedToolIds || allowedToolIds.has(tool.id)),
   )
-  const mcpTools = mcpRouterTool && mcpRouterVisible
-    ? options.sourceToolsToModelDefinitions([mcpRouterTool])
+  const mcpTools = visibleMCPTools.length > 0
+    ? options.sourceToolsToModelDefinitions(visibleMCPTools)
     : {}
   const modelSupportsTools = await options.resolveModelSupportsTools({
     provider,

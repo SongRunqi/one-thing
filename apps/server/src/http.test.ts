@@ -4232,3 +4232,48 @@ async function readFor(response: Response, durationMs: number): Promise<string> 
     await reader.cancel().catch(() => {})
   }
 }
+
+describe('POST /api/mcp/probe', () => {
+  it('forwards the raw-body config to the adapter (P2-2 web regression)', async () => {
+    // The web client posts the candidate config as the RAW body (same shape
+    // as POST /api/mcp/servers); the handler used to unwrap `body.config`
+    // only, so every web probe arrived as `{}` and failed. Both shapes must
+    // reach the adapter.
+    const received: unknown[] = []
+    const runtime = {
+      mcp: {
+        probeServer: async (config: unknown) => {
+          received.push(config)
+          return { ok: true, protocolVersion: '2026-07-28' }
+        },
+      },
+    }
+    const server = await listen(createOnethingHttpServer({
+      runtime: runtime as never,
+    }))
+    const baseUrlValue = baseUrl(server)
+
+    const candidate = {
+      id: 'probe-1',
+      name: 'Candidate',
+      transport: 'http',
+      enabled: true,
+      url: 'http://127.0.0.1:9/mcp',
+    }
+    const raw = await fetchJson(`${baseUrlValue}/api/mcp/probe`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(candidate),
+    })
+    expect(raw).toEqual(expect.objectContaining({ ok: true }))
+    expect(received[0]).toEqual(candidate)
+
+    const enveloped = await fetchJson(`${baseUrlValue}/api/mcp/probe`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ config: candidate }),
+    })
+    expect(enveloped).toEqual(expect.objectContaining({ ok: true }))
+    expect(received[1]).toEqual(candidate)
+  })
+})

@@ -17,6 +17,8 @@ describe('electron MCP IPC host', () => {
     const removeServer = vi.fn().mockResolvedValue({ success: true })
     const connectServer = vi.fn().mockResolvedValue({ success: true })
     const disconnectServer = vi.fn().mockResolvedValue({ success: true })
+    const logoutServer = vi.fn().mockResolvedValue({ success: true })
+    const probeServer = vi.fn().mockResolvedValue({ ok: true })
     const refreshServer = vi.fn().mockResolvedValue({ success: true })
     const getTools = vi.fn().mockResolvedValue({ success: true, tools: [] })
     const callTool = vi.fn().mockResolvedValue({ success: true, content: [] })
@@ -34,6 +36,8 @@ describe('electron MCP IPC host', () => {
         removeServer: 'mcp:remove-server',
         connectServer: 'mcp:connect-server',
         disconnectServer: 'mcp:disconnect-server',
+        logoutServer: 'mcp:logout-server',
+        probeServer: 'mcp:probe-server',
         refreshServer: 'mcp:refresh-server',
         getTools: 'mcp:get-tools',
         callTool: 'mcp:call-tool',
@@ -49,6 +53,8 @@ describe('electron MCP IPC host', () => {
       removeServer,
       connectServer,
       disconnectServer,
+      logoutServer,
+      probeServer,
       refreshServer,
       getTools,
       callTool,
@@ -60,7 +66,7 @@ describe('electron MCP IPC host', () => {
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(14)
+    expect(handle).toHaveBeenCalledTimes(16)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'mcp:get-servers',
       'mcp:add-server',
@@ -68,6 +74,8 @@ describe('electron MCP IPC host', () => {
       'mcp:remove-server',
       'mcp:connect-server',
       'mcp:disconnect-server',
+      'mcp:logout-server',
+      'mcp:probe-server',
       'mcp:refresh-server',
       'mcp:get-tools',
       'mcp:call-tool',
@@ -85,9 +93,9 @@ describe('electron MCP IPC host', () => {
     await expect(handle.mock.calls[0][1]({})).resolves.toEqual({ success: true, servers: [] })
     await expect(handle.mock.calls[1][1]({}, { config: { id: 'server-1' } })).resolves.toEqual({ success: true })
     await expect(handle.mock.calls[3][1]({}, serverRequest)).resolves.toEqual({ success: true })
-    await expect(handle.mock.calls[7][1]({})).resolves.toEqual({ success: true, tools: [] })
-    await expect(handle.mock.calls[8][1]({}, callToolRequest)).resolves.toEqual({ success: true, content: [] })
-    await expect(handle.mock.calls[13][1]({}, readConfigRequest)).resolves.toEqual({
+    await expect(handle.mock.calls[9][1]({})).resolves.toEqual({ success: true, tools: [] })
+    await expect(handle.mock.calls[10][1]({}, callToolRequest)).resolves.toEqual({ success: true, content: [] })
+    await expect(handle.mock.calls[15][1]({}, readConfigRequest)).resolves.toEqual({
       success: true,
       content: {},
     })

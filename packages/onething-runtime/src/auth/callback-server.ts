@@ -90,6 +90,10 @@ export class CallbackServerManager {
     const state = url.searchParams.get('state') || ''
     const code = url.searchParams.get('code') || ''
     const error = url.searchParams.get('error') || ''
+    // RFC 9207: the AS stamps the authorization response with its issuer so
+    // the client can detect mix-up attacks. Forwarded to whoever redeems the
+    // code (MCP flows feed it to the SDK's strict iss validation).
+    const iss = url.searchParams.get('iss') || ''
     const registration = state ? this.registrations.get(state) : undefined
 
     if (!registration || registration.path !== url.pathname) {
@@ -113,6 +117,7 @@ export class CallbackServerManager {
     registration.onCallback({
       code,
       state,
+      ...(iss ? { iss } : {}),
       flowId: registration.flowId,
       providerId: registration.providerId,
     }).catch((callbackError) => {
