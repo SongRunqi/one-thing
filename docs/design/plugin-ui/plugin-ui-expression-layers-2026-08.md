@@ -1,0 +1,278 @@
+# 插件 UI 表达力分层与限制(2026-08)
+
+> 承接 [`plugin-ui-anchors-audit-2026-08.md`](./plugin-ui-anchors-audit-2026-08.md)
+> 与 [`plugin-ui-anchors-2026-08.md`](./plugin-ui-anchors-2026-08.md)。
+> 本文回答第二个问题:**描述树表达力受限,插件 UI 能做多复杂?边界在哪?
+> 哪些诉求(动画、自定义样式、接管输入)走哪条路?**
+
+---
+
+## 1. 问题定义与三层模型
+
+用户诉求拆解:
+
+| 诉求 | 例子 | 表达路径 |
+| --- | --- | --- |
+| 数据展示 | plan 执行状态、日志列表、配置表单 | **L1 描述树(现在就能做)** |
+| 交互反馈 | 按钮、下拉、提交、刷新 | **L1 描述树(现在就能做)** |
+| 动态视觉 | 进度、徽标、状态色 | **L1 描述树 v2(本期扩展)** |
+| 自定义样式 | 品牌色、圆角、字体 | **L2 主题 token 覆盖(二期)** |
+| 动画 | 转场、动效、live 更新 | **L2 受限动画原语 / L3 webview(H 线)** |
+| 任意 UI | 图表、编辑器、拖拽、画布 | **L3 webview 逃生舱(H 线)** |
+| 接管输入 | 替换输入框本体、改写输入状态 UI | **红线:不做(宪法第 1 条)** |
+
+```
+L1 描述树(纯数据,宿主渲染)   ← 默认路径,覆盖管理型 UI 的 ~80%
+  ↑ 原语扩展(v2):table/tabs/progress/badge 等
+L2 主题与动画(宿主给 token / 受限动画原语)  ← 二期
+L3 webview 逃生舱(iframe 沙箱,postMessage-only)  ← H 线,配方已备
+```
+
+**为什么描述树不能"无限加原语直到够用"**:每加一个原语,宿主渲染器、
+校验器、类型、测试四处都要动;原语越多,"表达力天花板"越高但永远追不上
+需求 —— 第三方插件生态里总有下一个要的原语(VS Code 的 TreeView 到今天
+也没有图表节点,它的答案不是"加 chart 节点",是 webview)。**描述树做
+"数据密集型、交互稀疏"的 UI,webview 做"视觉密集型、交互密集"的 UI**,
+中间地带用主题与动画原语过渡。
+
+---
+
+## 2. L1:描述树现状与 v2 扩展
+
+### 2.1 现状盘点(已核实)
+
+协议:`packages/core/plugins/panel.ts`(`PLUGIN_PANEL_PROTOCOL_VERSION = 1`)
+
+| 节点 | 字段 | 渲染器 | 用途 |
+| --- | --- | --- | --- |
+| `stack` | gap: none/small/medium | PluginPanelNode.vue | 纵向堆叠 |
+| `row` | children | 同上 | 横向排列 |
+| `list` | title/items[{id,title,subtitle,badge,actionId,payload}]/emptyText | 同上 | 数据列表 |
+| `markdown` | text | MessageMarkdown | 富文本(宿主渲染) |
+| `button` | label/actionId/payload/variant/disabled | Button | 动作 |
+| `form` | fields[{key,label,hint,control,options,value}]/submitActionId | SettingsGroup+SettingsField | 表单 |
+| `empty-state` | title/description/actionId/actionLabel | SettingsEmptyState | 空态 |
+
+控件:`switch` / `text` / `number` / `select` / `string-list`(5 种)
+
+校验器:`validatePluginPanelTree`(节点类型白名单、深度 ≤12、
+`describeNonSerializable` 全树扫描 PANEL_TREE_SCAN_DEPTH=32、禁函数成员)
+
+限制(现状,全部核实):
+
+- 节点类型白名单是 `Set` 字面量 —— 加节点 = 改 `PANEL_NODE_TYPES` +
+  `validateNode` 的 switch + renderer 的 v-else-if 链 + 类型联合。
+- 表单控件白名单 `FORM_CONTROLS` 同样四处同步。
+- **无动画**:渲染器零 transition 语义(除 list 进入时宿主自带的)。
+- **无轮询**:插件要自己起 timer 调 `ctx.refresh()`(有 200ms 合流 + debounce,
+  但"定时重拉"这件事没有协议级表达)。
+- **无条件渲染**:插件要为显示/隐藏整树重渲染(或返回 empty-state 占位)。
+- **无局部更新**:每次 render 整树替换(有 latest-wins 防旧盖新,但无 diff/patch)。
+
+### 2.2 v2 原语扩展(本期,与锚点系统同批)
+
+**新节点**(四处同步的完整清单):
+
+| 节点 | 字段(草案) | 渲染 | 场景 |
+| --- | --- | --- | --- |
+| `table` | columns[{key,label,width?}], rows[{key, cells}], emptyText | 宿主表格 | 数据矩阵 |
+| `tabs` | items[{id,label,body}] | 宿主 tab 条 | 分组内容 |
+| `progress` | value?: number(0-100), indeterminate?: boolean, label? | 宿主进度条 | 长任务 |
+| `spinner` | label? | 宿主 spinner | 加载中 |
+| `badge` | text, tone?: 'default'/'accent'/'danger'/'success' | 宿主徽标 | 状态标记 |
+| `image` | url, alt, maxWidth? | 宿主 img | 图片(url 加载策略见 §2.4,安全面) |
+| `link` | text, url, actionId? | 宿主 a | 外链/内联动作 |
+| `code` | text, language? | 宿主代码块(只读,无高亮或宿主高亮) | 代码展示 |
+| `divider` | — | 宿主分割线 | 区块分隔 |
+
+**新控件**(对齐 R3 设置页渲染能力):
+
+| 控件 | 渲染 | 场景 |
+| --- | --- | --- |
+| `textarea` | Input 多行 | 长文本 |
+| `slider` | InputNumber 变体或宿主 slider | 数值范围 |
+| `checkbox-group` | 宿主多选 | 多选集合 |
+| `radio` | 宿主单选 | 互斥选择 |
+| `date` | 宿主日期输入 | 日期 |
+| `color` | 宿主色板 | 颜色 |
+
+**新语义**:
+
+| 语义 | 表达 | 场景 |
+| --- | --- | --- |
+| `refreshIntervalMs`(树级) | 宿主在块可见时按周期重拉 render(上限 1Hz) | 监控类面板,省掉插件自写 timer |
+| `visible-when`(节点级) | 条件表达式(受限:字段存在性/相等,不执行代码) | 表单联动显示 |
+| 节点级 `style` | **明确不做**(见 §3.3) | — |
+
+**协议版本**:v2 加节点 = 联合加成员,`version: 2` 的树宿主能画,
+`version: 1` 的树照旧 —— 校验器按 version 放行新旧两套(`PLUGIN_PANEL_PROTOCOL_VERSION` 升到 2,校验逻辑按成员放行,不做"版本分叉渲染")。
+
+### 2.4 image / link 节点的 URL 策略(v2 新增,安全面)
+
+描述树是插件控制的数据,url 字段是插件伸向渲染进程的一根管子,必须收拢。
+(本文档初版在 §2.2 写"见 §4",但 §4 是 webview 章节,并未覆盖 —— 此处补上。)
+
+- **`image.url` 只允许两个 scheme**:`data:`(内联小图)与 `https:`。
+  `http:`、协议相对 `//`、其余 scheme 在校验器里拒绝(反例测试钉住)。
+  https 远程图的内容可随时间变化(追踪像素/内容替换),渲染端以
+  `referrerpolicy="no-referrer"` 加载;H 线的 `onething-plugin://<pluginId>/`
+  落地后再放行插件目录静态资源。
+- **`link.url` 只允许 `https:` / `mailto:`**;点击外链一律走宿主确认
+  (与消息正文外链同一条路径);`javascript:` 等 scheme 校验期拒绝。
+
+### 2.5 v2 的边界(能做什么,不能做什么)
+
+能:管理型 UI 全覆盖 —— 数据表、分页列表(宿主分页原语?不,list 已够)、
+配置表单、状态仪表盘(progress+badge+spinner)、多页签内容。
+
+不能:任何"像素级控制"(精确布局、任意间距、渐变、阴影)、任何动画、
+任何第三方组件复用、任何 DOM 事件级交互(拖拽、滚轮缩放、键盘组合)。
+
+---
+
+## 3. L2:主题与动画 —— 插件的样式定制面
+
+### 3.1 现状(已核实)
+
+- 主题系统:JSON 主题 → 语义 token → `CSS_VAR_MAP`
+  (`packages/onething-runtime/src/themes/css-mapper.ts`,130+ 变量)→ renderer
+  `packages/renderer/stores/themes.ts` 的 `applyThemeVariables` 写 `:root`。
+- 描述树渲染器全部用 `--ui-*` 变量,零内联样式 —— 主题切换自动跟随。
+
+### 3.2 三条路径
+
+1. **跟随主题(默认,零成本)**:插件给数据,宿主给样式。这是宪法第 2 条
+   的自然结果,也是绝大多数插件的正确选择 —— 用户切深色模式,插件块
+   自动变深色,不用插件做任何事。
+2. **主题 token 覆盖(二期,受限)**:manifest `contributes.theme` 声明对
+   **既有 token** 的覆盖(如 `primary` 换成品牌色)。
+   - **只允许覆盖既有 token,不允许新增 token** —— 新增 = 全局 CSS 注入
+     的变体,红线。
+   - 覆盖是**全局的**(主题变量是全局的) —— 两个插件同时覆盖 `primary`
+     是冲突,按**全局规范顺序**后者胜(与锚点块排列/截断同一出处:
+     `enabledAt`,平局 pluginId 字典序 —— 顺序不能是目录发现序,否则同一
+     插件集合在不同机器上生效结果不同),设置页要能显示"谁的覆盖生效"。
+   - 与主题文件的关系:覆盖挂在"用户当前主题"之上,主题切换时保留。
+3. **webview(H 线)**:iframe 内完全自定义样式,不影响宿主。
+
+### 3.3 红线:节点级 style 字段
+
+描述树**不加** `style` / `className` 字段。理由:
+
+- 节点级内联样式 = 半开 CSS 注入:单个节点看着无害,但"任意样式"的
+  组合空间就是全局样式污染,而且校验器要维护一份 CSS 子集白名单
+  (比 JSON Schema 子集难一个数量级)。
+- "想要一点自定义"的正确出口是 **L2 主题 token 覆盖**(全局语义化)或
+  **L3 webview**(完全隔离)。中间态是最坏的:既有全局风险,又不满足
+  完全自定义。
+
+### 3.4 动画
+
+描述树**不可表达动画**(纯数据 + 宿主渲染,这是特性不是缺陷 —— 动画是
+"执行"的一种,宪法第 1 条把它划给了宿主)。
+
+宿主侧受限动画原语(二期,低风险):
+
+- `progress` 节点的 indeterminate 态(宿主 CSS 动画,插件只声明状态);
+- `list` / `tabs` 切换的宿主过渡(与内置面板同一套 Transition);
+- badge/状态的进入退出(宿主统一)。
+
+**完全自定义动画 = webview 专属**(L3)。这是"动画完全自定义"诉求的
+唯一答案,必须在文档与插件指南里写清楚,避免插件作者在描述树里找动画
+找不到而绕路。
+
+---
+
+## 4. L3:webview 逃生舱(配方,当前不排期)
+
+### 4.1 前置条件(设计文档 §5 R5 已写,此处展开)
+
+1. **R1 软隔离完成** ✓(已实施:`a3114b48`、`888a25e8`)
+2. **独立 origin**:自定义协议 `onething-plugin://<pluginId>/<path>`,
+   Electron `protocol.handle` 只服务插件目录内文件;禁目录穿越、禁 node
+   能力。协议注册为 privileged(supportFetchAPI)。
+3. **CSP 强制**:webview 面板的 HTML 响应带 CSP 头:
+   `default-src 'none'; script-src 'self'; connect-src 'none'` ——
+   iframe 内 JS 不能出网,通信唯一通道是 postMessage。
+4. **postMessage-only**:host 与 iframe 之间只有 postMessage;
+   iframe 不获得任何宿主对象(window.parent 访问被 CSP/sandbox 拦)。
+5. **ui.\* token 注入**:host 生成一次性 token 注入 iframe,iframe 发消息
+   必须带 token —— 防其他 iframe 冒充。
+
+### 4.2 渲染容器
+
+- Electron 侧:`<webview>` 标签已废弃;用 **WebContentsView** 或
+  sandbox iframe + 自定义协议(推荐后者 —— 与 web 端同构,协议 host-neutral)。
+- web 端:同款 sandbox iframe,协议换成宿主静态资源路径 —— 但方案 A
+  下 web 端不跑插件,此路不通,记录在案。
+
+### 4.3 通信协议(草案)
+
+```
+iframe → host:  { token, type: 'invoke', actionId, payload }
+               { token, type: 'ready' }
+host → iframe:  { requestId, type: 'render', tree | error }
+               { requestId, type: 'result', result | error }
+               { type: 'push', event: ... }   // 插件主动推送(二期)
+```
+
+- `invoke` 走既有请求通道 `panel:action:<panelId>`(或 `ui:action:...`),
+  自动继承 30s 预算 / abort / progress / 熔断。
+- render 结果 = 插件直接给 HTML?不 —— webview 面板的**内容由插件目录
+  静态文件提供**(entry 声明 HTML 路径),render 通道退化为"初始化数据 +
+  事件桥"。这保持了"声明先于代码":manifest 声明 entry,宿主就能渲染
+  占位,加载失败也说得出。
+
+### 4.4 为什么 H 线才做
+
+webview = UI 侧执行插件代码(在 iframe 沙箱里)。虽然隔离边界清晰,
+但它打开了"插件代码在 renderer 进程附近执行"的面 —— 与 H 线
+(backend 子进程 ext host)是同一波安全面加固的产物。**顺序**:
+R5.x 先把 L1/L2 跑透(覆盖 80% 真实场景),H 线做 L3 时一次性把
+"renderer 侧插件执行"与"backend 侧插件执行"两个沙箱一起落地。
+
+---
+
+## 5. 红线:接管输入 / 替换宿主组件
+
+用户诉求"接管输入状态 UI、改变 inputbox 样式"。**明确不做**:
+
+- 替换 InputBox 本体 = 插件代码获得宿主核心交互控制权。输入框承载
+  发送、引用、附件、语音、命令模式 —— 插件接管任何一个,宿主都失去
+  对"用户如何与 AI 对话"的控制,宪法第 1 条(唯一通道)直接崩塌。
+- "改变 inputbox 样式"的**合法路径**:L2 主题 token 覆盖(`bg.input` /
+  `bg.inputFocus` 等 token 已存在,CSS_VAR_MAP 已映射)—— 改颜色可以,
+  改结构不行。
+- "显示当前执行状态"的**合法路径**:composer.above 锚点块(L1 描述树,
+  现在就能做)—— 用户要的 plan 插件场景,不需要碰输入框本体。
+
+**这个边界要在插件指南里写成人话**:你能在输入框**旁边**放东西,
+不能进输入框**里面**。
+
+---
+
+## 6. 表达力决策表(插件作者视角)
+
+| 我要做 | 用 | 例 |
+| --- | --- | --- |
+| 数据列表 / 表单 / 状态展示 | L1 描述树 | log-monitor 面板、plan 状态条 |
+| 进度 / 徽标 / 多页签 | L1 v2(本期) | 任务进度、日志级别徽标 |
+| 品牌色 / 全局换肤 | L2 token 覆盖(二期) | 企业插件 |
+| 过渡动画 / 加载动效 | L2 受限动画原语(二期) | 面板进入、进度条 |
+| 图表 / 编辑器 / 拖拽 / 任意动画 | L3 webview(H 线) | 数据可视化插件 |
+| 接管输入框 / 消息列表 | **不做** | — |
+
+---
+
+## 7. 本设计的限制声明(诚实边界)
+
+1. L1 永远追不上"任意 UI" —— 这是设计选择,不是缺陷;追不上的场景
+   有 L3 接住。
+2. L2 token 覆盖是全局的,多插件冲突靠"声明顺序后者胜" —— 没有
+   per-block 样式隔离(那是 webview 的领域)。
+3. L3 是 H 线后才开放 —— 在此之前"动画完全自定义"没有答案,文档
+   必须明说,不能假装有。
+4. 锚点块与面板共享描述树协议,但**容量语义不同**(composer.above
+   单行 vs 面板整页)—— 插件要写"两种尺寸都好看"的树,或按锚点
+   返回不同树(render ctx 里带 anchor 与 `sessionId: string | null`,
+   一期就带上;宿主在会话切换时重拉)。
