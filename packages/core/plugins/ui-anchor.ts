@@ -49,6 +49,12 @@ export const UI_ANCHOR_CAPACITY = {
   'composer.above': { maxBlocks: 3, maxHeight: 32, rootHint: 'row' },
   /** 聊天面底部状态条(ChatPanel 内,MessageList 之下)。横向,每块 icon+短文本。 */
   'chat.status-bar': { maxBlocks: 8, maxHeight: 24, rootHint: 'row' },
+  /**
+   * 每条消息尾部(MessageItem 的 .message-footer,时间戳与操作行之间)。
+   * 第一个**消息级**锚点:宿主按消息实例挂载,render ctx 额外带 messageId
+   * (插件据此把状态按消息对号入座);只挂 assistant 消息。单行小字。
+   */
+  'message.footer': { maxBlocks: 6, maxHeight: 24, rootHint: 'row' },
 } as const satisfies Record<string, UiAnchorCapacity>
 
 /** 锚点 id 的字面量联合 —— 由容量表派生,不另写一份。
@@ -66,6 +72,7 @@ export type UiAnchor = keyof typeof UI_ANCHOR_CAPACITY
 export const UI_ANCHORS = {
   composerAbove: 'composer.above',
   statusBar: 'chat.status-bar',
+  messageFooter: 'message.footer',
 } as const satisfies Record<string, UiAnchor>
 
 /** 这个字符串是不是宿主认识的锚点。未知锚点的处置见 loader/投影层(降级,不拒绝)。 */
@@ -135,6 +142,11 @@ export function isReservedPluginUiAction(action: string): boolean {
 export interface CorePluginUiSlotContext extends CorePluginPanelContext {
   readonly anchor: string
   readonly sessionId: string | null
+  /**
+   * 仅消息级锚点(message.footer):该块所属的消息 id —— 插件据此把状态
+   * 按消息对号入座(每条消息一个块实例)。会话级锚点不携带。
+   */
+  readonly messageId?: string | null
 }
 
 export interface CorePluginUiSlotRegistration<

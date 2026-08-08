@@ -69,6 +69,7 @@ export function uiSlotSurface(anchor: string, slotId: string): string {
 export const UI_ANCHOR_CAPACITY_MIRROR: Record<string, { maxBlocks: number; maxHeight: number }> = {
   'composer.above': { maxBlocks: 3, maxHeight: 32 },
   'chat.status-bar': { maxBlocks: 8, maxHeight: 24 },
+  'message.footer': { maxBlocks: 6, maxHeight: 24 },
 }
 
 export interface AnchorOverflowInfo {

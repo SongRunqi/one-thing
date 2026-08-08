@@ -201,6 +201,59 @@ describe('registerUiSlot', () => {
     expect(seenCtx!.sessionId).toBe('session-1')
   })
 
+  it('消息级锚点:render payload 带 messageId 时 ctx.messageId 随之过线', async () => {
+    let seenCtx: CorePluginUiSlotContext | null = null
+    const def = definition('tps-meter', api => {
+      api.registerUiSlot({
+        anchor: 'message.footer',
+        id: 'tps-meter',
+        render(ctx) {
+          seenCtx = ctx
+          return simpleTree('42 tok/s')
+        },
+      })
+    }, [{ anchor: 'message.footer', id: 'tps-meter', label: 'TPS' }])
+
+    const { manager, failures } = createManager([def])
+    await boot(manager)
+
+    const result = await manager.handleRequest({
+      pluginId: 'tps-meter',
+      action: `${PLUGIN_UI_RENDER_ACTION}:message.footer:tps-meter`,
+      payload: { sessionId: 'session-1', messageId: 'msg-42' },
+    })
+    expect(result.success).toBe(true)
+    expect(failures).toEqual([])
+    expect(seenCtx).not.toBeNull()
+    expect(seenCtx!.anchor).toBe('message.footer')
+    expect(seenCtx!.sessionId).toBe('session-1')
+    expect(seenCtx!.messageId).toBe('msg-42')
+  })
+
+  it('render payload 不带 messageId 时 ctx.messageId 缺席(会话级锚点不变)', async () => {
+    let seenCtx: CorePluginUiSlotContext | null = null
+    const def = definition('tps-meter', api => {
+      api.registerUiSlot({
+        anchor: 'message.footer',
+        id: 'tps-meter',
+        render(ctx) {
+          seenCtx = ctx
+          return simpleTree('x')
+        },
+      })
+    }, [{ anchor: 'message.footer', id: 'tps-meter', label: 'TPS' }])
+
+    const { manager } = createManager([def])
+    await boot(manager)
+
+    await manager.handleRequest({
+      pluginId: 'tps-meter',
+      action: `${PLUGIN_UI_RENDER_ACTION}:message.footer:tps-meter`,
+      payload: { sessionId: 'session-1' },
+    })
+    expect(seenCtx!.messageId).toBeUndefined()
+  })
+
   it('render payload 不带 sessionId 时 ctx.sessionId 为 null(全局块)', async () => {
     let seenCtx: CorePluginUiSlotContext | null = null
     const def = definition('plan-status', api => {

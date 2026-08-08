@@ -52,6 +52,8 @@ const props = defineProps<{
   entry: PluginContributedUiSlot
   /** 当前会话;切换时重拉(全局块的 render 不读它,插件自己决定)。 */
   sessionId: string | null
+  /** 仅消息级锚点(message.footer):该块所属的消息 id,随 render payload 过线。 */
+  messageId?: string | null
   /** 锚点容量给的单块最大高度。 */
   maxHeight: number
 }>()
@@ -77,7 +79,10 @@ const {
   renderAction: `ui:render:${props.entry.anchor}:${props.entry.slotId}`,
   invokeAction: `ui:action:${props.entry.anchor}:${props.entry.slotId}`,
   notificationId: uiSlotSurface(props.entry.anchor, props.entry.slotId),
-  renderPayload: () => ({ sessionId: props.sessionId }),
+  renderPayload: () => ({
+    sessionId: props.sessionId,
+    ...(props.messageId ? { messageId: props.messageId } : {}),
+  }),
   shareInflight: true,
   enabled: props.entry.loaded,
 }))
@@ -88,8 +93,9 @@ onMounted(() => {
   observeVisibility(hostEl.value)
 })
 
-// 会话切换 = 这一块要重拉(render ctx 的 sessionId 随之变化)。
-watch(() => props.sessionId, () => {
+// 会话切换 = 这一块要重拉(render ctx 的 sessionId 随之变化);messageId
+// 对消息级块同理(正常不会变 —— 每条消息挂各的实例,但变了就得重拉)。
+watch(() => [props.sessionId, props.messageId], () => {
   void render()
 })
 

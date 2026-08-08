@@ -606,7 +606,14 @@ export function createCorePluginAPI<
       /** sessionId 由调用方(renderer)随 payload 传入 —— 宿主在会话切换时重拉。 */
       const withSession = (base: CorePluginUiSlotContext, payload: unknown): CorePluginUiSlotContext => {
         const raw = (payload as { sessionId?: unknown } | undefined)?.sessionId
-        return { ...base, sessionId: typeof raw === 'string' && raw ? raw : null }
+        // messageId 同理(消息级锚点):宿主按消息实例挂载时随 payload 传入,
+        // 会话级锚点不带这个字段。
+        const rawMessageId = (payload as { messageId?: unknown } | undefined)?.messageId
+        return {
+          ...base,
+          sessionId: typeof raw === 'string' && raw ? raw : null,
+          ...(typeof rawMessageId === 'string' && rawMessageId ? { messageId: rawMessageId } : {}),
+        }
       }
 
       requestHandlers.set(`${PLUGIN_UI_RENDER_ACTION}:${address}`, (payload, ctx) =>

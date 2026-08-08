@@ -9,6 +9,7 @@
       :key="`${slot.pluginId}:${slot.slotId}`"
       :entry="slot"
       :session-id="sessionId ?? null"
+      :message-id="messageId ?? null"
       :max-height="maxHeight"
     />
     <!-- 加载失败的块不占容量,折叠为一个聚合指示(详情在设置页)。
@@ -43,8 +44,11 @@ const props = withDefaults(defineProps<{
   anchor: string
   /** 当前会话;切换时每个块都会重拉(render ctx 的 sessionId 随之变化)。 */
   sessionId?: string | null
+  /** 仅消息级锚点(message.footer):该宿主所属的消息 id,透传给每个块。 */
+  messageId?: string | null
 }>(), {
   sessionId: null,
+  messageId: null,
 })
 
 const visibleSlots = useVisibleAnchorUiSlots(props.anchor)

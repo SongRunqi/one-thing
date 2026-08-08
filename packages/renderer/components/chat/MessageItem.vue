@@ -406,6 +406,14 @@
           >
             {{ formatTime(message.timestamp) }}
           </div>
+          <!-- 消息级锚点(message.footer):插件块按消息实例挂载,只给
+               assistant 消息 —— TPS/耗时/成本这类 per-message 块的家。 -->
+          <UiSlotHost
+            v-if="message.role === 'assistant'"
+            anchor="message.footer"
+            :session-id="message.sessionId"
+            :message-id="message.id"
+          />
           <MessageActions
             :role="message.role"
             :content="message.content"
@@ -446,6 +454,7 @@ import ErrorNote from '@/components/common/ErrorNote.vue'
 import FileChip from '@/components/common/FileChip.vue'
 import { formatFileSize } from '@/utils/format'
 import MessageError from './message/MessageError.vue'
+import UiSlotHost from '@/components/plugins/UiSlotHost.vue'
 import MessageSystem from './message/MessageSystem.vue'
 import RoomNoticeLine from './message/RoomNoticeLine.vue'
 import CollabThinkingTrace from './message/CollabThinkingTrace.vue'
