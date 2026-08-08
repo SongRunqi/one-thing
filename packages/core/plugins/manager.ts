@@ -1,5 +1,12 @@
+import path from 'path'
 import type { CorePluginDefinition } from './types.js'
 import { describePluginPanelResultProblem } from './panel.js'
+import {
+  findPluginUpdate,
+  type CorePluginMarketIndex,
+  type InstallCorePluginPackageInput,
+  type InstallCorePluginPackageResult,
+} from './install.js'
 import { describePluginSurface, pluginScope, type PluginFailureScope } from './policy.js'
 import {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
@@ -91,8 +98,8 @@ export interface CorePluginManagerHost<
   // ── R4:数据目录与卸载生命周期 ──
   /** 归档插件数据目录(移进 legacy-backup)。返回失败原因而不是抛。 */
   archivePluginData?(pluginId: string): { archived: boolean; archivePath?: string; error?: string }
-  /** 删除用户插件的源目录 `<store>/plugins/<id>/`。 */
-  removePluginSource?(definition: TDefinition): { removed: boolean; error?: string }
+  /** 删除用户插件的源目录(npm 形态 = npm uninstall,实现可以是异步)。 */
+  removePluginSource?(definition: TDefinition): { removed: boolean; error?: string } | Promise<{ removed: boolean; error?: string }>
   /** 清掉 plugin-settings 里该插件的 enabled/config/health 三键。 */
   clearPluginSettings?(pluginId: string): void
   /**
@@ -110,12 +117,56 @@ export interface CorePluginManagerHost<
   restorePluginDataArchive?(pluginId: string, archivePath: string): { restored: boolean; error?: string }
   /** 一轮扫描的可信度与源目录实际条目(所有权判定用,不看能否加载)。 */
   getPluginSourceScan?(): { trusted: boolean; reason?: string; presentEntryNames: string[] }
+  // ── P1:npm 生命周期(裁决 8:v1 面向开发者市场,依赖本机 npm)──
+  /**
+   * 装/更新一个 npm 包(spec = tarball URL 或 file: 路径)。
+   * 脚手架、--ignore-scripts、零运行时依赖与 SRI 校验、回滚,全部在
+   * 这条端口的实现里(core install.ts 提供了开箱的编排,宿主只需供 runNpm)。
+   */
+  installPluginPackage?(input: InstallCorePluginPackageInput): Promise<InstallCorePluginPackageResult>
+  /** 读账本里某包当前的 spec —— update 回滚旧版用(版本真相在账本,不在 registry)。 */
+  readInstalledPluginSpec?(pkg: string): string | undefined
+  /** 拉市场索引;未配置/拉取失败 = null(更新通道整体关闭,checkPluginUpdates 返回 [])。 */
+  fetchPluginMarketIndex?(): Promise<CorePluginMarketIndex | null>
 }
 
 export interface CorePluginUninstallResult {
   success: boolean
   /** 数据被归档到哪儿(成功与"归档成功但后续失败"两种情况都会带上)。 */
   archivePath?: string
+  error?: string
+}
+
+export interface CorePluginInstallRequest {
+  /** 包名(可带 scope);必须与包内 package.json 的 name 一致。 */
+  pkg: string
+  /** 市场通道:tarball URL。与 path 二选一。 */
+  tarballUrl?: string
+  /** file: 开发通道:本地目录或本地 .tgz。与 tarballUrl 二选一。 */
+  path?: string
+  /** 市场索引给的 sha512-SRI;file: 通道通常不给(跳过比对)。 */
+  integrity?: string
+}
+
+export interface CorePluginInstallResult {
+  success: boolean
+  pluginId?: string
+  error?: string
+}
+
+export interface CorePluginUpdateOffer {
+  pluginId: string
+  current: string
+  latest: string
+}
+
+export interface CorePluginUpdateResult {
+  success: boolean
+  pluginId: string
+  /** 装上的新版本(成功时)。 */
+  version?: string
+  /** 装后闸不通过时是否已回退旧版。 */
+  rolledBack?: boolean
   error?: string
 }
 
@@ -436,7 +487,7 @@ export class CorePluginManager<
         return { success: false, error: archive.error, archivePath: archive.archivePath }
       }
 
-      const removal = this.host.removePluginSource?.(definition) ?? { removed: false }
+      const removal = (await this.host.removePluginSource?.(definition)) ?? { removed: false }
       if (removal.error) {
         this.logger.error(`[PluginManager] Uninstall could not remove source for "${pluginId}": ${removal.error}`)
         // 补偿:数据已经搬走但插件还在 —— 把它搬回原位,否则用户看到的是
@@ -465,6 +516,152 @@ export class CorePluginManager<
 
       return { success: true, archivePath: archive.archivePath }
     })
+  }
+
+  /**
+   * 生命周期命令与 refreshPlugins 共用单飞(P1 拍板)。
+   *
+   * npm 对 package.json 没有跨进程原子性;refresh 撞上写了一半的
+   * node_modules 会把半成品按加载失败记熔断账。占位期间到来的
+   * refreshPlugins() 直接复用这张票 —— 因此 fn 内部必须调
+   * doRefreshPlugins() 而不是 refreshPlugins(),否则自我等待死锁。
+   */
+  private async runLifecycleExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.refreshInFlight) {
+      try {
+        await this.refreshInFlight
+      } catch {
+        // 上一轮失败不挡新一轮生命周期命令。
+      }
+    }
+    const task = fn()
+    const slot: Promise<void> = task.then(() => undefined, () => undefined)
+    this.refreshInFlight = slot
+    try {
+      return await task
+    } finally {
+      if (this.refreshInFlight === slot) this.refreshInFlight = null
+    }
+  }
+
+  /**
+   * 安装一个插件(npm 形态;与 uninstallPlugin 对称)。
+   *
+   * 命令链:脚手架 → npm install(--ignore-scripts)→ 装后校验(零运行时
+   * 依赖 / SRI)→ 全量刷新。失败时 npm 状态已在 installCorePluginPackage
+   * 里回滚,错误原样透传。新装插件默认 enabled(settings 无行 = 默认开)。
+   */
+  async installPlugin(input: CorePluginInstallRequest): Promise<CorePluginInstallResult> {
+    if (!this.host.installPluginPackage) {
+      return { success: false, error: 'This host does not support plugin installation' }
+    }
+    const spec = input.tarballUrl ?? (input.path ? `file:${path.resolve(input.path)}` : undefined)
+    if (!spec) {
+      return { success: false, error: 'installPlugin needs either a tarballUrl or a path' }
+    }
+    return this.runLifecycleExclusive(async () => {
+      const result = await this.host.installPluginPackage!({
+        pkg: input.pkg,
+        spec,
+        integrity: input.integrity,
+      })
+      if (!result.ok) {
+        return { success: false, pluginId: result.pluginId, error: result.error }
+      }
+      // 让全量扫描把插件装进表(含 catalog-changed 广播,R5 的通道直接复用)。
+      await this.doRefreshPlugins()
+      return { success: true, pluginId: result.pluginId }
+    })
+  }
+
+  /**
+   * 更新一个插件:从市场索引取最新 tarball URL,重新走安装链。
+   *
+   * 不能用 `npm update` —— URL 形式的依赖它解析不了(npm 已知限制),
+   * 而且我们的版本真相在市场索引,不在任何 registry。
+   * minAppVersion 等声明层闸在装后重校,不够则回退旧版并明示。
+   */
+  async updatePlugin(pluginId: string): Promise<CorePluginUpdateResult> {
+    const info = this.plugins.get(pluginId)
+    if (!info) {
+      return { success: false, pluginId, error: `Unknown plugin "${pluginId}"` }
+    }
+    if (info.definition.source === 'builtin') {
+      return { success: false, pluginId, error: `"${pluginId}" is a built-in plugin and cannot be updated` }
+    }
+    if (info.definition.legacy) {
+      return {
+        success: false,
+        pluginId,
+        error: `"${pluginId}" is a legacy directory plugin; reinstall it in npm form to get the update channel`,
+      }
+    }
+    if (!this.host.installPluginPackage || !this.host.fetchPluginMarketIndex) {
+      return { success: false, pluginId, error: 'This host does not support plugin updates' }
+    }
+    return this.runLifecycleExclusive(async () => {
+      const index = await this.host.fetchPluginMarketIndex!()
+      if (!index) {
+        return { success: false, pluginId, error: 'The plugin market index is unavailable' }
+      }
+      const current = info.definition.manifest.version ?? '0.0.0'
+      const update = findPluginUpdate(index, pluginId, current)
+      if (!update) {
+        return { success: false, pluginId, error: `No update available for "${pluginId}" (current ${current})` }
+      }
+      const entry = update.entry
+      // 回滚保险:装前记下账本里的旧 spec —— 装后闸不通过时拿它退回旧版。
+      const previousSpec = this.host.readInstalledPluginSpec?.(entry.pkg)
+      const result = await this.host.installPluginPackage!({
+        pkg: entry.pkg,
+        spec: entry.tarballUrl,
+        integrity: entry.integrity,
+      })
+      if (!result.ok) {
+        return { success: false, pluginId, error: result.error }
+      }
+      await this.doRefreshPlugins()
+
+      // 装后重校:tarball 自带的 plugin.json 才是版本闸的事实源。
+      const blocked = this.plugins.get(pluginId)?.definition.loadBlockedReason
+      if (blocked) {
+        let rolledBack = false
+        if (previousSpec) {
+          const undo = await this.host.installPluginPackage!({ pkg: entry.pkg, spec: previousSpec })
+          rolledBack = undo.ok
+          if (undo.ok) await this.doRefreshPlugins()
+        }
+        return {
+          success: false,
+          pluginId,
+          rolledBack,
+          error: `Updated "${pluginId}" to ${entry.version} but it is blocked (${blocked}); `
+            + (rolledBack
+              ? 'rolled back to the previous version'
+              : 'automatic rollback failed — reinstall the previous version manually'),
+        }
+      }
+      return { success: true, pluginId, version: entry.version }
+    })
+  }
+
+  /**
+   * 已装版本(node_modules/<pkg>/package.json)vs 市场索引版本 ——
+   * 设置页"有更新"徽标的数据源。纯查询,不进互斥锁。
+   */
+  async checkPluginUpdates(): Promise<CorePluginUpdateOffer[]> {
+    if (!this.host.fetchPluginMarketIndex) return []
+    const index = await this.host.fetchPluginMarketIndex()
+    if (!index) return []
+    const offers: CorePluginUpdateOffer[] = []
+    for (const [id, info] of this.plugins) {
+      // 内置与 legacy 目录插件没有更新通道。
+      if (info.definition.source === 'builtin' || info.definition.legacy) continue
+      const current = info.definition.manifest.version ?? '0.0.0'
+      const update = findPluginUpdate(index, id, current)
+      if (update) offers.push({ pluginId: id, current, latest: update.latest })
+    }
+    return offers
   }
 
   abortRequest(requestId: string): boolean {

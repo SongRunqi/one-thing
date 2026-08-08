@@ -39,6 +39,13 @@ import {
   subscribePluginStatusSweep,
 } from './status.js'
 import { configureIMConnectorHooks } from '../channel/connector-registry.js'
+import {
+  fetchPluginMarketIndex,
+  installPluginPackage,
+  packageNameFromNodeModulesPath,
+  readInstalledPluginSpec,
+  uninstallPluginPackage,
+} from './install.js'
 import { pluginScope, assertUiAnchorRegistryConsistency } from '@onething/core/plugins'
 import { configurePluginConfigBroadcast } from './config-access.js'
 import {
@@ -89,9 +96,15 @@ function createHost(): CorePluginManagerHost<
     describeDegradedSurface: describePluginSurfaceDegradation,
     // ── R4:数据目录与卸载 ──
     archivePluginData: pluginId => archiveCorePluginData(getPluginDataRoot(), pluginId),
-    removePluginSource: (definition) => {
+    removePluginSource: async (definition) => {
       // 源目录没了,清单也就变了 —— 面板声明缓存必须跟着失效。
       invalidateDeclaredPanelIdsCache()
+      // npm 形态(dirPath 在 node_modules 里且非 legacy)= `npm uninstall` 拆账;
+      // legacy 目录插件维持 rm -rf(directory 扫描语义下的宿主也走这条)。
+      if (!definition.legacy) {
+        const pkg = packageNameFromNodeModulesPath(getPluginsDir(), definition.dirPath)
+        if (pkg) return uninstallPluginPackage(getPluginsDir(), pkg)
+      }
       return removePluginSourceDir(definition.dirPath, definition.id)
     },
     clearPluginSettings: pluginId => {
@@ -102,6 +115,10 @@ function createHost(): CorePluginManagerHost<
     },
     restorePluginDataArchive: (pluginId, archivePath) =>
       restoreCorePluginDataArchive(getPluginDataRoot(), pluginId, archivePath),
+    // ── P1:npm 生命周期(裁决 8:v1 依赖本机 npm)──
+    installPluginPackage: input => installPluginPackage(getPluginsDir(), input),
+    readInstalledPluginSpec: pkg => readInstalledPluginSpec(getPluginsDir(), pkg),
+    fetchPluginMarketIndex,
     getPluginSourceScan: () => scanPluginSourceEntries(getPluginsDir()),
     archiveOrphanPluginData: ({ knownPluginIds, scanTrusted, userPluginCount }) => {
       const dataRoot = getPluginDataRoot()

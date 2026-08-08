@@ -59,6 +59,27 @@ export {
 export {
   installCorePluginDependenciesAsync,
 } from './loader.js'
+export {
+  PLUGIN_LEDGER_FILE_NAME,
+  PLUGIN_LOCK_FILE_NAME,
+  PLUGIN_NPM_LIFECYCLE_FLAGS,
+  ensurePluginLedgerScaffold,
+  findMarketIndexEntry,
+  findPluginUpdate,
+  installCorePluginPackage,
+  readInstalledRuntimeDeps,
+  readPackageLockIntegrity,
+  readPluginLedgerSpec,
+  uninstallCorePluginPackage,
+} from './install.js'
+export type {
+  CorePluginMarketIndex,
+  CorePluginMarketIndexEntry,
+  CorePluginNpmAdapters,
+  CorePluginNpmRunResult,
+  InstallCorePluginPackageInput,
+  InstallCorePluginPackageResult,
+} from './install.js'
 export type {
   CorePluginLedgerRead,
   CorePluginScanMode,
@@ -79,7 +100,13 @@ export {
   CorePluginBootstrapper,
   CorePluginManager,
 } from './manager.js'
-export type { CorePluginUninstallResult } from './manager.js'
+export type {
+  CorePluginInstallRequest,
+  CorePluginInstallResult,
+  CorePluginUninstallResult,
+  CorePluginUpdateOffer,
+  CorePluginUpdateResult,
+} from './manager.js'
 export {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
   CORE_PLUGIN_FAILURE_THRESHOLD,

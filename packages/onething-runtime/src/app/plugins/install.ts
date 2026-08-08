@@ -1,0 +1,138 @@
+/**
+ * P1:npm 生命周期 —— runtime 适配层。
+ *
+ * core 的 install.ts 只编排;这里供 npm 机制本身:spawn(Windows 的
+ * npm.cmd、120s 预算、SIGKILL、stderr 留尾),以及市场索引的拉取
+ * (P1 未配 URL = 更新通道关闭,P3 接设置页)。
+ */
+import { spawn } from 'child_process'
+import path from 'path'
+import {
+  installCorePluginPackage,
+  readPluginLedgerSpec,
+  uninstallCorePluginPackage,
+  type CorePluginMarketIndex,
+  type InstallCorePluginPackageInput,
+  type InstallCorePluginPackageResult,
+} from '@onething/core/plugins'
+import { PLUGIN_NPM_INSTALL_TIMEOUT_MS } from './loader.js'
+
+const NPM_BIN = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+
+/**
+ * 跑 npm,返回退出码与 stderr 尾部。
+ *
+ * 不 reject:安装链要自己看退出码决定回滚,异常形态留给"进程根本没起来"。
+ * stdout 留 'ignore'(话多的脚本写满管道缓冲会堵死 npm 自己,被误判超时)。
+ */
+export function runPluginNpm(args: string[], cwd: string): Promise<{ code: number; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(NPM_BIN, args, {
+      cwd,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    let stderr = ''
+    let settled = false
+    const timer = setTimeout(() => {
+      settled = true
+      child.kill('SIGKILL')
+      resolve({ code: 124, stderr: `npm ${args[0]} timed out after ${PLUGIN_NPM_INSTALL_TIMEOUT_MS}ms` })
+    }, PLUGIN_NPM_INSTALL_TIMEOUT_MS)
+    timer.unref?.()
+
+    child.stderr?.on('data', chunk => {
+      stderr = (stderr + String(chunk)).slice(-8_000)
+    })
+    child.on('error', error => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.on('close', code => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve({ code: code ?? 1, stderr })
+    })
+  })
+}
+
+/** host 端口:装/更新一个包(脚手架、--ignore-scripts、装后校验、回滚全在 core 编排里)。 */
+export function installPluginPackage(
+  pluginsDir: string,
+  input: InstallCorePluginPackageInput,
+): Promise<InstallCorePluginPackageResult> {
+  return installCorePluginPackage(pluginsDir, input, { runNpm: runPluginNpm, logger: console })
+}
+
+/** host 端口:读账本里某包当前 spec(update 回滚旧版用)。 */
+export function readInstalledPluginSpec(pluginsDir: string, pkg: string): string | undefined {
+  return readPluginLedgerSpec(pluginsDir, pkg)
+}
+
+/** host 端口:npm 形态卸载 = `npm uninstall`(legacy 目录插件仍走 rm,见 manager 的分支)。 */
+export function uninstallPluginPackage(
+  pluginsDir: string,
+  pkg: string,
+): Promise<{ removed: boolean; error?: string }> {
+  return uninstallCorePluginPackage(pluginsDir, pkg, { runNpm: runPluginNpm, logger: console })
+}
+
+/** definition.dirPath(node_modules/<pkg>)→ 包名(含可能的 scope)。 */
+export function packageNameFromNodeModulesPath(pluginsDir: string, dirPath: string): string | null {
+  const relative = path.relative(path.join(pluginsDir, 'node_modules'), path.resolve(dirPath))
+  if (!relative || relative.startsWith('..')) return null
+  // scoped 包是两层目录(@org/foo),非 scoped 一层。
+  const parts = relative.split(path.sep)
+  if (parts[0]?.startsWith('@') && parts.length >= 2) return `${parts[0]}/${parts[1]}`
+  return parts[0] ?? null
+}
+
+// ── 市场索引拉取 ──
+
+let marketIndexUrl: string | null = null
+/** 上次成功拉取的索引缓存(P3:断网时市场区显示上次缓存 + 明示过期)。 */
+let marketIndexCache: { at: number; index: CorePluginMarketIndex } | null = null
+
+/** P1:市场索引 URL 由宿主装配期注入(未配置 = 更新通道关闭);P3 接设置页。 */
+export function configurePluginMarketIndex(url: string | null): void {
+  marketIndexUrl = url
+  if (!url) marketIndexCache = null
+}
+
+/** 测试用:直接塞一份索引当"拉取成功",不起网络。 */
+export function setPluginMarketIndexForTest(index: CorePluginMarketIndex | null): void {
+  marketIndexCache = index ? { at: Date.now(), index } : null
+  if (index) marketIndexUrl = marketIndexUrl ?? 'test://market'
+}
+
+function isMarketIndexShape(value: unknown): value is CorePluginMarketIndex {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const index = value as { version?: unknown; plugins?: unknown }
+  if (typeof index.version !== 'number' || !Array.isArray(index.plugins)) return false
+  return index.plugins.every(entry => entry && typeof entry === 'object'
+    && typeof (entry as { id?: unknown }).id === 'string'
+    && typeof (entry as { pkg?: unknown }).pkg === 'string'
+    && typeof (entry as { version?: unknown }).version === 'string'
+    && typeof (entry as { tarballUrl?: unknown }).tarballUrl === 'string')
+}
+
+/** host 端口:拉市场索引;未配置/拉取失败/形状不对 = null(失败时用上次缓存)。 */
+export async function fetchPluginMarketIndex(): Promise<CorePluginMarketIndex | null> {
+  if (!marketIndexUrl) return null
+  try {
+    const response = await fetch(marketIndexUrl, { signal: AbortSignal.timeout(15_000) })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const body: unknown = await response.json()
+    if (!isMarketIndexShape(body)) throw new Error('unexpected index shape')
+    marketIndexCache = { at: Date.now(), index: body }
+    return body
+  } catch (error) {
+    console.warn(
+      `[PluginMarket] Failed to fetch the market index (${marketIndexUrl}):`,
+      error instanceof Error ? error.message : error,
+    )
+    return marketIndexCache?.index ?? null
+  }
+}
