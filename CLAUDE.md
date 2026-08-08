@@ -169,7 +169,11 @@ Notes:
     prompt-context providers, skill roots, lifecycle hooks, scheduler.
   - **Its own product surface**: declarative workspace panels (`contributes.panels` +
     `api.registerWorkspacePanel`, pure-data description tree — the UI never executes
-    plugin code), its own settings schema (`contributes.settings.schema`, JSON Schema
+    plugin code), declarative UI-slot blocks on host-named anchors
+    (`contributes.uiSlots` + `api.registerUiSlot`, R5.x — first anchors:
+    `composer.above` above the composer, `chat.status-bar` below the message list;
+    render ctx carries `anchor` + `sessionId`, the host re-pulls on session switch),
+    its own settings schema (`contributes.settings.schema`, JSON Schema
     subset, host renders and validates it), a unified request channel
     (`api.registerRequestHandler`; requestId is in use, while abort/progress are wired
     end-to-end but have no consumer yet — no renderer caller, no built-in producer), a
@@ -196,6 +200,13 @@ Notes:
   rulings and errata; §6 the multi-host decision).
   `docs/design/plugin-system-capabilities-and-evolution.md` is the pre-R0 survey — useful
   for history, superseded for current capabilities.
+  UI slots & descriptor-tree v2 (R5.x): `docs/design/plugin-ui/` (anchor audit, anchor
+  design, expression layers, rollout). The one-liner for plugin authors:
+  **you may put things next to the composer, never inside it** — and the expression
+  decision table: data lists / forms / status → L1 descriptor tree; progress / badges /
+  tabs → L1 v2 nodes; brand theming → L2 token overrides (phase 2); charts / editors /
+  drag & drop → L3 webview (H line, not built); taking over the composer or the message
+  list → **never**.
 - apps/server is single-user: one server process assembles one backend and pins
   `ONETHING_STORE_PATH` before boot. Bearer auth via `ONETHING_SERVER_TOKEN` (warns when
   binding non-loopback without it). Tools ship with desktop parity by default;

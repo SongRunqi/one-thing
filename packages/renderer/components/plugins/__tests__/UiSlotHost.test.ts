@@ -172,4 +172,31 @@ describe('UiSlotHost', () => {
     // table 的 columns 不是数组:渲染分支访问会抛,错误边界兜成错误态。
     expect(wrapper.find('.ui-slot-host').exists()).toBe(true)
   })
+
+  it('拆除:禁用后注册表空、DOM 无残留、在飞的晚到请求不复活尸体', async () => {
+    setPluginUiSlots([slot({})])
+    let resolveRender: ((value: unknown) => void) | undefined
+    platformState.pluginRequest.mockImplementation(
+      () => new Promise(resolve => { resolveRender = resolve }),
+    )
+    const wrapper = mountHost({ anchor: 'composer.above' })
+    await flushPromises()
+    expect(wrapper.find('.ui-slot-block').exists()).toBe(true)
+
+    // 禁用插件 = 投影重推,注册表清空(与 R5 拆除同构:面板走同一条投影)。
+    setPluginUiSlots([])
+    await flushPromises()
+    expect(wrapper.find('.ui-slot-block').exists()).toBe(false)
+    expect(wrapper.find('.ui-slot-host').exists()).toBe(false)
+
+    // 在飞的 render 此刻才回来:组件已卸,晚到的结果不许写进任何 DOM。
+    resolveRender?.({ success: true, result: tree('诈尸') })
+    await flushPromises()
+    expect(wrapper.text() ?? '').not.toContain('诈尸')
+    // 卸载后也不许再发新请求(轮询/通知都已随卸载清理)。
+    platformState.pluginRequest.mockClear()
+    platformState.notificationHandlers.forEach(handler => handler({ kind: 'panel-refresh', pluginId: 'plan-status' }))
+    await flushPromises()
+    expect(platformState.pluginRequest).not.toHaveBeenCalled()
+  })
 })

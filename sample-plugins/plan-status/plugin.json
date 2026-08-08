@@ -1,0 +1,11 @@
+{
+  "name": "plan-status",
+  "version": "1.0.0",
+  "description": "Live stream/step execution status chip above the composer — R5.x ui-slot demo",
+  "author": "onething",
+  "contributes": {
+    "uiSlots": [
+      { "anchor": "composer.above", "id": "plan-status", "label": "Plan 执行状态" }
+    ]
+  }
+}
