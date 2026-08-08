@@ -305,7 +305,14 @@ export interface OnethingPluginMarketSnapshot {
 }
 
 export type GetOnethingPluginMarketForIpcResult =
-  | { success: true; entries: OnethingPluginMarketEntry[]; fetchedAt: number | null; stale: boolean }
+  | {
+    success: true
+    entries: OnethingPluginMarketEntry[]
+    fetchedAt: number | null
+    stale: boolean
+    /** stale 时附带的本次拉取失败原因 —— UI 可以说"为什么过期",不猜断网。 */
+    error?: string
+  }
   | { success: false; entries: []; fetchedAt: number | null; stale: boolean; error: string }
 
 export interface GetOnethingPluginMarketForIpcOptions<
@@ -358,7 +365,7 @@ export async function getOnethingPluginMarketForIpc<
       // 索引内部一致性(端到端审查 S4 的展示侧):id 必须等于 pkg 去 scope,
       // 不一致的条目会把"已装/有更新"join 到错误的插件上 —— 滤掉并警告。
       if (unscopedPluginIdFromPackageName(entry.pkg) !== entry.id) {
-        console.warn(`[PluginMarket] Index entry "${entry.id}" has inconsistent pkg "${entry.pkg}" — skipped`)
+        options.logger?.error?.(`[PluginMarket] Index entry "${entry.id}" has inconsistent pkg "${entry.pkg}" — skipped`)
         continue
       }
       const info = installed.get(entry.id)
@@ -382,7 +389,13 @@ export async function getOnethingPluginMarketForIpc<
           : null,
       })
     }
-    return { success: true as const, entries, fetchedAt: snapshot.fetchedAt, stale: snapshot.stale }
+    return {
+      success: true as const,
+      entries,
+      fetchedAt: snapshot.fetchedAt,
+      stale: snapshot.stale,
+      ...(snapshot.stale && snapshot.error ? { error: snapshot.error } : {}),
+    }
   } catch (error) {
     const failed = pluginIpcError(options.logger, 'market', error, 'Failed to load the plugin market')
     return { ...failed, entries: [], fetchedAt: null, stale: false }

@@ -373,7 +373,8 @@
           v-if="marketStale"
           class="hint market-stale"
         >
-          Offline — showing the index fetched at {{ marketFetchedAtText }} (may be outdated).
+          Couldn't refresh{{ marketStaleReason ? ` (${marketStaleReason})` : '' }} —
+          showing the index fetched at {{ marketFetchedAtText }} (may be outdated).
         </p>
 
         <div
@@ -1106,10 +1107,13 @@ interface MarketEntry {
 }
 
 const marketEntries = ref<MarketEntry[]>([])
-const marketLoading = ref(false)
+// 初值 true:首帧是加载中而不是闪一下"无匹配"(挂载即拉取,loading 先到)。
+const marketLoading = ref(true)
 const marketError = ref('')
 /** 主进程把"展示的是上次缓存"算好送过来(stale),renderer 不猜。 */
 const marketStale = ref(false)
+/** stale 的失败原因(主进程随快照带来)。 */
+const marketStaleReason = ref('')
 const marketFetchedAt = ref<number | null>(null)
 const marketQuery = ref('')
 /** 装前确认展开中的条目 id —— 一次只确认一个,心智负担小。 */
@@ -1164,6 +1168,7 @@ async function loadMarket(refresh = false): Promise<void> {
     if (result?.success) {
       marketEntries.value = (result.entries ?? []) as MarketEntry[]
       marketStale.value = result.stale
+      marketStaleReason.value = result.error ?? ''
       marketFetchedAt.value = result.fetchedAt
       marketError.value = ''
     } else {

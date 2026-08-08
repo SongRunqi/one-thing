@@ -103,12 +103,12 @@ describe('市场 IPC 适配器(P3)', () => {
     expect(skipped.success && skipped.entries[1].versionBlockedReason).toBeNull()
   })
 
-  it('拉取失败但有缓存 = success + stale(断网容忍的 UI 数据源)', async () => {
+  it('拉取失败但有缓存 = success + stale + 失败原因(断网容忍的 UI 数据源)', async () => {
     const manager = createManager([])
-    const getMarketSnapshot = async () => snapshotOf({ index: INDEX, fetchedAt: 500, stale: true })
+    const getMarketSnapshot = async () => snapshotOf({ index: INDEX, fetchedAt: 500, stale: true, error: 'HTTP 503' })
 
     const result = await getOnethingPluginMarketForIpc({ manager, getMarketSnapshot })
-    expect(result).toMatchObject({ success: true, stale: true, fetchedAt: 500 })
+    expect(result).toMatchObject({ success: true, stale: true, fetchedAt: 500, error: 'HTTP 503' })
     expect(result.success && result.entries.length).toBe(2)
   })
 

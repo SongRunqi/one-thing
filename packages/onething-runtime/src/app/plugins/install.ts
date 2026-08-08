@@ -164,9 +164,16 @@ async function fetchFreshMarketIndex(): Promise<CorePluginMarketIndex> {
   return body
 }
 
-/** host 端口:拉市场索引;未配置/拉取失败/形状不对 = null(失败时用上次缓存)。 */
+/**
+ * host 端口(更新通道):未配置/拉取失败/形状不对 = null(失败时用上次缓存)。
+ *
+ * 永远先试拉新(refresh:true)—— P3 把缓存优先引进快照时,这条端口一度
+ * 也变成缓存优先:设置页 10:00 拉过一次,10:25 的 updatePlugin 会拿十分钟
+ * 前的索引说"没有更新"。缓存只配做**拉取失败的兜底**,不配做更新通道的
+ * 情报来源。
+ */
 export async function fetchPluginMarketIndex(): Promise<CorePluginMarketIndex | null> {
-  const snapshot = await getPluginMarketIndexSnapshot()
+  const snapshot = await getPluginMarketIndexSnapshot({ refresh: true })
   return snapshot.index
 }
 
@@ -205,6 +212,8 @@ export async function getPluginMarketIndexSnapshot(input?: { refresh?: boolean }
       `[PluginMarket] Failed to fetch the market index (${marketIndexUrl}):`,
       message,
     )
+    // 缓存兜底时把失败原因一并给出 —— UI 可以说"为什么过期",
+    // 而不是一律猜成断网。
     return {
       index: marketIndexCache?.index ?? null,
       fetchedAt: marketIndexCache?.at ?? null,

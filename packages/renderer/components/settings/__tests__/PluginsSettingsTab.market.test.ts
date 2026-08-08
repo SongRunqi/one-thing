@@ -163,19 +163,30 @@ describe('PluginsSettingsTab 市场区(P3)', () => {
     wrapper.unmount()
   })
 
-  it('拉取失败有缓存 = stale:离线明示过期而不是市场消失', async () => {
+  it('拉取失败有缓存 = stale:明示过期与失败原因而不是市场消失', async () => {
     platform.getPluginMarket.mockResolvedValue({
       success: true,
       entries: MARKET_ENTRIES.slice(0, 1),
       fetchedAt: 1_754_000_000_000,
       stale: true,
+      error: 'HTTP 503',
     })
     const wrapper = mountTab()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Offline — showing the index fetched at')
+    expect(wrapper.text()).toContain("Couldn't refresh (HTTP 503)")
     expect(wrapper.text()).toContain('may be outdated')
     expect(wrapper.text()).toContain('plan-status')
+    wrapper.unmount()
+  })
+
+  it('首帧是加载中而不是闪空态(挂载即拉取)', async () => {
+    // 挂起一个永不 resolve 的拉取:首帧必须停在加载态。
+    platform.getPluginMarket.mockReturnValue(new Promise(() => {}))
+    const wrapper = mountTab()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Loading the market…')
+    expect(wrapper.text()).not.toContain('No plugins match your search.')
     wrapper.unmount()
   })
 
