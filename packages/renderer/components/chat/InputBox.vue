@@ -18,6 +18,12 @@
       @change="handleFilePicked"
     >
     <div class="composer-stack">
+      <!-- 插件锚点 composer.above(R5.x):输入框上方的插件块带。
+           挂点位置由宿主持有,内容由描述树渲染 —— UI 不执行插件代码。 -->
+      <UiSlotHost
+        anchor="composer.above"
+        :session-id="props.sessionId ?? null"
+      />
       <!-- Dock: persistent context that travels with the draft (queue,
            quote, attachments), stacked above the composer in normal flow. -->
       <TransitionGroup
@@ -424,6 +430,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import UiSlotHost from '@/components/plugins/UiSlotHost.vue'
 import Select from '@/components/common/Select.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, onBeforeUnmount, watch } from 'vue'

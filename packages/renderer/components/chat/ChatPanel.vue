@@ -21,6 +21,14 @@
       @review-goal="(goalSessionId) => emit('reviewGoal', goalSessionId)"
     />
 
+    <!-- 插件锚点 chat.status-bar(R5.x):聊天面底部状态条,MessageList 之下。
+         与既有的 BackgroundJobsStatusBar/GoalStatusBar 并列而不并入 ——
+         它们有专属交互逻辑,这里是插件的(描述树)块带。 -->
+    <UiSlotHost
+      anchor="chat.status-bar"
+      :session-id="effectiveSessionId"
+    />
+
     <Teleport
       :to="props.footerTarget ?? 'body'"
       :disabled="!props.footerTarget"
@@ -97,6 +105,7 @@ import InputBox from './InputBox.vue'
 import CollabTypingLine from './CollabTypingLine.vue'
 import ComposerReplyBar from './ComposerReplyBar.vue'
 import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
+import UiSlotHost from '@/components/plugins/UiSlotHost.vue'
 import GoalStatusBar from './GoalStatusBar.vue'
 import type { ChatMessage, ChatMessageMention, ChatMessageReplyTo, MessageAttachment, ToolCall } from '@/types'
 import { filterRoomMessages } from './message/room-grouping'

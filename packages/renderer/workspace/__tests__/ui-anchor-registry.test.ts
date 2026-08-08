@@ -6,7 +6,10 @@
  *     但挂点选择器只出可渲染的块。
  */
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import {
+  UI_ANCHOR_CAPACITY_MIRROR,
   setPluginUiSlots,
   uiSlotSurface,
   useAnchorUiSlots,
@@ -70,5 +73,19 @@ describe('ui-anchor-registry', () => {
 
   it('surface 地址与 core 同规:ui:<anchor>:<id>', () => {
     expect(uiSlotSurface('composer.above', 'plan-status')).toBe('ui:composer.above:plan-status')
+  })
+
+  it('容量镜像与 core 的 UI_ANCHOR_CAPACITY 逐字节一致(两处不许各抄各的)', () => {
+    // renderer 不能吃 core,容量语义靠镜像 + 本用例钉住。改了 core 的容量表,
+    // 这里当场红。
+    const coreSource = readFileSync(
+      fileURLToPath(new URL('../../../core/plugins/ui-anchor.ts', import.meta.url)),
+      'utf8',
+    )
+    const coreCapacities = Object.fromEntries(
+      [...coreSource.matchAll(/'([^']+)':\s*\{\s*maxBlocks:\s*(\d+),\s*maxHeight:\s*(\d+)/g)]
+        .map(match => [match[1], { maxBlocks: Number(match[2]), maxHeight: Number(match[3]) }]),
+    )
+    expect(UI_ANCHOR_CAPACITY_MIRROR).toEqual(coreCapacities)
   })
 })

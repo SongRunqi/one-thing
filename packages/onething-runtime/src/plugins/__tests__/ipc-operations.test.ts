@@ -66,6 +66,7 @@ describe('plugin IPC operations', () => {
           commands: [],
           panels: [],
           hasSettingsSchema: false,
+          uiSlots: [],
           permissions: [],
           activationEvents: [],
         },

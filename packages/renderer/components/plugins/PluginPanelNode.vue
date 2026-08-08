@@ -201,7 +201,7 @@
         v-else-if="field.control === 'color'"
         type="color"
         class="panel-native-input panel-color-input"
-        :value="String(formState[field.key] ?? '#888888')"
+        :value="formState[field.key] === undefined ? undefined : String(formState[field.key])"
         :aria-label="field.label"
         @input="formState[field.key] = ($event.target as HTMLInputElement).value"
       >
@@ -789,13 +789,13 @@ function submitForm(actionId: string): void {
 }
 
 .panel-badge.tone-danger {
-  border-color: var(--color-danger);
-  color: var(--color-danger);
+  border-color: var(--ui-status-danger-fg);
+  color: var(--ui-status-danger-fg);
 }
 
 .panel-badge.tone-success {
-  border-color: var(--color-success);
-  color: var(--color-success);
+  border-color: var(--ui-status-success-fg);
+  color: var(--ui-status-success-fg);
 }
 
 .panel-image {

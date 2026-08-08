@@ -331,6 +331,7 @@ import type { PluginConfigErrorDetail, PluginConfigFieldDescriptor } from '@shar
 import { ref, onBeforeUnmount, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
+import { isUiSlotTruncated } from '@/workspace/ui-anchor-registry'
 import { useConfirm } from '@/composables/useConfirm'
 import { toast } from '@/composables/useToast'
 
@@ -357,6 +358,7 @@ interface PluginInfo {
   contributes?: {
     commands?: string[]
     panels?: Array<{ id: string; label: string }>
+    uiSlots?: Array<{ anchor: string; id: string; label: string; unsupported?: boolean }>
     hasSettingsSchema?: boolean
     permissions?: string[]
     activationEvents?: string[]
@@ -616,6 +618,20 @@ function contributesSummary(plugin: PluginInfo): string[] {
   const summary: string[] = []
   if (contributes?.panels?.length) {
     summary.push(`declares ${contributes.panels.length} panel${contributes.panels.length > 1 ? 's' : ''}`)
+  }
+  // 锚点块(R5.x):未知锚点(unsupported)与因容量被截断的块都要说得出来 ——
+  // 它们不占界面,但用户得能在某处看到"这块为什么没出现"。
+  for (const slot of contributes?.uiSlots ?? []) {
+    if (slot.unsupported) {
+      summary.push(`ui slot "${slot.label}" on unknown anchor "${slot.anchor}" (unsupported by this app version)`)
+    } else if (isUiSlotTruncated(plugin.id, slot.anchor, slot.id)) {
+      summary.push(`ui slot "${slot.label}" hidden — anchor "${slot.anchor}" is full`)
+    }
+  }
+  const visibleSlots = (contributes?.uiSlots ?? [])
+    .filter(slot => !slot.unsupported && !isUiSlotTruncated(plugin.id, slot.anchor, slot.id))
+  if (visibleSlots.length) {
+    summary.push(`declares ${visibleSlots.length} ui slot${visibleSlots.length > 1 ? 's' : ''}`)
   }
   if (contributes?.commands?.length) {
     summary.push(`declares ${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)

@@ -57,3 +57,56 @@ export function useAnchorUiSlots(anchor: string): ComputedRef<PluginContributedU
 export function uiSlotSurface(anchor: string, slotId: string): string {
   return `ui:${anchor}:${slotId}`
 }
+
+/**
+ * 锚点容量语义的 renderer 镜像。
+ *
+ * 事实源在 core 的 `UI_ANCHOR_CAPACITY`(packages/core/plugins/ui-anchor.ts)——
+ * renderer 不能吃 core,所以这里镜像一份;两份的一致性由
+ * `__tests__/ui-anchor-registry.test.ts` 直接读 core 源文件比对钉住,
+ * 与 plugin-panel-types.ts 的镜像先例同规。
+ */
+export const UI_ANCHOR_CAPACITY_MIRROR: Record<string, { maxBlocks: number; maxHeight: number }> = {
+  'composer.above': { maxBlocks: 3, maxHeight: 32 },
+  'chat.status-bar': { maxBlocks: 8, maxHeight: 24 },
+}
+
+export interface AnchorOverflowInfo {
+  /** 因容量截断而未渲染的块。 */
+  truncated: PluginContributedUiSlot[]
+  /** 加载失败的块(不占容量,折叠呈现)。 */
+  failed: PluginContributedUiSlot[]
+}
+
+/**
+ * 某个锚点的容量裁决:
+ *  - **加载失败的块不计入 maxBlocks**(否则 3 个坏插件能永久占满整条锚点带);
+ *  - 健康的块按注册表顺序(全局规范顺序)取前 maxBlocks 个,其余进 truncated。
+ */
+export function computeAnchorOverflow(anchor: string): AnchorOverflowInfo {
+  const slots = pluginUiSlots.value.filter(slot => slot.anchor === anchor && !slot.unsupported)
+  const failed = slots.filter(slot => !slot.loaded)
+  const healthy = slots.filter(slot => slot.loaded)
+  const capacity = UI_ANCHOR_CAPACITY_MIRROR[anchor]
+  const truncated = capacity ? healthy.slice(capacity.maxBlocks) : []
+  return { truncated, failed }
+}
+
+/** 某个锚点上**实际要渲染**的块(健康 & 未截断)。 */
+export function useVisibleAnchorUiSlots(anchor: string): ComputedRef<PluginContributedUiSlot[]> {
+  return computed(() => {
+    const capacity = UI_ANCHOR_CAPACITY_MIRROR[anchor]
+    const healthy = useAnchorUiSlots(anchor).value.filter(slot => slot.loaded)
+    return capacity ? healthy.slice(0, capacity.maxBlocks) : healthy
+  })
+}
+
+/**
+ * 某个块是否因容量被截断(设置页"锚点已满"的依据)。
+ * 截断集合来自 computeAnchorOverflow —— 同一份裁决:UiSlotHost 不画它,
+ * 设置页解释它。
+ */
+export function isUiSlotTruncated(pluginId: string, anchor: string, slotId: string): boolean {
+  return computeAnchorOverflow(anchor).truncated
+    .some(slot => slot.pluginId === pluginId && slot.slotId === slotId)
+}
