@@ -1,4 +1,4 @@
-# 插件分发与配置归位设计:npm 包形态 + GitLab registry(2026-08)
+# 插件分发与配置归位设计:npm 包形态 + GitHub Releases(2026-08)
 
 > 前置:`plugin-system-redesign-2026-08.md`(宪法与 R0–R7)、
 > `plugin-ui/`(R5.x 锚点与描述树)。本文只动两件事 —— **插件怎么来**
@@ -7,9 +7,10 @@
 
 ## 0. 一句话
 
-插件从"手动放的源码目录"变成"GitLab npm registry 里的打包 npm 包",
-安装/卸载/更新退化成 npm 原语;配置从中央 `plugin-settings.json` 搬出来,
-住进每个插件在 `plugins/` 下的同名家目录,`plugin-data/` 区整体退休。
+插件从"手动放的源码目录"变成"GitHub 仓库里 CI 打出来的 npm tarball",
+安装/卸载/更新退化成 npm 原语(`npm install <tarball-url>`),公开仓库
+**零凭证**;配置从中央 `plugin-settings.json` 搬出来,住进每个插件在
+`plugins/` 下的同名家目录,`plugin-data/` 区整体退休。
 
 ## 1. 背景:今天的形态痛在哪
 
@@ -33,52 +34,62 @@
 
 ## 2. 裁决(先拍板,后展开)
 
-1. **分发形态 = npm 包,打包产物,不是源码**。CI 侧 esbuild 把依赖全部
-   bundle 进 `plugin-entry.js`,npm 包零运行时依赖是目标;运行时
-   npm install 机制(首载 120s 窗口)随本期**废除**。
-2. **安装账 = `plugins/package.json` 的 dependencies**。装没装、装的
-   什么版本,npm 自己记账;loader 的清单来源从"目录扫描"换成
+1. **分发形态 = npm 包(npm pack tarball),打包产物,不是源码**。
+   CI 侧 esbuild 把依赖全部 bundle 进 `plugin-entry.js`,tarball 零运行时
+   依赖是目标;运行时 npm install 机制(首载 120s 窗口)随本期**废除**。
+2. **分发通道 = GitHub Releases + `npm install <tarball-url>`**。
+   tarball 作为 Release asset 挂在公开仓库,`npm install <https-url>` 是
+   npm 的一等功能,**不需要任何 registry、任何 token**。不选
+   GitHub Packages npm registry:它连安装**公开**包都要 PAT
+   (GitHub 官方文档原话:"You need an access token to publish, install,
+   and delete private, internal, and public packages")—— 让每个用户为了
+   装插件去办 token,市场就死了(见 §12 登记)。
+3. **安装账 = `plugins/package.json` 的 dependencies**。装没装、装的
+   什么,npm 自己记账(`npm install <url>` 会把 tarball URL 写进
+   dependencies);loader 的清单来源从"目录扫描"换成
    "dependencies 列表 + 逐个 resolve"。账和货天然一致。
-3. **`node_modules/` 是一次性代码区,任何数据永不许进**。npm 每次
+4. **`node_modules/` 是一次性代码区,任何数据永不许进**。npm 每次
    update/uninstall 整目录抹掉重建 —— 这是铁律,配置、KV、storage
    都不许写进去。
-4. **插件家目录 = `plugins/<id>/`**(node_modules 的兄弟,app 全权
+5. **插件家目录 = `plugins/<id>/`**(node_modules 的兄弟,app 全权
    拥有的数据区):`config.json`、`kv.json`、`storage/` 都住这。
    `plugin-data/` 退休,存量惰性迁移,空壳归档。
-5. **`enabled` / `health` 留在中央 `plugin-settings.json`**。那是宿主
+6. **`enabled` / `health` 留在中央 `plugin-settings.json`**。那是宿主
    *关于*插件的账(启动要读 enabled 决定加载谁;health 是熔断账本),
    不是插件自己的配置 —— 不搬。`config` 段搬空后中央文件只剩这两节。
-6. **pluginId = npm 包名去 scope**。v1 认单一 scope
+7. **pluginId = npm 包名去 scope**。v1 认单一 scope
   (`@onething-plugins`),跨 scope 冲突拒绝加载并在日志明说
    —— pluginId 要当目录名用(`assertSafePluginDirName` 拒 `/`),
    全名含 `/` 的映射不在本期发明。
 
 ## 3. 目标形态
 
-### 3.1 GitLab 侧
+### 3.1 GitHub 侧
 
 ```
-插件仓库(group: onething-plugins)
+插件仓库(如 github.com/<you>/onething-plugins)
 ├── packages/plan-status/            # 每个插件一个 npm 包
 │   ├── src/plugin-entry.ts          # 源码(开发态)
 │   ├── plugin.json                  # manifest(分发物的一部分)
 │   ├── package.json                 # name: @onething-plugins/plan-status
 │   └── README.md
-├── scripts/build-plugin.mjs         # esbuild --bundle → dist/plugin-entry.js
-├── .gitlab-ci.yml                   # build → bundle → npm publish → 更新 index.json
+├── scripts/build-plugin.mjs         # esbuild --bundle → dist/plugin-entry.js → npm pack
+├── .github/workflows/release.yml    # build → bundle → npm pack → gh release → 更新 index.json
 └── index.json                       # CI 生成的市场索引(见 §8)
 ```
 
-发布通道:GitLab Package Registry(npm 类型,平台自带,不架新服务)。
+发布物:每个插件一个 GitHub Release(tag 如 `plan-status-v1.1.0`),
+asset 是 `npm pack` 产出的 `.tgz`。**npm tarball 格式本身就是发布单元**
+—— 不需要 npm registry,GitHub Releases 就是仓库。
 
 ### 3.2 本地侧
 
 ```
 ~/.onething/plugins/
 ├── package.json                     # 已装插件账(npm 维护,不许手编)
-│                                    #   dependencies: {"@onething-plugins/plan-status": "^1.0.0"}
+│                                    #   dependencies: {"@onething-plugins/plan-status":
+│                                    #     "https://github.com/<you>/onething-plugins/releases/download/plan-status-v1.1.0/plan-status-1.1.0.tgz"}
 ├── package-lock.json                # 版本锁定 + integrity,免费
-├── .npmrc                           # registry 指向 + token(见 §9)
 ├── node_modules/                    # 【一次性代码区,数据禁入】
 │   └── @onething-plugins/
 │       └── plan-status/
@@ -124,14 +135,13 @@ npm 形态下的**强制文件**,字段增:
 | entry | 有 | 照旧(默认 plugin-entry.js) |
 | repository / homepage | 无 | 可选,市场卡片回跳链接 |
 
-`package.json` 里新增(插件作者侧,CI 模板给出):
+`package.json` 里(插件作者侧,CI 模板给出):
 
 ```jsonc
 {
   "name": "@onething-plugins/plan-status",
   "version": "1.0.0",
-  "files": ["plugin.json", "plugin-entry.js"],   // 发布物白名单
-  "publishConfig": { "registry": "https://gitlab.example.com/api/v4/projects/<id>/packages/npm/" }
+  "files": ["plugin.json", "plugin-entry.js"]   // npm pack 的白名单:tarball 只带分发物
 }
 ```
 
@@ -147,6 +157,8 @@ npm 形态下的**强制文件**,字段增:
 2. 逐个 resolve `node_modules/<dep>/plugin.json` → manifest、入口
    (`manifest.entry` 照旧);dep 存在但包里**没有 plugin.json** = 它不是
    onething 插件,跳过(普通依赖与插件可以共存于同一棵 node_modules);
+   已装版本读 `node_modules/<dep>/package.json` 的 `version`(比解析
+   dependencies 里的 URL 可靠);
 3. pluginId = 包名去 scope;同 id 冲突(两个 scope 装了同名包)拒绝
    后到的那个,日志明说。
 
@@ -157,9 +169,9 @@ npm 形态下的**强制文件**,字段增:
 
 ### 5.3 废除运行时 npm install
 
-`checkPluginNeedsInstall` 与首载 install 路径**整段删除**。npm 包在
-install 时已带全部依赖(bundle 进入口或随包 node_modules),加载期
-出现缺失依赖 = 包没打好,按加载失败记账(既有熔断),不再现装。
+`checkPluginNeedsInstall` 与首载 install 路径**整段删除**。tarball 在
+install 时已带全部依赖(bundle 进入口),加载期出现缺失依赖 =
+ 包没打好,按加载失败记账(既有熔断),不再现装。
 
 ### 5.4 存量兼容(手工目录插件)
 
@@ -168,7 +180,7 @@ install 时已带全部依赖(bundle 进入口或随包 node_modules),加载期
 - 发现规则:目录里有 `plugin.json` 且**不在** dependencies 账里 →
   按 legacy 形态照常加载,日志 + 设置页标记 `legacy`(提示"以 npm
   形式重装可获更新通道")。
-- 注意与裁决 4 的交叠:`plugins/<id>/` 同时是数据家目录。**判别顺序**:
+- 注意与裁决 5 的交叠:`plugins/<id>/` 同时是数据家目录。**判别顺序**:
   有 plugin.json = legacy 代码目录(其数据仍在 `plugin-data/<id>/`,
   不搬,直到用户重装为 npm 形态);没有 = 纯数据家目录。
 - 这条兼容路径在市场落地后保留一个版本周期,之后随 legacy 插件清零
@@ -179,16 +191,23 @@ install 时已带全部依赖(bundle 进入口或随包 node_modules),加载期
 core manager 增(`PluginManager`,与 uninstallPlugin 对称):
 
 ```ts
-installPlugin(input: { pkg: string; version?: string }): Promise<InstallResult>
-// 1. 在 plugins/ 下跑 npm install <pkg>[@version](install 是显式动作,联网合理)
-// 2. refreshPlugins()(既有,含 catalog-changed 广播,R5 为面板加的通道直接复用)
-// 3. 新装插件默认 enabled;失败回滚 npm 状态,错误原样透传
+installPlugin(input: { pkg: string; tarballUrl: string; sha256?: string }
+                    | { pkg: string; path: string }        // 本地 file: 开发通道
+): Promise<InstallResult>
+// 1. 在 plugins/ 下跑 npm install <tarballUrl | file:path>(install 是显式动作,联网合理)
+// 2. sha256 给定时比对安装产物,不符即回滚并拒载(§9.2)
+// 3. refreshPlugins()(既有,含 catalog-changed 广播,R5 为面板加的通道直接复用)
+// 4. 新装插件默认 enabled;失败回滚 npm 状态,错误原样透传
 
 updatePlugin(pluginId: string): Promise<UpdateResult>
-// npm install <pkg>@latest;版本闸 minAppVersion 在装后重校,不够则回退旧版并明示
+// 从市场索引取该插件最新 tarball URL,npm install <new-url>;
+// 注意不能用 npm update —— URL 形式的依赖它解析不了(npm 已知限制),
+// 而且我们的版本真相在市场索引,不在任何 registry。
+// 版本闸 minAppVersion 在装后重校,不够则回退旧版并明示。
 
 checkPluginUpdates(): Promise<Array<{ pluginId: string; current: string; latest: string }>>
-// npm outdated --json 的薄封装;设置页"有更新"徽标的来源
+// 已装版本(node_modules/<pkg>/package.json)vs 市场索引版本,
+// 轻量 semver 比较复用 loader.ts 现有实现;设置页"有更新"徽标的来源。
 ```
 
 `uninstallPlugin` 基本不动,两处适配:源码目录改走 `npm uninstall`;
@@ -239,7 +258,8 @@ config 写进 node_modules 必须当场抛。
 
 ### 8.1 索引
 
-CI 在每个插件发布时重生成根 `index.json`:
+CI 在每个插件发布时重生成根 `index.json`,应用经
+`raw.githubusercontent.com` 拉取(公开仓库,零凭证):
 
 ```jsonc
 {
@@ -249,18 +269,19 @@ CI 在每个插件发布时重生成根 `index.json`:
     "id": "plan-status",
     "pkg": "@onething-plugins/plan-status",
     "version": "1.1.0",
-    "description": " composer.above 的执行状态块",
+    "description": "composer.above 的执行状态块",
     "author": "onething",
     "minAppVersion": "1.4.0",
     "contributes": { "uiSlots": [{ "anchor": "composer.above", "label": "Plan 执行状态" }] },
-    "sha256": "…",                    // npm publish 产物的 integrity
-    "repository": "https://gitlab.example.com/onething-plugins/repo/-/tree/main/packages/plan-status"
+    "tarballUrl": "https://github.com/<you>/onething-plugins/releases/download/plan-status-v1.1.0/plan-status-1.1.0.tgz",
+    "sha256": "…",                    // CI 对 tarball 实体算的哈希
+    "repository": "https://github.com/<you>/onething-plugins/tree/main/packages/plan-status"
   }]
 }
 ```
 
-为什么自维护 index.json 而不是直接查 GitLab packages API:API 列得出
-包,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前展示
+为什么自维护 index.json 而不是直接查 GitHub Releases API:API 列得出
+release,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前展示
 "这个插件要在你的输入框上方放东西、要哪些权限"是市场的信任根基,
 值得一个 CI 生成物。
 
@@ -279,18 +300,18 @@ CI 在每个插件发布时重生成根 `index.json`:
 1. **装插件 = 远程执行代码**,文档与 UI 都必须明说,不粉饰。兜底
    体系已就位:R6/R7 的熔断/降级账、权限声明、请求通道预算,对
    npm 形态插件原样生效。
-2. **完整性**:index.json 的 sha256 与 npm install 后实际产物比对,
-   不符即拒载并提示。签名(PGP/sigstore)不在本期。
-3. **token**:`plugins/.npmrc` 持有私有 registry 的 read token
-   (`//gitlab.example.com/api/v4/projects/<id>/packages/npm/:_authToken=…`),
-   设置页提供粘贴入口,写入时 0600。token 永不进日志、不进
-   plugin-settings.json。
+2. **完整性**:index.json 带 tarball 的 sha256,install 时对下载产物
+   验哈希,不符即拒载并提示;`npm install <url>` 自身的 integrity
+   记账(package-lock)是第二道。签名(PGP/sigstore)不在本期。
+3. **凭证**:公开仓库**零凭证** —— raw.githubusercontent.com 与
+   Release assets 都不要 auth,这是选 Releases 通道的直接收益。
+   私有仓库/需要 token 的形态不在本期(见 §12)。
 4. **原生模块(node-gyp)**:CI 模板把依赖全部 bundle,包内不该有
    运行时 node_modules 依赖;loader 发现包带 `binding.gyp`/原生
    依赖时 warn(软约束),不拒 —— 但市场索引由 CI 生成,可以在
    CI 侧直接卡死(硬约束放 CI,不放运行时)。
-5. **registry 单点**:v1 一个 registry URL(应用配置项,不进插件)。
-   多 registry 不发明。
+5. **通道单点**:v1 一个市场索引 URL(应用配置项,不进插件)。
+   多索引源不发明。
 
 ## 10. 分期落地与验收
 
@@ -300,21 +321,23 @@ CI 在每个插件发布时重生成根 `index.json`:
 - 废除运行时 npm install(§5.3);
 - manager:installPlugin/updatePlugin/checkPluginUpdates(§6),uninstall 适配;
 - 配置/KV/storage 搬家 + 惰性迁移 + legacy-backup 收尸(§7);
-- IPC 三通道 + 设置页 Install/Update(先吃 `file:` 与本地 registry 包);
+- IPC 三通道 + 设置页 Install/Update(先吃 `file:` 与本地 tarball);
 - **验收**:以 `file:sample-plugins/plan-status` 安装 → 加载 → 配置写入
   `plugins/plan-status/config.json`(中央 config 段对应行消失)→
   update → config.json 原样保留 → uninstall → 家目录归档、
   node_modules 无残留;`plugin-data/` 空壳进 legacy-backup;
   全量 vitest + 双端 typecheck 绿。
 
-### P2:GitLab registry + CI 模板
+### P2:GitHub 仓库 + CI 模板
 
-- 插件仓库骨架:packages/* + build-plugin.mjs(esbuild bundle)+
-  .gitlab-ci.yml(publish + 重生成 index.json);
+- 插件仓库骨架:packages/* + build-plugin.mjs(esbuild bundle + npm pack)
+  + .github/workflows/release.yml(gh release 上传 tgz → 重生成
+  index.json → commit 回仓库);
 - sample-plugins/plan-status 改造为首个 npm 形态示范(zod 依赖的
   log-monitor 作为 bundle 示范第二例);
-- **验收**:CI 发布后,应用以 registry 形态安装 plan-status,功能与
-  file: 形态逐字节一致;包内无运行时 node_modules 依赖。
+- **验收**:推 tag 触发 release 后,应用以 tarball URL 安装 plan-status,
+  功能与 file: 形态逐字节一致;包内无运行时 node_modules 依赖;
+  index.json 的 sha256 与 release asset 实体一致。
 
 ### P3:市场 UI
 
@@ -334,21 +357,47 @@ CI 在每个插件发布时重生成根 `index.json`:
 
 | 风险 | 对策 |
 | --- | --- |
-| install 时网络/token 失败 | install 是显式动作,错误原样透传到 UI;token 走 .npmrc,不见日志 |
+| install 时网络失败 | install 是显式动作,错误原样透传到 UI;已装插件不受影响(加载期零网络) |
 | 用户手编 plugins/package.json 搞坏账 | 读失败 = 空账 + warn,不删任何文件;设置页给"修复"(npm install 全量重装)入口 |
 | 两个 scope 同名包装出同 pluginId | 拒绝后到者,日志明说;v1 引导单 scope |
-| npm 重装抹 node_modules 连带数据 | 铁律 3 + assertNotInNodeModules 断言 + 测试(§7.3) |
+| npm 重装抹 node_modules 连带数据 | 铁律 4 + assertNotInNodeModules 断言 + 测试(§7.3) |
 | legacy 目录插件与数据家目录撞名 | §5.4 判别顺序:有 plugin.json = 代码目录,数据留 plugin-data 不搬 |
 | 老插件配置没搬完就回滚版本 | legacy-backup 有尸;中央文件只在实际搬移时重写,不会半吊子 |
-| CI 生成的 index.json 与 registry 实际版本漂移 | CI 同一 job 内 publish → 读 registry 验证 → 才写 index.json |
+| CI 生成的 index.json 与 release 实际版本漂移 | CI 同一 job 内 release → 重算 sha256 → 才写 index.json |
+| raw.githubusercontent.com 不可达 | 市场区用上次缓存 + 明示过期;已装插件照常(加载期零网络) |
 
-## 12. 不在本期
+## 12. 不在本期(含被否方案的登记)
 
+- **GitHub Packages npm registry**:被否,理由留档 —— 安装**公开**包
+  也要 PAT(GitHub 官方文档明示),市场用户的凭证成本不可接受。
+  哪天它放开公开包免 token,可无缝切回(tarball URL 换成 registry
+  解析,loader 与安装账不变)。
 - 包签名/可信发布者体系;
-- 多 registry 与 registry 镜像;
+- 私有插件仓库(要 token 的形态整体不在本期);
 - 付费插件与许可校验;
 - CLI/gateway 的插件装配(CLI daemon 今天就不装插件,安装命令的
   CLI 入口随 CLI 插件策略单独立项);
 - apps/server 插件树的 npm 化(§10 P4 只登记);
 - 插件间依赖(插件依赖插件)—— npm 语义上可行,但激活序/熔断账
   要重想,真实需求出现前不动。
+
+## 13. 附录:npm 发布机制速览(给没发过的读者)
+
+- **registry 是什么**:一个按"名字 + 版本"存 tarball 的仓库服务。
+  默认 registry 是 npmjs.com;`npm install x` 就是去 registry 找 x 的
+  最新版 tarball 下载解压。**但 install 也能绕过 registry 直接吃 URL**
+  —— 本设计用的就是这个。
+- **npm pack**:把包按 `package.json` 的 `files` 白名单打成
+  `<name>-<version>.tgz`。`npm publish` 本质 = pack + 上传到 registry。
+  我们只 pack 不 publish,把 tgz 挂到 GitHub Release —— 格式一字不差,
+  npm 认。
+- **scoped 名字**(`@onething-plugins/plan-status`):`@scope/` 前缀只是
+  命名空间,防止重名;在 registry 之外使用时它就是个普通目录名
+  (`node_modules/@scope/name`)。
+- **install 一个 tarball URL 时 npm 做什么**:下载 → 解压到
+  `node_modules/<name>` → 在 package.json 的 dependencies 记一行
+  (key 是包里的 name,value 是那个 URL)→ package-lock 记
+  resolved URL + integrity。之后 `npm uninstall <name>` 照单移除。
+  —— 我们白拿的"安装账"就是这套。
+- **版本不可变**:同一 name+version 的 tarball 内容不该变(npm registry
+  强制,GitHub Releases 靠纪律);升版本 = 新 tag + 新 asset 名。
