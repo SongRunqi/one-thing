@@ -204,6 +204,22 @@ npm 形态插件的 `checkPluginNeedsInstall` 与首载 install 路径
 - 这条兼容路径在市场落地后保留一个版本周期,之后随 legacy 插件清零
   再删。
 
+**已知限制(P1 审查登记,清零前接受)**:
+
+1. **同 id 共存陷阱**:npm 包(去 scope 后 id 为 `foo`)与残留的
+   legacy 目录 `plugins/foo/` 同时存在时,扫描是 npm 赢(代码面),但
+   配置/KV 的落盘判别(plugin.json 在场 = legacy)会把 npm 插件的
+   数据也留旧根;更严重的是卸载 npm 形态后,下一轮扫描会把 legacy
+   目录**复活**成同名插件。规避:P2 市场落地前,装 npm 形态前先删同
+   名 legacy 目录;legacy 清零计划(P4)把这条一起收掉。
+2. **updatePlugin 的版本读取在互斥锁外**:`info` 在方法入口捕获,拿锁
+   期间若有并发刷新,current 可能是上一世的版本 —— 后果只是多报/少报
+   一次更新,不影响装的是索引最新版这一事实。接受。
+3. **索引 pkg 与账本 pkg 的一致性**由市场 CI 保证(§8.1 的 `pkg` 字段
+   必须与包内 package.json 的 name 相同);installPluginPackage 只按
+   `input.pkg` 找 `node_modules/<pkg>`,名字不符会装成第二个包。P3 接
+   市场时在装前加一道 pkg 一致性校验。
+
 ## 6. 生命周期命令链
 
 core manager 增(`PluginManager`,与 uninstallPlugin 对称):

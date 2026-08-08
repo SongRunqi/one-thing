@@ -128,8 +128,15 @@ export function listPluginSettingsKeys(pluginId: string): string[] {
 }
 
 /** 一个插件的全部落盘足迹(宪法第 6 条数据侧)。 */
+/**
+ * 足迹枚举与归档同一把尺(P1):npm 形态的家在 `plugins/<id>/`,legacy
+ * 代码目录的数据在 `plugin-data/<id>/`。卸载确认框据此展示"将被归档的
+ * 东西" —— 尺若分叉,对话框就会对 npm 插件说"没什么可归档的"而家目录
+ * 其实会被搬走。
+ */
 export function getPluginFootprint(pluginId: string): CorePluginDataFootprint {
-  return getCorePluginDataFootprint(getPluginDataRoot(), pluginId, {
+  const root = isLegacyPluginCodeDir(pluginId) ? getPluginDataRoot() : getPluginsDir()
+  return getCorePluginDataFootprint(root, pluginId, {
     settingsKeys: listPluginSettingsKeys(pluginId),
   })
 }

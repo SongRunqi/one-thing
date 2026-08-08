@@ -6,8 +6,11 @@ import {
   CorePluginBootstrapper,
   CorePluginManager,
   type CorePluginInfo,
+  type CorePluginInstallRequest,
+  type CorePluginInstallResult,
   type CorePluginManagerHost,
   type CorePluginUninstallResult,
+  type CorePluginUpdateResult,
 } from '@onething/core/plugins'
 import { createPluginAPI, disposePlugin, type PluginState } from './api.js'
 import {
@@ -277,6 +280,28 @@ export class PluginManager extends CorePluginManager<
     // 而 R5 加 catalog-changed 正是为了治这个(当时漏了卸载这条路径)。
     invalidateDeclaredPanelIdsCache()
     const result = await super.uninstallPlugin(pluginId)
+    this.emitCatalogChanged(pluginId)
+    return result
+  }
+
+  /**
+   * install/update 同样要广播。
+   *
+   * core 的 installPlugin/updatePlugin 内部走 `doRefreshPlugins()`(单飞互斥
+   * 的要求,见 runLifecycleExclusive 的注释)—— 它**不经过**本类的
+   * `refreshPlugins()` 覆盖,广播因此不会自动发生。新装的插件不带广播,
+   * 主窗的面板入口与锚点块清单就停在装前那一世。
+   */
+  async installPlugin(input: CorePluginInstallRequest): Promise<CorePluginInstallResult> {
+    invalidateDeclaredPanelIdsCache()
+    const result = await super.installPlugin(input)
+    this.emitCatalogChanged(result.pluginId ?? input.pkg)
+    return result
+  }
+
+  async updatePlugin(pluginId: string): Promise<CorePluginUpdateResult> {
+    invalidateDeclaredPanelIdsCache()
+    const result = await super.updatePlugin(pluginId)
     this.emitCatalogChanged(pluginId)
     return result
   }

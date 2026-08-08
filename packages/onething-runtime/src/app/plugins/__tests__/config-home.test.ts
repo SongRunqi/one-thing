@@ -171,6 +171,34 @@ describe('§7.4 拆除闩', () => {
   })
 })
 
+describe('足迹枚举(宪法第 6 条)—— 与归档同一把尺', () => {
+  it('npm 形态枚举家目录;legacy 枚举 plugin-data', async () => {
+    const { getPluginFootprint } = await loader()
+    // npm 形态:家目录(config/kv/storage 三层)
+    const home = path.join(pluginsDir, 'npm-form')
+    fs.mkdirSync(path.join(home, 'storage'), { recursive: true })
+    fs.writeFileSync(path.join(home, 'config.json'), '{}')
+    fs.writeFileSync(path.join(home, 'kv.json'), '{}')
+    fs.writeFileSync(path.join(home, 'storage', 'notes.json'), '[]')
+    const fp = getPluginFootprint('npm-form')
+    expect(fp.dataDir).toBe(home)
+    expect(fp.dataDirExists).toBe(true)
+    expect(fp.entries).toEqual(expect.arrayContaining(['config.json', 'kv.json', 'storage']))
+
+    // legacy 代码目录:数据根仍是 plugin-data
+    const legacyDir = path.join(pluginsDir, 'legacy-fp')
+    fs.mkdirSync(legacyDir, { recursive: true })
+    fs.writeFileSync(path.join(legacyDir, 'plugin.json'), '{}')
+    const dataDir = path.join(storeRoot, 'plugin-data', 'legacy-fp')
+    fs.mkdirSync(dataDir, { recursive: true })
+    fs.writeFileSync(path.join(dataDir, 'kv.json'), '{}')
+    const legacyFp = getPluginFootprint('legacy-fp')
+    expect(legacyFp.dataDir).toBe(dataDir)
+    expect(legacyFp.entries).toContain('kv.json')
+    fs.rmSync(legacyDir, { recursive: true, force: true })
+  })
+})
+
 describe('findCorePluginHomeOrphans —— 家目录孤儿收尸', () => {
   it('无主的纯数据目录是孤儿;legacy 代码目录/存活 id/legacy-backup 都不是', () => {
     const plugins = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-home-orphan-'))
