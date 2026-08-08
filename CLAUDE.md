@@ -170,9 +170,11 @@ Notes:
   - **Its own product surface**: declarative workspace panels (`contributes.panels` +
     `api.registerWorkspacePanel`, pure-data description tree — the UI never executes
     plugin code), declarative UI-slot blocks on host-named anchors
-    (`contributes.uiSlots` + `api.registerUiSlot`, R5.x — first anchors:
-    `composer.above` above the composer, `chat.status-bar` below the message list;
-    render ctx carries `anchor` + `sessionId`, the host re-pulls on session switch),
+    (`contributes.uiSlots` + `api.registerUiSlot`, R5.x — anchors:
+    `composer.above` above the composer, `chat.status-bar` below the message list,
+    `message.footer` per assistant message — the first message-level anchor,
+    its render ctx additionally carries `messageId`; render ctx carries `anchor` +
+    `sessionId`, the host re-pulls on session switch),
     its own settings schema (`contributes.settings.schema`, JSON Schema
     subset, host renders and validates it), a unified request channel
     (`api.registerRequestHandler`; requestId is in use, while abort/progress are wired

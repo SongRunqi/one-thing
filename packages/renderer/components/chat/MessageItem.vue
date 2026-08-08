@@ -406,14 +406,6 @@
           >
             {{ formatTime(message.timestamp) }}
           </div>
-          <!-- 消息级锚点(message.footer):插件块按消息实例挂载,只给
-               assistant 消息 —— TPS/耗时/成本这类 per-message 块的家。 -->
-          <UiSlotHost
-            v-if="message.role === 'assistant'"
-            anchor="message.footer"
-            :session-id="message.sessionId"
-            :message-id="message.id"
-          />
           <MessageActions
             :role="message.role"
             :content="message.content"
@@ -436,6 +428,18 @@
             @go-to-branch="handleGoToBranch"
           />
         </div>
+
+        <!-- 消息级锚点(message.footer):插件块按消息实例挂载,只挂
+             assistant 消息。**有意不放进 .message-footer**:那是悬停才显的
+             chrome(时间戳/操作行),而插件块是内容(TPS/耗时/成本徽标),
+             必须常显 —— 悬停门控会把这类块的存在意义打没。 -->
+        <UiSlotHost
+          v-if="message.role === 'assistant'"
+          class="message-anchor-host"
+          anchor="message.footer"
+          :session-id="message.sessionId"
+          :message-id="message.id"
+        />
       </div>
     </div>
   </div>
@@ -1146,6 +1150,13 @@ function handleUpdateThinkingTime(time: number) {
 /* Message footer — an overlay in the turn gap, not a layout row. Reserving
    28px under every message made the stream's rhythm read as slack; painting
    it inside the wrapper's padding keeps reveal shift-free at zero cost. */
+/* 消息级锚点宿主:常显(与悬停门控的 .message-footer 刻意区隔)。 */
+.message-anchor-host {
+  margin: 2px 4px 0;
+  opacity: 0.82;
+  font-size: 11px;
+}
+
 .message-footer {
   position: absolute;
   left: 0;

@@ -219,6 +219,12 @@ npm 形态插件的 `checkPluginNeedsInstall` 与首载 install 路径
    必须与包内 package.json 的 name 相同);installPluginPackage 只按
    `input.pkg` 找 `node_modules/<pkg>`,名字不符会装成第二个包。P3 接
    市场时在装前加一道 pkg 一致性校验。
+4. **快速连续重载的闭包分裂**(tps-meter 验收实录):update 触发的
+   disable→enable 与 catalog-changed 广播的二次重载背靠背时,事件订阅
+   与请求处理器可能分属两个插件闭包 —— 事件记进了新闭包的态,render
+   却走了旧闭包(空树)。自愈:下一次干净加载(重启或手动 disable/
+   enable)即恢复;修法是重载合并(短窗内多次重载请求合成一次)。
+   tps-meter 1.0.1 验收时撞见一次,登记在册,触发真实复现再修。
 
 ## 6. 生命周期命令链
 
