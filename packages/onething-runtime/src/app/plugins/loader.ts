@@ -183,18 +183,36 @@ function getBuiltinPlugins(): PluginDefinition[] {
  * 又短到不会让"刚装上的插件"读到过期清单。
  */
 const DECLARED_PANEL_IDS_TTL_MS = 1000
-let declaredPanelIdsCache: { at: number; byPlugin: Map<string, string[]> } | null = null
+let declaredPanelIdsCache: {
+  at: number
+  byPlugin: Map<string, { panels: string[]; uiSlots: Array<{ anchor: string; id: string; label: string }> }>
+} | null = null
 
-export function getDeclaredPanelIds(pluginId: string): string[] {
+function declaredContributesByPlugin(): Map<string, { panels: string[]; uiSlots: Array<{ anchor: string; id: string; label: string }> }> {
   const now = Date.now()
   if (!declaredPanelIdsCache || now - declaredPanelIdsCache.at >= DECLARED_PANEL_IDS_TTL_MS) {
-    const byPlugin = new Map<string, string[]>()
+    const byPlugin = new Map<string, { panels: string[]; uiSlots: Array<{ anchor: string; id: string; label: string }> }>()
     for (const definition of scanPlugins()) {
-      byPlugin.set(definition.id, definition.manifest.contributes?.panels?.map(panel => panel.id) ?? [])
+      byPlugin.set(definition.id, {
+        panels: definition.manifest.contributes?.panels?.map(panel => panel.id) ?? [],
+        uiSlots: definition.manifest.contributes?.uiSlots ?? [],
+      })
     }
     declaredPanelIdsCache = { at: now, byPlugin }
   }
-  return declaredPanelIdsCache.byPlugin.get(pluginId) ?? []
+  return declaredPanelIdsCache.byPlugin
+}
+
+export function getDeclaredPanelIds(pluginId: string): string[] {
+  return declaredContributesByPlugin().get(pluginId)?.panels ?? []
+}
+
+/**
+ * manifest contributes.uiSlots 里声明过的锚点块(R5.x)。
+ * 与面板同一份缓存 —— 两个声明清单出自同一次目录扫描,不该各扫一遍。
+ */
+export function getDeclaredUiSlots(pluginId: string): Array<{ anchor: string; id: string; label: string }> {
+  return declaredContributesByPlugin().get(pluginId)?.uiSlots ?? []
 }
 
 /**

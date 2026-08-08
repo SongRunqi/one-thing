@@ -312,7 +312,8 @@ describe('R5 declarative panels — manifest declares, code binds', () => {
     ])
     await manager.initialize({ ready: true })
 
-    expect(errors.join('\n')).toContain('the "panel:" action namespace belongs to the host')
+    expect(errors.join('\n')).toContain('action namespace')
+    expect(errors.join('\n')).toContain('belong to the host')
     expect(failures).toContainEqual({ pluginId: 'logs', scope: 'register:RequestHandler' })
 
     const result = await manager.handleRequest({ pluginId: 'logs', action: `${PLUGIN_PANEL_RENDER_ACTION}:main` })

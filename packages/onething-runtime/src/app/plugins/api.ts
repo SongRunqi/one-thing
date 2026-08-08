@@ -12,7 +12,7 @@ import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
 import { PluginStore, createPluginStorage } from './store.js'
-import { getDeclaredPanelIds } from './loader.js'
+import { getDeclaredPanelIds, getDeclaredUiSlots } from './loader.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
 import type { PluginFailureScope } from '@onething/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
@@ -154,6 +154,8 @@ export interface CreatePluginAPIOptions {
    * 不传就现查清单 —— 清单本来就是唯一权威,这个参数只为注入/测试留着。
    */
   declaredPanelIds?: string[]
+  /** manifest contributes.uiSlots 里声明过的锚点块(R5.x);同上,参数只为注入/测试留着。 */
+  declaredUiSlots?: Array<{ anchor: string; id: string; label: string }>
 }
 
 export function createPluginAPI(
@@ -204,6 +206,7 @@ export function createPluginAPI(
     storage: createPluginStorage(pluginId),
     // 声明先于代码:面板注册要跟 manifest 对得上,清单是权威。
     declaredPanelIds: options?.declaredPanelIds ?? getDeclaredPanelIds(pluginId),
+    declaredUiSlots: options?.declaredUiSlots ?? getDeclaredUiSlots(pluginId),
     // 全进程一本账(R6):清扫按会话进行,每插件一本就扫不干净。
     statusRegistry: getPluginStatusRegistry(),
     scheduler: pluginScheduler,

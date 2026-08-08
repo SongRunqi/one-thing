@@ -1,6 +1,7 @@
 import type { CorePluginRequestHandler } from './request-channel.js'
 import type { CorePluginStorage } from './storage.js'
 import type { CorePluginPanelRegistration } from './panel.js'
+import type { CorePluginUiSlotRegistration } from './ui-anchor.js'
 
 /**
  * 声明先于代码(设计文档 §4.2 宪法第 3 条)。
@@ -21,6 +22,26 @@ export interface PluginContributionPanel {
   id: string
   label: string
   icon?: string
+}
+
+/**
+ * 锚点块(R5.x):插件在宿主 UI 具名锚点上的一块嵌入式 UI。
+ *
+ * 与面板同规:静态存在感(id/label/anchor)在这里声明,运行期的
+ * `registerUiSlot` 只绑 render/onAction。命名不叫 `ui` ——
+ * `contributes.settings.ui`(设置项 UI hint)已经占了这个词的另一种含义。
+ */
+export interface PluginContributionUiSlot {
+  /**
+   * 必须是宿主锚点清单中的一员。
+   *
+   * **未知锚点不拒绝加载**:该条 contribution 被丢弃并在清单投影标记
+   * `unsupported`(设置页可见),插件其余能力照常 —— 多宿主与版本偏斜下
+   * "宿主不认识这个锚点"不是代码错误,不该吃 registration 熔断(阈值 1)。
+   */
+  anchor: string
+  id: string
+  label: string
 }
 
 /** 呈现提示:不给则由 schema 推导控件。 */
@@ -52,6 +73,7 @@ export interface PluginContributionActivation {
 export interface PluginContributes {
   commands?: PluginContributionCommand[]
   panels?: PluginContributionPanel[]
+  uiSlots?: PluginContributionUiSlot[]
   settings?: PluginContributionSettings
   permissions?: string[]
   activation?: PluginContributionActivation
@@ -233,6 +255,7 @@ export interface CorePluginAPI<
   TPanelRegistration = CorePluginPanelRegistration,
   TStatus = CorePluginStatusAPI,
   TIMConnector = unknown,
+  TUiSlotRegistration = CorePluginUiSlotRegistration,
 > {
   readonly id: string
   registerTool(tool: TTool): void
@@ -263,6 +286,16 @@ export interface CorePluginAPI<
    * `request:<action>` 熔断账。
    */
   registerWorkspacePanel(registration: TPanelRegistration): void
+  /**
+   * 锚点块(R5.x):在宿主 UI 的具名锚点上嵌一块 UI。
+   *
+   * 与 registerWorkspacePanel 同构:anchor/id 必须与 manifest 的
+   * `contributes.uiSlots` 里某一项一致;render 返回同一套描述树协议,
+   * 经同一请求通道执行(自动继承超时预算与熔断账)。ctx 比面板多两个字段:
+   * `anchor`(插件知道自己在哪个锚点)与 `sessionId`(当前会话;宿主在会话
+   * 切换时重拉 render —— 返回不依赖它的树即"全局块")。
+   */
+  registerUiSlot(registration: TUiSlotRegistration): void
   /** 插件自定义事件。投递名 = `plugin:<pluginId>:<name>`。 */
   events: {
     emit(eventName: string, payload?: unknown): void

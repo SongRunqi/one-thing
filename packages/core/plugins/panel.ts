@@ -13,6 +13,7 @@
  * 不是塞一个闭包 —— 闭包过不了 IPC,更过不了 H 线的进程边界。
  */
 import { describeNonSerializable } from './request-channel.js'
+import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './ui-anchor.js'
 
 /**
  * 协议版本。
@@ -261,19 +262,22 @@ export function validatePluginPanelActionResult(result: unknown): string | null 
 }
 
 /**
- * `panel:*` 请求结果的**唯一守卫**。
+ * `panel:*` 与 `ui:*` 请求结果的**唯一守卫**。
  *
- * 放在通道层而不是注册包装层:`panel:` 命名空间虽然已经对 registerRequestHandler
- * 关上,但守卫只写在包装里的话,任何绕开包装的登记路径(将来的第二个宿主、直接
- * 写 state.requestHandlers 的测试替身)都会把一棵没校验过的树喂给 renderer。
- * 通道是所有 panel 结果的必经之路,钉在这里才是真的钉住。
+ * 放在通道层而不是注册包装层:`panel:` / `ui:` 命名空间虽然已经对
+ * registerRequestHandler 关上,但守卫只写在包装里的话,任何绕开包装的登记路径
+ * (将来的第二个宿主、直接写 state.requestHandlers 的测试替身)都会把一棵没校验
+ * 过的树喂给 renderer。通道是所有面板/锚点块结果的必经之路,钉在这里才是真的
+ * 钉住。
+ *
+ * 锚点块与面板**同一套描述树协议**:块只是"小面板",校验不分叉。
  */
 export function describePluginPanelResultProblem(action: string, result: unknown): string | null {
-  if (action.startsWith(`${PLUGIN_PANEL_RENDER_ACTION}:`)) {
+  if (action.startsWith(`${PLUGIN_PANEL_RENDER_ACTION}:`) || action.startsWith(`${PLUGIN_UI_RENDER_ACTION}:`)) {
     const problem = validatePluginPanelTree(result)
     return problem ? `panel render produced an invalid tree: ${problem}` : null
   }
-  if (action.startsWith(`${PLUGIN_PANEL_INVOKE_ACTION}:`)) {
+  if (action.startsWith(`${PLUGIN_PANEL_INVOKE_ACTION}:`) || action.startsWith(`${PLUGIN_UI_INVOKE_ACTION}:`)) {
     const problem = validatePluginPanelActionResult(result)
     return problem ? `panel action produced an invalid result: ${problem}` : null
   }

@@ -21,6 +21,7 @@ import {
 } from '@onething/runtime/collab'
 import { toast } from '@/composables/useToast'
 import { setPluginWorkspacePanels } from '@/workspace/panel-registry'
+import { setPluginUiSlots } from '@/workspace/ui-anchor-registry'
 import { shouldNotifyInbound, summarizeNotificationBody } from './notify-inbound'
 import type { SessionEventEnvelope } from '@shared/events/index.js'
 
@@ -379,6 +380,22 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
           panelId: panel.id,
           label: panel.label,
           loaded: Boolean(plugin.loaded),
+        })),
+      ))
+    // 锚点块清单(R5.x):同一条投影路径、同一个 enabled 闸门。
+    // unsupported 的块保留在注册表里(设置页据此说"该锚点宿主不认识"),
+    // 挂点组件会把它们过滤掉。
+    setPluginUiSlots((result.plugins || [])
+      .filter((plugin: any) => plugin.enabled)
+      .flatMap((plugin: any) =>
+        (plugin.contributes?.uiSlots || []).map((slot: { anchor: string; id: string; label: string; unsupported?: boolean }) => ({
+          pluginId: plugin.id,
+          pluginName: plugin.name,
+          anchor: slot.anchor,
+          slotId: slot.id,
+          label: slot.label,
+          loaded: Boolean(plugin.loaded),
+          unsupported: Boolean(slot.unsupported),
         })),
       ))
   } catch (error) {

@@ -218,6 +218,8 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       pluginScope.request('search'),
       pluginScope.panelRender('logs'),
       pluginScope.panelAction('logs'),
+      pluginScope.uiSlotRender('composer.above:plan-status'),
+      pluginScope.uiSlotAction('composer.above:plan-status'),
       pluginScope.storage('writeJson'),
       pluginScope.settingsChange(),
       pluginScope.steer(),
@@ -259,6 +261,9 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       { factory: 'request', scope: pluginScope.request('panel:render:logs'), family: 'ui-request' },
       { factory: 'panelRender', scope: pluginScope.panelRender('logs'), family: 'ui-request' },
       { factory: 'panelAction', scope: pluginScope.panelAction('logs'), family: 'ui-request' },
+      // 锚点块同族(R5.x):render 与 action 折叠为同一 surface,与面板同一条账。
+      { factory: 'uiSlotRender', scope: pluginScope.uiSlotRender('composer.above:x'), family: 'ui-request' },
+      { factory: 'uiSlotAction', scope: pluginScope.uiSlotAction('composer.above:x'), family: 'ui-request' },
       { factory: 'storage', scope: pluginScope.storage('writeJson'), family: 'storage' },
       { factory: 'settingsChange', scope: pluginScope.settingsChange(), family: 'settings-change' },
       { factory: 'steer', scope: pluginScope.steer(), family: 'conversation-control' },

@@ -12,6 +12,8 @@ export type {
   CorePluginToolDefinition,
   CorePluginToolResult,
   MinimalCorePluginUI,
+  PluginContributes,
+  PluginContributionUiSlot,
   PluginPermissionGuard,
   PersistedPluginHealth,
   PluginManifest,
@@ -164,6 +166,23 @@ export type {
   PluginPanelStackNode,
   PluginPanelTree,
 } from './panel.js'
+export {
+  PLUGIN_UI_INVOKE_ACTION,
+  PLUGIN_UI_RENDER_ACTION,
+  UI_ANCHORS,
+  UI_ANCHOR_CAPACITY,
+  assertUiAnchorRegistryConsistency,
+  isReservedPluginUiAction,
+  isUiAnchor,
+  uiSlotAddress,
+  uiSlotSurfaceId,
+} from './ui-anchor.js'
+export type {
+  CorePluginUiSlotContext,
+  CorePluginUiSlotRegistration,
+  UiAnchor,
+  UiAnchorCapacity,
+} from './ui-anchor.js'
 export {
   PLUGIN_DATA_LEGACY_BACKUP_DIR,
   PLUGIN_KV_FILE_NAME,

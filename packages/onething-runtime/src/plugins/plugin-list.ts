@@ -1,4 +1,5 @@
 import { describePluginConfigSchema, type PluginConfigField } from './config-schema.js'
+import { isUiAnchor } from '@onething/core/plugins'
 
 export interface OnethingPluginListManifestLike {
   name: string
@@ -9,6 +10,7 @@ export interface OnethingPluginListManifestLike {
   contributes?: {
     commands?: Array<{ name: string }>
     panels?: Array<{ id: string; label: string }>
+    uiSlots?: Array<{ anchor: string; id: string; label: string }>
     settings?: {
       title?: string
       schema?: Record<string, unknown>
@@ -75,6 +77,11 @@ export interface OnethingRendererPluginInfo {
   contributes: {
     commands: string[]
     panels: Array<{ id: string; label: string }>
+    /**
+     * 锚点块(R5.x)。`unsupported` = 该条声明的锚点不在宿主清单里:
+     * 块不渲染,但设置页要能把这件事说出来(前向兼容,见设计文档 §4.1)。
+     */
+    uiSlots: Array<{ anchor: string; id: string; label: string; unsupported: boolean }>
     hasSettingsSchema: boolean
     permissions: string[]
     activationEvents: string[]
@@ -148,6 +155,12 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
       panels: (plugin.definition.manifest.contributes?.panels ?? []).map(panel => ({
         id: panel.id,
         label: panel.label,
+      })),
+      uiSlots: (plugin.definition.manifest.contributes?.uiSlots ?? []).map(slot => ({
+        anchor: slot.anchor,
+        id: slot.id,
+        label: slot.label,
+        unsupported: !isUiAnchor(slot.anchor),
       })),
       hasSettingsSchema: Boolean(plugin.definition.manifest.contributes?.settings?.schema),
       permissions: plugin.definition.manifest.contributes?.permissions ?? [],

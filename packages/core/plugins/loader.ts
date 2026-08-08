@@ -361,6 +361,25 @@ export function validatePluginContributes(raw: unknown): string | null {
     }
   }
 
+  // uiSlots(R5.x)只校验**形状**。锚点是否存在于宿主清单不在这里判:
+  // 未知锚点 = 丢弃该条并标记 unsupported(投影层的职责),不是加载期错误 ——
+  // 多宿主与版本偏斜下"宿主不认识这个锚点"不是代码错误。
+  const uiSlots = raw.uiSlots
+  if (uiSlots !== undefined) {
+    if (!Array.isArray(uiSlots)) return 'contributes.uiSlots must be an array'
+    for (const [index, slot] of uiSlots.entries()) {
+      if (!isPlainRecord(slot) || typeof slot.anchor !== 'string' || !slot.anchor.trim()) {
+        return `contributes.uiSlots[${index}].anchor must be a non-empty string`
+      }
+      if (typeof slot.id !== 'string' || !slot.id.trim()) {
+        return `contributes.uiSlots[${index}].id must be a non-empty string`
+      }
+      if (typeof slot.label !== 'string' || !slot.label.trim()) {
+        return `contributes.uiSlots[${index}].label must be a non-empty string`
+      }
+    }
+  }
+
   const settings = raw.settings
   if (settings !== undefined) {
     if (!isPlainRecord(settings)) return 'contributes.settings must be an object'

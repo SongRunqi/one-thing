@@ -8,6 +8,16 @@ import {
   type CorePluginPanelContext,
   type CorePluginPanelRegistration,
 } from './panel.js'
+import {
+  PLUGIN_UI_INVOKE_ACTION,
+  PLUGIN_UI_RENDER_ACTION,
+  isReservedPluginUiAction,
+  isUiAnchor,
+  uiSlotAddress,
+  uiSlotSurfaceId,
+  type CorePluginUiSlotContext,
+  type CorePluginUiSlotRegistration,
+} from './ui-anchor.js'
 import type { CorePluginStatusPart, CorePluginStatusRegistry } from './status.js'
 import { pluginScope, type PluginFailureScope } from './policy.js'
 import {
@@ -99,6 +109,11 @@ export interface CreateCorePluginAPIOptions<
    * registerWorkspacePanel 拿它做匹配 —— 声明先于代码,清单是权威。
    */
   declaredPanelIds?: string[]
+  /**
+   * manifest 里声明过的锚点块(R5.x)。
+   * registerUiSlot 拿它做(anchor, id) 匹配 —— 与面板同一条"声明先于代码"。
+   */
+  declaredUiSlots?: Array<{ anchor: string; id: string }>
   /**
    * 状态账本(R6)。宿主注入**同一个实例**给所有插件 —— 清扫按会话进行,
    * 每插件一本账就扫不干净。不注入时 api.status 是安静的 no-op(headless)。
@@ -415,14 +430,14 @@ export function createCorePluginAPI<
         logger.error(`[Plugin:${pluginId}] registerRequestHandler needs a non-empty action`, undefined)
         return
       }
-      // `panel:` 是宿主保留的命名空间。不挡的话,插件可以直接登记
-      // `panel:render:<id>` 顶掉宿主装好的那层 —— 一条 replacing 日志之后,
-      // 一棵没校验过的树就直通 renderer 了。这与"未声明的面板 id"同一性质,
-      // 所以同款处理:报错 + 计熔断,不注册。
-      if (isReservedPluginPanelAction(normalized)) {
+      // `panel:` 与 `ui:` 是宿主保留的命名空间。不挡的话,插件可以直接登记
+      // `panel:render:<id>` / `ui:render:<anchor>:<id>` 顶掉宿主装好的那层 ——
+      // 一条 replacing 日志之后,一棵没校验过的树就直通 renderer 了。
+      // 这与"未声明的面板 id"同一性质,所以同款处理:报错 + 计熔断,不注册。
+      if (isReservedPluginPanelAction(normalized) || isReservedPluginUiAction(normalized)) {
         logger.error(
-          `[Plugin:${pluginId}] registerRequestHandler("${normalized}") is refused: the "panel:" action `
-          + 'namespace belongs to the host. Use registerWorkspacePanel() to contribute a panel.',
+          `[Plugin:${pluginId}] registerRequestHandler("${normalized}") is refused: the "panel:" and "ui:" `
+          + 'action namespaces belong to the host. Use registerWorkspacePanel() / registerUiSlot() instead.',
           undefined,
         )
         reportFailure(pluginScope.registration('RequestHandler'), new Error(`reserved action "${normalized}"`))
@@ -523,6 +538,93 @@ export function createCorePluginAPI<
       })
 
       logger.log(`[Plugin:${pluginId}] Registered workspace panel: ${panelId}`)
+    },
+
+    /**
+     * 锚点块注册(R5.x)—— 与 registerWorkspacePanel 同构,只绑行为。
+     *
+     * (anchor, id) 必须匹配 manifest 的 contributes.uiSlots;render 返回的是同一套
+     * 描述树协议(块只是"小面板",协议不因位置而分叉)。落地方式同样是把
+     * render/onAction 挂到统一请求通道上(`ui:render:<anchor>:<id>` /
+     * `ui:action:<anchor>:<id>`),免费继承超时预算、abort、progress 与熔断账。
+     */
+    registerUiSlot(registration: CorePluginUiSlotRegistration): void {
+      if (rejectLateCall('registerUiSlot')) return
+      const slotAnchor = String(registration?.anchor ?? '').trim()
+      const slotId = String(registration?.id ?? '').trim()
+      if (!slotAnchor || !slotId) {
+        logger.error(`[Plugin:${pluginId}] registerUiSlot needs an anchor and an id`, undefined)
+        return
+      }
+      // 未知锚点在这里是**代码错误**(与 manifest 层的"降级为 unsupported"不同:
+      // 到了注册期,插件在代码里指名道姓要一个宿主没有的位置,没有歧义可容)。
+      if (!isUiAnchor(slotAnchor)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerUiSlot("${slotAnchor}") is refused: unknown anchor. `
+          + 'Anchors are a host-defined set (UI_ANCHORS); a plugin cannot invent one.',
+          undefined,
+        )
+        reportFailure(pluginScope.registration('UiSlot'), new Error(`unknown anchor "${slotAnchor}"`))
+        return
+      }
+      const declared = options.declaredUiSlots ?? []
+      if (!declared.some(slot => slot.anchor === slotAnchor && slot.id === slotId)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerUiSlot("${slotId}") does not match any ui slot declared in `
+          + `contributes.uiSlots for anchor "${slotAnchor}" (declared: ${
+            declared.length ? declared.map(slot => `${slot.anchor}/${slot.id}`).join(', ') : 'none'
+          }). Declare it in plugin.json first — the host renders the block from the manifest.`,
+          undefined,
+        )
+        reportFailure(pluginScope.registration('UiSlot'), new Error(`undeclared ui slot "${slotId}"`))
+        return
+      }
+      if (typeof registration.render !== 'function') {
+        logger.error(`[Plugin:${pluginId}] registerUiSlot("${slotId}") needs a render function`, undefined)
+        return
+      }
+      const address = uiSlotAddress(slotAnchor, slotId)
+      if (requestHandlers.has(`${PLUGIN_UI_RENDER_ACTION}:${address}`)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerUiSlot("${slotId}") was already registered; `
+          + 'one manifest ui slot id binds exactly one implementation.',
+          undefined,
+        )
+        reportFailure(pluginScope.registration('UiSlot'), new Error(`duplicate ui slot "${slotId}"`))
+        return
+      }
+
+      const slotContext = (ctx: CorePluginRequestContext): CorePluginUiSlotContext => ({
+        requestId: ctx.requestId,
+        abortSignal: ctx.abortSignal,
+        // 与面板同一条通知轨:panelId 字段带 `ui:<anchor>:<id>` 形式的 surface id,
+        // renderer 按它与块对号入座。
+        refresh: () => host.emitPanelRefresh?.(pluginId, uiSlotSurfaceId(slotAnchor, slotId)),
+        anchor: slotAnchor,
+        sessionId: null,
+      })
+      /** sessionId 由调用方(renderer)随 payload 传入 —— 宿主在会话切换时重拉。 */
+      const withSession = (base: CorePluginUiSlotContext, payload: unknown): CorePluginUiSlotContext => {
+        const raw = (payload as { sessionId?: unknown } | undefined)?.sessionId
+        return { ...base, sessionId: typeof raw === 'string' && raw ? raw : null }
+      }
+
+      requestHandlers.set(`${PLUGIN_UI_RENDER_ACTION}:${address}`, (payload, ctx) =>
+        registration.render(withSession(slotContext(ctx), payload)))
+
+      requestHandlers.set(`${PLUGIN_UI_INVOKE_ACTION}:${address}`, async (payload, ctx) => {
+        if (!registration.onAction) return { refresh: false }
+        const input = (payload ?? {}) as { actionId?: unknown; payload?: unknown }
+        const actionId = String(input.actionId ?? '')
+        if (!actionId) throw new Error(`Ui slot "${slotId}" received an action without an actionId`)
+        const result = await registration.onAction(
+          { actionId, payload: input.payload },
+          withSession(slotContext(ctx), payload),
+        )
+        return result ?? { refresh: false }
+      })
+
+      logger.log(`[Plugin:${pluginId}] Registered ui slot: ${address}`)
     },
 
     events: {

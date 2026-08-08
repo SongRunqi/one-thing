@@ -14,6 +14,7 @@
  * typecheck 就红,正则只当兜底。
  */
 import { PLUGIN_PANEL_INVOKE_ACTION, PLUGIN_PANEL_RENDER_ACTION } from './panel.js'
+import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './ui-anchor.js'
 import { CORE_PLUGIN_FAILURE_THRESHOLD } from './runtime-guard-constants.js'
 
 // ── scope 的类型化构造 ──────────────────────────
@@ -49,6 +50,9 @@ export const pluginScope = {
   request: (action: string) => brand(`request:${action}`),
   panelRender: (panelId: string) => brand(`request:${PLUGIN_PANEL_RENDER_ACTION}:${panelId}`),
   panelAction: (panelId: string) => brand(`request:${PLUGIN_PANEL_INVOKE_ACTION}:${panelId}`),
+  /** 锚点块请求(R5.x)。address = `<anchor>:<id>`;render/action 折叠为同一 surface。 */
+  uiSlotRender: (address: string) => brand(`request:${PLUGIN_UI_RENDER_ACTION}:${address}`),
+  uiSlotAction: (address: string) => brand(`request:${PLUGIN_UI_INVOKE_ACTION}:${address}`),
   storage: (operation: string) => brand(`storage.${operation}`),
   settingsChange: () => brand('settings:onChange'),
   steer: () => brand('steer'),
@@ -238,6 +242,10 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (!scope) return null
   if (scope.startsWith(`request:${PLUGIN_PANEL_RENDER_ACTION}:`)) return 'ui-request'
   if (scope.startsWith(`request:${PLUGIN_PANEL_INVOKE_ACTION}:`)) return 'ui-request'
+  // 锚点块(R5.x):与面板同一家族 —— 用户主动触发、当场可见,降级不连坐。
+  // 必须在通配 `request:` 之前,否则落进 plugin-request 而让 surface 折叠漏接。
+  if (scope.startsWith(`request:${PLUGIN_UI_RENDER_ACTION}:`)) return 'ui-request'
+  if (scope.startsWith(`request:${PLUGIN_UI_INVOKE_ACTION}:`)) return 'ui-request'
   if (scope.startsWith('request:')) return 'plugin-request'
   if (scope.startsWith('promptContext')) return 'prompt-context'
   if (scope.startsWith('beforeContextCompact') || scope.startsWith('afterAssistantResponse')) return 'lifecycle-hook'
@@ -290,10 +298,16 @@ export function resolvePluginScopeSeverity(scope: string): ResolvedPluginSeverit
 const PANEL_SURFACE_PATTERN = new RegExp(
   `^request:(?:${PLUGIN_PANEL_RENDER_ACTION}|${PLUGIN_PANEL_INVOKE_ACTION}):(.+)$`,
 )
+// 锚点块同规:render 与 action 折成同一个 `ui:<anchor>:<id>`(R5.x)。
+const UI_SLOT_SURFACE_PATTERN = new RegExp(
+  `^request:(?:${PLUGIN_UI_RENDER_ACTION}|${PLUGIN_UI_INVOKE_ACTION}):(.+)$`,
+)
 
 export function describePluginSurface(scope: string): string {
   const panel = PANEL_SURFACE_PATTERN.exec(scope)
   if (panel) return `panel:${panel[1]}`
+  const uiSlot = UI_SLOT_SURFACE_PATTERN.exec(scope)
+  if (uiSlot) return `ui:${uiSlot[1]}`
   if (scope.startsWith('request:')) return scope
   if (scope.startsWith('connector')) return scope
   return scope

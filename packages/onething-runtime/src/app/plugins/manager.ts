@@ -39,7 +39,7 @@ import {
   subscribePluginStatusSweep,
 } from './status.js'
 import { configureIMConnectorHooks } from '../channel/connector-registry.js'
-import { pluginScope } from '@onething/core/plugins'
+import { pluginScope, assertUiAnchorRegistryConsistency } from '@onething/core/plugins'
 import { configurePluginConfigBroadcast } from './config-access.js'
 import {
   clearPluginRuntimeHealth,
@@ -311,6 +311,10 @@ export class PluginManager extends CorePluginManager<
     })
     // 回灌必须在扫描/加载之前:上一轮被熔断禁用的插件,这次启动要带着原因出现。
     restorePluginRuntimeHealth()
+
+    // 锚点清单的键集合一致性(R5.x):类型层面 Record 索引兑住"漏配",
+    // 这条运行时断言兑住"多配/旧键残留"—— 装配期炸,比某个挂点静默少画一块强。
+    assertUiAnchorRegistryConsistency()
 
     await super.initialize(context)
     // 装配完成才是 renderer 能看到真实清单的时刻 —— boot 时那一次拉的多半是空的。
