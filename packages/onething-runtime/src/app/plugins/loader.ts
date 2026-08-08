@@ -229,11 +229,14 @@ export function invalidateDeclaredPanelIdsCache(): void {
 }
 
 export function scanPlugins(): PluginDefinition[] {
+  // desktop 用 npm-ledger 扫描语义(P1 拍板):以 plugins/package.json 为账
+  // 扫 npm 插件,再补一轮 legacy 兼容扫描。server 等只投影的宿主不调这里。
   return scanCorePlugins<PluginEntry>({
     builtinPlugins: getBuiltinPlugins(),
     pluginsDir: getPluginsDir(),
     getEnabled: pluginId => getPluginEnabled(pluginId),
     appVersion: getPluginAppVersion(),
+    scanMode: 'npm-ledger',
   }) as PluginDefinition[]
 }
 

@@ -45,17 +45,23 @@ export {
   installCorePluginDependencies,
   loadCorePluginEntry,
   parsePluginDirectory,
+  readPluginLedger,
   readPluginSettingsFile,
   scanCorePlugins,
+  scanLegacyPluginDirectories,
   scanPluginDirectories,
+  scanPluginLedgerDirectories,
   setPluginEnabledInSettings,
   setPluginEnabledWithAdapters,
+  unscopedPluginIdFromPackageName,
   writePluginSettingsFile,
 } from './loader.js'
 export {
   installCorePluginDependenciesAsync,
 } from './loader.js'
 export type {
+  CorePluginLedgerRead,
+  CorePluginScanMode,
   CorePluginScanTrust,
   CorePluginDependencyInstallAdapters,
   CorePluginDependencyInstallAsyncAdapters,

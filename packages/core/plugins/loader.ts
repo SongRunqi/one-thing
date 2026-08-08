@@ -430,6 +430,15 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
   defaultEntry?: string
   /** 宿主版本;用于 minAppVersion 判定。省略 = 跳过判定。 */
   appVersion?: string
+  /**
+   * 是否探测 needsInstall(默认 true = 现状)。
+   *
+   * npm 形态插件必须传 false:tarball 在 install 时已 bundle 全部依赖,
+   * 包里**没有** node_modules 才是常态 —— 拿目录探测法去判,npm 插件
+   * 会永远背着 needsInstall 的假账(§5.3:加载期缺依赖 = 包没打好,
+   * 按加载失败记账,不再现装)。
+   */
+  needsInstallCheck?: boolean
 }): CorePluginDefinition<TEntry> | null {
   const manifestPath = path.join(input.dirPath, 'plugin.json')
   let manifest: CorePluginDefinition<TEntry>['manifest'] | null = null
@@ -470,7 +479,7 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
     dirPath: input.dirPath,
     entryPath,
     enabled: input.enabled,
-    needsInstall: checkPluginNeedsInstall(input.dirPath),
+    needsInstall: input.needsInstallCheck === false ? false : checkPluginNeedsInstall(input.dirPath),
     loadBlockedReason: versionError
       ?? (contributesError ? `invalid plugin.json: ${contributesError}` : undefined),
   }
@@ -570,14 +579,228 @@ export function scanPluginDirectories<TEntry = unknown>(input: {
   return plugins
 }
 
+/** 扫描语义:directory = 遍历插件根(现状);npm-ledger = 以 plugins/package.json 的 dependencies 为账。 */
+export type CorePluginScanMode = 'directory' | 'npm-ledger'
+
+/**
+ * pluginId = 包名去 scope(单 scope):`@org/foo` → `foo`,无 scope 原样。
+ *
+ * 同 id 冲突(两个 scope 装了同名包)由扫描方拒绝后到者 —— 这里只做
+ * 机械去前缀,不做仲裁。
+ */
+export function unscopedPluginIdFromPackageName(name: string): string {
+  const match = /^@[^/]+\/(.+)$/.exec(name)
+  return match ? match[1] : name
+}
+
+/**
+ * 一轮账读的**可信度**。
+ *
+ * 与 CorePluginScanTrust 同理:`plugins/package.json` 读失败/坏 JSON 与
+ * “确实没装任何 npm 插件”必须区分 —— 拿空账当真,下游会把全部 npm 插件
+ * 的家目录判成孤儿。读失败 = 空账 + warn + 什么都不删。
+ */
+export interface CorePluginLedgerRead {
+  trusted: boolean
+  reason?: string
+  /** dependencies 的 [包名, spec] 对;只有值为 string 的条目才算账。 */
+  entries: Array<{ name: string; spec: string }>
+}
+
+export function readPluginLedger(pluginsDir: string): CorePluginLedgerRead {
+  const ledgerPath = path.join(pluginsDir, 'package.json')
+  let raw: string
+  try {
+    raw = fs.readFileSync(ledgerPath, 'utf-8')
+  } catch (error) {
+    const code = (error as { code?: string }).code
+    // ENOENT = 还没初始化过脚手架,是可信的空账。
+    if (code === 'ENOENT') return { trusted: true, entries: [] }
+    return { trusted: false, reason: `cannot read plugin ledger ${ledgerPath} (${code ?? 'unknown'})`, entries: [] }
+  }
+
+  try {
+    const pkg = JSON.parse(raw) as { dependencies?: unknown }
+    const deps = pkg.dependencies
+    if (!deps || typeof deps !== 'object' || Array.isArray(deps)) {
+      return { trusted: true, entries: [] }
+    }
+    return {
+      trusted: true,
+      entries: Object.entries(deps as Record<string, unknown>)
+        .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+        .map(([name, spec]) => ({ name, spec })),
+    }
+  } catch (error) {
+    return {
+      trusted: false,
+      reason: `corrupt plugin ledger ${ledgerPath}: ${error instanceof Error ? error.message : String(error)}`,
+      entries: [],
+    }
+  }
+}
+
+/** 已装版本以 node_modules/<dep>/package.json 为准 —— 比解析 dependencies 里的 URL 可靠。 */
+function readInstalledPackageVersion(dirPath: string): string | null {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf-8')) as { version?: unknown }
+    return typeof pkg.version === 'string' && pkg.version ? pkg.version : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * npm-ledger 扫描:以 `plugins/package.json` 的 dependencies 为账,
+ * 逐个 resolve `node_modules/<dep>/plugin.json`。
+ *
+ * - dep 存在但包里没有 plugin.json = 它不是 onething 插件,跳过(普通依赖
+ *   与插件可以共存于同一棵 node_modules);
+ * - npm 形态永不探测 needsInstall(§5.3):加载期缺依赖 = 包没打好,
+ *   按加载失败记账,不再现装。
+ */
+export function scanPluginLedgerDirectories<TEntry = unknown>(input: {
+  pluginsDir: string
+  seenIds?: Set<string>
+  getEnabled: (pluginId: string) => boolean
+  appVersion?: string
+}): CorePluginDefinition<TEntry>[] {
+  const ledger = readPluginLedger(input.pluginsDir)
+  if (!ledger.trusted) {
+    console.warn(`[PluginLoader] ${ledger.reason}; skipping npm-ledger scan this round (nothing is removed).`)
+    return []
+  }
+
+  const plugins: CorePluginDefinition<TEntry>[] = []
+  const seen = input.seenIds ?? new Set<string>()
+  const nodeModulesDir = path.join(input.pluginsDir, 'node_modules')
+
+  for (const dep of ledger.entries) {
+    const dirPath = path.join(nodeModulesDir, dep.name)
+    if (!fs.existsSync(path.join(dirPath, 'plugin.json'))) continue
+
+    const id = unscopedPluginIdFromPackageName(dep.name)
+    if (seen.has(id)) {
+      console.warn(
+        `[PluginLoader] Skipping npm plugin "${dep.name}": plugin id "${id}" is already taken `
+        + '(two packages resolve to the same plugin id — later one loses)',
+      )
+      continue
+    }
+    const definition = parsePluginDirectory<TEntry>({
+      id,
+      dirPath,
+      enabled: input.getEnabled(id),
+      source: 'user',
+      appVersion: input.appVersion,
+      needsInstallCheck: false,
+    })
+    if (!definition) continue
+    const installedVersion = readInstalledPackageVersion(dirPath)
+    if (installedVersion) {
+      definition.manifest = { ...definition.manifest, version: installedVersion }
+    }
+    plugins.push(definition)
+    seen.add(definition.id)
+  }
+
+  return plugins
+}
+
+/**
+ * legacy 兼容扫描:插件根下**有 plugin.json 且不在账里**的目录。
+ *
+ * 判别顺序(§5.4):有 plugin.json = legacy 代码目录(其数据仍在
+ * plugin-data/<id>/,不搬);没有 = 纯数据家目录(P1-1),跳过。
+ * legacy 形态保留 needsInstall 探测与首载安装机器,直到清零。
+ */
+export function scanLegacyPluginDirectories<TEntry = unknown>(input: {
+  pluginsDir: string
+  seenIds?: Set<string>
+  getEnabled: (pluginId: string) => boolean
+  appVersion?: string
+}): CorePluginDefinition<TEntry>[] {
+  let entries: fs.Dirent[]
+  try {
+    if (!fs.statSync(input.pluginsDir).isDirectory()) return []
+    entries = fs.readdirSync(input.pluginsDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  const plugins: CorePluginDefinition<TEntry>[] = []
+  const seen = input.seenIds ?? new Set<string>()
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+    if (!entry.isDirectory()) {
+      if (!entry.isSymbolicLink()) continue
+      try {
+        if (!fs.statSync(path.join(input.pluginsDir, entry.name)).isDirectory()) continue
+      } catch {
+        continue
+      }
+    }
+    const dirPath = path.join(input.pluginsDir, entry.name)
+    // 无 plugin.json = 纯数据家目录,不是插件。
+    if (!fs.existsSync(path.join(dirPath, 'plugin.json'))) continue
+    if (seen.has(entry.name)) {
+      console.warn(`[PluginLoader] Skipping legacy plugin "${entry.name}": its id is already taken`)
+      continue
+    }
+    const definition = parsePluginDirectory<TEntry>({
+      id: entry.name,
+      dirPath,
+      enabled: input.getEnabled(entry.name),
+      source: 'user',
+      appVersion: input.appVersion,
+    })
+    if (definition) {
+      definition.legacy = true
+      console.warn(
+        `[PluginLoader] Plugin "${entry.name}" is a legacy directory plugin `
+        + '(reinstall it in npm form to get the update channel)',
+      )
+      plugins.push(definition)
+      seen.add(definition.id)
+    }
+  }
+
+  return plugins
+}
+
 export function scanCorePlugins<TEntry = unknown>(input: {
   builtinPlugins: Array<CorePluginDefinition<TEntry>>
   pluginsDir: string
   getEnabled: (pluginId: string) => boolean
   /** 宿主版本 —— 只对用户插件生效:内置插件与 app 同一份构建,永远匹配。 */
   appVersion?: string
+  /**
+   * 扫描语义(默认 'directory',现状不变)。
+   *
+   * 'npm-ledger' = 以 plugins/package.json 为账扫 npm 插件,再补一轮
+   * legacy 兼容扫描;desktop 传它,server 等只投影的宿主保持默认。
+   */
+  scanMode?: CorePluginScanMode
 }): Array<CorePluginDefinition<TEntry>> {
   const seen = new Set(input.builtinPlugins.map(plugin => plugin.id))
+  if (input.scanMode === 'npm-ledger') {
+    return [
+      ...input.builtinPlugins,
+      ...scanPluginLedgerDirectories<TEntry>({
+        pluginsDir: input.pluginsDir,
+        seenIds: seen,
+        getEnabled: input.getEnabled,
+        appVersion: input.appVersion,
+      }),
+      ...scanLegacyPluginDirectories<TEntry>({
+        pluginsDir: input.pluginsDir,
+        seenIds: seen,
+        getEnabled: input.getEnabled,
+        appVersion: input.appVersion,
+      }),
+    ]
+  }
   return [
     ...input.builtinPlugins,
     ...scanPluginDirectories<TEntry>({
