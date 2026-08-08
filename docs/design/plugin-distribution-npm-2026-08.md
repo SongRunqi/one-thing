@@ -368,6 +368,41 @@ release,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前�
 
 ## 12. 不在本期(含被否方案的登记)
 
+### 12.0 server / CLI 全功能接入(2026-08 已评估,登记待做)
+
+三端与 core 的关系:desktop 真执行插件;server 只用 `scanCorePlugins`
+做目录投影(入口 `noopEntry`,不执行);CLI/gateway 不装配插件。
+若未来要让 server/CLI 拥有与 desktop 相同的插件执行能力,评估结论
+(以评估时的代码为准,动工前重新核对):
+
+**server 接入(1–3 周,三端中推荐最先做)**
+
+- 复用率极高:`createOnethingBackend` 已给 server 提供 engine+EventBus;
+  `bootstrapPluginSystem(eventBus, streamEngine)` 直接可调;插件路径全部经
+  `getOnethingStorePath()` 解析,而 server 启动前本来就 pin
+  `ONETHING_STORE_PATH`;单用户进程,无多租户作用域问题。
+- 选项 A(1–1.5 周):插件只做 tools/commands/events/storage,
+  面板/锚点块仍 desktop-only(web renderer 不动)。
+- 选项 B(2.5–3 周):加 `/api/plugins/request` 路由 + web 端
+  `platformApi.pluginRequest` + web 开通 PluginPanelHost/UiSlotHost
+  (WS 通知推送)。
+- **前提**:本方案 P1 的 scanMode 参数已落地;**H 线(子进程硬隔离)
+  在 server 上从"等生态信号"升级为"强烈建议同期"(+2–3 周)**——
+  server 进程跑第三方代码,崩的是服务不是单机。
+
+**CLI/gateway 接入(1–2 周,等真实场景再动)**
+
+- gateway 不装配 backend:需 `createOnethingBackend({toolRegistry:'headless'})`
+  + `bootstrapPluginSystem` + daemon 生命周期钩子。
+- 有意义的面:tools/commands/events/storage/status(可映射 IM 消息);
+  panels/uiSlots 在 CLI 无宿主。
+- **目的论警告**:IMConnector 试点至今 "no production traffic"——
+  没有一个具体 IM 场景(如"群里 @机器人 用插件工具查日志")之前不接,
+  避免第二次空转。
+
+**建议顺序**:server 选项 A → 验证"插件系统宿主无关"命题 →
+CLI 待场景 → H 线按 server 实际风险决定是否提前。
+
 - **GitHub Packages npm registry**:被否,理由留档 —— 安装**公开**包
   也要 PAT(GitHub 官方文档明示),市场用户的凭证成本不可接受。
   哪天它放开公开包免 token,可无缝切回(tarball URL 换成 registry
