@@ -407,6 +407,18 @@ release,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前�
   功能与 file: 形态逐字节一致;包内无运行时 node_modules 依赖;
   index.json 的 integrity 与 release asset 实体一致。
 
+> **P2 已落地(2026-08-08)**:仓库 `github.com/monotasking/plugin`
+> (public)。验收逐项实证:tag `plan-status-v1.0.0` 触发 CI 出 release;
+> 应用经真 IPC 以 tarball URL + SRI 安装成功、从 node_modules 加载;
+> CI bundle 功能实证(loaded / uiSlots 注册 / 零 error,用 gh 下载的同
+> 一字节 tarball 绕开网络抖动复验);tar 清单 3 文件、dist package.json
+> 零依赖;index.json integrity 与独立下载的 asset 哈希逐字符一致。
+> **实施教训**:releases API 有秒级最终一致性延迟 —— gh release create
+> 后立刻 gh api 查列表可能查不到,regen-index.mjs 因此带
+> `--expect-tag` 重试(6×5s),等不到宁可失败,绝不提交缺了本次发布
+> 的索引。log-monitor(bundle 示范,zod 打进 554KB 单文件)与宿主内置
+> 同名,暂未发布。
+
 ### P3:市场 UI
 
 - index.json 拉取/缓存/搜索;装前确认页(contributes + permissions);
