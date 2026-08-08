@@ -54,6 +54,11 @@ import type {
 	PluginConfigResponse,
 	SetPluginConfigResponse,
 	UninstallPluginResponse,
+	InstallPluginRequest,
+	InstallPluginResponse,
+	UpdatePluginResponse,
+	CheckPluginUpdatesResponse,
+	PluginLifecycleInfoResponse,
 	PluginFootprintResponse,
 } from "@shared/ipc.js";
 
@@ -573,6 +578,19 @@ const electronAPI = {
 	uninstallPlugin: (pluginId: string): Promise<UninstallPluginResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_UNINSTALL, { pluginId }),
 
+	// npm 生命周期(P1):装/更/查更新 + 能力面(无 npm 置灰,裁决 8)。
+	installPlugin: (request: InstallPluginRequest): Promise<InstallPluginResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_INSTALL, request),
+
+	updatePlugin: (pluginId: string): Promise<UpdatePluginResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_UPDATE, { pluginId }),
+
+	checkPluginUpdates: (): Promise<CheckPluginUpdatesResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_CHECK_UPDATES),
+
+	getPluginLifecycleInfo: (): Promise<PluginLifecycleInfoResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_LIFECYCLE_INFO),
+
 	// 落盘足迹:卸载确认框据此展示"将被归档的东西"。
 	getPluginFootprint: (pluginId: string): Promise<PluginFootprintResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_FOOTPRINT, { pluginId }),
@@ -1032,6 +1050,12 @@ const electronAPI = {
 
 	mcpDisconnectServer: (serverId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MCP_DISCONNECT_SERVER, { serverId }),
+
+	mcpLogoutServer: (serverId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MCP_LOGOUT_SERVER, { serverId }),
+
+	mcpProbeServer: (config: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MCP_PROBE_SERVER, { config }),
 
 	mcpRefreshServer: (serverId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MCP_REFRESH_SERVER, { serverId }),

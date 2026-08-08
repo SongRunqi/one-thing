@@ -46,6 +46,21 @@ export interface OnethingPluginIpcManagerLike<
   getCommandHandler(commandName: string): MaybePromise<TCommand | undefined>
   /** 统一请求通道(R2)。分发逻辑在 core,这里只是宿主的转发面。 */
   uninstallPlugin?(pluginId: string): Promise<{ success: boolean; archivePath?: string; error?: string }>
+  /** npm 生命周期(P1)。 */
+  installPlugin?(input: {
+    pkg: string
+    tarballUrl?: string
+    path?: string
+    integrity?: string
+  }): Promise<{ success: boolean; pluginId?: string; error?: string }>
+  updatePlugin?(pluginId: string): Promise<{
+    success: boolean
+    pluginId: string
+    version?: string
+    rolledBack?: boolean
+    error?: string
+  }>
+  checkPluginUpdates?(): Promise<Array<{ pluginId: string; current: string; latest: string }>>
   handleRequest?(input: CorePluginRequestInput): Promise<CorePluginRequestResult>
   abortRequest?(requestId: string): boolean
   getRequestActions?(pluginId: string): string[]
@@ -178,6 +193,81 @@ export async function refreshOnethingPluginsForIpc<
     return { success: true }
   } catch (error) {
     return pluginIpcError(options.logger, 'refresh', error, 'Failed to refresh plugins')
+  }
+}
+
+// ── P1:npm 生命周期的转发面 —— 命令链全在 core manager,这里只带结果。──
+
+export interface InstallOnethingPluginForIpcOptions<
+  TPlugin extends OnethingPluginListItemLike = OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike = OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext> =
+    CorePluginCommandDefinition<CorePluginCommandContext>,
+> extends OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand> {
+  pkg: string
+  tarballUrl?: string
+  path?: string
+  integrity?: string
+}
+
+export async function installOnethingPluginForIpc<
+  TPlugin extends OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext>,
+>(
+  options: InstallOnethingPluginForIpcOptions<TPlugin, TCommandInfo, TCommand>,
+) {
+  try {
+    const manager = requireOnethingPluginManager(options.manager)
+    if (!manager.installPlugin) {
+      return { success: false as const, error: 'Plugin installation is unavailable on this host' }
+    }
+    return await manager.installPlugin({
+      pkg: options.pkg,
+      tarballUrl: options.tarballUrl,
+      path: options.path,
+      integrity: options.integrity,
+    })
+  } catch (error) {
+    return pluginIpcError(options.logger, `install ${options.pkg}`, error, 'Failed to install plugin')
+  }
+}
+
+export async function updateOnethingPluginForIpc<
+  TPlugin extends OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext>,
+>(
+  options: OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand> & { pluginId: string },
+) {
+  try {
+    const manager = requireOnethingPluginManager(options.manager)
+    if (!manager.updatePlugin) {
+      return { success: false as const, pluginId: options.pluginId, error: 'Plugin updates are unavailable on this host' }
+    }
+    return await manager.updatePlugin(options.pluginId)
+  } catch (error) {
+    const failed = pluginIpcError(options.logger, `update ${options.pluginId}`, error, 'Failed to update plugin')
+    return { ...failed, pluginId: options.pluginId }
+  }
+}
+
+export async function checkOnethingPluginUpdatesForIpc<
+  TPlugin extends OnethingPluginListItemLike,
+  TCommandInfo extends OnethingPluginCommandLike,
+  TCommand extends CorePluginCommandDefinition<CorePluginCommandContext>,
+>(
+  options: OnethingPluginIpcOperationOptions<TPlugin, TCommandInfo, TCommand>,
+) {
+  try {
+    const manager = requireOnethingPluginManager(options.manager)
+    if (!manager.checkPluginUpdates) {
+      return { success: true as const, offers: [] }
+    }
+    return { success: true as const, offers: await manager.checkPluginUpdates() }
+  } catch (error) {
+    const failed = pluginIpcError(options.logger, 'check-updates', error, 'Failed to check plugin updates')
+    return { ...failed, offers: [] }
   }
 }
 

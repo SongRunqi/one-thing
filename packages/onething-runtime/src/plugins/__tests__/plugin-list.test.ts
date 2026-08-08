@@ -63,6 +63,7 @@ describe('projectOnethingPluginsForRenderer', () => {
         error: 'install deps',
         dirPath: 'builtin://demo',
         needsInstall: true,
+        legacy: false,
         contributes: {
           commands: ['/demo'],
           panels: [{ id: 'demo-panel', label: 'Demo' }],
@@ -150,6 +151,7 @@ describe('projectOnethingPluginsForRenderer', () => {
         error: '',
         dirPath: '/plugins/user-plugin',
         needsInstall: false,
+        legacy: false,
         contributes: {
           commands: [],
           panels: [],

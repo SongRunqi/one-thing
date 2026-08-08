@@ -23,6 +23,10 @@ describe('electron plugins IPC host', () => {
     const setPluginConfig = vi.fn().mockReturnValue({ success: true, config: { a: 2 } })
     const uninstallPlugin = vi.fn().mockResolvedValue({ success: true, archivePath: '/backup/notes-2026-08-07' })
     const getPluginFootprint = vi.fn().mockReturnValue({ success: true, footprint: { pluginId: 'notes', dataDir: '/data/notes', dataDirExists: true, entries: ['notes.json'], legacyKvExists: false, settingsKeys: ['enabled'] } })
+    const installPlugin = vi.fn().mockResolvedValue({ success: true, pluginId: 'plan-status' })
+    const updatePlugin = vi.fn().mockResolvedValue({ success: true, pluginId: 'plan-status', version: '2.0.0' })
+    const checkPluginUpdates = vi.fn().mockResolvedValue({ success: true, offers: [] })
+    const getPluginLifecycleInfo = vi.fn().mockResolvedValue({ success: true, npmAvailable: true })
 
     registerElectronPluginsIpcHandlers({
       channels: {
@@ -38,6 +42,10 @@ describe('electron plugins IPC host', () => {
         configSet: 'plugins:config-set',
         uninstall: 'plugins:uninstall',
         footprint: 'plugins:footprint',
+        install: 'plugins:install',
+        update: 'plugins:update',
+        checkUpdates: 'plugins:check-updates',
+        lifecycleInfo: 'plugins:lifecycle-info',
       },
       listPlugins,
       enablePlugin,
@@ -51,10 +59,14 @@ describe('electron plugins IPC host', () => {
       setPluginConfig,
       uninstallPlugin,
       getPluginFootprint,
+      installPlugin,
+      updatePlugin,
+      checkPluginUpdates,
+      getPluginLifecycleInfo,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(12)
+    expect(handle).toHaveBeenCalledTimes(16)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'plugins:list',
       'plugins:enable',
@@ -68,6 +80,10 @@ describe('electron plugins IPC host', () => {
       'plugins:config-set',
       'plugins:uninstall',
       'plugins:footprint',
+      'plugins:install',
+      'plugins:update',
+      'plugins:check-updates',
+      'plugins:lifecycle-info',
     ])
 
     const toggleRequest = { pluginId: 'notes' }

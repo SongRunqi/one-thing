@@ -8,6 +8,8 @@ import type {
   PluginConfigRequest,
   SetPluginConfigRequest,
   UninstallPluginRequest,
+  InstallPluginRequest,
+  UpdatePluginRequest,
 } from '@shared/ipc/plugins.js'
 import { createPluginConfigAccess } from '@onething/app/plugins/config-access.js'
 import {
@@ -24,6 +26,9 @@ import {
   getOnethingPluginFootprintForIpc,
   setOnethingPluginConfigForIpc,
   uninstallOnethingPluginForIpc,
+  installOnethingPluginForIpc,
+  updateOnethingPluginForIpc,
+  checkOnethingPluginUpdatesForIpc,
   enableOnethingPluginForIpc,
   handleOnethingPluginRequestForIpc,
   executeOnethingPluginCommandForIpc,
@@ -37,6 +42,7 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getPluginManager } from '@onething/app/plugins/index.js'
 import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
 import { getPluginFootprint } from '@onething/app/plugins/loader.js'
+import { probePluginNpmAvailability } from '@onething/app/plugins/install.js'
 import { getEventBus } from '@onething/app/events/index.js'
 import * as store from '@onething/app/store.js'
 
@@ -119,6 +125,10 @@ export function registerPluginHandlers(): void {
       configSet: IPC_CHANNELS.PLUGINS_CONFIG_SET,
       uninstall: IPC_CHANNELS.PLUGINS_UNINSTALL,
       footprint: IPC_CHANNELS.PLUGINS_FOOTPRINT,
+      install: IPC_CHANNELS.PLUGINS_INSTALL,
+      update: IPC_CHANNELS.PLUGINS_UPDATE,
+      checkUpdates: IPC_CHANNELS.PLUGINS_CHECK_UPDATES,
+      lifecycleInfo: IPC_CHANNELS.PLUGINS_LIFECYCLE_INFO,
     },
     listPlugins: () => {
       return listOnethingPluginsForIpc({
@@ -221,6 +231,34 @@ export function registerPluginHandlers(): void {
         config: request.config,
         logger: console,
       })
+    },
+    // ── P1:npm 生命周期 —— 命令链在 core manager,这里只做薄接线。──
+    installPlugin: (request: InstallPluginRequest) => {
+      return installOnethingPluginForIpc({
+        manager: getPluginManager(),
+        pkg: request.pkg,
+        tarballUrl: request.tarballUrl,
+        path: request.path,
+        integrity: request.integrity,
+        logger: console,
+      })
+    },
+    updatePlugin: (request: UpdatePluginRequest) => {
+      return updateOnethingPluginForIpc({
+        manager: getPluginManager(),
+        pluginId: request.pluginId,
+        logger: console,
+      })
+    },
+    checkPluginUpdates: () => {
+      return checkOnethingPluginUpdatesForIpc({
+        manager: getPluginManager(),
+        logger: console,
+      })
+    },
+    // 裁决 8:v1 依赖本机 npm —— 能力面先行,设置页据此置灰并说明。
+    getPluginLifecycleInfo: async () => {
+      return { success: true as const, npmAvailable: await probePluginNpmAvailability() }
     },
     listCommands: () => {
       return listOnethingPluginCommandsForIpc({

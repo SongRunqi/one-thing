@@ -182,6 +182,65 @@ export interface UninstallPluginResponse {
 	error?: string;
 }
 
+/**
+ * 安装(P1):npm 形态命令链 —— 脚手架 → npm install(--ignore-scripts)
+ * → 装后校验(零运行时依赖 / SRI)→ 全量刷新。失败已回滚,错误原样透传。
+ */
+export interface InstallPluginRequest {
+	/** 包名(可带 scope);必须与包内 package.json 的 name 一致。 */
+	pkg: string;
+	/** 市场通道:tarball URL。与 path 二选一。 */
+	tarballUrl?: string;
+	/** file: 开发通道:本地目录或本地 .tgz。与 tarballUrl 二选一。 */
+	path?: string;
+	/** 市场索引给的 sha512-SRI;file: 通道通常不给。 */
+	integrity?: string;
+}
+
+export interface InstallPluginResponse {
+	success: boolean;
+	pluginId?: string;
+	error?: string;
+}
+
+/** 更新(P1):索引比对 + install 新 URL;装后闸不通过自动回退旧版。 */
+export interface UpdatePluginRequest {
+	pluginId: string;
+}
+
+export interface UpdatePluginResponse {
+	success: boolean;
+	pluginId: string;
+	/** 装上的新版本(成功时)。 */
+	version?: string;
+	/** 装后闸不通过时是否已回退旧版。 */
+	rolledBack?: boolean;
+	error?: string;
+}
+
+/** "有更新"徽标的数据源:已装版本 vs 市场索引版本。 */
+export interface PluginUpdateOffer {
+	pluginId: string;
+	current: string;
+	latest: string;
+}
+
+export interface CheckPluginUpdatesResponse {
+	success: boolean;
+	offers: PluginUpdateOffer[];
+	error?: string;
+}
+
+/**
+ * 生命周期能力面(裁决 8:v1 依赖本机 npm)—— 无 npm 环境下
+ * Install/Update 置灰并说明,而不是点了才炸。
+ */
+export interface PluginLifecycleInfoResponse {
+	success: boolean;
+	npmAvailable: boolean;
+	error?: string;
+}
+
 export interface PluginCommandInfo {
   id: string
   name: string

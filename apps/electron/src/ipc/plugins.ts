@@ -10,6 +10,12 @@ import type {
   PluginFootprintResponse,
   UninstallPluginRequest,
   UninstallPluginResponse,
+  InstallPluginRequest,
+  InstallPluginResponse,
+  UpdatePluginRequest,
+  UpdatePluginResponse,
+  CheckPluginUpdatesResponse,
+  PluginLifecycleInfoResponse,
 } from '@shared/ipc/plugins.js'
 
 export interface ElectronIpcMainLike {
@@ -32,6 +38,11 @@ export interface ElectronPluginsIpcChannels {
   configSet: string
   uninstall: string
   footprint: string
+  // P1:npm 生命周期
+  install: string
+  update: string
+  checkUpdates: string
+  lifecycleInfo: string
 }
 
 export interface ElectronPluginToggleRequest {
@@ -80,6 +91,10 @@ export interface RegisterElectronPluginsIpcHandlersOptions {
   setPluginConfig(request: SetPluginConfigRequest): SetPluginConfigResponse
   uninstallPlugin(request: UninstallPluginRequest): Promise<UninstallPluginResponse> | UninstallPluginResponse
   getPluginFootprint(request: UninstallPluginRequest): PluginFootprintResponse
+  installPlugin(request: InstallPluginRequest): Promise<InstallPluginResponse> | InstallPluginResponse
+  updatePlugin(request: UpdatePluginRequest): Promise<UpdatePluginResponse> | UpdatePluginResponse
+  checkPluginUpdates(): Promise<CheckPluginUpdatesResponse> | CheckPluginUpdatesResponse
+  getPluginLifecycleInfo(): Promise<PluginLifecycleInfoResponse> | PluginLifecycleInfoResponse
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -136,5 +151,21 @@ export function registerElectronPluginsIpcHandlers(
 
   host.handle(options.channels.footprint, (_event, request: UninstallPluginRequest) => {
     return options.getPluginFootprint(request)
+  })
+
+  host.handle(options.channels.install, (_event, request: InstallPluginRequest) => {
+    return options.installPlugin(request)
+  })
+
+  host.handle(options.channels.update, (_event, request: UpdatePluginRequest) => {
+    return options.updatePlugin(request)
+  })
+
+  host.handle(options.channels.checkUpdates, () => {
+    return options.checkPluginUpdates()
+  })
+
+  host.handle(options.channels.lifecycleInfo, () => {
+    return options.getPluginLifecycleInfo()
   })
 }

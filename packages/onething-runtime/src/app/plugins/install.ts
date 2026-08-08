@@ -20,6 +20,41 @@ import { PLUGIN_NPM_INSTALL_TIMEOUT_MS } from './loader.js'
 const NPM_BIN = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 
 /**
+ * npm 可用性探测(裁决 8:v1 依赖本机 npm)—— 设置页据此把 Install/Update
+ * 置灰并说明,而不是点了才炸。`npm --version` 轻量且缓存:能力面在一个
+ * 进程生命周期内不会变。
+ */
+let npmAvailability: Promise<boolean> | null = null
+
+export function probePluginNpmAvailability(): Promise<boolean> {
+  if (!npmAvailability) {
+    npmAvailability = new Promise<boolean>(resolve => {
+      let child: ReturnType<typeof spawn>
+      try {
+        child = spawn(NPM_BIN, ['--version'], { stdio: ['ignore', 'ignore', 'ignore'] })
+      } catch {
+        resolve(false)
+        return
+      }
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL')
+        resolve(false)
+      }, 5_000)
+      timer.unref?.()
+      child.on('error', () => {
+        clearTimeout(timer)
+        resolve(false)
+      })
+      child.on('close', code => {
+        clearTimeout(timer)
+        resolve(code === 0)
+      })
+    })
+  }
+  return npmAvailability
+}
+
+/**
  * 跑 npm,返回退出码与 stderr 尾部。
  *
  * 不 reject:安装链要自己看退出码决定回滚,异常形态留给"进程根本没起来"。

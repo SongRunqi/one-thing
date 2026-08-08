@@ -207,12 +207,15 @@ import type {
 	MCPResourceInfo,
 	MCPPromptInfo,
 	MCPSettings,
+	MCPTransportType,
 	MCPGetServersResponse,
 	MCPAddServerResponse,
 	MCPUpdateServerResponse,
 	MCPRemoveServerResponse,
 	MCPConnectServerResponse,
 	MCPDisconnectServerResponse,
+	MCPLogoutServerResponse,
+	MCPProbeServerResponse,
 	MCPRefreshServerResponse,
 	MCPGetToolsResponse,
 	MCPCallToolResponse,
@@ -262,6 +265,11 @@ import type {
 	PluginConfigResponse,
 	SetPluginConfigResponse,
 	UninstallPluginResponse,
+	InstallPluginRequest,
+	InstallPluginResponse,
+	UpdatePluginResponse,
+	CheckPluginUpdatesResponse,
+	PluginLifecycleInfoResponse,
 	PluginFootprintResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
@@ -577,6 +585,8 @@ export type {
 	MCPResourceInfo,
 	MCPPromptInfo,
 	MCPSettings,
+	MCPTransportType,
+	MCPProbeServerResponse,
 	ACPAgentConfig,
 	ACPAgentState,
 	ACPSettings,
@@ -1196,6 +1206,20 @@ export interface ElectronAPI {
 	 */
 	uninstallPlugin: (pluginId: string) => Promise<UninstallPluginResponse>;
 
+	/**
+	 * npm 生命周期(P1):装/更/查更新。v1 面向开发者市场,依赖本机 npm
+	 * (裁决 8);web 端不提供 —— 插件只在桌面执行。
+	 */
+	installPlugin: (request: InstallPluginRequest) => Promise<InstallPluginResponse>;
+
+	updatePlugin: (pluginId: string) => Promise<UpdatePluginResponse>;
+
+	/** "有更新"徽标的数据源;无市场索引/无 npm 时返回空 offers。 */
+	checkPluginUpdates: () => Promise<CheckPluginUpdatesResponse>;
+
+	/** 生命周期能力面:无 npm 时设置页把 Install/Update 置灰并说明。 */
+	getPluginLifecycleInfo: () => Promise<PluginLifecycleInfoResponse>;
+
 	/** 落盘足迹(R4 枚举 + R5 出口):卸载确认框展示"将被归档的东西"。 */
 	getPluginFootprint: (pluginId: string) => Promise<PluginFootprintResponse>;
 
@@ -1526,6 +1550,12 @@ export interface ElectronAPI {
 	mcpDisconnectServer: (
 		serverId: string,
 	) => Promise<MCPDisconnectServerResponse>;
+	mcpLogoutServer: (
+		serverId: string,
+	) => Promise<MCPLogoutServerResponse>;
+	mcpProbeServer: (
+		config: MCPServerConfig,
+	) => Promise<MCPProbeServerResponse>;
 	mcpRefreshServer: (serverId: string) => Promise<MCPRefreshServerResponse>;
 	mcpGetTools: () => Promise<MCPGetToolsResponse>;
 	mcpCallTool: (

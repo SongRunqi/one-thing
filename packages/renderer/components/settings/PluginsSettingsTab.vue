@@ -120,6 +120,17 @@
                   v-if="plugin.needsInstall"
                   class="meta-tag needs-install"
                 >⚠️ npm install needed</span>
+                <!-- legacy 目录插件(P1 §5.4):没有更新通道,npm 重装才有。 -->
+                <span
+                  v-if="plugin.legacy"
+                  class="meta-tag legacy"
+                  title="This plugin lives directly in the plugins directory. Reinstall it in npm form to get the update channel."
+                >Legacy</span>
+                <!-- "有更新"徽标:checkPluginUpdates 的数据源是市场索引。 -->
+                <span
+                  v-if="updateOffers.has(plugin.id)"
+                  class="meta-tag update-available"
+                >v{{ updateOffers.get(plugin.id)!.latest }} available</span>
                 <span
                   v-if="plugin.commands.length"
                   class="meta-tag"
@@ -286,6 +297,17 @@
               :aria-label="`Enable ${plugin.name}`"
               @update:model-value="togglePlugin(plugin)"
             />
+            <!-- 有更新才出现;无 npm 时置灰(裁决 8),legacy 根本没有更新通道。 -->
+            <Button
+              v-if="updateOffers.has(plugin.id) && !plugin.legacy"
+              unstyled
+              class="btn-sm update-btn"
+              :disabled="npmAvailable === false || updatingPlugins.has(plugin.id)"
+              :title="npmAvailable === false ? 'npm is not available on this machine' : `Update to v${updateOffers.get(plugin.id)!.latest}`"
+              @click="updatePlugin(plugin)"
+            >
+              {{ updatingPlugins.has(plugin.id) ? 'Updating…' : 'Update' }}
+            </Button>
             <!-- 仅用户插件可卸载:内置插件与 app 同一份构建,没有"源目录"可删。 -->
             <Button
               v-if="canUninstall(plugin)"
@@ -301,18 +323,47 @@
       </div>
     </section>
 
-    <!-- How to install -->
+    <!-- Install(P1:npm 形态命令链;先吃 file: 开发通道与本地 tarball) -->
     <section class="settings-section">
       <h3 class="section-title">
-        How to Install
+        Install Plugin
       </h3>
       <div class="settings-card">
         <div class="card-row">
-          <ol class="install-steps">
-            <li>Copy the plugin folder to <code>~/.onething/plugins/</code></li>
-            <li>Open this settings page and click <strong>Refresh</strong></li>
-            <li>If the plugin has a <code>package.json</code>, dependencies are auto-installed on first load</li>
-          </ol>
+          <!-- 裁决 8:v1 依赖本机 npm —— 无 npm 置灰并说明,而不是点了才炸。 -->
+          <ErrorNote
+            v-if="npmAvailable === false"
+            variant="block"
+            size="sm"
+            message="npm is not available on this machine. Plugin installation and updates need a local npm (v1 targets developers); install Node.js/npm and restart the app."
+          />
+          <div class="install-form">
+            <Input
+              v-model="installPkg"
+              placeholder="Package name (e.g. plan-status or @org/plan-status)"
+              :disabled="npmAvailable === false || installing"
+              aria-label="Plugin package name"
+            />
+            <Input
+              v-model="installPath"
+              placeholder="Local path — plugin directory or .tgz (file: dev channel)"
+              :disabled="npmAvailable === false || installing"
+              aria-label="Local plugin path"
+            />
+            <Button
+              unstyled
+              class="btn-sm install-btn"
+              :disabled="!installPkg.trim() || !installPath.trim() || npmAvailable === false || installing"
+              @click="installPlugin"
+            >
+              {{ installing ? 'Installing…' : 'Install' }}
+            </Button>
+          </div>
+          <p class="hint install-hint">
+            Installs run through npm with lifecycle scripts disabled (<code>--ignore-scripts</code>);
+            packages must ship fully bundled. Dropping a folder into <code>~/.onething/plugins/</code>
+            still works as a <strong>legacy</strong> plugin, but only npm-installed ones get the update channel.
+          </p>
         </div>
       </div>
     </section>
@@ -348,6 +399,8 @@ interface PluginInfo {
   error: string
   dirPath: string
   needsInstall: boolean
+  /** legacy 目录插件(P1 §5.4):有 plugin.json 但不在 npm 账里 —— 没有更新通道。 */
+  legacy?: boolean
   healthStatus?: string
   healthFailures?: number
   healthReason?: string
@@ -764,6 +817,84 @@ async function refreshPlugins() {
   emit('plugins-changed')
 }
 
+// ── P1:npm 生命周期 —— 装/更/查更新 + 无 npm 置灰(裁决 8)。──
+
+/** null = 还在探测;false = 无 npm,Install/Update 置灰并说明。 */
+const npmAvailable = ref<boolean | null>(null)
+const installPkg = ref('')
+const installPath = ref('')
+const installing = ref(false)
+/** pluginId → { current, latest };"有更新"徽标与 Update 按钮的数据源。 */
+const updateOffers = ref<Map<string, { current: string; latest: string }>>(new Map())
+const updatingPlugins = ref<Set<string>>(new Set())
+
+async function loadLifecycleInfo(): Promise<void> {
+  try {
+    const info = await platformApi.getPluginLifecycleInfo()
+    npmAvailable.value = info?.success ? info.npmAvailable : false
+  } catch {
+    npmAvailable.value = false
+  }
+}
+
+async function loadUpdateOffers(): Promise<void> {
+  try {
+    const result = await platformApi.checkPluginUpdates()
+    if (result?.success) {
+      updateOffers.value = new Map(
+        (result.offers ?? []).map(offer => [offer.pluginId, { current: offer.current, latest: offer.latest }]),
+      )
+    }
+  } catch {
+    // 徽标缺席不挡页面 —— 无市场索引时更新通道本来就是关的。
+  }
+}
+
+async function installPlugin(): Promise<void> {
+  const pkg = installPkg.value.trim()
+  const path = installPath.value.trim()
+  if (!pkg || !path || installing.value || npmAvailable.value === false) return
+  installing.value = true
+  try {
+    const result = await platformApi.installPlugin({ pkg, path })
+    if (result?.success) {
+      toast.success(`Installed ${result.pluginId ?? pkg}`)
+      installPkg.value = ''
+      installPath.value = ''
+      await loadPlugins()
+      emit('plugins-changed')
+    } else {
+      toast.error(result?.error || `Failed to install ${pkg}`)
+    }
+  } catch (e: any) {
+    toast.error(e?.message || `Failed to install ${pkg}`)
+  } finally {
+    installing.value = false
+  }
+}
+
+async function updatePlugin(plugin: PluginInfo): Promise<void> {
+  if (updatingPlugins.value.has(plugin.id) || npmAvailable.value === false) return
+  updatingPlugins.value = new Set(updatingPlugins.value).add(plugin.id)
+  try {
+    const result = await platformApi.updatePlugin(plugin.id)
+    if (result?.success) {
+      toast.success(`Updated ${plugin.name} to v${result.version}`)
+    } else {
+      toast.error(result?.error || `Failed to update ${plugin.name}`)
+    }
+    await loadPlugins()
+    await loadUpdateOffers()
+    emit('plugins-changed')
+  } catch (e: any) {
+    toast.error(e?.message || `Failed to update ${plugin.name}`)
+  } finally {
+    const next = new Set(updatingPlugins.value)
+    next.delete(plugin.id)
+    updatingPlugins.value = next
+  }
+}
+
 // 熔断自动禁用发生在后台(没有用户操作),设置页必须被推着刷新,否则卡片
 // 会一直停在 Active —— "运行期错误不可见"正是 R1 要治的病。
 function handlePluginsChanged(): void {
@@ -772,6 +903,8 @@ function handlePluginsChanged(): void {
 
 onMounted(() => {
   loadPlugins()
+  loadLifecycleInfo()
+  loadUpdateOffers()
   window.addEventListener('onething:plugins-changed', handlePluginsChanged)
 })
 
@@ -1046,6 +1179,37 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: transparent;
   color: var(--settings-ink-3, var(--ui-text-muted-fg));
+}
+
+.meta-tag.legacy {
+  padding: 1px 7px;
+  border: 1px dashed color-mix(in srgb, var(--settings-ink-3, var(--ui-text-muted-fg)) 60%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
+}
+
+.meta-tag.update-available {
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg)) 70%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--settings-accent, var(--ui-accent-primary-fg));
+}
+
+.install-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 460px;
+}
+
+.install-btn {
+  align-self: flex-start;
+}
+
+.install-hint {
+  margin-top: 10px;
 }
 
 .meta-tag.needs-install {

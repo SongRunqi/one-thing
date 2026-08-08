@@ -206,6 +206,8 @@ export const IPC_CHANNELS = {
 	MCP_REMOVE_SERVER: "mcp:remove-server",
 	MCP_CONNECT_SERVER: "mcp:connect-server",
 	MCP_DISCONNECT_SERVER: "mcp:disconnect-server",
+	MCP_LOGOUT_SERVER: "mcp:logout-server",
+	MCP_PROBE_SERVER: "mcp:probe-server",
 	MCP_REFRESH_SERVER: "mcp:refresh-server",
 	MCP_GET_TOOLS: "mcp:get-tools",
 	MCP_CALL_TOOL: "mcp:call-tool",
@@ -342,6 +344,11 @@ export const IPC_CHANNELS = {
 	// 真卸载(R4):停用 → 归档数据 → 删源目录 → 清 plugin-settings 三键。
 	// 仅用户插件;内置插件与 app 同一份构建,没有卸载可言。
 	PLUGINS_UNINSTALL: "plugins:uninstall",
+	// npm 生命周期(P1):装/更/查更新 + 能力面(无 npm 置灰,裁决 8)。
+	PLUGINS_INSTALL: "plugins:install",
+	PLUGINS_UPDATE: "plugins:update",
+	PLUGINS_CHECK_UPDATES: "plugins:check-updates",
+	PLUGINS_LIFECYCLE_INFO: "plugins:lifecycle-info",
 	// 落盘足迹(R4 建枚举,R5 接出口):卸载确认框据此展示"将被归档的东西"。
 	PLUGINS_FOOTPRINT: "plugins:footprint",
 

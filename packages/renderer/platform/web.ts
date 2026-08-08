@@ -16,6 +16,11 @@ import type {
 	SetPluginConfigResponse,
 	PluginFootprintResponse,
 	UninstallPluginResponse,
+	InstallPluginRequest,
+	InstallPluginResponse,
+	UpdatePluginResponse,
+	CheckPluginUpdatesResponse,
+	PluginLifecycleInfoResponse,
 } from "@shared/ipc/plugins.js";
 import type { PlatformApi, PlatformCapabilities } from "./types";
 
@@ -881,6 +886,10 @@ const webApi = {
 		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/connect`),
 	mcpDisconnectServer: (serverId: string) =>
 		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/disconnect`),
+	mcpLogoutServer: (serverId: string) =>
+		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/oauth/logout`),
+	mcpProbeServer: (config: any) =>
+		postJson(`/api/mcp/probe`, config),
 	mcpRefreshServer: (serverId: string) =>
 		postJson(`/api/mcp/servers/${encodeURIComponent(serverId)}/refresh`),
 	mcpGetTools: () => requestJson("/api/mcp/tools"),
@@ -1236,6 +1245,28 @@ const webApi = {
 		success: false,
 		error:
 			"Plugins are installed and uninstalled on the desktop host only; this server mirrors the plugin catalog read-only.",
+	}),
+
+	// P1:npm 生命周期同样只在桌面(web 只投影目录,不执行插件)。
+	installPlugin: async (): Promise<InstallPluginResponse> => ({
+		success: false,
+		error: "Plugins are installed on the desktop host only.",
+	}),
+
+	updatePlugin: async (): Promise<UpdatePluginResponse> => ({
+		success: false,
+		pluginId: "",
+		error: "Plugins are updated on the desktop host only.",
+	}),
+
+	checkPluginUpdates: async (): Promise<CheckPluginUpdatesResponse> => ({
+		success: true,
+		offers: [],
+	}),
+
+	getPluginLifecycleInfo: async (): Promise<PluginLifecycleInfoResponse> => ({
+		success: true,
+		npmAvailable: false,
 	}),
 
 	setPluginConfig: async (): Promise<SetPluginConfigResponse> => ({

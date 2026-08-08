@@ -28,6 +28,8 @@ export interface OnethingPluginListDefinitionLike {
   enabled: boolean
   dirPath: string
   needsInstall?: boolean
+  /** legacy 目录插件标记(P1 §5.4):有 plugin.json 但不在 npm 账里的存量手工目录。 */
+  legacy?: boolean
 }
 
 /** 运行期健康(core 的 CorePluginRuntimeHealth 的结构镜像,过线只走 JSON)。 */
@@ -70,6 +72,8 @@ export interface OnethingRendererPluginInfo {
   error: string
   dirPath: string
   needsInstall: boolean
+  /** legacy 目录插件:设置页据此提示"以 npm 形式重装可获更新通道"。 */
+  legacy: boolean
   /**
    * manifest 声明的贡献点摘要(宪法第 3 条:声明先于代码)。
    * R2 只把它透出到设置页,消费者在 R3(settings)/R5(panels)。
@@ -150,6 +154,7 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
     error: plugin.error || '',
     dirPath: plugin.definition.dirPath,
     needsInstall: plugin.definition.needsInstall || false,
+    legacy: plugin.definition.legacy === true,
     contributes: {
       commands: (plugin.definition.manifest.contributes?.commands ?? []).map(command => command.name),
       panels: (plugin.definition.manifest.contributes?.panels ?? []).map(panel => ({
