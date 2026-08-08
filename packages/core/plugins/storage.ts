@@ -24,6 +24,12 @@ export const PLUGIN_DATA_LEGACY_BACKUP_DIR = 'legacy-backup'
 export const PLUGIN_KV_FILE_NAME = 'kv.json'
 /** 目录内已有 kv.json 时,遗留文件的落点 —— 绝不覆盖更新的那一份。 */
 export const PLUGIN_LEGACY_KV_FILE_NAME = 'kv.legacy.json'
+/** 插件自有配置的文件名(家目录根,宿主管;插件经 api.settings 读写)。 */
+export const PLUGIN_CONFIG_FILE_NAME = 'config.json'
+/** api.storage 在家目录里的 scratch 子目录 —— 插件管的文件与宿主管的(kv/config)分层。 */
+export const PLUGIN_SCRATCH_DIR_NAME = 'storage'
+/** npm 代码区目录名。家目录布局下它是 plugins/ 里唯一"不许写数据"的地方。 */
+export const PLUGIN_NODE_MODULES_DIR_NAME = 'node_modules'
 
 /** plugin-settings 里属于某个插件的全部键。足迹与清理共用这一份名单。 */
 export const PLUGIN_SETTINGS_KEYS = ['enabled', 'config', 'health'] as const
@@ -140,7 +146,8 @@ export function assertSafePluginDirName(pluginId: unknown): string {
   if (value !== pluginId.trim().normalize('NFC')) {
     throw new PluginStorageError('invalid-name', `Plugin id "${pluginId}" must not have surrounding whitespace`)
   }
-  if (value === '.' || value === '..' || value === PLUGIN_DATA_LEGACY_BACKUP_DIR) {
+  if (value === '.' || value === '..' || value === PLUGIN_DATA_LEGACY_BACKUP_DIR
+    || value.toLowerCase() === PLUGIN_NODE_MODULES_DIR_NAME) {
     throw new PluginStorageError('invalid-name', `Plugin id "${value}" is reserved`)
   }
   if (value.includes('/') || value.includes('\\') || value.includes('\0') || value.includes(':')) {
@@ -154,6 +161,115 @@ export function assertSafePluginDirName(pluginId: unknown): string {
 
 export function getCorePluginDataDir(dataRoot: string, pluginId: string): string {
   return path.join(dataRoot, assertSafePluginDirName(pluginId))
+}
+
+// ── 家目录布局(P1)──────────────────────────────
+//
+// npm 分发形态下,插件的全部**数据**足迹从 `<store>/plugin-data/<id>/` 搬进
+// `<store>/plugins/<id>/`(家目录),与代码区 `plugins/node_modules/` 并列:
+//   <pluginsDir>/<id>/config.json  自有配置(宿主管,api.settings 的落盘处)
+//   <pluginsDir>/<id>/kv.json      KV(api.store)
+//   <pluginsDir>/<id>/storage/     api.storage 的 scratch(插件自管的文件)
+//   <pluginsDir>/legacy-backup/    归档区(卸载/孤儿/收尸共用)
+//   <pluginsDir>/node_modules/     【一次性代码区,数据禁入】
+// 判别与铁律都在这一层,上层只传根。
+
+/** 家目录:`plugins/<id>/`。 */
+export function getCorePluginHomeDir(homeRoot: string, pluginId: string): string {
+  return path.join(homeRoot, assertSafePluginDirName(pluginId))
+}
+
+/** 自有配置的落点:`plugins/<id>/config.json`。 */
+export function getCorePluginConfigPath(homeRoot: string, pluginId: string): string {
+  return path.join(getCorePluginHomeDir(homeRoot, pluginId), PLUGIN_CONFIG_FILE_NAME)
+}
+/** api.storage 的 scratch 根:`plugins/<id>/storage/`。 */
+export function getCorePluginScratchDir(homeRoot: string, pluginId: string): string {
+  return path.join(getCorePluginHomeDir(homeRoot, pluginId), PLUGIN_SCRATCH_DIR_NAME)
+}
+
+/**
+ * 铁律的执行点:`plugins/node_modules/` 下任何写操作 = 架构违规。
+ *
+ * npm 每次 update/uninstall 都整目录抹掉重建 —— 数据写进去,一升级就没了。
+ * storage/config/KV 三条写路径各调一次;targetPath 必须**已经解析**。
+ */
+export function assertNotInNodeModules(homeRoot: string, targetPath: string): void {
+  const nodeModules = path.resolve(homeRoot, PLUGIN_NODE_MODULES_DIR_NAME) + path.sep
+  const resolved = path.resolve(targetPath) + (isDirectory(targetPath) ? path.sep : '')
+  if (resolved.startsWith(nodeModules) || path.resolve(targetPath) === path.resolve(homeRoot, PLUGIN_NODE_MODULES_DIR_NAME)) {
+    throw new PluginStorageError(
+      'invalid-name',
+      `Refusing to write plugin data into node_modules: ${targetPath} — code区是一次性的,数据禁入`,
+    )
+  }
+}
+
+/**
+ * 惰性迁移:把某插件在旧数据根(plugin-data)的全部足迹搬进家目录。
+ *
+ * 规则(与 migrateLegacyPluginKv 同一条先例 —— 首访时做,不搞启动全量):
+ *  - `<legacy>/<id>.json` 与 `<legacy>/<id>/kv.json` → `plugins/<id>/kv.json`
+ *    (目标已存在则保留目标,旧的留着等归档);
+ *  - `<legacy>/<id>/` 里其余条目(k/v 之外插件自管的文件)→ `plugins/<id>/storage/`;
+ *  - 搬完 `<legacy>/<id>/` 变空壳则顺手删掉;有残留则留给孤儿/归档处理。
+ *
+ * 返回是否有实际搬移。
+ */
+export function migratePluginDataToHome(input: {
+  legacyDataRoot: string
+  homeRoot: string
+  pluginId: string
+}): boolean {
+  const { legacyDataRoot, homeRoot, pluginId } = input
+  const homeDir = getCorePluginHomeDir(homeRoot, pluginId)
+  const scratchDir = getCorePluginScratchDir(homeRoot, pluginId)
+  const legacyDir = getCorePluginDataDir(legacyDataRoot, pluginId)
+  let moved = false
+
+  // 1) KV:先让旧扁平文件归队(沿用既有惰性迁移),再统一往家目录搬。
+  migrateLegacyPluginKv(legacyDataRoot, pluginId)
+  const legacyKv = getCorePluginKvPath(legacyDataRoot, pluginId)
+  const homeKv = path.join(homeDir, PLUGIN_KV_FILE_NAME)
+  if (pathExists(legacyKv) && !pathExists(homeKv)) {
+    try {
+      ensureDir(homeDir)
+      fs.renameSync(legacyKv, homeKv)
+      moved = true
+    } catch (error) {
+      console.error(`[PluginStorage] Failed to migrate KV for "${pluginId}" to home:`, error)
+    }
+  }
+
+  // 2) 其余条目 → storage/(kv 系列文件除外 —— 它们不是没搬成就是该留下等归档)。
+  if (isDirectory(legacyDir)) {
+    let entries: string[] = []
+    try {
+      entries = fs.readdirSync(legacyDir)
+    } catch {
+      entries = []
+    }
+    for (const entry of entries) {
+      if (entry === PLUGIN_KV_FILE_NAME || entry === PLUGIN_LEGACY_KV_FILE_NAME) continue
+      const from = path.join(legacyDir, entry)
+      const to = path.join(scratchDir, entry)
+      if (pathExists(to)) continue // 目标更新,留着旧的等归档,不静默覆盖
+      try {
+        ensureDir(scratchDir)
+        fs.renameSync(from, to)
+        moved = true
+      } catch (error) {
+        console.error(`[PluginStorage] Failed to migrate "${entry}" for "${pluginId}" to home:`, error)
+      }
+    }
+    // 3) 空壳收掉(有残留 = 目标冲突留下的旧物,交给孤儿/归档,不硬来)。
+    try {
+      if (fs.readdirSync(legacyDir).length === 0) fs.rmdirSync(legacyDir)
+    } catch {
+      // 删不掉就留着,归档机制会收
+    }
+  }
+  return moved
 }
 
 /** KV 并入目录之前的老位置。 */
@@ -208,14 +324,33 @@ export interface CorePluginStorage {
 export interface CreateCorePluginStorageOptions {
   pluginId: string
   dataRoot: string
+  /**
+   * 家目录根(P1)。给了它,scratch 落在 `plugins/<id>/storage/`,且首次访问时
+   * 把旧数据根(dataRoot = plugin-data)的足迹惰性搬过去;
+   * 不给 = 旧布局(整个目录即 scratch),行为与 R4 一致。
+   */
+  homeRoot?: string
 }
 
 export function createCorePluginStorage(options: CreateCorePluginStorageOptions): CorePluginStorage {
-  const { pluginId, dataRoot } = options
+  const { pluginId, dataRoot, homeRoot } = options
   /** 只拼路径,**不建目录** —— 纯读一次就创建空目录会污染足迹。 */
-  const dirPath = (): string => getCorePluginDataDir(dataRoot, pluginId)
+  const dirPath = (): string => homeRoot
+    ? getCorePluginScratchDir(homeRoot, pluginId)
+    : getCorePluginDataDir(dataRoot, pluginId)
+
+  /** 惰性迁移只做一次;失败不阻塞本次访问(旧物原地还在,下次再试)。 */
+  let migrationDone = false
+  const migrateOnce = (): void => {
+    if (!homeRoot || migrationDone) return
+    migrationDone = true
+    migratePluginDataToHome({ legacyDataRoot: dataRoot, homeRoot, pluginId })
+  }
+
   const ensuredDir = (): string => {
+    migrateOnce()
     const target = dirPath()
+    if (homeRoot) assertNotInNodeModules(homeRoot, target)
     try {
       ensureDir(target)
     } catch (error) {
@@ -228,6 +363,7 @@ export function createCorePluginStorage(options: CreateCorePluginStorageOptions)
     dir: ensuredDir,
 
     readJson<T = unknown>(name: string, fallback?: T): T | undefined {
+      migrateOnce()
       const file = path.join(dirPath(), assertSafePluginFileName(name))
       if (!pathExists(file)) return fallback
 

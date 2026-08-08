@@ -3,15 +3,25 @@ import {
   readJsonFile,
   writeJsonFile,
 } from '../storage/index.js'
+import path from 'path'
 import {
+  PLUGIN_KV_FILE_NAME,
+  assertNotInNodeModules,
   getCorePluginDataDir,
+  getCorePluginHomeDir,
   getCorePluginKvPath,
   migrateLegacyPluginKv,
+  migratePluginDataToHome,
 } from './storage.js'
 
 export interface PluginStoreOptions {
-  /** plugin-data 的**根**目录;具体落点由 CorePluginStore 决定。 */
+  /** 旧数据根(plugin-data);`homeRoot` 缺省时它也是 KV 的实际落点。 */
   dataDir: string
+  /**
+   * 家目录根(P1)。给了它,KV 落在 `plugins/<id>/kv.json`,旧数据根的足迹
+   * 首次加载时惰性搬过去;不给 = 旧布局 `<dataDir>/<id>/kv.json`。
+   */
+  homeRoot?: string
   /**
    * 是否正在跑 onDispose 回调。
    *
@@ -69,7 +79,15 @@ export class CorePluginStore {
   }
 
   private get filePath(): string {
+    const homeRoot = this.options.homeRoot
+    if (homeRoot) return path.join(getCorePluginHomeDir(homeRoot, this.pluginId), PLUGIN_KV_FILE_NAME)
     return getCorePluginKvPath(this.dataRoot, this.pluginId)
+  }
+
+  private get kvDir(): string {
+    const homeRoot = this.options.homeRoot
+    if (homeRoot) return getCorePluginHomeDir(homeRoot, this.pluginId)
+    return getCorePluginDataDir(this.dataRoot, this.pluginId)
   }
 
   private ensureLoaded(): void {
@@ -77,7 +95,12 @@ export class CorePluginStore {
     this.loaded = true
     try {
       // 惰性迁移:没人碰过的插件不该因为一次升级就被动过。
-      migrateLegacyPluginKv(this.dataRoot, this.pluginId)
+      const homeRoot = this.options.homeRoot
+      if (homeRoot) {
+        migratePluginDataToHome({ legacyDataRoot: this.dataRoot, homeRoot, pluginId: this.pluginId })
+      } else {
+        migrateLegacyPluginKv(this.dataRoot, this.pluginId)
+      }
       this.data = readJsonFile<Record<string, unknown>>(this.filePath, {})
     } catch (error) {
       console.error(`[PluginStore:${this.pluginId}] Failed to load store:`, error)
@@ -87,7 +110,9 @@ export class CorePluginStore {
 
   private save(): void {
     try {
-      ensureDir(getCorePluginDataDir(this.dataRoot, this.pluginId))
+      const homeRoot = this.options.homeRoot
+      if (homeRoot) assertNotInNodeModules(homeRoot, this.filePath)
+      ensureDir(this.kvDir)
       writeJsonFile(this.filePath, this.data)
     } catch (error) {
       console.error(`[PluginStore:${this.pluginId}] Failed to save store:`, error)
