@@ -132,6 +132,79 @@
         :aria-label="field.label"
         @update:model-value="formState[field.key] = String($event)"
       />
+      <!-- v2 控件(R5.x-b)—— 与 R3 设置页同一套宿主原语 -->
+      <Input
+        v-else-if="field.control === 'textarea'"
+        type="textarea"
+        :model-value="String(formState[field.key] ?? '')"
+        :aria-label="field.label"
+        @update:model-value="formState[field.key] = String($event)"
+      />
+      <span
+        v-else-if="field.control === 'slider'"
+        class="panel-slider"
+      >
+        <input
+          type="range"
+          min="0"
+          max="100"
+          :value="Number(formState[field.key] ?? 0)"
+          :aria-label="field.label"
+          @input="formState[field.key] = Number(($event.target as HTMLInputElement).value)"
+        >
+        <span class="panel-slider-value">{{ Number(formState[field.key] ?? 0) }}</span>
+      </span>
+      <span
+        v-else-if="field.control === 'checkbox-group'"
+        class="panel-choice-group"
+      >
+        <label
+          v-for="option in field.options || []"
+          :key="option"
+          class="panel-choice"
+        >
+          <input
+            type="checkbox"
+            :checked="Array.isArray(formState[field.key]) && (formState[field.key] as string[]).includes(option)"
+            @change="toggleCheckbox(field.key, option, ($event.target as HTMLInputElement).checked)"
+          >
+          <span>{{ option }}</span>
+        </label>
+      </span>
+      <span
+        v-else-if="field.control === 'radio'"
+        class="panel-choice-group"
+      >
+        <label
+          v-for="option in field.options || []"
+          :key="option"
+          class="panel-choice"
+        >
+          <input
+            type="radio"
+            :name="`panel-radio-${field.key}`"
+            :checked="String(formState[field.key] ?? '') === option"
+            @change="formState[field.key] = option"
+          >
+          <span>{{ option }}</span>
+        </label>
+      </span>
+      <input
+        v-else-if="field.control === 'date'"
+        type="date"
+        class="panel-native-input"
+        :value="String(formState[field.key] ?? '')"
+        :aria-label="field.label"
+        @input="formState[field.key] = ($event.target as HTMLInputElement).value"
+      >
+      <input
+        v-else-if="field.control === 'color'"
+        type="color"
+        class="panel-native-input panel-color-input"
+        :value="String(formState[field.key] ?? '#888888')"
+        :aria-label="field.label"
+        @input="formState[field.key] = ($event.target as HTMLInputElement).value"
+      >
       <!-- string-list 编辑期间只维护**原始文本**:每敲一键就 split+trim+filter
            再 join 回去是有损往返 —— 键入的逗号当场被自己吃掉,第二项永远打不
            出来。blur 时才 parse(与 R3 设置页同一配方)。 -->
@@ -164,6 +237,145 @@
     </div>
   </SettingsGroup>
 
+  <!-- ── v2 节点(R5.x-b)—— 全部宿主原语,零插件代码 ── -->
+
+  <div
+    v-else-if="node.type === 'table'"
+    class="panel-table-wrap"
+  >
+    <table class="panel-table">
+      <thead>
+        <tr>
+          <th
+            v-for="column in node.columns"
+            :key="column.key"
+            :style="column.width ? { width: `${column.width}px` } : undefined"
+          >
+            {{ column.label }}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-if="!node.rows.length">
+          <td
+            class="panel-table-empty"
+            :colspan="node.columns.length"
+          >
+            {{ node.emptyText || 'Nothing here yet.' }}
+          </td>
+        </tr>
+        <tr
+          v-for="row in node.rows"
+          :key="row.key"
+        >
+          <td
+            v-for="column in node.columns"
+            :key="column.key"
+          >
+            {{ row.cells[column.key] ?? '' }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div
+    v-else-if="node.type === 'tabs'"
+    class="panel-tabs"
+  >
+    <div
+      class="panel-tabs-bar"
+      role="tablist"
+    >
+      <button
+        v-for="item in node.items"
+        :key="item.id"
+        type="button"
+        role="tab"
+        class="panel-tab"
+        :class="{ 'is-active': activeTabId === item.id }"
+        :aria-selected="activeTabId === item.id"
+        @click="activeTabId = item.id"
+      >
+        {{ item.label }}
+      </button>
+    </div>
+    <template v-for="item in node.items">
+      <PluginPanelNode
+        v-if="activeTabId === item.id"
+        :key="item.id"
+        :node="item.body"
+        @action="emit('action', $event)"
+      />
+    </template>
+  </div>
+
+  <div
+    v-else-if="node.type === 'progress'"
+    class="panel-progress"
+  >
+    <div
+      class="panel-progress-track"
+      role="progressbar"
+      :aria-valuenow="node.indeterminate ? undefined : (node.value ?? 0)"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    >
+      <div
+        class="panel-progress-fill"
+        :class="{ 'is-indeterminate': node.indeterminate }"
+        :style="node.indeterminate ? undefined : { width: `${Math.min(100, Math.max(0, node.value ?? 0))}%` }"
+      />
+    </div>
+    <span
+      v-if="node.label"
+      class="panel-progress-label"
+    >{{ node.label }}</span>
+  </div>
+
+  <span
+    v-else-if="node.type === 'spinner'"
+    class="panel-spinner"
+  >
+    <span class="panel-spinner-dot" />
+    <span v-if="node.label">{{ node.label }}</span>
+  </span>
+
+  <span
+    v-else-if="node.type === 'badge'"
+    class="panel-badge"
+    :class="`tone-${node.tone || 'default'}`"
+  >{{ node.text }}</span>
+
+  <img
+    v-else-if="node.type === 'image'"
+    class="panel-image"
+    :src="node.url"
+    :alt="node.alt"
+    :style="node.maxWidth ? { maxWidth: `${node.maxWidth}px` } : undefined"
+    referrerpolicy="no-referrer"
+  >
+
+  <button
+    v-else-if="node.type === 'link'"
+    type="button"
+    class="panel-link"
+    @click="onLinkClick(node)"
+  >
+    {{ node.text }}
+  </button>
+
+  <pre
+    v-else-if="node.type === 'code'"
+    class="panel-code"
+    :data-language="node.language"
+  ><code>{{ node.text }}</code></pre>
+
+  <hr
+    v-else-if="node.type === 'divider'"
+    class="panel-divider"
+  >
+
   <SettingsEmptyState
     v-else-if="node.type === 'empty-state'"
     :title="node.title"
@@ -194,7 +406,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, ref, watchEffect } from 'vue'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import InputNumber from '@/components/common/InputNumber.vue'
@@ -244,6 +456,42 @@ function commitStringList(key: string): void {
     .split(',')
     .map(item => item.trim())
     .filter(Boolean)
+}
+
+/** checkbox-group 的勾选切换;formState 里存 string[]。 */
+function toggleCheckbox(key: string, option: string, checked: boolean): void {
+  const current = Array.isArray(formState[key]) ? [...(formState[key] as string[])] : []
+  formState[key] = checked ? [...new Set([...current, option])] : current.filter(item => item !== option)
+}
+
+/**
+ * tabs 的当前页签。
+ *
+ * 页签切换是**纯前端状态**(v2 的 tabs 就是给"点击展开/切换"这类交互的
+ * 零往返答案):切换不重拉 render,也不通知插件。新树过来时若当前页签已
+ * 不存在,回落到第一个。
+ */
+const activeTabId = ref('')
+watchEffect(() => {
+  if (props.node.type !== 'tabs') return
+  if (!props.node.items.some(item => item.id === activeTabId.value)) {
+    activeTabId.value = props.node.items[0]?.id ?? ''
+  }
+})
+
+/**
+ * link 节点:有 actionId 走动作通道,否则经宿主打开外链(与消息正文同一条
+ * 路径)。scheme 白名单在通道守卫已拦,这里不再判第二遍。
+ */
+function onLinkClick(node: { url?: string; actionId?: string; payload?: unknown }): void {
+  if (node.actionId) {
+    emit('action', { actionId: node.actionId, payload: node.payload })
+    return
+  }
+  if (node.url) {
+    void (window as unknown as { platformApi?: { openExternal?: (url: string) => Promise<unknown> } })
+      .platformApi?.openExternal?.(node.url)
+  }
 }
 
 function submitForm(actionId: string): void {
@@ -407,5 +655,221 @@ function submitForm(actionId: string): void {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+/* ── v2 节点(R5.x-b)──────────────────────────── */
+
+.panel-table-wrap {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.panel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.panel-table th,
+.panel-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ui-table-border-border, var(--ui-border-default-border));
+  text-align: left;
+}
+
+.panel-table th {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--ui-text-muted-fg);
+  background: var(--ui-table-header-bg, transparent);
+}
+
+.panel-table-empty {
+  color: var(--ui-text-muted-fg);
+}
+
+.panel-tabs-bar {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--ui-border-default-border);
+}
+
+.panel-tab {
+  padding: 5px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ui-text-muted-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.panel-tab.is-active {
+  border-bottom-color: var(--ui-accent-primary-fg, var(--color-primary));
+  color: var(--ui-text-primary-fg);
+}
+
+.panel-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.panel-progress-track {
+  flex: 1;
+  height: 4px;
+  min-width: 40px;
+  overflow: hidden;
+  background: var(--ui-border-default-border);
+}
+
+.panel-progress-fill {
+  height: 100%;
+  background: var(--ui-accent-primary-fg, var(--color-primary));
+  transition: width var(--duration-fast) var(--ease-default);
+}
+
+/* indeterminate 是 v2 唯一带的动画:宿主 CSS 原语,插件只声明状态。 */
+.panel-progress-fill.is-indeterminate {
+  width: 40%;
+  animation: panel-progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes panel-progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+.panel-progress-label {
+  font-size: 11px;
+  color: var(--ui-text-muted-fg);
+  white-space: nowrap;
+}
+
+.panel-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ui-text-muted-fg);
+}
+
+.panel-spinner-dot {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--ui-border-default-border);
+  border-top-color: var(--ui-accent-primary-fg, var(--color-primary));
+  border-radius: 50%;
+  animation: panel-spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes panel-spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
+.panel-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--ui-border-default-border);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ui-text-muted-fg);
+}
+
+.panel-badge.tone-accent {
+  border-color: var(--ui-accent-primary-fg, var(--color-primary));
+  color: var(--ui-accent-primary-fg, var(--color-primary));
+}
+
+.panel-badge.tone-danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.panel-badge.tone-success {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.panel-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.panel-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent-primary-fg, var(--color-primary));
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.panel-code {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  background: var(--ui-surface-elevated-bg, transparent);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  white-space: pre;
+}
+
+.panel-divider {
+  border: 0;
+  border-top: 1px solid var(--ui-border-default-border);
+  margin: 4px 0;
+}
+
+.panel-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-slider-value {
+  min-width: 3ch;
+  font-size: 12px;
+  color: var(--ui-text-muted-fg);
+  text-align: right;
+}
+
+.panel-choice-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.panel-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.panel-native-input {
+  padding: 4px 8px;
+  border: 1px solid var(--ui-border-default-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.panel-color-input {
+  padding: 2px;
+  width: 40px;
+  height: 26px;
 }
 </style>

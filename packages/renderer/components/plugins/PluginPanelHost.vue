@@ -1,5 +1,8 @@
 <template>
-  <div class="plugin-panel-host">
+  <div
+    ref="hostEl"
+    class="plugin-panel-host"
+  >
     <!-- 方案 A(设计文档 §6):插件只在 Electron 桌面宿主执行。
          web 端不渲染假面板 —— 显示"仅桌面可用",而不是一棵空树。 -->
     <SettingsEmptyState
@@ -92,6 +95,9 @@ const degraded = ref(false)
 const degradedReason = ref('')
 const loading = ref(false)
 
+/** 根元素 —— IntersectionObserver 据此判断"块可见"(树级轮询只在可见时走)。 */
+const hostEl = ref<HTMLElement | null>(null)
+
 const isDesktop = platformApi.environment !== 'web'
 
 /**
@@ -134,13 +140,16 @@ async function render(options: { bypassDegraded?: boolean } = {}): Promise<void>
       tree.value = result.result as PluginPanelTreeData
       degraded.value = false
       degradedReason.value = ''
+      armPoll()
     } else if (result?.degraded) {
       // 被闸短路:插件根本没被调用。
       degraded.value = true
       degradedReason.value = result.error || ''
       tree.value = null
+      clearPoll()
     } else {
       error.value = result?.error || 'The plugin could not render this panel.'
+      clearPoll()
     }
   } catch (e: any) {
     if (token !== renderToken) return
@@ -154,6 +163,30 @@ async function render(options: { bypassDegraded?: boolean } = {}): Promise<void>
 function scheduleRender(): void {
   clearTimeout(refreshTimer)
   refreshTimer = setTimeout(() => { void render() }, REFRESH_DEBOUNCE_MS)
+}
+
+/* ── 树级轮询(v2 的 refreshIntervalMs)─────────────────
+ *
+ * 三条纪律:
+ *  1. **setTimeout 链,不是 setInterval** —— 一次 render 没回来不叠第二次;
+ *  2. **只在块可见时走**(IntersectionObserver;v-show 藏起来的面板不轮询);
+ *  3. **出错/降级即停** —— 轮询把错误态刷没,或者一次次撞降级闸,都不对。
+ */
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+let hostVisible = true
+let visibilityObserver: IntersectionObserver | undefined
+
+function clearPoll(): void {
+  clearTimeout(pollTimer)
+  pollTimer = undefined
+}
+
+/** 每次成功拿到新树后调用一次:按新树的 refreshIntervalMs 重新武装下一轮。 */
+function armPoll(): void {
+  clearPoll()
+  const interval = tree.value?.refreshIntervalMs
+  if (!interval || error.value || degraded.value || !hostVisible) return
+  pollTimer = setTimeout(() => { void render() }, interval)
 }
 
 /**
@@ -202,6 +235,7 @@ async function invoke(input: { actionId: string; payload?: unknown }): Promise<v
       renderToken += 1
       tree.value = outcome.tree
       error.value = ''
+      armPoll()
     } else if (outcome.refresh) {
       // 用户刚点了按钮,这一次不 debounce —— 等 150ms 会显得没反应。
       await render()
@@ -225,11 +259,24 @@ onMounted(() => {
     if (payload.panelId && payload.panelId !== props.panel.panelId) return
     scheduleRender()
   })
+  // 块可见性:不可见时轮询停摆,重新可见时按当前树的周期重新武装。
+  // (测试环境没有 IntersectionObserver 时按"始终可见"处理 —— 那是 jsdom 的
+  // 局限,不是语义。)
+  if (typeof IntersectionObserver !== 'undefined' && hostEl.value) {
+    visibilityObserver = new IntersectionObserver(entries => {
+      hostVisible = entries.some(entry => entry.isIntersecting)
+      if (hostVisible) armPoll()
+      else clearPoll()
+    })
+    visibilityObserver.observe(hostEl.value)
+  }
 })
 
 onBeforeUnmount(() => {
   unsubscribe?.()
   clearTimeout(refreshTimer)
+  clearPoll()
+  visibilityObserver?.disconnect()
 })
 
 /**

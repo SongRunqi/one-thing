@@ -307,4 +307,32 @@ describe('PluginPanelHost', () => {
     expect(platformState.pluginRequest).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Available on desktop only')
   })
+
+  it('polls by the tree\'s refreshIntervalMs and stops on error (v2)', async () => {
+    vi.useFakeTimers()
+    try {
+      platformState.pluginRequest.mockResolvedValue({
+        success: true,
+        result: { ...tree('tick'), refreshIntervalMs: 1000 },
+      })
+
+      mount(PluginPanelHost, { props: { panel } })
+      await flushPromises()
+      expect(platformState.pluginRequest).toHaveBeenCalledTimes(1)
+
+      // 可见时按周期重拉(测试环境无 IntersectionObserver,按"始终可见"处理)。
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(platformState.pluginRequest).toHaveBeenCalledTimes(4)
+
+      // 出错即停:轮询不该把错误态刷没,也不该一次次撞闸。
+      platformState.pluginRequest.mockResolvedValue({ success: false, error: 'boom' })
+      await vi.advanceTimersByTimeAsync(5000)
+      const calls = platformState.pluginRequest.mock.calls.length
+      expect(calls).toBe(5) // 只多了出错的那一次
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(platformState.pluginRequest).toHaveBeenCalledTimes(calls)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

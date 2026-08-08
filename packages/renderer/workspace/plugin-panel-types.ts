@@ -21,6 +21,7 @@ export interface PluginPanelFormFieldData {
   label: string
   hint?: string
   control: 'switch' | 'text' | 'number' | 'select' | 'string-list'
+    | 'textarea' | 'slider' | 'checkbox-group' | 'radio' | 'date' | 'color'
   options?: string[]
   value?: unknown
 }
@@ -33,11 +34,23 @@ export type PluginPanelNodeData =
   | { type: 'button'; label: string; actionId: string; payload?: unknown; variant?: 'default' | 'danger'; disabled?: boolean }
   | { type: 'form'; submitActionId?: string; submitLabel?: string; fields: PluginPanelFormFieldData[] }
   | { type: 'empty-state'; title: string; description?: string; actionId?: string; actionLabel?: string }
+  // ── v2(R5.x-b)—— 与 core/plugins/panel.ts 同一份协议 ──
+  | { type: 'table'; columns: Array<{ key: string; label: string; width?: number }>; rows: Array<{ key: string; cells: Record<string, string | number | boolean | null> }>; emptyText?: string }
+  | { type: 'tabs'; items: Array<{ id: string; label: string; body: PluginPanelNodeData }> }
+  | { type: 'progress'; value?: number; indeterminate?: boolean; label?: string }
+  | { type: 'spinner'; label?: string }
+  | { type: 'badge'; text: string; tone?: 'default' | 'accent' | 'danger' | 'success' }
+  | { type: 'image'; url: string; alt: string; maxWidth?: number }
+  | { type: 'link'; text: string; url?: string; actionId?: string; payload?: unknown }
+  | { type: 'code'; text: string; language?: string }
+  | { type: 'divider' }
 
 export interface PluginPanelTreeData {
   version: number
   title?: string
   body: PluginPanelNodeData
+  /** 树级轮询(v2):宿主在块可见时按周期重拉;下限 1000ms(1Hz 上限)。 */
+  refreshIntervalMs?: number
 }
 
 /** 插件贡献的面板在 renderer 侧的呈现单位。 */

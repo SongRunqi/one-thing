@@ -21,7 +21,7 @@ import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './ui-anchor.js
  * 描述树要活很多期(R5 只开这一小撮节点),留一个版本字段,宿主才能在将来
  * 同时认识新旧两棵树而不必猜。
  */
-export const PLUGIN_PANEL_PROTOCOL_VERSION = 1
+export const PLUGIN_PANEL_PROTOCOL_VERSION = 2
 
 /** 请求通道上的两个 action 名 —— 宿主与插件的约定。 */
 export const PLUGIN_PANEL_RENDER_ACTION = 'panel:render'
@@ -87,7 +87,8 @@ export interface PluginPanelFormField {
   label: string
   hint?: string
   control: 'switch' | 'text' | 'number' | 'select' | 'string-list'
-  /** control = 'select' 时必填。 */
+    | 'textarea' | 'slider' | 'checkbox-group' | 'radio' | 'date' | 'color'
+  /** control 为 select / checkbox-group / radio 时必填。 */
   options?: string[]
   /**
    * **仅初值**。
@@ -107,6 +108,88 @@ export interface PluginPanelEmptyStateNode {
   actionLabel?: string
 }
 
+// ── v2 节点(R5.x-b)────────────────────────────
+// 每加一个原语,宿主渲染器、校验器、类型、测试四处都要动 —— 这是有意的成本:
+// 描述树做"数据密集型、交互稀疏"的 UI,追不上的场景由 L3 webview 接住,
+// 不是无限加原语直到够用(表达力文档 §1)。
+
+export interface PluginPanelTableColumn {
+  key: string
+  label: string
+  /** 列宽(px);省略由宿主均分。 */
+  width?: number
+}
+
+export interface PluginPanelTableNode {
+  type: 'table'
+  columns: PluginPanelTableColumn[]
+  /** 单元格是**纯文本/数字/布尔** —— 要在表格里放按钮,用 list 的 actionId。 */
+  rows: Array<{ key: string; cells: Record<string, string | number | boolean | null> }>
+  emptyText?: string
+}
+
+export interface PluginPanelTabsNode {
+  type: 'tabs'
+  /** body 是一棵子树 —— 嵌套深度照常计入 MAX_PANEL_DEPTH。 */
+  items: Array<{ id: string; label: string; body: PluginPanelNode }>
+}
+
+export interface PluginPanelProgressNode {
+  type: 'progress'
+  /** 0–100;与 indeterminate 二选一(都不给 = 0%)。 */
+  value?: number
+  /** 不确定进度:宿主管线动画,插件只声明状态(描述树不表达动画)。 */
+  indeterminate?: boolean
+  label?: string
+}
+
+export interface PluginPanelSpinnerNode {
+  type: 'spinner'
+  label?: string
+}
+
+export interface PluginPanelBadgeNode {
+  type: 'badge'
+  text: string
+  tone?: 'default' | 'accent' | 'danger' | 'success'
+}
+
+export interface PluginPanelImageNode {
+  type: 'image'
+  /**
+   * 只允许 `data:` 与 `https:`(表达力文档 §2.4):http:/协议相对/其余 scheme
+   * 会被校验器拒绝 —— 描述树是插件控制的数据,url 是插件伸向渲染进程的管子。
+   */
+  url: string
+  alt: string
+  maxWidth?: number
+}
+
+export interface PluginPanelLinkNode {
+  type: 'link'
+  text: string
+  /** 只允许 `https:` / `mailto:`;与 actionId 二选一(都给时 actionId 优先)。 */
+  url?: string
+  /** 内联动作:点击派发 action 而不是打开链接。 */
+  actionId?: string
+  payload?: unknown
+}
+
+export interface PluginPanelCodeNode {
+  type: 'code'
+  text: string
+  language?: string
+}
+
+export interface PluginPanelDividerNode {
+  type: 'divider'
+}
+
+/** image 节点的 url 白名单(data: 内联小图 / https: 远程图)。 */
+export const PLUGIN_IMAGE_URL_PATTERN = /^(?:data:|https:)/i
+/** link 节点的 url 白名单。javascript: 之类在这里止步。 */
+export const PLUGIN_LINK_URL_PATTERN = /^(?:https:|mailto:)/i
+
 export type PluginPanelNode =
   | PluginPanelStackNode
   | PluginPanelRowNode
@@ -115,12 +198,27 @@ export type PluginPanelNode =
   | PluginPanelButtonNode
   | PluginPanelFormNode
   | PluginPanelEmptyStateNode
+  | PluginPanelTableNode
+  | PluginPanelTabsNode
+  | PluginPanelProgressNode
+  | PluginPanelSpinnerNode
+  | PluginPanelBadgeNode
+  | PluginPanelImageNode
+  | PluginPanelLinkNode
+  | PluginPanelCodeNode
+  | PluginPanelDividerNode
 
 export interface PluginPanelTree {
   version: number
   /** 面板标题栏的补充文案(可选)。 */
   title?: string
   body: PluginPanelNode
+  /**
+   * 树级轮询(v2):宿主在块可见时按该周期重拉 render。
+   * **下限 1000ms**(频率上限 1Hz)—— 更密的刷新请用 ctx.refresh() 事件驱动,
+   * 不是把轮询拧成高频定时器。低于下限整树拒收。
+   */
+  refreshIntervalMs?: number
 }
 
 /**
@@ -138,9 +236,21 @@ export interface PluginPanelActionResult {
 
 const PANEL_NODE_TYPES = new Set([
   'stack', 'row', 'list', 'markdown', 'button', 'form', 'empty-state',
+  // v2
+  'table', 'tabs', 'progress', 'spinner', 'badge', 'image', 'link', 'code', 'divider',
 ])
 
-const FORM_CONTROLS = new Set(['switch', 'text', 'number', 'select', 'string-list'])
+const FORM_CONTROLS = new Set([
+  'switch', 'text', 'number', 'select', 'string-list',
+  // v2(对齐 R3 设置页渲染能力)
+  'textarea', 'slider', 'checkbox-group', 'radio', 'date', 'color',
+])
+
+/** 需要非空 options 的控件(选择集由插件给,宿主不发明选项)。 */
+const FORM_CONTROLS_REQUIRING_OPTIONS = new Set(['select', 'checkbox-group', 'radio'])
+
+/** 树级轮询的下限(频率上限 1Hz)。 */
+export const PANEL_MIN_REFRESH_INTERVAL_MS = 1000
 
 /** 描述树最大深度 —— 一棵能渲染的面板树不需要更深,深了多半是拼错了。 */
 export const MAX_PANEL_DEPTH = 12
@@ -175,6 +285,14 @@ export function validatePluginPanelTree(tree: unknown): string | null {
   }
   if (tree.title !== undefined && typeof tree.title !== 'string') {
     return 'panel tree "title" must be a string'
+  }
+  if (tree.refreshIntervalMs !== undefined) {
+    if (typeof tree.refreshIntervalMs !== 'number' || !Number.isFinite(tree.refreshIntervalMs)) {
+      return 'panel tree "refreshIntervalMs" must be a finite number'
+    }
+    if (tree.refreshIntervalMs < PANEL_MIN_REFRESH_INTERVAL_MS) {
+      return `panel tree "refreshIntervalMs" must be >= ${PANEL_MIN_REFRESH_INTERVAL_MS} (1Hz cap; use ctx.refresh() for denser updates)`
+    }
   }
 
   // 整棵树过一次序列化校验:函数/Map/Set/类实例一律在这里止步。
@@ -232,14 +350,87 @@ function validateNode(node: unknown, path: string, depth: number): string | null
         if (typeof field.control !== 'string' || !FORM_CONTROLS.has(field.control)) {
           return `${path}.fields[${index}].control must be one of ${[...FORM_CONTROLS].join('/')}`
         }
-        if (field.control === 'select' && (!Array.isArray(field.options) || field.options.length === 0)) {
-          return `${path}.fields[${index}] uses control "select" and needs a non-empty "options" array`
+        if (FORM_CONTROLS_REQUIRING_OPTIONS.has(field.control)
+          && (!Array.isArray(field.options) || field.options.length === 0)) {
+          return `${path}.fields[${index}] uses control "${field.control}" and needs a non-empty "options" array`
         }
       }
       return null
     }
     case 'empty-state':
       return typeof node.title === 'string' && node.title ? null : `${path}.title must be a non-empty string`
+    case 'table': {
+      if (!Array.isArray(node.columns) || node.columns.length === 0) {
+        return `${path}.columns must be a non-empty array`
+      }
+      for (const [index, column] of node.columns.entries()) {
+        if (!isPlainRecord(column)) return `${path}.columns[${index}] must be an object`
+        if (typeof column.key !== 'string' || !column.key) return `${path}.columns[${index}].key must be a non-empty string`
+        if (typeof column.label !== 'string') return `${path}.columns[${index}].label must be a string`
+      }
+      if (!Array.isArray(node.rows)) return `${path}.rows must be an array`
+      for (const [index, row] of node.rows.entries()) {
+        if (!isPlainRecord(row)) return `${path}.rows[${index}] must be an object`
+        if (typeof row.key !== 'string' || !row.key) return `${path}.rows[${index}].key must be a non-empty string`
+        if (!isPlainRecord(row.cells)) return `${path}.rows[${index}].cells must be an object`
+        for (const [cellKey, cell] of Object.entries(row.cells)) {
+          if (cell !== null && !['string', 'number', 'boolean'].includes(typeof cell)) {
+            return `${path}.rows[${index}].cells.${cellKey} must be a string/number/boolean/null`
+          }
+        }
+      }
+      return null
+    }
+    case 'tabs': {
+      if (!Array.isArray(node.items) || node.items.length === 0) {
+        return `${path}.items must be a non-empty array`
+      }
+      for (const [index, item] of node.items.entries()) {
+        if (!isPlainRecord(item)) return `${path}.items[${index}] must be an object`
+        if (typeof item.id !== 'string' || !item.id) return `${path}.items[${index}].id must be a non-empty string`
+        if (typeof item.label !== 'string') return `${path}.items[${index}].label must be a string`
+        const error = validateNode(item.body, `${path}.items[${index}].body`, depth + 1)
+        if (error) return error
+      }
+      return null
+    }
+    case 'progress': {
+      if (node.value !== undefined) {
+        if (typeof node.value !== 'number' || !Number.isFinite(node.value) || node.value < 0 || node.value > 100) {
+          return `${path}.value must be a number between 0 and 100`
+        }
+      }
+      if (node.indeterminate !== undefined && typeof node.indeterminate !== 'boolean') {
+        return `${path}.indeterminate must be a boolean`
+      }
+      return null
+    }
+    case 'spinner':
+      return node.label === undefined || typeof node.label === 'string' ? null : `${path}.label must be a string`
+    case 'badge':
+      return typeof node.text === 'string' && node.text ? null : `${path}.text must be a non-empty string`
+    case 'image': {
+      if (typeof node.url !== 'string' || !node.url) return `${path}.url must be a non-empty string`
+      if (!PLUGIN_IMAGE_URL_PATTERN.test(node.url)) {
+        return `${path}.url scheme is not allowed (image: data:/https: only)`
+      }
+      if (typeof node.alt !== 'string') return `${path}.alt must be a string`
+      return null
+    }
+    case 'link': {
+      if (typeof node.text !== 'string' || !node.text) return `${path}.text must be a non-empty string`
+      if (node.url === undefined && node.actionId === undefined) {
+        return `${path} needs a url or an actionId`
+      }
+      if (node.url !== undefined && (typeof node.url !== 'string' || !PLUGIN_LINK_URL_PATTERN.test(node.url))) {
+        return `${path}.url scheme is not allowed (link: https:/mailto: only)`
+      }
+      return null
+    }
+    case 'code':
+      return typeof node.text === 'string' ? null : `${path}.text must be a string`
+    case 'divider':
+      return null
     default:
       return `${path}.type "${type}" is not supported`
   }
