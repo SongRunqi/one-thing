@@ -44,6 +44,10 @@ describe('electron session security', () => {
     expect(csp).toContain("default-src 'self'")
     expect(csp).toContain("'unsafe-eval'")
     expect(csp).toContain('media-src')
+    // 插件 webview(C 期):父页的 frame-src 必须放行这个 scheme —— 否则
+    // sandbox iframe 在加载之前就被挡掉,子文档自己的 CSP 根本没机会生效。
+    expect(csp).toContain('frame-src onething-plugin:')
+    expect(csp).not.toContain("frame-src 'none'")
   })
 
   it('omits unsafe-eval outside development', async () => {

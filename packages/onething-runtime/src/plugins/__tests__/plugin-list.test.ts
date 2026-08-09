@@ -63,7 +63,15 @@ describe('projectOnethingPluginsForRenderer', () => {
         dirPath: 'builtin://demo',
         contributes: {
           commands: ['/demo'],
-          panels: [{ id: 'demo-panel', label: 'Demo' }],
+          // C 期:面板逐条带形态与判决(缺省 descriptor,声明合法)。
+          panels: [{
+            id: 'demo-panel',
+            label: 'Demo',
+            view: 'descriptor',
+            entry: '',
+            unsupported: false,
+            reason: '',
+          }],
           hasSettingsSchema: true,
           permissions: ['files:read'],
           activationEvents: ['onCommand:/demo'],

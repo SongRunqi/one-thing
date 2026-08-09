@@ -172,7 +172,7 @@ H 线  webview 逃生舱(L3,与 backend 子进程 ext host 同批)
 | --- | --- | --- | --- |
 | A 期 | legacy 目录插件清零(retirement-plan 文档) | P1–P3 | 执行中 |
 | B 期 | L2 主题 token 覆盖(contributes.theme)+ 受限动画原语 | R5.x 全量落地 ✓ | **已落地(2026-08-09)** |
-| C 期 | L3 webview 逃生舱(**不含 ext host**) | R1 软隔离 ✓ + B 期 ✓ | 排队 |
+| C 期 | L3 webview 逃生舱(**不含 ext host**) | R1 软隔离 ✓ + B 期 ✓ | **已落地(2026-08-09)** |
 | H 线 | backend 子进程 ext host(权限声明强制、RPC 化 API) | 宪法第 1、2 条持续生效 | 终局,不排期 |
 
 ### 6.1 B 期落地清单(L2)
@@ -287,6 +287,101 @@ H 线  webview 逃生舱(L3,与 backend 子进程 ext host 同批)
    事件桥。payload 过 `describeNonSerializable` 同规校验。
 5. **C5 验收**:demo 插件(描述树做不了的东西,如 canvas 图表)、CSP/穿越/
    token 冒充反例、拆除快照(卸载后协议不再服务该 id)、真机走查。
+
+### 6.3 C 期落地实录(2026-08-09)与规格差异
+
+代码位置(分层裁决):
+
+| 环节 | 落点 |
+| --- | --- |
+| 判据(路径规范化 / MIME 白名单 / CSP 串 / entry-root 校验 / 消息名) | `packages/core/plugins/webview.ts` |
+| 面板 init 的 action 名与通道守卫 | `packages/core/plugins/panel.ts`(`PLUGIN_PANEL_INIT_ACTION`、`describePluginPanelResultProblem`) |
+| 熔断家族与 surface 折叠 | `packages/core/plugins/policy.ts` |
+| manifest 形状校验(panels.view/entry、webviewRoot、uiSlots.view 拒载) | `packages/core/plugins/loader.ts` |
+| 注册面(形态 → action 名) | `packages/core/plugins/api-builder.ts`(`declaredWebviewPanelIds`) |
+| 声明筛选(非法 webview 面板不进 declaredPanelIds) | `packages/onething-runtime/src/app/plugins/loader.ts` |
+| 静态根解析(供给线) | `packages/onething-runtime/src/app/plugins/webview.ts` |
+| 清单投影(逐条判决可见) | `packages/onething-runtime/src/plugins/plugin-list.ts` |
+| 协议 handler(IO / realpath / 响应头) | `apps/electron/src/plugins/protocol.ts` |
+| scheme 登记(ready 之前)+ handler 挂载(ready 之中) | `apps/electron/src/app/bootstrap.ts` |
+| iframe 容器与通信桥 | `packages/renderer/components/plugins/PluginWebviewFrame.vue` |
+| 四态壳复用 | `PluginPanelHost.vue` + `usePluginUiBlock`(新增 `invoke` 的返回值) |
+
+与 §6.2 的逐条差异:
+
+1. **静态根是代码区,不是家目录。** §6.2 第 1 条写"只服务该插件家目录下 `dist/`"
+   是错的:`plugins/<id>/` 是**数据区**(config.json / kv.json / storage/),
+   把它端到一个 origin 上等于把用户数据交给 iframe 里的脚本。落地的根是
+   **`dirPath` + `contributes.webviewRoot`**(缺省 `webview/`;npm 形态的 dirPath
+   即 `plugins/node_modules/<pkg>/`,内置插件同理),realpath 复核之后仍须落在根内。
+2. **CSP 实测:`'self'` 与 host-source 两种写法都放行,两条都写。**
+   开工时的担心是 opaque origin(`sandbox="allow-scripts"` 无 `allow-same-origin`)
+   下 `script-src 'self'` 匹配不到任何 URL。**在 Electron 里真跑了一遍**(四档对照:
+   `'self'` / `onething-plugin://<id>` / 两者 / `'none'`,iframe 内脚本能否
+   `parent.postMessage` 作为判据):
+   - `'self'` → **放行**;`host-source` → 放行;两者 → 放行;`'none'` → **被挡**
+     (对照组证明 CSP 确实挂上了,不是没生效)。
+     原因:Chromium 计算 `'self'` 用的是 policy 的 self-origin(= **响应 URL** 的
+     origin),不是文档那个 opaque origin。
+   - 同一次实测另外两个结论:iframe → parent 的 `event.origin` 是字符串 `"null"`
+     (所以宿主校验靠 `event.source === iframe.contentWindow` + 一次性 token,
+     不靠 origin);`connect-src 'none'` 下 `fetch` 直接 TypeError(页面不出网)。
+
+   发出去的 CSP 因此是 `script-src 'self' onething-plugin://<pluginId>`:
+   host-source 是不依赖上述实现细节的那一条,`'self'` 是零成本的第二保险。
+
+   **父页 CSP 是真的会挡住整个 iframe 的那一层,而且规格没提。**
+   `apps/electron/src/window/session-security.ts` 里 session 级的 CSP 原本写着
+   `frame-src 'none'` —— 第二轮实测(把这张真表挂上 `onHeadersReceived`,再从
+   `file://` 的父页挂 sandbox iframe)对照结果:
+   `frame-src 'none'` → iframe 根本不加载(子页脚本从未运行);
+   `frame-src onething-plugin:` → 正常加载且脚本运行。**父页的拦截发生在子文档的
+   CSP 之前**,子文档的 CSP 再严也没机会生效。同一次实测也确认:两份 CSP
+   (session 级 + 协议响应级)叠加不会把插件页面的脚本挡掉。
+   落地只放**scheme**不放 host —— 谁能被服务的判定在协议 handler 那一侧,
+   不在这行字符串里。
+3. **webview 面板的 render 换了 action 名:`panel:init:<id>`。** §6.2 第 4 条说
+   "render 通道退化为初始化数据"。同一个 action 名承载两份返回值语义,会逼着
+   通道守卫反查"这个面板是哪一种"——那份反查一旦漂移,"未校验的树过线"与
+   "初始化数据被当成树拒收"两种事故都会出现。换个名字,守卫按前缀判定即可。
+   **surface 不因此分叉**:`panel:init` / `panel:action` 仍折成 `panel:<id>`,
+   家族仍是 `ui-request`。
+4. **注册语义:render 返回初始化数据,校验退回"纯数据"守卫。** 插件侧写法不变
+   (还是 `registerWorkspacePanel({ id, render, onAction })`),`onAction` 原样保留
+   并继续走 `panel:action:<panelId>`(30s 预算 / abort / 熔断 /
+   `describeNonSerializable` 全继承)。init 的返回值只过
+   `describeNonSerializable`(函数成员照样当场拒 —— 闭包过不了结构化克隆),
+   不套描述树形状。
+5. **纯静态面板(零代码)合法,靠 `requestActions` 判定而不是错误文案反查。**
+   声明先于代码:manifest 有 view+entry 就够,插件可以完全不调
+   `registerWorkspacePanel`。renderer 据清单投影里的 `requestActions` 是否含
+   `panel:init:<id>` 决定要不要去拉初始化数据 —— 不去解析"has no request handler"
+   那句错误文案(字符串反查会漂)。
+6. **加载失败的判据是握手,不是 `iframe.onerror`。** 协议 404 返回的是宿主自己的
+   纯文本错误页:iframe 的 `load` 照常触发、`error` 不触发,而 opaque origin 的
+   document 宿主读不到 —— 没有别的信号。于是**页面必须在 10s 内回一条带 token 的
+   消息**(`ready`,或任何一条 invoke),超时走四态壳的 error 态并给 Reload。
+   这条契约写进了作者指南(附可拷贝的 vanilla JS)。加载失败**不计插件熔断**
+   (它是宿主/文件问题);`onAction` 失败照旧计账。
+7. **`refresh` 复用既有 panel-refresh 通知链,且不重载 iframe。** 插件调
+   `ctx.refresh()` → 既有 `plugin:notification` 的 `panel-refresh` 轨 → 宿主重拉
+   init → `postMessage({type:'refresh', token, data})`。重载会把页面里的滚动位置与
+   输入状态全丢掉,而这是一次数据更新,不是一次导航。
+8. **非法 webview 声明 = 丢弃该 panel + 投影标记,不拒载**(与未知锚点同规);
+   **`uiSlots[].view` = 拒载**。两者的区别是"这个宿主还没有"与"任何宿主都不会有":
+   前者是版本偏斜(降级),后者是作者在要一个永远不存在的能力(当场说清)。
+   非法面板同时被踢出 `declaredPanelIds` —— 留着它等于"清单说没有、注册却成功",
+   而那个面板永远画不出来。
+9. **`image.url` 放行 `onething-plugin:`,`link.url` 不放行。** 点开链接会导航,
+   而这个 scheme 下的页面只该出现在 sandbox iframe 里。
+10. **demo 插件不在本仓库做**(市场插件仓另立,walkthrough 阶段处理);
+    验收用的是测试内的 fixture 与逐条对抗测试。
+
+C5 对抗测试落点:`packages/core/plugins/__tests__/webview.test.ts`(判据)、
+`packages/core/plugins/__tests__/webview-panel-channel.test.ts`(注册/通道/熔断)、
+`apps/electron/src/plugins/__tests__/protocol.test.ts`(协议五闸 + 拆除快照)、
+`packages/renderer/components/plugins/__tests__/PluginWebviewFrame.test.ts`
+(init→invoke→result→refresh 全链 + token 闸 + 卸载无泄漏)。
 
 ---
 

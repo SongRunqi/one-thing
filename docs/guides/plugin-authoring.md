@@ -42,7 +42,8 @@ node scripts/build-plugin.mjs packages/my-plugin
 | 子字段 | 形状 | 宿主行为 |
 |---|---|---|
 | `commands` | `string[]` | 斜杠命令声明 |
-| `panels` | `[{id,label}]` | 工作区面板(描述树,UI 不执行插件代码) |
+| `panels` | `[{id,label,view?,entry?}]` | 工作区面板。缺省 `view: "descriptor"`(描述树,UI 不执行插件代码);`view: "webview"` + `entry` 走逃生舱,见下 |
+| `webviewRoot` | `string` | webview 面板的静态资源根,**相对包目录**,缺省 `webview` |
 | `uiSlots` | `[{anchor,id,label,lifetime?}]` | 锚点块;未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"` |
 | `theme` | `{overrides:{token:color}}` | 主题 token 覆盖(见下);装前确认页列出被改的 token |
 | `settings` | `{schema}` | JSON Schema 子集,宿主渲染并校验设置表单 |
@@ -205,9 +206,152 @@ api.storage.message(sessionId, messageId).exists()
 - `tabs` 切换 → 宿主的页签与内容过渡;
 - `badge` 的 `tone` 变化 → 宿主的颜色过渡。
 
-**完全自定义动画 = webview(C 期)**,没有第二条路。别在描述树里找
+**完全自定义动画 = webview(见下一章)**,没有第二条路。别在描述树里找
 `style` / `className` / `transition` 字段 —— 它们不存在,而且是明确不做的红线
 (节点级内联样式 = 半开的 CSS 注入)。
+
+## webview 面板:逃生舱(C 期,L3)
+
+图表、编辑器、拖拽、画布、任意动画 —— 描述树做不了的东西走这里。
+**只有工作区面板能用**;锚点块(`uiSlots`)永远不开 webview(32px 单行塞
+iframe 没有正经场景),声明了会**拒载**。
+
+### 声明
+
+```jsonc
+{
+  "contributes": {
+    "webviewRoot": "webview",              // 可省,缺省就是 "webview"
+    "panels": [
+      { "id": "chart", "label": "Revenue", "view": "webview", "entry": "index.html" }
+    ]
+  }
+}
+```
+
+`entry` 的硬规矩(违反 = **这一条面板被丢弃**,插件其余能力照常,设置页卡片
+写明 `panel "<label>" dropped — <原因>`):相对路径、不含 `..`、不含 `:`(所以
+`javascript:x.html` 这类当场出局)、不含 `%`(编码变体)、不含反斜杠,
+以 `.html` 结尾。
+
+静态资源要跟着**包**走(`webviewRoot` 是相对包目录的),不是家目录 ——
+家目录 `plugins/<id>/` 是数据区(`config.json` / `kv.json` / `storage/`),
+协议一个字节都不服务那里。
+
+### 页面跑在什么环境里
+
+- **独立 origin**:`onething-plugin://<pluginId>/…`,协议只服务你的静态根内、
+  白名单扩展名(html/js/css/json/svg/png/jpg/jpeg/webp/gif/woff2)的文件。
+  别的扩展名回 415,穿越/软链逃逸回 404。
+- **sandbox iframe**:`sandbox="allow-scripts"`,**没有** `allow-same-origin` ——
+  你的页面是 opaque origin:没有 cookie、没有 localStorage、
+  `document.domain` 无意义。要存东西用 `api.storage`(main 进程侧)。
+- **CSP 钉死**:`default-src 'none'; script-src 'self' onething-plugin://<你的 id>;
+  style-src … 'unsafe-inline'; img-src … data:; connect-src 'none'`。
+  **`connect-src 'none'` = 页面不能出网**:没有 fetch、没有 XHR、没有 WebSocket。
+  要联网在 main 进程侧做(你的插件代码在那里),结果经 `invoke` 递进来。
+- **没有宿主对象**:`window.electronAPI`、`require`、`process` 一个都没有。
+  与宿主之间只有 postMessage。
+
+### 通信协议(全部内容)
+
+宿主 → 页面:
+
+| 消息 | 何时 | 形状 |
+|---|---|---|
+| `init` | 页面 `load` 之后的第一帧 | `{ type:'init', token, data }` |
+| `refresh` | 你在 main 侧调了 `ctx.refresh()`,宿主重拉初始化数据之后 | `{ type:'refresh', token, data }` |
+| `result` | 你的 `invoke` 的回帖 | `{ type:'result', token, requestId, result }` 或 `{ …, error }` |
+
+页面 → 宿主(**每一条都必须带 `token`**,否则静默丢弃):
+
+| 消息 | 形状 |
+|---|---|
+| `ready` | `{ token, type:'ready' }` |
+| `invoke` | `{ token, type:'invoke', requestId, actionId, payload }` |
+
+`invoke` 走的是既有的 `panel:action:<panelId>` 请求通道 —— 30s 预算、abort、
+熔断账、`payload` 的可序列化守卫全部照常继承。它落到你在 main 侧写的
+`onAction({ actionId, payload }, ctx)`。
+
+**握手是必须的。** 宿主读不到 opaque origin 的 document,判断"这一页起来了没有"
+的唯一信号就是你回的那条带 token 的消息。**10 秒内不回,面板显示加载失败**
+(附一个 Reload 按钮)。协议 404 会渲染一张宿主的纯文本错误页 —— 它不会回握手,
+于是"entry 写错了"也走同一条错误态。
+
+### 一段可以直接拷走的 vanilla JS
+
+```html
+<!doctype html>
+<meta charset="utf-8">
+<div id="app">Loading…</div>
+<script>
+  let token = null
+  let seq = 0
+  const pending = new Map()
+
+  window.addEventListener('message', event => {
+    const msg = event.data
+    if (!msg || typeof msg !== 'object') return
+    if (msg.type === 'init') {
+      token = msg.token
+      // 握手确认:回一条,宿主的看门狗就撤了。
+      parent.postMessage({ token, type: 'ready' }, '*')
+      render(msg.data)
+      return
+    }
+    // init 之后的消息校验 token —— 宿主也在校验你,两边对称。
+    if (!token || msg.token !== token) return
+    if (msg.type === 'refresh') render(msg.data)
+    if (msg.type === 'result') {
+      const waiter = pending.get(msg.requestId)
+      if (!waiter) return
+      pending.delete(msg.requestId)
+      msg.error ? waiter.reject(new Error(msg.error)) : waiter.resolve(msg.result)
+    }
+  })
+
+  /** 调一个 main 侧的 action;返回 onAction 的返回值。 */
+  function invoke(actionId, payload) {
+    const requestId = 'r' + (++seq)
+    return new Promise((resolve, reject) => {
+      pending.set(requestId, { resolve, reject })
+      parent.postMessage({ token, type: 'invoke', requestId, actionId, payload }, '*')
+    })
+  }
+
+  function render(data) {
+    document.getElementById('app').textContent = JSON.stringify(data)
+  }
+</script>
+```
+
+main 侧(可选 —— 纯静态面板完全合法):
+
+```js
+export default function (api) {
+  api.registerWorkspacePanel({
+    id: 'chart',
+    // webview 面板的 render 返回的是**初始化数据**,不是描述树。
+    // 宿主不解释它,原样 postMessage 给页面(必须 JSON-可序列化)。
+    render: () => ({ series: loadSeries() }),
+    onAction: async ({ actionId, payload }, ctx) => {
+      if (actionId === 'export') await exportCsv(payload)
+      // 想让页面拿到新数据:调 refresh,宿主重拉 render 再推一条 refresh。
+      ctx.refresh()
+    },
+  })
+}
+```
+
+### 披露与降级
+
+- 装前确认页与已装卡片都会写 **`runs sandboxed UI code`** —— 用户在装之前就
+  知道你会在应用里跑自己的界面代码。
+- iframe 加载失败(entry 不存在、握手超时)是**宿主/文件问题**,不计你的熔断账;
+  `onAction` 连败照常计账,达阈之后这个面板被降级(`panel:<id>` surface),
+  插件的工具/命令/提示词照常。
+- 停用或卸载之后,`onething-plugin://<你的 id>/…` 立刻 404。
 
 ## 安全与边界(速查)
 
@@ -229,5 +373,9 @@ api.storage.message(sessionId, messageId).exists()
 | 拒装:"Integrity mismatch" | 索引 SRI 与 tarball 实体不符;重新发 tag,不要手改 asset |
 | 拒装:"name mismatch" | 索引/包名写错;包内 name 必须等于 `@onething-plugins/<id>` |
 | 手工放的目录不出现在插件表 | 预期行为:2026-08-09 起只认 npm 账,目录形态不再加载 |
+| webview 面板一直转圈然后报"did not load" | entry 路径写错(协议 404),或页面没回 `ready` 握手 |
+| webview 页面里 `fetch` 全部 TypeError | 预期行为:CSP `connect-src 'none'`,页面不出网。联网在 main 侧做 |
+| 面板在卡片上写 `dropped — …` | webview 声明非法(缺 entry / 有 `..` / 不是 .html / 静态根非法) |
+| 装不上:`uiSlots[i].view is not supported` | 锚点块不开 webview,把它改成 `contributes.panels` 里的面板 |
 | 消息态重启就没了 | manifest 没声明 `lifetime: "persistent"` |
 | 写消息态抛 `quota` | 该插件消息态超 5MB 硬顶;记录该瘦身,宿主不替你淘汰 |

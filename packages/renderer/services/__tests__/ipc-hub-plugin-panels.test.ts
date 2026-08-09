@@ -75,6 +75,10 @@ describe('IPC hub → plugin workspace panels', () => {
       panelId: 'logs',
       label: 'Agent logs',
       loaded: true,
+      // C 期:形态与入口随清单过来;缺省是描述树面板,没有 init handler。
+      view: 'descriptor',
+      entry: '',
+      hasInit: false,
     })
   })
 

@@ -21,6 +21,10 @@ vi.mock('electron', () => ({
   },
   protocol: {
     handle: vi.fn(),
+    registerSchemesAsPrivileged: vi.fn(),
+  },
+  session: {
+    defaultSession: { protocol: { handle: vi.fn() } },
   },
 }))
 
@@ -49,6 +53,7 @@ describe('electron app bootstrap', () => {
     const beforeQuitApp = createFakeApp()
     const powerMonitor = { on: vi.fn() }
     const handleProtocol = vi.fn()
+    const handlePluginProtocol = vi.fn()
     const mainWindow = {
       webContents: {},
       on: vi.fn(),
@@ -79,6 +84,11 @@ describe('electron app bootstrap', () => {
       mediaProtocol: {
         getMediaImagesDir: () => '/images',
         handle: handleProtocol,
+        fetch: vi.fn(),
+      },
+      pluginProtocol: {
+        resolveStaticRoot: () => null,
+        getSession: () => ({ protocol: { handle: handlePluginProtocol } }) as any,
         fetch: vi.fn(),
       },
       powerResume: {
@@ -171,6 +181,8 @@ describe('electron app bootstrap', () => {
     await readyApp.listeners.get('ready')?.()
 
     expect(handleProtocol).toHaveBeenCalledWith('media', expect.any(Function))
+    // 插件 webview 协议(C 期):handler 挂在 ready 段,scheme 登记在同步段。
+    expect(handlePluginProtocol).toHaveBeenCalledWith('onething-plugin', expect.any(Function))
     expect(powerMonitor.on).toHaveBeenCalledWith('resume', expect.any(Function))
     expect(powerMonitor.on).toHaveBeenCalledWith('unlock-screen', expect.any(Function))
     expect(events).toEqual([
