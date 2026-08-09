@@ -10,7 +10,7 @@ export interface OnethingPluginListManifestLike {
   contributes?: {
     commands?: Array<{ name: string }>
     panels?: Array<{ id: string; label: string }>
-    uiSlots?: Array<{ anchor: string; id: string; label: string }>
+    uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string }>
     settings?: {
       title?: string
       schema?: Record<string, unknown>
@@ -84,8 +84,13 @@ export interface OnethingRendererPluginInfo {
     /**
      * 锚点块(R5.x)。`unsupported` = 该条声明的锚点不在宿主清单里:
      * 块不渲染,但设置页要能把这件事说出来(前向兼容,见设计文档 §4.1)。
+     *
+     * `lifetime` 原样流出(plugin-message-state-2026-08 §3.2):它是消息态落盘的
+     * **闸门声明**,装前确认页要据此告诉用户"这插件会在消息上留下持久内容"。
+     * 不在这里归一成布尔 —— 市场索引那条路走的是未投影的 manifest 原文,
+     * 两条路各判一次才是漂移的开始,判据只留在 renderer 的一个 helper 里。
      */
-    uiSlots: Array<{ anchor: string; id: string; label: string; unsupported: boolean }>
+    uiSlots: Array<{ anchor: string; id: string; label: string; unsupported: boolean; lifetime: string }>
     hasSettingsSchema: boolean
     permissions: string[]
     activationEvents: string[]
@@ -166,6 +171,7 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
         id: slot.id,
         label: slot.label,
         unsupported: !isUiAnchor(slot.anchor),
+        lifetime: slot.lifetime ?? '',
       })),
       hasSettingsSchema: Boolean(plugin.definition.manifest.contributes?.settings?.schema),
       permissions: plugin.definition.manifest.contributes?.permissions ?? [],

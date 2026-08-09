@@ -151,6 +151,43 @@ describe('PluginsSettingsTab 市场区(P3)', () => {
     wrapper.unmount()
   })
 
+  it('装前确认披露生命期:persistent 槽说明"会在消息上留下持久内容"', async () => {
+    // 市场索引流出的是 manifest 原文(未投影),lifetime 就长这样。
+    platform.getPluginMarket.mockResolvedValue({
+      success: true,
+      entries: [{
+        id: 'tps-meter',
+        pkg: '@onething-plugins/tps-meter',
+        version: '1.0.2',
+        description: 'tokens per second on every reply',
+        tarballUrl: 'https://releases.example/tps-meter-1.0.2.tgz',
+        integrity: 'sha512-CCC',
+        contributes: {
+          uiSlots: [
+            { anchor: 'message.footer', id: 'tps', label: 'TPS', lifetime: 'persistent' },
+            { anchor: 'composer.above', id: 'hint', label: 'Hint' },
+          ],
+        },
+        installedVersion: null,
+        hasUpdate: false,
+        versionBlockedReason: null,
+      }],
+      fetchedAt: 1_754_000_000_000,
+      stale: false,
+    })
+    const wrapper = mountTab()
+    await flushPromises()
+
+    await wrapper.findAll('.market-list .plugin-toggle .install-btn')[0].trigger('click')
+    // 披露跟在它所属的那一条槽后面 —— 用户要知道**哪一块**会留下东西。
+    expect(wrapper.text()).toContain(
+      'ui slot "TPS" on anchor "message.footer" — leaves persistent content on your messages')
+    // 未声明的槽保持沉默:不声明 = 纯内存,没有可披露的事。
+    expect(wrapper.text()).toContain('ui slot "Hint" on anchor "composer.above"')
+    expect(wrapper.text()).not.toContain('"Hint" on anchor "composer.above" — leaves')
+    wrapper.unmount()
+  })
+
   it('minAppVersion 不足:Install 置灰且说明;npm 缺失时一并置灰', async () => {
     const wrapper = mountTab()
     await flushPromises()

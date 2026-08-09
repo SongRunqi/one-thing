@@ -9,7 +9,7 @@
 
 import fs from 'fs'
 import path from 'path'
-import { pluginLoadLabel } from '@onething/core/plugins'
+import { pluginLoadLabel, type PluginContributionUiSlot } from '@onething/core/plugins'
 import { spawn } from 'child_process'
 import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/runtime/storage'
 import { pathExists, writeJsonFile } from '@onething/core/storage'
@@ -275,13 +275,13 @@ function getBuiltinPlugins(): PluginDefinition[] {
 const DECLARED_PANEL_IDS_TTL_MS = 1000
 let declaredPanelIdsCache: {
   at: number
-  byPlugin: Map<string, { panels: string[]; uiSlots: Array<{ anchor: string; id: string; label: string }> }>
+  byPlugin: Map<string, { panels: string[]; uiSlots: PluginContributionUiSlot[] }>
 } | null = null
 
-function declaredContributesByPlugin(): Map<string, { panels: string[]; uiSlots: Array<{ anchor: string; id: string; label: string }> }> {
+function declaredContributesByPlugin(): Map<string, { panels: string[]; uiSlots: PluginContributionUiSlot[] }> {
   const now = Date.now()
   if (!declaredPanelIdsCache || now - declaredPanelIdsCache.at >= DECLARED_PANEL_IDS_TTL_MS) {
-    const byPlugin = new Map<string, { panels: string[]; uiSlots: Array<{ anchor: string; id: string; label: string }> }>()
+    const byPlugin = new Map<string, { panels: string[]; uiSlots: PluginContributionUiSlot[] }>()
     for (const definition of scanPlugins()) {
       byPlugin.set(definition.id, {
         panels: definition.manifest.contributes?.panels?.map(panel => panel.id) ?? [],
@@ -301,7 +301,7 @@ export function getDeclaredPanelIds(pluginId: string): string[] {
  * manifest contributes.uiSlots 里声明过的锚点块(R5.x)。
  * 与面板同一份缓存 —— 两个声明清单出自同一次目录扫描,不该各扫一遍。
  */
-export function getDeclaredUiSlots(pluginId: string): Array<{ anchor: string; id: string; label: string }> {
+export function getDeclaredUiSlots(pluginId: string): PluginContributionUiSlot[] {
   return declaredContributesByPlugin().get(pluginId)?.uiSlots ?? []
 }
 

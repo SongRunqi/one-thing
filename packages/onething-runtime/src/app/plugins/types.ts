@@ -14,6 +14,7 @@ import type {
   CorePluginRequestHandler,
   CorePluginStatusAPI,
   CorePluginStorage,
+  CorePluginStorageWithMessageState,
   CorePluginAPI,
   CorePluginCommandContext,
   CorePluginCommandDefinition,
@@ -122,7 +123,7 @@ export interface PluginAPI
     PluginSchedulerAPI,
     MinimalPluginUI,
     CorePluginRequestHandler,
-    CorePluginStorage,
+    CorePluginStorageWithMessageState,
     CorePluginPanelRegistration,
     CorePluginStatusAPI,
     IMConnector

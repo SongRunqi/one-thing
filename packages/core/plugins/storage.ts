@@ -39,6 +39,8 @@ export type PluginStorageErrorCode =
   | 'not-serializable'
   | 'unavailable'
   | 'io'
+  /** 配额硬顶写超(message-state;Chrome/Figma 先例:配额由宿主持有)。 */
+  | 'quota'
 
 /**
  * 插件存储错误。
@@ -321,6 +323,20 @@ export interface CorePluginStorage {
   exists(name: string): boolean
 }
 
+export interface CorePluginMessageStateScoped {
+  readJson<T = unknown>(fallback?: T): T | undefined
+  writeJson(value: unknown): void
+  exists(): boolean
+}
+
+/**
+ * 插件侧 api.storage 的完整面:KV + 消息作用域状态(plugin-message-state-2026-08)。
+ * `message(sessionId, messageId)` 返回该消息的 scoped 视图 —— 坐标随调用递交。
+ */
+export interface CorePluginStorageWithMessageState extends CorePluginStorage {
+  message(sessionId: string, messageId: string): CorePluginMessageStateScoped
+}
+
 export interface CreateCorePluginStorageOptions {
   pluginId: string
   dataRoot: string
@@ -434,6 +450,181 @@ export function createCorePluginStorage(options: CreateCorePluginStorageOptions)
 
     exists(name: string): boolean {
       return pathExists(path.join(dirPath(), assertSafePluginFileName(name)))
+    },
+  }
+}
+
+// ── 消息作用域状态存储(plugin-message-state-2026-08) ──────────────
+
+/** 消息态在家目录里的子目录 —— 与 kv.json / storage/ 平级分账。 */
+export const PLUGIN_MESSAGE_STATE_DIR_NAME = 'message-state'
+/** 每插件消息态配额硬顶(§3.4:宿主持有配额,先例 Chrome 10MB / Figma 100KB/条)。 */
+export const PLUGIN_MESSAGE_STATE_DEFAULT_QUOTA_BYTES = 5 * 1024 * 1024
+
+export interface CorePluginMessageStateStore {
+  /** 读一条消息态;不存在 → fallback。水合即真源,损坏记录在**水合时**隔离并跳过。 */
+  readJson<T = unknown>(sessionId: string, messageId: string, fallback?: T): T | undefined
+  /** 写一条消息态。值必须 JSON-可序列化;超配额 → PluginStorageError('quota')(写面抛)。 */
+  writeJson(sessionId: string, messageId: string, value: unknown): void
+  exists(sessionId: string, messageId: string): boolean
+  /** 级联入口(runtime 挂 message:deleted):清该条(缓存 + 磁盘)。 */
+  handleMessageDeleted(sessionId: string, messageId: string): void
+  /** 级联入口(runtime 挂 session:deleted):清整个会话目录。 */
+  handleSessionDeleted(sessionId: string): void
+  /** 当前占用字节(配额与测试观测)。 */
+  totalBytes(): number
+}
+
+export interface CreateCorePluginMessageStateStoreOptions {
+  pluginId: string
+  homeRoot: string
+  /**
+   * lifetime 闸门(§3.2):插件任一 uiSlot 声明 'persistent' → 落盘 + 创建时水合;
+   * 否则纯内存(重启即丢,ephemeral 语义)。
+   */
+  persistent: boolean
+  /** §7.4 拆除闩:卸载/停用完成后到的写 = warn + 静默丢弃(与 KV 同一条闩)。 */
+  isDisposed?: () => boolean
+  /** 配额硬顶字节数,默认 5MB。 */
+  quotaBytes?: number
+}
+
+export function getCorePluginMessageStateDir(homeRoot: string, pluginId: string): string {
+  return path.join(getCorePluginHomeDir(homeRoot, pluginId), PLUGIN_MESSAGE_STATE_DIR_NAME)
+}
+
+export function createCorePluginMessageStateStore(
+  options: CreateCorePluginMessageStateStoreOptions,
+): CorePluginMessageStateStore {
+  const { pluginId, homeRoot, persistent } = options
+  const quota = options.quotaBytes ?? PLUGIN_MESSAGE_STATE_DEFAULT_QUOTA_BYTES
+  const rootDir = getCorePluginMessageStateDir(homeRoot, pluginId)
+  assertNotInNodeModules(homeRoot, rootDir)
+
+  /** 真源:`<sid>/<mid>` → 序列化后的 JSON 文本(与落盘字节同形)。 */
+  const cache = new Map<string, string>()
+  let bytes = 0
+
+  const keyOf = (sessionId: string, messageId: string): string =>
+    `${assertSafePluginFileName(sessionId)}/${assertSafePluginFileName(messageId)}`
+  const fileOf = (key: string): string => path.join(rootDir, `${key}.json`)
+
+  // 创建时水合(仅 persistent):目录遍历即索引。损坏记录:挪 .corrupt-<ts>
+  // 隔离并跳过 —— 插件加载不能死在一条坏记录上(与 KV 读面抛不同:渲染路径
+  // 的读必须扛得住,损坏在水合这一道一次清完)。
+  if (persistent && pathExists(rootDir)) {
+    for (const sid of fs.readdirSync(rootDir)) {
+      const sidDir = path.join(rootDir, sid)
+      if (!isDirectory(sidDir)) continue
+      for (const file of fs.readdirSync(sidDir)) {
+        if (!file.endsWith('.json') || file.includes('.corrupt-')) continue
+        const full = path.join(sidDir, file)
+        try {
+          const raw = fs.readFileSync(full, 'utf-8')
+          JSON.parse(raw) // 只验形,真源就是文本
+          const key = `${sid}/${file.slice(0, -5)}`
+          cache.set(key, raw)
+          bytes += raw.length
+        } catch {
+          try {
+            fs.renameSync(full, `${full}.corrupt-${Date.now()}`)
+          } catch (renameError) {
+            console.error(`[PluginMessageState:${pluginId}] Failed to quarantine "${full}":`, renameError)
+          }
+          console.error(`[PluginMessageState:${pluginId}] Quarantined corrupt record "${full}"`)
+        }
+      }
+    }
+  }
+
+  let demolitionWarned = false
+  const demolished = (): boolean => {
+    if (!options.isDisposed?.()) return false
+    if (!demolitionWarned) {
+      demolitionWarned = true
+      console.warn(
+        `[PluginMessageState:${pluginId}] Ignoring message-state writes after teardown — `
+        + 'late writes must not resurrect the archived home directory.',
+      )
+    }
+    return true
+  }
+
+  return {
+    readJson<T = unknown>(sessionId: string, messageId: string, fallback?: T): T | undefined {
+      const raw = cache.get(keyOf(sessionId, messageId))
+      if (raw === undefined) return fallback
+      return JSON.parse(raw) as T
+    },
+
+    writeJson(sessionId: string, messageId: string, value: unknown): void {
+      // 拆除闩(§7.4):晚到的写静默丢弃,不重建家目录。
+      if (demolished()) return
+      const key = keyOf(sessionId, messageId)
+      // 与 KV 同一条宪法:写盘也是一条"线",不可序列化的值会静默丢数据。
+      const problem = describeNonSerializable(value, `message-state value for "${key}"`)
+      if (problem) {
+        throw new PluginStorageError('not-serializable', `Plugin message-state value must be JSON-serializable: ${problem}`)
+      }
+      const raw = JSON.stringify(value, null, 2)
+      const replaced = cache.get(key)
+      const nextTotal = bytes - (replaced?.length ?? 0) + raw.length
+      if (nextTotal > quota) {
+        throw new PluginStorageError(
+          'quota',
+          `Message-state for "${pluginId}" exceeds the ${quota}-byte quota (${nextTotal} after write)`,
+        )
+      }
+      cache.set(key, raw)
+      bytes = nextTotal
+      if (persistent) {
+        try {
+          writeJsonFile(fileOf(key), value)
+        } catch (error) {
+          throw ioError(`Cannot write message-state "${key}" for "${pluginId}"`, error)
+        }
+      }
+    },
+
+    exists(sessionId: string, messageId: string): boolean {
+      return cache.has(keyOf(sessionId, messageId))
+    },
+
+    handleMessageDeleted(sessionId: string, messageId: string): void {
+      const key = keyOf(sessionId, messageId)
+      const raw = cache.get(key)
+      if (raw !== undefined) {
+        cache.delete(key)
+        bytes -= raw.length
+      }
+      if (persistent) {
+        try {
+          fs.rmSync(fileOf(key), { force: true })
+        } catch (error) {
+          console.error(`[PluginMessageState:${pluginId}] Failed to cascade-delete "${key}":`, error)
+        }
+      }
+    },
+
+    handleSessionDeleted(sessionId: string): void {
+      const sid = assertSafePluginFileName(sessionId)
+      for (const [key, raw] of [...cache]) {
+        if (key.startsWith(`${sid}/`)) {
+          cache.delete(key)
+          bytes -= raw.length
+        }
+      }
+      if (persistent) {
+        try {
+          fs.rmSync(path.join(rootDir, sid), { recursive: true, force: true })
+        } catch (error) {
+          console.error(`[PluginMessageState:${pluginId}] Failed to cascade-delete session "${sid}":`, error)
+        }
+      }
+    },
+
+    totalBytes(): number {
+      return bytes
     },
   }
 }

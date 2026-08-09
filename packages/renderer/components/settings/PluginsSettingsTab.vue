@@ -603,7 +603,8 @@ interface PluginInfo {
   contributes?: {
     commands?: string[]
     panels?: Array<{ id: string; label: string }>
-    uiSlots?: Array<{ anchor: string; id: string; label: string; unsupported?: boolean }>
+    /** `lifetime` 是消息态落盘的闸门声明(见 slotIsPersistent);市场那条路是 manifest 原文。 */
+    uiSlots?: Array<{ anchor: string; id: string; label: string; unsupported?: boolean; lifetime?: string }>
     hasSettingsSchema?: boolean
     permissions?: string[]
     activationEvents?: string[]
@@ -855,6 +856,21 @@ function markSaved(pluginId: string): void {
 }
 
 /**
+ * 消息态生命期披露(plugin-message-state-2026-08 §3.2)。
+ *
+ * 判据与宿主闸门逐字相同(`lifetime === 'persistent'`),而且**只在这里判一次** ——
+ * 已装卡片走投影后的清单、市场确认页走未投影的 manifest 原文,两条路的形状不同
+ * 但语义必须是同一句话:声明 persistent 的块会在用户的消息上留下持久内容。
+ * 未知的未来值天然读成非持久,与宿主降级同规。
+ */
+function slotIsPersistent(slot: { lifetime?: string }): boolean {
+  return slot.lifetime === 'persistent'
+}
+
+/** 披露文案 —— 用户看的是"会在我的消息上留下东西",不是 lifetime 这个词。 */
+const PERSISTENT_SLOT_NOTE = 'leaves persistent content on your messages'
+
+/**
  * manifest 声明的贡献点摘要 —— 一行标签,不是 UI 工程。
  * R2 只让它可见;渲染面板、渲染设置表单分别是 R5 与 R3 的事。
  */
@@ -877,6 +893,11 @@ function contributesSummary(plugin: PluginInfo): string[] {
     .filter(slot => !slot.unsupported && !isUiSlotTruncated(plugin.id, slot.anchor, slot.id))
   if (visibleSlots.length) {
     summary.push(`declares ${visibleSlots.length} ui slot${visibleSlots.length > 1 ? 's' : ''}`)
+  }
+  // 生命期披露:装完之后也看得见(装前确认页只出现一次,卡片是长期可查的那一处)。
+  const persistentSlots = (contributes?.uiSlots ?? []).filter(slotIsPersistent)
+  if (persistentSlots.length) {
+    summary.push(PERSISTENT_SLOT_NOTE)
   }
   if (contributes?.commands?.length) {
     summary.push(`declares ${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)
@@ -1141,10 +1162,13 @@ function marketDeclares(entry: MarketEntry): string[] {
     declares.push(`${contributes.panels.length} panel${contributes.panels.length > 1 ? 's' : ''}`)
   }
   for (const slot of contributes?.uiSlots ?? []) {
+    // 生命期跟在它所属的那一条槽后面 —— 用户要知道的是"哪一块会留下东西",
+    // 不是"这插件某处会留下东西"。
+    const lifetime = slotIsPersistent(slot) ? ` — ${PERSISTENT_SLOT_NOTE}` : ''
     declares.push(
       slot.unsupported
-        ? `ui slot "${slot.label}" on anchor "${slot.anchor}" (unsupported by this app version)`
-        : `ui slot "${slot.label}" on anchor "${slot.anchor}"`,
+        ? `ui slot "${slot.label}" on anchor "${slot.anchor}" (unsupported by this app version)${lifetime}`
+        : `ui slot "${slot.label}" on anchor "${slot.anchor}"${lifetime}`,
     )
   }
   if (contributes?.commands?.length) {

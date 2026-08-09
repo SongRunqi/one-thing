@@ -97,6 +97,14 @@ interface RegistrySnapshot {
  *  listener is exactly the kind of residue git diff never sees. */
 function createCountingEventBus() {
   const handlers = new Map<string, Set<unknown>>()
+  const subscribe = (key: string, handler: unknown): (() => void) => {
+    const set = handlers.get(key) ?? new Set<unknown>()
+    set.add(handler)
+    handlers.set(key, set)
+    return () => {
+      set.delete(handler)
+    }
+  }
   return {
     get subscriptionCount(): number {
       let total = 0
@@ -104,12 +112,12 @@ function createCountingEventBus() {
       return total
     },
     onAnySession(eventType: string, handler: unknown): () => void {
-      const set = handlers.get(eventType) ?? new Set<unknown>()
-      set.add(handler)
-      handlers.set(eventType, set)
-      return () => {
-        set.delete(handler)
-      }
+      return subscribe(eventType, handler)
+    },
+    // 全局面也进同一本账:消息态的级联订阅(session:deleted)挂在这里,
+    // 漏退订同样是 git diff 看不见的残留。
+    onGlobal(eventType: string, handler: unknown): () => void {
+      return subscribe(`global:${eventType}`, handler)
     },
     emitGlobal(): void {},
   }

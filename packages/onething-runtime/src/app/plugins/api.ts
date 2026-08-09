@@ -11,10 +11,10 @@ import {
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
-import { PluginStore, createPluginStorage } from './store.js'
+import { PluginStore, createPluginMessageState, createPluginStorage } from './store.js'
 import { getDeclaredPanelIds, getDeclaredUiSlots } from './loader.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
-import type { PluginFailureScope } from '@onething/core/plugins'
+import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
 import {
   emitPluginStatusPart,
@@ -155,7 +155,7 @@ export interface CreatePluginAPIOptions {
    */
   declaredPanelIds?: string[]
   /** manifest contributes.uiSlots 里声明过的锚点块(R5.x);同上,参数只为注入/测试留着。 */
-  declaredUiSlots?: Array<{ anchor: string; id: string; label: string }>
+  declaredUiSlots?: PluginContributionUiSlot[]
 }
 
 export function createPluginAPI(
@@ -184,6 +184,13 @@ export function createPluginAPI(
   // drain 完回调之后才落下(见 storeClosers 的注册)。
   const storageGate = { demolished: false }
   const closeStorage = () => { storageGate.demolished = true }
+  // 消息态(plugin-message-state-2026-08):lifetime 闸门 —— manifest 的
+  // contributes.uiSlots 任一项声明 'persistent' 才落盘;否则纯内存。
+  const messageState = createPluginMessageState(pluginId, {
+    persistent: (options?.declaredUiSlots ?? getDeclaredUiSlots(pluginId))
+      .some(slot => slot.lifetime === 'persistent'),
+    isDisposed: () => storageGate.demolished,
+  })
   // 拆除闸要能被 scheduler 看到,而 state 是 createCorePluginAPI 的返回值 ——
   // 用一个后填的引用把两者接上(register 只在调用时读它)。
   const pluginScheduler = createScopedPluginScheduler({
@@ -213,6 +220,8 @@ export function createPluginAPI(
     storage: createPluginStorage(pluginId, {
       isDisposed: () => storageGate.demolished,
     }),
+    // 消息态见上方 messageState 工厂(lifetime 闸门)。
+    messageState,
     // 声明先于代码:面板注册要跟 manifest 对得上,清单是权威。
     declaredPanelIds: options?.declaredPanelIds ?? getDeclaredPanelIds(pluginId),
     declaredUiSlots: options?.declaredUiSlots ?? getDeclaredUiSlots(pluginId),
@@ -363,8 +372,22 @@ export function createPluginAPI(
   })
 
   stateRef.current = result.state
+  // 级联(§3.3):消息/会话删除事件携带坐标,存在即清。订阅的生命周期与
+  // 插件 state 对齐 —— 排进 storeClosers,拆除时最先退订。
+  const cascadeUnsubs = [
+    eventBus.onAnySession(
+      'message:deleted',
+      (env) => messageState.handleMessageDeleted(env.sessionId, env.event.messageId),
+      `PluginMessageState:${pluginId}`,
+    ),
+    eventBus.onGlobal(
+      'session:deleted',
+      (env) => messageState.handleSessionDeleted(env.event.sessionId),
+    ),
+  ]
   // 拆除流程收尾时关 storage 闩 + 关 KV(见 disposePlugin)—— 不排进回调队列。
   storeClosers.set(result.state, () => {
+    for (const unsub of cascadeUnsubs) unsub()
     closeStorage()
     closeStore()
   })

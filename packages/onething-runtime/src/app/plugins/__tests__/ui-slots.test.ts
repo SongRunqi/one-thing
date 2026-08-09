@@ -164,8 +164,21 @@ describe('contributes.uiSlots manifest validation', () => {
     [{ uiSlots: [{ id: 'x', label: 'X' }] }, 'anchor must be a non-empty string'],
     [{ uiSlots: [{ anchor: 'composer.above', label: 'X' }] }, 'id must be a non-empty string'],
     [{ uiSlots: [{ anchor: 'composer.above', id: 'x' }] }, 'label must be a non-empty string'],
+    [{ uiSlots: [{ anchor: 'composer.above', id: 'x', label: 'X', lifetime: 42 }] }, 'lifetime must be a string'],
   ])('形状非法被拒: %j', (contributes, message) => {
     expect(validatePluginContributes(contributes)).toContain(message)
+  })
+
+  it('lifetime 合法值通过;未知的未来值也不拒载(闸门读 === persistent,天然降级)', () => {
+    expect(validatePluginContributes({
+      uiSlots: [{ anchor: 'message.footer', id: 'x', label: 'X', lifetime: 'persistent' }],
+    })).toBeNull()
+    expect(validatePluginContributes({
+      uiSlots: [{ anchor: 'message.footer', id: 'x', label: 'X', lifetime: 'ephemeral' }],
+    })).toBeNull()
+    expect(validatePluginContributes({
+      uiSlots: [{ anchor: 'message.footer', id: 'x', label: 'X', lifetime: 'synced' }],
+    })).toBeNull()
   })
 })
 
@@ -483,8 +496,34 @@ describe('renderer projection', () => {
       commands: [],
     }])
     expect(plugin.contributes.uiSlots).toEqual([
-      { anchor: 'composer.above', id: 'a', label: 'A', unsupported: false },
-      { anchor: 'composer.below', id: 'b', label: 'B', unsupported: true },
+      { anchor: 'composer.above', id: 'a', label: 'A', unsupported: false, lifetime: '' },
+      { anchor: 'composer.below', id: 'b', label: 'B', unsupported: true, lifetime: '' },
     ])
+  })
+
+  it('lifetime 原样流出(不归一成布尔)—— 装前确认页据此披露持久内容', () => {
+    const [plugin] = projectOnethingPluginsForRenderer([{
+      definition: {
+        id: 'tps-meter',
+        source: 'user',
+        enabled: true,
+        dirPath: '/plugins/tps-meter',
+        manifest: {
+          name: 'tps-meter',
+          version: '1.0.2',
+          contributes: {
+            uiSlots: [
+              { anchor: 'message.footer', id: 'tps', label: 'TPS', lifetime: 'persistent' },
+              { anchor: 'composer.above', id: 'hint', label: 'Hint', lifetime: 'ephemeral' },
+              { anchor: 'composer.above', id: 'future', label: 'F', lifetime: 'synced' },
+            ],
+          },
+        },
+      },
+      loaded: true,
+      commands: [],
+    }])
+    expect(plugin.contributes.uiSlots.map(slot => slot.lifetime))
+      .toEqual(['persistent', 'ephemeral', 'synced'])
   })
 })

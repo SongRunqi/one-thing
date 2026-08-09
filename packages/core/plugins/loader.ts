@@ -377,6 +377,12 @@ export function validatePluginContributes(raw: unknown): string | null {
       if (typeof slot.label !== 'string' || !slot.label.trim()) {
         return `contributes.uiSlots[${index}].label must be a non-empty string`
       }
+      // lifetime 只校验形状(字符串):枚举成员不在 loader 判 —— 未来新生命期
+      // 值在旧宿主上不能被拒载(与未知锚点降级同规),闸门读 === 'persistent',
+      // 未知值天然是非持久。
+      if (slot.lifetime !== undefined && typeof slot.lifetime !== 'string') {
+        return `contributes.uiSlots[${index}].lifetime must be a string`
+      }
     }
   }
 

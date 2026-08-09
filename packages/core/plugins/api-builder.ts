@@ -1,6 +1,6 @@
 import type { CorePluginAPIState } from './api-state.js'
 import { deepFreezeCorePluginValue } from './freeze.js'
-import { PluginStorageError, type CorePluginStorage } from './storage.js'
+import { PluginStorageError, type CorePluginMessageStateStore, type CorePluginStorage } from './storage.js'
 import {
   PLUGIN_PANEL_INVOKE_ACTION,
   PLUGIN_PANEL_RENDER_ACTION,
@@ -104,6 +104,12 @@ export interface CreateCorePluginAPIOptions<
   store: TStore
   /** 插件数据目录访问面(R4);路径/序列化守卫在 core 的 storage.ts。 */
   storage?: CorePluginStorage
+  /**
+   * 消息作用域状态存储(plugin-message-state-2026-08)。宿主按 manifest 的
+   * lifetime 声明决定落盘(persistent)还是纯内存(ephemeral);不给 =
+   * 本宿主没有消息态面,`api.storage.message()` 调用处抛(与 storage 缺席同规)。
+   */
+  messageState?: CorePluginMessageStateStore
   /**
    * manifest 里声明过的面板 id(R5)。
    * registerWorkspacePanel 拿它做匹配 —— 声明先于代码,清单是权威。
@@ -242,6 +248,12 @@ export function createCorePluginAPI<
       throw new Error(`Plugin "${pluginId}" has no storage surface on this host`)
     }
     return options.storage
+  }
+  const requireMessageState = (): CorePluginMessageStateStore => {
+    if (!options.messageState) {
+      throw new Error(`Plugin "${pluginId}" has no message-state surface on this host`)
+    }
+    return options.messageState
   }
   /**
    * 存储失败进熔断账,然后**继续抛给插件** —— 路径穿越这类错误必须让插件
@@ -694,6 +706,36 @@ export function createCorePluginAPI<
           return false
         }
         return withStorageFailureReport('exists', () => requireStorage().exists(name))
+      },
+      /**
+       * 消息作用域状态(plugin-message-state-2026-08)。**坐标随调用递交** ——
+       * 宿主在这一刻收到 (sessionId, messageId),结构性归账,零语义解释。
+       * 读写语义与 KV 同规:写面抛(配额/不可序列化)、拆除闩、熔断分车道。
+       */
+      message(sessionId: string, messageId: string) {
+        return {
+          readJson<T = unknown>(fallback?: T): T | undefined {
+            if (state.disposed && !state.disposing) {
+              rejectLateCall('storage.message.readJson')
+              return fallback
+            }
+            return withStorageFailureReport('message.readJson', () =>
+              requireMessageState().readJson<T>(sessionId, messageId, fallback))
+          },
+          writeJson(value: unknown): void {
+            rejectDisposedWrite('message.writeJson')
+            withStorageFailureReport('message.writeJson', () =>
+              requireMessageState().writeJson(sessionId, messageId, value))
+          },
+          exists(): boolean {
+            if (state.disposed && !state.disposing) {
+              rejectLateCall('storage.message.exists')
+              return false
+            }
+            return withStorageFailureReport('message.exists', () =>
+              requireMessageState().exists(sessionId, messageId))
+          },
+        }
       },
     },
     scheduler,

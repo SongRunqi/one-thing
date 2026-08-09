@@ -42,6 +42,16 @@ export interface PluginContributionUiSlot {
   anchor: string
   id: string
   label: string
+  /**
+   * 消息作用域状态的生命期声明(见 plugin-message-state-2026-08.md):
+   *  - `'persistent'`:插件消息态落盘 + 启动水合(重启后老消息仍有内容);
+   *  - `'ephemeral'`(默认):纯内存,插件卸载即丢。
+   *
+   * 这是**闸门声明**,不是元数据:插件有任一 slot 声明 persistent,
+   * 宿主才给它的 message-state 落盘。loader 只校验形状(必须是字符串);
+   * 未知值(未来新生命期)在闸门处天然读成非持久 —— 与未知锚点同规。
+   */
+  lifetime?: 'persistent' | 'ephemeral'
 }
 
 /** 呈现提示:不给则由 schema 推导控件。 */
