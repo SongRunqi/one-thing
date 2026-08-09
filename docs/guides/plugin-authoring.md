@@ -44,7 +44,7 @@ node scripts/build-plugin.mjs packages/my-plugin
 | `commands` | `string[]` | 斜杠命令声明 |
 | `panels` | `[{id,label,view?,entry?}]` | 工作区面板。缺省 `view: "descriptor"`(描述树,UI 不执行插件代码);`view: "webview"` + `entry` 走逃生舱,见下 |
 | `webviewRoot` | `string` | webview 面板的静态资源根,**相对包目录**,缺省 `webview` |
-| `uiSlots` | `[{anchor,id,label,lifetime?}]` | 锚点块;未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"` |
+| `uiSlots` | `[{anchor,id,label,lifetime?}]` | UI 锚点(常显块或触发式,**由锚点决定**,见下);未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"` |
 | `theme` | `{overrides:{token:color}}` | 主题 token 覆盖(见下);装前确认页列出被改的 token |
 | `settings` | `{schema}` | JSON Schema 子集,宿主渲染并校验设置表单 |
 | `permissions` | `string[]` | 装前确认页如实列出 |
@@ -167,6 +167,71 @@ api.storage.message(sessionId, messageId).exists()
   `ctx.sessionId` / `ctx.messageId`(消息级锚点的 ctx 携带),按坐标现取。
 - 插件不在场时发生的流没有记录,装上之后也不会追认 —— 老消息就是空的。
 
+## 锚点清单与两种形态(常显块 / 触发式)
+
+宿主认识的锚点是**编译期常量**,你不能发明。今天有五个:
+
+| anchor | 形态 | 在哪 | ctx 带什么 | 容量 |
+|---|---|---|---|---|
+| `composer.above` | 常显块 | 输入框上方横条 | `sessionId` | 3 块 / 32px |
+| `chat.status-bar` | 常显块 | 聊天面底部状态带(穿 chip 壳) | `sessionId` | 8 块 / 24px |
+| `message.footer` | 常显块 | 每条 assistant 消息尾部 | `sessionId` + `messageId` | 6 块 / 24px |
+| `message.actions` | **触发式** | 每条 assistant 消息的 ⋯ 菜单 | `sessionId` + `messageId` | 3 项,超出折叠 |
+| `composer.actions` | **触发式** | 输入框工具条(附件按钮之前) | `sessionId` | 3 项,超出折叠 |
+
+**形态由宿主的锚点表决定,不是你声明的** —— 声明形状两种一字不差:
+
+```jsonc
+{ "contributes": { "uiSlots": [
+  { "anchor": "message.footer",  "id": "tps",       "label": "TPS" },
+  { "anchor": "message.actions", "id": "tps-usage", "label": "Token usage" }
+] } }
+```
+
+### 触发式锚点(trigger)
+
+平时**只有宿主画的入口**:`message.actions` 上是一行菜单项、
+`composer.actions` 上是一枚图标钮 —— 文案就是你 manifest 里的 `label`
+(v1 静态,没有动态徽标)。用户点它,宿主才开一层弹层,**这时才调你的
+`render`**;关弹层即销毁,没有常驻实例。
+
+时序是唯一的差别,协议一个字都没变:
+
+```js
+api.registerUiSlot({
+  anchor: 'message.actions',
+  id: 'tps-usage',                 // 必须与 manifest 里同 anchor 的某条 id 一致
+  render(ctx) {
+    // ctx.anchor === 'message.actions'
+    // ctx.sessionId / ctx.messageId —— 与 message.footer 同款坐标
+    const rec = api.storage.message(ctx.sessionId, ctx.messageId).readJson()
+    if (!rec) return { version: 2, body: { type: 'empty-state', title: '没有记录' } }
+    return { version: 2, body: { type: 'stack', gap: 'small', children: [
+      { type: 'table',
+        columns: [{ key: 'k', label: '指标' }, { key: 'v', label: '值' }],
+        rows: [{ key: 'tps', cells: { k: '生成速度', v: `${rec.tps.toFixed(1)} tok/s` } }] },
+    ] } }
+  },
+  onAction(input, ctx) { /* 与常显块同规,走 ui:action:* */ },
+})
+```
+
+选形态只有一条判据(**per-item 铁律**):按条目繁殖的位置上(今天是消息级),
+常显形态必须**极小且一行装得下**;表格、明细、长清单这类"重"内容只能走
+触发式 —— 入口按消息繁殖没问题(一行文案),内容按需只渲染一份。
+tps-meter 就是标准姿势:footer 一枚 24px 徽标常显,⋯ 菜单里一张明细表按需。
+
+坑与语义:
+
+- **弹层内容不开 webview**(与常显块同规,声明了拒载);它只画描述树。
+- **`refreshIntervalMs` 在弹层里照常生效**,而且关掉弹层轮询自动停 ——
+  按需时序自带省电,你不用自己管。
+- **render 连败被降级闸关掉后,入口置灰但不消失**:用户点得进去,看到
+  降级态并可以"再试一次"。失败的入口不占容量。
+- 超出容量(3 项)的入口被折叠掉,只在菜单/工具条上报个数;详情在设置页。
+- 一个插件可以同时住常显块与触发式(tps-meter / plan-status 都是),
+  两条声明各写各的 `id`。
+
 ## 样式与动画:你能改颜色,不能写动画
 
 **默认就跟随主题**:描述树的每个节点都用宿主的 `--ui-*` 变量画,用户切深色
@@ -218,8 +283,9 @@ api.storage.message(sessionId, messageId).exists()
 ## webview 面板:逃生舱(C 期,L3)
 
 图表、编辑器、拖拽、画布、任意动画 —— 描述树做不了的东西走这里。
-**只有工作区面板能用**;锚点块(`uiSlots`)永远不开 webview(32px 单行塞
-iframe 没有正经场景),声明了会**拒载**。
+**只有工作区面板能用**;锚点(`uiSlots`)永远不开 webview —— 常显块是
+32px 单行(塞 iframe 没有正经场景),触发式的弹层同样只画描述树;
+声明了会**拒载**。
 
 ### 声明
 

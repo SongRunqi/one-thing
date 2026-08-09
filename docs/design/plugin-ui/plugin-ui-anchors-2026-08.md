@@ -318,3 +318,96 @@ api.registerUiSlot({
 7. **既有面板零回归**:PluginPanelHost 重构为共享内核后,工作区面板
    全部既有测试绿。
 8. **typecheck / lint / vitest 全绿**;boundary 守卫无新增越界。
+
+---
+
+## 9. 锚点分类学 v2(2026-08-09)
+
+> 起因:A/B/C 三期落地后,真机使用暴露出第一版设计的结构性缺口 ——
+> 已开的三个锚点**全是"常显块"**,而真实诉求(消息 ⋯ 菜单里按需看 token
+> 明细、输入框工具条上的插件按钮)属于另一个物种:**触发式**。第一版没有
+> 分类学,每个锚点靠散文各自描述,再开新锚点就会继续散文下去。本节把锚点
+> 钉在五根正交的轴上,给出全量地址地图与治理规则 —— 以后开锚点是查表填格,
+> 不是重新发明。
+
+### 9.1 五根轴(每个锚点 = 五个轴上各取一个值)
+
+| 轴 | 取值 | 含义 |
+| --- | --- | --- |
+| **address** | `<region>.<slot>`(全小写) | 在宿主 UI 的哪个位置。编译期常量,插件不能发明。 |
+| **kind** | `block` \| `trigger` | **常显块**(内容始终渲染在位)/ **触发式**(平时只有宿主画的入口 —— 菜单项或图标钮,由 address 决定形态;点击才按需渲染内容弹层)。 |
+| **cardinality** | `singleton` \| `per-item` | 每窗口一个实例,还是按宿主条目繁殖(如按消息一个)。**per-item 是成本乘数**:N 条消息 = N 个实例。 |
+| **context** | `global` \| `session` \| `message` | render ctx 携带什么坐标(`sessionId` / `+messageId`)。协议上是"ctx 带什么",不是块的属性 —— 全局块 = 忽略 ctx 的块。 |
+| **expression** | `tree` \| `tree+webview` | 内容用什么表达。**webview 只允许出现在 `singleton` 的 `block`**(今天 = 仅工作区面板);per-item 永不 webview(iframe 按条目繁殖 = 性能自杀,消息列表未虚拟化是宿主事实);trigger 的**入口**永远是宿主原语(label/icon),webview 与否说的是弹层内容(v1 一律 tree)。 |
+
+kind 只有两个值 —— "菜单项"和"工具条按钮"不是两种 kind,是 trigger 在
+不同 address 上的宿主呈现:菜单里的 trigger 画成菜单项,工具条上的 trigger
+画成图标钮。呈现权在宿主,这正是宪法第 1 条在入口上的体现。
+
+### 9.2 全量地址地图(单一事实源;审计文档 §2 的候选全部收编)
+
+| address | kind | cardinality | context | expression | 容量 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `composer.above` | block | singleton | session | tree | 3 块 / 32px | ✅ 已开(R5.x) |
+| `chat.status-bar` | block | singleton | session | tree | 8 块 / 24px | ✅ 已开(R5.x) |
+| `message.footer` | block | **per-item** | message | tree | 6 块 / 24px | ✅ 已开(消息态一期) |
+| `message.actions` | **trigger** | per-item(入口) | message | 入口=宿主原语;弹层=tree | 3 项,超出折叠 | ✅ 已开(D 期) |
+| `composer.actions` | **trigger** | singleton | session | 同上 | 3 项,超出折叠 | ✅ 已开(D 期) |
+| `chat.header` | trigger | singleton | session | 同上 | — | 候选,不排期(价值待证) |
+| `sidebar.menu` | — | — | — | — | — | 已由面板导航收编(72c983d0),不是锚点 |
+| `composer.dock` | — | — | — | — | — | 不开:与 composer.above 同位,语义属草稿上下文 |
+| `workbench.tab` | — | — | — | — | — | 不开:tab 类型是编译期联合(审计 B-4) |
+| `markdown.block` | — | — | — | — | — | **永不**:插件残留进消息历史(审计红线) |
+| `settings.tab` | — | — | — | — | — | **永不**:插件配置已有归口 |
+| `sidebar.rail` | — | — | — | — | — | **永不**:纯图标导航,语义固定(审计红线) |
+
+(工作区面板不在此表 —— 它不是锚点,是独立 surface,tree+webview 都开。)
+
+**per-item 的铁律**:per-item 锚点的常显形态(block)必须极小且同步渲染
+(message.footer 的 24px 树);任何"重"的内容(表格、明细、webview)在
+per-item 位置只能以 **trigger** 形态存在 —— 入口按条目繁殖没问题(一行
+菜单文案),内容按需只渲染一份。tps-meter 的"footer 常显徽标 vs ⋯ 菜单
+按需明细"之争,本质就是这条铁律的两侧。
+
+### 9.3 trigger 的协议(D 期的设计核心)
+
+1. **声明**:与 block 同一张 `contributes.uiSlots` 表 —— kind 由锚点表
+   决定,不是插件声明的(插件说"我要进 message.actions",宿主知道那是
+   trigger 位)。条目形状不变:`{ anchor, id, label }`;label 就是入口文案。
+2. **入口是宿主画的**:菜单项/图标钮由宿主用自己的组件渲染 label(与内置
+   项同一套菜单/按钮组件),插件零参与。v1 入口是静态的(manifest label);
+   动态徽标(如"执行中"亮点)登记为演化格 D.2,需要时给入口加一条轻量
+   badge 通道,不动协议骨架。
+3. **弹层**:点击 → 宿主弹层壳(遵守 ui-system 浮层决策树,与既有浮层同
+   一套 z-index/退出语义)→ 走**既有** `ui:render:<anchor>:<id>` 通道拉树
+   → PluginPanelNode 渲染。ctx 带 `anchor + sessionId (+ messageId)`。
+   关弹层即销毁,无常驻实例。onAction 照旧走 `ui:action:*`。
+4. **降级/熔断**:与 block 完全同规 —— surface 仍折叠为 `ui:<anchor>:<id>`,
+   render 连败 → 该入口置灰(不是消失:用户该知道"这里有个坏了的插件项"),
+   点击显示降级态。失败入口不占容量。
+5. **协议零新增**:没有新通道、没有新守卫、没有新熔断家族 —— trigger 是
+   既有协议在"按需"时序上的重放。新增的只有 renderer 侧两个挂点 + 一个
+   弹层壳。
+
+### 9.4 治理(append-only 的具体含义)
+
+- **开新锚点 = 在 9.2 表里加一行 + 五处代码**:`UI_ANCHOR_CAPACITY` /
+  `UI_ANCHORS` / renderer 挂点组件 / 拆除快照测试 / 本表。缺一处 typecheck
+  或运行时断言变红(ui-anchor.ts 的一致性守卫)。
+- **锚点只加不删不改语义**:已发布锚点的 address/kind/context 永不变更;
+  容量数字可放宽不可收紧(收紧会截断既有插件)。真要退役:锚点进
+  `unsupported` 降级路径(插件照常加载,块不渲染),与未知锚点同一条路 ——
+  这就是 append-only 在锚点上的兑现方式。
+- **红线复述**(与审计 §3 一致,放这里防散失):消息正文内嵌、替换
+  InputBox/MessageList 本体、全局 CSS、sidebar.rail、settings 独立 tab。
+
+### 9.5 D 期排期概要(**已落地 2026-08-09**;实录与差异见 rollout §6.4)
+
+- **D1**:锚点表加 `message.actions` / `composer.actions`(kind: trigger)
+  + core 校验(trigger 锚点同样拒绝 webview)。
+- **D2**:renderer 弹层壳(复用 PluginPanelNode + 四态壳)+ 两个挂点
+  (MessageItem ⋯ 菜单、InputBox 工具条)。
+- **D3**:tps-meter 1.0.3 —— footer 常显徽标保留(轻),新增
+  message.actions 入口 "Token usage" → 弹层明细(重);两者取舍交给用户
+  (settings 里可各自关)。plan-status 1.1.0 加 composer.actions 入口示范。
+- **D4**:拆除快照 + 入口置灰降级测试 + 真机走查。

@@ -170,11 +170,21 @@ Notes:
   - **Its own product surface**: declarative workspace panels (`contributes.panels` +
     `api.registerWorkspacePanel`, pure-data description tree — the UI never executes
     plugin code), declarative UI-slot blocks on host-named anchors
-    (`contributes.uiSlots` + `api.registerUiSlot`, R5.x — anchors:
+    (`contributes.uiSlots` + `api.registerUiSlot`, R5.x — **five** host-named anchors,
+    each carrying a **kind** decided by the host table, never by the plugin
+    (`packages/core/plugins/ui-anchor.ts`): three always-on *blocks* —
     `composer.above` above the composer, `chat.status-bar` below the message list,
-    `message.footer` per assistant message — the first message-level anchor,
-    its render ctx additionally carries `messageId`; render ctx carries `anchor` +
-    `sessionId`, the host re-pulls on session switch),
+    `message.footer` per assistant message (the first message-level anchor, its
+    render ctx additionally carries `messageId`) — and two *triggers* (D 期,
+    2026-08-09) where the host draws only an entry and pulls the tree **on click**
+    into a popover that is destroyed on close: `message.actions` in each assistant
+    message's ⋯ menu (ctx carries `messageId`) and `composer.actions` on the
+    composer toolbar, before the attach button. Trigger adds **no protocol**: same
+    `ui:render:*` / `ui:action:*` channel, same `ui:<anchor>:<id>` surface folding;
+    a degraded entry is **greyed, not removed**. Render ctx carries `anchor` +
+    `sessionId`, the host re-pulls on session switch. Renderer pieces:
+    `components/plugins/{UiSlotHost,UiSlotBlock,PluginTriggerPopover}.vue` +
+    `usePluginTriggerEntries.ts`),
     theme token overrides (`contributes.theme.overrides`, B 期/L2 — keys must be
     existing `CSS_VAR_MAP` token paths, values must pass a color-literal whitelist;
     illegal entries are dropped and shown in the catalog projection, never a load
@@ -246,7 +256,12 @@ Notes:
   `docs/design/plugin-system-capabilities-and-evolution.md` is the pre-R0 survey — useful
   for history, superseded for current capabilities.
   UI slots & descriptor-tree v2 (R5.x): `docs/design/plugin-ui/` (anchor audit, anchor
-  design, expression layers, rollout). The one-liner for plugin authors:
+  design, expression layers, rollout). **Anchor taxonomy v2** — the five-axis model
+  (address / kind / cardinality / context / expression), the full address map (what is
+  open, what is deferred, what is *never*), the trigger protocol and the append-only
+  governance rule (a new anchor = one row in §9.2 + five code sites) live in
+  `plugin-ui-anchors-2026-08.md` §9; the D-phase landing record and its deviations are
+  in `plugin-ui-rollout-2026-08.md` §6.4. The one-liner for plugin authors:
   **you may put things next to the composer, never inside it** — and the expression
   decision table: data lists / forms / status → L1 descriptor tree; progress / badges /
   tabs → L1 v2 nodes; brand theming → L2 token overrides (phase 2); charts / editors /

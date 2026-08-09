@@ -344,6 +344,39 @@
               class="toolbar-right"
               @click.stop
             >
+              <!-- 触发式锚点 composer.actions(D 期):插件入口画成工具条图标钮,
+                   排在附件按钮之前。工具条已裁掉逐格竖线 —— 不带 border,
+                   hover 底色即可辨格。点击 → 弹层(ctx 带 sessionId)。 -->
+              <Tooltip
+                v-for="entry in composerPluginEntries"
+                :key="composerPluginEntryKey(entry)"
+                class="plugin-trigger-cell"
+                :text="isComposerPluginPaused(entry) ? `${entry.label} — 该插件项已暂停` : entry.label"
+              >
+                <Button
+                  size="small"
+                  class="voice-aux-btn plugin-trigger-btn"
+                  :class="{ 'is-paused': isComposerPluginPaused(entry) }"
+                  native-type="button"
+                  :aria-label="entry.label"
+                  @mousedown.prevent
+                  @click.stop="openComposerPluginTrigger(entry, $event)"
+                >
+                  <template #icon>
+                    <Puzzle
+                      :size="15"
+                      :stroke-width="2"
+                    />
+                  </template>
+                </Button>
+              </Tooltip>
+              <Tooltip
+                v-if="composerPluginTruncated.length"
+                class="plugin-trigger-cell"
+                :text="composerPluginTruncatedTitles"
+              >
+                <span class="plugin-trigger-folded">+{{ composerPluginTruncated.length }}</span>
+              </Tooltip>
               <Button
                 size="small"
                 class="voice-aux-btn attach-btn"
@@ -472,6 +505,17 @@
                 </template>
               </Button>
             </div>
+            <!-- 插件弹层:teleport 到 body(工具条是 overflow 裁剪语境,
+                 画在原地必被切),锚到被点的那枚图标钮。 -->
+            <PluginTriggerPopover
+              :entry="composerPluginOpenEntry"
+              :anchor-el="composerPluginAnchorEl"
+              :session-id="props.sessionId ?? null"
+              :max-height="composerPluginMaxHeight"
+              placement="top-end"
+              @close="closeComposerPluginTrigger"
+              @state="noteComposerPluginState"
+            />
           </div>
         </div>
       </div>
@@ -482,6 +526,9 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import UiSlotHost from '@/components/plugins/UiSlotHost.vue'
+import PluginTriggerPopover from '@/components/plugins/PluginTriggerPopover.vue'
+import { usePluginTriggerEntries } from '@/components/plugins/usePluginTriggerEntries'
+import type { PluginContributedUiSlot } from '@/workspace/ui-anchor-registry'
 import Popover from '@/components/common/Popover.vue'
 import Select from '@/components/common/Select.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
@@ -512,7 +559,7 @@ import {
   type QueuedFileChangeSummary,
   type QueuedMessage,
 } from './composer/queued-message-utils'
-import { X, Square, Check, Loader2, Mic, Paperclip, Phone, PhoneOff, Volume2, VolumeX } from 'lucide-vue-next'
+import { X, Square, Check, Loader2, Mic, Paperclip, Phone, PhoneOff, Puzzle, Volume2, VolumeX } from 'lucide-vue-next'
 import { executeCommand, findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
@@ -1506,6 +1553,32 @@ function openFilePicker() {
   fileInputRef.value?.click()
 }
 
+// ── 触发式锚点 composer.actions(D 期) ──────────────────────────────
+// 入口画在工具条右侧按钮带(附件/静音/通话/麦克风一族),不在 S 状态带 ——
+// 那条带是常显块的地盘。清单与容量裁决复用 ui-anchor-registry 的既有投影。
+const {
+  entries: composerPluginEntries,
+  truncated: composerPluginTruncated,
+  truncatedTitles: composerPluginTruncatedTitles,
+  openEntry: composerPluginOpenEntry,
+  openAnchorEl: composerPluginAnchorEl,
+  maxHeight: composerPluginMaxHeight,
+  entryKey: composerPluginEntryKey,
+  isPaused: isComposerPluginPaused,
+  toggle: toggleComposerPluginTrigger,
+  close: closeComposerPluginTrigger,
+  noteState: noteComposerPluginStateFor,
+} = usePluginTriggerEntries('composer.actions')
+
+function openComposerPluginTrigger(entry: PluginContributedUiSlot, event: MouseEvent) {
+  toggleComposerPluginTrigger(entry, event.currentTarget as HTMLElement | null)
+}
+
+function noteComposerPluginState(state: { degraded: boolean; error: boolean }) {
+  const entry = composerPluginOpenEntry.value
+  if (entry) noteComposerPluginStateFor(entry, state)
+}
+
 async function handleFilePicked(event: Event) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
@@ -2434,6 +2507,35 @@ defineExpose({
 .toolbar-right > .voice-btn,
 .toolbar-right > .voice-aux-btn {
   padding: 0 12px;
+}
+
+/* 触发式锚点入口(composer.actions):与 voice-aux-btn 同款 cell 形态。
+   Tooltip 包了一层 wrapper,上面那几条直接子选择器够不到里面的按钮,
+   补一条把按钮撑满格子(与 .toolbar-left 的 :deep(.tooltip-wrapper) 同法)。 */
+.toolbar-right > .plugin-trigger-cell {
+  display: flex;
+  align-items: stretch;
+}
+
+.toolbar-right > .plugin-trigger-cell > .voice-aux-btn {
+  border: 0;
+  border-radius: 0;
+  height: 100%;
+  padding: 0 12px;
+}
+
+/* 降级过的入口:置灰**不消失**(§9.3 第 4 条),照常可点 —— 点进去看降级态。 */
+.plugin-trigger-btn.is-paused {
+  opacity: 0.45;
+}
+
+/* 超容量折叠的计数(详情在设置页)。 */
+.plugin-trigger-folded {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--ui-text-muted-fg);
 }
 
 /* The SEND label rides in the icon slot, so the Button component squares

@@ -173,6 +173,7 @@ H 线  webview 逃生舱(L3,与 backend 子进程 ext host 同批)
 | A 期 | legacy 目录插件清零(retirement-plan 文档) | P1–P3 | 执行中 |
 | B 期 | L2 主题 token 覆盖(contributes.theme)+ 受限动画原语 | R5.x 全量落地 ✓ | **已落地(2026-08-09)** |
 | C 期 | L3 webview 逃生舱(**不含 ext host**) | R1 软隔离 ✓ + B 期 ✓ | **已落地(2026-08-09)** |
+| D 期 | 触发式锚点(`message.actions` / `composer.actions`,锚点分类学 v2 §9) | R5.x 全量 ✓ + E 期带系统 ✓ | **已落地(2026-08-09,§6.4)** |
 | H 线 | backend 子进程 ext host(权限声明强制、RPC 化 API) | 宪法第 1、2 条持续生效 | 终局,不排期 |
 
 ### 6.1 B 期落地清单(L2)
@@ -401,6 +402,68 @@ C5 对抗测试落点:`packages/core/plugins/__tests__/webview.test.ts`(判据)�
 `apps/electron/src/plugins/__tests__/protocol.test.ts`(协议五闸 + 拆除快照)、
 `packages/renderer/components/plugins/__tests__/PluginWebviewFrame.test.ts`
 (init→invoke→result→refresh 全链 + token 闸 + 卸载无泄漏)。
+
+---
+
+### 6.4 D 期落地实录(2026-08-09)与规格差异
+
+**表达力战役的最后一期**:锚点分类学 v2(anchors §9)的 trigger 协议落地。
+一句话:**协议零新增,新增的只有 renderer 侧两个挂点 + 一个弹层壳** ——
+§9.3 第 5 条原样兑现。
+
+代码位置:
+
+| 环节 | 落点 |
+| --- | --- |
+| 锚点表(kind 轴 + 两个 trigger 锚点)与 `uiAnchorKind` / `isTriggerUiAnchor` | `packages/core/plugins/ui-anchor.ts` |
+| 容量镜像(含 kind) | `packages/renderer/workspace/ui-anchor-registry.ts` |
+| 挂点内核(清单、容量折叠、开合、置灰记忆、拆除自关) | `packages/renderer/components/plugins/usePluginTriggerEntries.ts` |
+| 共享弹层壳 | `packages/renderer/components/plugins/PluginTriggerPopover.vue` |
+| 四态汇报出口(块 → 挂点) | `packages/renderer/components/plugins/UiSlotBlock.vue`(新增 `state` emit) |
+| 挂点 1:消息 ⋯ 菜单 | `packages/renderer/components/chat/message/MessageActions.vue` |
+| 挂点 2:输入框工具条 | `packages/renderer/components/chat/InputBox.vue`(`.toolbar-right`,附件按钮之前) |
+| 验收 | `packages/renderer/components/plugins/__tests__/ui-trigger.test.ts` + 既有 `ui-slots.test.ts` / `ui-anchor-registry.test.ts` 扩写 |
+
+与 §9.3 / §9.5 的逐条差异:
+
+1. **弹层壳没有做成"入口 + 弹层"一个组件,而是拆成"内核 composable +
+   弹层组件",挂点自己画入口。** 原因是实测出来的浮层嵌套事实:浮层内核
+   (`composables/floating/useFloatingLayer`)判外点只问"这次 pointerdown 落没落
+   在我自己身上",**没有嵌套层栈**。若把弹层长在 ⋯ 菜单的 Dropdown 插槽里,
+   点弹层 = 菜单的"外点" → 菜单关闭 → 插槽内容卸载 → 弹层被连根带走。
+   落地形态因此是:入口画在菜单里,**弹层挂在 Dropdown 之外**,点入口时
+   先关菜单再开弹层,弹层锚到 ⋯ 按钮(这条消息上不会消失的宿主元素)。
+   这不是对 §9.3 的偏离,是它第 3 条"遵守浮层决策树"的具体兑现方式。
+2. **弹层内容直接复用 `UiSlotBlock`**,不另写一层四态壳 —— 四态、
+   latest-wins、请求通道、refresh 合流、可见性轮询全部原样继承。
+   代价是错误/降级态沿用块的"小字一行"形态(它本是给 24px 带设计的),
+   在 280px 弹层里偏素;够用,不值得为它开第二套壳。
+3. **"打开即 render、关闭即销毁"是 Popover 内核白送的**:它的插槽内容
+   本就 `v-if="open"`,块随之挂载/卸载,通知订阅一并退订。没有写一行
+   生命周期代码,拆除快照测试直接验订阅数归零。
+4. **降级置灰的记忆活在挂点上,不在弹层里**(弹层关掉块就没了)。块每次
+   拉取落定都往上报一次四态(`state` emit),挂点按 `pluginId:slotId` 记
+   一份 paused 集合。**为什么不是"只在变化时报"**:每次打开都是新实例
+   (初值 false),一个曾经降级、后来恢复的块不会产生 true→false 的变化,
+   入口就会永远灰着 —— 所以报的是"每次落定后的当前态"。
+5. **加载失败的插件不在 trigger 锚点上折叠成聚合指示**(常显块的
+   `UiSlotHost` 会画一行 "N plugin blocks not running")。菜单与工具条不是
+   解释插件问题的地方,失败项直接不出现;容量折叠只报个数("+N 个插件项
+   已折叠" / 工具条上一枚 "+N")。详情仍在设置页。
+6. **菜单里的置灰用文字后缀("已暂停")而不是 Tooltip**,工具条上的置灰用
+   Tooltip(`<label> — 该插件项已暂停`)。菜单项的 label 本就看得见,再挂
+   Tooltip 会把整行包进一层 wrapper 并影响行布局;工具条上只有图标,Tooltip
+   是它唯一能说话的地方(也是 §9.3 第 4 条要求的那句说明的落点)。
+7. **kind 进了容量表并被镜像**(`UI_ANCHOR_CAPACITY_MIRROR` 现在带 kind),
+   镜像一致性测试的正则同步改写,并加了一条"五个锚点一个不少"的键集合断言 ——
+   §9.4 的"五处"里最容易漏的就是这处镜像。
+8. **`maxHeight` 在 trigger 锚点上换了含义**(弹层内容最大高度 320,不是入口
+   高度)—— §9.2 的容量列只写了"3 项,超出折叠",没有给高度;镜像需要一个
+   数字,就地补上并在两处注释里写明含义。
+9. **样本插件按规格双住**:`tps-meter` 1.0.3 footer 徽标保留 + `message.actions`
+   的 "Token usage" 明细表;`plan-status` 1.1.0 `composer.above` 状态条保留 +
+   `composer.actions` 的 "Plan detail" 整树(状态行 + 步骤清单)。两个 tarball
+   已构建,**未安装**(真机走查时用户自行安装)。
 
 ---
 

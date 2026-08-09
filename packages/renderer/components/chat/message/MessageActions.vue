@@ -357,7 +357,37 @@
               class="more-menu-item-badge"
             >{{ formatCompact(usage.totalTokens) }}</span>
           </Button>
-          <!-- Add more action items here in the future -->
+          <!-- 触发式锚点 message.actions(D 期):插件项直排在内置项之后,
+               文案就是 manifest 的 label(v1 静态)。点击 → 关菜单、开弹层
+               (弹层锚到 ⋯ 按钮,ctx 带 {sessionId, messageId})。
+               入口是菜单项,内容住在另一层浮层里 —— 二者永不嵌套。 -->
+          <Button
+            v-for="entry in pluginEntries"
+            :key="pluginEntryKey(entry)"
+            unstyled
+            class="more-menu-item"
+            :class="{ 'is-paused': isPluginTriggerPaused(entry) }"
+            role="menuitem"
+            @click="openPluginTrigger(entry)"
+          >
+            <Puzzle
+              :size="14"
+              :stroke-width="2"
+            />
+            <span>{{ entry.label }}</span>
+            <span
+              v-if="isPluginTriggerPaused(entry)"
+              class="more-menu-item-badge"
+            >已暂停</span>
+          </Button>
+          <!-- 超容量折叠(message.actions 容量 3):与失败块同规,只报个数,
+               详情在设置页 —— 菜单不是解释插件问题的地方。 -->
+          <div
+            v-if="pluginTruncated.length"
+            class="more-menu-folded"
+          >
+            +{{ pluginTruncated.length }} 个插件项已折叠
+          </div>
         </div>
 
         <!-- Info section (shown when expanded) -->
@@ -389,6 +419,19 @@
           </div>
         </div>
       </Dropdown>
+      <!-- 插件弹层住在 Dropdown **之外**:菜单与弹层是两层浮层,内核只按
+           "点到不到我身上"判外点,弹层若长在菜单里,点它就会先把菜单关掉,
+           连着把弹层一起卸载。锚到 ⋯ 按钮 —— 它是这条消息上不会消失的宿主元素。 -->
+      <PluginTriggerPopover
+        :entry="pluginOpenEntry"
+        :anchor-el="pluginOpenAnchorEl"
+        :session-id="sessionId ?? null"
+        :message-id="messageId"
+        :max-height="pluginTriggerMaxHeight"
+        placement="bottom-end"
+        @close="closePluginTrigger"
+        @state="notePluginTriggerState"
+      />
     </div>
   </div>
 </template>
@@ -399,6 +442,9 @@ import { ref, computed, nextTick, onUnmounted } from 'vue'
 import Dropdown from '@/components/common/Dropdown.vue'
 import Popover from '@/components/common/Popover.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
+import PluginTriggerPopover from '@/components/plugins/PluginTriggerPopover.vue'
+import { usePluginTriggerEntries } from '@/components/plugins/usePluginTriggerEntries'
+import type { PluginContributedUiSlot } from '@/workspace/ui-anchor-registry'
 import { useTTS } from '@/composables/useTTS'
 import { stripMarkdown } from '@/composables/useMarkdownRenderer'
 import { copyTextToClipboard } from '@/utils/clipboard'
@@ -419,6 +465,7 @@ import {
   Plus,
   MoreHorizontal,
   Hash,
+  Puzzle,
   ThumbsDown,
 } from 'lucide-vue-next'
 
@@ -689,6 +736,40 @@ function setMoreMenu(open: boolean) {
 
 function toggleMoreMenu() {
   setMoreMenu(!showMoreMenu.value)
+}
+
+// ── 触发式锚点 message.actions(D 期) ──────────────────────────────
+// 清单/顺序/容量裁决全部来自 ui-anchor-registry 的既有投影(与常显块同一份);
+// 这里只管开合与"哪个入口灰了"。
+const {
+  entries: pluginEntries,
+  truncated: pluginTruncated,
+  openEntry: pluginOpenEntry,
+  openAnchorEl: pluginOpenAnchorEl,
+  maxHeight: pluginTriggerMaxHeight,
+  entryKey: pluginEntryKey,
+  isPaused: isPluginTriggerPaused,
+  toggle: togglePluginTrigger,
+  close: closePluginTriggerState,
+  noteState: notePluginTriggerStateFor,
+} = usePluginTriggerEntries('message.actions')
+
+function openPluginTrigger(entry: PluginContributedUiSlot) {
+  const opened = togglePluginTrigger(entry, moreBtnRef.value)
+  // 菜单先退场(见模板注释),再把"这条消息上还有浮层开着"报给悬停行,
+  // 否则操作行会在指针离开时淡出,弹层就悬在半空没有锚。
+  setMoreMenu(false)
+  emit('menuOpen', opened)
+}
+
+function closePluginTrigger() {
+  closePluginTriggerState()
+  emit('menuOpen', false)
+}
+
+function notePluginTriggerState(state: { degraded: boolean; error: boolean }) {
+  const entry = pluginOpenEntry.value
+  if (entry) notePluginTriggerStateFor(entry, state)
 }
 
 function formatNumber(num: number): string {
@@ -1115,6 +1196,19 @@ onUnmounted(disarmRegenerate)
   font-size: 11px;
   color: var(--ui-text-muted-fg);
   font-variant-numeric: tabular-nums;
+}
+
+/* 降级过的插件项:**置灰不消失**(§9.3 第 4 条)。用户该知道"这里有个坏了的
+   插件项",点进去看降级态并可再试一次 —— 所以它照常可点,只是收掉墨色。 */
+.more-menu-item.is-paused {
+  color: var(--ui-text-muted-fg);
+}
+
+/* 超容量折叠的计数行:纯说明,不可点。 */
+.more-menu-folded {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--ui-text-muted-fg);
 }
 
 .more-menu-details {

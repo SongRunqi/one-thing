@@ -65,6 +65,15 @@ const props = defineProps<{
   maxHeight: number
 }>()
 
+/**
+ * 四态汇报(D 期加)。常显块的宿主不听 —— 块自己把状态画在原地就够了;
+ * **触发式**锚点的挂点要听:弹层关掉后块就没了,而"这个插件项已暂停"
+ * 必须留在入口上(置灰不消失,§9.3 第 4 条)。加一个出口,不改任何既有语义。
+ */
+const emit = defineEmits<{
+  state: [{ degraded: boolean; error: boolean }]
+}>()
+
 /*
  * 渲染逻辑在共享内核(usePluginUiBlock)—— 与工作区面板同一套四态机、
  * 同一套通道语义。锚点块的多出来的三件事:
@@ -98,6 +107,16 @@ const hostEl = ref<HTMLElement | null>(null)
 
 onMounted(() => {
   observeVisibility(hostEl.value)
+})
+
+/*
+ * 每次拉取落定(loading 由 true 转 false)汇报一次当前四态 —— 只在
+ * degraded/error 变化时发不够用:块每次打开都是**新实例**(初值 false),
+ * 一个曾经降级、后来恢复的块不会产生"true → false"的变化,入口就永远灰着。
+ */
+watch([loading, degraded, error], ([isLoading]) => {
+  if (isLoading) return
+  emit('state', { degraded: degraded.value, error: !!error.value })
 })
 
 // 会话切换 = 这一块要重拉(render ctx 的 sessionId 随之变化);messageId
