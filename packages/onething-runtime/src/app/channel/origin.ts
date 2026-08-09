@@ -73,8 +73,12 @@ export function sanitizeRendererOrigin(command: Record<string, unknown>): Messag
  * Message sources stamped by system-internal re-drives (goal kicks /
  * continuations). This set is THE single definition of "system-internal":
  * the stream engine's router bypass and every counterpart-identity scan key
- * off it. When a new internal emitter appears (scheduler re-drive, plugin
- * push, ...), adding its source here updates all of them at once.
+ * off it. When a new internal emitter appears (scheduler re-drive, ...),
+ * adding its source here updates all of them at once.
+ *
+ * Plugin pushes (N1) belong to the same class but form a PREFIX family rather
+ * than members — one source per plugin id — so they are matched in
+ * `isSystemInternalSource`, not listed here.
  */
 export const SYSTEM_INTERNAL_MESSAGE_SOURCES: ReadonlySet<string> = new Set([
   'goal',
@@ -87,8 +91,24 @@ export const SYSTEM_INTERNAL_MESSAGE_SOURCES: ReadonlySet<string> = new Set([
   'collab',
 ])
 
+/**
+ * 插件注入消息的 source 前缀:`plugin:<pluginId>`(N1)。
+ *
+ * 它是一个**前缀族**而不是集合里的一个成员,因为 id 是运行期的:每个插件一个
+ * source。归属仍然是 SYSTEM_INTERNAL 那一类 —— 插件推送背后没有渠道身份,
+ * 让路由去给它解析一个匿名身份的后果与 goal/radio 一模一样(命令被改派到身份
+ * 会话、会话的 memory-profile 元数据被覆写)。
+ */
+export const PLUGIN_MESSAGE_SOURCE_PREFIX = 'plugin:'
+
+export function pluginMessageSource(pluginId: string): string {
+  return `${PLUGIN_MESSAGE_SOURCE_PREFIX}${pluginId}`
+}
+
 export function isSystemInternalSource(source: string | undefined): boolean {
-  return source !== undefined && SYSTEM_INTERNAL_MESSAGE_SOURCES.has(source)
+  if (source === undefined) return false
+  return SYSTEM_INTERNAL_MESSAGE_SOURCES.has(source)
+    || source.startsWith(PLUGIN_MESSAGE_SOURCE_PREFIX)
 }
 
 /**

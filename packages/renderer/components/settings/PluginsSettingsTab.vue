@@ -632,6 +632,9 @@ import type {
   PluginConfigFieldDescriptor,
   PluginTarballSummary,
 } from '@shared/ipc/plugins.js'
+// 叶子路径,不走桶(与 platform/electron.ts 同规:桶会把 node-only 的 loader 拖进
+// 浏览器包)。取的是权限披露文案的单一事实源。
+import { describePluginPermission } from '@onething/core/plugins/sessions'
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
@@ -995,6 +998,19 @@ const WEBVIEW_PANEL_NOTE = 'runs sandboxed UI code'
  */
 const BACKGROUND_NOTE = 'sets an app background image'
 
+/**
+ * 权限披露(N1)。
+ *
+ * 与上面四句同规:一句话只说一次,已装卡片与装前确认页共用同一句措辞。
+ * 枚举名(`sessions:trigger`)是给作者看的,用户要读的是"它能对我的会话做什么"——
+ * 口径的单一事实源在 core 的 `PLUGIN_SESSION_PERMISSION_NOTES`,这里只是调用点,
+ * 于是新增一个权限枚举时不会出现"宿主判了、界面没说"的漂移。未登记的权限名
+ * 原样显示(向前兼容:未来的宿主可能认识它)。
+ */
+function permissionNotes(permissions: string[]): string {
+  return `permissions: ${permissions.map(describePluginPermission).join('; ')}`
+}
+
 /** 判据只在这里判一次:已装卡片走投影后的清单,市场走 manifest 原文。 */
 function isWebviewPanel(panel: { view?: string }): boolean {
   return panel.view === 'webview'
@@ -1072,7 +1088,7 @@ function contributesSummary(plugin: PluginInfo): string[] {
   }
   if (contributes?.hasSettingsSchema) summary.push('declares settings')
   if (contributes?.permissions?.length) {
-    summary.push(`permissions: ${contributes.permissions.join(', ')}`)
+    summary.push(permissionNotes(contributes.permissions))
   }
   if (contributes?.activationEvents?.length) {
     summary.push(`activation: ${contributes.activationEvents.join(', ')}`)
@@ -1476,7 +1492,7 @@ function declaredContributions(entry: { contributes?: MarketContributes; minAppV
   }
   if (contributes?.hasSettingsSchema) declares.push('settings schema')
   if (contributes?.permissions?.length) {
-    declares.push(`permissions: ${contributes.permissions.join(', ')}`)
+    declares.push(permissionNotes(contributes.permissions))
   }
   if (contributes?.activationEvents?.length) {
     declares.push(`activation: ${contributes.activationEvents.join(', ')}`)

@@ -61,6 +61,11 @@ export const pluginScope = {
   settingsChange: () => brand('settings:onChange'),
   steer: () => brand('steer'),
   followUp: () => brand('followUp'),
+  /**
+   * 跨会话投递(N1)。与 steer / followUp 同族 —— 它就是那两条队列的上层门面,
+   * 外加"目标空闲则起一轮"这一格;失败同样是后台的,用户只会觉得"它没反应"。
+   */
+  sendMessage: () => brand('sendMessage'),
   /** 注册期违规:未声明的面板 id、抢占保留命名空间、连接器没有 id …… */
   registration: (what: string) => brand(`register:${what}`),
   /** 某条 IM 渠道的运行期失败。带 connector id —— 用户要知道是哪条渠道坏了。 */
@@ -200,7 +205,7 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
   'conversation-control': {
     threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
     remedy: 'disable-plugin',
-    rationale: 'steer / followUp 直接改对话走向,失败是后台的,用户只会觉得"它没反应"。',
+    rationale: 'steer / followUp / sendMessage 直接改对话走向,失败是后台的,用户只会觉得"它没反应"。',
   },
   registration: {
     threshold: 1,
@@ -259,7 +264,7 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (scope.startsWith('event:')) return 'event-handler'
   if (scope.startsWith('storage')) return 'storage'
   if (scope.startsWith('settings:')) return 'settings-change'
-  if (scope === 'steer' || scope === 'followUp') return 'conversation-control'
+  if (scope === 'steer' || scope === 'followUp' || scope === 'sendMessage') return 'conversation-control'
   if (scope.startsWith('register')) return 'registration'
   if (scope.startsWith('connector')) return 'connector'
   return null

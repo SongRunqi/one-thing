@@ -1,0 +1,380 @@
+/**
+ * N1 的**装配层实现**:跨会话投递(信使)与会话感知快照。
+ *
+ * 协议在 core(`@onething/core/plugins` 的 sessions.ts):枚举、常量、结果形状、
+ * 三态矩阵的纯函数。这里放的是那些**只有产品层知道**的事实:谁在生成、正在跑
+ * 哪个工具、有没有挂着审批卡、上下文占了多少、最后一条消息说了什么,
+ * 以及"起一轮"到底要往总线上发什么。
+ *
+ * ## 三条纪律
+ *
+ *  1. **零新统计**。快照的每一格都从现成内存态现算(引擎的 activeStreams、
+ *     core Permission 的 pending 表、会话存储、模型注册表的窗口),不落盘、
+ *     不开第二本账 —— 两本账迟早会漂,而漂的那一刻插件读到的是一个说谎的状态。
+ *  2. **不加载全量历史**。lastMessage 走 `getSessionMessagesPage({anchor:'tail',
+ *     limit:1})`;list() 走 `getSessionsList()`(元数据索引),一条消息都不读。
+ *  3. **循环闸是这一期的主角**。它是第一个"插件可自发耗 token"的口:没有闸,
+ *     两个会话互相回话就是一个不收敛的账单。
+ *
+ * ## 循环闸怎么记账(诚实说明它的近似)
+ *
+ * 链长(hop)要回答的是"这次投递是第几手转发"。理想口径是"发起这次调用的那个
+ * 回合是第几跳",但 `api.sendMessage(sessionId, …)` **不携带调用方所在的会话**
+ * ——插件可以在事件 handler、定时任务、工具执行里任何地方调它。
+ *
+ * 让插件自己传 `fromSessionId` 是不行的:传一个假的(或干脆不传)就能把跳数
+ * 永远压在 0,闸自己把自己关掉了。所以这里取**保守上界**:
+ *
+ *     hop = 1 + max(此刻仍在飞的、由插件投递引发的回合的 hop)
+ *
+ * 它不可被插件规避(不需要调用方配合),代价是**并发时会偏保守** —— 另一条无关
+ * 的插件链正在跑时,这一次投递会被算高一跳。在上限 8 之下这是可接受的误差,
+ * 而反过来(可被规避的精确值)是不可接受的。
+ */
+import type { ChatMessage, MessageOrigin } from '@shared/ipc.js'
+import { Permission } from '@onething/core/permission'
+import {
+  PLUGIN_TRIGGER_MAX_HOP,
+  PLUGIN_TRIGGER_RATE_LIMIT,
+  PLUGIN_TRIGGER_RATE_WINDOW_MS,
+  pluginPeekPreview,
+  resolvePluginDelivery,
+  type PluginMessageDelivery,
+  type PluginSendMessageOptions,
+  type PluginSendMessageResult,
+  type PluginSessionPeek,
+  type PluginSessionPeekLite,
+  type PluginSessionState,
+} from '@onething/core/plugins'
+
+import * as store from '../store.js'
+import type { EventBus } from '../events/event-bus.js'
+import type { StreamEngine } from '../engine/stream-engine.js'
+import { isCollabCoordinatorDrivenSession } from '../collab/ingress.js'
+import { pluginMessageSource } from '../channel/origin.js'
+import * as modelRegistry from '../providers/model-registry.js'
+
+/* ── 循环闸:跳数账 ───────────────────────────────────────────────────────── */
+
+interface TriggerLedgerEntry {
+  hop: number
+  at: number
+}
+
+/**
+ * 由插件投递引发的、**可能还在飞**的回合。
+ *
+ * 何时算"还在飞":目标会话此刻有活跃流 —— 或者投递刚发生不久(引擎起流是异步的,
+ * 命令发出去到 activeStreams 里出现之间有一个窗口;没有这段宽限期,连打两次
+ * 就都算 hop 1)。宽限期一过且没起流(投递被拒 / 会话没动),条目自然作废。
+ */
+const GRACE_MS = 30_000
+
+const triggerLedger = new Map<string, TriggerLedgerEntry>()
+
+/** 每 (pluginId, sessionId) 对的投递时刻环。 */
+const rateWindows = new Map<string, number[]>()
+
+/** 测试与进程收摊用:两本内存账清零。 */
+export function resetPluginSessionLedgers(): void {
+  triggerLedger.clear()
+  rateWindows.clear()
+}
+
+function ledgerIsLive(sessionId: string, entry: TriggerLedgerEntry, engine: StreamEngine, now: number): boolean {
+  if (now - entry.at < GRACE_MS) return true
+  return engine.getActiveSessionIds().includes(sessionId)
+}
+
+/** 保守上界:此刻还在飞的插件链里最深的那一跳。没有就是 0。 */
+function ambientHop(engine: StreamEngine, now: number): number {
+  let max = 0
+  for (const [sessionId, entry] of [...triggerLedger]) {
+    if (!ledgerIsLive(sessionId, entry, engine, now)) {
+      triggerLedger.delete(sessionId)
+      continue
+    }
+    if (entry.hop > max) max = entry.hop
+  }
+  return max
+}
+
+function recordTrigger(sessionId: string, hop: number, now: number): void {
+  const existing = triggerLedger.get(sessionId)
+  // 同一会话上更深的一跳覆盖更浅的:链只会变长,不会变短。
+  if (existing && existing.hop > hop) {
+    triggerLedger.set(sessionId, { hop: existing.hop, at: now })
+    return
+  }
+  triggerLedger.set(sessionId, { hop, at: now })
+}
+
+function rateLimited(pluginId: string, sessionId: string, now: number): boolean {
+  const key = `${pluginId}::${sessionId}`
+  const window = (rateWindows.get(key) ?? []).filter(at => now - at < PLUGIN_TRIGGER_RATE_WINDOW_MS)
+  if (window.length >= PLUGIN_TRIGGER_RATE_LIMIT) {
+    rateWindows.set(key, window)
+    return true
+  }
+  window.push(now)
+  rateWindows.set(key, window)
+  return false
+}
+
+/* ── 投递 ─────────────────────────────────────────────────────────────────── */
+
+export interface PluginSessionHostDeps {
+  eventBus: EventBus
+  streamEngine: StreamEngine
+  now?(): number
+}
+
+function sessionIsBusy(engine: StreamEngine, sessionId: string): boolean {
+  return engine.getActiveSessionIds().includes(sessionId)
+}
+
+/**
+ * 注入消息的身份戳。
+ *
+ * `source` 是 `plugin:<id>` —— 那是 `isSystemInternalSource` 的判据,它让这条
+ * 消息**绕过渠道路由**(插件推送背后没有渠道身份,路由会把它改派到一个匿名身份
+ * 会话去)。`origin.plugin` 是给读得懂结构的消费方:渲染归因与链长账。
+ *
+ * `channel` 刻意**不设** —— 它决定权限提示的目标通道(引擎按 `cmd.channel ||
+ * 'ipc'` 记),给一个花名会让桌面 UI 上弹出的审批卡永远点不动。
+ */
+function pluginOrigin(pluginId: string, hop: number, now: number): MessageOrigin {
+  return {
+    transport: 'api',
+    source: pluginMessageSource(pluginId),
+    receivedAt: now,
+    plugin: { id: pluginId, hop },
+  }
+}
+
+export async function pluginSendMessage(
+  deps: PluginSessionHostDeps,
+  pluginId: string,
+  sessionId: string,
+  content: string,
+  options: PluginSendMessageOptions,
+): Promise<PluginSendMessageResult> {
+  const now = deps.now?.() ?? Date.now()
+  const engine = deps.streamEngine
+
+  if (!store.getSessionDetails(sessionId)) {
+    return { ok: false, reason: 'unknown-session', detail: sessionId }
+  }
+
+  const busy = sessionIsBusy(engine, sessionId)
+  const delivery = resolvePluginDelivery(options, busy)
+
+  // 协作房 / agent 执行会话由协调者独占驱动:内部来源的命令在引擎里会被当场
+  // 拒绝(而那是一次插件观察不到的静默失败)。在这里就说清楚。
+  if (isCollabCoordinatorDrivenSession(sessionId)) {
+    return {
+      ok: false,
+      reason: 'unsupported',
+      detail: 'collab room / agent sessions are driven by the coordinator; plugins cannot post into them',
+    }
+  }
+
+  const hop = ambientHop(engine, now) + 1
+  if (hop > PLUGIN_TRIGGER_MAX_HOP) {
+    console.warn(
+      `[Plugin:${pluginId}] sendMessage refused — chain length ${hop} exceeds the limit of ${PLUGIN_TRIGGER_MAX_HOP}`,
+    )
+    return {
+      ok: false,
+      reason: 'hop-limit',
+      hop,
+      targetWasBusy: busy,
+      detail: `chain length ${hop} > ${PLUGIN_TRIGGER_MAX_HOP}`,
+    }
+  }
+  if (rateLimited(pluginId, sessionId, now)) {
+    console.warn(
+      `[Plugin:${pluginId}] sendMessage refused — more than ${PLUGIN_TRIGGER_RATE_LIMIT} deliveries `
+      + `to ${sessionId.slice(0, 8)} within ${PLUGIN_TRIGGER_RATE_WINDOW_MS}ms`,
+    )
+    return {
+      ok: false,
+      reason: 'rate-limited',
+      hop,
+      targetWasBusy: busy,
+      detail: `${PLUGIN_TRIGGER_RATE_LIMIT} per ${PLUGIN_TRIGGER_RATE_WINDOW_MS}ms per (plugin, session)`,
+    }
+  }
+
+  const origin = pluginOrigin(pluginId, hop, now)
+  const source = origin.source
+
+  switch (delivery) {
+    case 'triggered':
+      // 起一轮 = **既有的** command:send-message 路径(与调度器、语音、网关同一条),
+      // 不另造入口。channel 不设 → 引擎按 'ipc' 记,桌面 UI 答得了权限卡。
+      await deps.eventBus.emit(sessionId, {
+        type: 'command:send-message',
+        content,
+        source,
+        origin,
+      } as Parameters<EventBus['emit']>[1])
+      break
+    case 'followed-up':
+      engine.followUpMessage(sessionId, content, source, origin)
+      break
+    case 'steered':
+    case 'posted':
+      // 同一条既有机制,两种诚实的说法:steering 队列会**立刻持久化并显示**
+      // 这条消息,在飞的回合会把它插进去,空闲会话则留给下一轮。
+      // 'steered' = 我们本想起轮但目标在忙;'posted' = 本来就不打算起轮。
+      engine.steerMessage(sessionId, content, source, origin)
+      break
+  }
+
+  // 只有**会引发/汇入一个回合**的投递才进链长账:起轮那一格,以及投进一个正在
+  // 生成的会话(steer/followUp 会被在飞的那一轮吃掉)。纯 posted 到空闲会话不
+  // 记账 —— 它不产生回合,给它记一跳会让"往同一个会话贴十条备忘"把闸撑爆,
+  // 而那条链根本不存在。
+  if (delivery === 'triggered' || busy) recordTrigger(sessionId, hop, now)
+  return { ok: true, delivered: delivery, targetWasBusy: busy, hop }
+}
+
+/* ── 感知快照 ─────────────────────────────────────────────────────────────── */
+
+/**
+ * 状态判定的**优先序**(协议层写死语义,这里是实现):
+ *
+ *   `awaiting-permission` > `tool-running` > `generating` > `idle`
+ *
+ * 权限排最前是因为它答的是"这轮还会不会自己往前走":挂着一张没人点的审批卡时,
+ * 会话在技术上仍有活跃流(而且很可能同时有一个 executing 的工具),但它一步也
+ * 不会动。信使插件据此决定"现在插话还是等等" —— 把它说成 generating 就是说谎。
+ *
+ * pending 不区分 actionable / queued:排队中的那张卡同样意味着这轮被人卡住了。
+ */
+function peekState(
+  engine: StreamEngine,
+  sessionId: string,
+): { state: PluginSessionState; currentTool?: string } {
+  if (Permission.getPendingPrompts(sessionId).length > 0) {
+    return { state: 'awaiting-permission' }
+  }
+  if (!sessionIsBusy(engine, sessionId)) return { state: 'idle' }
+  const running = runningToolName(sessionId)
+  return running ? { state: 'tool-running', currentTool: running } : { state: 'generating' }
+}
+
+/**
+ * 正在跑的工具名 —— 读**最后一条 assistant 消息**的 toolCalls(现成内存态)。
+ *
+ * 从尾部往前扫一小段而不是整条历史:执行中的工具只可能挂在本轮的那条消息上。
+ */
+function runningToolName(sessionId: string): string | undefined {
+  const session = store.getSession(sessionId)
+  const messages = (session?.messages ?? []) as ChatMessage[]
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message?.role !== 'assistant') continue
+    const executing = message.toolCalls?.find(call => call.status === 'executing')
+    return executing?.toolName
+  }
+  return undefined
+}
+
+/**
+ * 上下文占用 —— 口径与输入框的 ctx 仪表逐字相同:
+ * `contextSize ?? lastInputTokens` ÷ 该会话上次用的模型的上下文窗口。
+ * 解析不出窗口就**不给这个键**(0 是一个会被当真的数)。
+ */
+async function contextPercentOf(sessionId: string): Promise<number | undefined> {
+  const details = store.getSessionDetails(sessionId)
+  if (!details?.lastModel) return undefined
+  const usage = store.getSessionTokenUsage(sessionId)
+  const tokens = usage?.contextSize || usage?.lastInputTokens || 0
+  if (tokens <= 0) return undefined
+  try {
+    const window = await modelRegistry.getModelContextLength(details.lastModel, details.lastProvider)
+    if (!window || window <= 0) return undefined
+    return Math.min(100, Math.max(0, Math.round((tokens / window) * 100)))
+  } catch {
+    return undefined
+  }
+}
+
+function lastMessageOf(sessionId: string): PluginSessionPeek['lastMessage'] {
+  // JSONL 尾读一条 —— 不加载全量历史(这是快照,不是转录)。
+  const page = store.getSessionMessagesPage({ sessionId, anchor: 'tail', limit: 1 })
+  const message = page?.messages?.[page.messages.length - 1]
+  if (!message) return undefined
+  return {
+    role: String(message.role ?? 'unknown'),
+    preview: pluginPeekPreview(typeof message.content === 'string' ? message.content : ''),
+    at: Number(message.timestamp ?? 0),
+  }
+}
+
+export async function pluginPeekSession(
+  deps: PluginSessionHostDeps,
+  sessionId: string,
+): Promise<PluginSessionPeek | null> {
+  const details = store.getSessionDetails(sessionId)
+  if (!details) return null
+  const { state, currentTool } = peekState(deps.streamEngine, sessionId)
+  const contextPercent = await contextPercentOf(sessionId)
+  const lastMessage = lastMessageOf(sessionId)
+  return {
+    sessionId,
+    title: details.name || null,
+    state,
+    ...(currentTool ? { currentTool } : {}),
+    ...(lastMessage ? { lastMessage } : {}),
+    ...(contextPercent === undefined ? {} : { contextPercent }),
+    updatedAt: Number(details.updatedAt ?? 0),
+  }
+}
+
+/**
+ * 全会话 peek-lite:**纯元数据**,无 lastMessage、无 contextPercent。
+ *
+ * 两者都要按会话再读一次(尾页 / 模型窗口),N 个会话就是 N 次 —— 列表是拿来
+ * "找到那个会话"的,找到之后再 peek 一次拿细节。按 updatedAt 降序。
+ */
+export async function pluginListSessions(
+  deps: PluginSessionHostDeps,
+): Promise<PluginSessionPeekLite[]> {
+  const metas = store.getSessionsList() ?? []
+  return [...metas]
+    .sort((left, right) => Number(right.updatedAt ?? 0) - Number(left.updatedAt ?? 0))
+    .map((meta) => {
+      const { state, currentTool } = peekState(deps.streamEngine, meta.id)
+      return {
+        sessionId: meta.id,
+        title: meta.name || null,
+        state,
+        ...(currentTool ? { currentTool } : {}),
+        updatedAt: Number(meta.updatedAt ?? 0),
+      }
+    })
+}
+
+/** 装配用:把三个动词打包成 api-builder 的 host 片段。 */
+export function createPluginSessionHostPorts(deps: PluginSessionHostDeps): {
+  sendMessage(
+    pluginId: string,
+    sessionId: string,
+    content: string,
+    options: PluginSendMessageOptions,
+  ): Promise<PluginSendMessageResult>
+  peekSession(pluginId: string, sessionId: string): Promise<PluginSessionPeek | null>
+  listSessions(pluginId: string): Promise<PluginSessionPeekLite[]>
+} {
+  return {
+    sendMessage: (pluginId, sessionId, content, options) =>
+      pluginSendMessage(deps, pluginId, sessionId, content, options),
+    peekSession: (_pluginId, sessionId) => pluginPeekSession(deps, sessionId),
+    listSessions: () => pluginListSessions(deps),
+  }
+}
+
+export type { PluginMessageDelivery }

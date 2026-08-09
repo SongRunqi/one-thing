@@ -34,6 +34,34 @@ export {
   sortByPluginCanonicalOrder,
 } from './canonical-order.js'
 export {
+  PLUGIN_DELIVER_AS_NOTES,
+  PLUGIN_PEEK_PREVIEW_MAX,
+  PLUGIN_PERMISSION_SESSIONS_PEEK,
+  PLUGIN_PERMISSION_SESSIONS_POST,
+  PLUGIN_PERMISSION_SESSIONS_TRIGGER,
+  PLUGIN_SESSION_PERMISSIONS,
+  PLUGIN_SESSION_PERMISSION_NOTES,
+  PLUGIN_TRIGGER_MAX_HOP,
+  PLUGIN_TRIGGER_RATE_LIMIT,
+  PLUGIN_TRIGGER_RATE_WINDOW_MS,
+  describePluginPermission,
+  pluginDeliveryStartsTurn,
+  pluginPeekPreview,
+  resolvePluginDelivery,
+} from './sessions.js'
+export type {
+  PluginDeliverAs,
+  PluginMessageDelivery,
+  PluginSendMessageOptions,
+  PluginSendMessageRejection,
+  PluginSendMessageResult,
+  PluginSessionPeek,
+  PluginSessionPeekLastMessage,
+  PluginSessionPeekLite,
+  PluginSessionPermission,
+  PluginSessionState,
+} from './sessions.js'
+export {
   PLUGIN_WEBVIEW_DEFAULT_ROOT,
   PLUGIN_WEBVIEW_MESSAGE_TYPES,
   PLUGIN_WEBVIEW_MIME_TYPES,

@@ -39,6 +39,20 @@ export interface ResolvedIdentity {
   externalUserKey?: string
 }
 
+/**
+ * 插件注入消息的身份戳(N1,docs/design/pi-benchmark-adoption-2026-08.md)。
+ *
+ * 两件事:**归因**(这条消息是插件写的,不是用户 —— 界面不该冒充用户)与
+ * **链长**(由插件触发的轮次所产生的再触发 hop+1,上限 8)。
+ * `origin.source` 同时是 `plugin:<id>`,那是 `isSystemInternalSource` 的判据;
+ * 这里的 `id` 是给读得懂结构的消费方(渲染归因、账单)用的。
+ */
+export interface PluginMessageOriginStamp {
+  id: string
+  /** 第几跳。第一次由插件发起的投递是 1。 */
+  hop: number
+}
+
 export interface MessageOrigin {
   transport: OriginTransport
   source: 'text' | 'voice' | 'api' | string
@@ -48,6 +62,8 @@ export interface MessageOrigin {
   externalMessageId?: string
   receivedAt: number
   resolvedIdentity?: ResolvedIdentity
+  /** 插件注入(N1)。缺席 = 不是插件写的。 */
+  plugin?: PluginMessageOriginStamp
 }
 
 export interface IMConnectorIncomingMessage {

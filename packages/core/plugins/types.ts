@@ -2,6 +2,12 @@ import type { CorePluginRequestHandler } from './request-channel.js'
 import type { CorePluginStorage } from './storage.js'
 import type { CorePluginPanelRegistration } from './panel.js'
 import type { CorePluginUiSlotRegistration } from './ui-anchor.js'
+import type {
+  PluginSendMessageOptions,
+  PluginSendMessageResult,
+  PluginSessionPeek,
+  PluginSessionPeekLite,
+} from './sessions.js'
 
 /**
  * 声明先于代码(设计文档 §4.2 宪法第 3 条)。
@@ -346,6 +352,32 @@ export interface CorePluginAPI<
   on(eventType: string, handler: TEventHandler): () => void
   steer(sessionId: string, content: string): void
   followUp(sessionId: string, content: string): void
+  /**
+   * 跨会话信使(N1)—— **三态投递矩阵**。
+   *
+   * `steer` / `followUp` 是纯入队:空闲会话不会因为它们起轮。这个函数补的就是
+   * 那个洞 —— `{triggerTurn:true}` 让插件能把一个外部事件变成一轮对话。
+   *
+   * 声明门:`contributes.permissions` 要有 `sessions:post`(投递),会起轮的
+   * 那一格还要 `sessions:trigger`。循环闸(跳数上限 + 每(插件,会话)对的频率)
+   * 由宿主记账;拒绝一律回结构化 reason,**从不抛错**。
+   */
+  sendMessage(
+    sessionId: string,
+    content: string,
+    options?: PluginSendMessageOptions,
+  ): Promise<PluginSendMessageResult>
+  /**
+   * 感知快照(N1)。`sessions:peek` 声明门;未声明 = peek 回 null、list 回空。
+   *
+   * 全部从现成内存态现算(零新统计),正文永不整条出境(preview 硬截 120 字符)。
+   */
+  sessions: {
+    peek(sessionId: string): Promise<PluginSessionPeek | null>
+    list(): Promise<PluginSessionPeekLite[]>
+  }
+  /** `peek().state === 'idle'` 的便捷函数;读不到会话即 false。 */
+  isIdle(sessionId: string): Promise<boolean>
   registerCommand(name: string, options: TCommandOptions): void
   registerPromptContextProvider(id: string, provider: TPromptContextProvider): void
   beforeContextCompact(id: string, hook: TBeforeContextCompactHook): void

@@ -15,9 +15,11 @@ import { PluginStore, createPluginMessageState, createPluginStorage } from './st
 import {
   getDeclaredBackground,
   getDeclaredPanelIds,
+  getDeclaredPermissions,
   getDeclaredUiSlots,
   getDeclaredWebviewPanelIds,
 } from './loader.js'
+import { createPluginSessionHostPorts } from './sessions.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
 import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
@@ -166,6 +168,8 @@ export interface CreatePluginAPIOptions {
   declaredUiSlots?: PluginContributionUiSlot[]
   /** manifest 声明了合法背景(G 期,L2.5);同上,参数只为注入/测试留着。 */
   declaredBackground?: boolean
+  /** manifest contributes.permissions 原文(N1);同上,参数只为注入/测试留着。 */
+  declaredPermissions?: string[]
 }
 
 export function createPluginAPI(
@@ -239,6 +243,9 @@ export function createPluginAPI(
     declaredUiSlots: options?.declaredUiSlots ?? getDeclaredUiSlots(pluginId),
     // G 期:api.theme.updateBackground 的门控 —— 没在 manifest 里声明背景就调不动。
     declaredBackground: options?.declaredBackground ?? getDeclaredBackground(pluginId),
+    // N1:api.sendMessage / api.sessions.* / api.isIdle 的门控 —— 同一条
+    // "声明先于代码",装前确认页把这几条权限逐条念给用户听。
+    declaredPermissions: options?.declaredPermissions ?? getDeclaredPermissions(pluginId),
     // 全进程一本账(R6):清扫按会话进行,每插件一本就扫不干净。
     statusRegistry: getPluginStatusRegistry(),
     scheduler: pluginScheduler,
@@ -363,6 +370,11 @@ export function createPluginAPI(
       followUp(_, sessionId, content) {
         streamEngine.followUpMessage(sessionId, content, pluginId)
       },
+      /**
+       * N1 的三个动词(投递 + 两个快照)。实现在 `./sessions.ts` —— 这里只是
+       * 把 eventBus / streamEngine 这两个装配期才有的东西喂进去。
+       */
+      ...createPluginSessionHostPorts({ eventBus, streamEngine }),
       notify(id, message, level) {
         eventBus.emitGlobal({
           type: 'plugin:notification',

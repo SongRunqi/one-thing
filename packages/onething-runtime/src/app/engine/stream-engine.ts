@@ -265,6 +265,16 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 		source = "api",
 		origin?: MessageOrigin,
 	): void {
+		// Same bypass as handleSendMessage, same reason: a system-internal
+		// injection (goal / radio / collab / plugin push) has no channel identity
+		// behind it, and the router would resolve its origin to an anonymous one,
+		// remap the queue onto an identity session and overwrite the session's
+		// memory-profile metadata. N1's plugin messenger relies on this: a plugin
+		// steering session X must land in X.
+		if (isSystemInternalSource(source)) {
+			super.steerMessage(sessionId, content, source, origin);
+			return;
+		}
 		const routed = getChannelSessionRouter().route({
 			sessionId,
 			origin,
@@ -285,6 +295,11 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 		source = "api",
 		origin?: MessageOrigin,
 	): void {
+		// See steerMessage: system-internal injections bypass routing.
+		if (isSystemInternalSource(source)) {
+			super.followUpMessage(sessionId, content, source, origin);
+			return;
+		}
 		const routed = getChannelSessionRouter().route({
 			sessionId,
 			origin,

@@ -24,6 +24,17 @@ import {
   type CorePluginUiSlotContext,
   type CorePluginUiSlotRegistration,
 } from './ui-anchor.js'
+import {
+  PLUGIN_PERMISSION_SESSIONS_PEEK,
+  PLUGIN_PERMISSION_SESSIONS_POST,
+  PLUGIN_PERMISSION_SESSIONS_TRIGGER,
+  pluginDeliveryStartsTurn,
+  resolvePluginDelivery,
+  type PluginSendMessageOptions,
+  type PluginSendMessageResult,
+  type PluginSessionPeek,
+  type PluginSessionPeekLite,
+} from './sessions.js'
 import type { CorePluginStatusPart, CorePluginStatusRegistry } from './status.js'
 import { pluginScope, type PluginFailureScope } from './policy.js'
 import {
@@ -101,6 +112,24 @@ export interface CorePluginAPIHost<
    * 宿主没接这条线(headless / server)时是安静的 no-op。
    */
   updatePluginBackground?(pluginId: string, patch: PluginBackgroundParamsPatch): void
+  /**
+   * 跨会话投递的落点(N1)。
+   *
+   * core 只做**声明门 + 矩阵判定 + 结果整形**;"目标忙不忙""起一轮走哪条命令"
+   * "循环闸怎么记账"全在装配层 —— 那些事实住在产品层(引擎的活跃流、会话存储)。
+   * 宿主没接这条线(headless / server)时 api.sendMessage 回 `unsupported`,
+   * 而不是静默假装成功。
+   */
+  sendMessage?(
+    pluginId: string,
+    sessionId: string,
+    content: string,
+    options: PluginSendMessageOptions,
+  ): Promise<PluginSendMessageResult>
+  /** 单会话压缩快照(N1)。会话不存在回 null。 */
+  peekSession?(pluginId: string, sessionId: string): Promise<PluginSessionPeek | null>
+  /** 全会话 peek-lite(无 lastMessage),按 updatedAt 降序。 */
+  listSessions?(pluginId: string): Promise<PluginSessionPeekLite[]>
 }
 
 export interface CreateCorePluginAPIOptions<
@@ -149,6 +178,15 @@ export interface CreateCorePluginAPIOptions<
    * 同一条规矩。缺省 false:没声明就调不动(headless / 测试替身的自然缺省)。
    */
   declaredBackground?: boolean
+  /**
+   * manifest 的 `contributes.permissions` 原文(N1)。
+   *
+   * 这是 `api.sendMessage` / `api.sessions.*` / `api.isIdle` 的**声明门** ——
+   * 与面板 id / 锚点块 / 背景层同一条"声明先于代码"。缺省空:没声明就调不动
+   * (headless / 测试替身的自然缺省)。未知的权限名一律**忽略**(向前兼容),
+   * 只有被消费的那三个枚举参与判定。
+   */
+  declaredPermissions?: readonly string[]
   /**
    * 状态账本(R6)。宿主注入**同一个实例**给所有插件 —— 清扫按会话进行,
    * 每插件一本账就扫不干净。不注入时 api.status 是安静的 no-op(headless)。
@@ -354,6 +392,41 @@ export function createCorePluginAPI<
     return true
   }
 
+  /**
+   * manifest 声明过的权限(N1)。Set 而不是数组:门是逐次调用现查的热路径。
+   * 未知的权限名照收不误 —— 只有被消费的那几个枚举参与判定(向前兼容)。
+   */
+  const declaredPermissions = new Set(options.declaredPermissions ?? [])
+
+  /**
+   * 读面的声明门。与写面同规:报错 + 拒绝,**不计熔断**(作者写错 manifest 不该
+   * 连坐整个插件)。读面拒绝时回"空",而不是抛 —— 一次快照读取失败不该炸掉
+   * 插件的整条执行路径。
+   */
+  const requireSessionsPeek = (what: string): boolean => {
+    if (rejectLateCall(what)) return false
+    if (declaredPermissions.has(PLUGIN_PERMISSION_SESSIONS_PEEK)) return true
+    logger.error(
+      `[Plugin:${pluginId}] ${what} requires "${PLUGIN_PERMISSION_SESSIONS_PEEK}" in `
+      + 'contributes.permissions (plugin.json).',
+      undefined,
+    )
+    return false
+  }
+
+  async function peekSessionForPlugin(sessionId: string): Promise<PluginSessionPeek | null> {
+    if (!requireSessionsPeek('sessions.peek')) return null
+    const targetId = String(sessionId ?? '').trim()
+    if (!targetId || !host.peekSession) return null
+    try {
+      const peek = await host.peekSession(pluginId, targetId)
+      return peek ? deepFreezeCorePluginValue(peek) : null
+    } catch (error) {
+      logger.error(`[Plugin:${pluginId}] sessions.peek error:`, error)
+      return null
+    }
+  }
+
   const api = {
     id: pluginId,
 
@@ -420,6 +493,102 @@ export function createCorePluginAPI<
         logger.error(`[Plugin:${pluginId}] followUp error:`, error)
         reportFailure(pluginScope.followUp(), error)
       }
+    },
+
+    /**
+     * 跨会话信使(N1)—— 三态投递矩阵,不是布尔。
+     *
+     *  - `{triggerTurn:true}`:目标空闲 → 起一轮;忙 → 降级为 steer。**不抛错**,
+     *    结果里 `delivered` 如实说走了哪一格,`targetWasBusy` 说为什么。
+     *  - `{triggerTurn:false}` / 缺省:持久化 + 显示,不起轮(fail-closed)。
+     *  - `{deliverAs}`:显式选既有队列;`nextTurn` 诚实映射到 follow-up
+     *    (引擎没有第三条队列,见 PLUGIN_DELIVER_AS_NOTES)。
+     *
+     * 声明门与循环闸的**拒绝都回结构化 reason**:插件感知得到自己被拒了。
+     * 门本身不计熔断 —— 那是作者写错了 manifest,不该为一次笔误连坐整个插件
+     * (与 theme.updateBackground 同规)。
+     */
+    async sendMessage(
+      sessionId: string,
+      content: string,
+      options: PluginSendMessageOptions = {},
+    ): Promise<PluginSendMessageResult> {
+      if (rejectLateCall('sendMessage')) {
+        return { ok: false, reason: 'unsupported', detail: 'plugin was disposed' }
+      }
+      const targetId = String(sessionId ?? '').trim()
+      if (!targetId) return { ok: false, reason: 'unknown-session', detail: 'sessionId is required' }
+      if (typeof content !== 'string' || !content.trim()) {
+        return { ok: false, reason: 'empty-content', detail: 'content must be a non-empty string' }
+      }
+      if (!declaredPermissions.has(PLUGIN_PERMISSION_SESSIONS_POST)) {
+        logger.error(
+          `[Plugin:${pluginId}] sendMessage requires "${PLUGIN_PERMISSION_SESSIONS_POST}" in `
+          + 'contributes.permissions (plugin.json). Declare it first — the install page shows it to the user.',
+          undefined,
+        )
+        return { ok: false, reason: 'not-declared', detail: PLUGIN_PERMISSION_SESSIONS_POST }
+      }
+      // 可能起轮的那一格要**额外**一档声明。判据是矩阵在最坏情况下的结果:
+      // 目标此刻的忙闲由宿主说了算,但"空闲时会起轮"这件事在这里就已经确定。
+      if (
+        pluginDeliveryStartsTurn(resolvePluginDelivery(options, false))
+        && !declaredPermissions.has(PLUGIN_PERMISSION_SESSIONS_TRIGGER)
+      ) {
+        logger.error(
+          `[Plugin:${pluginId}] sendMessage({triggerTurn:true}) requires `
+          + `"${PLUGIN_PERMISSION_SESSIONS_TRIGGER}" in contributes.permissions — starting a model turn `
+          + 'spends the user\'s tokens, so it is its own declaration.',
+          undefined,
+        )
+        return { ok: false, reason: 'not-declared', detail: PLUGIN_PERMISSION_SESSIONS_TRIGGER }
+      }
+      if (!host.sendMessage) {
+        return { ok: false, reason: 'unsupported', detail: 'this host has no session delivery surface' }
+      }
+      const scope = pluginScope.sendMessage()
+      try {
+        const result = await host.sendMessage(pluginId, targetId, content, options ?? {})
+        reportSuccess(scope)
+        return result
+      } catch (error) {
+        logger.error(`[Plugin:${pluginId}] sendMessage error:`, error)
+        reportFailure(scope, error)
+        return {
+          ok: false,
+          reason: 'error',
+          detail: error instanceof Error ? error.message : String(error),
+        }
+      }
+    },
+
+    /**
+     * 感知快照(N1,架构图 §4 的修正)。
+     *
+     * 「A 知道 B 在干什么」是一个**压缩快照动词**,不是一条事件流:agent 想看
+     * 才调,一句话级。事件流是给插件代码在 main 进程消化的,不进模型上下文。
+     * 返回值全部来自现成内存态(零新统计),深冻结 + JSON-可序列化。
+     */
+    sessions: {
+      peek: peekSessionForPlugin,
+      async list(): Promise<PluginSessionPeekLite[]> {
+        if (!requireSessionsPeek('sessions.list')) return []
+        if (!host.listSessions) return []
+        try {
+          return deepFreezeCorePluginValue(await host.listSessions(pluginId))
+        } catch (error) {
+          logger.error(`[Plugin:${pluginId}] sessions.list error:`, error)
+          return []
+        }
+      },
+    },
+
+    /**
+     * `peek().state === 'idle'` 的便捷函数(pi 的 `ctx.isIdle()`)。
+     * 读不到会话 = false:"不知道"绝不能被当成"可以随便打扰"。
+     */
+    async isIdle(sessionId: string): Promise<boolean> {
+      return (await peekSessionForPlugin(sessionId))?.state === 'idle'
     },
 
     registerCommand(name: string, options: TCommandOptions): void {

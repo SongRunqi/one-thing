@@ -270,6 +270,12 @@ interface DeclaredContributes {
    * `describePluginBackgroundProblem` —— 非法声明既画不出层,也不该给出调参口。
    */
   background: boolean
+  /**
+   * `contributes.permissions` 原文(N1)—— `api.sendMessage` / `api.sessions.*`
+   * 的声明门。原文而不是过滤后的枚举:未知权限名向前兼容地留着,只有被消费的
+   * 那几个参与判定。
+   */
+  permissions: string[]
 }
 let declaredPanelIdsCache: {
   at: number
@@ -293,6 +299,7 @@ function declaredContributesByPlugin(): Map<string, DeclaredContributes> {
         uiSlots: contributes?.uiSlots ?? [],
         background: contributes?.theme?.background !== undefined
           && !describePluginBackgroundProblem(contributes.theme?.background),
+        permissions: (contributes?.permissions ?? []).filter(item => typeof item === 'string'),
       })
     }
     declaredPanelIdsCache = { at: now, byPlugin }
@@ -323,6 +330,14 @@ export function getDeclaredUiSlots(pluginId: string): PluginContributionUiSlot[]
  */
 export function getDeclaredBackground(pluginId: string): boolean {
   return declaredContributesByPlugin().get(pluginId)?.background ?? false
+}
+
+/**
+ * manifest 的 `contributes.permissions` 原文(N1)—— 跨会话投递与感知快照的
+ * 声明门。与面板/锚点块/背景同一份缓存、同一条"声明先于代码"。
+ */
+export function getDeclaredPermissions(pluginId: string): string[] {
+  return declaredContributesByPlugin().get(pluginId)?.permissions ?? []
 }
 
 /**

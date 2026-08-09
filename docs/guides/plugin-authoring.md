@@ -47,7 +47,7 @@ node scripts/build-plugin.mjs packages/my-plugin
 | `uiSlots` | `[{anchor,id,label,lifetime?,drawer?}]` | UI 锚点(常显块或触发式,**由锚点决定**,见下);未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"`;`drawer: true` 开抽屉三态(**仅 `composer.above`**,别处声明被忽略,见下) |
 | `theme` | `{overrides?:{token:color}, background?:{image,darkImage?,opacity?,blur?,fit?}}` | 主题 token 覆盖 + 背景图(见下);装前确认页列出被改的 token 与"会铺背景图" |
 | `settings` | `{schema}` | JSON Schema 子集,宿主渲染并校验设置表单 |
-| `permissions` | `string[]` | 装前确认页如实列出 |
+| `permissions` | `string[]` | 装前确认页如实列出(已登记的枚举翻成人话)。**被消费的三个**:`sessions:peek` / `sessions:post` / `sessions:trigger`,见「跨会话信使」;未登记的名字原样显示、不参与判定 |
 | `activationEvents` | `string[]` | 激活事件声明 |
 
 ## 打包铁规(每条都有宿主侧硬闸)
@@ -166,6 +166,95 @@ api.storage.message(sessionId, messageId).exists()
 - 没有键枚举 API,也**不需要**自建索引:render 时你手里就有
   `ctx.sessionId` / `ctx.messageId`(消息级锚点的 ctx 携带),按坐标现取。
 - 插件不在场时发生的流没有记录,装上之后也不会追认 —— 老消息就是空的。
+
+## 跨会话信使:让一个会话给另一个会话发消息(N1)
+
+`api.steer` / `api.followUp` 是**纯入队**:空闲的会话不会因为它们醒过来。要把
+一个外部事件(另一个会话的一句话、一封邮件、一次定时)变成**一轮对话**,用
+`api.sendMessage`。它是插件第一个能自发花掉用户 token 的口,所以它有声明门和
+循环闸。
+
+### 先声明(不声明就调不动)
+
+```jsonc
+{ "contributes": { "permissions": [
+  "sessions:peek",     // 读别人的会话快照
+  "sessions:post",     // 往会话里投递(不起轮)
+  "sessions:trigger"   // 可以**起一轮**(花 token) —— 单独一档
+] } }
+```
+
+装前确认页会把它们念成人话("can start a model turn on its own (spends tokens)")。
+未声明就调:宿主拒绝并回 `{ok:false, reason:'not-declared'}`,记一条 error 日志,
+**不计熔断**(那是 manifest 写错了,不该连坐插件其余能力)。
+
+### 三态投递矩阵(照抄矩阵,不是布尔)
+
+```js
+// 目标空闲 → 起一轮;目标在忙 → 自动降级为 steer(插进它正在跑的那轮)
+await api.sendMessage(id, text, { triggerTurn: true })
+
+// 只落盘 + 显示,不起轮(缺省档 —— 不声明就不花 token)
+await api.sendMessage(id, text, { triggerTurn: false })
+
+// 显式选既有队列。nextTurn 诚实映射到 follow-up(引擎没有第三条队列)
+await api.sendMessage(id, text, { deliverAs: 'steer' })
+await api.sendMessage(id, text, { deliverAs: 'followUp' })
+```
+
+它**从不抛错**,回一份结构化结果:
+
+```ts
+{ ok, delivered?: 'triggered'|'steered'|'followed-up'|'posted',
+  targetWasBusy?, hop?,
+  reason?: 'not-declared'|'empty-content'|'unknown-session'
+         | 'hop-limit'|'rate-limited'|'unsupported'|'error', detail? }
+```
+
+`delivered` **如实**说明走了哪一格 —— 你要求起轮而对面在忙时它是 `'steered'`,
+把这句话原样写进工具结果,模型才知道对面会不会当场回你。
+
+### 感知快照:先看它在干什么
+
+```js
+const peek = await api.sessions.peek(id)
+// { sessionId, title, state, currentTool?, lastMessage?{role,preview,at},
+//   contextPercent?, updatedAt }
+// state: 'idle' | 'generating' | 'tool-running' | 'awaiting-permission'
+//   判定优先序:awaiting-permission > tool-running > generating > idle
+//   (挂着没人点的审批卡时,活跃流还在,但这轮一步也不会动)
+
+const all = await api.sessions.list()   // peek-lite:无 lastMessage / contextPercent
+const free = await api.isIdle(id)       // 读不到会话 = false
+```
+
+`preview` 硬截 120 字符、换行折成空格 —— 正文永不整条出境。`list()` 是拿来
+**找到那个会话**的;找到之后再 `peek` 一次拿细节。
+
+### 循环闸(为什么你的第 9 条被拒了)
+
+两个会话互相"回个话"天然是一条不收敛的链。宿主兜两道:
+
+1. **跳数**:由插件投递引发的回合所产生的再投递 hop+1,**上限 8**,超限
+   `reason:'hop-limit'`。口径是保守上界(取此刻所有在飞的插件链里最深的那一跳
+   +1)—— 它不需要你配合,也因此规避不了;并发时可能偏保守。
+2. **频率**:每 `(插件, 目标会话)` 对 **10 次 / 分钟**,超限 `reason:'rate-limited'`。
+
+被拒了就**停下**并把原因写进工具结果,别重试 —— 那正是闸要挡的行为。
+
+### 提示词即控制流
+
+"收到别的会话来的消息要不要回"不该是一段插件代码,而是**工具描述里的一句
+礼仪**:回话本身就是再调一次你的发送工具。样板见市场仓
+`packages/session-link`(`message_session` / `list_sessions`)。
+
+### 两个必须知道的语义
+
+- 注入的消息带 `origin.source = 'plugin:<你的 id>'` 与 `origin.plugin = {id, hop}`
+  —— 它**不冒充用户**。因为它算"系统驱动的回合",这一轮里的权限提示 120s 无人
+  应答会自动降级(而不是永远挂着)。
+- **协作房 / agent 执行会话不接受插件投递**(它们由协调者独占驱动),回
+  `reason:'unsupported'`。
 
 ## 锚点清单与两种形态(常显块 / 触发式)
 

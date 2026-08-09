@@ -224,6 +224,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       pluginScope.settingsChange(),
       pluginScope.steer(),
       pluginScope.followUp(),
+      pluginScope.sendMessage(),
       pluginScope.registration('WorkspacePanel'),
       pluginScope.connector('wechat'),
     ]
@@ -268,6 +269,8 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       { factory: 'settingsChange', scope: pluginScope.settingsChange(), family: 'settings-change' },
       { factory: 'steer', scope: pluginScope.steer(), family: 'conversation-control' },
       { factory: 'followUp', scope: pluginScope.followUp(), family: 'conversation-control' },
+      // N1:跨会话投递就是那两条队列的上层门面,同族。
+      { factory: 'sendMessage', scope: pluginScope.sendMessage(), family: 'conversation-control' },
       { factory: 'registration', scope: pluginScope.registration('WorkspacePanel'), family: 'registration' },
       { factory: 'connector', scope: pluginScope.connector('wechat'), family: 'connector' },
     ]

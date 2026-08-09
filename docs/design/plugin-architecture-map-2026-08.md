@@ -85,11 +85,16 @@
 everywhere 集成")暴露的系统性缺口:插件的"动作"象限目前只有
 **面向模型**的动词(工具),几乎没有**面向宿主**的动词。逐屋裁决:
 
+> 2026-08-10 更新:N1 已落地(跨会话信使 + 会话感知快照),这一翼不再是空的。
+> 设计与差异见 `pi-benchmark-adoption-2026-08.md` §6。
+
 | 屋子 | 状态 | 形态与闸 |
 | --- | --- | --- |
 | **通知与提示音** | 🔷 M1 | 现有 `ui.notify`(静默横幅);扩为 `api.notify({title, body, sound?})`,sound 是**宿主枚举音效集**(插件不带音频文件,防音频轰炸);设置页每插件可静音 |
 | **Search Everywhere 供给方** | 🔷 M2 | `api.registerSearchProvider({id, label, query(q) → 可序列化结果[]})`,搜索窗聚合渲染(结果形状=宿主枚举:标题/副标/图标/action);超时即弃(搜索不等慢插件) |
-| **会话动词族** | 🔷 M3 | `api.sessions.*` 只开**枚举白名单**:`list()`(元数据快照)/`rename(id, title)`/`archive(id)`;每个写动词走权限面(与工具同规,用户可设 always-ask);**不开** delete(破坏性)与消息级写(历史神圣) |
+| **跨会话信使** | ✅ N1 | `api.sendMessage(sessionId, content, {triggerTurn} \| {deliverAs})` —— **三态投递矩阵**(空闲起轮 / 忙则降级为 steer / 只入队不起轮),映射到既有 steering / follow-up / command:send-message 三条链路,不造新队列。声明门 `sessions:post` + `sessions:trigger`(装前逐条披露);循环闸 = 跳数上限 8 + 每(插件,会话)对 10 次/分钟;拒绝一律回结构化 reason。**这是第一个"插件可自发耗 token"的口** |
+| **会话感知快照** | ✅ N1 | `api.sessions.peek(id)` → `{state, currentTool?, lastMessage(≤120 字符), contextPercent?, title, updatedAt}` / `api.sessions.list()`(peek-lite,无正文)/ `api.isIdle(id)`。声明门 `sessions:peek`。**压缩快照动词,不是事件流**:agent 想看才调;全部从现成内存态现算,零新统计,正文永不整条出境 |
+| **会话写动词族(rename / archive)** | 🔷 M3 余量 | `api.sessions.*` 只开**枚举白名单**:`rename(id, title)`/`archive(id)`;每个写动词走权限面(与工具同规,用户可设 always-ask);**不开** delete(破坏性)与消息级写(历史神圣)。`list()` 已由 N1 落地 |
 | 剪贴板 / 文件系统 / shell | ⛔(直接) | 走既有工具面(bash/read/write 有权限体系),不给插件裸 API —— 同一动作一套权限账 |
 | 设置写入(改宿主设置) | ⛔ | 插件只管自己的 config;改宿主设置=用户主权 |
 | 窗口管理(开新窗) | ⏸ | 等 workbench.tab 落地后看剩余需求 |
@@ -110,7 +115,9 @@ everywhere 集成")暴露的系统性缺口:插件的"动作"象限目前只有
 一个象限补完,落进该象限的**所有**未来场景自动获得支持。
 
 ```
-第一批(动作完备,M 线):M1 通知音 → M2 搜索供给方 → M3 会话动词族
+第零批(已完成 2026-08-10):N1 跨会话信使 + 会话感知快照 —— 动作象限里
+                            "面向宿主的动词"从零变成一;感知象限补上压缩快照
+第一批(动作完备,M 线):M1 通知音 → M2 搜索供给方 → M3 会话写动词(rename/archive)
 第二批(呈现完备):   G2 氛围层(已设计) → H1 workbench.tab → H3 皮肤包
 第三批(触达完备):   H4 深链 → H2 围栏渲染器(最重殿后)
 持续:              H 线 ext host(结构条件已备,按需启动)

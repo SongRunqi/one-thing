@@ -167,6 +167,21 @@ Notes:
   `api` object. Current surface:
   - **AI capabilities**: tools, slash commands, events (+ plugin-namespaced custom events),
     prompt-context providers, skill roots, lifecycle hooks, scheduler.
+  - **Cross-session messenger + session peek** (N1, 2026-08-10 —
+    `docs/design/pi-benchmark-adoption-2026-08.md` §6): `api.sendMessage(sessionId,
+    content, {triggerTurn} | {deliverAs})` is a three-state matrix, not a boolean —
+    idle target starts a turn, busy target degrades to steer (reported honestly in
+    `delivered`), `triggerTurn:false` only posts. It maps onto the existing
+    command:send-message / steering / follow-up paths; `deliverAs:'nextTurn'` is
+    honestly mapped to follow-up (there is no third queue). `api.sessions.peek/list`
+    + `api.isIdle` are compressed read-only snapshots computed from live memory (zero
+    new bookkeeping; preview hard-capped at 120 chars). Gated by manifest
+    `permissions: sessions:post / sessions:trigger / sessions:peek` (undeclared =
+    structured rejection, no breaker). Loop brakes: hop ≤ 8 (conservative upper bound —
+    the caller's own session is not knowable, so it is not asked for) and 10
+    deliveries/min per (plugin, session). Injected messages carry
+    `origin.source='plugin:<id>'` + `origin.plugin={id,hop}` and count as
+    system-internal (router bypass + 120s permission degradation).
   - **Its own product surface**: declarative workspace panels (`contributes.panels` +
     `api.registerWorkspacePanel`, pure-data description tree — the UI never executes
     plugin code), declarative UI-slot blocks on host-named anchors
