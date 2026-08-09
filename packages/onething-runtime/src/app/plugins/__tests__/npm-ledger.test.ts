@@ -3,8 +3,8 @@
  *
  * 拍板(设计 §5):清单来源从"遍历 plugins/ 每个目录"换成
  * `plugins/package.json` 的 dependencies 账;普通依赖与插件共存于同一棵
- * node_modules(没有 plugin.json 就跳过);存量手工目录走 legacy 兼容
- * 扫描(有 plugin.json 不在账里),数据家目录(无 plugin.json)不是插件。
+ * node_modules(没有 plugin.json 就跳过)。**账是唯一入口**:2026-08-09 legacy
+ * 清零之后,插件根下的手工目录(不论有没有 plugin.json)都不再是插件。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -80,7 +80,7 @@ describe('readPluginLedger —— 账读的可信度', () => {
 })
 
 describe('scanCorePlugins(scanMode: npm-ledger)', () => {
-  it('账内插件:版本以 node_modules 里 package.json 为准,永不 needsInstall', () => {
+  it('账内插件:版本以 node_modules 里 package.json 为准', () => {
     const plugins = tempRoot()
     makeLedger(plugins, { 'plan-status': 'https://example/plan-status-1.2.3.tgz' })
     makeNpmPlugin(plugins, 'plan-status', { version: '1.2.3' })
@@ -95,8 +95,6 @@ describe('scanCorePlugins(scanMode: npm-ledger)', () => {
     expect(scanned).toHaveLength(1)
     expect(scanned[0].id).toBe('plan-status')
     expect(scanned[0].manifest.version).toBe('1.2.3')
-    expect(scanned[0].needsInstall).toBe(false)
-    expect(scanned[0].legacy).toBeUndefined()
     expect(scanned[0].dirPath).toBe(path.join(plugins, 'node_modules', 'plan-status'))
     expect(scanned[0].entryPath).toBe(path.join(plugins, 'node_modules', 'plan-status', 'plugin-entry.js'))
   })
@@ -177,15 +175,15 @@ describe('scanCorePlugins(scanMode: npm-ledger)', () => {
     expect(scanned[0].source).toBe('builtin')
   })
 
-  it('legacy:有 plugin.json 不在账里 = 照常加载并打标,needsInstall 探测保留', () => {
+  it('账外的手工目录一律不加载 —— 有没有 plugin.json 都一样', () => {
     const plugins = tempRoot()
     makeLedger(plugins, {})
-    // legacy 目录:package.json 但无 node_modules → needsInstall 真
-    const legacyDir = path.join(plugins, 'ui-demo')
-    writeJson(path.join(legacyDir, 'package.json'), { name: 'ui-demo', version: '0.1.0' })
-    writeJson(path.join(legacyDir, 'plugin.json'), { name: 'ui-demo' })
-    fs.writeFileSync(path.join(legacyDir, 'plugin-entry.js'), 'export default function () {}\n')
-    // 纯数据家目录:无 plugin.json → 不是插件
+    // 曾经的 legacy 目录形态:有 plugin.json + entry,但不在账里。
+    const strayDir = path.join(plugins, 'ui-demo')
+    writeJson(path.join(strayDir, 'package.json'), { name: 'ui-demo', version: '0.1.0' })
+    writeJson(path.join(strayDir, 'plugin.json'), { name: 'ui-demo' })
+    fs.writeFileSync(path.join(strayDir, 'plugin-entry.js'), 'export default function () {}\n')
+    // 纯数据家目录:无 plugin.json → 同样不是插件
     fs.mkdirSync(path.join(plugins, 'plan-status', 'storage'), { recursive: true })
 
     const scanned = scanCorePlugins({
@@ -195,19 +193,18 @@ describe('scanCorePlugins(scanMode: npm-ledger)', () => {
       scanMode: 'npm-ledger',
     })
 
-    expect(scanned).toHaveLength(1)
-    expect(scanned[0].id).toBe('ui-demo')
-    expect(scanned[0].legacy).toBe(true)
-    expect(scanned[0].needsInstall).toBe(true)
+    expect(scanned).toEqual([])
+    // 不加载 ≠ 删掉:目录原地不动,交给人处置。
+    expect(fs.existsSync(path.join(strayDir, 'plugin.json'))).toBe(true)
   })
 
-  it('legacy 与账内插件同 id = 账内赢', () => {
+  it('手工目录与账内插件同 id = 账内的那个照常加载,目录被忽略', () => {
     const plugins = tempRoot()
     makeLedger(plugins, { '@org/foo': 'https://example/x.tgz' })
     makeNpmPlugin(plugins, '@org/foo')
-    const legacyDir = path.join(plugins, 'foo')
-    writeJson(path.join(legacyDir, 'plugin.json'), { name: 'foo' })
-    fs.writeFileSync(path.join(legacyDir, 'plugin-entry.js'), 'export default function () {}\n')
+    const strayDir = path.join(plugins, 'foo')
+    writeJson(path.join(strayDir, 'plugin.json'), { name: 'foo' })
+    fs.writeFileSync(path.join(strayDir, 'plugin-entry.js'), 'export default function () {}\n')
 
     const scanned = scanCorePlugins({
       builtinPlugins: [],
@@ -217,7 +214,6 @@ describe('scanCorePlugins(scanMode: npm-ledger)', () => {
     })
 
     expect(scanned).toHaveLength(1)
-    expect(scanned[0].legacy).toBeUndefined()
     expect(scanned[0].dirPath).toContain('node_modules')
   })
 

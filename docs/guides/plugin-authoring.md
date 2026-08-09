@@ -63,8 +63,7 @@ node scripts/build-plugin.mjs packages/my-plugin
    事不要推到安装期。
 4. **命名契约**:包名必须 `@onething-plugins/<id>`(v1 单一 scope),
    目录名必须等于 `<id>`;**pluginId = 包名去 scope**。id 撞上宿主内置
-   插件(当前 `log-monitor`、`note-skills`)会被**装前拒绝**;
-   撞上一个已存在的 legacy 目录插件 id 则是设计好的转正路径(npm 赢)。
+   插件(当前 `log-monitor`、`note-skills`)会被**装前拒绝**。
 5. **tarball 即全部**。宿主从 GitHub Releases 的 tarball URL 安装,
    只认 `https://`;索引的 sha512-SRI 与 package-lock 条目逐字符比对,
    不符拒装并回滚。
@@ -122,7 +121,8 @@ api.on('stream:start', (env) => {
 - **`node_modules/` 是代码区,任何数据永不许写进去** —— npm 每次
   update/uninstall 整目录抹掉重建,写进去等于丢。
 - 卸载 = 家目录整体归档到 `plugins/legacy-backup/<id>-<date>/`
-  (可恢复),代码从账与 node_modules 拆除。
+  (可恢复;目录名是纯归档名,与已退役的"legacy 目录插件"无关),
+  代码从账与 node_modules 拆除。
 
 ### 消息作用域状态(`api.storage.message`)
 
@@ -164,7 +164,6 @@ api.storage.message(sessionId, messageId).exists()
 - 没有键枚举 API,也**不需要**自建索引:render 时你手里就有
   `ctx.sessionId` / `ctx.messageId`(消息级锚点的 ctx 携带),按坐标现取。
 - 插件不在场时发生的流没有记录,装上之后也不会追认 —— 老消息就是空的。
-- legacy 目录形态(非 npm 安装)没有家目录,消息态强制纯内存。
 
 ## 安全与边界(速查)
 
@@ -172,8 +171,9 @@ api.storage.message(sessionId, messageId).exists()
 - 入口只有默认导出函数,`api` 由宿主注入;不要 import 宿主模块。
 - 权限/熔断:钩子超时、事件 handler 抛错会进熔断账,严重按策略表
   禁用插件或只降级一个界面(`packages/core/plugins/policy.ts`)。
-- 撞内置 id 装前拒;同 id legacy 目录在 npm 装上期间被扫描跳过,
-  卸载 npm 形态后它会复活 —— 转正请先删旧目录。
+- 撞内置 id 装前拒。**手工往 `~/.onething/plugins/` 里放目录不再是安装方式**
+  (2026-08-09 legacy 目录插件清零):那种目录不会被加载,也不会被报错或删除。
+  唯一入口是 npm 账(市场安装或 `file:` 开发通道)。
 
 ## 排障
 
@@ -184,6 +184,6 @@ api.storage.message(sessionId, messageId).exists()
 | 拒装:"runtime dependencies" | 依赖没被 bundle 进单文件(检查 dist/package.json 应为零依赖) |
 | 拒装:"Integrity mismatch" | 索引 SRI 与 tarball 实体不符;重新发 tag,不要手改 asset |
 | 拒装:"name mismatch" | 索引/包名写错;包内 name 必须等于 `@onething-plugins/<id>` |
-| legacy 徽标 | 目录安装的旧形态;装 npm 形态转正(先删旧目录) |
-| 消息态重启就没了 | manifest 没声明 `lifetime: "persistent"`(或是 legacy 目录形态) |
+| 手工放的目录不出现在插件表 | 预期行为:2026-08-09 起只认 npm 账,目录形态不再加载 |
+| 消息态重启就没了 | manifest 没声明 `lifetime: "persistent"` |
 | 写消息态抛 `quota` | 该插件消息态超 5MB 硬顶;记录该瘦身,宿主不替你淘汰 |

@@ -126,7 +126,8 @@ asset 是 `npm pack` 产出的 `.tgz`。**npm tarball 格式本身就是发布�
   替代今天的手工 `ln -s`。
 - **配置对开发者同样住 `plugins/<id>/`**(app 拥有的数据区),不再出现
   "软链插件把配置写进源码仓库"的事故。
-- 存量手工目录插件(今天 `plugins/<id>/` 直接是代码):见 §5.4 兼容。
+- 存量手工目录插件(曾经 `plugins/<id>/` 直接是代码):兼容路径已于
+  2026-08-09 拆除,见 §5.4(历史注记)。
 
 ## 4. manifest 强化
 
@@ -184,34 +185,47 @@ npm 形态插件的 `checkPluginNeedsInstall` 与首载 install 路径
 加载期出现缺失依赖 = 包没打好,按加载失败记账(既有熔断),
 不再现装。
 
-**唯一例外**:legacy 目录路径(§5.4)在清零前**门控保留**安装机器 ——
-它只服务 legacy 插件(新拷贝、无 node_modules 的老目录),随 legacy
-兼容路径同死。
+~~**唯一例外**:legacy 目录路径(§5.4)在清零前门控保留安装机器。~~
+**2026-08-09 起没有例外**:legacy 目录插件清零,`checkPluginNeedsInstall`、
+`needsInstallCheck`、`installCorePluginDependencies*` 与首载安装机器
+**全部删除**,加载预算退化为固定的 entry 预算。
 
-### 5.4 存量兼容(手工目录插件)
+### 5.4 存量兼容(手工目录插件)—— 已于 2026-08-09 拆除
 
-今天直接住在 `plugins/<id>/` 的代码目录(非 npm 形态):
+> **状态:历史注记。** 本节描述的 legacy 兼容路径已随
+> `docs/design/plugin-legacy-retirement-plan-2026-08.md` 的移除期一次性拆掉。
+
+**今天的判别语义(拆除后)**:
+
+- 插件的**唯一入口是账**:`plugins/package.json` 的 dependencies →
+  `node_modules/<pkg>/plugin.json`。
+- 插件根下的目录,不论有没有 `plugin.json`,都**不再是插件**:
+  - 有 `plugin.json` = 手工放进来的代码目录 → **不加载、不报错**;它也不是
+    宿主管的数据,家目录孤儿扫描同样跳过它(不归档、不删),原地留给人处置;
+  - 无 `plugin.json` = 纯数据家目录 → 是不是孤儿由"id 在不在存活集合里"判。
+- 配置/KV/storage/消息态的落盘不再有第二条分支:**一律住家目录**
+  `plugins/<id>/`。`plugin-data/` 只剩归档用途(孤儿收尸的来源、
+  `legacy-backup/` 的落点),没有任何读路径指向它。
+
+<details>
+<summary>拆除前的规则(存档)</summary>
 
 - 发现规则:目录里有 `plugin.json` 且**不在** dependencies 账里 →
-  按 legacy 形态照常加载,日志 + 设置页标记 `legacy`(提示"以 npm
-  形式重装可获更新通道")。
-- 注意与裁决 5 的交叠:`plugins/<id>/` 同时是数据家目录。**判别顺序**:
-  有 plugin.json = legacy 代码目录(其数据仍在 `plugin-data/<id>/`,
-  不搬,直到用户重装为 npm 形态);没有 = 纯数据家目录。
-- legacy 插件若 needsInstall(新拷贝、无 node_modules):走 §5.3
-  门控保留的安装机器,或用户手工 `npm install`;npm 形态插件永远
-  不进这条路径。
-- 这条兼容路径在市场落地后保留一个版本周期,之后随 legacy 插件清零
-  再删。
+  按 legacy 形态照常加载,日志 + 设置页标记 `legacy`。
+- 判别顺序:有 plugin.json = legacy 代码目录(数据仍在 `plugin-data/<id>/`);
+  没有 = 纯数据家目录。
+- legacy 插件若 needsInstall:走 §5.3 门控保留的安装机器。
 
-**已知限制(P1 审查登记,清零前接受)**:
+</details>
 
-1. **同 id 共存陷阱**:npm 包(去 scope 后 id 为 `foo`)与残留的
-   legacy 目录 `plugins/foo/` 同时存在时,扫描是 npm 赢(代码面),但
-   配置/KV 的落盘判别(plugin.json 在场 = legacy)会把 npm 插件的
-   数据也留旧根;更严重的是卸载 npm 形态后,下一轮扫描会把 legacy
-   目录**复活**成同名插件。规避:P2 市场落地前,装 npm 形态前先删同
-   名 legacy 目录;legacy 清零计划(P4)把这条一起收掉。
+**已知限制(P1 审查登记)**:
+
+1. ~~**同 id 共存陷阱**~~(**2026-08-09 legacy 清零后此坑消失**):npm 包与
+   残留的同名目录 `plugins/foo/` 曾会互相打架 —— 扫描 npm 赢而数据判别归
+   legacy,卸载 npm 形态后下一轮扫描还会把目录"复活"成同名插件。现在目录
+   一律不加载、数据一律住家目录,两条分叉都没有了。残留的同名目录只会与
+   npm 插件共用同一个家目录路径(数据与那份手工代码同处一个文件夹),
+   不再产生复活或落盘分叉。
 2. **updatePlugin 的版本读取在互斥锁外**:`info` 在方法入口捕获,拿锁
    期间若有并发刷新,current 可能是上一世的版本 —— 后果只是多报/少报
    一次更新,不影响装的是索引最新版这一事实。接受。
@@ -451,13 +465,13 @@ release,但**给不了 contributes/权限/minAppVersion 摘要** —— 装前�
 | 风险 | 对策 |
 | --- | --- |
 | 用户机器无 npm,install/update/uninstall 不可用 | v1 面向开发者(裁决 8);设置页检测 npm 不可用即置灰并说明,不静默失败 |
-| legacy 插件 id 与 npm 包名不一致 | 熔断/健康旧账成孤儿(可接受);同名则自然延续,迁移指南引导同名 |
+| ~~legacy 插件 id 与 npm 包名不一致~~ | 2026-08-09 legacy 清零后不存在 |
 | install 时网络失败 | install 是显式动作,错误原样透传到 UI;已装插件不受影响(加载期零网络) |
 | 用户手编 plugins/package.json 搞坏账 | 读失败 = 空账 + warn,不删任何文件;设置页给"修复"(npm install 全量重装)入口 |
 | 两个 scope 同名包装出同 pluginId | 拒绝后到者,日志明说;v1 引导单 scope |
 | npm 重装抹 node_modules 连带数据 | 铁律 4 + assertNotInNodeModules 断言 + 测试(§7.3) |
-| legacy 目录插件与数据家目录撞名 | §5.4 判别顺序:有 plugin.json = 代码目录,数据留 plugin-data 不搬 |
-| 老插件配置没搬完就回滚版本 | legacy-backup 有尸;中央文件只在实际搬移时重写,不会半吊子 |
+| ~~legacy 目录插件与数据家目录撞名~~ | 2026-08-09 legacy 清零后不存在:目录不加载,数据一律住家目录 |
+| 老插件配置没搬完就回滚版本 | legacy-backup 有尸;中央文件只在实际搬移时重写,不会半吊子(中央 → 家目录的 config 惰性迁移仍在) |
 | CI 生成的 index.json 与 release 实际版本漂移 | CI 同一 job 内 release → 重算 integrity → 才写 index.json |
 | raw.githubusercontent.com 不可达 | 市场区用上次缓存 + 明示过期;已装插件照常(加载期零网络) |
 

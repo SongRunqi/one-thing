@@ -12,7 +12,6 @@ import {
   getCorePluginStorePath,
   getCorePluginsDir,
   getPluginEnabledWithAdapters,
-  installCorePluginDependencies,
   readPluginSettingsFile,
   writePluginSettingsFile,
   loadCorePluginEntry,
@@ -66,7 +65,6 @@ describe('CorePluginManager', () => {
       entryPath: 'builtin://demo/plugin-entry.js',
       entry,
       enabled: true,
-      needsInstall: false,
     }])
   })
 
@@ -276,33 +274,6 @@ describe('CorePluginManager', () => {
     expect(await bootstrapper.bootstrap({ ready: true })).toBe(manager)
   })
 
-  it('installs plugin dependencies through core loader adapters', () => {
-    const logger = createTestLogger()
-    const installedDirs: string[] = []
-
-    expect(installCorePluginDependencies('/plugins/missing', {
-      exists: () => false,
-      runInstall: dirPath => installedDirs.push(dirPath),
-      logger,
-    })).toBe('No package.json found')
-    expect(installedDirs).toEqual([])
-
-    expect(installCorePluginDependencies('/plugins/demo', {
-      exists: () => true,
-      runInstall: dirPath => installedDirs.push(dirPath),
-      logger,
-    })).toBeNull()
-    expect(installedDirs).toEqual(['/plugins/demo'])
-
-    expect(installCorePluginDependencies('/plugins/broken', {
-      exists: () => true,
-      runInstall: () => {
-        throw { stderr: Buffer.from('npm failed') }
-      },
-      logger,
-    })).toBe('npm failed')
-  })
-
   /**
    * plugin-settings 现在装着用户手工配的插件配置(R3),半截 JSON 的代价从
    * "启停位丢了"升级成"用户配置全没了"。
@@ -387,9 +358,6 @@ describe('CorePluginManager', () => {
     }
 
     await expect(loadCorePluginEntry(builtin, {
-      installDependencies: () => {
-        throw new Error('should not install built-in entry')
-      },
       importEntry: async () => {
         throw new Error('should not import built-in entry')
       },
@@ -402,43 +370,21 @@ describe('CorePluginManager', () => {
       dirPath: '/plugins/demo',
       entryPath: '/plugins/demo/plugin-entry.js',
       enabled: true,
-      needsInstall: true,
     }
     const importedEntry: TestEntry = () => {}
-    const installCalls: string[] = []
 
     await expect(loadCorePluginEntry(user, {
-      installDependencies: dirPath => {
-        installCalls.push(dirPath)
-        return null
-      },
       importEntry: async entryPath => {
         expect(entryPath).toBe('/plugins/demo/plugin-entry.js')
         return { default: importedEntry }
       },
       logger,
     })).resolves.toBe(importedEntry)
-    expect(user.needsInstall).toBe(false)
-    expect(installCalls).toEqual(['/plugins/demo'])
-
-    const brokenInstall: TestDefinition = {
-      ...user,
-      id: 'broken-install',
-      needsInstall: true,
-    }
-    await expect(loadCorePluginEntry(brokenInstall, {
-      installDependencies: () => 'install failed',
-      importEntry: async () => ({ default: importedEntry }),
-      logger,
-    })).resolves.toBe(importedEntry)
-    expect(brokenInstall.needsInstall).toBe(true)
 
     await expect(loadCorePluginEntry({
       ...user,
       id: 'invalid',
-      needsInstall: false,
     }, {
-      installDependencies: () => null,
       importEntry: async () => ({ default: { not: 'a function' } }),
       logger,
     })).resolves.toBeNull()

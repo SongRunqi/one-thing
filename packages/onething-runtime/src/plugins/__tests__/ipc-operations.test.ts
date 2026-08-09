@@ -61,8 +61,6 @@ describe('plugin IPC operations', () => {
         commands: ['/demo'],
         error: '',
         dirPath: 'builtin://demo',
-        needsInstall: false,
-        legacy: false,
         contributes: {
           commands: [],
           panels: [],

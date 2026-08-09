@@ -33,7 +33,6 @@ describe('projectOnethingPluginsForRenderer', () => {
           },
           enabled: true,
           dirPath: 'builtin://demo',
-          needsInstall: true,
         },
         loaded: false,
         commands: ['/demo'],
@@ -62,8 +61,6 @@ describe('projectOnethingPluginsForRenderer', () => {
         commands: ['/demo'],
         error: 'install deps',
         dirPath: 'builtin://demo',
-        needsInstall: true,
-        legacy: false,
         contributes: {
           commands: ['/demo'],
           panels: [{ id: 'demo-panel', label: 'Demo' }],
@@ -150,8 +147,6 @@ describe('projectOnethingPluginsForRenderer', () => {
         commands: [],
         error: '',
         dirPath: '/plugins/user-plugin',
-        needsInstall: false,
-        legacy: false,
         contributes: {
           commands: [],
           panels: [],

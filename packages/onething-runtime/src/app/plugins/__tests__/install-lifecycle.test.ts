@@ -311,22 +311,22 @@ describe('updatePlugin / checkPluginUpdates', () => {
     expect(plugin.loaded).toBe(true)
   })
 
-  it('legacy 目录插件没有更新通道;无索引 = 更新通道整体关闭', async () => {
+  it('账外的手工目录压根不进插件表(legacy 清零后);无索引 = 更新通道整体关闭', async () => {
     const pluginsDir = tempRoot()
-    // legacy:有 plugin.json 不在账
-    const legacyDir = path.join(pluginsDir, 'ui-demo')
-    fs.mkdirSync(legacyDir, { recursive: true })
-    fs.writeFileSync(path.join(legacyDir, 'plugin.json'), JSON.stringify({ name: 'ui-demo' }))
-    fs.writeFileSync(path.join(legacyDir, 'plugin-entry.js'), 'export default function () {}\n')
+    // 曾经的 legacy 形态:有 plugin.json 不在账 —— 今天它不再被加载。
+    const strayDir = path.join(pluginsDir, 'ui-demo')
+    fs.mkdirSync(strayDir, { recursive: true })
+    fs.writeFileSync(path.join(strayDir, 'plugin.json'), JSON.stringify({ name: 'ui-demo' }))
+    fs.writeFileSync(path.join(strayDir, 'plugin-entry.js'), 'export default function () {}\n')
 
     const npm = createFakeNpm(pluginsDir, new Map())
     const manager = await createManager({ pluginsDir, npm })
     await manager.refreshPlugins()
 
-    expect(manager.getPlugins()[0].definition.legacy).toBe(true)
+    expect(manager.getPlugins()).toEqual([])
     const updated = await manager.updatePlugin('ui-demo')
     expect(updated.success).toBe(false)
-    expect(updated.error).toContain('legacy')
+    expect(updated.error).toContain('Unknown plugin')
     expect(await manager.checkPluginUpdates()).toEqual([])
   })
 })

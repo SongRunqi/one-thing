@@ -26,7 +26,6 @@ export {
   DEFAULT_PLUGIN_ENTRY,
   buildPluginEntryImportSpecifier,
   checkPluginMinAppVersion,
-  checkPluginNeedsInstall,
   compareCoreSemver,
   scanPluginSourceEntries,
   validatePluginContributes,
@@ -42,22 +41,17 @@ export {
   listPluginHealthFromSettings,
   setPluginConfigInSettings,
   setPluginHealthInSettings,
-  installCorePluginDependencies,
   loadCorePluginEntry,
   parsePluginDirectory,
   readPluginLedger,
   readPluginSettingsFile,
   scanCorePlugins,
-  scanLegacyPluginDirectories,
   scanPluginDirectories,
   scanPluginLedgerDirectories,
   setPluginEnabledInSettings,
   setPluginEnabledWithAdapters,
   unscopedPluginIdFromPackageName,
   writePluginSettingsFile,
-} from './loader.js'
-export {
-  installCorePluginDependenciesAsync,
 } from './loader.js'
 export {
   PLUGIN_LEDGER_FILE_NAME,
@@ -85,8 +79,6 @@ export type {
   CorePluginLedgerRead,
   CorePluginScanMode,
   CorePluginScanTrust,
-  CorePluginDependencyInstallAdapters,
-  CorePluginDependencyInstallAsyncAdapters,
   CoreBuiltinPluginSpec,
   CorePluginEntryModule,
   CorePluginLoaderPathOptions,
@@ -111,7 +103,6 @@ export type {
 export {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
   CORE_PLUGIN_FAILURE_THRESHOLD,
-  CORE_PLUGIN_INSTALL_TIMEOUT_MS,
   CORE_PLUGIN_REQUEST_TIMEOUT_MS,
   CORE_PLUGIN_SETTINGS_HOOK_TIMEOUT_MS,
   CORE_PLUGIN_LIFECYCLE_HOOK_TIMEOUT_MS,
@@ -259,8 +250,6 @@ export {
   getCorePluginLegacyKvPath,
   getCorePluginMessageStateDir,
   getCorePluginScratchDir,
-  migrateLegacyPluginKv,
-  migratePluginDataToHome,
   restoreCorePluginDataArchive,
 } from './storage.js'
 export type {

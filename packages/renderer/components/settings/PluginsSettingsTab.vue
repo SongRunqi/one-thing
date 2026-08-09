@@ -116,16 +116,6 @@
                   v-if="plugin.source === 'builtin'"
                   class="meta-tag builtin"
                 >Built-in</span>
-                <span
-                  v-if="plugin.needsInstall"
-                  class="meta-tag needs-install"
-                >⚠️ npm install needed</span>
-                <!-- legacy 目录插件(P1 §5.4):没有更新通道,npm 重装才有。 -->
-                <span
-                  v-if="plugin.legacy"
-                  class="meta-tag legacy"
-                  title="This plugin lives directly in the plugins directory. Reinstall it in npm form to get the update channel."
-                >Legacy</span>
                 <!-- "有更新"徽标:checkPluginUpdates 的数据源是市场索引。 -->
                 <span
                   v-if="updateOffers.has(plugin.id)"
@@ -297,9 +287,9 @@
               :aria-label="`Enable ${plugin.name}`"
               @update:model-value="togglePlugin(plugin)"
             />
-            <!-- 有更新才出现;无 npm 时置灰(裁决 8),legacy 根本没有更新通道。 -->
+            <!-- 有更新才出现;无 npm 时置灰(裁决 8)。 -->
             <Button
-              v-if="updateOffers.has(plugin.id) && !plugin.legacy"
+              v-if="updateOffers.has(plugin.id)"
               unstyled
               class="btn-sm update-btn"
               :disabled="npmAvailable === false || updatingPlugins.has(plugin.id)"
@@ -554,7 +544,7 @@
           <p class="hint install-hint">
             Installs run through npm with lifecycle scripts disabled (<code>--ignore-scripts</code>);
             packages must ship fully bundled. Dropping a folder into <code>~/.onething/plugins/</code>
-            still works as a <strong>legacy</strong> plugin, but only npm-installed ones get the update channel.
+            no longer installs anything — since 2026-08-09 the npm ledger is the only way in.
           </p>
         </div>
       </div>
@@ -590,9 +580,6 @@ interface PluginInfo {
   commands: string[]
   error: string
   dirPath: string
-  needsInstall: boolean
-  /** legacy 目录插件(P1 §5.4):有 plugin.json 但不在 npm 账里 —— 没有更新通道。 */
-  legacy?: boolean
   healthStatus?: string
   healthFailures?: number
   healthReason?: string
@@ -814,8 +801,8 @@ async function confirmUninstall(plugin: PluginInfo): Promise<void> {
     title: 'Uninstall plugin',
     // 路径不硬编码:store 根由 ONETHING_STORE_PATH 决定,写死 ~/.onething 会在
     // 自定义 store 下变成一句假话。相对表述对用户同样够用。
-    message: `Uninstall "${plugin.name}"? Its plugin folder is deleted and its data folder is moved into `
-      + 'the plugin-data backup folder. Disabling instead keeps both in place.'
+    message: `Uninstall "${plugin.name}"? Its package is removed and its data folder is moved into `
+      + 'the plugins backup folder. Disabling instead keeps both in place.'
       // 确认框的正文是单段落(ConfirmHost 不保留换行),所以足迹接成同段的下一句,
       // 而不是塞一个会被折叠掉的空行。
       + (footprint ? ` ${footprint}` : ''),
@@ -949,7 +936,6 @@ function runtimeFault(plugin: PluginInfo): string {
 }
 
 function statusOf(plugin: PluginInfo): { label: string; tone: string } {
-  if (plugin.healthStatus === 'installing') return { label: 'Installing', tone: 'installing' }
   if (plugin.healthStatus === 'disabled' && plugin.healthReason) return { label: 'Failed', tone: 'error' }
   // 降级只影响一个界面 —— 卡片说 "Partly degraded",不是 Failed。
   // (排在 disabled 判断之后:插件真被禁用时那才是主要事实。)
@@ -1443,8 +1429,7 @@ onBeforeUnmount(() => {
   color: var(--ui-status-danger-fg);
 }
 
-.status-badge.warning,
-.status-badge.installing {
+.status-badge.warning {
   border-color: var(--ui-status-warning-border, var(--ui-status-warning-fg));
   color: var(--ui-status-warning-fg);
 }
@@ -1545,14 +1530,6 @@ onBeforeUnmount(() => {
   color: var(--settings-ink-3, var(--ui-text-muted-fg));
 }
 
-.meta-tag.legacy {
-  padding: 1px 7px;
-  border: 1px dashed color-mix(in srgb, var(--settings-ink-3, var(--ui-text-muted-fg)) 60%, transparent);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--settings-ink-3, var(--ui-text-muted-fg));
-}
-
 .meta-tag.update-available {
   padding: 1px 7px;
   border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg)) 70%, transparent);
@@ -1612,14 +1589,6 @@ onBeforeUnmount(() => {
 
 .install-hint {
   margin-top: 10px;
-}
-
-.meta-tag.needs-install {
-  padding: 1px 7px;
-  border: 1px solid var(--ui-status-warning-border, var(--ui-status-warning-fg));
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ui-status-warning-fg);
 }
 
 .meta-tag.builtin {

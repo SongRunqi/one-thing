@@ -1,8 +1,20 @@
 # legacy 目录插件清零计划
 
-> 状态:计划(2026-08-08 登记,P4 交付物)。
+> 状态:**已完成(2026-08-09 移除期一次性执行完毕,验收见文末)**。
 > 前置:P1(npm 形态)✅、P2(市场仓库 + CI)✅、P3(市场 UI)✅。
 > 本文是 legacy 兼容路径的**退役时间表与操作单**,不是新设计。
+
+## 2026-08-09 裁决:时间表压缩,一期做完
+
+原时间表横跨三个 minor 版本(警告→切换→移除),那套缓冲是为"第三方作者
+生态"设计的 —— 现实是存量 legacy 插件的作者只有我们自己,且真机核查
+(2026-08-09)发现**存量已经自然清零**:`~/.onething/plugins/` 下已无任何
+legacy 目录,plan-status 已是市场 npm 形态(账本 v1.0.1),ui-demo 已不在
+(其能力演示由 plan-status/tps-meter 覆盖,不转正、不保留)。警告期保护的
+对象不存在,压缩为一期直接执行移除期。
+
+原"时间表"与"存量转正操作单"两节保留为历史注记(操作单对将来手工目录
+形态的一次性迁移仍有参考价值)。
 
 ## 对象
 
@@ -60,10 +72,38 @@ P1–P3 的全部 npm 化(账制扫描/生命周期命令/市场)**不适用于�
 其 npm 化随 server 插件策略单独立项(评估已登记:分发设计 §12.0,
 含 H 线子进程隔离在 server 上升级为"强烈建议同期"的结论)。
 
-## 验收(移除期到时照此核对)
+## 验收(2026-08-09 逐条核对,全部通过)
 
-1. `scanCorePlugins` 无 `scanLegacyPluginDirectories` 调用,`legacy` 标记字段删除;
-2. loader 无 needsInstall 探测与门控安装机器;
-3. `plugin-data/` 仅作为归档目录名出现在 `legacy-backup` 路径里;
-4. 分发设计 §5.4 与本计划的"兼容路径"描述更新为历史注记;
-5. 全量测试与双端 typecheck 绿。
+1. ✅ `scanCorePlugins` 无 `scanLegacyPluginDirectories` 调用 —— 函数本身连同
+   `packages/core/plugins/index.ts` 的导出一并删除;`CorePluginDefinition.legacy`
+   标记字段删除,manager 的两处"legacy 没有更新通道"分支、清单投影
+   (`plugin-list.ts`)与设置页徽标/更新按钮门控随之撤下。
+2. ✅ loader 无 needsInstall 探测与门控安装机器:`checkPluginNeedsInstall`、
+   `needsInstallCheck`、`CorePluginDefinition.needsInstall`、`loadCorePluginEntry`
+   里的首载安装段全删;连带删掉已无调用者的
+   `installCorePluginDependencies(/Async)`、runtime 的 `installPluginDeps`、
+   `CORE_PLUGIN_INSTALL_TIMEOUT_MS`、健康态的 `installing` 状态与
+   `pluginLoadLabel.npmInstall`。manager 的加载预算退化为固定 entry 预算。
+3. ✅ `plugin-data/` 只剩归档用途:`migratePluginDataToHome` / `migrateLegacyPluginKv`
+   与 `legacyDataRoot` 参数链删除,`createCorePluginStorage` / `CorePluginStore`
+   不再做惰性搬家(两处 root 参数改为可选,家目录是桌面宿主的唯一根);
+   `getPluginDataRoot()` 只被孤儿收尸使用,注释已收窄。
+   `legacy-backup/` 与 `kv.legacy.json` 是**另外两种含义**的 legacy,原样保留。
+4. ✅ 分发设计 §5.4 改为历史注记(含"同 id 共存陷阱已消失"的勘误)、
+   §5.3 去掉"唯一例外"、风险表两行划掉;`CLAUDE.md` 与
+   `docs/guides/plugin-authoring.md` 的目录形态描述同步。
+5. ✅ 全量测试(908 文件 / 7780 用例)与双端 typecheck 绿,`boundary:gate` 无新红。
+
+### 语义变化的登记(拆除带来的)
+
+- **账外的手工目录**(有 `plugin.json` 但不在 dependencies 里):**不加载、不报错**;
+  家目录孤儿扫描继续按 `plugin.json` 在场跳过它 —— 它既不是插件也不是宿主管的
+  数据,不归档、不删除,原地留给人处置。`plugin-data/<id>/` 的所有权判定用的是
+  源目录条目名(`scanPluginSourceEntries`,与"能否加载"解耦),因此这类目录的
+  旧数据同样不会被误判成孤儿。
+- **配置/KV/storage/消息态不再分叉**:此前 `plugins/<id>/plugin.json` 在场会把
+  配置留在中央 plugin-settings、数据留在 `plugin-data/`、消息态强制 ephemeral;
+  现在一律走家目录,消息态的 persistent 闸门只剩 manifest 的 lifetime 声明。
+- **`plugin-data/` 里的存量不再被读取**:P1 之前写入的数据若还留在旧根,
+  拆除后没有读路径会去取(存量已清零,故无实际影响);id 已不在存活集合的
+  会被孤儿收尸归档,仍在存活集合的则原地不动、不再被使用。

@@ -13,7 +13,6 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   CorePluginManager,
-  CorePluginStore,
   PLUGIN_DATA_LEGACY_BACKUP_DIR,
   PLUGIN_KV_FILE_NAME,
   PLUGIN_LEGACY_KV_FILE_NAME,
@@ -26,7 +25,6 @@ import {
   disposeCorePluginState,
   findCorePluginDataOrphans,
   getCorePluginDataFootprint,
-  migrateLegacyPluginKv,
   restoreCorePluginDataArchive,
   scanPluginSourceEntries,
   type CorePluginDefinition,
@@ -243,43 +241,6 @@ describe('R4 api.storage wiring — latch and breaker ledger', () => {
       // 拆除之后的写入没有落盘 —— 否则就是一个没人能回收的孤儿文件。
       expect(fs.existsSync(path.join(root, 'notes', 'after.json'))).toBe(false)
       expect(fs.existsSync(path.join(root, 'notes', 'before.json'))).toBe(true)
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true })
-    }
-  })
-})
-
-describe('R4 KV migration — one plugin, one directory', () => {
-  it('moves the legacy <id>.json into <id>/kv.json lazily, without changing api.store behaviour', () => {
-    const root = tempRoot()
-    try {
-      fs.mkdirSync(root, { recursive: true })
-      fs.writeFileSync(path.join(root, 'notes.json'), JSON.stringify({ seen: 3 }), 'utf-8')
-
-      const store = new CorePluginStore('notes', { dataDir: root })
-      // 读一次就迁移完了 —— 没人碰过的插件不该因为一次升级就被动过。
-      expect(store.get('seen')).toBe(3)
-      expect(fs.existsSync(path.join(root, 'notes.json'))).toBe(false)
-      expect(fs.existsSync(path.join(root, 'notes', PLUGIN_KV_FILE_NAME))).toBe(true)
-
-      store.set('seen', 4)
-      expect(new CorePluginStore('notes', { dataDir: root }).get('seen')).toBe(4)
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true })
-    }
-  })
-
-  it('keeps the newer kv.json when both exist and leaves the legacy file for the orphan sweep', () => {
-    const root = tempRoot()
-    try {
-      fs.mkdirSync(path.join(root, 'notes'), { recursive: true })
-      fs.writeFileSync(path.join(root, 'notes.json'), JSON.stringify({ from: 'legacy' }), 'utf-8')
-      fs.writeFileSync(path.join(root, 'notes', PLUGIN_KV_FILE_NAME), JSON.stringify({ from: 'new' }), 'utf-8')
-
-      expect(migrateLegacyPluginKv(root, 'notes')).toBe(false)
-      expect(new CorePluginStore('notes', { dataDir: root }).get('from')).toBe('new')
-      // 不静默删旧文件:它进足迹,由归档处理。
-      expect(fs.existsSync(path.join(root, 'notes.json'))).toBe(true)
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }

@@ -301,7 +301,6 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
 
     // 反过来钉住上一次的死法:加载期标签是**另一套词汇**,它不进判决路径,
     // 所以严重度表里不该有它的家族。
-    expect(classifyPluginScope(pluginLoadLabel.npmInstall())).toBeNull()
     expect(classifyPluginScope(pluginLoadLabel.entry())).toBeNull()
     expect(PLUGIN_SCOPE_FAMILIES as readonly string[]).not.toContain('install')
     expect(PLUGIN_SCOPE_FAMILIES as readonly string[]).not.toContain('entry')

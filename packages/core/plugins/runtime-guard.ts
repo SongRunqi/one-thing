@@ -24,8 +24,6 @@ export const CORE_PLUGIN_LIFECYCLE_HOOK_TIMEOUT_MS = 5_000
 export const CORE_PLUGIN_SETTINGS_HOOK_TIMEOUT_MS = 5_000
 /** 插件 entry(api):注册期可以慢一点,但不能无限。 */
 export const CORE_PLUGIN_ENTRY_TIMEOUT_MS = 10_000
-/** npm install 那一段的独立预算(装依赖本来就是分钟级的事)。 */
-export const CORE_PLUGIN_INSTALL_TIMEOUT_MS = 120_000
 /**
  * 一次插件请求(UI → 插件)的预算。
  *
@@ -81,7 +79,7 @@ export async function runWithPluginTimeout<T>(
   }
 }
 
-export type CorePluginHealthStatus = 'healthy' | 'installing' | 'degraded' | 'disabled'
+export type CorePluginHealthStatus = 'healthy' | 'degraded' | 'disabled'
 
 export interface CorePluginRuntimeHealth {
   status: CorePluginHealthStatus
@@ -264,7 +262,7 @@ export class CorePluginHealthTracker {
 
     if (!entry.scopes.get(scope)) {
       if ([...entry.scopes.values()].every(count => count === 0)) {
-        entry.status = entry.status === 'installing' ? 'installing' : 'healthy'
+        entry.status = 'healthy'
         entry.disabledReason = undefined
       }
       return
@@ -272,15 +270,9 @@ export class CorePluginHealthTracker {
 
     entry.scopes.set(scope, 0)
     if ([...entry.scopes.values()].every(count => count === 0)) {
-      entry.status = entry.status === 'installing' ? 'installing' : 'healthy'
+      entry.status = 'healthy'
       entry.disabledReason = undefined
     }
-  }
-
-  markInstalling(pluginId: string): void {
-    const entry = this.health.get(pluginId) ?? { scopes: new Map<string, number>(), status: 'healthy' as CorePluginHealthStatus }
-    entry.status = 'installing'
-    this.health.set(pluginId, entry)
   }
 
   /**

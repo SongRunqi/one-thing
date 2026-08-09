@@ -15,7 +15,6 @@ import { describe, expect, it } from 'vitest'
 import {
   CorePluginStore,
   PLUGIN_CONFIG_FILE_NAME,
-  PLUGIN_KV_FILE_NAME,
   PLUGIN_SCRATCH_DIR_NAME,
   PluginStorageError,
   assertNotInNodeModules,
@@ -24,7 +23,6 @@ import {
   getCorePluginConfigPath,
   getCorePluginHomeDir,
   getCorePluginScratchDir,
-  migratePluginDataToHome,
 } from '@onething/core/plugins'
 
 function tempRoot(): string {
@@ -62,69 +60,18 @@ describe('家目录路径与铁律', () => {
   })
 })
 
-describe('migratePluginDataToHome —— 惰性搬家', () => {
-  it('kv 与 scratch 各归其位;空壳顺手收掉', () => {
-    const root = tempRoot()
-    const legacyData = path.join(root, 'plugin-data')
-    const plugins = path.join(root, 'plugins')
-    // 旧布局:k/v 在目录里,插件文件与目录同层。
-    writeJson(path.join(legacyData, 'demo', 'kv.json'), { count: 7 })
-    writeJson(path.join(legacyData, 'demo', 'notes.json'), ['a'])
-    fs.mkdirSync(path.join(legacyData, 'demo', 'subdir'), { recursive: true })
-    writeJson(path.join(legacyData, 'demo', 'subdir', 'deep.json'), { ok: true })
-
-    const moved = migratePluginDataToHome({ legacyDataRoot: legacyData, homeRoot: plugins, pluginId: 'demo' })
-
-    expect(moved).toBe(true)
-    expect(JSON.parse(fs.readFileSync(path.join(plugins, 'demo', 'kv.json'), 'utf8'))).toEqual({ count: 7 })
-    expect(JSON.parse(fs.readFileSync(path.join(plugins, 'demo', 'storage', 'notes.json'), 'utf8'))).toEqual(['a'])
-    expect(fs.existsSync(path.join(plugins, 'demo', 'storage', 'subdir', 'deep.json'))).toBe(true)
-    // 空壳被收掉
-    expect(fs.existsSync(path.join(legacyData, 'demo'))).toBe(false)
-  })
-
-  it('最旧的扁平 kv(<root>/<id>.json)先归队再一起搬', () => {
-    const root = tempRoot()
-    const legacyData = path.join(root, 'plugin-data')
-    const plugins = path.join(root, 'plugins')
-    writeJson(path.join(legacyData, 'demo.json'), { legacy: 1 })
-
-    migratePluginDataToHome({ legacyDataRoot: legacyData, homeRoot: plugins, pluginId: 'demo' })
-
-    expect(JSON.parse(fs.readFileSync(path.join(plugins, 'demo', 'kv.json'), 'utf8'))).toEqual({ legacy: 1 })
-    expect(fs.existsSync(path.join(legacyData, 'demo.json'))).toBe(false)
-  })
-
-  it('目标已存在 = 保留目标,旧物原地等归档,绝不覆盖', () => {
-    const root = tempRoot()
-    const legacyData = path.join(root, 'plugin-data')
-    const plugins = path.join(root, 'plugins')
-    writeJson(path.join(legacyData, 'demo', 'kv.json'), { old: true })
-    writeJson(path.join(legacyData, 'demo', 'notes.json'), ['old'])
-    writeJson(path.join(plugins, 'demo', 'kv.json'), { fresh: true })
-    writeJson(path.join(plugins, 'demo', 'storage', 'notes.json'), ['fresh'])
-
-    migratePluginDataToHome({ legacyDataRoot: legacyData, homeRoot: plugins, pluginId: 'demo' })
-
-    expect(JSON.parse(fs.readFileSync(path.join(plugins, 'demo', 'kv.json'), 'utf8'))).toEqual({ fresh: true })
-    expect(JSON.parse(fs.readFileSync(path.join(plugins, 'demo', 'storage', 'notes.json'), 'utf8'))).toEqual(['fresh'])
-    // 旧物原地还在(等归档处理),旧目录因为有残留不会被删
-    expect(fs.existsSync(path.join(legacyData, 'demo', 'kv.json'))).toBe(true)
-    expect(fs.existsSync(path.join(legacyData, 'demo'))).toBe(true)
-  })
-})
-
 describe('createCorePluginStorage(homeRoot) —— api.storage 的新家', () => {
-  it('scratch 落进 plugins/<id>/storage/,首次访问惰性搬家', () => {
+  it('scratch 落进 plugins/<id>/storage/;旧数据根不再被读', () => {
     const root = tempRoot()
     const legacyData = path.join(root, 'plugin-data')
     const plugins = path.join(root, 'plugins')
+    // 旧根里的东西自 2026-08-09 起没有读路径 —— 它只等孤儿收尸。
     writeJson(path.join(legacyData, 'demo', 'old-file.json'), { from: 'legacy' })
 
     const storage = createCorePluginStorage({ pluginId: 'demo', dataRoot: legacyData, homeRoot: plugins })
-    // 纯读触发迁移,旧文件在 storage/ 里读得到
-    expect(storage.readJson('old-file.json')).toEqual({ from: 'legacy' })
-    // 写进新位置
+    expect(storage.readJson('old-file.json')).toBeUndefined()
+    expect(fs.existsSync(path.join(legacyData, 'demo', 'old-file.json'))).toBe(true)
+
     storage.writeJson('new-file.json', { fresh: 1 })
     expect(fs.existsSync(path.join(plugins, 'demo', 'storage', 'new-file.json'))).toBe(true)
     expect(storage.dir()).toBe(path.join(plugins, 'demo', 'storage'))
@@ -140,19 +87,17 @@ describe('createCorePluginStorage(homeRoot) —— api.storage 的新家', () =>
 })
 
 describe('CorePluginStore(homeRoot) —— KV 的新家', () => {
-  it('kv 写进 plugins/<id>/kv.json,旧 kv 首载时搬入且可读', () => {
+  it('kv 只认家目录;旧根里的 kv 不再被搬也不再被读', () => {
     const root = tempRoot()
     const legacyData = path.join(root, 'plugin-data')
     const plugins = path.join(root, 'plugins')
     writeJson(path.join(legacyData, 'demo', 'kv.json'), { token: 'abc' })
 
     const store = new CorePluginStore('demo', { dataDir: legacyData, homeRoot: plugins })
-    // 首读触发迁移,旧数据还在
-    expect(store.get('token')).toBe('abc')
-    // 新写落在家里
+    expect(store.get('token')).toBeUndefined()
     store.set('next', 2)
-    expect(JSON.parse(fs.readFileSync(path.join(plugins, 'demo', 'kv.json'), 'utf8')))
-      .toEqual({ token: 'abc', next: 2 })
-    expect(fs.existsSync(path.join(legacyData, 'demo', 'kv.json'))).toBe(false)
+    expect(JSON.parse(fs.readFileSync(path.join(plugins, 'demo', 'kv.json'), 'utf8'))).toEqual({ next: 2 })
+    // 旧根原地不动 —— 归档是孤儿扫描的事,不是读路径的事。
+    expect(fs.existsSync(path.join(legacyData, 'demo', 'kv.json'))).toBe(true)
   })
 })

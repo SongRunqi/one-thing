@@ -30,7 +30,6 @@ import {
   getPluginDataRoot,
   getPluginsDir,
   invalidateDeclaredPanelIdsCache,
-  isLegacyPluginCodeDir,
   loadPersistedPluginHealth,
   markPluginDemolished,
   persistPluginHealth,
@@ -105,20 +104,16 @@ function createHost(): CorePluginManagerHost<
     archivePluginData: pluginId => {
       // §7.4:归档完成后到的写(config/KV/storage)= warn + 丢弃,不重建家目录。
       markPluginDemolished(pluginId)
-      // 归档目标(P1 适配):npm 形态的家在 plugins/<id>/;legacy 代码目录的
-      // 数据仍在 plugin-data/<id>/(判别顺序:plugin.json 在场 = 代码目录)。
-      const root = isLegacyPluginCodeDir(pluginId) ? getPluginDataRoot() : getPluginsDir()
-      return archiveCorePluginData(root, pluginId)
+      // 归档目标(P1 适配):插件的数据家在 plugins/<id>/。
+      return archiveCorePluginData(getPluginsDir(), pluginId)
     },
     removePluginSource: async (definition) => {
       // 源目录没了,清单也就变了 —— 面板声明缓存必须跟着失效。
       invalidateDeclaredPanelIdsCache()
-      // npm 形态(dirPath 在 node_modules 里且非 legacy)= `npm uninstall` 拆账;
-      // legacy 目录插件维持 rm -rf(directory 扫描语义下的宿主也走这条)。
-      if (!definition.legacy) {
-        const pkg = packageNameFromNodeModulesPath(getPluginsDir(), definition.dirPath)
-        if (pkg) return uninstallPluginPackage(getPluginsDir(), pkg)
-      }
+      // npm 形态(dirPath 在 node_modules 里)= `npm uninstall` 拆账;
+      // 不在 node_modules 里的(directory 扫描语义下的宿主)走 rm -rf。
+      const pkg = packageNameFromNodeModulesPath(getPluginsDir(), definition.dirPath)
+      if (pkg) return uninstallPluginPackage(getPluginsDir(), pkg)
       return removePluginSourceDir(definition.dirPath, definition.id)
     },
     clearPluginSettings: pluginId => {
@@ -128,8 +123,7 @@ function createHost(): CorePluginManagerHost<
       clearPluginRuntimeHealth(pluginId)
     },
     restorePluginDataArchive: (pluginId, archivePath) => {
-      const root = isLegacyPluginCodeDir(pluginId) ? getPluginDataRoot() : getPluginsDir()
-      return restoreCorePluginDataArchive(root, pluginId, archivePath)
+      return restoreCorePluginDataArchive(getPluginsDir(), pluginId, archivePath)
     },
     // ── P1:npm 生命周期(裁决 8:v1 依赖本机 npm)──
     installPluginPackage: input => installPluginPackage(getPluginsDir(), input),

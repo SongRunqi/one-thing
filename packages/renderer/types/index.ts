@@ -2032,7 +2032,6 @@ export interface ElectronAPI {
 			commands: string[];
 			error: string;
 			dirPath: string;
-			needsInstall: boolean;
 		}>;
 		error?: string;
 	}>;

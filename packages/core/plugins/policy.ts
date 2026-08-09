@@ -76,7 +76,6 @@ export const pluginScope = {
  * 完全失明。两套词汇分开,这种事在类型上就说得清了。
  */
 export const pluginLoadLabel = {
-  npmInstall: () => brand('npm-install'),
   /**
    * entry import 失败。
    *

@@ -243,7 +243,6 @@ export {
   unscopePluginTaskId,
   unscopePluginTaskSnapshot,
   DEFAULT_PLUGIN_ENTRY,
-  checkPluginNeedsInstall,
   getPluginEnabledFromSettings,
   parsePluginDirectory,
   readPluginSettingsFile,

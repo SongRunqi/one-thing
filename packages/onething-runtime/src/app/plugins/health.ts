@@ -117,10 +117,6 @@ export function reportPluginRuntimeSuccess(pluginId: string, scope: PluginFailur
   tracker.recordSuccess(pluginId, scope)
 }
 
-export function markPluginInstalling(pluginId: string): void {
-  tracker.markInstalling(pluginId)
-}
-
 /**
  * 加载期错误 —— **不受严重度表管辖**(不计连败、不触发罚则),只写进健康态
  * 供设置页显示"为什么没起来"。scope 仍是品牌类型,免得这里成为裸字符串的后门。

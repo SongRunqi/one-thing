@@ -1,18 +1,17 @@
 /**
  * Plugin Loader — scans and loads plugins from disk.
  *
- * User plugins live under ~/.onething/plugins/{plugin-id}/.
- * Built-in plugins are statically bundled with the app.
- * Each plugin has a package.json with its own dependencies.
- * On install/first-load, `npm install` is run inside the plugin directory.
+ * 用户插件走 npm 账本:代码在 `~/.onething/plugins/node_modules/`,数据在家目录
+ * `~/.onething/plugins/<id>/`。内置插件与 app 同一份构建。
+ * **没有运行时 npm install**:包在安装期就 bundle 好全部依赖(2026-08-09
+ * legacy 目录插件清零时,首载安装机器随之退役)。
  */
 
 import fs from 'fs'
 import path from 'path'
-import { pluginLoadLabel, type PluginContributionUiSlot } from '@onething/core/plugins'
-import { spawn } from 'child_process'
+import type { PluginContributionUiSlot } from '@onething/core/plugins'
 import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/runtime/storage'
-import { pathExists, writeJsonFile } from '@onething/core/storage'
+import { writeJsonFile } from '@onething/core/storage'
 import {
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,
@@ -23,7 +22,6 @@ import {
   PLUGIN_SETTINGS_KEYS,
   getPluginEnabledWithAdapters,
   buildPluginEntryImportSpecifier,
-  installCorePluginDependenciesAsync,
   listPluginHealthFromSettings,
   loadCorePluginEntry,
   readPluginSettingsFile,
@@ -37,12 +35,7 @@ import {
 } from '@onething/core/plugins'
 import type { CorePluginDataFootprint, PersistedPluginHealth } from '@onething/core/plugins'
 import { getPluginAppVersion } from './app-version.js'
-import {
-  clearPluginRuntimeHealth,
-  markPluginInstalling,
-  markPluginLoadError,
-  reportPluginRuntimeSuccess,
-} from './health.js'
+import { clearPluginRuntimeHealth } from './health.js'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
 import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
@@ -78,7 +71,13 @@ export function loadPersistedPluginHealth(): Array<{ pluginId: string; health: P
   return listPluginHealthFromSettings(readPluginSettings())
 }
 
-/** plugin-data 的根目录 —— 插件数据作用域是**全局 per-plugin**(R4 拍板)。 */
+/**
+ * `plugin-data/` 的根目录。
+ *
+ * **只剩归档用途**:P1 之后插件数据住家目录 `plugins/<id>/`,2026-08-09 撤掉
+ * 惰性迁移之后再没有任何读路径指向这里。留着它是为了孤儿收尸 —— 旧根里若还
+ * 躺着无主数据,照样归档进 `plugin-data/legacy-backup/`。
+ */
 export function getPluginDataRoot(): string {
   return getOnethingPluginDataDir({ storePath: getOnethingStorePath() })
 }
@@ -127,30 +126,17 @@ export function listPluginSettingsKeys(pluginId: string): string[] {
   return PLUGIN_SETTINGS_KEYS.filter(key => settings[key]?.[pluginId] !== undefined)
 }
 
-/** 一个插件的全部落盘足迹(宪法第 6 条数据侧)。 */
 /**
- * 足迹枚举与归档同一把尺(P1):npm 形态的家在 `plugins/<id>/`,legacy
- * 代码目录的数据在 `plugin-data/<id>/`。卸载确认框据此展示"将被归档的
- * 东西" —— 尺若分叉,对话框就会对 npm 插件说"没什么可归档的"而家目录
+ * 一个插件的全部落盘足迹(宪法第 6 条数据侧)。
+ *
+ * 足迹枚举与归档同一把尺(P1):家在 `plugins/<id>/`。卸载确认框据此展示
+ * "将被归档的东西" —— 尺若分叉,对话框就会说"没什么可归档的"而家目录
  * 其实会被搬走。
  */
 export function getPluginFootprint(pluginId: string): CorePluginDataFootprint {
-  const root = isLegacyPluginCodeDir(pluginId) ? getPluginDataRoot() : getPluginsDir()
-  return getCorePluginDataFootprint(root, pluginId, {
+  return getCorePluginDataFootprint(getPluginsDir(), pluginId, {
     settingsKeys: listPluginSettingsKeys(pluginId),
   })
-}
-
-/** 插件自有配置的原始值(未校验);校验与默认值填充在 config.ts。 */
-/**
- * 配置落盘位置的判别(§5.4 与 §7.1 的交叠):
- * `plugins/<id>/` 里有 plugin.json = legacy 代码目录 —— 数据(含配置)不搬,
- * 直到重装为 npm 形态;否则(纯数据家目录 / 内置插件 / 尚未写过数据的
- * npm 插件)配置住 `plugins/<id>/config.json`。存储规则不按插件来源分叉,
- * 只按这个判别分叉。
- */
-export function isLegacyPluginCodeDir(pluginId: string): boolean {
-  return fs.existsSync(path.join(getPluginsDir(), pluginId, 'plugin.json'))
 }
 
 // ── §7.4 拆除闩 ──
@@ -168,10 +154,8 @@ export function isPluginDemolished(pluginId: string): boolean {
   return demolishedPluginIds.has(pluginId)
 }
 
+/** 插件自有配置的原始值(未校验);校验与默认值填充在 config.ts。 */
 export function readPluginConfig(pluginId: string): Record<string, unknown> {
-  if (isLegacyPluginCodeDir(pluginId)) {
-    return getPluginConfigFromSettings(readPluginSettings(), pluginId)
-  }
   const configPath = getCorePluginConfigPath(getPluginsDir(), pluginId)
   if (fs.existsSync(configPath)) {
     try {
@@ -201,10 +185,6 @@ export function readPluginConfig(pluginId: string): Record<string, unknown> {
 }
 
 export function writePluginConfig(pluginId: string, config: Record<string, unknown> | null): void {
-  if (isLegacyPluginCodeDir(pluginId)) {
-    writePluginSettings(setPluginConfigInSettings(readPluginSettings(), pluginId, config))
-    return
-  }
   // §7.4 拆除闩。
   if (isPluginDemolished(pluginId)) {
     console.warn(
@@ -308,11 +288,8 @@ export function getDeclaredUiSlots(pluginId: string): PluginContributionUiSlot[]
 /**
  * 目录内容变了之后清缓存 —— 不等 TTL 自然过期。
  *
- * 接线的是 `refreshPlugins`(重扫目录)与卸载(删源目录)。**没有独立的"安装"
- * 入口**:装一个插件 = 往 plugins 目录里放一个目录,它进入系统的唯一路径就是
- * 下一次 refresh;`installPluginDeps` 跑的是 npm install,不动 manifest,
- * 因此与这份缓存无关。(R5 提交信息里"装/卸/刷新时失效"的"装"是措辞不准,
- * 此处按实际接线如实记录。)
+ * 接线的是 `refreshPlugins`(重扫目录)、安装/更新(换了 node_modules 里的包)
+ * 与卸载(删源目录)—— 凡是让清单可能变化的动作,都要让这份缓存失效。
  */
 export function invalidateDeclaredPanelIdsCache(): void {
   declaredPanelIdsCache = null
@@ -320,7 +297,8 @@ export function invalidateDeclaredPanelIdsCache(): void {
 
 export function scanPlugins(): PluginDefinition[] {
   // desktop 用 npm-ledger 扫描语义(P1 拍板):以 plugins/package.json 为账
-  // 扫 npm 插件,再补一轮 legacy 兼容扫描。server 等只投影的宿主不调这里。
+  // 扫 npm 插件。server 等只投影的宿主不调这里。插件根下"有 plugin.json 但
+  // 不在账里"的手工目录不再加载(2026-08-09 legacy 清零)。
   const definitions = scanCorePlugins<PluginEntry>({
     builtinPlugins: getBuiltinPlugins(),
     pluginsDir: getPluginsDir(),
@@ -338,90 +316,13 @@ export function scanPlugins(): PluginDefinition[] {
   return definitions
 }
 
+/**
+ * npm 生命周期(install/update/uninstall)的单次预算。
+ *
+ * 名字留在 loader 是历史位置;真正的消费者在 install.ts —— 加载期已经没有
+ * npm install 了(2026-08-09 随 legacy 目录插件一起退役)。
+ */
 export const PLUGIN_NPM_INSTALL_TIMEOUT_MS = 120_000
-
-/**
- * Windows 上 `npm` 是 npm.cmd,而 spawn 不过 shell —— 直接 spawn('npm') 必 ENOENT。
- * 原来的 execSync 之所以能跑,是因为它走 shell 解析。仓库里其他 spawn 点
- * (tools/bash-executor.ts)也都带这条 win32 分支。
- */
-const NPM_BIN = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-
-/**
- * 同一个插件目录的安装只跑一次。
- *
- * 安装窗口最长 120s,期间来第二次 refresh 就会对同一目录并发跑 npm install
- * (两个 npm 抢同一棵 node_modules,坏掉的方式很难看)。按 dirPath 复用在飞的
- * 那一次。
- */
-const inFlightInstalls = new Map<string, Promise<string | null>>()
-
-/**
- * Run `npm install` in the plugin directory — **异步**。
- *
- * 之前是 execSync(timeout 120s):一个带 package.json 的新插件能把整个主进程
- * 连同全部 IPC 冻住整整两分钟。spawn 之后事件循环继续转,期间插件状态是
- * installing(设置页可见)。
- */
-export function installPluginDeps(dirPath: string, pluginId?: string): Promise<string | null> {
-  const running = inFlightInstalls.get(dirPath)
-  if (running) return running
-
-  const install = installCorePluginDependenciesAsync(dirPath, {
-    exists: pathExists,
-    runInstall(pluginDir) {
-      return new Promise<void>((resolve, reject) => {
-        const child = spawn(NPM_BIN, ['install', '--no-audit', '--no-fund', '--loglevel=error'], {
-          cwd: pluginDir,
-          // stdout 没有消费者:留成 'pipe' 的话,一个话多的 postinstall 写满
-          // 64KB 管道缓冲就会把 npm 自己阻塞住,最后被 120s SIGKILL 误判成超时。
-          // stderr 要留着做失败原因,所以它必须被读走(下面的 'data' 监听)。
-          stdio: ['ignore', 'ignore', 'pipe'],
-        })
-        let stderr = ''
-        let settled = false
-        const timer = setTimeout(() => {
-          settled = true
-          child.kill('SIGKILL')
-          reject(new Error(`npm install timed out after ${PLUGIN_NPM_INSTALL_TIMEOUT_MS}ms`))
-        }, PLUGIN_NPM_INSTALL_TIMEOUT_MS)
-        timer.unref?.()
-
-        child.stderr?.on('data', chunk => {
-          // 只留尾部:失败原因在末尾,而无上限的累加本身就是一个内存洞。
-          stderr = (stderr + String(chunk)).slice(-8_000)
-        })
-        child.on('error', error => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-          reject(error)
-        })
-        child.on('close', code => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-          if (code === 0) resolve()
-          else reject(new Error(stderr.trim() || `npm install exited with code ${code}`))
-        })
-      })
-    },
-    logger: console,
-    onInstallStart() {
-      if (pluginId) markPluginInstalling(pluginId)
-    },
-    onInstallEnd(_dirPath, error) {
-      if (!pluginId) return
-      if (error) markPluginLoadError(pluginId, pluginLoadLabel.npmInstall(), error)
-      else reportPluginRuntimeSuccess(pluginId, pluginLoadLabel.npmInstall())
-    },
-  }).finally(() => {
-    inFlightInstalls.delete(dirPath)
-  })
-
-  inFlightInstalls.set(dirPath, install)
-  return install
-}
 
 /**
  * Load a plugin's entry module dynamically.
@@ -435,7 +336,6 @@ export async function loadPluginEntry(
   reloadToken?: string | number,
 ): Promise<PluginEntry | null> {
   return loadCorePluginEntry(def, {
-    installDependencies: dirPath => installPluginDeps(dirPath, def.id),
     importEntry: entryPath => import(buildPluginEntryImportSpecifier(entryPath, reloadToken)),
     logger: console,
   })

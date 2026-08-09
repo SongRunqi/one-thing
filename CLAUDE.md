@@ -192,8 +192,7 @@ Notes:
     uninstall); the plugin owns the content (opaque — the host never interprets it).
     Persistence is gated by declaration: a plugin gets disk only if some
     `contributes.uiSlots[].lifetime === 'persistent'` (default `ephemeral` = memory only,
-    lost on restart; unknown future values degrade to non-persistent, and legacy
-    directory-form plugins are forced ephemeral). The install confirm page discloses the
+    lost on restart; unknown future values degrade to non-persistent). The install confirm page discloses the
     persistent slot. Session-level persistent state is a deliberate empty cell — the
     layout leaves room, but nothing is built until a real plugin needs it.
   - **One opened host registry**: `api.registerIMConnector` (pilot; ids are namespaced
@@ -215,11 +214,16 @@ Notes:
     (lifecycle scripts never execute), SRI-vs-lockfile verification, and rollback on any
     failed gate (runtime deps / integrity / package-name mismatch / built-in id collision).
     Settings page has an Install form (file: dev channel) and a **Plugin Market** section
-    (search, manifest-first confirm page, offline cache with stale notice). Directory-installed
-    plugins (no package.json entry) still load as **legacy** — same runtime, but no update
-    channel and data stays in old locations; `plugin-data/` is retired (lazy migration,
-    empty shells auto-archived). Author guide: `docs/guides/plugin-authoring.md`;
-    distribution design: `docs/design/plugin-distribution-npm-2026-08.md`.
+    (search, manifest-first confirm page, offline cache with stale notice). **The npm ledger is
+    the only way in** — legacy directory-form plugins were retired 2026-08-09 (stock had already
+    reached zero): a directory under `plugins/` carrying a `plugin.json` but absent from the
+    ledger is simply not loaded (no error, and the orphan sweep leaves it alone — it is neither
+    a plugin nor host-owned data). With it went the `needsInstall` probe and the whole
+    first-load `npm install` machine (packages ship fully bundled). `plugin-data/` is archive-only:
+    no read path points there anymore, orphaned leftovers are swept into
+    `plugin-data/legacy-backup/`. Author guide: `docs/guides/plugin-authoring.md`;
+    distribution design: `docs/design/plugin-distribution-npm-2026-08.md`;
+    retirement record: `docs/design/plugin-legacy-retirement-plan-2026-08.md`.
   - **Plugins execute on the Electron desktop host only** (plan A). Two caveats the
     earlier wording got wrong: apps/server is *not* a read-only mirror — its
     `/api/plugins/{enable,disable,refresh}` routes do write enable-flags to disk, and it

@@ -11,7 +11,6 @@ import { unscopedPluginIdFromPackageName } from './loader.js'
 import { describePluginSurface, pluginScope, type PluginFailureScope } from './policy.js'
 import {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
-  CORE_PLUGIN_INSTALL_TIMEOUT_MS,
   CORE_PLUGIN_REQUEST_TIMEOUT_MS,
   runWithPluginTimeout,
   type CorePluginRuntimeHealth,
@@ -587,8 +586,8 @@ export class CorePluginManager<
     }
     // 防撞闸:包名去 scope 后的 id 撞上内置时,扫描的 seen 集是内置先占位
     // (loader.scanCorePlugins)—— npm 包装得上、账也记了,却永远不会出现
-    // 在插件表里。付了钱买空气不如装前明说。(legacy/用户插件同 id 不拦:
-    // 那是设计好的转正与重装路径。)
+    // 在插件表里。付了钱买空气不如装前明说。(已装的用户插件同 id 不拦:
+    // 那是设计好的重装路径。)
     const incomingId = unscopedPluginIdFromPackageName(input.pkg)
     const existing = this.plugins.get(incomingId)
     if (existing?.definition.source === 'builtin') {
@@ -626,13 +625,6 @@ export class CorePluginManager<
     }
     if (info.definition.source === 'builtin') {
       return { success: false, pluginId, error: `"${pluginId}" is a built-in plugin and cannot be updated` }
-    }
-    if (info.definition.legacy) {
-      return {
-        success: false,
-        pluginId,
-        error: `"${pluginId}" is a legacy directory plugin; reinstall it in npm form to get the update channel`,
-      }
     }
     if (!this.host.installPluginPackage || !this.host.fetchPluginMarketIndex) {
       return { success: false, pluginId, error: 'This host does not support plugin updates' }
@@ -700,8 +692,8 @@ export class CorePluginManager<
     if (!index) return []
     const offers: CorePluginUpdateOffer[] = []
     for (const [id, info] of this.plugins) {
-      // 内置与 legacy 目录插件没有更新通道。
-      if (info.definition.source === 'builtin' || info.definition.legacy) continue
+      // 内置插件没有更新通道(它和 app 同一份构建)。
+      if (info.definition.source === 'builtin') continue
       const current = info.definition.manifest.version ?? '0.0.0'
       const update = findPluginUpdate(index, id, current)
       if (update) offers.push({ pluginId: id, current, latest: update.latest })
@@ -889,14 +881,11 @@ export class CorePluginManager<
       // bootstrapPluginSystem 挂死,排在它后面的 skills 永不初始化 —— 正是这一期
       // 声称治好的那个病。
       //
-      // 需要装依赖时预算里加上 npm install 那一段(它自己另有 120s 的 SIGKILL),
-      // 免得把一次合法的安装误杀成超时。
-      const loadBudgetMs = def.needsInstall
-        ? CORE_PLUGIN_INSTALL_TIMEOUT_MS + entryTimeoutMs
-        : entryTimeoutMs
+      // 预算是固定的 entry 预算:运行时依赖安装已随 legacy 目录插件一起退役
+      // (npm 形态的包自带全部依赖),加载期不再有分钟级的合法慢路径。
       entry = await runWithPluginTimeout(
         `load:${def.id}`,
-        loadBudgetMs,
+        entryTimeoutMs,
         () => this.host.loadPluginEntry(def, this.reloadTokens.get(def.id) ?? 0),
       )
     } catch (error) {

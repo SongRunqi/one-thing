@@ -110,13 +110,6 @@ export interface CorePluginDefinition<TEntry = unknown> {
   entryPath: string
   entry?: TEntry
   enabled: boolean
-  needsInstall?: boolean
-  /**
-   * legacy 目录插件标记(§5.4):有 plugin.json 但不在 npm 账里的存量
-   * 手工目录。设置页用它提示“以 npm 形式重装可获更新通道”;仅
-   * npm-ledger 扫描语义下会置位。
-   */
-  legacy?: true
   error?: string
   /**
    * 扫描期就判定的"不该加载"原因:非法 contributes、minAppVersion 不满足。

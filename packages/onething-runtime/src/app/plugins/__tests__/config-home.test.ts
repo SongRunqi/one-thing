@@ -4,8 +4,8 @@
  * 拍板(设计 §7):
  *  - 自有配置从 plugin-settings 的 config.<id> 搬进 `plugins/<id>/config.json`,
  *    首次读写惰性迁移,中央行抹掉(有实际搬移才重写中央文件);
- *  - 判别(§5.4 交叠):plugins/<id>/ 里有 plugin.json = legacy 代码目录,
- *    配置留中央,直到重装为 npm 形态;
+ *  - 判别只剩一条(2026-08-09 legacy 清零):所有插件的配置都住家目录,
+ *    plugins/<id>/ 里有没有 plugin.json 都一样;
  *  - §7.4:config / KV / storage 三条写路径统一挂拆除闩 —— 卸载完成后到的
  *    任何写 = warn + 静默丢弃,不重建刚归档的家目录;
  *  - plugins/ 家目录孤儿收尸:无主的纯数据目录归档进 plugins/legacy-backup/。
@@ -82,20 +82,18 @@ describe('配置搬家(plugin-settings → plugins/<id>/config.json)', () => {
     expect(readPluginConfig('writer')).toEqual({})
   })
 
-  it('legacy 代码目录(plugin.json 在场)= 配置留中央,不产生家文件', async () => {
+  it('目录里有 plugin.json 也不再分叉:配置照样住家目录', async () => {
     const { writePluginConfig, readPluginConfig } = await loader()
-    const legacyDir = path.join(pluginsDir, 'legacy-one')
-    fs.mkdirSync(legacyDir, { recursive: true })
-    fs.writeFileSync(path.join(legacyDir, 'plugin.json'), JSON.stringify({ name: 'legacy-one' }))
+    const strayDir = path.join(pluginsDir, 'stray-one')
+    fs.mkdirSync(strayDir, { recursive: true })
+    fs.writeFileSync(path.join(strayDir, 'plugin.json'), JSON.stringify({ name: 'stray-one' }))
 
-    writePluginConfig('legacy-one', { keep: 'central' })
+    writePluginConfig('stray-one', { keep: 'home' })
 
-    expect(readCentralConfigRow('legacy-one')).toEqual({ keep: 'central' })
-    expect(fs.existsSync(path.join(legacyDir, 'config.json'))).toBe(false)
-    expect(readPluginConfig('legacy-one')).toEqual({ keep: 'central' })
-    // 读也不搬:中央行还在
-    expect(readCentralConfigRow('legacy-one')).toEqual({ keep: 'central' })
-    fs.rmSync(legacyDir, { recursive: true, force: true })
+    expect(JSON.parse(fs.readFileSync(path.join(strayDir, 'config.json'), 'utf-8'))).toEqual({ keep: 'home' })
+    expect(readCentralConfigRow('stray-one')).toBeUndefined()
+    expect(readPluginConfig('stray-one')).toEqual({ keep: 'home' })
+    fs.rmSync(strayDir, { recursive: true, force: true })
   })
 
   it('内置插件形态(plugins/<id> 根本不存在)= 同规则住家目录', async () => {
@@ -172,7 +170,7 @@ describe('§7.4 拆除闩', () => {
 })
 
 describe('足迹枚举(宪法第 6 条)—— 与归档同一把尺', () => {
-  it('npm 形态枚举家目录;legacy 枚举 plugin-data', async () => {
+  it('足迹一律枚举家目录 —— plugin-data 不再是任何插件的数据根', async () => {
     const { getPluginFootprint } = await loader()
     // npm 形态:家目录(config/kv/storage 三层)
     const home = path.join(pluginsDir, 'npm-form')
@@ -185,31 +183,31 @@ describe('足迹枚举(宪法第 6 条)—— 与归档同一把尺', () => {
     expect(fp.dataDirExists).toBe(true)
     expect(fp.entries).toEqual(expect.arrayContaining(['config.json', 'kv.json', 'storage']))
 
-    // legacy 代码目录:数据根仍是 plugin-data
-    const legacyDir = path.join(pluginsDir, 'legacy-fp')
-    fs.mkdirSync(legacyDir, { recursive: true })
-    fs.writeFileSync(path.join(legacyDir, 'plugin.json'), '{}')
-    const dataDir = path.join(storeRoot, 'plugin-data', 'legacy-fp')
-    fs.mkdirSync(dataDir, { recursive: true })
-    fs.writeFileSync(path.join(dataDir, 'kv.json'), '{}')
-    const legacyFp = getPluginFootprint('legacy-fp')
-    expect(legacyFp.dataDir).toBe(dataDir)
-    expect(legacyFp.entries).toContain('kv.json')
-    fs.rmSync(legacyDir, { recursive: true, force: true })
+    // 手工代码目录(有 plugin.json)同样按家目录枚举:旧根不再参与判别。
+    const strayDir = path.join(pluginsDir, 'stray-fp')
+    fs.mkdirSync(strayDir, { recursive: true })
+    fs.writeFileSync(path.join(strayDir, 'plugin.json'), '{}')
+    fs.mkdirSync(path.join(storeRoot, 'plugin-data', 'stray-fp'), { recursive: true })
+    fs.writeFileSync(path.join(storeRoot, 'plugin-data', 'stray-fp', 'kv.json'), '{}')
+    const strayFp = getPluginFootprint('stray-fp')
+    expect(strayFp.dataDir).toBe(strayDir)
+    expect(strayFp.entries).toEqual(['plugin.json'])
+    fs.rmSync(strayDir, { recursive: true, force: true })
   })
 })
 
 describe('findCorePluginHomeOrphans —— 家目录孤儿收尸', () => {
-  it('无主的纯数据目录是孤儿;legacy 代码目录/存活 id/legacy-backup 都不是', () => {
+  it('无主的纯数据目录是孤儿;账外代码目录/存活 id/legacy-backup 都不是', () => {
     const plugins = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-home-orphan-'))
     // 孤儿家目录(只有数据)
     fs.mkdirSync(path.join(plugins, 'ghost', 'storage'), { recursive: true })
     // 存活的家目录
     fs.mkdirSync(path.join(plugins, 'alive'), { recursive: true })
-    // legacy 代码目录(有 plugin.json,即使 id 不在存活集也不是"家目录孤儿")
-    const legacyDir = path.join(plugins, 'legacy-code')
-    fs.mkdirSync(legacyDir, { recursive: true })
-    fs.writeFileSync(path.join(legacyDir, 'plugin.json'), '{}')
+    // 账外的手工代码目录(有 plugin.json):宿主不加载它,也不把它当数据 ——
+    // 既不是插件也不是"家目录孤儿",原地不动。
+    const strayDir = path.join(plugins, 'stray-code')
+    fs.mkdirSync(strayDir, { recursive: true })
+    fs.writeFileSync(path.join(strayDir, 'plugin.json'), '{}')
     // legacy-backup 自身永远不是候选
     fs.mkdirSync(path.join(plugins, 'legacy-backup', 'older-2026'), { recursive: true })
     // node_modules 不是候选

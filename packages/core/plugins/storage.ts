@@ -1,8 +1,11 @@
 /**
  * 插件数据目录(R4)。
  *
- * **作用域已拍板:全局(per-plugin),不做 per-agent** —— 一个插件一个目录
- * `<store>/plugin-data/<pluginId>/`。要按 agent 分,插件自己在目录内建子结构:
+ * **作用域已拍板:全局(per-plugin),不做 per-agent** —— 一个插件一个目录。
+ * P1 之后落点是家目录 `<store>/plugins/<pluginId>/`;`<store>/plugin-data/` 只剩
+ * **归档用途**(孤儿收尸的来源与 legacy-backup 的落点),没有任何读路径会去那里
+ * 取数据(2026-08-09 legacy 清零时撤掉了惰性迁移)。
+ * 要按 agent 分,插件自己在目录内建子结构:
  * 数据主权归插件,宿主不替它发明数据模型。
  *
  * 这一层是宪法第 6 条数据侧的地基:**插件的全部落盘足迹 = 一个目录 +
@@ -172,7 +175,8 @@ export function getCorePluginDataDir(dataRoot: string, pluginId: string): string
 //   <pluginsDir>/<id>/config.json  自有配置(宿主管,api.settings 的落盘处)
 //   <pluginsDir>/<id>/kv.json      KV(api.store)
 //   <pluginsDir>/<id>/storage/     api.storage 的 scratch(插件自管的文件)
-//   <pluginsDir>/legacy-backup/    归档区(卸载/孤儿/收尸共用)
+//   <pluginsDir>/legacy-backup/    归档区(卸载/孤儿/收尸共用;纯目录名,与
+//                                  "legacy 目录插件"无关 —— 后者已退役)
 //   <pluginsDir>/node_modules/     【一次性代码区,数据禁入】
 // 判别与铁律都在这一层,上层只传根。
 
@@ -207,73 +211,6 @@ export function assertNotInNodeModules(homeRoot: string, targetPath: string): vo
   }
 }
 
-/**
- * 惰性迁移:把某插件在旧数据根(plugin-data)的全部足迹搬进家目录。
- *
- * 规则(与 migrateLegacyPluginKv 同一条先例 —— 首访时做,不搞启动全量):
- *  - `<legacy>/<id>.json` 与 `<legacy>/<id>/kv.json` → `plugins/<id>/kv.json`
- *    (目标已存在则保留目标,旧的留着等归档);
- *  - `<legacy>/<id>/` 里其余条目(k/v 之外插件自管的文件)→ `plugins/<id>/storage/`;
- *  - 搬完 `<legacy>/<id>/` 变空壳则顺手删掉;有残留则留给孤儿/归档处理。
- *
- * 返回是否有实际搬移。
- */
-export function migratePluginDataToHome(input: {
-  legacyDataRoot: string
-  homeRoot: string
-  pluginId: string
-}): boolean {
-  const { legacyDataRoot, homeRoot, pluginId } = input
-  const homeDir = getCorePluginHomeDir(homeRoot, pluginId)
-  const scratchDir = getCorePluginScratchDir(homeRoot, pluginId)
-  const legacyDir = getCorePluginDataDir(legacyDataRoot, pluginId)
-  let moved = false
-
-  // 1) KV:先让旧扁平文件归队(沿用既有惰性迁移),再统一往家目录搬。
-  migrateLegacyPluginKv(legacyDataRoot, pluginId)
-  const legacyKv = getCorePluginKvPath(legacyDataRoot, pluginId)
-  const homeKv = path.join(homeDir, PLUGIN_KV_FILE_NAME)
-  if (pathExists(legacyKv) && !pathExists(homeKv)) {
-    try {
-      ensureDir(homeDir)
-      fs.renameSync(legacyKv, homeKv)
-      moved = true
-    } catch (error) {
-      console.error(`[PluginStorage] Failed to migrate KV for "${pluginId}" to home:`, error)
-    }
-  }
-
-  // 2) 其余条目 → storage/(kv 系列文件除外 —— 它们不是没搬成就是该留下等归档)。
-  if (isDirectory(legacyDir)) {
-    let entries: string[] = []
-    try {
-      entries = fs.readdirSync(legacyDir)
-    } catch {
-      entries = []
-    }
-    for (const entry of entries) {
-      if (entry === PLUGIN_KV_FILE_NAME || entry === PLUGIN_LEGACY_KV_FILE_NAME) continue
-      const from = path.join(legacyDir, entry)
-      const to = path.join(scratchDir, entry)
-      if (pathExists(to)) continue // 目标更新,留着旧的等归档,不静默覆盖
-      try {
-        ensureDir(scratchDir)
-        fs.renameSync(from, to)
-        moved = true
-      } catch (error) {
-        console.error(`[PluginStorage] Failed to migrate "${entry}" for "${pluginId}" to home:`, error)
-      }
-    }
-    // 3) 空壳收掉(有残留 = 目标冲突留下的旧物,交给孤儿/归档,不硬来)。
-    try {
-      if (fs.readdirSync(legacyDir).length === 0) fs.rmdirSync(legacyDir)
-    } catch {
-      // 删不掉就留着,归档机制会收
-    }
-  }
-  return moved
-}
-
 /** KV 并入目录之前的老位置。 */
 export function getCorePluginLegacyKvPath(dataRoot: string, pluginId: string): string {
   return path.join(dataRoot, `${assertSafePluginDirName(pluginId)}.json`)
@@ -281,29 +218,6 @@ export function getCorePluginLegacyKvPath(dataRoot: string, pluginId: string): s
 
 export function getCorePluginKvPath(dataRoot: string, pluginId: string): string {
   return path.join(getCorePluginDataDir(dataRoot, pluginId), PLUGIN_KV_FILE_NAME)
-}
-
-/**
- * 惰性迁移:旧的 `<root>/<id>.json` 搬进 `<root>/<id>/kv.json`。
- *
- * 首次访问时做,不搞启动期全量迁移 —— 没人碰过的插件不该因为一次升级就被动过。
- * 目标已存在则**保留目标**(它更新),旧文件原地留着等孤儿/归档处理,不静默删。
- */
-export function migrateLegacyPluginKv(dataRoot: string, pluginId: string): boolean {
-  const legacyPath = getCorePluginLegacyKvPath(dataRoot, pluginId)
-  if (!pathExists(legacyPath)) return false
-
-  const kvPath = getCorePluginKvPath(dataRoot, pluginId)
-  if (pathExists(kvPath)) return false
-
-  try {
-    ensureDir(getCorePluginDataDir(dataRoot, pluginId))
-    fs.renameSync(legacyPath, kvPath)
-    return true
-  } catch (error) {
-    console.error(`[PluginStorage] Failed to migrate legacy KV for "${pluginId}":`, error)
-    return false
-  }
 }
 
 export interface CorePluginStorage {
@@ -339,12 +253,12 @@ export interface CorePluginStorageWithMessageState extends CorePluginStorage {
 
 export interface CreateCorePluginStorageOptions {
   pluginId: string
-  dataRoot: string
   /**
-   * 家目录根(P1)。给了它,scratch 落在 `plugins/<id>/storage/`,且首次访问时
-   * 把旧数据根(dataRoot = plugin-data)的足迹惰性搬过去;
-   * 不给 = 旧布局(整个目录即 scratch),行为与 R4 一致。
+   * 旧数据根(plugin-data)。**只在没有 homeRoot 时**作为落点 —— 桌面宿主
+   * 一律给 homeRoot,这条参数留给不做家目录布局的调用方(以及归档路径)。
    */
+  dataRoot?: string
+  /** 家目录根(P1)。给了它,scratch 落在 `plugins/<id>/storage/`。 */
   homeRoot?: string
   /**
    * §7.4 拆除闩:卸载/停用完成后到的写 = warn + 静默丢弃 —— 晚到的写会
@@ -357,9 +271,13 @@ export interface CreateCorePluginStorageOptions {
 export function createCorePluginStorage(options: CreateCorePluginStorageOptions): CorePluginStorage {
   const { pluginId, dataRoot, homeRoot } = options
   /** 只拼路径,**不建目录** —— 纯读一次就创建空目录会污染足迹。 */
-  const dirPath = (): string => homeRoot
-    ? getCorePluginScratchDir(homeRoot, pluginId)
-    : getCorePluginDataDir(dataRoot, pluginId)
+  const dirPath = (): string => {
+    if (homeRoot) return getCorePluginScratchDir(homeRoot, pluginId)
+    if (!dataRoot) {
+      throw new PluginStorageError('unavailable', `Plugin storage for "${pluginId}" has no root configured`)
+    }
+    return getCorePluginDataDir(dataRoot, pluginId)
+  }
 
   let demolitionWarned = false
   const demolished = (): boolean => {
@@ -374,18 +292,7 @@ export function createCorePluginStorage(options: CreateCorePluginStorageOptions)
     return true
   }
 
-  /** 惰性迁移只做一次;失败不阻塞本次访问(旧物原地还在,下次再试)。 */
-  let migrationDone = false
-  const migrateOnce = (): void => {
-    if (!homeRoot || migrationDone) return
-    migrationDone = true
-    // 拆除闩:已拆的插件不做迁移 —— 迁移会重建家目录。
-    if (demolished()) return
-    migratePluginDataToHome({ legacyDataRoot: dataRoot, homeRoot, pluginId })
-  }
-
   const ensuredDir = (): string => {
-    migrateOnce()
     const target = dirPath()
     if (homeRoot) assertNotInNodeModules(homeRoot, target)
     try {
@@ -401,7 +308,6 @@ export function createCorePluginStorage(options: CreateCorePluginStorageOptions)
     dir: () => (demolished() ? dirPath() : ensuredDir()),
 
     readJson<T = unknown>(name: string, fallback?: T): T | undefined {
-      migrateOnce()
       const file = path.join(dirPath(), assertSafePluginFileName(name))
       if (!pathExists(file)) return fallback
 
@@ -853,10 +759,12 @@ export function findCorePluginDataOrphans(dataRoot: string, knownPluginIds: Iter
 /**
  * P1:`plugins/` 下的**家目录孤儿**。
  *
- * 家目录的"主"是码,不是目录本身:npm 形态的码在 node_modules(账 + 包),
- * legacy 的码就在 `plugins/<id>/`(有 plugin.json)。所以家目录孤儿 =
- * 无 plugin.json 且 id 不在存活集合里的纯数据目录。`legacy-backup` 自身
- * 永远不是候选 —— 把归档目录归档进它自己是最难看的一种死循环。
+ * 家目录的"主"是码,不是目录本身:npm 形态的码在 node_modules(账 + 包)。
+ * 所以家目录孤儿 = 无 plugin.json 且 id 不在存活集合里的纯数据目录。
+ * **带 plugin.json 的目录一律跳过**:那是手工放进来的代码目录,宿主自 2026-08-09
+ * 起不再加载它(legacy 清零),但它也不是宿主管的数据 —— 不加载、不归档、
+ * 不动它,交给人处置。`legacy-backup` 自身永远不是候选 —— 把归档目录归档进
+ * 它自己是最难看的一种死循环。
  *
  * 调用方负责传**可信**的存活集合(账本不可信时整轮弃权,见 manager)。
  */
@@ -883,7 +791,7 @@ export function findCorePluginHomeOrphans(
       if (entry.name === 'node_modules' || entry.name === PLUGIN_DATA_LEGACY_BACKUP_DIR) continue
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
       const dirPath = path.join(pluginsDir, entry.name)
-      // 有 plugin.json = legacy 代码目录,不是家目录 —— 死活由扫描语义判。
+      // 有 plugin.json = 手工放进来的代码目录(宿主已不再加载),不是数据家目录。
       if (pathExists(path.join(dirPath, 'plugin.json'))) continue
       assertSafePluginDirName(entry.name)
       if (!alive.has(entry.name.normalize('NFC').toLowerCase())) {

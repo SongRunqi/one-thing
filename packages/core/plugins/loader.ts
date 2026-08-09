@@ -37,7 +37,6 @@ export function createBuiltinPluginDefinitions<TEntry = unknown>(
     entryPath: `builtin://${spec.id}/${DEFAULT_PLUGIN_ENTRY}`,
     entry: spec.entry,
     enabled: spec.enabled,
-    needsInstall: false,
   }))
 }
 
@@ -211,31 +210,6 @@ export function setPluginEnabledWithAdapters(
   const nextSettings = setPluginEnabledInSettings(adapters.readSettings(), pluginId, enabled)
   adapters.writeSettings(nextSettings)
   return nextSettings
-}
-
-export function checkPluginNeedsInstall(dirPath: string): boolean {
-  const pkgPath = path.join(dirPath, 'package.json')
-  if (!fs.existsSync(pkgPath)) return false
-
-  const nodeModulesPath = path.join(dirPath, 'node_modules')
-  if (!fs.existsSync(nodeModulesPath)) return true
-
-  try {
-    const entries = fs.readdirSync(nodeModulesPath)
-    if (entries.length === 0) return true
-  } catch {
-    return true
-  }
-
-  try {
-    const pkgStat = fs.statSync(pkgPath)
-    const nmStat = fs.statSync(nodeModulesPath)
-    if (pkgStat.mtimeMs > nmStat.mtimeMs + 5000) return true
-  } catch {
-    return false
-  }
-
-  return false
 }
 
 /**
@@ -436,15 +410,6 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
   defaultEntry?: string
   /** 宿主版本;用于 minAppVersion 判定。省略 = 跳过判定。 */
   appVersion?: string
-  /**
-   * 是否探测 needsInstall(默认 true = 现状)。
-   *
-   * npm 形态插件必须传 false:tarball 在 install 时已 bundle 全部依赖,
-   * 包里**没有** node_modules 才是常态 —— 拿目录探测法去判,npm 插件
-   * 会永远背着 needsInstall 的假账(§5.3:加载期缺依赖 = 包没打好,
-   * 按加载失败记账,不再现装)。
-   */
-  needsInstallCheck?: boolean
 }): CorePluginDefinition<TEntry> | null {
   const manifestPath = path.join(input.dirPath, 'plugin.json')
   let manifest: CorePluginDefinition<TEntry>['manifest'] | null = null
@@ -485,7 +450,6 @@ export function parsePluginDirectory<TEntry = unknown>(input: {
     dirPath: input.dirPath,
     entryPath,
     enabled: input.enabled,
-    needsInstall: input.needsInstallCheck === false ? false : checkPluginNeedsInstall(input.dirPath),
     loadBlockedReason: versionError
       ?? (contributesError ? `invalid plugin.json: ${contributesError}` : undefined),
   }
@@ -662,8 +626,8 @@ function readInstalledPackageVersion(dirPath: string): string | null {
  *
  * - dep 存在但包里没有 plugin.json = 它不是 onething 插件,跳过(普通依赖
  *   与插件可以共存于同一棵 node_modules);
- * - npm 形态永不探测 needsInstall(§5.3):加载期缺依赖 = 包没打好,
- *   按加载失败记账,不再现装。
+ * - **没有运行时安装**(§5.3):tarball 在 install 时已 bundle 全部依赖,
+ *   加载期缺依赖 = 包没打好,按加载失败记账。
  */
 export function scanPluginLedgerDirectories<TEntry = unknown>(input: {
   pluginsDir: string
@@ -699,7 +663,6 @@ export function scanPluginLedgerDirectories<TEntry = unknown>(input: {
       enabled: input.getEnabled(id),
       source: 'user',
       appVersion: input.appVersion,
-      needsInstallCheck: false,
     })
     if (!definition) continue
     const installedVersion = readInstalledPackageVersion(dirPath)
@@ -708,68 +671,6 @@ export function scanPluginLedgerDirectories<TEntry = unknown>(input: {
     }
     plugins.push(definition)
     seen.add(definition.id)
-  }
-
-  return plugins
-}
-
-/**
- * legacy 兼容扫描:插件根下**有 plugin.json 且不在账里**的目录。
- *
- * 判别顺序(§5.4):有 plugin.json = legacy 代码目录(其数据仍在
- * plugin-data/<id>/,不搬);没有 = 纯数据家目录(P1-1),跳过。
- * legacy 形态保留 needsInstall 探测与首载安装机器,直到清零。
- */
-export function scanLegacyPluginDirectories<TEntry = unknown>(input: {
-  pluginsDir: string
-  seenIds?: Set<string>
-  getEnabled: (pluginId: string) => boolean
-  appVersion?: string
-}): CorePluginDefinition<TEntry>[] {
-  let entries: fs.Dirent[]
-  try {
-    if (!fs.statSync(input.pluginsDir).isDirectory()) return []
-    entries = fs.readdirSync(input.pluginsDir, { withFileTypes: true })
-  } catch {
-    return []
-  }
-
-  const plugins: CorePluginDefinition<TEntry>[] = []
-  const seen = input.seenIds ?? new Set<string>()
-
-  for (const entry of entries) {
-    if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
-    if (!entry.isDirectory()) {
-      if (!entry.isSymbolicLink()) continue
-      try {
-        if (!fs.statSync(path.join(input.pluginsDir, entry.name)).isDirectory()) continue
-      } catch {
-        continue
-      }
-    }
-    const dirPath = path.join(input.pluginsDir, entry.name)
-    // 无 plugin.json = 纯数据家目录,不是插件。
-    if (!fs.existsSync(path.join(dirPath, 'plugin.json'))) continue
-    if (seen.has(entry.name)) {
-      console.warn(`[PluginLoader] Skipping legacy plugin "${entry.name}": its id is already taken`)
-      continue
-    }
-    const definition = parsePluginDirectory<TEntry>({
-      id: entry.name,
-      dirPath,
-      enabled: input.getEnabled(entry.name),
-      source: 'user',
-      appVersion: input.appVersion,
-    })
-    if (definition) {
-      definition.legacy = true
-      console.warn(
-        `[PluginLoader] Plugin "${entry.name}" is a legacy directory plugin `
-        + '(reinstall it in npm form to get the update channel)',
-      )
-      plugins.push(definition)
-      seen.add(definition.id)
-    }
   }
 
   return plugins
@@ -784,8 +685,10 @@ export function scanCorePlugins<TEntry = unknown>(input: {
   /**
    * 扫描语义(默认 'directory',现状不变)。
    *
-   * 'npm-ledger' = 以 plugins/package.json 为账扫 npm 插件,再补一轮
-   * legacy 兼容扫描;desktop 传它,server 等只投影的宿主保持默认。
+   * 'npm-ledger' = **只**以 plugins/package.json 为账扫 npm 插件;desktop 传它,
+   * server 等只投影的宿主保持默认。插件根下"有 plugin.json 但不在账里"的手工
+   * 目录不再加载(2026-08-09 legacy 清零),也不报错 —— 它既不是插件也不是
+   * 宿主管的数据家目录,孤儿扫描同样不碰它。
    */
   scanMode?: CorePluginScanMode
 }): Array<CorePluginDefinition<TEntry>> {
@@ -794,12 +697,6 @@ export function scanCorePlugins<TEntry = unknown>(input: {
     return [
       ...input.builtinPlugins,
       ...scanPluginLedgerDirectories<TEntry>({
-        pluginsDir: input.pluginsDir,
-        seenIds: seen,
-        getEnabled: input.getEnabled,
-        appVersion: input.appVersion,
-      }),
-      ...scanLegacyPluginDirectories<TEntry>({
         pluginsDir: input.pluginsDir,
         seenIds: seen,
         getEnabled: input.getEnabled,
@@ -822,20 +719,6 @@ export interface CorePluginLoaderLogger {
   log?(...args: unknown[]): void
   warn?(...args: unknown[]): void
   error?(...args: unknown[]): void
-}
-
-export interface CorePluginDependencyInstallAdapters {
-  exists(path: string): boolean
-  runInstall(dirPath: string): void
-  logger?: CorePluginLoaderLogger
-}
-
-export interface CorePluginDependencyInstallAsyncAdapters {
-  exists(path: string): boolean
-  runInstall(dirPath: string): Promise<void>
-  logger?: CorePluginLoaderLogger
-  onInstallStart?(dirPath: string): void
-  onInstallEnd?(dirPath: string, error: string | null): void
 }
 
 /**
@@ -861,77 +744,17 @@ export interface CorePluginEntryModule<TEntry = unknown> {
 }
 
 export interface LoadCorePluginEntryAdapters<TEntry = unknown> {
-  /** 允许返回 Promise:npm install 是分钟级操作,同步跑会冻住整个宿主进程。 */
-  installDependencies(dirPath: string): string | null | Promise<string | null>
   importEntry(entryPath: string): Promise<CorePluginEntryModule<TEntry>>
   isEntry?: (value: unknown) => value is TEntry
   logger?: CorePluginLoaderLogger
 }
 
-function pluginLoaderErrorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object') {
-    const stderr = 'stderr' in error ? (error as { stderr?: unknown }).stderr : undefined
-    if (stderr && typeof (stderr as { toString?: unknown }).toString === 'function') {
-      const message = (stderr as { toString(): string }).toString()
-      if (message) return message
-    }
-
-    const message = 'message' in error ? (error as { message?: unknown }).message : undefined
-    if (typeof message === 'string' && message) return message
-  }
-
-  return fallback
-}
-
-export function installCorePluginDependencies(
-  dirPath: string,
-  adapters: CorePluginDependencyInstallAdapters,
-): string | null {
-  const pkgPath = path.join(dirPath, 'package.json')
-  if (!adapters.exists(pkgPath)) return 'No package.json found'
-
-  const logger = adapters.logger ?? console
-  try {
-    logger.log?.(`[PluginLoader] Running npm install in ${dirPath}...`)
-    adapters.runInstall(dirPath)
-    logger.log?.(`[PluginLoader] npm install complete for ${path.basename(dirPath)}`)
-    return null
-  } catch (error) {
-    const message = pluginLoaderErrorMessage(error, 'npm install failed')
-    logger.error?.(`[PluginLoader] npm install failed for ${path.basename(dirPath)}:`, message)
-    return message
-  }
-}
-
 /**
- * 异步版依赖安装。
+ * 加载 entry 模块。
  *
- * 同步版(execSync)会把整个主进程连同全部 IPC 冻住最长两分钟 —— 那是"宿主被
- * 插件拖垮"最直白的一种形态。
+ * **没有运行时依赖安装**(2026-08-09 legacy 清零):npm 形态的 tarball 在安装期
+ * 已 bundle 全部依赖,加载期缺依赖 = 包没打好,按加载失败记账。
  */
-export async function installCorePluginDependenciesAsync(
-  dirPath: string,
-  adapters: CorePluginDependencyInstallAsyncAdapters,
-): Promise<string | null> {
-  const pkgPath = path.join(dirPath, 'package.json')
-  if (!adapters.exists(pkgPath)) return 'No package.json found'
-
-  const logger = adapters.logger ?? console
-  adapters.onInstallStart?.(dirPath)
-  try {
-    logger.log?.(`[PluginLoader] Running npm install in ${dirPath}...`)
-    await adapters.runInstall(dirPath)
-    logger.log?.(`[PluginLoader] npm install complete for ${path.basename(dirPath)}`)
-    adapters.onInstallEnd?.(dirPath, null)
-    return null
-  } catch (error) {
-    const message = pluginLoaderErrorMessage(error, 'npm install failed')
-    logger.error?.(`[PluginLoader] npm install failed for ${path.basename(dirPath)}:`, message)
-    adapters.onInstallEnd?.(dirPath, message)
-    return message
-  }
-}
-
 export async function loadCorePluginEntry<TEntry = unknown>(
   definition: CorePluginDefinition<TEntry>,
   adapters: LoadCorePluginEntryAdapters<TEntry>,
@@ -941,16 +764,6 @@ export async function loadCorePluginEntry<TEntry = unknown>(
   }
 
   const logger = adapters.logger ?? console
-
-  if (definition.needsInstall) {
-    logger.log?.(`[PluginLoader] Installing deps for plugin "${definition.id}"...`)
-    const installError = await adapters.installDependencies(definition.dirPath)
-    if (installError) {
-      logger.error?.(`[PluginLoader] Dep install failed for "${definition.id}": ${installError}`)
-    } else {
-      definition.needsInstall = false
-    }
-  }
 
   try {
     const mod = await adapters.importEntry(definition.entryPath)

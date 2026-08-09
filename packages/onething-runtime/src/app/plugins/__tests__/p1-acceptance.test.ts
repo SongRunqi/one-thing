@@ -47,7 +47,7 @@ function makeNpmPlugin(pluginsDir: string, pkg: string, version = '1.0.0'): void
 // ── A 层:真 host 的孤儿收尸 ──
 
 describe('A:真 PluginManager 的孤儿收尸(两个根)', () => {
-  it('家目录孤儿与 plugin-data 孤儿各进各的 legacy-backup;活插件与 legacy 代码目录不动', async () => {
+  it('家目录孤儿与 plugin-data 孤儿各进各的 legacy-backup;活插件与账外代码目录不动', async () => {
     process.env.ONETHING_STORE_PATH = freshPluginsDir('store-a1')
     const pluginsDir = path.join(process.env.ONETHING_STORE_PATH, 'plugins')
     const dataRoot = path.join(process.env.ONETHING_STORE_PATH, 'plugin-data')
@@ -60,11 +60,12 @@ describe('A:真 PluginManager 的孤儿收尸(两个根)', () => {
     // plugin-data 孤儿(旧根遗留)
     fs.mkdirSync(path.join(dataRoot, 'ghost-data'), { recursive: true })
     fs.writeFileSync(path.join(dataRoot, 'ghost-data', 'kv.json'), '{}')
-    // legacy 代码目录(有 plugin.json,活着,不是孤儿)
-    const legacyDir = path.join(pluginsDir, 'legacy-code')
-    fs.mkdirSync(legacyDir, { recursive: true })
-    fs.writeFileSync(path.join(legacyDir, 'plugin.json'), JSON.stringify({ name: 'legacy-code' }))
-    fs.writeFileSync(path.join(legacyDir, 'plugin-entry.js'), 'export default function () {}\n')
+    // 账外的手工代码目录(有 plugin.json):**不再被加载**(2026-08-09 legacy 清零),
+    // 但也**不是家目录孤儿** —— 它不是宿主管的数据,不归档、不删,原地留给人处置。
+    const strayDir = path.join(pluginsDir, 'stray-code')
+    fs.mkdirSync(strayDir, { recursive: true })
+    fs.writeFileSync(path.join(strayDir, 'plugin.json'), JSON.stringify({ name: 'stray-code' }))
+    fs.writeFileSync(path.join(strayDir, 'plugin-entry.js'), 'export default function () {}\n')
 
     const { PluginManager } = await import('../manager.js')
     const manager = new PluginManager()
@@ -80,7 +81,10 @@ describe('A:真 PluginManager 的孤儿收尸(两个根)', () => {
     expect(dataBackups.some(entry => entry.startsWith('ghost-data-'))).toBe(true)
     // 活的不动
     expect(fs.existsSync(path.join(pluginsDir, 'node_modules', 'alive', 'plugin.json'))).toBe(true)
-    expect(fs.existsSync(path.join(legacyDir, 'plugin.json'))).toBe(true)
+    expect(fs.existsSync(path.join(strayDir, 'plugin.json'))).toBe(true)
+    expect(manager.getPlugins()
+      .filter(info => info.definition.source !== 'builtin')
+      .map(info => info.definition.id)).toEqual(['alive'])
   })
 
   it('账本不可信 = 整轮弃权:家目录孤儿不动,plugin-data 孤儿也不动', async () => {
@@ -146,8 +150,6 @@ describe.skipIf(!E2E)('B:真 npm 生命周期(生产适配器 runPluginNpm)', ()
       scanMode: 'npm-ledger',
     })
     expect(scanned.map(def => def.id)).toEqual(['onething-plugin-plan-status'])
-    expect(scanned[0].needsInstall).toBe(false)
-    expect(scanned[0].legacy).toBeUndefined()
 
     // 3. 配置家文件 + 重装(update 的 file: 形态)= 配置原样保留
     const configPath = path.join(pluginsDir, 'onething-plugin-plan-status', 'config.json')
