@@ -227,19 +227,26 @@
             <div class="toolbar-left">
               <template v-if="isEngineeringComposer">
                 <ModelSelector :session-id="props.sessionId" />
+                <!-- ctx 仪表(E 期增强):hover 仍是既有 Tooltip,点击多出一张
+                     明细浮层。仪表本身留在驾驶舱 —— S 带不再造第二个上下文
+                     控件(composer-bands §3.2 勘误)。 -->
                 <Tooltip
                   :text="contextTooltipText"
                   position="top"
                   :delay="120"
+                  :disabled="contextDetailOpen"
                 >
                   <button
+                    ref="contextMeterEl"
                     type="button"
                     class="context-meter"
-                    :class="contextMeterTone"
+                    :class="[contextMeterTone, { 'is-open': contextDetailOpen }]"
                     :style="contextMeterStyle"
                     :aria-label="contextAriaLabel"
+                    :aria-expanded="contextDetailOpen ? 'true' : 'false'"
+                    aria-haspopup="dialog"
                     @mousedown.prevent
-                    @click.stop
+                    @click.stop="toggleContextDetail"
                     @mouseenter="loadSessionUsageOnHover"
                   >
                     <span class="context-meter-prefix">ctx</span>
@@ -251,6 +258,62 @@
                     <span class="context-meter-label">{{ contextMeterLabel }}</span>
                   </button>
                 </Tooltip>
+                <Popover
+                  v-model:open="contextDetailOpen"
+                  :anchor="contextMeterEl"
+                  placement="top-start"
+                  :offset="8"
+                  :class="['context-detail', contextMeterTone]"
+                >
+                  <div
+                    class="context-detail-body"
+                    role="dialog"
+                    aria-label="上下文占用明细"
+                  >
+                    <h3 class="context-detail-title">
+                      {{ contextDetailTitle }}
+                    </h3>
+
+                    <div
+                      v-if="contextPercent !== null"
+                      class="context-detail-row"
+                    >
+                      <span
+                        class="context-detail-track"
+                        role="progressbar"
+                        :aria-valuenow="Math.round(contextPercent)"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                      ><i :style="{ width: `${contextPercent}%` }" /></span>
+                      <span class="context-detail-num">{{ contextDetailWindowLabel }}</span>
+                    </div>
+
+                    <!-- 只画真拿得到的数:会话账本给到 last-input / 累计输入 /
+                         累计输出 / 计费。**没有**按历史·工具定义·附件·系统提示
+                         分项的口径 —— 编不出来的分项这里就不画。 -->
+                    <div
+                      v-for="row in contextDetailRows"
+                      :key="row.label"
+                      class="context-detail-row"
+                    >
+                      <span class="context-detail-label">{{ row.label }}</span>
+                      <span class="context-detail-num">{{ row.value }}</span>
+                    </div>
+
+                    <div class="context-detail-row is-footer">
+                      <span class="context-detail-label">{{ contextCompactHint }}</span>
+                      <Button
+                        unstyled
+                        class="context-detail-action"
+                        native-type="button"
+                        :disabled="contextCompacting"
+                        @click.stop="runCompactFromMeter"
+                      >
+                        {{ contextCompacting ? '压缩中…' : '立即压缩' }}
+                      </Button>
+                    </div>
+                  </div>
+                </Popover>
                 <ThinkToggle :session-id="props.sessionId" />
                 <Select
                   size="small"
@@ -415,6 +478,7 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import UiSlotHost from '@/components/plugins/UiSlotHost.vue'
+import Popover from '@/components/common/Popover.vue'
 import Select from '@/components/common/Select.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
@@ -754,6 +818,77 @@ const contextTooltipText = computed(() => {
   }
   return lines.join('\n')
 })
+
+// ── ctx 明细浮层(E 期):hover 的既有 Tooltip 不动,点击多一张明细 ─────
+//
+// **只画真拿得到的数**。会话账本能给的是:窗口大小(provider 目录)、本轮
+// 送进去的 token(contextSize/lastInputTokens)、累计输入/输出/合计、以及
+// 计费账本的金额。设计稿里「历史 / 工具定义 / 附件 / 系统提示」四分项目前
+// **没有任何统计口径**(compact 只按轮次切,不按来源记账)—— 编不出来的
+// 数字这里一个都不画。
+const contextMeterEl = ref<HTMLElement | null>(null)
+const contextDetailOpen = ref(false)
+const contextCompacting = ref(false)
+
+function toggleContextDetail() {
+  // 打开时顺手把计费拉回来,金额那两行才不会空着。
+  if (!contextDetailOpen.value) loadSessionUsageOnHover()
+  contextDetailOpen.value = !contextDetailOpen.value
+}
+
+const contextDetailTitle = computed(() => {
+  const model = activeModel.value || 'model'
+  if (modelContextLength.value > 0) {
+    return `上下文 · ${model}(${formatCompactTokens(modelContextLength.value)} 窗口)`
+  }
+  return `上下文 · ${model}`
+})
+
+const contextDetailWindowLabel = computed(() =>
+  `${formatCompactTokens(contextTokens.value)} / ${formatCompactTokens(modelContextLength.value)}`,
+)
+
+const contextDetailRows = computed(() => {
+  const rows: Array<{ label: string; value: string }> = [
+    { label: '本轮送入', value: `${formatNumber(contextTokens.value)} tok` },
+    { label: '累计输入', value: `${formatNumber(totalInputTokens.value)} tok` },
+    { label: '累计输出', value: `${formatNumber(totalOutputTokens.value)} tok` },
+  ]
+  if (totalTokens.value > 0) {
+    rows.push({ label: '累计合计', value: `${formatNumber(totalTokens.value)} tok` })
+  }
+  const usage = sessionUsage.value
+  if (usage && usage.apiCostUSD > 0) {
+    rows.push({ label: '本会话计费', value: formatSessionCostUSD(usage.apiCostUSD) })
+  }
+  if (usage && usage.subscriptionCostUSD > 0) {
+    rows.push({ label: '订阅折算', value: formatSessionCostUSD(usage.subscriptionCostUSD) })
+  }
+  return rows
+})
+
+const contextCompactHint = computed(() => {
+  const chat = settingsStore.settings.chat
+  if (chat?.contextCompactEnabled === false) return '自动压缩已关闭'
+  return `达到 ${chat?.contextCompactThreshold ?? 85}% 时自动压缩`
+})
+
+/** 走既有 `/compact` 链路(同一个 executeCommand 出口),不另开一条命令通道。 */
+async function runCompactFromMeter() {
+  if (contextCompacting.value) return
+  contextCompacting.value = true
+  try {
+    const result = await executeCommand('compact', { sessionId: effectiveSessionId.value })
+    if (result?.success !== false) {
+      showCommandFeedback('success', result?.message || 'Context compacted')
+      contextDetailOpen.value = false
+    } else {
+      showCommandFeedback('error', result.error || 'Compact failed')
+    }
+  } finally {
+    contextCompacting.value = false
+  }
+}
 
 // Core state
 const messageInput = ref('')
@@ -2367,9 +2502,112 @@ defineExpose({
   --context-meter-fg: var(--ui-status-danger-fg);
 }
 
-.context-meter:hover {
+.context-meter:hover,
+.context-meter.is-open {
   color: var(--ui-text-primary-fg);
   background: var(--ui-state-hover-bg);
+}
+
+/* ctx 明细浮层:面由 Popover 画,这里只排内容(账页行式,右列数字对齐)。 */
+.context-detail {
+  --app-popover-padding: 12px 14px;
+}
+
+.context-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 280px;
+  font-size: 12px;
+  color: var(--ui-text-secondary-fg);
+}
+
+.context-detail-title {
+  margin: 0 0 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+}
+
+.context-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.context-detail-row.is-footer {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
+}
+
+.context-detail-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-detail-num {
+  flex-shrink: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text-muted-fg);
+}
+
+.context-detail-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
+  overflow: hidden;
+}
+
+.context-detail-track i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--ui-text-secondary-fg);
+}
+
+/* 与仪表同一套告警口径(浮层 teleport 出去了,拿不到仪表上的局部变量,
+   所以 tone 类跟着挂到浮层上)。 */
+.context-detail.is-medium .context-detail-track i {
+  background: var(--ui-status-warning-fg);
+}
+
+.context-detail.is-high .context-detail-track i {
+  background: var(--ui-status-danger-fg);
+}
+
+.context-detail-action {
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
+  border-radius: var(--radius-xs);
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--ui-text-muted-fg);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default);
+}
+
+.context-detail-action:hover:not(:disabled) {
+  color: var(--ui-accent-primary-fg);
+  border-color: var(--ui-accent-primary-fg);
+}
+
+.context-detail-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .context-meter-prefix {
