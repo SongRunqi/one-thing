@@ -102,6 +102,9 @@ const kindLabel = computed(() => {
       return 'Daily'
     case 'prompt':
       return 'Prompt'
+    case 'plugin':
+      // 分组可辨:插件结果用 provider label 作分组标签,与内置结果区分来源。
+      return props.result.group || 'Plugin'
     default:
       return ''
   }

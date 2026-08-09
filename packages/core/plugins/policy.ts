@@ -81,6 +81,11 @@ export const pluginScope = {
   registration: (what: string) => brand(`register:${what}`),
   /** 某条 IM 渠道的运行期失败。带 connector id —— 用户要知道是哪条渠道坏了。 */
   connector: (connectorId: string) => brand(`connector:${connectorId}`),
+  /**
+   * 搜索供给方(M2)的运行期失败。带 providerId —— 一个插件可注册多个供给方,
+   * 连败要分得清是哪一个在坏;降级则折成同一个 `search:<id>` surface。
+   */
+  searchProvide: (providerId: string) => brand(`searchProvide:${providerId}`),
 } as const
 
 /**
@@ -172,6 +177,7 @@ export const PLUGIN_SCOPE_FAMILIES = [
   'toolcall-intercept',
   'registration',
   'connector',
+  'search-provide',
 ] as const
 
 export type PluginScopeFamily = (typeof PLUGIN_SCOPE_FAMILIES)[number]
@@ -274,6 +280,16 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
       + '闸不在请求通道上,而在 connector-registry 的投递口 —— 渠道投递不走那条通道。'
       + '没有"用户点重试"这种逃生口,所以它靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
   },
+  'search-provide': {
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
+    remedy: 'degrade-surface',
+    rationale: '一个搜索供给方超时或抛错只影响它自己那一组结果:内置搜索与别的供给方'
+      + '照常出结果,整体禁用会把一次搜索抖动放大成插件故障。这是键入延迟敏感路径,'
+      + '连败三次说明这个供给方在持续坏,再让它每次吃满超时预算只是在给每一次键入'
+      + '加卡顿 —— 停掉**这一个供给方**,插件的工具/命令/面板/定时任务照常。'
+      + '闸不在请求通道上,而在聚合器调用供给方之前;没有"用户点重试"这种逃生口'
+      + '(下一次键入还是会跳过它),所以它靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
+  },
 }
 
 /**
@@ -306,6 +322,8 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (scope.startsWith('toolCallIntercept')) return 'toolcall-intercept'
   if (scope.startsWith('register')) return 'registration'
   if (scope.startsWith('connector')) return 'connector'
+  // 搜索供给方(M2):必须在 register/connector 之后,`searchProvide` 不与它们撞前缀。
+  if (scope.startsWith('searchProvide')) return 'search-provide'
   return null
 }
 
@@ -387,6 +405,10 @@ export function describePluginSurface(scope: string): string {
   // 而在 fail-closed 这一侧聚合还多一层意义:降级必须一次性移除该插件的**全部**
   // 拦截,否则它剩下的那条钩子会继续挡工具,逃生口只开了一半。
   if (scope.startsWith('toolCallIntercept')) return PLUGIN_TOOL_CALL_INTERCEPT_SURFACE
+  // 搜索供给方(M2):`searchProvide:<id>` 折成 `search:<id>` —— 与
+  // pluginSearchProviderSurface 是同一把尺,聚合器据它短路。search 与 onAction
+  // 共用同一 surface(一个供给方就是一块界面),降级一起挡。
+  if (scope.startsWith('searchProvide:')) return `search:${scope.slice('searchProvide:'.length)}`
   return scope
 }
 
@@ -435,7 +457,7 @@ export interface PluginRegistryPolicy {
  *  4. app 层 host 对象加转发,必要时给注册表补 ownerPluginId 归属;
  *  5. 拆除快照测试加一行,并确认 C17 那条"转发口 ↔ 开放清单"守卫仍然绿。
  */
-export const PLUGIN_OPEN_REGISTRIES = ['im-connector'] as const
+export const PLUGIN_OPEN_REGISTRIES = ['im-connector', 'search-provider'] as const
 
 export type PluginOpenRegistry = (typeof PLUGIN_OPEN_REGISTRIES)[number]
 
@@ -455,6 +477,22 @@ export const PLUGIN_REGISTRY_POLICY: Record<PluginOpenRegistry, PluginRegistryPo
       + '尚未接线(gateway 走自己的通路,OutboundReplyDispatcher 的 imOrigin 判定'
       + '把 gateway 来源排除在外)。试点验证的是**契约与拆除语义**,不是投递链路。'
       + '把 gateway 出站改走本注册表是下一步,不在 R7 范围内。',
+  },
+  'search-provider': {
+    // 停用即撤下:聚合器不再迭代该供给方,点击一条已撤下供给方的结果回 false ——
+    // 说得清地"不在了",不是静默误跳。没有"宿主默认供给方"这种回退,
+    // 所以不是 degrade-to-default(那会描述一个不存在的默认路径)。
+    teardown: 'fail-open',
+    inFlight: '停用时供给方从注册表摘除;此后一次搜索聚合不再迭代它(内置结果与'
+      + '其它供给方照常出结果),点击一条它贡献过的结果回 false —— invokePluginSearchAction '
+      + '查不到该供给方即不派发,不报错也不误跳。已有会话与内置搜索都不受影响。',
+    hostDivergence: '仅桌面宿主执行插件(§6 方案 A):server 端的搜索聚合里没有插件'
+      + '供给方(它不装配插件系统),经 /api 的搜索只出内置结果。CLI daemon 压根没有'
+      + '搜索窗。',
+    hasProductionTraffic: false,
+    trafficNote: '**当前无生产流量**:没有内置插件注册搜索供给方,样本 emoji-search '
+      + '只构建不安装。验证的是**契约、并发聚合/超时即弃/熔断跳过、拆除语义**,'
+      + '真实插件供结果的投递链路待第三方插件安装后。',
   },
 }
 

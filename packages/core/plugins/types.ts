@@ -6,6 +6,7 @@ import type { PluginNotifyOptions } from './notify-sound.js'
 import type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
 import type { CorePluginPanelRegistration } from './panel.js'
 import type { CorePluginUiSlotRegistration } from './ui-anchor.js'
+import type { CorePluginSearchProviderRegistration } from './search-provider.js'
 import type {
   PluginSendMessageOptions,
   PluginSendMessageResult,
@@ -367,6 +368,7 @@ export interface CorePluginAPI<
   TStatus = CorePluginStatusAPI,
   TIMConnector = unknown,
   TUiSlotRegistration = CorePluginUiSlotRegistration,
+  TSearchProviderRegistration = CorePluginSearchProviderRegistration,
 > {
   readonly id: string
   registerTool(tool: TTool): void
@@ -547,6 +549,20 @@ export interface CorePluginAPI<
    * **仅桌面宿主执行**(§6 方案 A)。
    */
   registerIMConnector(connector: TIMConnector): () => void
+  /**
+   * 搜索供给方(M2):往「搜索一切」里投结果。
+   *
+   * 与 registerIMConnector 同构 —— 是 core 开放的又一个既有宿主动词面。声明门
+   * `contributes.permissions` 要有 `search:provide`(装前确认页把它念给用户听)。
+   * 结果形状是宿主枚举的**受控子集**(见 PluginSearchResult):插件给不了
+   * sessionId / messageId / filePath / type,点击只回到插件自己的 `onAction`。
+   *
+   * **搜索不等慢插件**:超时 / 抛错的供给方本次直接弃(每个独立超时),不阻塞
+   * 内置结果与其它供给方;连败按 `search-provide` 家族降级(停这一个供给方,
+   * 不连坐插件其余能力)。返回退订函数;插件不调也没关系,dispose 会兜底。
+   * **仅桌面宿主执行**(§6 方案 A)。
+   */
+  registerSearchProvider(registration: TSearchProviderRegistration): () => void
 }
 
 export type CorePluginEntry<TAPI> = (api: TAPI) => void | Promise<void>

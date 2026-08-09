@@ -13,6 +13,9 @@ import { getSession, getSessionRaw, getSessionsList } from '../stores/sessions.j
 import { getSettings } from '../stores/settings.js'
 import { listFiles } from '../utils/ripgrep.js'
 import { getVariablesStore } from '../variables/store/index.js'
+import { appendPluginSearchResults } from './plugin-search-registry.js'
+
+export { invokePluginSearchAction, PLUGIN_SEARCH_ACTION_PREFIX } from './plugin-search-registry.js'
 
 let searchProvidersConfigured = false
 
@@ -37,11 +40,13 @@ export function createDailyNote(filePath: string): Promise<string> {
   return createRuntimeDailyNote(filePath)
 }
 
-export function executeSearch(
+export async function executeSearch(
   query: string,
   category: OnethingSearchCategory,
   limit = 20,
 ): Promise<SearchResult[]> {
   configureAppSearchProviders()
-  return executeRuntimeSearch(query, category, limit) as Promise<SearchResult[]>
+  const builtin = await executeRuntimeSearch(query, category, limit) as SearchResult[]
+  // 插件供给方(M2)的并入门控在 registry；facade 保持极薄。
+  return appendPluginSearchResults(builtin, query, category, limit)
 }

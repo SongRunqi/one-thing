@@ -5,7 +5,11 @@ import {
   type ElectronSearchActionWindow,
 } from '@onething/electron-host/search/window-actions'
 import { isElectronMainAppWindowUrl } from '@onething/electron-host/window/renderer-targets'
-import { createDailyNote } from '@onething/app/search/providers.js'
+import {
+  createDailyNote,
+  invokePluginSearchAction,
+  PLUGIN_SEARCH_ACTION_PREFIX,
+} from '@onething/app/search/providers.js'
 import { closeSearchWindow, toggleSearchWindow } from './window.js'
 
 const CREATE_DAILY_NOTE_PREFIX = 'create-daily-note:'
@@ -35,6 +39,13 @@ export async function executeSearchActionFrom(
   sourceWindow: ElectronSearchActionWindow | null | undefined,
   actionId: string,
 ): Promise<{ success: boolean }> {
+  // 插件搜索结果(M2):点击回到插件自己的 onAction,**不转发给主窗口** ——
+  // 宿主不替插件解释 actionId 的语义。关窗后在装配层派发。
+  if (actionId.startsWith(PLUGIN_SEARCH_ACTION_PREFIX)) {
+    closeSearchWindow()
+    await invokePluginSearchAction(actionId, {})
+    return { success: true }
+  }
   return executeElectronSearchActionFrom({
     sourceWindow,
     actionId,

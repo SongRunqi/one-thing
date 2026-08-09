@@ -58,6 +58,10 @@ import {
   type CorePluginRequestHandler,
 } from './request-channel.js'
 import { assertCorePluginToolExecutionMode } from './tool-execution-mode.js'
+import {
+  PLUGIN_PERMISSION_SEARCH_PROVIDE,
+  type CorePluginSearchProviderRegistration,
+} from './search-provider.js'
 import type {
   CorePluginToolContext,
   CorePluginToolDefinition,
@@ -130,6 +134,16 @@ export interface CorePluginAPIHost<
    * 宿主注入;core 不认识渠道。开放下一个注册表时照抄这一行 + 在策略表里加条目。
    */
   registerIMConnector?(pluginId: string, connector: unknown): (() => void) | undefined
+  /**
+   * 搜索供给方注册表的转发口(M2)。返回退订函数。
+   *
+   * 宿主注入;core 不做并发/超时/熔断(那些要认识健康账本与搜索聚合器,住在
+   * 装配层)。开放模式照抄 registerIMConnector 那一行 + 策略表加条目。
+   */
+  registerSearchProvider?(
+    pluginId: string,
+    registration: CorePluginSearchProviderRegistration,
+  ): (() => void) | undefined
   /**
    * 插件自有配置的访问面(R3)。
    *
@@ -1163,6 +1177,68 @@ export function createCorePluginAPI<
       // 插件自己不调 release 也能拆干净 —— 拆除语义不建立在插件守规矩上。
       disposeCallbacks.push(release)
       logger.log(`[Plugin:${pluginId}] Registered IM connector: ${connectorId}`)
+      return release
+    },
+
+    /**
+     * 搜索供给方(M2)。三件宿主的事,与 registerIMConnector 同构:
+     *  - **声明门**:manifest 没声明 `search:provide` 就拒绝 —— 报错 + 返回 noop,
+     *    **不计熔断**(那是作者写错了 manifest,与 sendMessage / interceptInput 同规:
+     *    一次笔误不该连坐整个插件);
+     *  - **disposed 闩**:拆除之后再注册 = 往一个没人再会来清扫的表里塞东西;
+     *  - **退订进 disposeCallbacks**:插件不调也能拆干净。
+     *
+     * 并发 / 超时 / 熔断都在装配层的聚合器(它才认识健康账本);core 只做门控与
+     * 转发。宿主没接这条线(headless / server / CLI daemon —— §6 方案 A)时如实
+     * 告诉插件它被忽略了,而不是假装成功。
+     */
+    registerSearchProvider(registration: CorePluginSearchProviderRegistration): () => void {
+      if (rejectLateCall('registerSearchProvider')) return () => {}
+      const providerId = String(registration?.id ?? '').trim()
+      const label = String(registration?.label ?? '').trim()
+      if (!providerId || !label || typeof registration?.search !== 'function') {
+        logger.error(
+          `[Plugin:${pluginId}] registerSearchProvider needs { id, label, search() }`,
+          undefined,
+        )
+        reportFailure(pluginScope.registration('SearchProvider'), new Error('malformed search provider'))
+        return () => {}
+      }
+      if (!declaredPermissions.has(PLUGIN_PERMISSION_SEARCH_PROVIDE)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerSearchProvider requires "${PLUGIN_PERMISSION_SEARCH_PROVIDE}" in `
+          + 'contributes.permissions (plugin.json). Declare it first — the install page tells the user '
+          + 'this plugin can contribute results to Search Everywhere.',
+          undefined,
+        )
+        return () => {}
+      }
+      let unregister: (() => void) | undefined
+      try {
+        unregister = host.registerSearchProvider?.(pluginId, { ...registration, id: providerId, label })
+      } catch (error) {
+        logger.error(`[Plugin:${pluginId}] registerSearchProvider("${providerId}") failed:`, error)
+        reportFailure(pluginScope.registration('SearchProvider'), error)
+        return () => {}
+      }
+      if (!unregister) {
+        logger.log(
+          `[Plugin:${pluginId}] Search providers are not available on this host; "${providerId}" was ignored`,
+        )
+        return () => {}
+      }
+      let released = false
+      const release = (): void => {
+        if (released) return
+        released = true
+        try {
+          unregister?.()
+        } catch (error) {
+          logger.error(`[Plugin:${pluginId}] Failed to unregister search provider "${providerId}":`, error)
+        }
+      }
+      disposeCallbacks.push(release)
+      logger.log(`[Plugin:${pluginId}] Registered search provider: ${providerId}`)
       return release
     },
 

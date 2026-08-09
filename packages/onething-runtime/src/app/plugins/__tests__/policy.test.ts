@@ -229,6 +229,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       pluginScope.toolCallIntercept('guard'),
       pluginScope.registration('WorkspacePanel'),
       pluginScope.connector('wechat'),
+      pluginScope.searchProvide('emoji'),
     ]
     // 工厂数量与样本数量对齐 —— 加了工厂却忘了在这里取样,这条会红。
     expect(samples).toHaveLength(Object.keys(pluginScope).length)
@@ -281,6 +282,9 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       { factory: 'toolCallIntercept', scope: pluginScope.toolCallIntercept('guard'), family: 'toolcall-intercept' },
       { factory: 'registration', scope: pluginScope.registration('WorkspacePanel'), family: 'registration' },
       { factory: 'connector', scope: pluginScope.connector('wechat'), family: 'connector' },
+      // M2:搜索供给方自成一族 —— 一个供给方超时/抛错只影响它自己那一组结果,
+      // 降级停这一个供给方,不连坐插件其余能力。生产者在聚合器(app/search)。
+      { factory: 'searchProvide', scope: pluginScope.searchProvide('emoji'), family: 'search-provide' },
     ]
 
     // 声明本身要对。
@@ -327,7 +331,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
 
 describe('R7 registry teardown table — 每个开放的注册表都要回答"在飞的怎么办"', () => {
   it('declares a teardown policy for every open registry', () => {
-    expect([...PLUGIN_OPEN_REGISTRIES]).toEqual(['im-connector'])
+    expect([...PLUGIN_OPEN_REGISTRIES]).toEqual(['im-connector', 'search-provider'])
     for (const registry of PLUGIN_OPEN_REGISTRIES) {
       const policy = PLUGIN_REGISTRY_POLICY[registry]
       expect(policy, registry).toBeTruthy()

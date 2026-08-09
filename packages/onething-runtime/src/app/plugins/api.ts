@@ -23,6 +23,7 @@ import { createPluginSessionHostPorts } from './sessions.js'
 import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './notify-sound.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
+import { registerPluginSearchProvider } from '../search/plugin-search-registry.js'
 import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
 import {
@@ -364,6 +365,22 @@ export function createPluginAPI(
         // 带上归属:运行期投递失败要记到**这个插件**的熔断账上,
         // 而 registry 本身不认识 pluginId。
         return registerIMConnector(connector as IMConnector, { ownerPluginId: id })
+      },
+      /**
+       * 搜索供给方(M2)—— 又一个既有宿主动词面。转发到装配层的注册表 +
+       * 聚合器;onAction 的 ctx.notify 走既有 plugin:notification 轨(与 ui.notify
+       * 同一条广播),让插件在点击时能对用户说一句话。
+       */
+      registerSearchProvider(id, registration) {
+        return registerPluginSearchProvider(id, registration, {
+          notify: (message, level) => eventBus.emitGlobal({
+            type: 'plugin:notification',
+            pluginId: id,
+            message,
+            level,
+            sound: resolvePluginNotifySound(id, undefined),
+          }),
+        })
       },
       emitPluginEvent(id, eventName, payload) {
         // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast

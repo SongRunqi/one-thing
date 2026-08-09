@@ -23,6 +23,25 @@ export type {
   PluginSource,
 } from './types.js'
 export {
+  PLUGIN_PERMISSION_SEARCH_PROVIDE,
+  PLUGIN_SEARCH_FORBIDDEN_RESULT_KEYS,
+  PLUGIN_SEARCH_ICONS,
+  PLUGIN_SEARCH_PROVIDER_RESULT_CAP,
+  PLUGIN_SEARCH_PROVIDER_TIMEOUT_MS,
+  isPluginSearchIcon,
+  pluginSearchProviderSurface,
+  pluginSearchResultHasForbiddenKey,
+  sanitizePluginSearchResults,
+} from './search-provider.js'
+export type {
+  CorePluginSearchActionContext,
+  CorePluginSearchContext,
+  CorePluginSearchProviderRegistration,
+  PluginSearchIcon,
+  PluginSearchResult,
+  SanitizedPluginSearchResult,
+} from './search-provider.js'
+export {
   CORE_PLUGIN_TOOL_EXECUTION_MODES,
   assertCorePluginToolExecutionMode,
   isCorePluginToolExecutionMode,
