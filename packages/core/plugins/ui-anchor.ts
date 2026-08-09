@@ -48,8 +48,23 @@ export interface UiAnchorCapacity {
   /**
    * 单块最大高度(px)。宿主用它做溢出裁剪与滚动。
    * trigger 锚点上它说的是**弹层内容**的最大高度 —— 入口是宿主原语,没有高度可言。
+   * 抽屉块(drawer)上它说的是**半收档**的高度 —— 展开档看 `expandedMaxHeight`。
    */
   maxHeight: number
+  /**
+   * 该锚点是否支持**抽屉形态**(F 期)。
+   *
+   * 抽屉不是新 kind:它是 `block` 在某些锚点上的**能力扩展** —— 同一个块,
+   * 宿主多画一组开合钮,三态(展开/半收/全收)由宿主持有。只有声明了
+   * `drawer: true` 的块才拿到这组钮;其余块的形态一字不变(定高 maxHeight)。
+   *
+   * 不给 = 该锚点上的 `drawer` 声明**被忽略**(投影层标 drawerIgnored,不拒载)——
+   * 与未知锚点降级同规:多宿主/版本偏斜下"这个宿主的这个位置没有抽屉"不是
+   * 代码错误。
+   */
+  drawer?: boolean
+  /** 抽屉展开档的高度预算(px);超出在块内滚动。仅 `drawer: true` 的锚点有意义。 */
+  expandedMaxHeight?: number
   /** 推荐的描述树根节点形态(提示,不强制)。 */
   rootHint?: 'row' | 'stack' | 'any'
 }
@@ -64,8 +79,16 @@ export interface UiAnchorCapacity {
  * 实测),用普通字面量联合才能拿到真正的类型级钉住。
  */
 export const UI_ANCHOR_CAPACITY = {
-  /** 输入框上方横条(composer-stack 顶部)。单行,最多 3 块。 */
-  'composer.above': { kind: 'block', maxBlocks: 3, maxHeight: 32, rootHint: 'row' },
+  /**
+   * 输入框上方横条(composer-stack 顶部)。单行,最多 3 块。
+   *
+   * **唯一支持抽屉形态的锚点**(F 期):声明 `drawer: true` 的块由宿主多画一组
+   * 开合钮,三态 —— 展开(240px 预算,块内滚动)/ 半收(32px 单行,即老形态)/
+   * 全收(退位到 S 带一枚 chip)。未声明的块保持原样。
+   */
+  'composer.above': {
+    kind: 'block', maxBlocks: 3, maxHeight: 32, drawer: true, expandedMaxHeight: 240, rootHint: 'row',
+  },
   /** 聊天面底部状态条(ChatPanel 内,MessageList 之下)。横向,每块 icon+短文本。 */
   'chat.status-bar': { kind: 'block', maxBlocks: 8, maxHeight: 24, rootHint: 'row' },
   /**
@@ -126,6 +149,64 @@ export function uiAnchorKind(anchor: string): UiAnchorKind | undefined {
 /** 触发式锚点判定(宿主挂点用;协议上 trigger 与 block 走同一套通道)。 */
 export function isTriggerUiAnchor(anchor: string): boolean {
   return uiAnchorKind(anchor) === 'trigger'
+}
+
+// ── 抽屉形态(F 期) ─────────────────────────
+
+/**
+ * 抽屉的三态。**宿主持有**,插件只在 render ctx 上看到能渲染的那两档
+ * (`collapsed` 不拉 render —— 块根本不渲染)。
+ */
+export type UiDrawerState = 'expanded' | 'peek' | 'collapsed'
+
+/** 会拉 render 的两档 —— ctx.drawerState 的取值域。 */
+export type UiDrawerRenderState = Exclude<UiDrawerState, 'collapsed'>
+
+/** 抽屉的默认档:半收(= F 期之前的老形态,单行摘要)。 */
+export const UI_DRAWER_DEFAULT_STATE: UiDrawerState = 'peek'
+
+/**
+ * 容量表的**宽化**读法。
+ *
+ * `as const satisfies` 把每个键钉成了字面量对象类型,可选字段(drawer /
+ * expandedMaxHeight)在没写它的那几个键上压根不存在 —— 直接点属性 typecheck
+ * 就红。走这个口子读,拿到的是接口本身。
+ */
+function capacityOf(anchor: UiAnchor): UiAnchorCapacity {
+  return UI_ANCHOR_CAPACITY[anchor]
+}
+
+/** 这个锚点开不开抽屉能力(今天只有 composer.above)。 */
+export function supportsUiDrawer(anchor: string): boolean {
+  return isUiAnchor(anchor) && capacityOf(anchor).drawer === true
+}
+
+/**
+ * 一条 `contributes.uiSlots` 声明**实际**是不是抽屉。
+ *
+ * 判据两条同时成立:锚点开了抽屉能力 + 该条声明了 `drawer: true`。
+ * 其它锚点上的 `drawer` 声明在这里天然读成 false —— 这就是"忽略并投影标记"
+ * 的判据本体,投影层与 renderer 都问它,不各判各的。
+ */
+export function isEffectiveUiDrawerSlot(anchor: string, declaredDrawer: unknown): boolean {
+  return declaredDrawer === true && supportsUiDrawer(anchor)
+}
+
+/** 声明了 drawer 但锚点不支持 —— 投影层据此标记(设置页可解释),不拒载。 */
+export function isIgnoredUiDrawerDeclaration(anchor: string, declaredDrawer: unknown): boolean {
+  return declaredDrawer === true && !supportsUiDrawer(anchor)
+}
+
+/** 抽屉展开档的高度预算(px);非抽屉锚点回落到 maxHeight。 */
+export function uiDrawerExpandedMaxHeight(anchor: string): number | undefined {
+  if (!isUiAnchor(anchor)) return undefined
+  const capacity = capacityOf(anchor)
+  return capacity.expandedMaxHeight ?? capacity.maxHeight
+}
+
+/** 过线的 drawerState 是不是"会渲染的那两档"(未知值一律读成 undefined)。 */
+export function isUiDrawerRenderState(value: unknown): value is UiDrawerRenderState {
+  return value === 'expanded' || value === 'peek'
 }
 
 /**
@@ -196,6 +277,15 @@ export interface CorePluginUiSlotContext extends CorePluginPanelContext {
    * 会话级锚点不携带。
    */
   readonly messageId?: string | null
+  /**
+   * 仅抽屉块(F 期,composer.above 上声明了 `drawer: true` 的块):
+   * 当前档 —— `'expanded'`(整块)或 `'peek'`(单行摘要)。插件据此返回
+   * 不同的树;宿主在切档时重拉 render。
+   *
+   * **全收档不在取值域里**:全收的块根本不渲染,宿主不会发这次 render。
+   * 非抽屉块不携带这个字段(append-only:老块看到的 ctx 一字不变)。
+   */
+  readonly drawerState?: UiDrawerRenderState
 }
 
 export interface CorePluginUiSlotRegistration<

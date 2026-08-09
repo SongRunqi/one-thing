@@ -348,7 +348,7 @@ kind 只有两个值 —— "菜单项"和"工具条按钮"不是两种 kind,是
 
 | address | kind | cardinality | context | expression | 容量 | 状态 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `composer.above` | block | singleton | session | tree | 3 块 / 32px | ✅ 已开(R5.x) |
+| `composer.above` | block | singleton | session | tree | 3 块 / 32px(抽屉展开 240px) | ✅ 已开(R5.x);**+ 抽屉能力**(F 期,§9.3.1) |
 | `chat.status-bar` | block | singleton | session | tree | 8 块 / 24px | ✅ 已开(R5.x) |
 | `message.footer` | block | **per-item** | message | tree | 6 块 / 24px | ✅ 已开(消息态一期) |
 | `message.actions` | **trigger** | per-item(入口) | message | 入口=宿主原语;弹层=tree | 3 项,超出折叠 | ✅ 已开(D 期) |
@@ -389,11 +389,52 @@ per-item 位置只能以 **trigger** 形态存在 —— 入口按条目繁殖�
    既有协议在"按需"时序上的重放。新增的只有 renderer 侧两个挂点 + 一个
    弹层壳。
 
+### 9.3.1 抽屉:`block` 在 `composer.above` 上的能力扩展(F 期,2026-08-09)
+
+> 起因:真机上 plan-status 的常显整行"一直挂着" —— 一条永远在那儿的状态行
+> 挤着输入区,而它大多数时候没有信息量。用户要的是**抽屉**:能展开看全,
+> 能收成一行,也能完全收走但入口还在。
+
+**它不是新 kind。** kind 轴仍然只有 `block` / `trigger` 两个值;抽屉是某些
+锚点上 `block` 的**能力扩展** —— 同一个块、同一条通道、同一套熔断账,多的
+只是宿主画的一组开合钮和一个宿主持有的三态。今天只有 `composer.above` 开了
+这个能力(容量表的 `drawer: true` + `expandedMaxHeight: 240`)。
+
+1. **三态,宿主持有**:
+   - **展开(expanded)**:整块内容,高度预算 240px,超出**块内滚动**
+     (不把输入框顶走);
+   - **半收(peek,默认)**:单行摘要 —— 就是 F 期之前的老形态;
+   - **全收(collapsed)**:块完全离场,退位成 S 状态带上一枚 chip
+     (拼图图标 + manifest label),点它回到**收起前的那一档**。
+2. **声明门控**:`contributes.uiSlots[].drawer?: boolean`。**只在开了抽屉
+   能力的锚点上有效**;别的锚点上声明它 → 该字段被忽略并在清单投影标
+   `drawerIgnored`,插件照常加载(与未知锚点降级同规:版本偏斜下"这个宿主的
+   这个位置没有抽屉"不是代码错误)。未声明的块形态一字不变(定高、无钮)。
+3. **开合控件由宿主画**(宪法第 1 条):块壳右侧两枚小钮 —— `⌄/⌃` 切换
+   展开⇄半收,`✕` 全收。刻意**不发明复杂交互**(没有长按、没有拖拽把手):
+   一个控件表达一对状态,第三态另给一枚钮。
+4. **插件对三态的唯一感知**是 render ctx 上的 `drawerState`
+   (`'expanded' | 'peek'`,可序列化、append-only):按档返回不同的树,
+   宿主在切档时重拉 render。**全收档不拉 render** —— 块根本不渲染,
+   `'collapsed'` 因此不在取值域里;老宿主不带这个字段,读成 undefined 即
+   半收,天然向后兼容。
+5. **三态持久在 renderer 侧**:按 `(pluginId, anchor, id)` 记在 localStorage
+   (键前缀 `onething:drawer-state:`),连同"收起前那一档"一起记。多窗口
+   各自记,v1 不做跨窗口同步。插件禁用/卸载 → 档随清单一起清掉(拆除面)。
+6. **容量语义**:全收的块**不占** `composer.above` 的 3 块容量(它已经退位,
+   第 4 块该顶上来),但占 S 状态带上一枚 chip 位。
+7. **不是浮层**:展开是**原地长高**的带内块,不涉 teleport —— E/D 两期的
+   浮层判例(rollout §6.3/§6.4)在这里没有射程。
+
 ### 9.4 治理(append-only 的具体含义)
 
 - **开新锚点 = 在 9.2 表里加一行 + 五处代码**:`UI_ANCHOR_CAPACITY` /
   `UI_ANCHORS` / renderer 挂点组件 / 拆除快照测试 / 本表。缺一处 typecheck
   或运行时断言变红(ui-anchor.ts 的一致性守卫)。
+- **给既有锚点加能力(如 F 期的抽屉)不走"开新锚点"那条路**:kind/address/
+  context 一个字不动,加的是容量表上的可选字段 + 一个**声明门控**
+  (`contributes.uiSlots[].drawer`)。铁律两条:未声明的块行为**逐字节不变**;
+  不支持该能力的锚点上声明它是**忽略 + 标记**,不是拒载。
 - **锚点只加不删不改语义**:已发布锚点的 address/kind/context 永不变更;
   容量数字可放宽不可收紧(收紧会截断既有插件)。真要退役:锚点进
   `unsupported` 降级路径(插件照常加载,块不渲染),与未知锚点同一条路 ——

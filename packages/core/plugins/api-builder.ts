@@ -14,6 +14,7 @@ import {
   PLUGIN_UI_RENDER_ACTION,
   isReservedPluginUiAction,
   isUiAnchor,
+  isUiDrawerRenderState,
   uiSlotAddress,
   uiSlotSurfaceId,
   type CorePluginUiSlotContext,
@@ -647,10 +648,15 @@ export function createCorePluginAPI<
         // messageId 同理(消息级锚点):宿主按消息实例挂载时随 payload 传入,
         // 会话级锚点不带这个字段。
         const rawMessageId = (payload as { messageId?: unknown } | undefined)?.messageId
+        // drawerState 同理(抽屉块,F 期):宿主按当前档随 payload 传入,插件
+        // 据此返回不同的树。只认会渲染的两档 —— 'collapsed' 与任何未知值都
+        // 读成"不带这个字段",非抽屉块看到的 ctx 一字不变(append-only)。
+        const rawDrawerState = (payload as { drawerState?: unknown } | undefined)?.drawerState
         return {
           ...base,
           sessionId: typeof raw === 'string' && raw ? raw : null,
           ...(typeof rawMessageId === 'string' && rawMessageId ? { messageId: rawMessageId } : {}),
+          ...(isUiDrawerRenderState(rawDrawerState) ? { drawerState: rawDrawerState } : {}),
         }
       }
 

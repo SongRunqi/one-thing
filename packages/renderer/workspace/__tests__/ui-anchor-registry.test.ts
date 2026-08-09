@@ -85,11 +85,16 @@ describe('ui-anchor-registry', () => {
       'utf8',
     )
     const coreCapacities = Object.fromEntries(
-      [...coreSource.matchAll(/'([^']+)':\s*\{\s*kind:\s*'(\w+)',\s*maxBlocks:\s*(\d+),\s*maxHeight:\s*(\d+)/g)]
+      [...coreSource.matchAll(
+        /'([^']+)':\s*\{\s*kind:\s*'(\w+)',\s*maxBlocks:\s*(\d+),\s*maxHeight:\s*(\d+)(?:,\s*drawer:\s*(true|false))?(?:,\s*expandedMaxHeight:\s*(\d+))?/g,
+      )]
         .map(match => [match[1], {
           kind: match[2],
           maxBlocks: Number(match[3]),
           maxHeight: Number(match[4]),
+          // 抽屉两项(F 期)是可选的:没写的锚点在镜像里也不该出现这两个键。
+          ...(match[5] ? { drawer: match[5] === 'true' } : {}),
+          ...(match[6] ? { expandedMaxHeight: Number(match[6]) } : {}),
         }]),
     )
     expect(UI_ANCHOR_CAPACITY_MIRROR).toEqual(coreCapacities)
@@ -110,6 +115,14 @@ describe('ui-anchor-registry', () => {
     // 既有三个锚点的 kind 是 block —— 语义不许被 D 期改写(append-only)。
     for (const anchor of ['composer.above', 'chat.status-bar', 'message.footer']) {
       expect(UI_ANCHOR_CAPACITY_MIRROR[anchor].kind).toBe('block')
+    }
+  })
+
+  it('抽屉能力只在 composer.above 上开(其余锚点镜像里没有这两个键)', () => {
+    expect(UI_ANCHOR_CAPACITY_MIRROR['composer.above'].drawer).toBe(true)
+    expect(UI_ANCHOR_CAPACITY_MIRROR['composer.above'].expandedMaxHeight).toBe(240)
+    for (const anchor of ['chat.status-bar', 'message.footer', 'message.actions', 'composer.actions']) {
+      expect(UI_ANCHOR_CAPACITY_MIRROR[anchor].drawer).toBeUndefined()
     }
   })
 

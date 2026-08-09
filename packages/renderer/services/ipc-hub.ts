@@ -399,7 +399,9 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
     setPluginUiSlots((result.plugins || [])
       .filter((plugin: any) => plugin.enabled)
       .flatMap((plugin: any) =>
-        (plugin.contributes?.uiSlots || []).map((slot: { anchor: string; id: string; label: string; unsupported?: boolean }) => ({
+        // drawer 是投影层**裁决后**的结果(锚点开了抽屉能力 + 这条声明了它);
+        // renderer 不再判第二遍,原样收下。
+        (plugin.contributes?.uiSlots || []).map((slot: { anchor: string; id: string; label: string; unsupported?: boolean; drawer?: boolean }) => ({
           pluginId: plugin.id,
           pluginName: plugin.name,
           anchor: slot.anchor,
@@ -407,6 +409,7 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
           label: slot.label,
           loaded: Boolean(plugin.loaded),
           unsupported: Boolean(slot.unsupported),
+          drawer: Boolean(slot.drawer),
         })),
       ))
   } catch (error) {

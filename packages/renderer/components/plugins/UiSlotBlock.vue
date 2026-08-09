@@ -61,6 +61,12 @@ const props = defineProps<{
   sessionId: string | null
   /** 仅消息级锚点(message.footer):该块所属的消息 id,随 render payload 过线。 */
   messageId?: string | null
+  /**
+   * 仅抽屉块(F 期):当前档('expanded' | 'peek')。随 render payload 过线,
+   * 插件据此返回不同的树;切档 = 重拉。**非抽屉块不传** —— 它们的 payload
+   * 一个字节不变(老块看到的 ctx 与 F 期之前完全一致)。
+   */
+  drawerState?: 'expanded' | 'peek' | null
   /** 锚点容量给的单块最大高度。 */
   maxHeight: number
 }>()
@@ -98,6 +104,7 @@ const {
   renderPayload: () => ({
     sessionId: props.sessionId,
     ...(props.messageId ? { messageId: props.messageId } : {}),
+    ...(props.drawerState ? { drawerState: props.drawerState } : {}),
   }),
   shareInflight: true,
   enabled: props.entry.loaded,
@@ -121,7 +128,8 @@ watch([loading, degraded, error], ([isLoading]) => {
 
 // 会话切换 = 这一块要重拉(render ctx 的 sessionId 随之变化);messageId
 // 对消息级块同理(正常不会变 —— 每条消息挂各的实例,但变了就得重拉)。
-watch(() => [props.sessionId, props.messageId], () => {
+// drawerState 同理:换档 = 换一棵树,重拉是宿主的责任(插件不自己轮询档)。
+watch(() => [props.sessionId, props.messageId, props.drawerState], () => {
   void render()
 })
 

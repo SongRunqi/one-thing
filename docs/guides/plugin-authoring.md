@@ -44,7 +44,7 @@ node scripts/build-plugin.mjs packages/my-plugin
 | `commands` | `string[]` | 斜杠命令声明 |
 | `panels` | `[{id,label,view?,entry?}]` | 工作区面板。缺省 `view: "descriptor"`(描述树,UI 不执行插件代码);`view: "webview"` + `entry` 走逃生舱,见下 |
 | `webviewRoot` | `string` | webview 面板的静态资源根,**相对包目录**,缺省 `webview` |
-| `uiSlots` | `[{anchor,id,label,lifetime?}]` | UI 锚点(常显块或触发式,**由锚点决定**,见下);未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"` |
+| `uiSlots` | `[{anchor,id,label,lifetime?,drawer?}]` | UI 锚点(常显块或触发式,**由锚点决定**,见下);未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"`;`drawer: true` 开抽屉三态(**仅 `composer.above`**,别处声明被忽略,见下) |
 | `theme` | `{overrides:{token:color}}` | 主题 token 覆盖(见下);装前确认页列出被改的 token |
 | `settings` | `{schema}` | JSON Schema 子集,宿主渲染并校验设置表单 |
 | `permissions` | `string[]` | 装前确认页如实列出 |
@@ -173,7 +173,7 @@ api.storage.message(sessionId, messageId).exists()
 
 | anchor | 形态 | 在哪 | ctx 带什么 | 容量 |
 |---|---|---|---|---|
-| `composer.above` | 常显块 | 输入框上方横条 | `sessionId` | 3 块 / 32px |
+| `composer.above` | 常显块(**可选抽屉**) | 输入框上方横条 | `sessionId`(抽屉块另带 `drawerState`) | 3 块 / 32px,展开档 240px |
 | `chat.status-bar` | 常显块 | 聊天面底部状态带(穿 chip 壳) | `sessionId` | 8 块 / 24px |
 | `message.footer` | 常显块 | 每条 assistant 消息尾部 | `sessionId` + `messageId` | 6 块 / 24px |
 | `message.actions` | **触发式** | 每条 assistant 消息的 ⋯ 菜单 | `sessionId` + `messageId` | 3 项,超出折叠 |
@@ -231,6 +231,60 @@ tps-meter 就是标准姿势:footer 一枚 24px 徽标常显,⋯ 菜单里一张
 - 超出容量(3 项)的入口被折叠掉,只在菜单/工具条上报个数;详情在设置页。
 - 一个插件可以同时住常显块与触发式(tps-meter / plan-status 都是),
   两条声明各写各的 `id`。
+
+### 抽屉块(drawer,只在 `composer.above`)
+
+常显块的老问题:它**一直挂着**。一条永远在输入框上方的状态行,大多数时候
+没有信息量,却一直占着高度。抽屉是这条的解法 —— 加一个字段,你的块就有了
+三态:
+
+```jsonc
+{ "contributes": { "uiSlots": [
+  { "anchor": "composer.above", "id": "plan-status", "label": "Plan 执行状态", "drawer": true }
+] } }
+```
+
+| 档 | 用户看到 | 你要返回什么 |
+|---|---|---|
+| **展开** `expanded` | 整块内容,高度预算 240px,超出块内滚动 | 一棵完整的树(stack:状态行 + 清单) |
+| **半收** `peek`(默认) | 单行摘要(就是没有抽屉时的老形态) | 一行装得下的树(row) |
+| **全收** `collapsed` | 块完全离场,S 状态带上剩一枚 chip(拼图 + 你的 label) | **什么都不用返回** —— 宿主不会调你的 render |
+
+**三态是宿主的,不是你的**:开合钮由宿主画在块壳右侧(`⌄/⌃` 展开⇄半收、
+`✕` 全收),用户选的档由宿主记住(按 `(插件, 锚点, id)`,重启还在)。
+你唯一的感知是 render ctx 上多的一个字段:
+
+```js
+api.registerUiSlot({
+  anchor: 'composer.above',
+  id: 'plan-status',
+  render(ctx) {
+    // ctx.drawerState === 'expanded' | 'peek'(老宿主上是 undefined)
+    if (ctx.drawerState === 'expanded') {
+      return { version: 2, body: { type: 'stack', gap: 'small', children: [
+        { type: 'row', children: [{ type: 'badge', text: '执行中', tone: 'accent' }] },
+        { type: 'list', items: recentSteps(ctx.sessionId) },
+      ] } }
+    }
+    // 半收 = 一行摘要。**默认档是它** —— 不判 drawerState 的老代码原样能跑。
+    return { version: 2, body: { type: 'row', children: [
+      { type: 'badge', text: '执行中' }, { type: 'markdown', text: '步骤 3/5' },
+    ] } }
+  },
+})
+```
+
+坑与语义:
+
+- **`drawer` 只在 `composer.above` 上算数**。写在别的锚点上不会拒载,
+  但那个字段会被**忽略**(设置页能看到它被忽略了)。
+- **不声明 = 一个字节都不变**:没有壳、没有钮、payload 里没有 `drawerState`。
+- **切档 = 一次新的 render**(宿主重拉),不是你自己 poll 出来的;
+  `onAction` 的 ctx 同样带当前档 —— 在展开档点按钮后别返回一行的树,
+  块会当场塌回去。
+- **全收档不会调你的 render**,所以取值域里没有 `'collapsed'`;
+  未知值(未来新档)在老宿主上读成 `undefined` = 半收,向后兼容白送。
+- 全收的块**不占** `composer.above` 的 3 块容量 —— 你收起来,别人顶上来。
 
 ## 样式与动画:你能改颜色,不能写动画
 

@@ -373,6 +373,12 @@ export function validatePluginContributes(raw: unknown): string | null {
       if (slot.lifetime !== undefined && typeof slot.lifetime !== 'string') {
         return `contributes.uiSlots[${index}].lifetime must be a string`
       }
+      // drawer(F 期)同样只校验**形状**(必须是布尔)。"这个锚点开不开抽屉"
+      // 不在这里判:锚点没开抽屉能力 = 该字段被忽略并在投影里标记,不拒载 ——
+      // 与未知锚点同规(旧宿主/别的宿主没有抽屉不是插件的错)。
+      if (slot.drawer !== undefined && typeof slot.drawer !== 'boolean') {
+        return `contributes.uiSlots[${index}].drawer must be a boolean`
+      }
       // 锚点块**不开** webview(C 期拍板,D 期原样适用于 trigger):
       // composer.above 是 32px 单行,chat.status-bar 24px —— 往里塞一个 iframe
       // 没有正经场景;trigger 的弹层同样只画描述树(§9.1 expression 轴:

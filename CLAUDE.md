@@ -181,7 +181,13 @@ Notes:
     message's ⋯ menu (ctx carries `messageId`) and `composer.actions` on the
     composer toolbar, before the attach button. Trigger adds **no protocol**: same
     `ui:render:*` / `ui:action:*` channel, same `ui:<anchor>:<id>` surface folding;
-    a degraded entry is **greyed, not removed**. Render ctx carries `anchor` +
+    a degraded entry is **greyed, not removed**. `composer.above` additionally opens a
+    **drawer capability** (F 期, 2026-08-09 — a `block` capability, not a new kind):
+    a slot declaring `drawer: true` gets host-drawn toggles and three host-owned states
+    (expanded 240px / peek 32px / collapsed to one chip in the S status band); the plugin
+    only sees `ctx.drawerState` (`'expanded' | 'peek'`) and the state machine lives in
+    `packages/renderer/workspace/ui-anchor-registry.ts` (localStorage, per window).
+    Render ctx carries `anchor` +
     `sessionId`, the host re-pulls on session switch. Renderer pieces:
     `components/plugins/{UiSlotHost,UiSlotBlock,PluginTriggerPopover}.vue` +
     `usePluginTriggerEntries.ts`),

@@ -1,6 +1,8 @@
 import { describePluginConfigSchema, type PluginConfigField } from './config-schema.js'
 import {
   describePluginWebviewPanelProblem,
+  isEffectiveUiDrawerSlot,
+  isIgnoredUiDrawerDeclaration,
   isUiAnchor,
   isPluginWebviewPanel,
 } from '@onething/core/plugins'
@@ -18,7 +20,7 @@ export interface OnethingPluginListManifestLike {
   contributes?: {
     commands?: Array<{ name: string }>
     panels?: Array<{ id: string; label: string; view?: string; entry?: string }>
-    uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string }>
+    uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string; drawer?: boolean }>
     theme?: { overrides?: Record<string, string> }
     webviewRoot?: string
     settings?: {
@@ -107,8 +109,22 @@ export interface OnethingRendererPluginInfo {
      * **闸门声明**,装前确认页要据此告诉用户"这插件会在消息上留下持久内容"。
      * 不在这里归一成布尔 —— 市场索引那条路走的是未投影的 manifest 原文,
      * 两条路各判一次才是漂移的开始,判据只留在 renderer 的一个 helper 里。
+     *
+     * `drawer` 是 **裁决后的**抽屉形态(F 期):锚点开了抽屉能力 **且** 这条
+     * 声明了 `drawer: true` 才为 true;别的锚点上声明它 → `drawer: false` +
+     * `drawerIgnored: true`(该字段被忽略,插件照常加载)。判据在 core 的
+     * `isEffectiveUiDrawerSlot`,renderer 不再判第二遍 —— 与未知锚点同规:
+     * 一处裁决,两处消费。
      */
-    uiSlots: Array<{ anchor: string; id: string; label: string; unsupported: boolean; lifetime: string }>
+    uiSlots: Array<{
+      anchor: string
+      id: string
+      label: string
+      unsupported: boolean
+      lifetime: string
+      drawer: boolean
+      drawerIgnored: boolean
+    }>
     /**
      * 主题 token 覆盖(B 期)。逐条带裁决结果:
      * `active` 生效中 / `shadowed` 被规范顺序更后的插件压过 / `inactive` 插件未启用 /
@@ -216,6 +232,8 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
         label: slot.label,
         unsupported: !isUiAnchor(slot.anchor),
         lifetime: slot.lifetime ?? '',
+        drawer: isEffectiveUiDrawerSlot(slot.anchor, slot.drawer),
+        drawerIgnored: isIgnoredUiDrawerDeclaration(slot.anchor, slot.drawer),
       })),
       theme: themeResolution.byPlugin.get(plugin.definition.id) ?? [],
       hasSettingsSchema: Boolean(plugin.definition.manifest.contributes?.settings?.schema),

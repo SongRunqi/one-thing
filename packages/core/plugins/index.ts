@@ -241,11 +241,17 @@ export {
   PLUGIN_UI_RENDER_ACTION,
   UI_ANCHORS,
   UI_ANCHOR_CAPACITY,
+  UI_DRAWER_DEFAULT_STATE,
   assertUiAnchorRegistryConsistency,
+  isEffectiveUiDrawerSlot,
+  isIgnoredUiDrawerDeclaration,
   isReservedPluginUiAction,
   isTriggerUiAnchor,
   isUiAnchor,
+  isUiDrawerRenderState,
+  supportsUiDrawer,
   uiAnchorKind,
+  uiDrawerExpandedMaxHeight,
   uiSlotAddress,
   uiSlotSurfaceId,
 } from './ui-anchor.js'
@@ -255,6 +261,8 @@ export type {
   UiAnchor,
   UiAnchorCapacity,
   UiAnchorKind,
+  UiDrawerRenderState,
+  UiDrawerState,
 } from './ui-anchor.js'
 export {
   PLUGIN_CONFIG_FILE_NAME,

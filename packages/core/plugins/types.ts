@@ -66,6 +66,18 @@ export interface PluginContributionUiSlot {
    * 未知值(未来新生命期)在闸门处天然读成非持久 —— 与未知锚点同规。
    */
   lifetime?: 'persistent' | 'ephemeral'
+  /**
+   * 抽屉形态(F 期)—— **仅在开了抽屉能力的锚点上有效**(今天只有
+   * `composer.above`)。声明它,宿主就在块壳右侧画一组开合钮,块进入三态:
+   * 展开(整块,高度预算 240px,块内滚动)/ 半收(单行摘要,即老形态)/
+   * 全收(退位到 S 状态带一枚 chip)。render ctx 随之带 `drawerState`
+   * (只有前两档会拉 render)。
+   *
+   * 其它锚点上声明它:**该字段被忽略**并在清单投影标 `drawerIgnored`,
+   * 插件照常加载 —— 与未知锚点降级同规(版本偏斜下"这个宿主的这个位置没有
+   * 抽屉"不是代码错误)。未声明的块形态一字不变(定高,无开合钮)。
+   */
+  drawer?: boolean
 }
 
 /** 呈现提示:不给则由 schema 推导控件。 */

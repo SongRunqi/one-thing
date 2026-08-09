@@ -174,6 +174,7 @@ H 线  webview 逃生舱(L3,与 backend 子进程 ext host 同批)
 | B 期 | L2 主题 token 覆盖(contributes.theme)+ 受限动画原语 | R5.x 全量落地 ✓ | **已落地(2026-08-09)** |
 | C 期 | L3 webview 逃生舱(**不含 ext host**) | R1 软隔离 ✓ + B 期 ✓ | **已落地(2026-08-09)** |
 | D 期 | 触发式锚点(`message.actions` / `composer.actions`,锚点分类学 v2 §9) | R5.x 全量 ✓ + E 期带系统 ✓ | **已落地(2026-08-09,§6.4)** |
+| F 期 | `composer.above` 的抽屉形态(展开/半收/全收,anchors §9.3.1) | D 期 ✓ + E 期 S 带 ✓ | **已落地(2026-08-09,§6.5)** |
 | H 线 | backend 子进程 ext host(权限声明强制、RPC 化 API) | 宪法第 1、2 条持续生效 | 终局,不排期 |
 
 ### 6.1 B 期落地清单(L2)
@@ -464,6 +465,75 @@ C5 对抗测试落点:`packages/core/plugins/__tests__/webview.test.ts`(判据)�
    的 "Token usage" 明细表;`plan-status` 1.1.0 `composer.above` 状态条保留 +
    `composer.actions` 的 "Plan detail" 整树(状态行 + 步骤清单)。两个 tarball
    已构建,**未安装**(真机走查时用户自行安装)。
+
+---
+
+### 6.5 F 期落地实录(2026-08-09)与规格差异
+
+**真机反馈驱动的一期**:plan-status 的常显整行"一直挂着"。落地的是
+anchors §9.3.1 的抽屉 —— **不是新 kind,是 `block` 在 `composer.above` 上的
+能力扩展**:同一条通道、同一套熔断账、同一份清单与容量裁决,多的只有宿主
+画的两枚钮和一个宿主持有的三态。
+
+代码位置:
+
+| 环节 | 落点 |
+| --- | --- |
+| 容量表加 `drawer` / `expandedMaxHeight` + 四个抽屉判据(`supportsUiDrawer` / `isEffectiveUiDrawerSlot` / `isIgnoredUiDrawerDeclaration` / `uiDrawerExpandedMaxHeight`)+ ctx 的 `drawerState` | `packages/core/plugins/ui-anchor.ts` |
+| manifest 字段 `contributes.uiSlots[].drawer` | `packages/core/plugins/types.ts` |
+| 形状校验(必须是布尔;任何锚点上都不拒载) | `packages/core/plugins/loader.ts` |
+| `drawerState` 随 payload 过线进 ctx(只认会渲染的两档) | `packages/core/plugins/api-builder.ts` |
+| 投影裁决 `drawer` / `drawerIgnored` | `packages/onething-runtime/src/plugins/plugin-list.ts` |
+| **三态状态机**(读/切/恢复/持久/拆除清态)+ 容量镜像 + 全收清单 | `packages/renderer/workspace/ui-anchor-registry.ts` |
+| 抽屉壳 + 两枚开合钮 + 全收 chip(S 带) | `packages/renderer/components/plugins/UiSlotHost.vue` |
+| 块侧:`drawerState` 进 render payload,切档即重拉 | `packages/renderer/components/plugins/UiSlotBlock.vue` |
+| 清单透传 `drawer` | `packages/renderer/services/ipc-hub.ts` |
+| 验收 | `packages/renderer/workspace/__tests__/ui-drawer-state.test.ts`(状态机 10 例)、`packages/renderer/components/plugins/__tests__/ui-drawer.test.ts`(挂点 6 例)、`ui-slots.test.ts` / `ui-anchor-registry.test.ts` 扩写 |
+
+与 §9.3.1 的逐条差异:
+
+1. **三态住在 `ui-anchor-registry`(renderer 全局注册表),不在组件里。**
+   抽屉壳(composer.above 挂点)与全收 chip(S 带的 chipShell 挂点)是**两个
+   组件实例**,同一份档若各存一份,收进 S 带的那一刻两边就会各说各话。
+   注册表本来就是"块清单的单一事实源",档挂在同一处是最省的一致性。
+2. **全收 chip 落在既有的 chipShell 挂点里,没有新组件。** `UiSlotHost`
+   多一个职责:`chipShell` 为真时,除了本锚点的块,再画全收抽屉的 chip。
+   S 带上因此可能出现"不属于 chat.status-bar 的 chip" —— 这是刻意的:
+   S 带的语义就是"退了位的东西还剩一个入口"。
+3. **全收 chip 不吃 `chat.status-bar` 的 8 块容量。** 它是
+   `composer.above` 的住户,数量天然被那边的 `maxBlocks: 3` 兜住(最多 3 枚)。
+   把它算进 status-bar 的容量会让"收起一个抽屉"挤掉一个真正的状态块 ——
+   两个锚点的容量账不该互相污染。§9.3.1 第 6 条"占 S 带一枚 chip 位"说的是
+   **视觉上的一枚位**,不是容量账上的一格。
+4. **chip 的壳是 `StatusChip` 静态壳,可点的是壳里的一枚 button。**
+   StatusChip 的可展开分支要求 `flyout` 插槽(它是"chip + 浮层"的组合),
+   而全收 chip 点了不是开浮层,是**把块放回原位** —— 没有浮层可挂。
+   反馈因此画在内层 button 上(hover 变色 + `:focus-visible` 描边),
+   不去和 StatusChip 的 `.is-static:hover` 抢特异性。
+5. **展开档的高度过渡做在块的 `max-height` 上**(`--duration-normal` +
+   `--ease-default`,`prefers-reduced-motion` 直切)。不做位移动画 ——
+   输入区一带的位移跳变要 FLIP 才不难看(判例 `project_composer_sidebar_glide`),
+   而抽屉长高是**原地**的,邻座跟着抖才是错的。
+6. **`drawerState` 只认 `'expanded' | 'peek'`。** 未知值(含 `'collapsed'`)
+   在 core 侧读成"不带这个字段" —— 老插件、老宿主、未来新档三种偏斜下,
+   插件看到的 ctx 永远是它认得的形状(与 `lifetime` 未知值降级同规)。
+7. **拆除清态挂在 `setPluginUiSlots` 上**,不另开生命周期钩子:插件
+   禁用/卸载 = 投影重推 = 这一条从清单里消失,档(内存 + localStorage)随之
+   清掉。装回来是默认的半收,不是"莫名其妙已经收着"。
+8. **`localStorage` 的可用性判据卡在方法上而不是全局上**:Node 22 起
+   `globalThis.localStorage` 恒存在(未开 `--localstorage-file` 时方法全是
+   undefined),只看 `typeof` 会把空壳当成能用的存储,真机之外的每个测试
+   环境都会当场 TypeError。
+9. **样本插件 plan-status 1.2.0**:`composer.above` 那条声明 `"drawer": true`,
+   render 按 `ctx.drawerState` 返回两档树 —— peek 是原来的单行摘要(**老形态
+   一字不变**),expanded 是 stack(状态行 + 最近 6 步 + "还有更早 N 步")。
+   tarball 已构建,**未安装**(真机走查时用户自行安装)。
+
+**F2(todo-plan 整合)按用户指示搁置。** 抽屉展开档一度要接宿主的 todo-plan
+子系统(把真正的计划树画进来)。用户拍板:**先重整 todo-plan 子系统的命名与
+语义**,再谈谁来消费它 —— 在那之前抽屉的数据源只有流事件
+(`stream:*` / `step:updated`),插件里也登记了这条决定(plugin-entry 文件头)。
+待 todo-plan 重整落地后另立一期。
 
 ---
 

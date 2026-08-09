@@ -24,9 +24,13 @@ import {
   createCorePluginAPI,
   describePluginSurface,
   disposeCorePluginState,
+  isEffectiveUiDrawerSlot,
+  isIgnoredUiDrawerDeclaration,
   isTriggerUiAnchor,
   isUiAnchor,
   pluginScope,
+  supportsUiDrawer,
+  uiDrawerExpandedMaxHeight,
   uiAnchorKind,
   uiSlotSurfaceId,
   validatePluginContributes,
@@ -37,6 +41,7 @@ import {
   type CorePluginUiSlotRegistration,
   type CorePluginUiSlotContext,
   type PluginPanelTree,
+  type UiAnchor,
 } from '@onething/core/plugins'
 import { projectOnethingPluginsForRenderer } from '../../../plugins/plugin-list.js'
 
@@ -106,7 +111,7 @@ function createManager(
 function definition(
   id: string,
   entry: TestEntry,
-  uiSlots: Array<{ anchor: string; id: string; label: string }>,
+  uiSlots: Array<{ anchor: string; id: string; label: string; drawer?: boolean }>,
 ): TestDefinition {
   return {
     id,
@@ -166,6 +171,35 @@ describe('UI anchor registry', () => {
     expect(UI_ANCHOR_CAPACITY['message.actions'].maxBlocks).toBe(3)
     expect(UI_ANCHOR_CAPACITY['composer.actions'].maxBlocks).toBe(3)
   })
+
+  /**
+   * F 期:抽屉是 block 在 composer.above 上的**能力扩展**,不是新 kind ——
+   * kind 轴一个字没动,多的是容量表上的两个可选字段。
+   */
+  it('抽屉能力只开在 composer.above,且没有变成新的 kind', () => {
+    expect(supportsUiDrawer('composer.above')).toBe(true)
+    expect(UI_ANCHOR_CAPACITY['composer.above'].kind).toBe('block')
+    expect(uiDrawerExpandedMaxHeight('composer.above')).toBe(240)
+    for (const anchor of ['chat.status-bar', 'message.footer', 'message.actions', 'composer.actions']) {
+      expect(supportsUiDrawer(anchor)).toBe(false)
+      // 没开抽屉的锚点问展开高度 = 回落到它自己的 maxHeight(不是 undefined,
+      // 也不是 240):调用方永远拿得到一个能用的数。
+      expect(uiDrawerExpandedMaxHeight(anchor)).toBe(UI_ANCHOR_CAPACITY[anchor as UiAnchor].maxHeight)
+    }
+    expect(supportsUiDrawer('composer.below')).toBe(false)
+    expect(uiDrawerExpandedMaxHeight('composer.below')).toBeUndefined()
+  })
+
+  it('drawer 的裁决判据只有一处:锚点开了能力 + 这条声明了它', () => {
+    expect(isEffectiveUiDrawerSlot('composer.above', true)).toBe(true)
+    expect(isEffectiveUiDrawerSlot('composer.above', false)).toBe(false)
+    expect(isEffectiveUiDrawerSlot('composer.above', undefined)).toBe(false)
+    expect(isEffectiveUiDrawerSlot('chat.status-bar', true)).toBe(false)
+    // "被忽略"要说得出来(投影层据此标记,设置页可解释)。
+    expect(isIgnoredUiDrawerDeclaration('chat.status-bar', true)).toBe(true)
+    expect(isIgnoredUiDrawerDeclaration('composer.above', true)).toBe(false)
+    expect(isIgnoredUiDrawerDeclaration('chat.status-bar', undefined)).toBe(false)
+  })
 })
 
 // ── manifest 校验:形状管,位置不管 ───────────────
@@ -189,6 +223,7 @@ describe('contributes.uiSlots manifest validation', () => {
     [{ uiSlots: [{ anchor: 'composer.above', label: 'X' }] }, 'id must be a non-empty string'],
     [{ uiSlots: [{ anchor: 'composer.above', id: 'x' }] }, 'label must be a non-empty string'],
     [{ uiSlots: [{ anchor: 'composer.above', id: 'x', label: 'X', lifetime: 42 }] }, 'lifetime must be a string'],
+    [{ uiSlots: [{ anchor: 'composer.above', id: 'x', label: 'X', drawer: 'yes' }] }, 'drawer must be a boolean'],
   ])('形状非法被拒: %j', (contributes, message) => {
     expect(validatePluginContributes(contributes)).toContain(message)
   })
@@ -214,6 +249,19 @@ describe('contributes.uiSlots manifest validation', () => {
       })).toContain('view is not supported')
     },
   )
+
+  it('drawer 声明在任何锚点上都不拒载(不支持的锚点上是"被忽略",不是错)', () => {
+    expect(validatePluginContributes({
+      uiSlots: [{ anchor: 'composer.above', id: 'x', label: 'X', drawer: true }],
+    })).toBeNull()
+    expect(validatePluginContributes({
+      uiSlots: [
+        { anchor: 'chat.status-bar', id: 'y', label: 'Y', drawer: true },
+        { anchor: 'message.actions', id: 'z', label: 'Z', drawer: true },
+        { anchor: 'composer.below', id: 'w', label: 'W', drawer: true },
+      ],
+    })).toBeNull()
+  })
 
   it('lifetime 合法值通过;未知的未来值也不拒载(闸门读 === persistent,天然降级)', () => {
     expect(validatePluginContributes({
@@ -287,6 +335,47 @@ describe('registerUiSlot', () => {
     expect(seenCtx!.anchor).toBe('message.footer')
     expect(seenCtx!.sessionId).toBe('session-1')
     expect(seenCtx!.messageId).toBe('msg-42')
+  })
+
+  /**
+   * F 期:抽屉块的 render ctx 多一个 `drawerState`。它是**可序列化的、只加不改**
+   * 的一个字段:宿主按当前档随 payload 传入,插件据此返回两档不同的树。
+   * 取值域只有会渲染的两档 —— 'collapsed' 与任何未知值都读成"不带这个字段"
+   * (全收的块根本不会被拉)。
+   */
+  it('抽屉块:render payload 带 drawerState 时 ctx.drawerState 随之过线', async () => {
+    const seen: Array<CorePluginUiSlotContext['drawerState']> = []
+    const def = definition('plan-status', api => {
+      api.registerUiSlot({
+        anchor: 'composer.above',
+        id: 'plan-status',
+        render(ctx) {
+          seen.push(ctx.drawerState)
+          return simpleTree(ctx.drawerState === 'expanded' ? '整块' : '一行')
+        },
+      })
+    }, [{ anchor: 'composer.above', id: 'plan-status', label: 'Plan', drawer: true }])
+
+    const { manager, failures } = createManager([def])
+    await boot(manager)
+
+    const pull = (drawerState?: unknown) => manager.handleRequest({
+      pluginId: 'plan-status',
+      action: `${PLUGIN_UI_RENDER_ACTION}:composer.above:plan-status`,
+      payload: { sessionId: 'session-1', ...(drawerState === undefined ? {} : { drawerState }) },
+    })
+
+    const peek = await pull('peek')
+    const expanded = await pull('expanded')
+    await pull('collapsed')
+    await pull('future-state')
+    await pull()
+
+    expect(failures).toEqual([])
+    expect((peek as any).result.body.children[0].text).toBe('一行')
+    expect((expanded as any).result.body.children[0].text).toBe('整块')
+    // 后三次:全收 / 未知值 / 不带 —— 插件一律看不到这个字段。
+    expect(seen).toEqual(['peek', 'expanded', undefined, undefined, undefined])
   })
 
   /**
@@ -605,8 +694,46 @@ describe('renderer projection', () => {
       commands: [],
     }])
     expect(plugin.contributes.uiSlots).toEqual([
-      { anchor: 'composer.above', id: 'a', label: 'A', unsupported: false, lifetime: '' },
-      { anchor: 'composer.below', id: 'b', label: 'B', unsupported: true, lifetime: '' },
+      { anchor: 'composer.above', id: 'a', label: 'A', unsupported: false, lifetime: '', drawer: false, drawerIgnored: false },
+      { anchor: 'composer.below', id: 'b', label: 'B', unsupported: true, lifetime: '', drawer: false, drawerIgnored: false },
+    ])
+  })
+
+  /**
+   * F 期:drawer 是**声明门控**,且只在开了抽屉能力的锚点上算数。别的锚点上
+   * 声明它 = 该字段被忽略并标记(不拒载)——与未知锚点同规。
+   */
+  it('drawer 只在 composer.above 上生效;别处声明被忽略并标记', () => {
+    const [plugin] = projectOnethingPluginsForRenderer([{
+      definition: {
+        id: 'plan-status',
+        source: 'user',
+        enabled: true,
+        dirPath: '/plugins/plan-status',
+        manifest: {
+          name: 'plan-status',
+          version: '1.2.0',
+          contributes: {
+            uiSlots: [
+              { anchor: 'composer.above', id: 'drawer', label: 'D', drawer: true },
+              { anchor: 'composer.above', id: 'plain', label: 'P' },
+              { anchor: 'chat.status-bar', id: 'nope', label: 'N', drawer: true },
+              { anchor: 'message.footer', id: 'also-nope', label: 'M', drawer: true },
+              { anchor: 'composer.below', id: 'alien', label: 'X', drawer: true },
+            ],
+          },
+        },
+      },
+      loaded: true,
+      commands: [],
+    }])
+    expect(plugin.contributes.uiSlots.map(slot => [slot.id, slot.drawer, slot.drawerIgnored])).toEqual([
+      ['drawer', true, false],
+      ['plain', false, false],
+      ['nope', false, true],
+      ['also-nope', false, true],
+      // 未知锚点更谈不上抽屉 —— 两条降级叠在一起,还是不拒载。
+      ['alien', false, true],
     ])
   })
 
