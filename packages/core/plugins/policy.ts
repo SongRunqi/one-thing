@@ -68,6 +68,13 @@ export const pluginScope = {
    * 会挡住一次工具执行 —— 同一条罚则文案不能同时为两种代价辩护。
    */
   toolCallIntercept: (hookId: string) => brand(`toolCallIntercept:${hookId}`),
+  /**
+   * 工具结果改写(N5)。与 toolCallIntercept 同形(带 hookId 记账、按 surface 降级),
+   * 但**自成一族**:它 fail-open(失败 = 放行原结果,无害),罚则理由与
+   * toolCallIntercept(fail-closed,失败会挡一次工具)必须分开写 —— 同一条罚则
+   * 文案不能同时为两种代价辩护。
+   */
+  toolResultIntercept: (hookId: string) => brand(`toolResultIntercept:${hookId}`),
   storage: (operation: string) => brand(`storage.${operation}`),
   settingsChange: () => brand('settings:onChange'),
   steer: () => brand('steer'),
@@ -175,6 +182,7 @@ export const PLUGIN_SCOPE_FAMILIES = [
   'conversation-control',
   'input-intercept',
   'toolcall-intercept',
+  'toolresult-intercept',
   'registration',
   'connector',
   'search-provide',
@@ -256,6 +264,19 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
       + '仍然不是整体禁用:插件的工具/命令/面板/定时任务与它的判断力无关。'
       + '半开同样靠时间(闸在拦截口,被跳过的插件永远不会有一次成功可记)。',
   },
+  'toolresult-intercept': {
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
+    remedy: 'degrade-surface',
+    rationale: '工具结果改写(N5)是 fail-open 的,与 toolcall-intercept 恰好相反:'
+      + '结果早已产生,改写器抛错 / 超时只会让**模型看到未经改写的原始结果**,'
+      + '工作流一步不断。它挂在工具执行之后、结果回模型之前,是 toolcall-intercept '
+      + '在同一个函数里的镜像下手。连败三次说明这条改写在持续坏,再让它每次消耗 '
+      + '2s 预算只是在给每一次工具结果加延迟 —— 停掉**这一个改写面**,插件的'
+      + '工具/命令/面板/定时任务全部照常。整体禁用在这里是错的罚则:改写失败'
+      + '对工作流无害(模型拿到了原结果),为一个无害的失败面砍掉插件全部能力是'
+      + '把小故障放大成大故障。没有"用户点重试"的逃生口,靠时间半开'
+      + '(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
+  },
   // ── 用户主动触发的:失败当场可见,不该连坐 ──
   'ui-request': {
     threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
@@ -320,6 +341,7 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (scope === 'steer' || scope === 'followUp' || scope === 'sendMessage') return 'conversation-control'
   if (scope.startsWith('inputIntercept')) return 'input-intercept'
   if (scope.startsWith('toolCallIntercept')) return 'toolcall-intercept'
+  if (scope.startsWith('toolResultIntercept')) return 'toolresult-intercept'
   if (scope.startsWith('register')) return 'registration'
   if (scope.startsWith('connector')) return 'connector'
   // 搜索供给方(M2):必须在 register/connector 之后,`searchProvide` 不与它们撞前缀。
@@ -389,6 +411,9 @@ export const PLUGIN_INPUT_INTERCEPT_SURFACE = 'input-intercept'
  */
 export const PLUGIN_TOOL_CALL_INTERCEPT_SURFACE = 'toolcall-intercept'
 
+/** N5 的降级界面名(与 pluginScope.toolResultIntercept 的前缀对应)。 */
+export const PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE = 'toolresult-intercept'
+
 export function describePluginSurface(scope: string): string {
   const panel = PANEL_SURFACE_PATTERN.exec(scope)
   if (panel) return `panel:${panel[1]}`
@@ -405,6 +430,9 @@ export function describePluginSurface(scope: string): string {
   // 而在 fail-closed 这一侧聚合还多一层意义:降级必须一次性移除该插件的**全部**
   // 拦截,否则它剩下的那条钩子会继续挡工具,逃生口只开了一半。
   if (scope.startsWith('toolCallIntercept')) return PLUGIN_TOOL_CALL_INTERCEPT_SURFACE
+  // 工具结果改写(N5):同理聚合 —— 一个插件的所有改写钩子折成同一个界面,
+  // 用户能理解的是"这个插件不再改我的工具结果了"。
+  if (scope.startsWith('toolResultIntercept')) return PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE
   // 搜索供给方(M2):`searchProvide:<id>` 折成 `search:<id>` —— 与
   // pluginSearchProviderSurface 是同一把尺,聚合器据它短路。search 与 onAction
   // 共用同一 surface(一个供给方就是一块界面),降级一起挡。

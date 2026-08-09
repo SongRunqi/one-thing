@@ -15,6 +15,7 @@ import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { enforcePermissionPolicy } from '../../tools/core/permission-policy.js'
 import { runPluginToolCallIntercept } from '../../plugins/tool-call-intercept.js'
+import { runPluginToolResultIntercept } from '../../plugins/tool-result-intercept.js'
 import {
   createCoreId,
   createToolExecutionStepWithFactory,
@@ -85,6 +86,15 @@ export async function executeToolDirectly(
       return outcome.action === 'block'
         ? { action: 'block', reason: outcome.reason }
         : { action: 'allow', input: outcome.input as JsonObject }
+    },
+    // N5:插件的工具结果改写链。装配层在这里把它塞进 core 的必经点(工具执行**之后**、
+    // 结果回模型之前)。链本身在 `app/plugins/tool-result-intercept.ts`:逐 handler
+    // fail-open,该插件熔断后仍 fail-open(只省预算)。没有插件注册时是零分配早退。
+    interceptToolResult: async ({ sessionId, toolName, toolCallId, input, result }) => {
+      const outcome = await runPluginToolResultIntercept({ sessionId, toolName, toolCallId, input, result })
+      return outcome.action === 'replace'
+        ? { action: 'replace', content: outcome.result.content, isError: outcome.result.isError }
+        : { action: 'keep' }
     },
     logger: console,
   })

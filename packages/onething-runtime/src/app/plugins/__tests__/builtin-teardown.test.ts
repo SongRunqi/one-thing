@@ -20,7 +20,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>
 
 async function loadModules() {
-  const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, scheduler, variables, connectors] = await Promise.all([
+  const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors] = await Promise.all([
     import('../loader.js'),
     import('../api.js'),
     import('../../tools/index.js'),
@@ -29,11 +29,12 @@ async function loadModules() {
     import('../lifecycle.js'),
     import('../input-intercept.js'),
     import('../tool-call-intercept.js'),
+    import('../tool-result-intercept.js'),
     import('../../scheduler/index.js'),
     import('../../variables/index.js'),
     import('../../channel/connector-registry.js'),
   ])
-  return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, scheduler, variables, connectors }
+  return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors }
 }
 
 /**
@@ -98,6 +99,9 @@ interface RegistrySnapshot {
   /** N4 的干预型钩子:同上。fail-closed 让漏拆的代价更大 —— 一条被遗忘的
    *  拦截会继续挡工具,而它的插件已经不在了。 */
   toolCallInterceptHooks: number
+  /** N5 的干预型钩子:同上。fail-open,漏拆的代价较轻(一条被遗忘的改写会继续
+   *  改结果),但"开一个漏一个"的规矩一样适用。 */
+  toolResultInterceptHooks: number
 }
 
 /** Counting EventBus stand-in: subscriptions are a registry too, and a leaked
@@ -168,6 +172,7 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
     lifecycleHooks: mods.lifecycle.getLifecycleHookCounts(),
     inputInterceptHooks: mods.inputIntercept.getInputInterceptHookCount(),
     toolCallInterceptHooks: mods.toolCallIntercept.getToolCallInterceptHookCount(),
+    toolResultInterceptHooks: mods.toolResultIntercept.getToolResultInterceptHookCount(),
     eventSubscriptions: bus.subscriptionCount,
     schedulerTaskIds,
     variableSubscriptions,

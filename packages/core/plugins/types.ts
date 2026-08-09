@@ -1,5 +1,6 @@
 import type { PluginInputInterceptHandler } from './input-intercept.js'
 import type { PluginToolCallInterceptHandler } from './tool-call-intercept.js'
+import type { PluginToolResultInterceptHandler } from './tool-result-intercept.js'
 import type { CorePluginRequestHandler } from './request-channel.js'
 import type { CorePluginStorage } from './storage.js'
 import type { PluginNotifyOptions } from './notify-sound.js'
@@ -435,6 +436,25 @@ export interface CorePluginAPI<
    * 声明门:`contributes.permissions` 要有 `toolcall:intercept`。
    */
   interceptToolCall(id: string, handler: PluginToolCallInterceptHandler): void
+  /**
+   * 工具结果改写(N5)——**干预型**钩子,失败语义与 `interceptToolCall` 相反、
+   * 与 `interceptInput` 相同(fail-open)。它是 `interceptToolCall` 在同一个工具
+   * 执行函数里的镜像下手:一个在工具跑之前拦调用,一个在工具跑之后改结果。
+   *
+   * handler 返回 `{action:'keep'|'replace'}`(或什么都不返回 = keep),多插件按
+   * 全局规范顺序链式:replace 逐个累积(后手看到前手改写后的结果)。没有 block、
+   * 没有短路 —— 结果已经产生,只有改写没有拦截。`replace` 的 content 是纯文本
+   * (不过 schema,只有长度上限),`isError` 可翻转(脱敏:把泄露路径的错误改成
+   * 通用错误)。
+   *
+   * **fail-open**:抛错 / 超时(2s)/ 返回值读不懂一律当作 keep —— 默认动作是
+   * 把工具产出的原始结果原样交给模型,无害。该插件连败到阈值后改写面被降级,
+   * 之后它的改写被跳过(= 原结果)。
+   *
+   * 声明门:`contributes.permissions` 要有 `toolresult:intercept`(敏感 —— 它能
+   * 读到所有工具输出,含文件内容与命令输出)。
+   */
+  interceptToolResult(id: string, handler: PluginToolResultInterceptHandler): void
   registerSkillRoot(provider: TSkillRootProvider): void
   /**
    * 统一请求通道:UI 侧 `platformApi.pluginRequest(pluginId, action, payload)`

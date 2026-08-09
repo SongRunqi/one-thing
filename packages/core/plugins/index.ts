@@ -143,6 +143,28 @@ export type {
   PluginToolCallInterceptResult,
 } from './tool-call-intercept.js'
 export {
+  CORE_PLUGIN_TOOL_RESULT_INTERCEPT_MAX_LENGTH,
+  CORE_PLUGIN_TOOL_RESULT_INTERCEPT_TIMEOUT_MS,
+  CorePluginToolResultInterceptRegistry,
+  PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT,
+  PLUGIN_TOOL_RESULT_INTERCEPT_ACTIONS,
+  PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE,
+  PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE,
+  capPluginToolResultContent,
+  emptyPluginToolResultInterceptOutcome,
+  normalizePluginToolResultInterceptResult,
+} from './tool-result-intercept.js'
+export type {
+  CorePluginToolResultInterceptRegistryOptions,
+  PluginToolResultInterceptAction,
+  PluginToolResultInterceptContext,
+  PluginToolResultInterceptDecision,
+  PluginToolResultInterceptHandler,
+  PluginToolResultInterceptOutcome,
+  PluginToolResultInterceptResult,
+  PluginToolResultView,
+} from './tool-result-intercept.js'
+export {
   PLUGIN_WEBVIEW_DEFAULT_ROOT,
   PLUGIN_WEBVIEW_MESSAGE_TYPES,
   PLUGIN_WEBVIEW_MIME_TYPES,

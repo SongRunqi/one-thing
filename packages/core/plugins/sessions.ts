@@ -94,6 +94,25 @@ export const PLUGIN_PERMISSION_TOOLCALL_INTERCEPT = 'toolcall:intercept'
 export const PLUGIN_TOOLCALL_INTERCEPT_PERMISSION_NOTE =
   'can inspect, block, or rewrite tool calls before they run'
 
+/* ── 工具结果改写(N5)的声明门 ───────────────────────────────────────────── */
+
+/**
+ * tool_result 改写(N5)。与 `toolcall:intercept` 同住这个文件、同一个理由。
+ *
+ * 敏感度极高:声明它的插件能读到**每一个工具产出的结果** —— 文件内容、bash
+ * 输出、网络富化回来的正文,并能把它们改写后再交给模型。它坐在"世界回到模型"
+ * 的那一道口上,看到的是应用里流动的几乎全部真实数据。
+ */
+export const PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT = 'toolresult:intercept'
+
+/**
+ * 披露文案。**read 与 rewrite 两个动词都不能省**:装前确认页要让用户明白它不只
+ * 是改结果的排版,而是先**读到**所有工具的输出(含文件内容、bash 输出)——
+ * 这才是真正需要用户点头的那一半。
+ */
+export const PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE =
+  'can read and rewrite tool results before the model sees them (including file contents and command output)'
+
 /**
  * **被消费的**权限名 → 披露文案。未登记的名字原样显示(向前兼容:未来的宿主
  * 可能认识它),但凡是宿主真的会拿来判定的名字,都必须在这里有一句人话。
@@ -102,6 +121,7 @@ export const PLUGIN_PERMISSION_NOTES: Readonly<Record<string, string>> = {
   ...PLUGIN_SESSION_PERMISSION_NOTES,
   [PLUGIN_PERMISSION_INPUT_INTERCEPT]: PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE,
   [PLUGIN_PERMISSION_TOOLCALL_INTERCEPT]: PLUGIN_TOOLCALL_INTERCEPT_PERMISSION_NOTE,
+  [PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT]: PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE,
 }
 
 export function describePluginPermission(name: string): string {

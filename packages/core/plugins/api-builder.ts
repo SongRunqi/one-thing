@@ -39,6 +39,10 @@ import {
   type PluginToolCallInterceptHandler,
 } from './tool-call-intercept.js'
 import {
+  PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT,
+  type PluginToolResultInterceptHandler,
+} from './tool-result-intercept.js'
+import {
   PLUGIN_PERMISSION_SESSIONS_PEEK,
   PLUGIN_PERMISSION_SESSIONS_POST,
   PLUGIN_PERMISSION_SESSIONS_TRIGGER,
@@ -111,6 +115,14 @@ export interface CorePluginAPIHost<
    * 并拒绝注册 —— 在一条安全链上,"以为自己装了守卫其实没装"是最坏的结局。
    */
   registerToolCallInterceptHook?(pluginId: string, id: string, handler: PluginToolCallInterceptHandler): () => void
+  /**
+   * 工具结果改写链的登记口(N5)—— 第三个**干预型**钩子,`interceptToolCall` 的
+   * fail-open 镜像。与 `registerToolCallInterceptHook` 同构:core 只做声明门与登记,
+   * 链的次序 / 预算 / fail-open / 熔断闸全在注册表
+   * (`CorePluginToolResultInterceptRegistry`),挂点在工具执行**之后**、结果回模型
+   * 之前的对称位置。宿主没接这条线时 `api.interceptToolResult` 报错并拒绝注册。
+   */
+  registerToolResultInterceptHook?(pluginId: string, id: string, handler: PluginToolResultInterceptHandler): () => void
   registerSkillRoot(pluginId: string, provider: TSkillRootProvider): () => void
   invalidateSkillsCache?(): void | Promise<void>
   /**
@@ -747,6 +759,47 @@ export function createCorePluginAPI<
       const unsub = host.registerToolCallInterceptHook(pluginId, id, handler)
       lifecycleUnsubs.push(unsub)
       logger.log(`[Plugin:${pluginId}] Registered tool-call interceptor: ${id}`)
+    },
+
+    /**
+     * 工具结果改写(N5)——**拦截族**的第三个成员,`interceptToolCall` 的 fail-open
+     * 镜像。它挂在工具执行**之后**、结果回模型之前的对称位置。
+     *
+     * handler 返回 `{action:'keep'|'replace'}`(或什么都不返回 = keep),多插件按
+     * 全局规范顺序链式:replace 逐个累积(后手看到前手改写后的结果)。没有 block、
+     * 没有短路 —— 结果已经产生,只有改写。content 是纯文本(不过 schema,只有
+     * 长度上限),isError 可翻转(脱敏场景)。
+     *
+     * 抛错 / 超时 / 返回值读不懂 = **保留原结果**(fail-open,与 interceptToolCall
+     * 相反),因为结果早已产生、改写失败无害。连败到阈值后这个插件的改写面被降级掉。
+     *
+     * 声明门:`contributes.permissions` 要有 `toolresult:intercept`。未声明 = 报错 +
+     * 拒绝注册,**不计熔断**(manifest 笔误不该连坐整个插件,与 N1/N2/N4 同规)。
+     * 它是最敏感的声明之一 —— 装前确认页会念成人话:该插件能读到并改写所有工具的
+     * 输出(含文件内容与命令输出)。
+     */
+    interceptToolResult(id: string, handler: PluginToolResultInterceptHandler): void {
+      if (rejectLateCall('interceptToolResult')) return
+      if (!declaredPermissions.has(PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT)) {
+        logger.error(
+          `[Plugin:${pluginId}] interceptToolResult requires "${PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT}" in `
+          + 'contributes.permissions (plugin.json). The install page tells the user this plugin '
+          + 'can read and rewrite tool results before the model sees them, including file contents '
+          + 'and command output.',
+          undefined,
+        )
+        return
+      }
+      if (!host.registerToolResultInterceptHook) {
+        logger.error(
+          `[Plugin:${pluginId}] interceptToolResult is not available on this host (no tool pipeline).`,
+          undefined,
+        )
+        return
+      }
+      const unsub = host.registerToolResultInterceptHook(pluginId, id, handler)
+      lifecycleUnsubs.push(unsub)
+      logger.log(`[Plugin:${pluginId}] Registered tool-result interceptor: ${id}`)
     },
 
     registerSkillRoot(provider: TSkillRootProvider): void {

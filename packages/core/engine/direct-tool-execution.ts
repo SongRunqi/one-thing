@@ -121,6 +121,54 @@ export type CoreDirectToolInterceptor = (
   request: CoreDirectToolInterceptRequest,
 ) => Promise<CoreDirectToolInterceptVerdict>
 
+/* ── N5:工具结果改写口 ───────────────────────────────────────────────────── */
+
+/**
+ * 工具结果的**模型可见视图**:一段文本 + 是否错误态。
+ *
+ * core 把它自己的结果类型(`{success, data, error}`)映射成这个视图再进改写口,
+ * 并把改写后的视图映射回结果类型(见 `toolResultView` / `applyToolResultVerdict`)。
+ * 改写口这一层只认 content / isError —— 模型真正看到的那两样,也是插件唯一该
+ * 关心的两样。
+ */
+export interface CoreDirectToolResultView {
+  content: string
+  isError: boolean
+}
+
+export interface CoreDirectToolResultInterceptRequest {
+  sessionId: string
+  toolName: string
+  toolCallId?: string
+  /** 本次调用的入参(可能已被 N4 改写过);N5 只读它,不改。 */
+  input: JsonObject
+  /** 工具产出的结果视图。 */
+  result: CoreDirectToolResultView
+}
+
+/**
+ * 改写口的答复。`keep` = 一字不动;`replace` = 用新的 content / isError 顶替。
+ */
+export type CoreDirectToolResultVerdict =
+  | { action: 'keep' }
+  | { action: 'replace'; content: string; isError: boolean }
+
+/**
+ * 宿主注入的结果改写口(N5)。与 `CoreDirectToolInterceptor`(N4)是同一个函数
+ * (`executeCoreDirectTool`)一前一后的两道口,**失败语义正相反**:
+ *
+ *  - N4 挂在工具执行**之前**,默认动作是跑一个带副作用的工具 → fail-**closed**;
+ *  - N5 挂在工具执行**之后**、结果回模型之前,默认动作是把已经产生的原始结果
+ *    交给模型 → fail-**open**。
+ *
+ * 契约:**从不抛错**(真正的实现 `app/plugins/tool-result-intercept.ts` 自己兜底);
+ * 即便如此,core 侧对它仍加一层 try/catch → keep,因为 fail-open 就是这条口的
+ * 底色 —— 结果改写坏了,最坏也只是模型看到未改写的原结果。
+ */
+export type CoreDirectToolResultInterceptor = (
+  request: CoreDirectToolResultInterceptRequest,
+) => Promise<CoreDirectToolResultVerdict>
+
 export interface ExecuteCoreDirectToolOptions<
   TResult extends CoreDirectToolExecutionResultLike,
   TExecContext extends CoreDirectToolExecutionContextWithApproval<TEffect, TPreview>,
@@ -145,6 +193,12 @@ export interface ExecuteCoreDirectToolOptions<
    * 只跑插件的桌面宿主接它,server / CLI daemon 不接。
    */
   interceptToolCall?: CoreDirectToolInterceptor
+  /**
+   * N5:插件的工具结果改写链。缺省(不注入)= 没有这道闸,一字不改的旧行为 ——
+   * 与 interceptToolCall 同一个桌面宿主接它。它挂在工具执行**之后**、结果回
+   * 模型之前,是 interceptToolCall 的 fail-open 镜像。
+   */
+  interceptToolResult?: CoreDirectToolResultInterceptor
   createExecutionContext: (context: CoreDirectToolExecutionContext<TMetadataUpdate, TPartialResultUpdate, TStep>) => TExecContext
   isPermissionRejectedError?: (error: Error) => boolean
   permissionRejectedReason?: (error: Error) => string | undefined
@@ -167,6 +221,41 @@ export function metadataUpdateFromToolPreview<TPreview extends CoreDirectToolPre
   }
 }
 
+/**
+ * N5:把一个工具结果映射成模型可见视图(content + isError)。
+ *
+ * 错误态取 `error`;成功态取 `data` —— 字符串原样,`undefined` / `null` 为空串,
+ * 其余对象 JSON 序列化(序列化炸了退回 `String(data)`,绝不抛错)。
+ */
+function toolResultView(result: CoreDirectToolExecutionResultLike): CoreDirectToolResultView {
+  if (!result.success) return { content: result.error ?? '', isError: true }
+  const data = result.data
+  if (typeof data === 'string') return { content: data, isError: false }
+  if (data === undefined || data === null) return { content: '', isError: false }
+  try {
+    return { content: JSON.stringify(data), isError: false }
+  } catch {
+    return { content: String(data), isError: false }
+  }
+}
+
+/**
+ * N5:把改写口的 `replace` 判决映射回结果类型。
+ *
+ * 保留原结果的其余字段(commandType / requiresConfirmation 之类),只顶替
+ * success / data / error 三者:翻成错误态时清掉 data,翻回成功态时清掉 error。
+ * `keep` 由调用方处理(原样返回),这里只管 replace。
+ */
+function applyToolResultVerdict<TResult extends CoreDirectToolExecutionResultLike>(
+  result: TResult,
+  verdict: { content: string; isError: boolean },
+): TResult {
+  if (verdict.isError) {
+    return { ...result, success: false, data: undefined, error: verdict.content } as TResult
+  }
+  return { ...result, success: true, error: undefined, data: verdict.content } as TResult
+}
+
 export async function executeCoreDirectTool<
   TResult extends CoreDirectToolExecutionResultLike,
   TExecContext extends CoreDirectToolExecutionContextWithApproval<TEffect, TPreview>,
@@ -180,6 +269,32 @@ export async function executeCoreDirectTool<
 ): Promise<TResult> {
   const { toolName, context } = options
   let args = options.args
+
+  // ── N5:工具结果改写口(interceptToolCall 的 fail-open 镜像)────────────────
+  //
+  // 定义在 try 之上,好让 try 里三处"真实工具结果"出口与 catch 里的工具抛错出口
+  // 共用它。它**只**过工具真正产出的结果:N4 的 block、权限拒绝、用户取消 /
+  // abort 都不进 —— 那些不是工具产出的结果(分别是拦截器的、权限系统的、用户的)。
+  //
+  // 与 N4 相反,这里的失败语义是 fail-open:改写口自己炸了 → keep(原结果)。
+  // 注入的实现契约上从不抛错,但这层 try/catch 是这条 fail-open 链的底色,也
+  // 顺带杜绝了"改写口抛错被外层 catch 当成工具执行错误再改一遍"的自噬。
+  const applyResultIntercept = async (result: TResult): Promise<TResult> => {
+    if (!options.interceptToolResult) return result
+    try {
+      const verdict = await options.interceptToolResult({
+        sessionId: context.sessionId,
+        toolName,
+        toolCallId: context.toolCallId,
+        input: args,
+        result: toolResultView(result),
+      })
+      return verdict.action === 'replace' ? applyToolResultVerdict(result, verdict) : result
+    } catch (error) {
+      options.logger?.error?.('[DirectExec] tool-result interceptor threw; keeping original result:', error)
+      return result
+    }
+  }
 
   try {
     if (context.abortSignal?.aborted) {
@@ -261,7 +376,8 @@ export async function executeCoreDirectTool<
       if (context.abortSignal?.aborted) {
         return cancelledResult<TResult>()
       }
-      return { success: true, data: result } as TResult
+      // N5:MCP 结果进改写链(与内置同规 —— 拦截是安全/呈现面,不分工具来源)。
+      return applyResultIntercept({ success: true, data: result } as TResult)
     }
 
     options.logger?.log?.(`[DirectExec] Executing built-in tool: ${toolName}`)
@@ -293,7 +409,8 @@ export async function executeCoreDirectTool<
       preview: analysis.preview,
     }
 
-    return options.executeTool(toolName, args, execContext)
+    // N5:内置工具的结果(成功或工具自身产出的 isError)进改写链。
+    return applyResultIntercept(await options.executeTool(toolName, args, execContext))
   } catch (error) {
     const caught = error instanceof Error ? error : new Error(String(error))
     if (options.isPermissionRejectedError?.(caught) || caught.name === 'PermissionRejectedError') {
@@ -308,7 +425,7 @@ export async function executeCoreDirectTool<
     }
 
     options.logger?.error?.('[DirectExec] Tool execution error:', caught)
-    return {
+    const errorResult = {
       success: false,
       error: caught.message || 'Unknown error during tool execution',
       // Cancellation is read from the signal and from the structured abort
@@ -318,6 +435,9 @@ export async function executeCoreDirectTool<
       // "closest match" snippet came from a file mentioning abortSignal.
       aborted: Boolean(context.abortSignal?.aborted) || isToolAbortError(caught),
     } as TResult
+    // N5:工具**自身抛出**的错误也是它产出的结果(脱敏场景:错误里泄露了路径)——
+    // 进改写链。但用户取消 / abort 不是工具结果,原样返回不改。
+    return errorResult.aborted ? errorResult : applyResultIntercept(errorResult)
   }
 }
 

@@ -93,6 +93,10 @@ export type {
 	CoreDirectToolMetadataUpdate,
 	CoreDirectToolPermissionInput,
 	CoreDirectToolPreviewLike,
+	CoreDirectToolResultInterceptRequest,
+	CoreDirectToolResultInterceptor,
+	CoreDirectToolResultVerdict,
+	CoreDirectToolResultView,
 	ExecuteCoreDirectToolOptions,
 } from "./direct-tool-execution.js";
 
