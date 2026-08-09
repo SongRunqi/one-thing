@@ -119,6 +119,6 @@ describe('api.llm.complete declaration gate', () => {
     await api.llm.complete({ messages: [{ role: 'user', content: 'hi' }], maxTokens: 64 })
     // 宿主收到的是受管请求 —— 没有 apiKey 字段可读。
     expect(Object.keys(calls[0]).sort()).toEqual(['maxTokens', 'messages', 'signal', 'temperature'])
-    expect((calls[0] as Record<string, unknown>).apiKey).toBeUndefined()
+    expect((calls[0] as unknown as Record<string, unknown>).apiKey).toBeUndefined()
   })
 })
