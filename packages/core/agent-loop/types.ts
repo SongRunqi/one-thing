@@ -131,6 +131,12 @@ export interface AgentToolResult {
   aborted?: boolean
   rejected?: boolean
   rejectionReason?: string
+  /**
+   * N6: a tool may end the agent loop from its result. When true, the current
+   * turn's sibling tools still complete normally, but the loop stops after the
+   * turn instead of requesting another LLM turn (graceful wrap-up).
+   */
+  terminate?: boolean
 }
 
 export interface AgentProviderData extends AgentJsonObject {

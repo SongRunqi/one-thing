@@ -257,6 +257,11 @@ export interface CorePluginToolResult<TMetadata = unknown> {
   title: string
   output: string
   metadata: TMetadata
+  /**
+   * N6: end the agent loop after this turn's tools all settle. Set true to
+   * signal "this is the final answer — do not run another LLM turn".
+   */
+  terminate?: boolean
 }
 
 export interface CorePluginToolDefinition<

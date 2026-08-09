@@ -42,6 +42,8 @@ export interface AgentToolExecutionAdapterResult {
   aborted?: boolean
   rejected?: boolean
   rejectionReason?: string
+  /** N6: end the agent loop after this turn's tools all settle (graceful wrap-up). */
+  terminate?: boolean
 }
 
 export type AgentToolExecutionAdapter = (
@@ -133,6 +135,7 @@ export function agentToolsFromToolDefinitions(
           aborted: result.aborted,
           rejected: result.rejected,
           rejectionReason: result.rejectionReason,
+          terminate: result.terminate,
         }
       }
 
@@ -144,6 +147,7 @@ export function agentToolsFromToolDefinitions(
         aborted: result.aborted,
         rejected: result.rejected,
         rejectionReason: result.rejectionReason,
+        terminate: result.terminate,
       }
     },
   }))

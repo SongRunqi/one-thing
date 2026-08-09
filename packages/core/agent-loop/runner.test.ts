@@ -1141,3 +1141,103 @@ describe('runAgentLoop retired tool names', () => {
     expect(result.toolResults[0]?.result.error).toContain('Tool not available: say')
   })
 })
+
+describe('runAgentLoop tool-result terminate (N6)', () => {
+  it('ends the run after a tool returns terminate:true — no second provider turn', async () => {
+    let providerTurns = 0
+    const provider = baseProvider(async function* (request) {
+      providerTurns += 1
+      if (request.turn === 1) {
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_answer', name: 'final_answer', arguments: '{"answer":"42"}' } }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      // A second turn would be a regression: terminate must stop the loop.
+      yield { type: 'text-delta', turn: request.turn, delta: 'should not run' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    const tool: AgentTool = {
+      name: 'final_answer',
+      parameters: { type: 'object' },
+      async execute(args) {
+        return { content: String(args.answer), terminate: true }
+      },
+    }
+
+    const result = await runAgentLoop({ ...baseOptions(provider, tool, []), maxTurns: 4 })
+
+    expect(providerTurns).toBe(1)
+    expect(result.turns).toBe(1)
+    // The tool result is still appended for the caller.
+    expect(result.toolResults.map(item => item.toolCall.id)).toEqual(['call_answer'])
+    const toolMessages = result.messages.filter(message => message.role === 'tool')
+    expect(toolMessages.map(message => message.toolCallId)).toEqual(['call_answer'])
+  })
+
+  it('runs every sibling in the terminating turn to completion before stopping', async () => {
+    const events: string[] = []
+    let providerTurns = 0
+    const provider = baseProvider(async function* (request) {
+      providerTurns += 1
+      if (request.turn === 1) {
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_a', name: 'work', arguments: '{"id":"a"}' } }
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_b', name: 'work', arguments: '{"id":"b"}' } }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    // Both siblings run in parallel; call_a asks to terminate. call_b must still finish.
+    const tool: AgentTool = {
+      name: 'work',
+      parameters: { type: 'object' },
+      executionMode: 'parallel',
+      async execute(args) {
+        const id = String(args.id)
+        events.push(`start:${id}`)
+        await new Promise(resolve => setTimeout(resolve, id === 'b' ? 10 : 0))
+        events.push(`end:${id}`)
+        return id === 'a' ? { content: 'a', terminate: true } : { content: 'b' }
+      },
+    }
+
+    const result = await runAgentLoop({
+      ...baseOptions(provider, tool, []),
+      tools: [tool],
+      maxTurns: 4,
+    })
+
+    expect(providerTurns).toBe(1)
+    // Both siblings completed — terminate is a graceful wrap-up, not a hard cut.
+    expect(events).toContain('end:a')
+    expect(events).toContain('end:b')
+    expect(result.toolResults.map(item => item.toolCall.id)).toEqual(['call_a', 'call_b'])
+  })
+
+  it('keeps looping when the tool result omits terminate (default behavior)', async () => {
+    let providerTurns = 0
+    const provider = baseProvider(async function* (request) {
+      providerTurns += 1
+      if (request.turn === 1) {
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_1', name: 'read', arguments: '{"path":"a"}' } }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'text-delta', turn: request.turn, delta: 'done' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    const tool: AgentTool = {
+      name: 'read',
+      parameters: { type: 'object' },
+      async execute() {
+        return { content: 'read a' } // no terminate
+      },
+    }
+
+    const result = await runAgentLoop({ ...baseOptions(provider, tool, []), maxTurns: 4 })
+
+    // A normal tool result continues to the next provider turn.
+    expect(providerTurns).toBe(2)
+    expect(result.text).toBe('done')
+  })
+})

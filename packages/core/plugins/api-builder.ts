@@ -291,6 +291,8 @@ export interface CorePluginHostToolResult<TMetadata extends object = object> {
   title: string
   output: string
   metadata: TMetadata
+  /** N6: end the agent loop after this turn's tools all settle (graceful wrap-up). */
+  terminate?: boolean
 }
 
 export async function executeCorePluginTool<
@@ -319,6 +321,8 @@ export async function executeCorePluginTool<
     title: result.title,
     output: result.output,
     metadata: result.metadata,
+    // N6: forward the plugin's terminate signal to the agent-loop consumer.
+    ...(result.terminate ? { terminate: true } : {}),
   }
 }
 

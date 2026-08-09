@@ -137,6 +137,12 @@ export interface ToolResult<M extends ToolMetadata = ToolMetadata> {
     content?: string
     mimeType?: string
   }>
+  /**
+   * N6:工具结果直接结束 agent loop。为 true 时,这一轮同批工具照常全部跑完
+   * (不中断在飞的兄弟工具),但本轮结束后不再请求下一次 LLM —— 优雅收尾,
+   * 用于"模型给出结构化终答后无需再多跑一轮"的场景。
+   */
+  terminate?: boolean
 }
 
 export interface ToolInfo<

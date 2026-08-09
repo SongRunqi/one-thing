@@ -714,6 +714,28 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     // already ran its full tool loop internally and the turn is complete.
     const continuationToolCalls = (agentTurn.message.toolCalls ?? [])
       .filter(call => !call.externallyExecuted)
+
+    // N6: a tool may end the run from its result (`terminate: true`). Every tool
+    // in this turn has already settled above — siblings run to completion, never
+    // cut off mid-flight — so honoring the signal here simply skips the next
+    // provider turn (graceful wrap-up, not a hard cut). Honored on any settled
+    // result, success or error: it is the tool author's explicit stop signal,
+    // and the tool results are already appended to `messages` for the caller.
+    const terminateRequested = continuationToolCalls.some(
+      call => resultsByToolCallId.get(call.id)?.terminate === true,
+    )
+    if (terminateRequested) {
+      return {
+        messages,
+        text: finalText,
+        reasoning: finalReasoning,
+        finishReason,
+        turns: turn,
+        toolResults: allToolResults,
+        usage,
+      }
+    }
+
     if (continuationToolCalls.length === 0) {
       // Provider claimed tool_calls but produced no valid call (stream
       // interruption, malformed call, accumulator loss): nudge the model to

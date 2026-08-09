@@ -78,6 +78,8 @@ export interface ToolExecutionResult {
   // For permission rejection - set when the user rejects a permission request
   rejected?: boolean
   rejectionReason?: string
+  // N6: end the agent loop after this turn's tools all settle (graceful wrap-up).
+  terminate?: boolean
 }
 
 /**

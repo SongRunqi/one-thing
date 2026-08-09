@@ -126,6 +126,8 @@ export interface CoreToolRuntimeResult<TMetadata = unknown> {
   output: string
   metadata: TMetadata
   attachments?: unknown
+  /** N6: end the agent loop after this turn's tools all settle (graceful wrap-up). */
+  terminate?: boolean
 }
 
 export interface CoreToolExecutionSuccessResult<TMetadata = unknown> {
@@ -136,6 +138,8 @@ export interface CoreToolExecutionSuccessResult<TMetadata = unknown> {
     metadata: TMetadata
     attachments?: unknown
   }
+  /** N6: end the agent loop after this turn's tools all settle (graceful wrap-up). */
+  terminate?: boolean
 }
 
 export interface CoreToolAnalysisRuntimeResult<TEffect = unknown, TPreview = unknown> {
@@ -429,6 +433,8 @@ export function coreToolExecutionSuccessResult<TMetadata>(
       metadata: result.metadata,
       attachments: result.attachments,
     },
+    // N6: carry the tool's terminate signal up to the agent-loop consumer.
+    ...(result.terminate ? { terminate: true } : {}),
   }
 }
 
