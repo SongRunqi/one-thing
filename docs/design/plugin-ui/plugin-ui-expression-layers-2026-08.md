@@ -166,6 +166,33 @@ L3 webview 逃生舱(iframe 沙箱,postMessage-only)  ← H 线,配方已备
   **L3 webview**(完全隔离)。中间态是最坏的:既有全局风险,又不满足
   完全自定义。
 
+### 3.3.5 L2.5:背景/材质层(2026-08-09 立项,G 期)
+
+真实需求(用户):"给应用设置背景图片、调透明度"。现有 L2 只有颜色 token,
+值白名单**刻意禁了 `url()`**(远程加载/追踪)——那条禁令针对的是任意 URL,
+对**包内资产**不成立:C 期的 `onething-plugin://<id>/` 协议只服务已启用
+插件的包内文件,天然就是安全的图源。于是背景能力不必打破任何红线:
+
+1. **声明**:`contributes.theme.background = { image, darkImage?, opacity?,
+   blur?, fit? }` —— image/darkImage 是包内相对路径(校验同 webview entry:
+   相对、无 `..`、扩展名图片白名单);opacity 0–1、blur 0–40px 钳制;
+   fit ∈ cover/contain/tile。装前确认页披露 `sets an app background image`。
+2. **宿主渲染**:App 壳新增一个专属背景层(`.app-background-layer`,
+   z 在一切内容之下、pointer-events: none),由宿主按**胜出声明**绘制
+   (多插件冲突按全局规范顺序后者胜,与 token 覆盖同一出处);深浅模式
+   分别取 image/darkImage;禁用/卸载即时撤除(拆除快照)。
+3. **设置回路**:透明度等用户可调项走既有 R3 设置 schema;运行时
+   `api.theme.updateBackground(partial)`(**仅 manifest 声明了 background
+   的插件可调** —— 声明先于代码;值同样钳制)→ 走 plugins-changed 重推。
+4. **不做**:任意 CSS、远程 URL、per-元素背景。背景层是**枚举出的一块
+   宿主自留地**,不是 CSS 注入的口子。
+
+**"插件系统何去何从"的定调**(回应用户的元问题):表达面按三条泳道演进 ——
+**位置**(锚点/面板,五轴分类学治理)、**内容**(描述树/webview 双形态)、
+**外观**(L2 token → L2.5 背景材质 → 将来逐个枚举:字体档位、气泡密度…)。
+每一步都是"往窄腰上加一块枚举能力",**永不开放通用 CSS/DOM 注入** ——
+撞到能力墙时的正确动作是给墙上开一扇有闸的门,而不是拆墙。
+
 ### 3.4 动画
 
 描述树**不可表达动画**(纯数据 + 宿主渲染,这是特性不是缺陷 —— 动画是
