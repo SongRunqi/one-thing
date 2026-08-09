@@ -6,6 +6,14 @@ import {
   type JsonValue,
 } from '../json.js'
 import { normalizeMCPContent } from './content.js'
+import {
+  mcpTaskHandleFromResult,
+  mcpTaskIsTerminal,
+  mcpTaskProvenanceText,
+  pollMCPTaskWithAdapters,
+  type CoreMCPTask,
+  type CoreMCPTaskHandle,
+} from './tasks.js'
 import type {
   MCPConnectionStatus,
   MCPPromptInfo,
@@ -88,6 +96,22 @@ export interface CoreMCPClientOperations {
   ): Promise<unknown>
   readResource(input: { uri: string }): Promise<{ contents?: unknown }>
   getPrompt(input: { name: string; arguments?: Record<string, string> }): Promise<{ messages?: unknown }>
+  /**
+   * P3-1 Tasks (2025-11-25 wire era only): read task state via `tasks/get`.
+   * Only implementable on SDK clients that can send the schema-overload
+   * request; absent → task handles fall back to the P2-4 notice.
+   */
+  getMCPTask?(taskId: string): Promise<CoreMCPTask>
+  /** P3-1: fetch the payload of a COMPLETED task via `tasks/result`. */
+  getMCPTaskPayload?(taskId: string): Promise<unknown>
+  /** P3-1: `tasks/cancel` — invoked best-effort on abort/timeout. */
+  cancelMCPTask?(taskId: string): Promise<unknown>
+  /**
+   * P3-1: does the server let tools/call run as tasks
+   * (`capabilities.tasks.requests.tools.call`)? Legacy-era only — a
+   * 2026-07-28 peer never advertises it.
+   */
+  supportsMCPTasks?(): boolean
 }
 
 export interface CoreMCPRefreshCapabilitiesResult {
@@ -742,31 +766,15 @@ export function normalizeMCPToolCallSuccessResult(raw: RawMCPToolCallResult | un
  * error so nothing downstream treats the outcome as final.
  */
 export function mcpTaskHandleNotice(record: Record<string, unknown>): string | undefined {
-  const task = record.task
-  const taskFromResult = task && typeof task === 'object' && !Array.isArray(task)
-    ? (task as { taskId?: unknown; status?: unknown; statusMessage?: unknown })
-    : undefined
-  const meta = record._meta
-  const relatedTask = meta && typeof meta === 'object' && !Array.isArray(meta)
-    ? (meta as Record<string, unknown>)['io.modelcontextprotocol/related-task']
-    : undefined
-  const relatedTaskId = relatedTask && typeof relatedTask === 'object' && !Array.isArray(relatedTask)
-    ? (relatedTask as { taskId?: unknown }).taskId
-    : undefined
-
-  const taskId = typeof taskFromResult?.taskId === 'string'
-    ? taskFromResult.taskId
-    : typeof relatedTaskId === 'string'
-      ? relatedTaskId
-      : undefined
-  if (!taskId) return undefined
-
-  const status = typeof taskFromResult?.status === 'string' ? taskFromResult.status : undefined
-  const statusMessage = typeof taskFromResult?.statusMessage === 'string' ? taskFromResult.statusMessage : undefined
-  const statusPart = status ? ` (status: ${status}${statusMessage ? ` — ${statusMessage}` : ''})` : ''
+  const handle = mcpTaskHandleFromResult(record)
+  if (!handle) return undefined
+  const statusPart = handle.status
+    ? ` (status: ${handle.status}${handle.statusMessage ? ` — ${handle.statusMessage}` : ''})`
+    : ''
   return (
-    `[MCP task handle: the server accepted this call as background task "${taskId}"${statusPart}. `
-    + 'onething does not poll MCP tasks yet (P3), so the eventual result will NOT arrive on its own — '
+    `[MCP task handle: the server accepted this call as background task "${handle.taskId}"${statusPart}, `
+    + 'but does not advertise task-polling support (capabilities.tasks.requests.tools.call), '
+    + 'so the eventual result will NOT arrive on its own — '
     + 'treat the operation as accepted-but-unresolved, not finished.]'
   )
 }
@@ -831,12 +839,76 @@ export async function withMCPTimeout<T>(
   }
 }
 
+export interface CoreMCPTaskFollowOptions {
+  /** Poll budget for the task phase (default 10 min — see tasks.ts). */
+  taskTimeoutMs?: number
+  taskIntervalMs?: number
+  signal?: AbortSignal
+  onTaskStatus?: (task: CoreMCPTask, pollIndex: number) => void
+}
+
+/**
+ * P3-1: a tools/call answered with a task handle is accepted-NOT-finished.
+ * When the server advertises task support, follow the handle: poll
+ * `tasks/get` to a terminal state, then `tasks/result` for the real payload.
+ * Terminal failures surface as an isError result (the call itself succeeded
+ * — the tool's work failed); local budget/abort surfaces as success:false.
+ */
+async function followMCPToolTask(
+  client: Pick<CoreMCPClientOperations, 'getMCPTask' | 'getMCPTaskPayload' | 'cancelMCPTask'>,
+  handle: CoreMCPTaskHandle,
+  options?: CoreMCPTaskFollowOptions,
+): Promise<MCPToolCallResult> {
+  const initialTask: CoreMCPTask = {
+    taskId: handle.taskId,
+    // The handle may omit status or carry an already-terminal one; the poll
+    // loop treats anything non-terminal as "keep polling" and refreshes via
+    // tasks/get, so an unknown value here is safe.
+    status: handle.status && mcpTaskIsTerminal(handle.status)
+      ? handle.status as CoreMCPTask['status']
+      : 'working',
+    ...(handle.statusMessage ? { statusMessage: handle.statusMessage } : {}),
+  }
+  try {
+    const outcome = await pollMCPTaskWithAdapters(initialTask, {
+      getTask: taskId => client.getMCPTask!(taskId),
+      getTaskPayload: taskId => client.getMCPTaskPayload!(taskId),
+      cancelTask: taskId => client.cancelMCPTask!(taskId),
+    }, {
+      ...(options?.taskTimeoutMs !== undefined ? { timeoutMs: options.taskTimeoutMs } : {}),
+      ...(options?.taskIntervalMs !== undefined ? { defaultIntervalMs: options.taskIntervalMs } : {}),
+      ...(options?.signal ? { signal: options.signal } : {}),
+      ...(options?.onTaskStatus ? { onStatus: options.onTaskStatus } : {}),
+    })
+    const provenance = mcpTaskProvenanceText(outcome)
+    if (outcome.kind === 'completed') {
+      // The payload is the original CallToolResult; normalize it like a
+      // direct answer (a nested task handle inside still gets the P2-4
+      // notice rather than a recursive follow — one level is enough).
+      const normalized = normalizeMCPToolCallSuccessResult(outcome.payload)
+      return {
+        success: true,
+        content: [{ type: 'text' as const, text: provenance }, ...(normalized.content ?? [])],
+        ...(normalized.structuredContent !== undefined ? { structuredContent: normalized.structuredContent } : {}),
+        isError: normalized.isError,
+      }
+    }
+    if (outcome.kind === 'timeout' || outcome.kind === 'aborted') {
+      return { success: false, error: provenance }
+    }
+    return { success: true, isError: true, content: [{ type: 'text' as const, text: provenance }] }
+  } catch (error) {
+    return { success: false, error: `MCP task "${handle.taskId}" follow-up failed: ${errorMessage(error)}` }
+  }
+}
+
 export async function callMCPToolWithTimeout(
-  client: Pick<CoreMCPClientOperations, 'callTool'>,
+  client: Pick<CoreMCPClientOperations, 'callTool' | 'getMCPTask' | 'getMCPTaskPayload' | 'cancelMCPTask' | 'supportsMCPTasks'>,
   toolName: string,
   args: JsonObject,
   timeoutMs: number,
   toolDefinition?: { name: string; description?: string; inputSchema?: unknown },
+  taskOptions?: CoreMCPTaskFollowOptions,
 ): Promise<MCPToolCallResult> {
   // Abort-driven, not a Promise.race: a raced timeout would resolve locally
   // while the server keeps running the tool — and the serialized call queue
@@ -856,6 +928,19 @@ export async function callMCPToolWithTimeout(
       },
       { signal: controller.signal, ...(toolDefinition ? { toolDefinition } : {}) },
     )
+    // P3-1: task handles are followed (polled) when the server advertises
+    // task support; otherwise the P2-4 notice path stays as-is.
+    const handle = result && typeof result === 'object' && !Array.isArray(result)
+      ? mcpTaskHandleFromResult(result as Record<string, unknown>)
+      : undefined
+    const canFollow = handle !== undefined
+      && client.supportsMCPTasks?.() === true
+      && typeof client.getMCPTask === 'function'
+      && typeof client.getMCPTaskPayload === 'function'
+      && typeof client.cancelMCPTask === 'function'
+    if (handle && canFollow) {
+      return await followMCPToolTask(client, handle, taskOptions)
+    }
     return normalizeMCPToolCallSuccessResult(result)
   } catch (error) {
     if (controller.signal.aborted) {

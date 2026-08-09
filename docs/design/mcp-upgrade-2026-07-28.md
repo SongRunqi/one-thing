@@ -232,7 +232,12 @@ UI 在 server 卡片上以徽标显示协议版本，旧版服务器（< 2026-07
 
 ### P3 — 生态扩展（需产品决策）
 
-- **Tasks 完整实现**：长任务不再受 60s 超时约束，与我们已有的 `run_in_background`/bash_output 心智相近，值得做。
+- **Tasks 完整实现** — ✅ 已完成（2026-08-09）。长任务不再受 60s 超时约束：
+  - **时代事实**（v2 SDK 源码确认）：Tasks 是 2025-11-25 线词汇，2026-07-28 已删除（`capabilities.tasks` 在 2026 codec 删除字段集内）；SDK 只保留 wire schema、**故意不提供 runtime**，且向 2026-era 对端发 `tasks/*` 会本地抛 `MethodNotSupportedByProtocolVersion`。故轮询只在 legacy 连接上、且服务器宣告 `capabilities.tasks.requests.tools.call` 时激活。
+  - **core（SDK-free）**：`packages/core/mcp/tasks.ts` —— 镜像类型（status: working/input_required/completed/failed/cancelled）、终态检测、能力门控、handle 提取（`task` 对象 / `_meta` related-task 双载体，P2-4 同规则）、`pollMCPTaskWithAdapters`（尊重服务器 `pollInterval` 提示并钳制 250ms–10s、独立 10min 轮询预算、abort/timeout 时 best-effort `tasks/cancel`、`input_required` 继续轮询）。
+  - **调用路径**：`CoreMCPClientOperations` +3 可选方法（`getMCPTask`/`getMCPTaskPayload`/`cancelMCPTask`）+`supportsMCPTasks`；`callMCPToolWithTimeout` 检测到 handle 且支持→轮询取回真实 payload：completed→provenance 行+payload 归一化（structuredContent 透传，嵌套 handle 仍走 P2-4 提示、不递归）、failed/cancelled→isError+statusMessage、timeout/abort→success:false；不支持→P2-4 提示原样保留（文案更新为“服务器未宣告任务轮询能力”）。
+  - **SDK 两侧**：`OnethingMCPClient extends Client`（schema-overload `request()` 发送 `tasks/get`/`tasks/result`/`tasks/cancel`，wire 校验器取自已声明依赖的 `specTypeSchemas`），initialize 宣告客户端 tasks 能力；两处 createClient 均已切换。
+  - **测试**：core 单测 16（状态机/门控/钳制/取消兜底）+ 调用路径 6 + 真实冒烟 `/tmp/smoke-mcp-tasks.ts` **6/6**（双假服务器：支持方 handle→轮询→payload+provenance+structuredContent，失败任务 isError+kaboom，普通结果原样，不支持方保持 P2-4 且零轮询、零 stray cancel）。
 - **MCP Apps**：会话内渲染交互 UI。收益高但需渲染沙箱 + 安全模型，**建议单开设计**。
 - **Skills over MCP**：与我们已有 skills 体系概念重叠，先想清定位。
 - **明确不做**：Roots、Sampling、Logging（已弃用，12 个月后移除）。

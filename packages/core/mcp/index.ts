@@ -135,6 +135,7 @@ export type {
   DisconnectMCPClientWithAdaptersOptions,
   CoreMCPLogger,
   CoreMCPRefreshCapabilitiesResult,
+  CoreMCPTaskFollowOptions,
   CoreMCPTransportPlan,
   UpdateMCPClientConfigAdapters,
   UpdateMCPClientConfigResult,
@@ -144,6 +145,24 @@ export type {
   CoreMCPClientRuntimeAdapters,
   CoreMCPClientRuntimeOptions,
 } from './client-runtime.js'
+export {
+  MCP_TASK_DEFAULT_INTERVAL_MS,
+  MCP_TASK_DEFAULT_TIMEOUT_MS,
+  mcpServerSupportsToolTasks,
+  mcpTaskFromWire,
+  mcpTaskHandleFromResult,
+  mcpTaskIsTerminal,
+  mcpTaskProvenanceText,
+  pollMCPTaskWithAdapters,
+} from './tasks.js'
+export type {
+  CoreMCPTask,
+  CoreMCPTaskHandle,
+  CoreMCPTaskPollAdapters,
+  CoreMCPTaskPollOptions,
+  CoreMCPTaskPollOutcome,
+  CoreMCPTaskStatus,
+} from './tasks.js'
 export type {
   MCPConnectionStatus,
   MCPPromptInfo,

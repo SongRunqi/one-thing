@@ -252,6 +252,13 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
         known
           ? { name: known.name, description: known.description, inputSchema: known.inputSchema }
           : undefined,
+        {
+          // P3-1: surface task progress in the logs; the poll budget keeps
+          // its own default (10 min) independent of the per-call timeout.
+          onTaskStatus: (task, pollIndex) => {
+            logger?.log?.(`[MCP:${this.id}] Task ${task.taskId} poll #${pollIndex}: ${task.status}${task.statusMessage ? ` — ${task.statusMessage}` : ''}`)
+          },
+        },
       )
       logger?.log?.(`[MCP:${this.id}] Tool result:`, result)
       if (!result.success) {

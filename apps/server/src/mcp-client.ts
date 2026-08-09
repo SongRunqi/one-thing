@@ -1,4 +1,4 @@
-import { Client, SSEClientTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import { SSEClientTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import {
   CoreMCPClientRuntime,
@@ -13,6 +13,10 @@ import {
 } from '@onething/core/mcp'
 import type { JsonArray, JsonObject, JsonValue } from '@onething/core'
 import { getMCPClientIdentity } from '@onething/app/mcp/identity.js'
+import {
+  ONETHING_MCP_CLIENT_CAPABILITIES,
+  OnethingMCPClient,
+} from '@onething/app/mcp/client.js'
 import { getMCPOAuthFlowManager } from '@onething/app/mcp/oauth/index.js'
 import { notifyMCPCapabilitiesChanged } from '@onething/app/mcp/capabilities-changed.js'
 
@@ -23,10 +27,10 @@ export interface ServerMCPClientOptions {
 }
 
 export class ServerMCPClient implements MCPClientLike {
-  private readonly runtime: CoreMCPClientRuntime<Client, ServerMCPTransport>
+  private readonly runtime: CoreMCPClientRuntime<OnethingMCPClient, ServerMCPTransport>
 
   constructor(config: MCPServerConfig, options: ServerMCPClientOptions = {}) {
-    this.runtime = new CoreMCPClientRuntime<Client, ServerMCPTransport>({
+    this.runtime = new CoreMCPClientRuntime<OnethingMCPClient, ServerMCPTransport>({
       config,
       getBaseEnv: () => process.env,
       adapters: {
@@ -67,10 +71,10 @@ export class ServerMCPClient implements MCPClientLike {
           oauth.attachTransport(config.id, transport)
           return transport
         },
-        createClient: () => new Client(
+        createClient: () => new OnethingMCPClient(
           getMCPClientIdentity(),
           {
-            capabilities: {},
+            capabilities: ONETHING_MCP_CLIENT_CAPABILITIES,
             // See app/mcp/client.ts: `auto` + a 10s probe cap so a silent
             // legacy server cannot stall connect for the default 60s.
             versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
@@ -159,7 +163,7 @@ export async function probeServerMCPConfig(
   options: ServerMCPClientOptions = {},
 ): Promise<CoreMCPProbeResult> {
   try {
-    return await probeMCPServerWithAdapters<Client, ServerMCPTransport>(
+    return await probeMCPServerWithAdapters<OnethingMCPClient, ServerMCPTransport>(
     config,
     process.env,
     {
@@ -193,10 +197,10 @@ export async function probeServerMCPConfig(
         oauth.attachTransport(config.id, transport)
         return transport
       },
-      createClient: () => new Client(
+      createClient: () => new OnethingMCPClient(
         getMCPClientIdentity(),
         {
-          capabilities: {},
+          capabilities: ONETHING_MCP_CLIENT_CAPABILITIES,
           versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
         },
       ),

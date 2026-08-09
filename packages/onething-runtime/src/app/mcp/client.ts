@@ -7,7 +7,7 @@
  * `initialize` handshake byte-identically.
  */
 
-import { Client, SSEClientTransport, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import { Client, SSEClientTransport, StreamableHTTPClientTransport, specTypeSchemas } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import type {
   MCPServerConfig,
@@ -17,9 +17,11 @@ import type {
 } from './types.js'
 import {
   CoreMCPClientRuntime,
+  mcpServerSupportsToolTasks,
   probeMCPServerWithAdapters,
   refreshMCPClientCapabilities,
   type CoreMCPProbeResult,
+  type CoreMCPTask,
 } from '@onething/core/mcp'
 import type { JsonArray, JsonObject, JsonValue } from '@onething/core'
 import { getMCPOAuthFlowManager } from './oauth/index.js'
@@ -29,13 +31,62 @@ import { notifyMCPCapabilitiesChanged } from './capabilities-changed.js'
 type MCPTransport = StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport
 
 /**
+ * P3-1 Tasks: the v2 SDK deliberately offers NO task runtime (task methods
+ * are 2025-11-25 wire vocabulary), but the generic schema overload of
+ * `request()` still sends them — and the era gate only rejects them toward a
+ * 2026-07-28 peer, which never advertises task support anyway. We subclass
+ * the SDK Client with the three task methods core's poll loop calls through
+ * `CoreMCPClientOperations`. The wire validators come from `specTypeSchemas`
+ * (keyed by spec-type name) so we stay on the declared `@modelcontextprotocol/client`
+ * dependency instead of reaching into `@modelcontextprotocol/core`.
+ */
+export class OnethingMCPClient extends Client {
+  supportsMCPTasks(): boolean {
+    return mcpServerSupportsToolTasks(this.getServerCapabilities())
+  }
+
+  async getMCPTask(taskId: string): Promise<CoreMCPTask> {
+    return await this.request(
+      { method: 'tasks/get', params: { taskId } },
+      specTypeSchemas.GetTaskResult,
+    ) as CoreMCPTask
+  }
+
+  async getMCPTaskPayload(taskId: string): Promise<unknown> {
+    return await this.request(
+      { method: 'tasks/result', params: { taskId } },
+      specTypeSchemas.GetTaskPayloadResult,
+    )
+  }
+
+  async cancelMCPTask(taskId: string): Promise<unknown> {
+    return await this.request(
+      { method: 'tasks/cancel', params: { taskId } },
+      specTypeSchemas.CancelTaskResult,
+    )
+  }
+}
+
+/**
+ * Advertised at initialize: we can follow tools/call task handles and cancel
+ * them. Legacy-era servers may then answer tools/call with a task handle;
+ * 2026-era peers ignore unknown capability keys (and never create tasks).
+ */
+export const ONETHING_MCP_CLIENT_CAPABILITIES = {
+  tasks: {
+    cancel: {},
+    requests: { tools: { call: {} } },
+  },
+} as const
+
+/**
  * MCP Client wrapper class
  */
 export class MCPClient {
-  private readonly runtime: CoreMCPClientRuntime<Client, MCPTransport>
+  private readonly runtime: CoreMCPClientRuntime<OnethingMCPClient, MCPTransport>
 
   constructor(config: MCPServerConfig) {
-    this.runtime = new CoreMCPClientRuntime<Client, MCPTransport>({
+    this.runtime = new CoreMCPClientRuntime<OnethingMCPClient, MCPTransport>({
       config,
       getBaseEnv: () => process.env,
       adapters: {
@@ -69,10 +120,10 @@ export class MCPClient {
           oauth.attachTransport(config.id, transport)
           return transport
         },
-        createClient: () => new Client(
+        createClient: () => new OnethingMCPClient(
           getMCPClientIdentity(),
           {
-            capabilities: {},
+            capabilities: ONETHING_MCP_CLIENT_CAPABILITIES,
             // `auto` probes server/discover first and falls back to the 2025
             // initialize handshake. The default probe timeout is the standard
             // 60s request timeout — far too long to sit on when the server is
@@ -247,10 +298,10 @@ export async function probeMCPServerConfig(config: MCPServerConfig): Promise<Cor
         oauth.attachTransport(config.id, transport)
         return transport
       },
-      createClient: () => new Client(
+      createClient: () => new OnethingMCPClient(
         getMCPClientIdentity(),
         {
-          capabilities: {},
+          capabilities: ONETHING_MCP_CLIENT_CAPABILITIES,
           versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
         },
       ),
