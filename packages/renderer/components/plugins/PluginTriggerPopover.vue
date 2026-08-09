@@ -100,7 +100,9 @@ function onBlockState(state: { degraded: boolean; error: boolean }): void {
   width: 280px;
   max-width: 320px;
   padding: 8px 10px;
-  background: var(--ui-surface-floating-bg);
+  /* 菜单面而不是 floating 面:它常从 ⋯ 菜单点出来,与菜单同族才不打架
+     (真机夜间实锤 floating 亮一档;与 StatusChip 浮层同一拍板)。 */
+  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
   border: 1px solid var(--ui-border-strong-border);
   border-radius: 10px;
   box-shadow: var(--shadow-floating);

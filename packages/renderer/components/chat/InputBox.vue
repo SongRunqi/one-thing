@@ -2618,6 +2618,8 @@ defineExpose({
 /* ctx 明细浮层:面由 Popover 画,这里只排内容(账页行式,右列数字对齐)。 */
 .context-detail {
   --app-popover-padding: 12px 14px;
+  /* 与 S 带/trigger 浮层同族:菜单面(见 StatusChip 同注,2026-08-09 拍板)。 */
+  --app-popover-bg: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
 }
 
 .context-detail-body {

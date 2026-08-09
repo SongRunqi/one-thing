@@ -167,9 +167,13 @@ const flyoutStyle = computed(() => ({ minWidth: `${props.flyoutWidth}px` }))
 }
 
 /* 浮层壳:面由 Popover 画(--shadow-floating / 发丝 / --radius-sm),
-   这里只调内边距与正文排版。 */
+   这里只调内边距与正文排版。
+   底色走**菜单面**而不是 Popover 缺省的 floating 面(真机夜间实锤:
+   floating 比 ⋯ 菜单/下拉的 menu 面亮一档,输入区一带两族面色打架 ——
+   S 带/trigger/ctx 三类浮层统一菜单面,2026-08-09 拍板)。 */
 .status-chip-flyout {
   --app-popover-padding: 12px 14px;
+  --app-popover-bg: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
 }
 
 .status-chip-flyout-body {
