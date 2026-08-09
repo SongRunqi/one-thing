@@ -9,6 +9,7 @@ import {
   type ElectronThemeMode,
 } from '@onething/electron-host/ipc/themes'
 import { defaultOnethingThemeRuntime } from '@onething/runtime/themes/theme-runtime'
+import { applyPluginThemeOverrides } from '@onething/app/plugins/theme-overrides.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 
 /**
@@ -38,8 +39,15 @@ export function registerThemeHandlers() {
     getTheme: (themeId: string) => {
       return defaultOnethingThemeRuntime.getTheme(themeId)
     },
-    applyTheme: (themeId: string, mode: ElectronThemeMode) => {
-      return defaultOnethingThemeRuntime.applyTheme(themeId, mode)
+    applyTheme: async (themeId: string, mode: ElectronThemeMode) => {
+      // 合成点(B 期,L2):主题产出 ⊕ 插件 `contributes.theme` 覆盖。
+      //
+      // 放在**变量流出宿主之前**的最后一步 —— 主题系统本身(generateCSSVariables)
+      // 零改动,renderer 的 applyThemeVariables 也零改动:它只是消费下发的表。
+      // 方案 A 口径:只有 desktop 这一个宿主做合成,server 只透传声明。
+      const response = await defaultOnethingThemeRuntime.applyTheme(themeId, mode)
+      if (!response.success || !response.cssVariables) return response
+      return { ...response, cssVariables: applyPluginThemeOverrides(response.cssVariables) }
     },
     refreshThemes: (projectPath?: string) => {
       return defaultOnethingThemeRuntime.refreshThemes(projectPath)

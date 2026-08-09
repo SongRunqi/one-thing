@@ -13,6 +13,15 @@ function isThemeDebugEnabled(): boolean {
   return import.meta.env.DEV && localStorage.getItem('onething:debug-theme') === '1'
 }
 
+/**
+ * 插件目录变化监听只挂一次。
+ *
+ * `initialize()` 在同一个 window 里可能被调用多次(设置窗/主窗各自建 store、
+ * 设置变更后重跑),每次都 addEventListener 的话,插件一开一关就会触发 N 次
+ * applyTheme。闩在模块级而不是 store 内:store 实例本身也可能被重建。
+ */
+let pluginsChangedBound = false
+
 export const useThemeStore = defineStore('themes', () => {
   // ============= State =============
 
@@ -425,6 +434,19 @@ export const useThemeStore = defineStore('themes', () => {
 
     // Load available themes
     await loadThemes()
+
+    // 插件目录变化 → 重推主题(B 期,L2)。
+    //
+    // 插件的 `contributes.theme` 覆盖由**主进程**叠在主题产出之上,所以
+    // renderer 不需要知道覆盖这件事的存在 —— 重新拉一次当前主题,拿到的
+    // 变量表就已经是合成后的。不新开 IPC 通道:enable/disable/install/
+    // uninstall 都会广播 catalog-changed,ipc-hub 把它转成这个 window 事件。
+    if (!pluginsChangedBound) {
+      pluginsChangedBound = true
+      window.addEventListener('onething:plugins-changed', () => {
+        void applyCurrentTheme()
+      })
+    }
 
     // Apply current theme based on effective mode
     await applyCurrentTheme()

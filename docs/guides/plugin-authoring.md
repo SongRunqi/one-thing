@@ -44,6 +44,7 @@ node scripts/build-plugin.mjs packages/my-plugin
 | `commands` | `string[]` | 斜杠命令声明 |
 | `panels` | `[{id,label}]` | 工作区面板(描述树,UI 不执行插件代码) |
 | `uiSlots` | `[{anchor,id,label,lifetime?}]` | 锚点块;未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"` |
+| `theme` | `{overrides:{token:color}}` | 主题 token 覆盖(见下);装前确认页列出被改的 token |
 | `settings` | `{schema}` | JSON Schema 子集,宿主渲染并校验设置表单 |
 | `permissions` | `string[]` | 装前确认页如实列出 |
 | `activationEvents` | `string[]` | 激活事件声明 |
@@ -164,6 +165,49 @@ api.storage.message(sessionId, messageId).exists()
 - 没有键枚举 API,也**不需要**自建索引:render 时你手里就有
   `ctx.sessionId` / `ctx.messageId`(消息级锚点的 ctx 携带),按坐标现取。
 - 插件不在场时发生的流没有记录,装上之后也不会追认 —— 老消息就是空的。
+
+## 样式与动画:你能改颜色,不能写动画
+
+**默认就跟随主题**:描述树的每个节点都用宿主的 `--ui-*` 变量画,用户切深色
+模式你的块自动变深色 —— 什么都不用做。这是绝大多数插件的正确选择。
+
+真要品牌色,只有一条路:`contributes.theme`。
+
+```jsonc
+{ "contributes": { "theme": { "overrides": {
+  "primary": "#ff4d00",
+  "bg.app": "oklch(0.2 0.02 250)"
+} } } }
+```
+
+规矩(每条都有硬闸):
+
+- **只能覆盖既有 token,不能新增**。键必须是宿主主题表里的 token 路径
+  (`packages/onething-runtime/src/themes/css-mapper.ts` 的 `CSS_VAR_MAP` 键)。
+  不认识的键会被**丢掉**,插件照常加载,设置页卡片写明"dropped — not a theme token"。
+- **值只能是颜色字面量**:`#hex`(3/4/6/8 位)、`rgb()/rgba()`、`hsl()/hsla()`、
+  `oklch()/oklab()`、CSS 标准命名色。`url(...)`、`var(...)`、带 `;`/`}` 的串、
+  空串、超过 128 字符一律丢弃(同样不拒载,卡片写明
+  "dropped — not an allowed color value")。
+- **一个插件最多 32 条**;超了是形状错,插件进 error 态。
+- **覆盖是全局的**。两个插件覆盖同一个 token 时,按 pluginId 字典序**后者胜**;
+  被压的那条在卡片上标 `theme "<token>" overridden by "<pluginId>"`。
+- 覆盖叠在**用户当前主题之上**,主题切换时保留;停用/卸载即刻撤除,
+  `:root` 回到主题原值。
+- 装前确认页会写 `overrides theme colors (<token 清单>)` —— 用户在装之前就知道
+  你要动他的配色。
+
+**动画:描述树里没有,也不会有。** 描述树是纯数据,动画是"执行"的一种,
+按宪法第 1 条划给宿主。宿主自带一小撮受限动效,你只声明状态:
+
+- `progress` 的 `indeterminate: true` → 宿主的循环进度动画;
+- `list` 项增删 → 宿主的进出场过渡;
+- `tabs` 切换 → 宿主的页签与内容过渡;
+- `badge` 的 `tone` 变化 → 宿主的颜色过渡。
+
+**完全自定义动画 = webview(C 期)**,没有第二条路。别在描述树里找
+`style` / `className` / `transition` 字段 —— 它们不存在,而且是明确不做的红线
+(节点级内联样式 = 半开的 CSS 注入)。
 
 ## 安全与边界(速查)
 

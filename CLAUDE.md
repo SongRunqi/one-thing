@@ -175,6 +175,12 @@ Notes:
     `message.footer` per assistant message — the first message-level anchor,
     its render ctx additionally carries `messageId`; render ctx carries `anchor` +
     `sessionId`, the host re-pulls on session switch),
+    theme token overrides (`contributes.theme.overrides`, B 期/L2 — keys must be
+    existing `CSS_VAR_MAP` token paths, values must pass a color-literal whitelist;
+    illegal entries are dropped and shown in the catalog projection, never a load
+    error; conflicts resolve by canonical order (pluginId lexicographic) last-wins;
+    composed onto the theme output in `apps/electron/src/main/ipc/themes.ts`, desktop
+    only — the theme system itself is untouched),
     its own settings schema (`contributes.settings.schema`, JSON Schema
     subset, host renders and validates it), a unified request channel
     (`api.registerRequestHandler`; requestId is in use, while abort/progress are wired

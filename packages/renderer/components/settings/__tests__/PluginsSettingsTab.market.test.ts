@@ -188,6 +188,70 @@ describe('PluginsSettingsTab 市场区(P3)', () => {
     wrapper.unmount()
   })
 
+  it('装前确认披露主题覆盖:overrides theme colors(B 期,L2)', async () => {
+    // 市场索引走 manifest 原文:theme 是 `{ overrides: {...} }`,不是投影后的裁决数组。
+    platform.getPluginMarket.mockResolvedValue({
+      success: true,
+      entries: [{
+        id: 'brand-skin',
+        pkg: '@onething-plugins/brand-skin',
+        version: '1.0.0',
+        description: 'corporate colors',
+        tarballUrl: 'https://releases.example/brand-skin-1.0.0.tgz',
+        integrity: 'sha512-DDD',
+        contributes: { theme: { overrides: { primary: '#ff0000', 'bg.app': '#101010' } } },
+        installedVersion: null,
+        hasUpdate: false,
+        versionBlockedReason: null,
+      }],
+      fetchedAt: 1_754_000_000_000,
+      stale: false,
+    })
+    const wrapper = mountTab()
+    await flushPromises()
+
+    await wrapper.findAll('.market-list .plugin-toggle .install-btn')[0].trigger('click')
+    expect(wrapper.text()).toContain('overrides theme colors (primary, bg.app)')
+    wrapper.unmount()
+  })
+
+  it('已装卡片说清主题覆盖的三种下场:生效 / 被压 / 非法丢弃', async () => {
+    // 已装那条路吃的是**投影后**的逐条裁决(谁压谁要看全体插件,renderer 判不出来)。
+    // 默认 mock 返回空数组,元素类型被推成 never —— 这里给一份具体形状。
+    const listResponse: { success: boolean; plugins: unknown[] } = {
+      success: true,
+      plugins: [{
+        id: 'brand-skin',
+        name: 'brand-skin',
+        version: '1.0.0',
+        description: '',
+        author: '',
+        loaded: true,
+        enabled: true,
+        commands: [],
+        error: '',
+        dirPath: '/plugins/brand-skin',
+        contributes: {
+          theme: [
+            { token: 'primary', value: '#ff0000', status: 'active' },
+            { token: 'accent', value: '#00ff00', status: 'shadowed', shadowedBy: 'zed-skin' },
+            { token: 'nope', value: '#0000ff', status: 'invalid', reason: 'unknown-token' },
+            { token: 'bg.app', value: 'url(https://x)', status: 'invalid', reason: 'invalid-color' },
+          ],
+        },
+      }],
+    }
+    platform.getPlugins.mockResolvedValue(listResponse as never)
+    const wrapper = mountTab()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('overrides theme colors (primary)')
+    expect(wrapper.text()).toContain('theme "accent" overridden by "zed-skin"')
+    expect(wrapper.text()).toContain('theme override "nope" dropped — not a theme token')
+    expect(wrapper.text()).toContain('theme override "bg.app" dropped — not an allowed color value')
+    wrapper.unmount()
+  })
+
   it('minAppVersion 不足:Install 置灰且说明;npm 缺失时一并置灰', async () => {
     const wrapper = mountTab()
     await flushPromises()

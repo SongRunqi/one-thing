@@ -12,6 +12,8 @@ export type {
 } from '@onething/core/plugins'
 
 export { bootstrapPluginSystem, getPluginManager, PluginManager } from './manager.js'
+export { applyPluginThemeOverrides, getPluginThemeOverrideTable } from './theme-overrides.js'
+export type { PluginThemeOverrideTable } from './theme-overrides.js'
 export type { PluginInfo } from './manager.js'
 export type {
   PluginAPI,

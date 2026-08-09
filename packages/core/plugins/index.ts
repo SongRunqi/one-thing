@@ -13,6 +13,7 @@ export type {
   CorePluginToolResult,
   MinimalCorePluginUI,
   PluginContributes,
+  PluginContributionTheme,
   PluginContributionUiSlot,
   PluginPermissionGuard,
   PersistedPluginHealth,
@@ -20,6 +21,17 @@ export type {
   PluginSettings,
   PluginSource,
 } from './types.js'
+export {
+  CSS_NAMED_COLORS,
+  PLUGIN_THEME_COLOR_MAX_LENGTH,
+  PLUGIN_THEME_OVERRIDE_MAX_ENTRIES,
+  isPluginThemeColorValue,
+  normalizePluginThemeColorValue,
+} from './theme-contribution.js'
+export {
+  comparePluginCanonicalOrder,
+  sortByPluginCanonicalOrder,
+} from './canonical-order.js'
 export { CorePluginStore } from './store.js'
 export type { PluginStoreOptions } from './store.js'
 export {

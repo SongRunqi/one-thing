@@ -42,8 +42,11 @@
     >
       {{ node.emptyText || 'Nothing here yet.' }}
     </p>
-    <ul
+    <!-- 进出场过渡是**宿主给的**(B 期 B2):描述树里没有动画表达,插件只换数据。 -->
+    <TransitionGroup
       v-else
+      tag="ul"
+      name="panel-list-item"
       class="panel-list-items"
     >
       <li
@@ -71,7 +74,7 @@
           >{{ item.badge }}</span>
         </component>
       </li>
-    </ul>
+    </TransitionGroup>
   </section>
 
   <!-- markdown:插件给的是**文本**,不是 HTML —— 渲染由宿主做。 -->
@@ -300,14 +303,19 @@
         {{ item.label }}
       </button>
     </div>
-    <template v-for="item in node.items">
+    <!-- 页签内容的淡入是宿主的(B 期 B2):out-in 保证同一时刻只有一棵子树
+         挂着 —— 两棵并存时插件的 action 绑定会重复,那是协议层的坑不是动效。 -->
+    <Transition
+      name="panel-tab-body"
+      mode="out-in"
+    >
       <PluginPanelNode
-        v-if="activeTabId === item.id"
-        :key="item.id"
-        :node="item.body"
+        v-if="activeTabBody"
+        :key="activeTabId || ''"
+        :node="activeTabBody"
         @action="emit('action', $event)"
       />
-    </template>
+    </Transition>
   </div>
 
   <div
@@ -406,7 +414,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watchEffect } from 'vue'
+import { computed, reactive, ref, watchEffect } from 'vue'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import InputNumber from '@/components/common/InputNumber.vue'
@@ -479,6 +487,12 @@ watchEffect(() => {
   }
 })
 
+/** 当前页签的 body —— `<Transition>` 只收一个子节点,所以先在这里选好。 */
+const activeTabBody = computed(() => {
+  if (props.node.type !== 'tabs') return null
+  return props.node.items.find(item => item.id === activeTabId.value)?.body ?? null
+})
+
 /**
  * link 节点:有 actionId 走动作通道,否则经宿主打开外链(与消息正文同一条
  * 路径)。scheme 白名单在通道守卫已拦,这里不再判第二遍。
@@ -540,6 +554,8 @@ function submitForm(actionId: string): void {
 }
 
 .panel-list-items {
+  /* 离场项绝对定位的参照系(见 .panel-list-item-leave-active)。 */
+  position: relative;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -547,6 +563,32 @@ function submitForm(actionId: string): void {
 
 .panel-list-item {
   border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 55%, transparent);
+}
+
+/* 列表项进出场(B 期 B2):进入淡入 + 一点点下沉,离场只淡出。
+   离场绝对定位,免得剩下的项在动画期间跳位。 */
+.panel-list-item-enter-active,
+.panel-list-item-leave-active {
+  transition: opacity var(--duration-fast) var(--ease-default),
+    transform var(--duration-fast) var(--ease-default);
+}
+
+.panel-list-item-enter-from {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.panel-list-item-leave-to {
+  opacity: 0;
+}
+
+.panel-list-item-leave-active {
+  position: absolute;
+  width: 100%;
+}
+
+.panel-list-item-move {
+  transition: transform var(--duration-fast) var(--ease-default);
 }
 
 .panel-list-item:last-child {
@@ -707,11 +749,25 @@ function submitForm(actionId: string): void {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-default),
+    border-bottom-color var(--duration-fast) var(--ease-default);
 }
 
 .panel-tab.is-active {
   border-bottom-color: var(--ui-accent-primary-fg, var(--color-primary));
   color: var(--ui-text-primary-fg);
+}
+
+/* 页签内容切换:只做透明度,不做位移 —— 描述树的内容高度不可预知,
+   位移动效会把整块面板抖起来。 */
+.panel-tab-body-enter-active,
+.panel-tab-body-leave-active {
+  transition: opacity var(--duration-fast) var(--ease-default);
+}
+
+.panel-tab-body-enter-from,
+.panel-tab-body-leave-to {
+  opacity: 0;
 }
 
 .panel-progress {
@@ -781,6 +837,10 @@ function submitForm(actionId: string): void {
   font-size: 11px;
   line-height: 16px;
   color: var(--ui-text-muted-fg);
+  /* tone 变化只过渡**颜色**(B 期 B2 第 3 条):徽标常常在流式里每秒换几次,
+     位移动效会让它抖成一团。 */
+  transition: color var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default);
 }
 
 .panel-badge.tone-accent {

@@ -10,6 +10,7 @@ import type {
   PluginSettings,
   PluginSource,
 } from './types.js'
+import { PLUGIN_THEME_OVERRIDE_MAX_ENTRIES } from './theme-contribution.js'
 
 export const DEFAULT_PLUGIN_ENTRY = 'plugin-entry.js'
 
@@ -356,6 +357,26 @@ export function validatePluginContributes(raw: unknown): string | null {
       // 未知值天然是非持久。
       if (slot.lifetime !== undefined && typeof slot.lifetime !== 'string') {
         return `contributes.uiSlots[${index}].lifetime must be a string`
+      }
+    }
+  }
+
+  // theme(B 期)只校验**形状**:是不是对象、值是不是字符串、条目数是否越界。
+  // 键是否属于主题 token 表、值是否是合法颜色**不在这里判** —— 前者 core 吃不到
+  // 主题模块,后者按 §6.1 是"丢弃该条目并在投影里标记"的降级,不是拒载。
+  const theme = raw.theme
+  if (theme !== undefined) {
+    if (!isPlainRecord(theme)) return 'contributes.theme must be an object'
+    const overrides = theme.overrides
+    if (!isPlainRecord(overrides)) return 'contributes.theme.overrides must be an object'
+    const entries = Object.entries(overrides)
+    if (entries.length > PLUGIN_THEME_OVERRIDE_MAX_ENTRIES) {
+      return `contributes.theme.overrides must not exceed ${PLUGIN_THEME_OVERRIDE_MAX_ENTRIES} entries`
+    }
+    for (const [token, value] of entries) {
+      if (!token.trim()) return 'contributes.theme.overrides keys must be non-empty strings'
+      if (typeof value !== 'string') {
+        return `contributes.theme.overrides.${token} must be a string`
       }
     }
   }

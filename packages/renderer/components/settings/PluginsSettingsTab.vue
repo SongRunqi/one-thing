@@ -592,6 +592,18 @@ interface PluginInfo {
     panels?: Array<{ id: string; label: string }>
     /** `lifetime` 是消息态落盘的闸门声明(见 slotIsPersistent);市场那条路是 manifest 原文。 */
     uiSlots?: Array<{ anchor: string; id: string; label: string; unsupported?: boolean; lifetime?: string }>
+    /**
+     * 主题 token 覆盖(B 期,L2)—— **投影后的逐条裁决**,不是 manifest 原文。
+     * 谁压谁要看全体插件,renderer 只拿到单张卡片判不出来,所以裁决在主进程
+     * 的清单投影里做完再下来(市场那条路走 manifest 原文,形状不同,见 MarketContributes)。
+     */
+    theme?: Array<{
+      token: string
+      value: string
+      status: 'active' | 'shadowed' | 'inactive' | 'invalid'
+      reason?: 'unknown-token' | 'invalid-color'
+      shadowedBy?: string
+    }>
     hasSettingsSchema?: boolean
     permissions?: string[]
     activationEvents?: string[]
@@ -858,6 +870,17 @@ function slotIsPersistent(slot: { lifetime?: string }): boolean {
 const PERSISTENT_SLOT_NOTE = 'leaves persistent content on your messages'
 
 /**
+ * 主题覆盖披露(B 期,L2)。
+ *
+ * 与 PERSISTENT_SLOT_NOTE 同规:**一句话只说一次**,已装卡片与装前确认页
+ * 共用同一句措辞,只是取数的形状不同(卡片吃投影后的裁决,市场吃 manifest 原文)。
+ * 用户要知道的是"这插件会改我的界面配色,改哪几处"。
+ */
+function themeOverrideNote(tokens: string[]): string {
+  return `overrides theme colors (${tokens.join(', ')})`
+}
+
+/**
  * manifest 声明的贡献点摘要 —— 一行标签,不是 UI 工程。
  * R2 只让它可见;渲染面板、渲染设置表单分别是 R5 与 R3 的事。
  */
@@ -885,6 +908,24 @@ function contributesSummary(plugin: PluginInfo): string[] {
   const persistentSlots = (contributes?.uiSlots ?? []).filter(slotIsPersistent)
   if (persistentSlots.length) {
     summary.push(PERSISTENT_SLOT_NOTE)
+  }
+  // 主题 token 覆盖(B 期):覆盖是**全局**的,所以卡片必须把三件事都说出来 ——
+  // 改了哪几个 token、哪几条被更后的插件压过、哪几条根本不合法被丢了。
+  // 顺序固定(生效 → 被压 → 非法),同一插件集合两次渲染逐字节一致。
+  const themeEntries = contributes?.theme ?? []
+  const activeTokens = themeEntries.filter(entry => entry.status === 'active').map(entry => entry.token)
+  if (activeTokens.length) summary.push(themeOverrideNote(activeTokens))
+  const inactiveTokens = themeEntries.filter(entry => entry.status === 'inactive').map(entry => entry.token)
+  if (inactiveTokens.length) {
+    summary.push(`${themeOverrideNote(inactiveTokens)} — inactive while disabled`)
+  }
+  for (const entry of themeEntries.filter(item => item.status === 'shadowed')) {
+    summary.push(`theme "${entry.token}" overridden by "${entry.shadowedBy}"`)
+  }
+  for (const entry of themeEntries.filter(item => item.status === 'invalid')) {
+    summary.push(entry.reason === 'unknown-token'
+      ? `theme override "${entry.token}" dropped — not a theme token`
+      : `theme override "${entry.token}" dropped — not an allowed color value`)
   }
   if (contributes?.commands?.length) {
     summary.push(`declares ${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)
@@ -1097,6 +1138,17 @@ async function updatePlugin(plugin: PluginInfo): Promise<void> {
 // ── P3:市场 —— 索引视图主进程 join 好,这里只渲染与过滤。──
 
 /** 共享契约的 renderer 本地形:contributes 收窄成结构化声明。 */
+/**
+ * 市场条目带的是 **manifest 原文**(未投影)。
+ *
+ * 绝大部分字段与投影后的形状巧合地一致,但 `theme` 不是:投影后是逐条裁决的
+ * 数组(需要全体插件才算得出谁压谁),manifest 原文是 `{ overrides: {...} }`。
+ * 装前确认页只能说"它声明要改哪几个 token" —— 还没装,谈不上生效与被压。
+ */
+type MarketContributes = Omit<NonNullable<PluginInfo['contributes']>, 'theme'> & {
+  theme?: { overrides?: Record<string, string> }
+}
+
 interface MarketEntry {
   id: string
   pkg: string
@@ -1104,7 +1156,7 @@ interface MarketEntry {
   description?: string
   author?: string
   minAppVersion?: string
-  contributes?: PluginInfo['contributes']
+  contributes?: MarketContributes
   tarballUrl: string
   integrity?: string
   repository?: string
@@ -1157,6 +1209,10 @@ function marketDeclares(entry: MarketEntry): string[] {
         : `ui slot "${slot.label}" on anchor "${slot.anchor}"${lifetime}`,
     )
   }
+  // 主题 token 覆盖(B 期):装前就要说清"它会改你的界面配色"——
+  // 覆盖是全局的,装完再发现比装前拒绝贵得多。
+  const declaredTokens = Object.keys(contributes?.theme?.overrides ?? {})
+  if (declaredTokens.length) declares.push(themeOverrideNote(declaredTokens))
   if (contributes?.commands?.length) {
     declares.push(`${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)
   }

@@ -75,6 +75,21 @@ export interface PluginContributionSettings {
   ui?: Record<string, PluginContributionSettingsUiHint>
 }
 
+/**
+ * 主题 token 覆盖(B 期,L2)。
+ *
+ * 键是**既有主题 token 路径**(产品层 `CSS_VAR_MAP` 的键),值是颜色字面量。
+ * 只允许覆盖既有 token,不允许新增 —— 新增 token 就是全局 CSS 注入的变体
+ * (表达力文档 §3.2 的红线)。
+ *
+ * 键的合法性 core 判不了(主题表在产品层,core 不吃产品层),所以这里只校验
+ * **形状**;键不在表里 / 值不过颜色白名单的条目在投影层被丢弃并标记,
+ * **不拒载、不计熔断**(与未知锚点同规)。
+ */
+export interface PluginContributionTheme {
+  overrides: Record<string, string>
+}
+
 export interface PluginContributionActivation {
   /** 懒激活的触发条件;R2 只解析不消费。 */
   events?: string[]
@@ -84,6 +99,7 @@ export interface PluginContributes {
   commands?: PluginContributionCommand[]
   panels?: PluginContributionPanel[]
   uiSlots?: PluginContributionUiSlot[]
+  theme?: PluginContributionTheme
   settings?: PluginContributionSettings
   permissions?: string[]
   activation?: PluginContributionActivation

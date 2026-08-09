@@ -233,6 +233,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/sessions', replacement: resolve(projectRoot, 'packages/onething-runtime/src/sessions/index.ts') },
   { find: '@onething/runtime/storage', replacement: resolve(projectRoot, 'packages/onething-runtime/src/storage/index.ts') },
   { find: '@onething/runtime/permissions', replacement: resolve(projectRoot, 'packages/onething-runtime/src/permissions/index.ts') },
+  { find: '@onething/runtime/plugins/theme-overrides', replacement: resolve(projectRoot, 'packages/onething-runtime/src/plugins/theme-overrides.ts') },
   { find: '@onething/runtime/plugins', replacement: resolve(projectRoot, 'packages/onething-runtime/src/plugins/index.ts') },
   { find: '@onething/runtime/tools/background-jobs', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/background-jobs.ts') },
   { find: '@onething/runtime/tools/bash-classifier', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/bash-classifier.ts') },

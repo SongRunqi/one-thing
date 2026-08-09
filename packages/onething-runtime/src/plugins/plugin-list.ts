@@ -1,5 +1,9 @@
 import { describePluginConfigSchema, type PluginConfigField } from './config-schema.js'
 import { isUiAnchor } from '@onething/core/plugins'
+import {
+  resolvePluginThemeOverrides,
+  type PluginThemeOverrideEntry,
+} from './theme-overrides.js'
 
 export interface OnethingPluginListManifestLike {
   name: string
@@ -11,6 +15,7 @@ export interface OnethingPluginListManifestLike {
     commands?: Array<{ name: string }>
     panels?: Array<{ id: string; label: string }>
     uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string }>
+    theme?: { overrides?: Record<string, string> }
     settings?: {
       title?: string
       schema?: Record<string, unknown>
@@ -85,6 +90,16 @@ export interface OnethingRendererPluginInfo {
      * 两条路各判一次才是漂移的开始,判据只留在 renderer 的一个 helper 里。
      */
     uiSlots: Array<{ anchor: string; id: string; label: string; unsupported: boolean; lifetime: string }>
+    /**
+     * 主题 token 覆盖(B 期)。逐条带裁决结果:
+     * `active` 生效中 / `shadowed` 被规范顺序更后的插件压过 / `inactive` 插件未启用 /
+     * `invalid` 键不在主题 token 表或值不过颜色白名单(丢弃,但要说得出来)。
+     *
+     * 裁决在投影里做而不是在设置页做:它依赖**全体插件**(谁压谁),
+     * renderer 只拿到一个插件的卡片,自己判不出来;server 只读镜像走同一条
+     * 投影 —— 声明透传,合成不发生在那一侧(方案 A)。
+     */
+    theme: PluginThemeOverrideEntry[]
     hasSettingsSchema: boolean
     permissions: string[]
     activationEvents: string[]
@@ -140,6 +155,12 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
   plugins: TPlugin[],
   options: ProjectOnethingPluginsOptions = {},
 ): OnethingRendererPluginInfo[] {
+  // 主题覆盖的冲突裁决要看**全体插件**,所以先整体算一遍再逐个投影。
+  const themeResolution = resolvePluginThemeOverrides(plugins.map(plugin => ({
+    pluginId: plugin.definition.id,
+    enabled: plugin.definition.enabled,
+    overrides: plugin.definition.manifest.contributes?.theme?.overrides,
+  })))
   return plugins.map(plugin => ({
     id: plugin.definition.id,
     source: plugin.definition.source || 'user',
@@ -165,6 +186,7 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
         unsupported: !isUiAnchor(slot.anchor),
         lifetime: slot.lifetime ?? '',
       })),
+      theme: themeResolution.byPlugin.get(plugin.definition.id) ?? [],
       hasSettingsSchema: Boolean(plugin.definition.manifest.contributes?.settings?.schema),
       permissions: plugin.definition.manifest.contributes?.permissions ?? [],
       activationEvents: plugin.definition.manifest.contributes?.activation?.events ?? [],
