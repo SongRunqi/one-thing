@@ -1,121 +1,151 @@
 <template>
-  <div
-    v-if="goal && goal.status !== 'complete' && goal.status !== 'abandoned'"
-    class="goal-bar"
-    :data-status="goal.status"
-    :data-retrying="isRetrying || undefined"
-    aria-live="polite"
-  >
-    <span class="goal-frame-label">GOAL<span class="goal-frame-status">· {{ frameStatus }}</span></span>
-
-    <div class="goal-summary">
+  <Transition name="s-chip">
+    <StatusChip
+      v-if="goal && goal.status !== 'complete' && goal.status !== 'abandoned'"
+      class="goal-chip"
+      :data-status="goal.status"
+      :data-retrying="isRetrying || undefined"
+      label="当前目标"
+      :flyout-width="300"
+      aria-live="polite"
+    >
       <span class="status-mark" />
-      <template v-if="editingObjective">
-        <input
-          ref="objectiveInputRef"
-          v-model="objectiveDraft"
-          class="goal-edit goal-objective-input"
-          :data-invalid="editError ? true : undefined"
-          aria-label="edit goal objective"
-          @keydown.enter="onObjectiveEnter"
-          @keydown.esc.prevent="cancelEdit"
-          @blur="commitObjective"
+      <span class="goal-chip-objective">{{ goal.objective }}</span>
+      <span class="chip-num">· {{ chipStatus }}</span>
+
+      <!-- 展开态:整行内容(含 objective / budget 就地编辑)整体进浮层,
+           一个交互都不降级(composer-bands §3.2)。 -->
+      <template #flyout>
+        <div
+          class="goal-bar"
+          :data-status="goal.status"
+          :data-retrying="isRetrying || undefined"
         >
-        <!-- 托管式浮层:输入框本身是 `flex: 1`,套 tooltip-wrapper 会把它挤成
-             内容宽,所以只借 Tooltip 托浮层,触发元素还是输入框自己。 -->
-        <Tooltip
-          :trigger-el="objectiveInputRef"
-          :text="editError || 'Enter to save · Esc to cancel'"
-        />
+          <div class="goal-head">
+            <span class="goal-frame-label">GOAL</span>
+            <span class="goal-frame-status">{{ frameStatus }}</span>
+          </div>
+
+          <div class="goal-summary">
+            <span class="status-mark" />
+            <template v-if="editingObjective">
+              <input
+                ref="objectiveInputRef"
+                v-model="objectiveDraft"
+                class="goal-edit goal-objective-input"
+                :data-invalid="editError ? true : undefined"
+                aria-label="edit goal objective"
+                @keydown.enter="onObjectiveEnter"
+                @keydown.esc.prevent="cancelEdit"
+                @blur="commitObjective"
+              >
+              <!-- 托管式浮层:输入框本身是 `flex: 1`,套 tooltip-wrapper 会把它挤成
+                   内容宽,所以只借 Tooltip 托浮层,触发元素还是输入框自己。 -->
+              <Tooltip
+                :trigger-el="objectiveInputRef"
+                :text="editError || 'Enter to save · Esc to cancel'"
+              />
+            </template>
+            <span
+              v-else
+              class="goal-objective"
+              role="button"
+              tabindex="0"
+              @click="startObjectiveEdit"
+              @keydown.enter.prevent="startObjectiveEdit"
+            >{{ goal.objective }}</span>
+          </div>
+
+          <div class="goal-metrics">
+            <Tooltip :text="usageTitle">
+              <span class="goal-usage">
+                {{ statusText }}
+              </span>
+            </Tooltip>
+
+            <Tooltip
+              v-if="editingBudget"
+              :text="editError || 'Tokens · empty = unlimited · Enter to save'"
+            >
+              <input
+                ref="budgetInputRef"
+                v-model="budgetDraft"
+                class="goal-edit goal-budget-input"
+                inputmode="numeric"
+                placeholder="∞"
+                :data-invalid="editError ? true : undefined"
+                aria-label="edit goal token budget"
+                @keydown.enter="onBudgetEnter"
+                @keydown.esc.prevent="cancelEdit"
+                @blur="commitBudget"
+              >
+            </Tooltip>
+            <Tooltip
+              v-else
+              text="Token budget — click to edit (empty = unlimited)"
+            >
+              <Button
+                unstyled
+                class="goal-btn budget"
+                native-type="button"
+                @click.stop="startBudgetEdit"
+              >
+                CAP {{ budgetLabel }}
+              </Button>
+            </Tooltip>
+
+            <div class="goal-actions">
+              <Tooltip
+                v-if="goal.status === 'active'"
+                text="Pause automatic continuation"
+              >
+                <Button
+                  unstyled
+                  class="goal-btn"
+                  native-type="button"
+                  @click.stop="setStatus('paused')"
+                >
+                  Pause
+                </Button>
+              </Tooltip>
+              <Tooltip
+                v-else
+                text="Resume the goal (resets the continuation allowance)"
+              >
+                <Button
+                  unstyled
+                  class="goal-btn"
+                  native-type="button"
+                  @click.stop="setStatus('active')"
+                >
+                  Resume
+                </Button>
+              </Tooltip>
+              <Button
+                unstyled
+                class="goal-btn clear"
+                native-type="button"
+                @click.stop="clear"
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+        </div>
       </template>
-      <span
-        v-else
-        class="goal-objective"
-        role="button"
-        tabindex="0"
-        @click="startObjectiveEdit"
-        @keydown.enter.prevent="startObjectiveEdit"
-      >{{ goal.objective }}</span>
-    </div>
-
-    <Tooltip :text="usageTitle">
-      <span class="goal-usage">
-        {{ statusText }}
-      </span>
-    </Tooltip>
-
-    <Tooltip
-      v-if="editingBudget"
-      :text="editError || 'Tokens · empty = unlimited · Enter to save'"
-    >
-      <input
-        ref="budgetInputRef"
-        v-model="budgetDraft"
-        class="goal-edit goal-budget-input"
-        inputmode="numeric"
-        placeholder="∞"
-        :data-invalid="editError ? true : undefined"
-        aria-label="edit goal token budget"
-        @keydown.enter="onBudgetEnter"
-        @keydown.esc.prevent="cancelEdit"
-        @blur="commitBudget"
-      >
-    </Tooltip>
-    <Tooltip
-      v-else
-      text="Token budget — click to edit (empty = unlimited)"
-    >
-      <Button
-        unstyled
-        class="goal-btn budget"
-        native-type="button"
-        @click.stop="startBudgetEdit"
-      >
-        CAP {{ budgetLabel }}
-      </Button>
-    </Tooltip>
-
-    <div class="goal-actions">
-      <Tooltip
-        v-if="goal.status === 'active'"
-        text="Pause automatic continuation"
-      >
-        <Button
-          unstyled
-          class="goal-btn"
-          native-type="button"
-          @click.stop="setStatus('paused')"
-        >
-          Pause
-        </Button>
-      </Tooltip>
-      <Tooltip
-        v-else
-        text="Resume the goal (resets the continuation allowance)"
-      >
-        <Button
-          unstyled
-          class="goal-btn"
-          native-type="button"
-          @click.stop="setStatus('active')"
-        >
-          Resume
-        </Button>
-      </Tooltip>
-      <Button
-        unstyled
-        class="goal-btn clear"
-        native-type="button"
-        @click.stop="clear"
-      >
-        Clear
-      </Button>
-    </div>
-  </div>
+    </StatusChip>
+  </Transition>
 </template>
 
 <script setup lang="ts">
+/**
+ * 目标 —— S 状态带成员(docs/design/composer-bands-2026-08.md §3.2)。
+ *
+ * E 期只换形态:收起态是 `◎ <目标名> · <进度>` 的 chip,展开态是原来的整行
+ * (含 objective / budget 就地编辑)整体进浮层。显隐条件与提交逻辑逐字不变。
+ */
 import Button from '@/components/common/Button.vue'
+import StatusChip from '@/components/common/StatusChip.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
@@ -236,6 +266,18 @@ const statusText = computed(() => {
   return `${label} · ${used} tok`
 })
 
+/**
+ * 收起态只留一格进度:接力轮次(或重试次数),状态非 active 时是状态词本身。
+ * 用量 / 预算这类要读数字的信息留在浮层 —— chip 是一眼扫过的东西。
+ */
+const chipStatus = computed(() => {
+  const value = goal.value
+  if (!value) return ''
+  if (isRetrying.value) return `retry ${value.errorRetryCount}`
+  if (value.status === 'active') return `run ${value.continuationCount}`
+  return value.status.replace('_', ' ')
+})
+
 const usageTitle = computed(() => {
   const value = goal.value
   if (!value) return ''
@@ -327,20 +369,38 @@ async function commitBudget() {
 </script>
 
 <style scoped>
+/* 收起态:壳给外形,这里只给状态墨色与省略。 */
+.goal-chip {
+  --goal-ink: var(--ui-status-success-fg);
+}
+
+.goal-chip[data-status='paused'],
+.goal-chip[data-status='budget_limited'],
+.goal-chip[data-retrying] {
+  --goal-ink: var(--ui-status-warning-fg);
+}
+
+.goal-chip[data-status='blocked'] {
+  --goal-ink: var(--ui-status-danger-fg);
+}
+
+.goal-chip-objective {
+  min-width: 0;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .goal-bar {
-  /* Blueprint frame, matching the composer below it: zero fill, one hairline
-     outline, a punched-out legend on the border. Status colors travel on one
-     ink variable instead of per-element overrides. */
-  --goal-ink: var(--ui-status-success-fg, var(--success-color));
+  /* Blueprint frame, matching the composer: zero fill, hairline rules. Status
+     colors travel on one ink variable instead of per-element overrides. */
+  --goal-ink: var(--ui-status-success-fg);
 
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 12px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
-  border-radius: var(--radius-xs, 4px);
-  background: transparent;
+  flex-direction: column;
+  gap: 8px;
   color: var(--ui-text-primary-fg);
   font-size: 12px;
 }
@@ -348,32 +408,41 @@ async function commitBudget() {
 .goal-bar[data-status='paused'],
 .goal-bar[data-status='budget_limited'],
 .goal-bar[data-retrying] {
-  --goal-ink: var(--ui-status-warning-fg, var(--warning-color));
+  --goal-ink: var(--ui-status-warning-fg);
 }
 
 .goal-bar[data-status='blocked'] {
-  --goal-ink: var(--ui-status-danger-fg, var(--danger-color));
+  --goal-ink: var(--ui-status-danger-fg);
+}
+
+.goal-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75em;
 }
 
 .goal-frame-label {
-  position: absolute;
-  top: -7px;
-  left: 12px;
-  z-index: 2;
-  padding: 0 6px;
-  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 2px;
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  pointer-events: none;
   user-select: none;
 }
 
 .goal-frame-status {
-  margin-left: 0.75em;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
   color: var(--goal-ink);
+  user-select: none;
+}
+
+.goal-metrics {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .goal-summary {
@@ -456,6 +525,7 @@ input.goal-edit:focus {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* Ink-line buttons: bare text, an underline on hover, no fills. */
