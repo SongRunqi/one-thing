@@ -105,8 +105,13 @@ function newToken(): string {
 }
 
 function post(message: Record<string, unknown>): void {
+  // 出境前脱掉 Vue 响应式外壳:initData 来自 usePluginUiBlock 的 ref,
+  // 是 Proxy —— postMessage 的 structured clone 克隆不了它(真机实证:
+  // "#<Object> could not be cloned")。过线皆可序列化是协议前提,JSON 往返
+  // 就是这条前提的执行,与 panel action 走 IPC 前的同款处理(d83b6ae8)。
+  const plain = JSON.parse(JSON.stringify({ ...message, token })) as Record<string, unknown>
   // opaque origin 只能用 '*';身份靠 token,不靠 targetOrigin。
-  frameEl.value?.contentWindow?.postMessage({ ...message, token }, '*')
+  frameEl.value?.contentWindow?.postMessage(plain, '*')
 }
 
 function armHandshake(): void {
