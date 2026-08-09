@@ -101,6 +101,25 @@ export type {
   PluginSessionState,
 } from './sessions.js'
 export {
+  PLUGIN_PERMISSION_LLM_COMPLETE,
+  PLUGIN_LLM_COMPLETE_PERMISSION_NOTE,
+  PLUGIN_LLM_COMPLETE_TIMEOUT_MS,
+  PLUGIN_LLM_RATE_LIMIT,
+  PLUGIN_LLM_RATE_WINDOW_MS,
+  PLUGIN_LLM_DEFAULT_MAX_OUTPUT_TOKENS,
+  PLUGIN_LLM_MAX_OUTPUT_TOKENS_CEILING,
+  PluginLlmError,
+  clampPluginLlmMaxTokens,
+  normalizePluginLlmMessages,
+} from './llm.js'
+export type {
+  PluginLlmCompleteOptions,
+  PluginLlmCompleteResult,
+  PluginLlmErrorCode,
+  PluginLlmMessage,
+  PluginLlmRole,
+} from './llm.js'
+export {
   CORE_PLUGIN_INPUT_INTERCEPT_TIMEOUT_MS,
   CorePluginInputInterceptRegistry,
   PLUGIN_INPUT_INTERCEPT_ACTIONS,
@@ -568,9 +587,12 @@ export type {
   CoreAfterAssistantResponseHook,
   CoreBeforeContextCompactContext,
   CoreBeforeContextCompactHook,
+  CoreBeforeContextCompactResult,
+  CoreBeforeContextCompactOutcome,
   CorePluginLifecycleLogger,
   CorePluginLifecycleRegistryOptions,
 } from './lifecycle.js'
+export { CORE_PLUGIN_COMPACT_SUMMARY_MAX_CHARS } from './lifecycle.js'
 export type {
   CorePluginBootstrapperOptions,
   CorePluginInfo,

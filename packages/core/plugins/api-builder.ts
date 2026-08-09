@@ -53,6 +53,13 @@ import {
   type PluginSessionPeek,
   type PluginSessionPeekLite,
 } from './sessions.js'
+import {
+  PLUGIN_PERMISSION_LLM_COMPLETE,
+  PluginLlmError,
+  normalizePluginLlmMessages,
+  type PluginLlmCompleteOptions,
+  type PluginLlmCompleteResult,
+} from './llm.js'
 import type { CorePluginStatusPart, CorePluginStatusRegistry } from './status.js'
 import { pluginScope, type PluginFailureScope } from './policy.js'
 import {
@@ -193,6 +200,15 @@ export interface CorePluginAPIHost<
   peekSession?(pluginId: string, sessionId: string): Promise<PluginSessionPeek | null>
   /** 全会话 peek-lite(无 lastMessage),按 updatedAt 降序。 */
   listSessions?(pluginId: string): Promise<PluginSessionPeekLite[]>
+  /**
+   * 受管 LLM 调用的落点(N7-b)。
+   *
+   * 宿主做**受管三要素**(计费 `source = plugin:<id>` + 硬超时 + 配额)与 provider
+   * 解析(复用宿主自己拿 provider+apiKey 的同一条路径);core 只做声明门 + 输入校验。
+   * 插件永远拿不到 apiKey / registry。宿主没接这条线(headless / server)时
+   * `api.llm.complete` 抛 `PluginLlmError('unsupported')`,而不是静默假装成功。
+   */
+  llmComplete?(pluginId: string, options: PluginLlmCompleteOptions): Promise<PluginLlmCompleteResult>
 }
 
 export interface CreateCorePluginAPIOptions<
@@ -663,6 +679,48 @@ export function createCorePluginAPI<
      */
     async isIdle(sessionId: string): Promise<boolean> {
       return (await peekSessionForPlugin(sessionId))?.state === 'idle'
+    },
+
+    /**
+     * 受管 LLM 调用(N7-b)—— "插件从搬运升到判断"的钥匙。
+     *
+     * 与 pi 的裸 `ctx.modelRegistry.complete()` 的关键差异:插件拿不到 apiKey /
+     * registry,只交出 messages、拿回 text。**受管三要素**(计费 `source=plugin:<id>`
+     * + 硬超时 + 配额)全在宿主实现里;core 这一层只做:
+     *  - **声明门**:manifest 没声明 `llm:complete` → 抛 `not-declared`,**不计熔断**
+     *    (manifest 笔误不该连坐整个插件,与 sendMessage / interceptInput 同规);
+     *  - **输入校验**:messages 非空且形状合法,否则抛 `invalid-input`;
+     *  - **诚实降级**:宿主没接这条线 → 抛 `unsupported`,不假装成功。
+     *
+     * 失败(provider / 超时 / 配额 / 校验)一律**抛给插件**自己 catch。在
+     * beforeContextCompact 钩子里没 catch 时,N7-a 的 fail-open 兜底回落宿主自压。
+     */
+    llm: {
+      async complete(options: PluginLlmCompleteOptions): Promise<PluginLlmCompleteResult> {
+        if (rejectLateCall('llm.complete')) {
+          throw new PluginLlmError('unsupported', 'plugin was disposed')
+        }
+        if (!declaredPermissions.has(PLUGIN_PERMISSION_LLM_COMPLETE)) {
+          logger.error(
+            `[Plugin:${pluginId}] llm.complete requires "${PLUGIN_PERMISSION_LLM_COMPLETE}" in `
+            + 'contributes.permissions (plugin.json). The install page tells the user this plugin '
+            + 'can make AI model calls on its behalf (uses tokens).',
+            undefined,
+          )
+          throw new PluginLlmError('not-declared', PLUGIN_PERMISSION_LLM_COMPLETE)
+        }
+        if (!host.llmComplete) {
+          throw new PluginLlmError('unsupported', 'this host has no managed LLM surface')
+        }
+        // 抛 invalid-input(纯校验),在把请求交给宿主之前。
+        const messages = normalizePluginLlmMessages((options ?? {}).messages)
+        return host.llmComplete(pluginId, {
+          messages,
+          maxTokens: options?.maxTokens,
+          temperature: options?.temperature,
+          signal: options?.signal,
+        })
+      },
     },
 
     registerCommand(name: string, options: TCommandOptions): void {

@@ -14,6 +14,7 @@ import type {
   PluginSessionPeek,
   PluginSessionPeekLite,
 } from './sessions.js'
+import type { PluginLlmCompleteOptions, PluginLlmCompleteResult } from './llm.js'
 
 /**
  * 声明先于代码(设计文档 §4.2 宪法第 3 条)。
@@ -407,6 +408,15 @@ export interface CorePluginAPI<
   }
   /** `peek().state === 'idle'` 的便捷函数;读不到会话即 false。 */
   isIdle(sessionId: string): Promise<boolean>
+  /**
+   * 受管 LLM 调用(N7-b)。`llm:complete` 声明门;插件拿不到 apiKey / registry,
+   * 只交出 messages、拿回 text。受管三要素(计费 source=plugin:<id> + 硬超时 +
+   * 配额)在宿主实现里;失败(未声明 / 无面 / 配额 / 超时 / provider / 校验)
+   * 抛结构化 `PluginLlmError`,由插件自己 catch。
+   */
+  llm: {
+    complete(options: PluginLlmCompleteOptions): Promise<PluginLlmCompleteResult>
+  }
   registerCommand(name: string, options: TCommandOptions): void
   registerPromptContextProvider(id: string, provider: TPromptContextProvider): void
   beforeContextCompact(id: string, hook: TBeforeContextCompactHook): void

@@ -87,7 +87,9 @@ export async function compactSessionContext(options: {
     const configWithApiKeyForHooks: BeforeContextCompactContext['configWithApiKey'] = {
       ...options.configWithApiKey,
     }
-    await runBeforeContextCompactHooks({
+    // N7-a:某插件的 beforeContextCompact 返回了替换摘要 → 跳过宿主自压,直接用它。
+    // 无人返回(或全体抛错 / 超时,fail-open)→ 回落宿主的 summarizeInChunks。
+    const replacement = await runBeforeContextCompactHooks({
       sessionId: options.sessionId,
       providerId: options.providerId,
       configWithApiKey: configWithApiKeyForHooks,
@@ -96,14 +98,25 @@ export async function compactSessionContext(options: {
       messagesToSummarize: plan.messagesToSummarize,
     })
 
-    const formattedMessages = formatMessagesForSummary(plan.messagesToSummarize)
-    const summary = await summarizeInChunks({
-      providerId: options.providerId,
-      configWithApiKey: options.configWithApiKey,
-      settings: options.settings,
-      messages: formattedMessages,
-      previousSummary: plan.previousSummary,
-    })
+    let summary: string
+    if (replacement) {
+      console.log('[ContextCompact] using plugin replacement summary', {
+        sessionId: options.sessionId,
+        pluginId: replacement.pluginId,
+        hookId: replacement.hookId,
+        length: replacement.summary.length,
+      })
+      summary = replacement.summary
+    } else {
+      const formattedMessages = formatMessagesForSummary(plan.messagesToSummarize)
+      summary = await summarizeInChunks({
+        providerId: options.providerId,
+        configWithApiKey: options.configWithApiKey,
+        settings: options.settings,
+        messages: formattedMessages,
+        previousSummary: plan.previousSummary,
+      })
+    }
 
     const finalContent = buildContextCompactCompletedContent(summary, plan.messagesToSummarize.length)
 

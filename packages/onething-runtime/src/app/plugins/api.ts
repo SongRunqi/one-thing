@@ -20,6 +20,7 @@ import {
   getDeclaredWebviewPanelIds,
 } from './loader.js'
 import { createPluginSessionHostPorts } from './sessions.js'
+import { pluginLlmComplete } from './llm.js'
 import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './notify-sound.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
@@ -404,6 +405,11 @@ export function createPluginAPI(
        * 把 eventBus / streamEngine 这两个装配期才有的东西喂进去。
        */
       ...createPluginSessionHostPorts({ eventBus, streamEngine }),
+      /**
+       * N7-b:受管 LLM 调用。实现在 `./llm.ts` —— provider 解析 / 计费 /
+       * 超时 / 配额三要素全在那里,core 只做声明门与输入校验。
+       */
+      llmComplete: (id, options) => pluginLlmComplete(id, options),
       /**
        * 横幅 + 可选一声(M1)。
        *

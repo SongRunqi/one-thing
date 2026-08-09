@@ -6,6 +6,7 @@ import {
   type CoreAfterAssistantResponseHook,
   type CoreBeforeContextCompactContext,
   type CoreBeforeContextCompactHook,
+  type CoreBeforeContextCompactOutcome,
 } from '@onething/core/plugins'
 import {
   reportPluginRuntimeFailure,
@@ -59,11 +60,16 @@ export function registerAfterAssistantResponseHook(
   return lifecycleRegistry.registerAfterAssistantResponseHook(pluginId, hookId, hook)
 }
 
+/**
+ * N7-a:返回胜出插件的替换摘要(没有插件替换时回 undefined,调用方回落宿主自压)。
+ */
 export async function runBeforeContextCompactHooks(
   context: BeforeContextCompactContext,
-): Promise<void> {
-  await lifecycleRegistry.runBeforeContextCompactHooks(context)
+): Promise<CoreBeforeContextCompactOutcome | undefined> {
+  return lifecycleRegistry.runBeforeContextCompactHooks(context)
 }
+
+export type { CoreBeforeContextCompactOutcome }
 
 export async function runAfterAssistantResponseHooks(
   context: AfterAssistantResponseContext,

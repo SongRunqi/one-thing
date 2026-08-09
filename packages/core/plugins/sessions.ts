@@ -16,6 +16,11 @@
  *     以为"发出去了"。所以 sendMessage 从不抛错,它回一份带 reason 的结果。
  */
 
+import {
+  PLUGIN_LLM_COMPLETE_PERMISSION_NOTE,
+  PLUGIN_PERMISSION_LLM_COMPLETE,
+} from './llm.js'
+
 /* ── 声明门(manifest contributes.permissions)───────────────────────────── */
 
 /** 只入队 / 不起轮的投递(`triggerTurn:false`、`deliverAs:*`、忙时降级)。 */
@@ -113,6 +118,15 @@ export const PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT = 'toolresult:intercept'
 export const PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE =
   'can read and rewrite tool results before the model sees them (including file contents and command output)'
 
+/* ── 受管 LLM 调用(N7-b)的声明门 ───────────────────────────────────────── */
+
+/**
+ * 受管 LLM 调用(N7-b)。常量与披露文案的事实源在 `llm.ts`(它是零依赖叶子);
+ * 这里只把它并进 `PLUGIN_PERMISSION_NOTES` 的聚合表 —— 那张表是渲染层
+ * `describePluginPermission` 的唯一入口,新权限加进来,装前确认页一行不用改就
+ * 把它念给用户听。
+ */
+
 /**
  * **被消费的**权限名 → 披露文案。未登记的名字原样显示(向前兼容:未来的宿主
  * 可能认识它),但凡是宿主真的会拿来判定的名字,都必须在这里有一句人话。
@@ -122,6 +136,7 @@ export const PLUGIN_PERMISSION_NOTES: Readonly<Record<string, string>> = {
   [PLUGIN_PERMISSION_INPUT_INTERCEPT]: PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE,
   [PLUGIN_PERMISSION_TOOLCALL_INTERCEPT]: PLUGIN_TOOLCALL_INTERCEPT_PERMISSION_NOTE,
   [PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT]: PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE,
+  [PLUGIN_PERMISSION_LLM_COMPLETE]: PLUGIN_LLM_COMPLETE_PERMISSION_NOTE,
 }
 
 export function describePluginPermission(name: string): string {
