@@ -43,7 +43,7 @@ node scripts/build-plugin.mjs packages/my-plugin
 |---|---|---|
 | `commands` | `string[]` | 斜杠命令声明 |
 | `panels` | `[{id,label}]` | 工作区面板(描述树,UI 不执行插件代码) |
-| `uiSlots` | `[{anchor,id,label}]` | 锚点块;未知锚点按"此版本不支持"呈现 |
+| `uiSlots` | `[{anchor,id,label,lifetime?}]` | 锚点块;未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"` |
 | `settings` | `{schema}` | JSON Schema 子集,宿主渲染并校验设置表单 |
 | `permissions` | `string[]` | 装前确认页如实列出 |
 | `activationEvents` | `string[]` | 激活事件声明 |
@@ -117,11 +117,54 @@ api.on('stream:start', (env) => {
 ## 数据落盘约定
 
 - 插件家目录 = `~/.onething/plugins/<id>/`:`config.json`(宿主写,
-  设置表单)、`kv.json`(`api.storage` KV)、`storage/`(自留地)。
+  设置表单)、`kv.json`(`api.storage` KV)、`storage/`(自留地)、
+  `message-state/`(消息作用域状态,见下)。
 - **`node_modules/` 是代码区,任何数据永不许写进去** —— npm 每次
   update/uninstall 整目录抹掉重建,写进去等于丢。
 - 卸载 = 家目录整体归档到 `plugins/legacy-backup/<id>-<date>/`
   (可恢复),代码从账与 node_modules 拆除。
+
+### 消息作用域状态(`api.storage.message`)
+
+要给**某一条消息**记东西(徽标、注解、评分),不要在自己的 KV 里按
+messageId 记账 —— 那样消息删了你不知道,数据变孤儿。用消息态:
+
+```js
+// 写:坐标随调用递交,一条消息一个 blob(JSON 对象,内键你自己管)
+api.storage.message(sessionId, messageId).writeJson({ v: 1, tps: 34.2 })
+// 读:render 时按坐标现取;没有就是没有
+const rec = api.storage.message(ctx.sessionId, ctx.messageId).readJson()
+api.storage.message(sessionId, messageId).exists()
+```
+
+```jsonc
+// 落盘要在 manifest 开闸(声明是闸门,不是装饰):
+{ "contributes": { "uiSlots": [
+  { "anchor": "message.footer", "id": "tps", "label": "TPS",
+    "lifetime": "persistent" }   // 缺省 "ephemeral" = 纯内存,重启即丢
+] } }
+```
+
+分工照抄这张表(**坐标是宿主的,内容是你的**):
+
+| 归你 | 归宿主 |
+|---|---|
+| 记什么、何时记、形状怎么迁(建议带 `v` 字段) | 放哪(`plugins/<id>/message-state/<sid>/<mid>.json`) |
+| 显示什么、何时 `ctx.refresh()` | 落不落盘(lifetime 闸门)、启动水合 |
+| 读不懂的旧/新形状怎么办 | 消息删→删该条;会话删→删整个会话;卸载→随家目录归档 |
+| —— | 每插件 5MB 硬顶(写超抛 `quota`)、损坏记录隔离 |
+
+要点与坑:
+
+- **有任一 slot 声明 `persistent`,这个插件的消息态就全部落盘**(存储分不清
+  一次写服务哪个槽);全都不声明 = 纯内存。装前确认页会就那条 slot 告诉
+  用户"会在消息上留下持久内容" —— 这是它该被声明出来的原因。
+- 写面**会抛**(配额超、值不可 JSON 序列化、插件已拆除)。别 catch 掉当
+  没事:抛了就是没存住,宿主同时记熔断账。
+- 没有键枚举 API,也**不需要**自建索引:render 时你手里就有
+  `ctx.sessionId` / `ctx.messageId`(消息级锚点的 ctx 携带),按坐标现取。
+- 插件不在场时发生的流没有记录,装上之后也不会追认 —— 老消息就是空的。
+- legacy 目录形态(非 npm 安装)没有家目录,消息态强制纯内存。
 
 ## 安全与边界(速查)
 
@@ -142,3 +185,5 @@ api.on('stream:start', (env) => {
 | 拒装:"Integrity mismatch" | 索引 SRI 与 tarball 实体不符;重新发 tag,不要手改 asset |
 | 拒装:"name mismatch" | 索引/包名写错;包内 name 必须等于 `@onething-plugins/<id>` |
 | legacy 徽标 | 目录安装的旧形态;装 npm 形态转正(先删旧目录) |
+| 消息态重启就没了 | manifest 没声明 `lifetime: "persistent"`(或是 legacy 目录形态) |
+| 写消息态抛 `quota` | 该插件消息态超 5MB 硬顶;记录该瘦身,宿主不替你淘汰 |

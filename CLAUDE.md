@@ -182,6 +182,20 @@ Notes:
     per-plugin data directory
     (`api.storage`) plus the legacy KV store, in-stream status lines (`api.status`), and
     `ui.notify`.
+  - **Storage taxonomy** (`docs/design/plugin-message-state-2026-08.md`): a
+    scope × lifetime × owner table, not one facility per feature. App-level KV
+    (`kv.json`) and host-written settings (`config.json`) are P1; **message-level state**
+    is `api.storage.message(sessionId, messageId)` → one JSON blob per message at
+    `plugins/<id>/message-state/<sid>/<mid>.json`. The host owns the coordinate system
+    (placement, hydration on load, cascade on `message:deleted` / `session:deleted`,
+    a 5MB-per-plugin quota that throws `quota`, corrupt-record quarantine, archive on
+    uninstall); the plugin owns the content (opaque — the host never interprets it).
+    Persistence is gated by declaration: a plugin gets disk only if some
+    `contributes.uiSlots[].lifetime === 'persistent'` (default `ephemeral` = memory only,
+    lost on restart; unknown future values degrade to non-persistent, and legacy
+    directory-form plugins are forced ephemeral). The install confirm page discloses the
+    persistent slot. Session-level persistent state is a deliberate empty cell — the
+    layout leaves room, but nothing is built until a real plugin needs it.
   - **One opened host registry**: `api.registerIMConnector` (pilot; ids are namespaced
     `plugin:<id>:<name>`). **No production traffic flows through it yet** — no built-in
     plugin registers a connector and inbound is not wired, so the pilot validates the
