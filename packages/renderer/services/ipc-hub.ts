@@ -386,7 +386,7 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
           // 已经判过并标了 unsupported —— 这里把它丢掉,理由在设置页卡片上说。
           // 与未知锚点同规:降级不拒载,不计熔断。
           .filter((panel: { unsupported?: boolean }) => !panel.unsupported)
-          .map((panel: { id: string; label: string; view?: string; entry?: string }) => ({
+          .map((panel: { id: string; label: string; view?: string; entry?: string; placements?: string[] }) => ({
             pluginId: plugin.id,
             pluginName: plugin.name,
             panelId: panel.id,
@@ -394,6 +394,11 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
             loaded: Boolean(plugin.loaded),
             view: panel.view === 'webview' ? 'webview' as const : 'descriptor' as const,
             entry: panel.entry || '',
+            // 出现在哪些宿主表面(H1)。投影层已缺省成 ['workspace'];这里兜底
+            // 一次,让 web 端(走 /api 投影)与老版本响应也有确定值。
+            placements: Array.isArray(panel.placements) && panel.placements.length
+              ? panel.placements
+              : ['workspace'],
             // 事实源是**活状态**(manager 登记的 action 表),不是 manifest:
             // "声明了 webview" 与 "登记了初始化数据 handler" 是两件事,
             // 纯静态面板只有前者。

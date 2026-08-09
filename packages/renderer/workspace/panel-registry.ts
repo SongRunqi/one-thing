@@ -131,6 +131,25 @@ export interface PluginContributedPanel {
   entry?: string
   /** 插件登记了 `panel:init:<id>` 吗(纯静态面板没有,合法)。 */
   hasInit?: boolean
+  /**
+   * 这个面板可以出现在哪些宿主表面(H1)。`'workspace'` = 主工作区面板;
+   * `'workbench'` = 可作为右侧工作台的一个 tab 打开。缺省(空/未定义)按
+   * `['workspace']` 解 —— 老面板只在主工作区(append-only)。
+   */
+  placements?: string[]
+}
+
+/** 面板声明的宿主表面(缺省 `['workspace']`,与投影层裁决同一口径)。 */
+export function pluginPanelPlacements(panel: Pick<PluginContributedPanel, 'placements'>): string[] {
+  return panel.placements && panel.placements.length ? panel.placements : ['workspace']
+}
+
+/** 这个面板是否声明了某个宿主表面(缺省只算 workspace)。 */
+export function pluginPanelHasPlacement(
+  panel: Pick<PluginContributedPanel, 'placements'>,
+  placement: string,
+): boolean {
+  return pluginPanelPlacements(panel).includes(placement)
 }
 
 const pluginPanels: Ref<PluginContributedPanel[]> = ref([])

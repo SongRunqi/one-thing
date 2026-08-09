@@ -17,11 +17,11 @@
     >
       <Button
         v-for="option in availableTabOptions"
-        :key="option.type"
+        :key="option.key"
         unstyled
         class="picker-option"
         :style="workbenchToolStyle(option.categorySlot)"
-        @click="addWorkbenchTab(option.type)"
+        @click="onPickOption(option)"
       >
         <component
           :is="option.icon"
@@ -199,6 +199,15 @@
           @open-thread="openThread"
         />
 
+        <!-- 插件面板作为工作台 tab(H1)。内容渲染**复用**既有 PluginPanelHost
+             的双形态(描述树 / webview),右栏不新造渲染。面板对象顺着当前插件
+             清单现查 —— 停用/卸载后 `pluginPanelFor` 落空,那条 tab 也已被
+             `watch(pluginPanels)` 关掉(拆除即关,见下)。 -->
+        <PluginPanelHost
+          v-else-if="tab.type === 'plugin' && pluginPanelFor(tab)"
+          :panel="pluginPanelFor(tab)!"
+        />
+
         <!-- iframe fallback: apps/web host has no WebContentsView -->
         <section
           v-else-if="tab.type === 'browser'"
@@ -259,11 +268,11 @@
       </div>
       <Button
         v-for="option in availableTabOptions"
-        :key="option.type"
+        :key="option.key"
         unstyled
         class="empty-action"
         :style="workbenchToolStyle(option.categorySlot)"
-        @click="addWorkbenchTab(option.type)"
+        @click="onPickOption(option)"
       >
         <component
           :is="option.icon"
@@ -294,6 +303,14 @@ import MembersWorkbench from './MembersWorkbench.vue'
 import AgentSpace from '@/components/agents/AgentSpace.vue'
 import RoomThreadsWorkbench from './RoomThreadsWorkbench.vue'
 import RoomSchedulePanel from './RoomSchedulePanel.vue'
+import PluginPanelHost from '@/components/plugins/PluginPanelHost.vue'
+import {
+  PLUGIN_PANEL_ICON,
+  pluginPanelHasPlacement,
+  pluginPanelNavId,
+  usePluginWorkspacePanels,
+} from '@/workspace/panel-registry'
+import type { PluginWorkspacePanel } from '@/workspace/plugin-panel-types'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import { useTerminalsStore } from '@/stores/terminals'
 import { useAgentsStore, type AgentDetailTab } from '@/stores/agents'
@@ -319,7 +336,7 @@ import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling'
+type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members' | 'agent' | 'schedule' | 'scheduling' | 'plugin'
 
 interface WorkbenchTab {
   id: string
@@ -349,6 +366,10 @@ interface WorkbenchTab {
   scheduleFilter?: string
   /** schedule tabs only: 每收到一次落座指令 +1 —— 同一个过滤器也要能重放。 */
   scheduleNonce?: number
+  /** plugin tabs only(H1):这一格渲染哪个插件的哪个面板(复用 PluginPanelHost 双形态)。 */
+  pluginId?: string
+  /** plugin tabs only(H1):面板 id(与 manifest 的 contributes.panels[].id 一致)。 */
+  panelId?: string
 }
 
 const props = withDefaults(defineProps<{
@@ -470,11 +491,92 @@ const terminalsStore = useTerminalsStore()
 const canUseTerminal = computed(() => platformApi.capabilities.terminal)
 const canUseEmbeddedBrowser = computed(() => platformApi.capabilities.embeddedBrowser)
 const canUseCollabRooms = computed(() => platformApi.capabilities.collabRooms)
-const availableTabOptions = computed(() =>
-  tabOptions.filter(option =>
-    (option.type !== 'terminal' || canUseTerminal.value) &&
-    ((option.type !== 'board' && option.type !== 'scheduling') || canUseCollabRooms.value)),
+
+// 插件面板清单(H1):与主工作区 MediaPanel 吃**同一份**(usePluginWorkspacePanels)。
+// 停用/卸载的插件会从这份清单里消失 —— 「+」菜单的插件条随之消失,已开的插件
+// tab 由下方 watch 关掉(拆除即关)。
+const pluginPanels = usePluginWorkspacePanels()
+
+interface WorkbenchTabOption {
+  /** 唯一键(静态项 = type;插件项 = plugin:<id>:<panel> 的 nav id)。 */
+  key: string
+  type: WorkbenchTabType
+  title: string
+  icon: Component
+  categorySlot: number
+  /** 插件项才有 —— 点击时据此开一个 plugin tab。 */
+  pluginId?: string
+  panelId?: string
+}
+
+/**
+ * 声明了 `workbench` 位的插件面板 —— 「+」菜单里可加的那几条。
+ *
+ * 清单来源复用既有面板投影(不新造):缺省 placements 是 `['workspace']`,
+ * 只有显式声明了 `'workbench'` 的面板才进这里(append-only,老面板零变化)。
+ * 图标由宿主统一给(Puzzle),UI 不执行插件代码。
+ */
+const workbenchPluginOptions = computed<WorkbenchTabOption[]>(() =>
+  pluginPanels.value
+    .filter(panel => pluginPanelHasPlacement(panel, 'workbench'))
+    .map(panel => ({
+      key: pluginPanelNavId(panel.pluginId, panel.panelId),
+      type: 'plugin' as const,
+      title: panel.label,
+      icon: PLUGIN_PANEL_ICON,
+      categorySlot: 5,
+      pluginId: panel.pluginId,
+      panelId: panel.panelId,
+    })),
 )
+
+const availableTabOptions = computed<WorkbenchTabOption[]>(() => [
+  ...tabOptions
+    .filter(option =>
+      (option.type !== 'terminal' || canUseTerminal.value) &&
+      ((option.type !== 'board' && option.type !== 'scheduling') || canUseCollabRooms.value))
+    .map(option => ({ ...option, key: option.type })),
+  ...workbenchPluginOptions.value,
+])
+
+/** 「+」菜单/空态里点了一条:插件项开 plugin tab,其余走既有 addWorkbenchTab。 */
+function onPickOption(option: WorkbenchTabOption): void {
+  if (option.type === 'plugin' && option.pluginId && option.panelId) {
+    openPluginTab(option.pluginId, option.panelId, option.title)
+    return
+  }
+  addWorkbenchTab(option.type)
+}
+
+/** 当前这个 plugin tab 对应的面板对象(顺着活清单现查,复用 PluginPanelHost 双形态)。 */
+function pluginPanelFor(tab: WorkbenchTab): PluginWorkspacePanel | undefined {
+  return pluginPanels.value.find(
+    panel => panel.pluginId === tab.pluginId && panel.panelId === tab.panelId,
+  )
+}
+
+/**
+ * 开(或聚焦)一个插件面板 tab(H1)。
+ *
+ * **单例**:同一个 `pluginId+panelId` 只有一条 tab(照 addWorkbenchTab 的去重先例)。
+ * tab id = nav id(`plugin:<id>:<panel>`),与 `terminal-<id>` 同一手法。
+ *
+ * v1 持久化边界(裁决 D):**不跨重启持久化** —— 右侧工作台的 openTabs 本就是
+ * 组件本地态,任何 tab 都不写进重启恢复层,plugin tab 自然随进程消失,重启后
+ * 用户从「+」菜单重开。"插件已卸载"的占位/降级是独立一期,这里先把能开能用能关
+ * 跑通。同一次会话内切走切回照常在(它就在这个响应式数组里)。
+ */
+function openPluginTab(pluginId: string, panelId: string, title: string): void {
+  const id = pluginPanelNavId(pluginId, panelId)
+  const existing = openTabs.value.find(tab => tab.id === id)
+  if (existing) {
+    activeTabId.value = existing.id
+    return
+  }
+  const tab: WorkbenchTab = { id, type: 'plugin', title, pluginId, panelId }
+  openTabs.value = [...openTabs.value, tab]
+  activeTabId.value = tab.id
+}
 let variableRequestId = 0
 
 const NOTE_ROOT_VARIABLE_NAMES = new Set(['ai_note_dir', 'user_note_dir', 'work_note_dir'])
@@ -723,10 +825,12 @@ function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'members') return Users
   if (type === 'agent') return UserRound
   if (type === 'schedule' || type === 'scheduling') return Radar
+  if (type === 'plugin') return PLUGIN_PANEL_ICON
   return Files
 }
 
 function tabCategorySlot(type: WorkbenchTabType): number {
+  if (type === 'plugin') return 5
   if (type === 'terminal') return 6
   if (type === 'browser') return 7
   if (type === 'board') return 8
@@ -998,6 +1102,25 @@ function openAgentTab(agentId: string, tab?: AgentDetailTab | null): void {
   activeTabId.value = created.id
 }
 
+/**
+ * 拆除即关(裁决 E):插件停用/卸载后它从 `pluginPanels` 清单里消失,把它对应的
+ * workbench tab 立即关掉 —— 与主工作区面板停用同规(MediaPanel 那边把导航拉回
+ * media)。熔断降级(R7)自动禁用一个插件时走的也是这条路(清单里没了)。
+ *
+ * 拆除快照:tab 被移出 openTabs → PluginPanelHost 卸载 → usePluginUiBlock 的
+ * onUnmounted 停轮询/弃在飞结果,右栏不留残条也不留在飞请求。
+ */
+watch(pluginPanels, (panels) => {
+  const live = new Set(panels.map(panel => `${panel.pluginId}:${panel.panelId}`))
+  const survivors = openTabs.value.filter(
+    tab => tab.type !== 'plugin' || live.has(`${tab.pluginId}:${tab.panelId}`),
+  )
+  if (survivors.length === openTabs.value.length) return
+  const activeSurvived = survivors.some(tab => tab.id === activeTabId.value)
+  openTabs.value = survivors
+  if (!activeSurvived) activeTabId.value = survivors[survivors.length - 1]?.id || ''
+})
+
 /** 面板里下钻/返回之后把落点写回 tab —— 关掉再开回来时停在同一层。 */
 function setMembersFocus(tabId: string, agentId: string): void {
   const tab = openTabs.value.find(item => item.id === tabId)
@@ -1152,6 +1275,7 @@ defineExpose({
   openRoomTabs,
   openMembers,
   openAgentTab,
+  openPluginTab,
 })
 </script>
 

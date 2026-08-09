@@ -71,6 +71,8 @@ describe('projectOnethingPluginsForRenderer', () => {
             entry: '',
             unsupported: false,
             reason: '',
+            // H1:未声明 placements → 缺省 ['workspace'](只在主工作区)。
+            placements: ['workspace'],
           }],
           hasSettingsSchema: true,
           permissions: ['files:read'],
@@ -102,6 +104,34 @@ describe('projectOnethingPluginsForRenderer', () => {
         degradedSurfaces: [],
       },
     ])
+  })
+
+  it('carries declared placements through, filtering non-strings (H1)', () => {
+    const projected = projectOnethingPluginsForRenderer([
+      {
+        definition: {
+          id: 'demo',
+          manifest: {
+            name: 'Demo',
+            version: '1.0.0',
+            contributes: {
+              panels: [
+                { id: 'both', label: 'Both', placements: ['workspace', 'workbench'] },
+                // 空数组 → 缺省;含非字符串 → 过滤后再判空。
+                { id: 'legacy', label: 'Legacy' },
+              ],
+            },
+          },
+          enabled: true,
+          dirPath: '/plugins/demo',
+        },
+        loaded: true,
+        commands: [],
+      },
+    ])
+    expect(projected[0].contributes.panels[0].placements).toEqual(['workspace', 'workbench'])
+    // 未声明 = 只在主工作区(append-only,老面板零变化)。
+    expect(projected[0].contributes.panels[1].placements).toEqual(['workspace'])
   })
 
   it('falls back to the last runtime error when the breaker has not tripped', () => {

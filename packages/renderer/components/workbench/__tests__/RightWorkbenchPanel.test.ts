@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RightWorkbenchPanel from '../RightWorkbenchPanel.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -45,6 +45,17 @@ vi.mock('../ThreadChatDetail.vue', () => ({
         <button class="mock-thread-title" @click="$emit('titleResolved', '换核验证')">title</button>
       </div>
     `,
+  },
+}))
+
+// 插件面板作为 workbench tab(H1)。真 PluginPanelHost 会在挂载时打
+// platformApi.pluginRequest 拉描述树 —— 这里的契约只是"plugin tab 渲染
+// PluginPanelHost 并把面板对象喂进去",所以桩成一个显式的可断言标记。
+vi.mock('@/components/plugins/PluginPanelHost.vue', () => ({
+  default: {
+    name: 'PluginPanelHost',
+    props: ['panel'],
+    template: '<div class="mock-plugin-panel-host">{{ panel.pluginId }}:{{ panel.panelId }}</div>',
   },
 }))
 
@@ -305,6 +316,98 @@ describe('RightWorkbenchPanel', () => {
       await wrapper.findAll('.empty-action').find(button => button.text() === '看板')!.trigger('click')
       await settle()
       expect(wrapper.find('.workbench-tab-label').text()).toBe('看板')
+    })
+  })
+
+  // ── 插件面板作为工作台 tab(H1)──────────────────────────────────────────
+  describe('plugin tab (H1)', () => {
+    async function withPanels(panels: Array<{ pluginId: string; panelId: string; label: string; placements?: string[] }>) {
+      const { setPluginWorkspacePanels } = await import('@/workspace/panel-registry')
+      setPluginWorkspacePanels(panels.map(panel => ({
+        pluginId: panel.pluginId,
+        pluginName: panel.pluginId,
+        panelId: panel.panelId,
+        label: panel.label,
+        loaded: true,
+        placements: panel.placements,
+      })))
+    }
+
+    async function clearPanels() {
+      const { setPluginWorkspacePanels } = await import('@/workspace/panel-registry')
+      setPluginWorkspacePanels([])
+    }
+
+    beforeEach(async () => { await clearPanels() })
+    afterEach(async () => { await clearPanels() })
+
+    function mountPanel() {
+      return mount(RightWorkbenchPanel, { props: { sessionId: 'session-1', workspaceRoot: '/repo' } })
+    }
+
+    it('「+」空态清单只列声明了 workbench 的面板 —— 缺省 workspace 的不列', async () => {
+      await withPanels([
+        { pluginId: 'canvas-clock', panelId: 'canvas-clock', label: 'Canvas Clock', placements: ['workspace', 'workbench'] },
+        { pluginId: 'note-skills', panelId: 'notes', label: 'Notes' }, // 缺省 workspace-only
+      ])
+      const wrapper = mountPanel()
+      await settle()
+
+      const labels = wrapper.findAll('.empty-action').map(button => button.text())
+      expect(labels).toContain('Canvas Clock')
+      expect(labels).not.toContain('Notes')
+    })
+
+    it('点一下开一个 plugin tab 并渲染 PluginPanelHost —— 单例,再点是聚焦', async () => {
+      await withPanels([
+        { pluginId: 'canvas-clock', panelId: 'canvas-clock', label: 'Canvas Clock', placements: ['workbench'] },
+      ])
+      const wrapper = mountPanel()
+      await settle()
+
+      await wrapper.findAll('.empty-action').find(button => button.text() === 'Canvas Clock')!.trigger('click')
+      await settle()
+
+      expect(wrapper.find('.mock-plugin-panel-host').text()).toBe('canvas-clock:canvas-clock')
+      expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(1)
+
+      // 同一个 pluginId+panelId 只有一条 tab —— 再开一次是聚焦,不新开
+      // (照 addWorkbenchTab 的去重先例)。
+      ;(wrapper.vm as unknown as { openPluginTab: (p: string, panel: string, t: string) => void })
+        .openPluginTab('canvas-clock', 'canvas-clock', 'Canvas Clock')
+      await settle()
+      expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(1)
+    })
+
+    it('插件停用/卸载即关它的 tab —— 拆除无残留', async () => {
+      await withPanels([
+        { pluginId: 'canvas-clock', panelId: 'canvas-clock', label: 'Canvas Clock', placements: ['workbench'] },
+      ])
+      const wrapper = mountPanel()
+      await settle()
+      await wrapper.findAll('.empty-action').find(button => button.text() === 'Canvas Clock')!.trigger('click')
+      await settle()
+      expect(wrapper.find('.mock-plugin-panel-host').exists()).toBe(true)
+
+      // 插件从清单里消失(停用 / 卸载 / 熔断自动禁用走的都是这条)。
+      await clearPanels()
+      await settle()
+
+      expect(wrapper.find('.mock-plugin-panel-host').exists()).toBe(false)
+      expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(0)
+    })
+
+    it('v1 不跨重启恢复 —— 新挂载不自动开任何 plugin tab', async () => {
+      await withPanels([
+        { pluginId: 'canvas-clock', panelId: 'canvas-clock', label: 'Canvas Clock', placements: ['workbench'] },
+      ])
+      const wrapper = mountPanel()
+      await settle()
+
+      // openTabs 是组件本地态,不写进任何持久层:声明了 workbench 的面板只是
+      // 出现在「+」清单里(入口),而不会替用户开出一条 tab。
+      expect(wrapper.find('.mock-plugin-panel-host').exists()).toBe(false)
+      expect(wrapper.findAll('.workbench-tab-label')).toHaveLength(0)
     })
   })
 

@@ -30,7 +30,7 @@ export interface OnethingPluginListManifestLike {
   minAppVersion?: string
   contributes?: {
     commands?: Array<{ name: string }>
-    panels?: Array<{ id: string; label: string; view?: string; entry?: string }>
+    panels?: Array<{ id: string; label: string; view?: string; entry?: string; placements?: string[] }>
     uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string; drawer?: boolean }>
     theme?: { overrides?: Record<string, string>; background?: unknown }
     ambient?: unknown
@@ -119,6 +119,12 @@ export interface OnethingRendererPluginInfo {
       entry: string
       unsupported: boolean
       reason: string
+      /**
+       * 这个面板可以出现在哪些宿主表面(H1)。`'workspace'` = 主工作区面板
+       * (MediaPanel/⋯ 菜单);`'workbench'` = 可作为右侧工作台的一个 tab 打开。
+       * 缺省 `['workspace']` —— 老面板没有声明,只在主工作区(append-only)。
+       */
+      placements: string[]
     }>
     /**
      * 锚点块(R5.x)。`unsupported` = 该条声明的锚点不在宿主清单里:
@@ -322,6 +328,11 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
           entry: !problem && isPluginWebviewPanel(panel) ? String(panel.entry ?? '') : '',
           unsupported: Boolean(problem),
           reason: problem ?? '',
+          // 缺省 ['workspace'](现状)。只保留字符串成员;未知值原样透传,
+          // 由消费方按已知 placement 判 —— 与未知锚点降级同规,前向兼容。
+          placements: Array.isArray(panel.placements) && panel.placements.length
+            ? panel.placements.filter(item => typeof item === 'string')
+            : ['workspace'],
         }
       }),
       uiSlots: (plugin.definition.manifest.contributes?.uiSlots ?? []).map(slot => ({

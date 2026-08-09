@@ -353,6 +353,18 @@ export function validatePluginContributes(raw: unknown): string | null {
       if (panel.entry !== undefined && typeof panel.entry !== 'string') {
         return `contributes.panels[${index}].entry must be a string`
       }
+      // placements(H1)只校验**形状**(字符串数组):面板可以出现在哪些宿主表面
+      // (工作区面板 / 右侧工作台 tab)。缺省 = ['workspace'](现状,只在主工作区)。
+      // append-only:老面板没有这个字段,行为零变化。成员枚举不在 loader 判 ——
+      // 未知 placement 值在旧宿主上不能被拒载(与未知锚点降级同规),投影层过滤。
+      if (panel.placements !== undefined) {
+        if (!Array.isArray(panel.placements)) {
+          return `contributes.panels[${index}].placements must be an array`
+        }
+        if (panel.placements.some(item => typeof item !== 'string')) {
+          return `contributes.panels[${index}].placements must be an array of strings`
+        }
+      }
     }
   }
 

@@ -79,7 +79,25 @@ describe('IPC hub → plugin workspace panels', () => {
       view: 'descriptor',
       entry: '',
       hasInit: false,
+      // H1:面板没声明 placements → 缺省 ['workspace'](只在主工作区)。
+      placements: ['workspace'],
     })
+  })
+
+  it('carries workbench placement through the projection (H1)', async () => {
+    getPlugins = vi.fn(async () => ({
+      success: true,
+      plugins: [plugin({
+        contributes: { panels: [{ id: 'logs', label: 'Agent logs', placements: ['workspace', 'workbench'] }] },
+      })],
+    }))
+    const { initializeIPCHub } = await import('../ipc-hub')
+    const { usePluginWorkspacePanels, setPluginWorkspacePanels } = await import('@/workspace/panel-registry')
+    setPluginWorkspacePanels([])
+
+    initializeIPCHub()
+    await vi.waitFor(() => expect(usePluginWorkspacePanels().value).toHaveLength(1))
+    expect(usePluginWorkspacePanels().value[0].placements).toEqual(['workspace', 'workbench'])
   })
 
   it('keeps the entry of an enabled plugin that failed to load', async () => {

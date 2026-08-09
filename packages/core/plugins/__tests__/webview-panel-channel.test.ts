@@ -112,6 +112,22 @@ describe('manifest 校验', () => {
     expect(validatePluginContributes({ webviewRoot: 3 })).toContain('webviewRoot must be a string')
   })
 
+  it('panels 的 placements 只校验形状(字符串数组)—— 缺省即 workspace(H1)', () => {
+    // 缺省合法:老面板没有这个字段,零行为变化(append-only)。
+    expect(validatePluginContributes({ panels: [{ id: 'a', label: 'A' }] })).toBeNull()
+    // 合法声明:出现在两处宿主表面。
+    expect(validatePluginContributes({
+      panels: [{ id: 'a', label: 'A', placements: ['workspace', 'workbench'] }],
+    })).toBeNull()
+    // 形状错:不是数组 / 成员不是字符串。
+    expect(validatePluginContributes({
+      panels: [{ id: 'a', label: 'A', placements: 'workbench' }],
+    })).toContain('placements must be an array')
+    expect(validatePluginContributes({
+      panels: [{ id: 'a', label: 'A', placements: ['workspace', 2] }],
+    })).toContain('placements must be an array of strings')
+  })
+
   it('锚点块声明 webview 当场拒载 —— 这不是版本偏斜,是任何宿主都不会给的能力', () => {
     const problem = validatePluginContributes({
       uiSlots: [{ anchor: 'composer.above', id: 'x', label: 'X', view: 'webview' }],
