@@ -2,6 +2,7 @@ import type { CorePluginAPIState } from './api-state.js'
 import { deepFreezeCorePluginValue } from './freeze.js'
 import { PluginStorageError, type CorePluginMessageStateStore, type CorePluginStorage } from './storage.js'
 import {
+  PLUGIN_PANEL_INIT_ACTION,
   PLUGIN_PANEL_INVOKE_ACTION,
   PLUGIN_PANEL_RENDER_ACTION,
   isReservedPluginPanelAction,
@@ -115,6 +116,14 @@ export interface CreateCorePluginAPIOptions<
    * registerWorkspacePanel 拿它做匹配 —— 声明先于代码,清单是权威。
    */
   declaredPanelIds?: string[]
+  /**
+   * 其中哪些是 **webview 形态**的面板(C 期,`contributes.panels[].view === 'webview'`)。
+   *
+   * 它决定 render 挂到哪个 action 名上:webview 面板的返回值是**初始化数据**
+   * 而不是描述树,于是走 `panel:init:<id>`(通道守卫按前缀判定,不必反查形态)。
+   * 不传 = 全是描述树面板(headless / 测试替身的自然缺省)。
+   */
+  declaredWebviewPanelIds?: string[]
   /**
    * manifest 里声明过的锚点块(R5.x)。
    * registerUiSlot 拿它做(anchor, id) 匹配 —— 与面板同一条"声明先于代码"。
@@ -513,9 +522,26 @@ export function createCorePluginAPI<
         logger.error(`[Plugin:${pluginId}] registerWorkspacePanel("${panelId}") needs a render function`, undefined)
         return
       }
+      /*
+       * webview 面板的 render 挂在**另一个 action 名**上(C 期)。
+       *
+       * 插件侧的写法不变(还是 `registerWorkspacePanel({ id, render, onAction })`),
+       * 变的是 render 的**返回值契约**:webview 面板的内容由静态文件提供,
+       * render 交出的是给 iframe 的初始化数据(任意可序列化 JSON),宿主不解释它。
+       * 换个 action 名,通道守卫按前缀就知道该用哪套校验 —— 不必反查"这个面板
+       * 是哪一种",也就不会有那份反查漂移之后的两类事故。
+       *
+       * **零代码的纯静态面板是合法的**:manifest 声明 view+entry 就够,
+       * 插件完全可以不调 registerWorkspacePanel —— 声明先于代码,宿主凭清单
+       * 就能把 iframe 挂起来(renderer 据 requestActions 判断有没有初始化数据可拉)。
+       */
+      const renderAction = (options.declaredWebviewPanelIds ?? []).includes(panelId)
+        ? PLUGIN_PANEL_INIT_ACTION
+        : PLUGIN_PANEL_RENDER_ACTION
+
       // 同一个 id 注册两次:静默覆盖会让"我明明注册了"与"点开是另一个面板"
       // 同时成立,这是最难查的一类。清单里一个 id 就是一个面板,重复即错。
-      if (requestHandlers.has(`${PLUGIN_PANEL_RENDER_ACTION}:${panelId}`)) {
+      if (requestHandlers.has(`${renderAction}:${panelId}`)) {
         logger.error(
           `[Plugin:${pluginId}] registerWorkspacePanel("${panelId}") was already registered; `
           + 'one manifest panel id binds exactly one implementation.',
@@ -537,7 +563,7 @@ export function createCorePluginAPI<
 
       // 形状校验不在这里做:通道层(manager.handleRequest)对所有 panel:* 结果
       // 统一执行,包装可以被绕开而通道不能。这里只做包装自己的事。
-      requestHandlers.set(`${PLUGIN_PANEL_RENDER_ACTION}:${panelId}`, (_payload, ctx) =>
+      requestHandlers.set(`${renderAction}:${panelId}`, (_payload, ctx) =>
         registration.render(panelContext(ctx)))
 
       requestHandlers.set(`${PLUGIN_PANEL_INVOKE_ACTION}:${panelId}`, async (payload, ctx) => {

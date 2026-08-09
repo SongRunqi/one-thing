@@ -2,6 +2,7 @@
   <div
     ref="hostEl"
     class="plugin-panel-host"
+    :class="{ 'is-webview': isWebview }"
   >
     <!-- 方案 A(设计文档 §6):插件只在 Electron 桌面宿主执行。
          web 端不渲染假面板 —— 显示"仅桌面可用",而不是一棵空树。 -->
@@ -64,6 +65,16 @@
       </template>
     </ErrorNote>
 
+    <!-- L3 逃生舱(C 期):内容是插件静态根里的一张 HTML,跑在 sandbox iframe 里。
+         四态壳一个字不改 —— webview 只是换了"内容态"里画什么,loading /
+         degraded / error 三态与描述树面板逐字相同(同一个 usePluginUiBlock)。 -->
+    <PluginWebviewFrame
+      v-else-if="isWebview"
+      :panel="panel"
+      :init-data="tree"
+      :invoke="invoke"
+    />
+
     <div
       v-else-if="tree"
       class="plugin-panel-body"
@@ -77,11 +88,12 @@
 </template>
 
 <script setup lang="ts">
-import { onErrorCaptured, onMounted, ref, watch } from 'vue'
+import { computed, onErrorCaptured, onMounted, ref, watch } from 'vue'
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import { SettingsEmptyState } from '@/components/settings/settings-primitives'
 import PluginPanelNode from './PluginPanelNode.vue'
+import PluginWebviewFrame from './PluginWebviewFrame.vue'
 import { platformApi } from '@/platform'
 import type { PluginWorkspacePanel } from '@/workspace/plugin-panel-types'
 import { usePluginUiBlock } from './usePluginUiBlock'
@@ -89,6 +101,15 @@ import { usePluginUiBlock } from './usePluginUiBlock'
 const props = defineProps<{ panel: PluginWorkspacePanel }>()
 
 const isDesktop = platformApi.environment !== 'web'
+
+/**
+ * webview 面板(C 期,L3)。
+ *
+ * 形态由**清单**决定,不由运行期结果决定 —— 一个"启用了但没起来"的 webview
+ * 面板仍然要按 webview 呈现(iframe 是静态文件,插件没起来它照样能画),
+ * 这正是"声明先于代码"在这里的实际好处。
+ */
+const isWebview = computed(() => props.panel.view === 'webview')
 
 /** 根元素 —— IntersectionObserver 据此判断"块可见"(树级轮询只在可见时走)。 */
 const hostEl = ref<HTMLElement | null>(null)
@@ -109,10 +130,16 @@ const {
   observeVisibility,
 } = usePluginUiBlock(() => ({
   pluginId: props.panel.pluginId,
-  renderAction: `panel:render:${props.panel.panelId}`,
+  // webview 面板的"render"是另一份契约(返回初始化数据而不是描述树),
+  // 所以是另一个 action 名 —— 通道守卫按前缀判定,不必反查面板形态。
+  renderAction: isWebview.value
+    ? `panel:init:${props.panel.panelId}`
+    : `panel:render:${props.panel.panelId}`,
   invokeAction: `panel:action:${props.panel.panelId}`,
   notificationId: props.panel.panelId,
-  enabled: isDesktop && props.panel.loaded,
+  // 纯静态面板(声明了 view+entry 却没调 registerWorkspacePanel)是合法的:
+  // 没有 init handler 就不去打那一枪,直接挂 iframe、初始化数据给 null。
+  enabled: isDesktop && props.panel.loaded && (!isWebview.value || Boolean(props.panel.hasInit)),
 }))
 
 onMounted(() => {
@@ -148,6 +175,20 @@ watch(() => `${props.panel.pluginId}:${props.panel.panelId}`, () => {
   padding: 16px 18px;
   overflow: auto;
   height: 100%;
+}
+
+/* webview 面板整幅铺满:iframe 自己就是那一屏,宿主再包一层内边距只会
+   得到一圈说不清归属的留白。滚动也交给 iframe 内部。 */
+.plugin-panel-host.is-webview {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+}
+
+.plugin-panel-host.is-webview > * {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .plugin-panel-body {

@@ -9,7 +9,11 @@
 
 import fs from 'fs'
 import path from 'path'
-import type { PluginContributionUiSlot } from '@onething/core/plugins'
+import {
+  describePluginWebviewPanelProblem,
+  isPluginWebviewPanel,
+  type PluginContributionUiSlot,
+} from '@onething/core/plugins'
 import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/runtime/storage'
 import { writeJsonFile } from '@onething/core/storage'
 import {
@@ -253,19 +257,32 @@ function getBuiltinPlugins(): PluginDefinition[] {
  * 又短到不会让"刚装上的插件"读到过期清单。
  */
 const DECLARED_PANEL_IDS_TTL_MS = 1000
+interface DeclaredContributes {
+  panels: string[]
+  /** 其中的 webview 面板(C 期)—— render 挂 `panel:init:<id>` 而不是 render。 */
+  webviewPanels: string[]
+  uiSlots: PluginContributionUiSlot[]
+}
 let declaredPanelIdsCache: {
   at: number
-  byPlugin: Map<string, { panels: string[]; uiSlots: PluginContributionUiSlot[] }>
+  byPlugin: Map<string, DeclaredContributes>
 } | null = null
 
-function declaredContributesByPlugin(): Map<string, { panels: string[]; uiSlots: PluginContributionUiSlot[] }> {
+function declaredContributesByPlugin(): Map<string, DeclaredContributes> {
   const now = Date.now()
   if (!declaredPanelIdsCache || now - declaredPanelIdsCache.at >= DECLARED_PANEL_IDS_TTL_MS) {
-    const byPlugin = new Map<string, { panels: string[]; uiSlots: PluginContributionUiSlot[] }>()
+    const byPlugin = new Map<string, DeclaredContributes>()
     for (const definition of scanPlugins()) {
+      const contributes = definition.manifest.contributes
+      // 非法的 webview 声明 = **丢弃该 panel**(与未知锚点同规)。丢在这里而不是
+      // 只在投影层标一下:declaredPanelIds 是 registerWorkspacePanel 的匹配依据,
+      // 留着它等于"清单里说没有、注册却成功",而那个面板永远画不出来。
+      const declared = (contributes?.panels ?? [])
+        .filter(panel => !describePluginWebviewPanelProblem(panel, contributes?.webviewRoot))
       byPlugin.set(definition.id, {
-        panels: definition.manifest.contributes?.panels?.map(panel => panel.id) ?? [],
-        uiSlots: definition.manifest.contributes?.uiSlots ?? [],
+        panels: declared.map(panel => panel.id),
+        webviewPanels: declared.filter(isPluginWebviewPanel).map(panel => panel.id),
+        uiSlots: contributes?.uiSlots ?? [],
       })
     }
     declaredPanelIdsCache = { at: now, byPlugin }
@@ -275,6 +292,11 @@ function declaredContributesByPlugin(): Map<string, { panels: string[]; uiSlots:
 
 export function getDeclaredPanelIds(pluginId: string): string[] {
   return declaredContributesByPlugin().get(pluginId)?.panels ?? []
+}
+
+/** manifest 声明为 webview 形态、且声明合法的面板 id(C 期)。 */
+export function getDeclaredWebviewPanelIds(pluginId: string): string[] {
+  return declaredContributesByPlugin().get(pluginId)?.webviewPanels ?? []
 }
 
 /**

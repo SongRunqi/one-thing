@@ -599,7 +599,18 @@ interface PluginInfo {
   requestActions?: string[]
   contributes?: {
     commands?: string[]
-    panels?: Array<{ id: string; label: string }>
+    /**
+     * 面板(R5)。C 期起逐条带形态与判决:`view` 是 descriptor / webview,
+     * `unsupported` = 这条 webview 声明非法(该面板不渲染),`reason` 是人话。
+     */
+    panels?: Array<{
+      id: string
+      label: string
+      view?: string
+      entry?: string
+      unsupported?: boolean
+      reason?: string
+    }>
     /** `lifetime` 是消息态落盘的闸门声明(见 slotIsPersistent);市场那条路是 manifest 原文。 */
     uiSlots?: Array<{ anchor: string; id: string; label: string; unsupported?: boolean; lifetime?: string }>
     /**
@@ -891,15 +902,40 @@ function themeOverrideNote(tokens: string[]): string {
 }
 
 /**
+ * webview 面板披露(C 期,L3)。
+ *
+ * 与上面两句同规:一句话只说一次,已装卡片与装前确认页共用同一句措辞。
+ * 用户要知道的是"这插件会在应用里跑它自己的界面代码" —— 沙箱、无网络、
+ * 只能 postMessage 这些细节不进这句话(它们是宿主的保证,不是用户的选择)。
+ */
+const WEBVIEW_PANEL_NOTE = 'runs sandboxed UI code'
+
+/** 判据只在这里判一次:已装卡片走投影后的清单,市场走 manifest 原文。 */
+function isWebviewPanel(panel: { view?: string }): boolean {
+  return panel.view === 'webview'
+}
+
+/**
  * manifest 声明的贡献点摘要 —— 一行标签,不是 UI 工程。
  * R2 只让它可见;渲染面板、渲染设置表单分别是 R5 与 R3 的事。
  */
 function contributesSummary(plugin: PluginInfo): string[] {
   const contributes = plugin.contributes
   const summary: string[] = []
-  if (contributes?.panels?.length) {
-    summary.push(`declares ${contributes.panels.length} panel${contributes.panels.length > 1 ? 's' : ''}`)
+  // 非法的 webview 声明:面板不渲染,但"为什么没出现"必须能查到 ——
+  // 与未知锚点同一条呈现规矩(降级不拒载,理由留在卡片上)。
+  for (const panel of contributes?.panels ?? []) {
+    if (panel.unsupported) {
+      summary.push(`panel "${panel.label}" dropped — ${panel.reason || 'invalid declaration'}`)
+    }
   }
+  const livePanels = (contributes?.panels ?? []).filter(panel => !panel.unsupported)
+  if (livePanels.length) {
+    summary.push(`declares ${livePanels.length} panel${livePanels.length > 1 ? 's' : ''}`)
+  }
+  // L3 披露(C 期):webview 面板里跑的是插件自己的前端代码 —— 沙箱化、
+  // 无网络、只能 postMessage,但它终究是**代码**,与描述树面板不是一回事。
+  if (livePanels.some(isWebviewPanel)) summary.push(WEBVIEW_PANEL_NOTE)
   // 锚点块(R5.x):未知锚点(unsupported)与因容量被截断的块都要说得出来 ——
   // 它们不占界面,但用户得能在某处看到"这块为什么没出现"。
   for (const slot of contributes?.uiSlots ?? []) {
@@ -1209,6 +1245,9 @@ function marketDeclares(entry: MarketEntry): string[] {
   if (contributes?.panels?.length) {
     declares.push(`${contributes.panels.length} panel${contributes.panels.length > 1 ? 's' : ''}`)
   }
+  // L3 披露:装之前就要说清"它会在应用里跑自己的界面代码"。
+  // 市场这条路吃的是 manifest 原文(未投影),所以判据直接看声明的 view。
+  if ((contributes?.panels ?? []).some(isWebviewPanel)) declares.push(WEBVIEW_PANEL_NOTE)
   for (const slot of contributes?.uiSlots ?? []) {
     // 生命期跟在它所属的那一条槽后面 —— 用户要知道的是"哪一块会留下东西",
     // 不是"这插件某处会留下东西"。

@@ -26,6 +26,11 @@ import {
   type ElectronMediaProtocolOptions,
 } from '../media/protocol.js'
 import {
+  registerElectronPluginProtocol,
+  registerElectronPluginProtocolScheme,
+  type ElectronPluginProtocolOptions,
+} from '../plugins/protocol.js'
+import {
   registerElectronPowerResumeHandlers,
   type ElectronPowerResumeHandlersOptions,
 } from '../power/resume.js'
@@ -38,6 +43,8 @@ export interface RegisterElectronAppBootstrapOptions {
   storePathHost: ElectronStorePathHostOptions
   ready: Omit<ElectronReadyOptions, 'onReady'>
   mediaProtocol: ElectronMediaProtocolOptions
+  /** 插件 webview 静态协议(C 期)。scheme 登记发生在 ready **之前**。 */
+  pluginProtocol: ElectronPluginProtocolOptions
   powerResume: ElectronPowerResumeHandlersOptions
   windowAllClosed: ElectronWindowAllClosedOptions
   didBecomeActive: ElectronDidBecomeActiveOptions
@@ -51,10 +58,15 @@ export interface RegisterElectronAppBootstrapOptions {
 export function registerElectronAppBootstrap(options: RegisterElectronAppBootstrapOptions): void {
   configureElectronStorePathHost(options.storePathHost)
 
+  // privileged scheme 的登记**只在 app ready 之前有效** —— 放进 onReady 里
+  // Electron 会直接抛。这行必须留在同步段的最前面。
+  registerElectronPluginProtocolScheme()
+
   registerElectronReadyHandler({
     ...options.ready,
     onReady: async () => {
       registerElectronMediaProtocol(options.mediaProtocol)
+      registerElectronPluginProtocol(options.pluginProtocol)
       await options.onReady()
       createAndBindElectronMainWindow(options.createMainWindowOptions())
       await options.afterMainWindowCreated()

@@ -13,7 +13,11 @@
  * 守卫。现在 scope 是**带品牌的类型**,只能由下面的工厂产出:写裸字符串在
  * typecheck 就红,正则只当兜底。
  */
-import { PLUGIN_PANEL_INVOKE_ACTION, PLUGIN_PANEL_RENDER_ACTION } from './panel.js'
+import {
+  PLUGIN_PANEL_INIT_ACTION,
+  PLUGIN_PANEL_INVOKE_ACTION,
+  PLUGIN_PANEL_RENDER_ACTION,
+} from './panel.js'
 import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './ui-anchor.js'
 import { CORE_PLUGIN_FAILURE_THRESHOLD } from './runtime-guard-constants.js'
 
@@ -241,6 +245,9 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (!scope) return null
   if (scope.startsWith(`request:${PLUGIN_PANEL_RENDER_ACTION}:`)) return 'ui-request'
   if (scope.startsWith(`request:${PLUGIN_PANEL_INVOKE_ACTION}:`)) return 'ui-request'
+  // webview 面板的初始化数据(C 期)与 render 同族:同样是用户主动触发、
+  // 当场可见的一块 UI,降级不连坐插件其余能力。
+  if (scope.startsWith(`request:${PLUGIN_PANEL_INIT_ACTION}:`)) return 'ui-request'
   // 锚点块(R5.x):与面板同一家族 —— 用户主动触发、当场可见,降级不连坐。
   // 必须在通配 `request:` 之前,否则落进 plugin-request 而让 surface 折叠漏接。
   if (scope.startsWith(`request:${PLUGIN_UI_RENDER_ACTION}:`)) return 'ui-request'
@@ -294,8 +301,11 @@ export function resolvePluginScopeSeverity(scope: string): ResolvedPluginSeverit
 // 模块级常量:describePluginSurface 被 recordSuccess 的逐车道循环调用,
 // 而 recordSuccess 每次发消息、每个事件都跑(它自己的注释强调"快路径必须零分配")。
 // 每次现编一个 RegExp 正好违反那条。
+// webview 面板的 init 与 render 折进**同一个** `panel:<id>`(C 期):一个面板
+// 只有一种形态,两个 action 名只是两份返回值契约 —— surface 不因此分叉,
+// 否则 webview 面板的降级会落在一个设置页认不出来的 surface 上。
 const PANEL_SURFACE_PATTERN = new RegExp(
-  `^request:(?:${PLUGIN_PANEL_RENDER_ACTION}|${PLUGIN_PANEL_INVOKE_ACTION}):(.+)$`,
+  `^request:(?:${PLUGIN_PANEL_RENDER_ACTION}|${PLUGIN_PANEL_INIT_ACTION}|${PLUGIN_PANEL_INVOKE_ACTION}):(.+)$`,
 )
 // 锚点块同规:render 与 action 折成同一个 `ui:<anchor>:<id>`(R5.x)。
 const UI_SLOT_SURFACE_PATTERN = new RegExp(

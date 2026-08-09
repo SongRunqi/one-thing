@@ -66,4 +66,47 @@ export interface PluginWorkspacePanel {
    * 这里区分的是"启用了但没起来" —— 入口在,内容是一句人话的失败说明。
    */
   loaded: boolean
+  /**
+   * 呈现形态(C 期,L3)。`'webview'` = 内容是插件静态根里的一张 HTML,
+   * 跑在 sandbox iframe 里;缺省 `'descriptor'` = 描述树。
+   */
+  view?: 'descriptor' | 'webview'
+  /** webview 面板的入口(静态根内相对路径),仅 view === 'webview' 有值。 */
+  entry?: string
+  /**
+   * 插件有没有登记初始化数据的 handler(`panel:init:<panelId>`)。
+   *
+   * **零代码的纯静态面板是合法的**(声明先于代码):manifest 声明 view+entry
+   * 就足以让宿主把 iframe 挂起来,插件可以完全不调 registerWorkspacePanel。
+   * 没有这个字段的话,宿主只能靠"请求失败的错误文案里有没有 no request
+   * handler"来分辨"没登记"与"登记了但炸了" —— 那是字符串反查,会漂。
+   */
+  hasInit?: boolean
 }
+
+// ── webview 面板(C 期,L3) ────────────────────
+//
+// 协议常量在 core 的 `plugins/webview.ts`;renderer 吃不到 core,所以这里重述。
+// 形状漂移会在 webview 容器测试里当场暴露(它同时吃两边的字面量)。
+
+/** 插件静态资源协议。`onething-plugin://<pluginId>/<path>`。 */
+export const PLUGIN_WEBVIEW_SCHEME = 'onething-plugin'
+
+export function pluginWebviewEntryUrl(pluginId: string, entry: string): string {
+  return `${PLUGIN_WEBVIEW_SCHEME}://${pluginId}/${entry.replace(/^\/+/, '')}`
+}
+
+/**
+ * 宿主 ⇄ iframe 的消息名。
+ *
+ * host → iframe:`init`(首帧握手,带 token 与初始化数据)、`refresh`(插件
+ * 调了 ctx.refresh(),宿主重拉之后推来)、`result`(invoke 的回帖)。
+ * iframe → host:`ready`(握手确认)、`invoke`(调一个 action)。
+ */
+export const PLUGIN_WEBVIEW_MESSAGE = {
+  init: 'init',
+  refresh: 'refresh',
+  ready: 'ready',
+  invoke: 'invoke',
+  result: 'result',
+} as const

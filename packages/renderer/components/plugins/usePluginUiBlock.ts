@@ -159,7 +159,16 @@ export function usePluginUiBlock(getSource: () => PluginUiBlockSource) {
     refreshTimer = setTimeout(() => { void render() }, REFRESH_DEBOUNCE_MS)
   }
 
-  async function invoke(input: { actionId: string; payload?: unknown }): Promise<void> {
+  /**
+   * 一次 action 的结局。
+   *
+   * 描述树的调用方(`@action="invoke"`)不看返回值 —— 树的更新已经在这里做完了。
+   * webview 容器要看:iframe 那边在等一条 `result` 回帖,宿主必须把成功/失败
+   * 原样带回去,而不是只弹个 toast 就算了(iframe 里的 await 会永远挂着)。
+   */
+  async function invoke(
+    input: { actionId: string; payload?: unknown },
+  ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
     const source = getSource()
     try {
       const result = await platformApi.pluginRequest({
@@ -173,10 +182,10 @@ export function usePluginUiBlock(getSource: () => PluginUiBlockSource) {
           degradedReason.value = result.error || ''
           tree.value = null
           clearPoll()
-          return
+          return { ok: false, error: result.error || 'This surface is switched off after repeated failures.' }
         }
         toast.error(result?.error || 'The plugin could not handle that action.')
-        return
+        return { ok: false, error: result?.error || 'The plugin could not handle that action.' }
       }
       const outcome = (result.result ?? {}) as { refresh?: boolean; tree?: PluginPanelTreeData; notice?: string }
       if (outcome.notice) toast.info(outcome.notice)
@@ -191,8 +200,10 @@ export function usePluginUiBlock(getSource: () => PluginUiBlockSource) {
         // 用户刚点了按钮,这一次不 debounce —— 等 150ms 会显得没反应。
         await render()
       }
+      return { ok: true, result: outcome }
     } catch (e: any) {
       toast.error(e?.message || 'The plugin could not handle that action.')
+      return { ok: false, error: e?.message || 'The plugin could not handle that action.' }
     }
   }
 

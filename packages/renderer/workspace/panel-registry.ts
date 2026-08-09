@@ -125,6 +125,12 @@ export interface PluginContributedPanel {
   label: string
   /** 插件是否真的活着;停用的插件压根不进这份清单。 */
   loaded: boolean
+  /** 呈现形态(C 期):'webview' = sandbox iframe;缺省描述树。 */
+  view?: 'descriptor' | 'webview'
+  /** webview 面板的入口 HTML(静态根内相对路径)。 */
+  entry?: string
+  /** 插件登记了 `panel:init:<id>` 吗(纯静态面板没有,合法)。 */
+  hasInit?: boolean
 }
 
 const pluginPanels: Ref<PluginContributedPanel[]> = ref([])

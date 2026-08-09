@@ -21,6 +21,7 @@ import { configureSandboxHost } from "@onething/app/tools/core/sandbox.js";
 import { configurePluginAppVersion } from "@onething/app/plugins/app-version.js";
 import { configureMCPClientIdentity } from "@onething/app/mcp/identity.js";
 import { getPluginManager } from "@onething/app/plugins/manager.js";
+import { resolvePluginWebviewStaticRoot } from "@onething/app/plugins/webview.js";
 import {
 	getConversationRuntime,
 	getStreamEngine,
@@ -374,6 +375,9 @@ export function startOnethingElectronMain(): void {
 			formatDesktopStoreLockError: formatElectronDesktopStoreLockError,
 		},
 		mediaProtocol: { getMediaImagesDir },
+		// 插件 webview 静态协议(C 期):供给线是装配层的静态根解析器 ——
+		// 协议 handler 自己不认识插件系统,未装/停用/没声明 webview 一律 404。
+		pluginProtocol: { resolveStaticRoot: resolvePluginWebviewStaticRoot },
 		powerResume: {
 			getMainWindow: () => mainWindow,
 			recoverMainWindow: recoverMainWindowAfterSystemResume,

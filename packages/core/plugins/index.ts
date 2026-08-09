@@ -32,6 +32,25 @@ export {
   comparePluginCanonicalOrder,
   sortByPluginCanonicalOrder,
 } from './canonical-order.js'
+export {
+  PLUGIN_WEBVIEW_DEFAULT_ROOT,
+  PLUGIN_WEBVIEW_MESSAGE_TYPES,
+  PLUGIN_WEBVIEW_MIME_TYPES,
+  PLUGIN_WEBVIEW_SCHEME,
+  buildPluginWebviewCsp,
+  describePluginWebviewPanelProblem,
+  describePluginWebviewRootProblem,
+  isPluginWebviewPanel,
+  pluginWebviewEntryUrl,
+  pluginWebviewMimeType,
+  pluginWebviewOrigin,
+  resolvePluginWebviewRequestSegments,
+  resolvePluginWebviewRoot,
+} from './webview.js'
+export type {
+  PluginPanelDeclarationLike,
+  PluginPanelView,
+} from './webview.js'
 export { CorePluginStore } from './store.js'
 export type { PluginStoreOptions } from './store.js'
 export {
@@ -182,6 +201,7 @@ export {
   PANEL_TREE_SCAN_DEPTH,
   PLUGIN_IMAGE_URL_PATTERN,
   PLUGIN_LINK_URL_PATTERN,
+  PLUGIN_PANEL_INIT_ACTION,
   PLUGIN_PANEL_INVOKE_ACTION,
   PLUGIN_PANEL_PROTOCOL_VERSION,
   PLUGIN_PANEL_RENDER_ACTION,

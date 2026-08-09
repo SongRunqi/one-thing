@@ -374,13 +374,24 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
       // 于是它还能把"这插件没起来"这件事告诉用户(声明先于代码的实际好处)。
       .filter((plugin: any) => plugin.enabled)
       .flatMap((plugin: any) =>
-        (plugin.contributes?.panels || []).map((panel: { id: string; label: string }) => ({
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          panelId: panel.id,
-          label: panel.label,
-          loaded: Boolean(plugin.loaded),
-        })),
+        (plugin.contributes?.panels || [])
+          // 非法的 webview 声明(缺 entry / entry 越界 / 静态根非法)在投影层
+          // 已经判过并标了 unsupported —— 这里把它丢掉,理由在设置页卡片上说。
+          // 与未知锚点同规:降级不拒载,不计熔断。
+          .filter((panel: { unsupported?: boolean }) => !panel.unsupported)
+          .map((panel: { id: string; label: string; view?: string; entry?: string }) => ({
+            pluginId: plugin.id,
+            pluginName: plugin.name,
+            panelId: panel.id,
+            label: panel.label,
+            loaded: Boolean(plugin.loaded),
+            view: panel.view === 'webview' ? 'webview' as const : 'descriptor' as const,
+            entry: panel.entry || '',
+            // 事实源是**活状态**(manager 登记的 action 表),不是 manifest:
+            // "声明了 webview" 与 "登记了初始化数据 handler" 是两件事,
+            // 纯静态面板只有前者。
+            hasInit: (plugin.requestActions || []).includes(`panel:init:${panel.id}`),
+          })),
       ))
     // 锚点块清单(R5.x):同一条投影路径、同一个 enabled 闸门。
     // unsupported 的块保留在注册表里(设置页据此说"该锚点宿主不认识"),

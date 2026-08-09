@@ -333,7 +333,22 @@ export function validatePluginContributes(raw: unknown): string | null {
       if (typeof panel.label !== 'string' || !panel.label.trim()) {
         return `contributes.panels[${index}].label must be a non-empty string`
       }
+      // view/entry(C 期)只校验**形状**(必须是字符串):内容非法 =
+      // 丢弃该 panel 并在投影里标记(与未知锚点同规),不是加载期错误 ——
+      // 拒载的插件根本不进清单,那条"这个面板为什么没出现"就说不出来了。
+      if (panel.view !== undefined && typeof panel.view !== 'string') {
+        return `contributes.panels[${index}].view must be a string`
+      }
+      if (panel.entry !== undefined && typeof panel.entry !== 'string') {
+        return `contributes.panels[${index}].entry must be a string`
+      }
     }
+  }
+
+  // 静态根同上:形状在这里,内容判据在 describePluginWebviewPanelProblem
+  // (根非法 → 该插件的全部 webview 面板被丢弃并标出原因)。
+  if (raw.webviewRoot !== undefined && typeof raw.webviewRoot !== 'string') {
+    return 'contributes.webviewRoot must be a string'
   }
 
   // uiSlots(R5.x)只校验**形状**。锚点是否存在于宿主清单不在这里判:
@@ -357,6 +372,16 @@ export function validatePluginContributes(raw: unknown): string | null {
       // 未知值天然是非持久。
       if (slot.lifetime !== undefined && typeof slot.lifetime !== 'string') {
         return `contributes.uiSlots[${index}].lifetime must be a string`
+      }
+      // 锚点块**不开** webview(C 期拍板):composer.above 是 32px 单行,
+      // chat.status-bar 24px —— 往里塞一个 iframe 没有正经场景,而"能塞"
+      // 会立刻变成"每个插件都塞"。这里当场拒载(不是降级):作者在 manifest 里
+      // 指名道姓要一个宿主永远不会给的能力,没有版本偏斜的歧义可容 ——
+      // 与未知**锚点**降级的区别正在于此(那个是"这个宿主还没有",
+      // 这个是"任何宿主都不会有")。
+      if (slot.view !== undefined) {
+        return `contributes.uiSlots[${index}].view is not supported — anchors always render descriptor trees; `
+          + 'webview is a panel-only form (contributes.panels[].view)'
       }
     }
   }

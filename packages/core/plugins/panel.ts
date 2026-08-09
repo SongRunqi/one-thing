@@ -23,9 +23,23 @@ import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './ui-anchor.js
  */
 export const PLUGIN_PANEL_PROTOCOL_VERSION = 2
 
-/** 请求通道上的两个 action 名 —— 宿主与插件的约定。 */
+/** 请求通道上的 action 名 —— 宿主与插件的约定。 */
 export const PLUGIN_PANEL_RENDER_ACTION = 'panel:render'
 export const PLUGIN_PANEL_INVOKE_ACTION = 'panel:action'
+/**
+ * webview 面板的"render" —— **另一个名字,因为它是另一份契约**(C 期)。
+ *
+ * 描述树面板的 render 返回一棵会被宿主画出来的树;webview 面板的内容由
+ * 插件静态文件提供,宿主要的只是**初始化数据**(一坨可序列化的 JSON,宿主
+ * 不解释它,原样 postMessage 给 iframe)。同一个 action 名承载两份返回值语义,
+ * 通道守卫就得反查"这个面板是哪一种"——那份反查一旦漂移,一棵没校验过的树
+ * 或者一份被当成树拒收的初始化数据,两种事故都会出现。换个名字,守卫按前缀
+ * 判定即可,不需要知道任何面板的形态。
+ *
+ * surface 折叠**不因此分叉**:`panel:init:<id>` 与 `panel:action:<id>` 仍折成
+ * `panel:<id>`(policy.ts),熔断账与降级语义与描述树面板逐字相同。
+ */
+export const PLUGIN_PANEL_INIT_ACTION = 'panel:init'
 
 export interface PluginPanelStackNode {
   type: 'stack'
@@ -185,8 +199,16 @@ export interface PluginPanelDividerNode {
   type: 'divider'
 }
 
-/** image 节点的 url 白名单(data: 内联小图 / https: 远程图)。 */
-export const PLUGIN_IMAGE_URL_PATTERN = /^(?:data:|https:)/i
+/**
+ * image 节点的 url 白名单(data: 内联小图 / https: 远程图 /
+ * onething-plugin: 插件自有静态资源)。
+ *
+ * `onething-plugin:` 是 C 期放行的第三个 scheme:自定义协议只服务已装且启用的
+ * 插件静态根内的白名单 MIME 文件,比 https 远程图**更**可控(内容不会随时间变)。
+ * **只给 image,不给 link** —— 点开一个链接会导航,而这个 scheme 下的页面
+ * 只该出现在 sandbox iframe 里。
+ */
+export const PLUGIN_IMAGE_URL_PATTERN = /^(?:data:|https:|onething-plugin:)/i
 /** link 节点的 url 白名单。javascript: 之类在这里止步。 */
 export const PLUGIN_LINK_URL_PATTERN = /^(?:https:|mailto:)/i
 
@@ -412,7 +434,7 @@ function validateNode(node: unknown, path: string, depth: number): string | null
     case 'image': {
       if (typeof node.url !== 'string' || !node.url) return `${path}.url must be a non-empty string`
       if (!PLUGIN_IMAGE_URL_PATTERN.test(node.url)) {
-        return `${path}.url scheme is not allowed (image: data:/https: only)`
+        return `${path}.url scheme is not allowed (image: data:/https:/onething-plugin: only)`
       }
       if (typeof node.alt !== 'string') return `${path}.alt must be a string`
       return null
@@ -464,6 +486,14 @@ export function validatePluginPanelActionResult(result: unknown): string | null 
  * 锚点块与面板**同一套描述树协议**:块只是"小面板",校验不分叉。
  */
 export function describePluginPanelResultProblem(action: string, result: unknown): string | null {
+  // webview 面板的初始化数据不是树 —— 守卫退回"必须是纯数据"这一条(宪法第 2 条),
+  // 不套描述树的形状。它照样过 PANEL_TREE_SCAN_DEPTH 的全树扫描:函数成员在这里
+  // 一样止步(闭包过不了 postMessage 的结构化克隆,当场拒掉才说得清)。
+  if (action.startsWith(`${PLUGIN_PANEL_INIT_ACTION}:`)) {
+    if (result === undefined || result === null) return null
+    const problem = describeNonSerializable(result, 'panel init data', 0, new WeakSet(), PANEL_TREE_SCAN_DEPTH)
+    return problem ? `panel init data must be pure data: ${problem}` : null
+  }
   if (action.startsWith(`${PLUGIN_PANEL_RENDER_ACTION}:`) || action.startsWith(`${PLUGIN_UI_RENDER_ACTION}:`)) {
     const problem = validatePluginPanelTree(result)
     return problem ? `panel render produced an invalid tree: ${problem}` : null

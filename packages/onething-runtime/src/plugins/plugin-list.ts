@@ -1,5 +1,9 @@
 import { describePluginConfigSchema, type PluginConfigField } from './config-schema.js'
-import { isUiAnchor } from '@onething/core/plugins'
+import {
+  describePluginWebviewPanelProblem,
+  isUiAnchor,
+  isPluginWebviewPanel,
+} from '@onething/core/plugins'
 import {
   resolvePluginThemeOverrides,
   type PluginThemeOverrideEntry,
@@ -13,9 +17,10 @@ export interface OnethingPluginListManifestLike {
   minAppVersion?: string
   contributes?: {
     commands?: Array<{ name: string }>
-    panels?: Array<{ id: string; label: string }>
+    panels?: Array<{ id: string; label: string; view?: string; entry?: string }>
     uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string }>
     theme?: { overrides?: Record<string, string> }
+    webviewRoot?: string
     settings?: {
       title?: string
       schema?: Record<string, unknown>
@@ -79,7 +84,21 @@ export interface OnethingRendererPluginInfo {
    */
   contributes: {
     commands: string[]
-    panels: Array<{ id: string; label: string }>
+    /**
+     * 面板(R5)。C 期起逐条带形态与判决:
+     * `view` 是 `'descriptor'` 或 `'webview'`;`unsupported` = 这条声明非法
+     * (webview 缺 entry / entry 越界 / 静态根非法 / view 是个不认识的值),
+     * 该面板**不渲染**,但设置页要能把 `reason` 说出来 —— 与未知锚点同规:
+     * 降级不拒载,不计熔断。
+     */
+    panels: Array<{
+      id: string
+      label: string
+      view: string
+      entry: string
+      unsupported: boolean
+      reason: string
+    }>
     /**
      * 锚点块(R5.x)。`unsupported` = 该条声明的锚点不在宿主清单里:
      * 块不渲染,但设置页要能把这件事说出来(前向兼容,见设计文档 §4.1)。
@@ -175,10 +194,22 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
     dirPath: plugin.definition.dirPath,
     contributes: {
       commands: (plugin.definition.manifest.contributes?.commands ?? []).map(command => command.name),
-      panels: (plugin.definition.manifest.contributes?.panels ?? []).map(panel => ({
-        id: panel.id,
-        label: panel.label,
-      })),
+      panels: (plugin.definition.manifest.contributes?.panels ?? []).map(panel => {
+        const problem = describePluginWebviewPanelProblem(
+          panel,
+          plugin.definition.manifest.contributes?.webviewRoot,
+        )
+        return {
+          id: panel.id,
+          label: panel.label,
+          // 非法声明一律按 descriptor 呈现形态报出去:renderer 不该拿一个
+          // "自称 webview 但被丢弃"的条目去拼 iframe 的 src。
+          view: !problem && isPluginWebviewPanel(panel) ? 'webview' : 'descriptor',
+          entry: !problem && isPluginWebviewPanel(panel) ? String(panel.entry ?? '') : '',
+          unsupported: Boolean(problem),
+          reason: problem ?? '',
+        }
+      }),
       uiSlots: (plugin.definition.manifest.contributes?.uiSlots ?? []).map(slot => ({
         anchor: slot.anchor,
         id: slot.id,

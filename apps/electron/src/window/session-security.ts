@@ -54,7 +54,12 @@ export function registerElectronContentSecurityPolicy(
       "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepseek.com https://api.moonshot.cn https://open.bigmodel.cn https://*.zhipuai.cn https://*.aliyuncs.com ws://127.0.0.1:* http://127.0.0.1:*",
       "media-src 'self' blob: data: file:",
       "worker-src 'self' blob:",
-      "frame-src 'none'",
+      // 插件 webview 面板(C 期):父页面必须放行 `onething-plugin:` 这一个
+      // scheme,否则 sandbox iframe 在**加载之前**就被父页的 CSP 挡掉 ——
+      // 而那次拦截发生在子文档的 CSP 之前,子文档的 CSP 再严也没机会生效。
+      // 只放 scheme,不放 host:协议本身只服务已装且启用的插件的静态根,
+      // 谁能被服务的判定在协议 handler 那一侧,不在这行字符串里。
+      "frame-src onething-plugin:",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",

@@ -22,6 +22,20 @@ export interface PluginContributionPanel {
   id: string
   label: string
   icon?: string
+  /**
+   * 面板的呈现形态(C 期,L3)。缺省 `descriptor` —— 老 manifest 一个字不改。
+   *
+   * `webview`:内容由插件静态根内的 `entry` HTML 提供,跑在 sandbox iframe
+   * (opaque origin + CSP + postMessage-only)里。插件的**逻辑代码仍在 main 进程**,
+   * iframe 里只有静态文件 —— webview 换的是"一块 UI 长什么样",不是执行模型。
+   */
+  view?: 'descriptor' | 'webview'
+  /**
+   * webview 面板的入口 HTML,**静态根内的相对路径**(仅 view: 'webview' 必填)。
+   * 必须是相对路径、无 `..`、无 scheme、以 .html 结尾;非法即丢弃该 panel
+   * 并在清单投影里标出来(与未知锚点同规:降级不拒载)。
+   */
+  entry?: string
 }
 
 /**
@@ -100,6 +114,15 @@ export interface PluginContributes {
   panels?: PluginContributionPanel[]
   uiSlots?: PluginContributionUiSlot[]
   theme?: PluginContributionTheme
+  /**
+   * webview 面板的静态资源根,**相对插件的 `dirPath`**(代码区,npm 形态即
+   * `plugins/node_modules/<pkg>/`)。缺省 `webview`。
+   *
+   * 刻意**不是**家目录 `plugins/<id>/`:家目录是数据区(config/kv/storage),
+   * 随包分发的静态资产跟着代码走。`onething-plugin://` 只服务这个根之内的文件,
+   * 规范化 + realpath 复核之后仍须落在根内。
+   */
+  webviewRoot?: string
   settings?: PluginContributionSettings
   permissions?: string[]
   activation?: PluginContributionActivation
