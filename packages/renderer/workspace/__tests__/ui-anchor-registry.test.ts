@@ -10,10 +10,12 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   UI_ANCHOR_CAPACITY_MIRROR,
+  computeAnchorOverflow,
   setPluginUiSlots,
   uiSlotSurface,
   useAnchorUiSlots,
   usePluginUiSlots,
+  useVisibleAnchorUiSlots,
   type PluginContributedUiSlot,
 } from '../ui-anchor-registry'
 
@@ -83,9 +85,45 @@ describe('ui-anchor-registry', () => {
       'utf8',
     )
     const coreCapacities = Object.fromEntries(
-      [...coreSource.matchAll(/'([^']+)':\s*\{\s*maxBlocks:\s*(\d+),\s*maxHeight:\s*(\d+)/g)]
-        .map(match => [match[1], { maxBlocks: Number(match[2]), maxHeight: Number(match[3]) }]),
+      [...coreSource.matchAll(/'([^']+)':\s*\{\s*kind:\s*'(\w+)',\s*maxBlocks:\s*(\d+),\s*maxHeight:\s*(\d+)/g)]
+        .map(match => [match[1], {
+          kind: match[2],
+          maxBlocks: Number(match[3]),
+          maxHeight: Number(match[4]),
+        }]),
     )
     expect(UI_ANCHOR_CAPACITY_MIRROR).toEqual(coreCapacities)
+    // 五个锚点(D 期后):三个常显块 + 两个触发式。少一个 = 有人开了锚点却
+    // 忘了 §9.4 的五处清单里的这一处。
+    expect(Object.keys(coreCapacities).sort()).toEqual([
+      'chat.status-bar', 'composer.above', 'composer.actions', 'message.actions', 'message.footer',
+    ])
+  })
+
+  it('kind 轴:trigger 锚点的容量说的是"几个入口",maxHeight 说的是弹层内容高度', () => {
+    expect(UI_ANCHOR_CAPACITY_MIRROR['message.actions']).toEqual({
+      kind: 'trigger', maxBlocks: 3, maxHeight: 320,
+    })
+    expect(UI_ANCHOR_CAPACITY_MIRROR['composer.actions']).toEqual({
+      kind: 'trigger', maxBlocks: 3, maxHeight: 320,
+    })
+    // 既有三个锚点的 kind 是 block —— 语义不许被 D 期改写(append-only)。
+    for (const anchor of ['composer.above', 'chat.status-bar', 'message.footer']) {
+      expect(UI_ANCHOR_CAPACITY_MIRROR[anchor].kind).toBe('block')
+    }
+  })
+
+  it('触发式锚点同样吃容量截断与 unsupported 过滤(与常显块一套裁决)', () => {
+    setPluginUiSlots([
+      slot({ pluginId: 'a', slotId: 'a1', anchor: 'message.actions' }),
+      slot({ pluginId: 'b', slotId: 'b1', anchor: 'message.actions' }),
+      slot({ pluginId: 'c', slotId: 'c1', anchor: 'message.actions' }),
+      slot({ pluginId: 'd', slotId: 'd1', anchor: 'message.actions' }),
+      slot({ pluginId: 'e', slotId: 'e1', anchor: 'message.actions', unsupported: true }),
+    ])
+    expect(useVisibleAnchorUiSlots('message.actions').value.map(entry => entry.pluginId))
+      .toEqual(['a', 'b', 'c'])
+    expect(computeAnchorOverflow('message.actions').truncated.map(entry => entry.pluginId))
+      .toEqual(['d'])
   })
 })

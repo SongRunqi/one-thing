@@ -373,8 +373,10 @@ export function validatePluginContributes(raw: unknown): string | null {
       if (slot.lifetime !== undefined && typeof slot.lifetime !== 'string') {
         return `contributes.uiSlots[${index}].lifetime must be a string`
       }
-      // 锚点块**不开** webview(C 期拍板):composer.above 是 32px 单行,
-      // chat.status-bar 24px —— 往里塞一个 iframe 没有正经场景,而"能塞"
+      // 锚点块**不开** webview(C 期拍板,D 期原样适用于 trigger):
+      // composer.above 是 32px 单行,chat.status-bar 24px —— 往里塞一个 iframe
+      // 没有正经场景;trigger 的弹层同样只画描述树(§9.1 expression 轴:
+      // webview 只允许出现在 singleton 的 block,今天 = 仅工作区面板),而"能塞"
       // 会立刻变成"每个插件都塞"。这里当场拒载(不是降级):作者在 manifest 里
       // 指名道姓要一个宿主永远不会给的能力,没有版本偏斜的歧义可容 ——
       // 与未知**锚点**降级的区别正在于此(那个是"这个宿主还没有",

@@ -243,7 +243,9 @@ export {
   UI_ANCHOR_CAPACITY,
   assertUiAnchorRegistryConsistency,
   isReservedPluginUiAction,
+  isTriggerUiAnchor,
   isUiAnchor,
+  uiAnchorKind,
   uiSlotAddress,
   uiSlotSurfaceId,
 } from './ui-anchor.js'
@@ -252,6 +254,7 @@ export type {
   CorePluginUiSlotRegistration,
   UiAnchor,
   UiAnchorCapacity,
+  UiAnchorKind,
 } from './ui-anchor.js'
 export {
   PLUGIN_CONFIG_FILE_NAME,

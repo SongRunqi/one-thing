@@ -65,11 +65,25 @@ export function uiSlotSurface(anchor: string, slotId: string): string {
  * renderer 不能吃 core,所以这里镜像一份;两份的一致性由
  * `__tests__/ui-anchor-registry.test.ts` 直接读 core 源文件比对钉住,
  * 与 plugin-panel-types.ts 的镜像先例同规。
+ *
+ * `kind` 是 D 期加的形态轴(§9.1):`block` = 常显块,`trigger` = 触发式
+ * (宿主画入口,点击才拉树进弹层)。挂点组件据此选壳,插件永远不声明它。
  */
-export const UI_ANCHOR_CAPACITY_MIRROR: Record<string, { maxBlocks: number; maxHeight: number }> = {
-  'composer.above': { maxBlocks: 3, maxHeight: 32 },
-  'chat.status-bar': { maxBlocks: 8, maxHeight: 24 },
-  'message.footer': { maxBlocks: 6, maxHeight: 24 },
+export const UI_ANCHOR_CAPACITY_MIRROR: Record<string, UiAnchorCapacityMirror> = {
+  'composer.above': { kind: 'block', maxBlocks: 3, maxHeight: 32 },
+  'chat.status-bar': { kind: 'block', maxBlocks: 8, maxHeight: 24 },
+  'message.footer': { kind: 'block', maxBlocks: 6, maxHeight: 24 },
+  // D 期两个触发式锚点:入口由宿主画(菜单项 / 图标钮),maxHeight 说的是
+  // **弹层内容**的最大高度 —— 入口是宿主原语,本身没有高度可言。
+  'message.actions': { kind: 'trigger', maxBlocks: 3, maxHeight: 320 },
+  'composer.actions': { kind: 'trigger', maxBlocks: 3, maxHeight: 320 },
+}
+
+export interface UiAnchorCapacityMirror {
+  /** 常显块 / 触发式(core UiAnchorKind 的镜像)。 */
+  kind: 'block' | 'trigger'
+  maxBlocks: number
+  maxHeight: number
 }
 
 export interface AnchorOverflowInfo {

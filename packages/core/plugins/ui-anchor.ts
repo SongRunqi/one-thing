@@ -22,14 +22,33 @@ import type {
 
 // ── 锚点清单(单一事实源) ───────────────────────
 
+/**
+ * 锚点的形态轴(分类学 v2 §9.1 的 **kind** 轴)。
+ *
+ *  - `block`:**常显块** —— 内容始终渲染在位(composer.above / chat.status-bar /
+ *    message.footer)。
+ *  - `trigger`:**触发式** —— 平时只有宿主画的入口(菜单项 / 图标钮,形态由
+ *    address 决定),点击才按需渲染内容弹层;关弹层即销毁。
+ *
+ * **kind 由宿主锚点表决定,不是插件声明的**(§9.1 拍板):插件说"我要进
+ * message.actions",宿主知道那是 trigger 位。因此 `contributes.uiSlots` 的
+ * 条目形状不变 —— 还是 `{ anchor, id, label }`。
+ */
+export type UiAnchorKind = 'block' | 'trigger'
+
 export interface UiAnchorCapacity {
+  /** 常显块 / 触发式(§9.1 kind 轴)。呈现权在宿主,插件零参与。 */
+  kind: UiAnchorKind
   /**
-   * 该锚点最多容纳几个插件块。
+   * 该锚点最多容纳几个插件块(trigger 锚点则是几个入口)。
    * 跨插件按全局规范顺序截断(见 ui-anchor-registry),插件内按 manifest 声明顺序。
    * **加载失败的块不计入**(折叠为聚合指示,健康插件不被挤掉)。
    */
   maxBlocks: number
-  /** 单块最大高度(px)。宿主用它做溢出裁剪与滚动。 */
+  /**
+   * 单块最大高度(px)。宿主用它做溢出裁剪与滚动。
+   * trigger 锚点上它说的是**弹层内容**的最大高度 —— 入口是宿主原语,没有高度可言。
+   */
   maxHeight: number
   /** 推荐的描述树根节点形态(提示,不强制)。 */
   rootHint?: 'row' | 'stack' | 'any'
@@ -46,15 +65,28 @@ export interface UiAnchorCapacity {
  */
 export const UI_ANCHOR_CAPACITY = {
   /** 输入框上方横条(composer-stack 顶部)。单行,最多 3 块。 */
-  'composer.above': { maxBlocks: 3, maxHeight: 32, rootHint: 'row' },
+  'composer.above': { kind: 'block', maxBlocks: 3, maxHeight: 32, rootHint: 'row' },
   /** 聊天面底部状态条(ChatPanel 内,MessageList 之下)。横向,每块 icon+短文本。 */
-  'chat.status-bar': { maxBlocks: 8, maxHeight: 24, rootHint: 'row' },
+  'chat.status-bar': { kind: 'block', maxBlocks: 8, maxHeight: 24, rootHint: 'row' },
   /**
    * 每条消息尾部(MessageItem 的 .message-footer,时间戳与操作行之间)。
    * 第一个**消息级**锚点:宿主按消息实例挂载,render ctx 额外带 messageId
    * (插件据此把状态按消息对号入座);只挂 assistant 消息。单行小字。
    */
-  'message.footer': { maxBlocks: 6, maxHeight: 24, rootHint: 'row' },
+  'message.footer': { kind: 'block', maxBlocks: 6, maxHeight: 24, rootHint: 'row' },
+  /**
+   * 每条 assistant 消息的 ⋯ 更多菜单(MessageActions 的 more-menu)。
+   * **第一个触发式锚点**:入口是宿主画的菜单项(manifest label 直排),
+   * 点击才拉树、画进弹层;关弹层即销毁。render ctx 与 message.footer 同款
+   * (带 messageId)—— per-item 的"重内容"只能走这条路(§9.2 per-item 铁律)。
+   */
+  'message.actions': { kind: 'trigger', maxBlocks: 3, maxHeight: 320, rootHint: 'stack' },
+  /**
+   * 输入框工具条右侧按钮带(InputBox 的 .toolbar-right,附件按钮之前)。
+   * 触发式:入口是一枚图标钮(Tooltip 显示 manifest label),点击开弹层。
+   * 会话级 ctx(带 sessionId,不带 messageId)。
+   */
+  'composer.actions': { kind: 'trigger', maxBlocks: 3, maxHeight: 320, rootHint: 'stack' },
 } as const satisfies Record<string, UiAnchorCapacity>
 
 /** 锚点 id 的字面量联合 —— 由容量表派生,不另写一份。
@@ -62,7 +94,8 @@ export const UI_ANCHOR_CAPACITY = {
  * 命名约定:`<区域>.<槽位>`,全小写(composer.above / chat.status-bar),
  * 与审计文档的候选清单(composer.dock / sidebar.menu / chat.header …)同规。
  *
- * 新增一个锚点要动**四处**:本表、UI_ANCHORS、renderer 侧挂点组件、拆除快照测试。 */
+ * 新增一个锚点要动**五处**(治理见设计文档 §9.4):本表、UI_ANCHORS、
+ * renderer 侧挂点组件、拆除快照测试、§9.2 全量地址地图。 */
 export type UiAnchor = keyof typeof UI_ANCHOR_CAPACITY
 
 /**
@@ -73,11 +106,26 @@ export const UI_ANCHORS = {
   composerAbove: 'composer.above',
   statusBar: 'chat.status-bar',
   messageFooter: 'message.footer',
+  messageActions: 'message.actions',
+  composerActions: 'composer.actions',
 } as const satisfies Record<string, UiAnchor>
 
 /** 这个字符串是不是宿主认识的锚点。未知锚点的处置见 loader/投影层(降级,不拒绝)。 */
 export function isUiAnchor(value: string): value is UiAnchor {
   return value in UI_ANCHOR_CAPACITY
+}
+
+/**
+ * 锚点的 kind —— 未知锚点返回 undefined(调用方按"不渲染"处置)。
+ * 宿主据此决定入口形态;插件永远不问这个问题。
+ */
+export function uiAnchorKind(anchor: string): UiAnchorKind | undefined {
+  return isUiAnchor(anchor) ? UI_ANCHOR_CAPACITY[anchor].kind : undefined
+}
+
+/** 触发式锚点判定(宿主挂点用;协议上 trigger 与 block 走同一套通道)。 */
+export function isTriggerUiAnchor(anchor: string): boolean {
+  return uiAnchorKind(anchor) === 'trigger'
 }
 
 /**
@@ -143,8 +191,9 @@ export interface CorePluginUiSlotContext extends CorePluginPanelContext {
   readonly anchor: string
   readonly sessionId: string | null
   /**
-   * 仅消息级锚点(message.footer):该块所属的消息 id —— 插件据此把状态
-   * 按消息对号入座(每条消息一个块实例)。会话级锚点不携带。
+   * 仅消息级锚点(message.footer 常显块 / message.actions 触发式弹层):
+   * 该块所属的消息 id —— 插件据此把状态按消息对号入座(每条消息一个实例)。
+   * 会话级锚点不携带。
    */
   readonly messageId?: string | null
 }

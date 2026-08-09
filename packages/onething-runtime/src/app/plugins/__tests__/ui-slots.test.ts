@@ -24,8 +24,10 @@ import {
   createCorePluginAPI,
   describePluginSurface,
   disposeCorePluginState,
+  isTriggerUiAnchor,
   isUiAnchor,
   pluginScope,
+  uiAnchorKind,
   uiSlotSurfaceId,
   validatePluginContributes,
   type CorePluginDefinition,
@@ -140,7 +142,29 @@ describe('UI anchor registry', () => {
 
   it('未知锚点不是锚点', () => {
     expect(isUiAnchor('composer.below')).toBe(false)
-    expect(isUiAnchor('message.actions')).toBe(false)
+    expect(isUiAnchor('chat.header')).toBe(false)
+  })
+
+  /**
+   * D 期:kind 轴。锚点表新增两个**触发式**锚点(§9.2 地址地图),
+   * kind 由宿主锚点表决定 —— 插件的声明形状一字不改。
+   */
+  it('kind 轴:两个触发式锚点已开,既有三个仍是常显块(append-only)', () => {
+    expect(isUiAnchor('message.actions')).toBe(true)
+    expect(isUiAnchor('composer.actions')).toBe(true)
+    expect(uiAnchorKind('message.actions')).toBe('trigger')
+    expect(uiAnchorKind('composer.actions')).toBe('trigger')
+    expect(isTriggerUiAnchor('message.actions')).toBe(true)
+    expect(isTriggerUiAnchor('composer.above')).toBe(false)
+    expect(uiAnchorKind('chat.header')).toBeUndefined()
+
+    // 已发布锚点的 kind 永不变更(§9.4:address/kind/context 只加不改)。
+    for (const anchor of ['composer.above', 'chat.status-bar', 'message.footer'] as const) {
+      expect(UI_ANCHOR_CAPACITY[anchor].kind).toBe('block')
+    }
+    // 容量数字可放宽不可收紧 —— 触发式锚点 3 个入口,超出折叠。
+    expect(UI_ANCHOR_CAPACITY['message.actions'].maxBlocks).toBe(3)
+    expect(UI_ANCHOR_CAPACITY['composer.actions'].maxBlocks).toBe(3)
   })
 })
 
@@ -168,6 +192,28 @@ describe('contributes.uiSlots manifest validation', () => {
   ])('形状非法被拒: %j', (contributes, message) => {
     expect(validatePluginContributes(contributes)).toContain(message)
   })
+
+  it('触发式锚点的声明形状与常显块一字不差(kind 在宿主表里,插件不声明)', () => {
+    expect(validatePluginContributes({
+      uiSlots: [
+        { anchor: 'message.actions', id: 'tps-usage', label: 'Token usage' },
+        { anchor: 'composer.actions', id: 'plan-detail', label: 'Plan detail' },
+      ],
+    })).toBeNull()
+    // 插件即使自作主张写 kind 也不成立 —— 未知键被忽略,呈现权始终在宿主。
+    expect(validatePluginContributes({
+      uiSlots: [{ anchor: 'message.actions', id: 'x', label: 'X', kind: 'block' }],
+    })).toBeNull()
+  })
+
+  it.each(['message.actions', 'composer.actions'])(
+    '触发式锚点 %s 同样整体拒 webview(弹层内容也只画描述树)',
+    anchor => {
+      expect(validatePluginContributes({
+        uiSlots: [{ anchor, id: 'x', label: 'X', view: 'webview' }],
+      })).toContain('view is not supported')
+    },
+  )
 
   it('lifetime 合法值通过;未知的未来值也不拒载(闸门读 === persistent,天然降级)', () => {
     expect(validatePluginContributes({
@@ -241,6 +287,69 @@ describe('registerUiSlot', () => {
     expect(seenCtx!.anchor).toBe('message.footer')
     expect(seenCtx!.sessionId).toBe('session-1')
     expect(seenCtx!.messageId).toBe('msg-42')
+  })
+
+  /**
+   * D 期:触发式锚点的注册面与常显块**逐字相同** —— 声明形状不变、通道不变、
+   * ctx 不变。"点击才拉"是 renderer 的时序,不是协议的分叉(§9.3 第 5 条)。
+   */
+  it('触发式锚点 message.actions:声明/注册/render 与常显块同规,ctx 带 messageId', async () => {
+    let seenCtx: CorePluginUiSlotContext | null = null
+    const def = definition('tps-meter', api => {
+      api.registerUiSlot({
+        anchor: 'message.actions',
+        id: 'tps-usage',
+        render(ctx) {
+          seenCtx = ctx
+          return simpleTree('42 tok/s · 523 tokens')
+        },
+      })
+    }, [{ anchor: 'message.actions', id: 'tps-usage', label: 'Token usage' }])
+
+    const { manager, failures } = createManager([def])
+    await boot(manager)
+
+    const result = await manager.handleRequest({
+      pluginId: 'tps-meter',
+      action: `${PLUGIN_UI_RENDER_ACTION}:message.actions:tps-usage`,
+      payload: { sessionId: 'session-1', messageId: 'msg-7' },
+    })
+    expect(result.success).toBe(true)
+    expect(failures).toEqual([])
+    expect(seenCtx!.anchor).toBe('message.actions')
+    expect(seenCtx!.sessionId).toBe('session-1')
+    expect(seenCtx!.messageId).toBe('msg-7')
+    // 降级 surface 仍折叠为 ui:<anchor>:<id> —— 触发式没有自己的熔断家族。
+    expect(describePluginSurface(pluginScope.uiSlotRender('message.actions:tps-usage')))
+      .toBe(uiSlotSurfaceId('message.actions', 'tps-usage'))
+  })
+
+  it('触发式锚点 composer.actions:会话级 ctx(带 sessionId,不带 messageId)', async () => {
+    let seenCtx: CorePluginUiSlotContext | null = null
+    const def = definition('plan-status', api => {
+      api.registerUiSlot({
+        anchor: 'composer.actions',
+        id: 'plan-detail',
+        render(ctx) {
+          seenCtx = ctx
+          return simpleTree('steps 3/5')
+        },
+      })
+    }, [{ anchor: 'composer.actions', id: 'plan-detail', label: 'Plan detail' }])
+
+    const { manager, failures } = createManager([def])
+    await boot(manager)
+
+    const result = await manager.handleRequest({
+      pluginId: 'plan-status',
+      action: `${PLUGIN_UI_RENDER_ACTION}:composer.actions:plan-detail`,
+      payload: { sessionId: 'session-9' },
+    })
+    expect(result.success).toBe(true)
+    expect(failures).toEqual([])
+    expect(seenCtx!.anchor).toBe('composer.actions')
+    expect(seenCtx!.sessionId).toBe('session-9')
+    expect(seenCtx!.messageId).toBeUndefined()
   })
 
   it('render payload 不带 messageId 时 ctx.messageId 缺席(会话级锚点不变)', async () => {
