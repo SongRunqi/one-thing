@@ -319,6 +319,56 @@ export class OnethingToolRegistry {
     return { success: false, error: `Tool not found: ${toolId}` }
   }
 
+  /**
+   * 只跑一次**参数校验**,不 analyze、不 execute(N4 用)。
+   *
+   * 存在的理由:插件改写完工具入参之后,那份参数必须先过工具自己的那道 zod,
+   * 过不了就当作阻断。既有的 `analyzeTool` 也会 safeParse,但它同时会跑工具的
+   * `analyze()` —— 那一步可能读文件、可能算 diff,是副作用与耗时;拿它当校验器
+   * 等于为了看一眼参数合不合法而先把工具跑了半个。
+   *
+   * 返回值三态压成两态:
+   *  - `{ ok: true }` —— 过了,**或者**这个工具在本注册表里根本不存在
+   *    (MCP 工具、外部 agent 工具走的是别人的校验;这里认不出的东西不该由
+   *    这里判死。真的不存在的工具名会在后面的执行路径上以 "Tool not found"
+   *    正常报错,不需要在这里抢答);
+   *  - `{ ok: false, message }` —— zod 拒了,message 是给模型看的那句话。
+   */
+  async validateToolArgs(
+    toolId: string,
+    args: JsonObject,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    const staticTool = this.toolRegistry.getStatic(toolId)
+    if (staticTool) {
+      const parsed = staticTool.parameters.safeParse(args)
+      if (parsed.success) return { ok: true }
+      return {
+        ok: false,
+        message: staticTool.formatValidationError
+          ? staticTool.formatValidationError(parsed.error)
+          : `Invalid arguments: ${parsed.error.message}`,
+      }
+    }
+
+    const asyncTool = this.toolRegistry.getAsync(toolId)
+    if (asyncTool) {
+      if (!asyncTool._initialized) {
+        await Tool.initialize(asyncTool, this.toolRegistry.getInitContext())
+      }
+      const initResult = asyncTool._initialized!
+      const parsed = initResult.parameters.safeParse(args)
+      if (parsed.success) return { ok: true }
+      return {
+        ok: false,
+        message: initResult.formatValidationError
+          ? initResult.formatValidationError(parsed.error)
+          : `Invalid arguments: ${parsed.error.message}`,
+      }
+    }
+
+    return { ok: true }
+  }
+
   async executeTool(
     toolId: string,
     args: JsonObject,

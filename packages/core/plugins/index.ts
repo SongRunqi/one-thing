@@ -46,6 +46,7 @@ export {
   PLUGIN_PERMISSION_SESSIONS_POST,
   PLUGIN_PERMISSION_SESSIONS_TRIGGER,
   PLUGIN_PERMISSION_NOTES,
+  PLUGIN_PERMISSION_TOOLCALL_INTERCEPT,
   PLUGIN_SESSION_PERMISSIONS,
   PLUGIN_SESSION_PERMISSION_NOTES,
   PLUGIN_TRIGGER_MAX_HOP,
@@ -88,6 +89,28 @@ export type {
   PluginInputInterceptResult,
   PluginInputInterceptSource,
 } from './input-intercept.js'
+export {
+  CORE_PLUGIN_TOOL_CALL_INTERCEPT_TIMEOUT_MS,
+  CorePluginToolCallInterceptRegistry,
+  PLUGIN_TOOL_CALL_INTERCEPT_ACTIONS,
+  PLUGIN_TOOL_CALL_INTERCEPT_SURFACE,
+  PLUGIN_TOOLCALL_INTERCEPT_PERMISSION_NOTE,
+  emptyPluginToolCallInterceptOutcome,
+  formatPluginToolCallBlockReason,
+  formatPluginToolCallFailureReason,
+  normalizePluginToolCallInterceptResult,
+} from './tool-call-intercept.js'
+export type {
+  CorePluginToolCallInterceptRegistryOptions,
+  PluginToolCallInputValidation,
+  PluginToolCallInputValidator,
+  PluginToolCallInterceptAction,
+  PluginToolCallInterceptContext,
+  PluginToolCallInterceptDecision,
+  PluginToolCallInterceptHandler,
+  PluginToolCallInterceptOutcome,
+  PluginToolCallInterceptResult,
+} from './tool-call-intercept.js'
 export {
   PLUGIN_WEBVIEW_DEFAULT_ROOT,
   PLUGIN_WEBVIEW_MESSAGE_TYPES,

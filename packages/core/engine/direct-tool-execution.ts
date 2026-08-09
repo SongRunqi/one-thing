@@ -92,6 +92,35 @@ export interface CoreDirectToolLogger {
   error?: (...args: unknown[]) => void
 }
 
+/* ── N4:工具调用拦截口 ───────────────────────────────────────────────────── */
+
+export interface CoreDirectToolInterceptRequest {
+  sessionId: string
+  toolName: string
+  toolCallId?: string
+  input: JsonObject
+}
+
+/**
+ * 拦截链的答复。`allow` 带回**可能已被改写**的参数 —— 后续 analyze / permission /
+ * execute 全部用这一份,不留第二份"原始参数"在链上飘。
+ */
+export type CoreDirectToolInterceptVerdict =
+  | { action: 'allow'; input: JsonObject }
+  | { action: 'block'; reason: string }
+
+/**
+ * 宿主注入的拦截口(N4)。**core 侧只有一个函数类型**,没有任何插件依赖 ——
+ * 与 sandboxHost / storePathHost 同一个姿势:core 定义形状,装配层塞实现。
+ *
+ * 契约:**从不抛错**。真正的实现(`app/plugins/tool-call-intercept.ts`)自己兜底,
+ * 因为在 fail-closed 这一侧,"拦截口自己炸了"必须收敛成一个明确的 block 判决,
+ * 而不是让工具执行路径去猜。
+ */
+export type CoreDirectToolInterceptor = (
+  request: CoreDirectToolInterceptRequest,
+) => Promise<CoreDirectToolInterceptVerdict>
+
 export interface ExecuteCoreDirectToolOptions<
   TResult extends CoreDirectToolExecutionResultLike,
   TExecContext extends CoreDirectToolExecutionContextWithApproval<TEffect, TPreview>,
@@ -111,6 +140,11 @@ export interface ExecuteCoreDirectToolOptions<
   analyzeTool: (toolName: string, args: JsonObject, context: TExecContext) => Promise<CoreDirectToolAnalysisLike<TEffect, TPreview>>
   executeTool: (toolName: string, args: JsonObject, context: TExecContext) => Promise<TResult>
   enforcePermission: (input: CoreDirectToolPermissionInput<TEffect, TPreview>) => Promise<void>
+  /**
+   * N4:插件的工具调用拦截链。缺省(不注入)= 没有这道闸,一字不改的旧行为 ——
+   * 只跑插件的桌面宿主接它,server / CLI daemon 不接。
+   */
+  interceptToolCall?: CoreDirectToolInterceptor
   createExecutionContext: (context: CoreDirectToolExecutionContext<TMetadataUpdate, TPartialResultUpdate, TStep>) => TExecContext
   isPermissionRejectedError?: (error: Error) => boolean
   permissionRejectedReason?: (error: Error) => string | undefined
@@ -144,11 +178,53 @@ export async function executeCoreDirectTool<
 >(
   options: ExecuteCoreDirectToolOptions<TResult, TExecContext, TMetadataUpdate, TPartialResultUpdate, TStep, TEffect, TPreview>,
 ): Promise<TResult> {
-  const { toolName, args, context } = options
+  const { toolName, context } = options
+  let args = options.args
 
   try {
     if (context.abortSignal?.aborted) {
       return cancelledResult<TResult>()
+    }
+
+    // ── N4:插件工具调用拦截链 ─────────────────────────────────────────────
+    //
+    // 挂点在这里,而且只在这里。理由是**这是每一次工具执行的唯一必经点**:
+    // agent-loop 的每一次 tool-call-done、orchestrator 的每一次 start、
+    // 子 agent 的每一次直调,最后都收敛到 executeCoreDirectTool。MCP 与内置
+    // 两条分支也都在这一行之下,所以一处覆盖两族。
+    //
+    // 它排在 analyzeTool / enforcePermission **之前**,与规格给的
+    // "权限 → 拦截"相反,理由有二(两条都指向同一个方向):
+    //
+    //  1. **改写必须先于授权,否则改写就是越权**。权限卡上写的是 analyze 出来
+    //     的那份 effects/preview,来自当时那份参数。若允许在授权之后改参数,
+    //     用户点头的是 `rm /tmp/x`,真正跑的是 `rm -rf /` —— 这恰恰是规格
+    //     "插件不能绕过用户授权"那句话要禁的事。放在前面,改写结果照样要走
+    //     analyze + permission,用户授权的永远是**最终会跑的那份参数**。
+    //  2. **否决先于打扰**。block 排在前面意味着一次注定被挡的调用不会先弹一张
+    //     审批卡给人点。
+    //
+    // 于是"插件不替代权限系统"这一条在结构上成立:这条链**没有**放行动作 ——
+    // allow 只是"我不干预",它之后的权限闸一步不少。
+    if (options.interceptToolCall) {
+      const verdict = await options.interceptToolCall({
+        sessionId: context.sessionId,
+        toolName,
+        toolCallId: context.toolCallId,
+        input: args,
+      })
+      if (verdict.action === 'block') {
+        options.logger?.log?.(`[DirectExec] Tool call blocked by plugin: ${toolName}`)
+        // 阻断走**工具错误结果**这条既有路径(与工具自己抛错同路),模型据此
+        // 改道。不新造一个"被插件挡了"的结果种类:那会要求每一个消费方
+        // (UI / 历史重建 / 评估)都学会一个新状态,而它们对 isError 早已有
+        // 完整处置。归因写在文案最前面(formatPluginToolCallBlockReason)。
+        return {
+          success: false,
+          error: verdict.reason,
+        } as TResult
+      }
+      args = verdict.input
     }
 
     if (options.isMCPTool(toolName)) {

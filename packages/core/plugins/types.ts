@@ -1,4 +1,5 @@
 import type { PluginInputInterceptHandler } from './input-intercept.js'
+import type { PluginToolCallInterceptHandler } from './tool-call-intercept.js'
 import type { CorePluginRequestHandler } from './request-channel.js'
 import type { CorePluginStorage } from './storage.js'
 import type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
@@ -405,6 +406,23 @@ export interface CorePluginAPI<
    * 声明门:`contributes.permissions` 要有 `input:intercept`。
    */
   interceptInput(id: string, handler: PluginInputInterceptHandler): void
+  /**
+   * 工具调用拦截(N4)——**干预型**钩子,失败语义与 `interceptInput` 相反。
+   *
+   * handler 返回 `{action:'allow'|'block'|'rewrite'}`(或什么都不返回 = allow),
+   * 多插件按全局规范顺序链式:rewrite 逐个累积参数(后手看到前手改写后的结果),
+   * 第一个 block 短路后续。`block` 的 reason 会作为该工具的错误结果回给模型。
+   *
+   * 改写后的参数必须过工具既有的参数校验;过不了 = 当作 block(与 pi 不同,
+   * 我们不跳校验)。
+   *
+   * **fail-closed**:抛错 / 超时(2s)/ 返回值读不懂一律阻断这一次调用 ——
+   * 这里的默认动作是执行一个带副作用的工具。该插件连败到阈值后拦截面被降级,
+   * 之后一律放行(单次 fail-closed、熔断后 fail-open)。
+   *
+   * 声明门:`contributes.permissions` 要有 `toolcall:intercept`。
+   */
+  interceptToolCall(id: string, handler: PluginToolCallInterceptHandler): void
   registerSkillRoot(provider: TSkillRootProvider): void
   /**
    * 统一请求通道:UI 侧 `platformApi.pluginRequest(pluginId, action, payload)`

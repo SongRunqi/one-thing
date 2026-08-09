@@ -293,4 +293,37 @@ describe('onething runtime tool registry', () => {
       '[ToolRegistry] Skipping tool without injectable permission guard: ungarded-tool',
     )
   })
+  it('validates rewritten args against the tool\'s own zod without analyzing or executing (N4)', async () => {
+    const registry = createOnethingToolRegistry({
+      createToolCallId: () => 'tool-call-id',
+      logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    })
+    const analyze = vi.fn()
+    const execute = vi.fn()
+    registry.registerTool(Tool.define('validated', {
+      name: 'Validated',
+      description: 'schema-only probe',
+      category: 'builtin',
+      parameters: z.object({ command: z.string() }),
+      permissionGuard: 'safe',
+      analyze,
+      execute,
+    }))
+
+    await expect(registry.validateToolArgs('validated', { command: 'ls' }))
+      .resolves.toEqual({ ok: true })
+
+    const rejected = await registry.validateToolArgs('validated', { nope: 1 })
+    expect(rejected.ok).toBe(false)
+    if (rejected.ok) throw new Error('unreachable')
+    expect(rejected.message).toContain('Invalid arguments')
+
+    // 只校验:analyze 可能读文件 / 算 diff,拿它当校验器等于把工具跑了半个。
+    expect(analyze).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalled()
+
+    // 认不出的工具名不在这里判死(MCP / 外部 agent 的校验在别人家)。
+    await expect(registry.validateToolArgs('mcp__server__search', { q: 'x' }))
+      .resolves.toEqual({ ok: true })
+  })
 })

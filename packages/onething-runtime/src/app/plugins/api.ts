@@ -48,6 +48,7 @@ import {
   registerBeforeContextCompactHook,
 } from './lifecycle.js'
 import { registerPluginInputInterceptHook } from './input-intercept.js'
+import { registerPluginToolCallInterceptHook } from './tool-call-intercept.js'
 import { getScheduler } from '../scheduler/index.js'
 import type {
   AfterAssistantResponseHook,
@@ -417,6 +418,10 @@ export function createPluginAPI(
       // N2:发送前拦截(第一个干预型钩子)。声明门在 api-builder(`input:intercept`),
       // 链的次序 / 预算 / fail-open / 熔断闸在 input-intercept.ts,挂点在引擎。
       registerInputInterceptHook: registerPluginInputInterceptHook,
+      // N4:工具调用拦截(第二个干预型钩子,第一个 fail-closed 的)。声明门在
+      // api-builder(`toolcall:intercept`),链的次序 / 预算 / fail-closed / 熔断闸
+      // 在 tool-call-intercept.ts,挂点在 executeCoreDirectTool 那一处必经点。
+      registerToolCallInterceptHook: registerPluginToolCallInterceptHook,
       registerSkillRoot: registerPluginSkillRootProvider,
       invalidateSkillsCache() {
         return import('../skills/session-skills.js')

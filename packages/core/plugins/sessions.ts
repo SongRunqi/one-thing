@@ -75,6 +75,25 @@ export const PLUGIN_PERMISSION_INPUT_INTERCEPT = 'input:intercept'
 export const PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE =
   'can rewrite or handle your messages before they are sent'
 
+/* ── 工具调用拦截(N4)的声明门 ───────────────────────────────────────────── */
+
+/**
+ * tool_call 拦截(N4)。与 `input:intercept` 同住这个文件、同一个理由。
+ *
+ * 敏感度在 `input:intercept` **之上**:那一条看的是用户自己打的字,这一条看的是
+ * 模型即将执行的**每一次带副作用的动作**,而且能改写它的参数。声明它的插件
+ * 等于坐在工具执行链的正中间。
+ */
+export const PLUGIN_PERMISSION_TOOLCALL_INTERCEPT = 'toolcall:intercept'
+
+/**
+ * 披露文案。三个动词一个都不能省:**inspect / block / rewrite**。
+ * 只说"能拦"会让人以为它只是一道否决闸,而"改写参数"才是真正需要用户点头的
+ * 那一半 —— 一个能改参数的插件可以把一次无害调用换成另一次调用。
+ */
+export const PLUGIN_TOOLCALL_INTERCEPT_PERMISSION_NOTE =
+  'can inspect, block, or rewrite tool calls before they run'
+
 /**
  * **被消费的**权限名 → 披露文案。未登记的名字原样显示(向前兼容:未来的宿主
  * 可能认识它),但凡是宿主真的会拿来判定的名字,都必须在这里有一句人话。
@@ -82,6 +101,7 @@ export const PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE =
 export const PLUGIN_PERMISSION_NOTES: Readonly<Record<string, string>> = {
   ...PLUGIN_SESSION_PERMISSION_NOTES,
   [PLUGIN_PERMISSION_INPUT_INTERCEPT]: PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE,
+  [PLUGIN_PERMISSION_TOOLCALL_INTERCEPT]: PLUGIN_TOOLCALL_INTERCEPT_PERMISSION_NOTE,
 }
 
 export function describePluginPermission(name: string): string {

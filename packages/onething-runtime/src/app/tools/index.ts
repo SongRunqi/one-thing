@@ -64,6 +64,7 @@ export {
   getToolsForAI,
   executeTool,
   analyzeTool,
+  validateToolArgs,
   createToolCall,
   canAutoExecute,
   getToolExecutionMode,

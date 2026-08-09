@@ -20,7 +20,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>
 
 async function loadModules() {
-  const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, scheduler, variables, connectors] = await Promise.all([
+  const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, scheduler, variables, connectors] = await Promise.all([
     import('../loader.js'),
     import('../api.js'),
     import('../../tools/index.js'),
@@ -28,11 +28,12 @@ async function loadModules() {
     import('../../skills/plugin-roots.js'),
     import('../lifecycle.js'),
     import('../input-intercept.js'),
+    import('../tool-call-intercept.js'),
     import('../../scheduler/index.js'),
     import('../../variables/index.js'),
     import('../../channel/connector-registry.js'),
   ])
-  return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, scheduler, variables, connectors }
+  return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, scheduler, variables, connectors }
 }
 
 /**
@@ -94,6 +95,9 @@ interface RegistrySnapshot {
   imConnectorIds: string[]
   /** N2 的干预型钩子:开一个钩子点就要进快照,同一条"开一个漏一个"的规矩。 */
   inputInterceptHooks: number
+  /** N4 的干预型钩子:同上。fail-closed 让漏拆的代价更大 —— 一条被遗忘的
+   *  拦截会继续挡工具,而它的插件已经不在了。 */
+  toolCallInterceptHooks: number
 }
 
 /** Counting EventBus stand-in: subscriptions are a registry too, and a leaked
@@ -163,6 +167,7 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
     skillRoots: mods.skillRoots.listPluginSkillRoots().length,
     lifecycleHooks: mods.lifecycle.getLifecycleHookCounts(),
     inputInterceptHooks: mods.inputIntercept.getInputInterceptHookCount(),
+    toolCallInterceptHooks: mods.toolCallIntercept.getToolCallInterceptHookCount(),
     eventSubscriptions: bus.subscriptionCount,
     schedulerTaskIds,
     variableSubscriptions,

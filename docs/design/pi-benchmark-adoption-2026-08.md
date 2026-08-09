@@ -279,3 +279,112 @@ TypeError。观察族(`api.on`)的返回值继续被忽略,零污染。
     插件侧用的是 core 自己的 `CorePluginToolExecutionMode`(零依赖叶子
     `packages/core/plugins/tool-execution-mode.ts`)—— 插件协议不该反向依赖
     宿主的 IPC 契约,而那个 barrel 是高危脏文件。
+
+## 9. N4 落地实录(2026-08-10)与**与规格的差异**
+
+### 9.1 先考古:每一次工具执行的**唯一必经点**在哪
+
+- **必经点 = `executeCoreDirectTool`**
+  (`packages/core/engine/direct-tool-execution.ts:136` → 加了拦截之后的
+  `:174`)。所有生产路径都收敛到它:
+  agent-loop 的每一次 `tool-call-done`(`packages/core/agent-loop/runner.ts:397`
+  → `onToolCallDone`)、orchestrator 的每一次 `start`
+  (`app/engine/stream/tool-orchestrator.ts:58` → `executeToolAndUpdate`)、
+  子 agent 与直调路径(`core/engine/agent-loop-runtime.ts:702`、
+  `core/engine/tool-orchestration.ts:966`),经
+  `app/engine/stream/tool-execution.ts:40 executeToolDirectly`
+  → `runtime/src/tools/direct-tool-execution.ts:112`
+  → `executeCoreDirectTool`。**MCP 与内置两条分支都在它里面**,一处覆盖两族。
+- **不是必经点的那个**:`packages/core/tools/executor.ts` 的 `ToolExecutor`
+  只被 `packages/core/agent/agent-engine.ts:129` 用,而 `AgentEngine` 今天只出现在
+  `apps/server/src/test-helpers.ts` —— 一条测试吊命的路,本期不动也不挂。
+- **权限闸的位置**:同一个函数里,MCP 分支
+  `direct-tool-execution.ts:164`(`buildMCPPermissionPlan` → `enforcePermission`)、
+  内置分支 `:205`(`analyzeTool` → `onMetadata` → `enforcePermission` →
+  `executeTool`)。`enforcePermission` 的实体是
+  `app/tools/core/permission-policy.ts` 的 `enforcePermissionPolicy`。
+- **声明式的 `PluginPermissionGuard` 与本期是两件事,不在同一条链上**。
+  它是**注册期**的守卫等级(`permissionGuard: 'safe' | 'sandboxed' |
+  'internal-check' | 'permission-gated' | 'external'`,
+  `packages/core/tools/permission-guards.ts`):没有可注入等级的工具**根本不会被
+  注入给模型**,也不会被允许 autoExecute。本期的命令式拦截发生在**执行期**,
+  在那道注册期白名单**之后**很久 —— 顺序是:声明式白名单(注册时,决定模型看
+  不看得见这个工具)→ 命令式拦截链(执行时,本期)→ 用户授权(执行时)→ 执行。
+
+### 9.2 逐条差异(规格 → 实际,及理由)
+
+1. **挂点排在权限闸之前,与规格给的"权限 → 拦截"相反**(规格允许"确认现有
+   permission 挂点位置后对齐")。两条理由指向同一个方向:
+   - **改写必须先于授权,否则改写就是越权**。权限卡上的 effects/preview 来自
+     `analyzeTool(args)`,即**当时那份参数**。若允许在授权之后改参数,用户点头
+     的是 `rm /tmp/x`、真正跑的是 `rm -rf /` —— 那正是规格里"不能绕过用户授权"
+     要禁的事。放在前面之后,改写结果照样要走 analyze + permission,
+     **用户授权的永远是最终会跑的那份参数**。
+   - **否决先于打扰**:注定被挡的调用不该先弹一张审批卡给人点。
+   规格"插件不替代权限系统"这一条在结构上仍然成立,而且比原方案更硬:
+   这条链**没有放行动作** —— `allow` 的语义是"我不干预",它之后的权限闸一步不少
+   (`direct-tool-execution-intercept.test.ts` 有一条专门钉这个:拦截 allow 之后
+   权限拒绝照样把调用挡下来)。
+2. **失败语义是"单次 fail-closed、熔断后 fail-open"的两段式**(规格要求,这里
+   记账口径):handler 抛错 / 超时(2s)/ 返回值读不懂 → **阻断这一次**,理由标注
+   "interceptor fault … fail-closed";该插件连败到阈值(3)→ degrade-surface,
+   之后链在入口跳过它 → **一律放行**。于是"坏插件会挡工具"的代价被限在 3 次以内,
+   而不是无限。半开靠时间(`PLUGIN_SURFACE_PROBE_INTERVAL_MS`),与 N2 同一个先例。
+3. **返回值不合规**在这里**判 block 且计熔断**,与 N2 刻意相反(那边回落 continue、
+   不计熔断)。判 block 的理由:`{action:'rewrite'}` 少了 `input` 若降级成 allow,
+   就会**原样执行作者想换掉的那次调用** —— 读不懂就别跑,是这条链存在的全部理由。
+   计熔断的理由:在 fail-closed 一侧"不计熔断"等于"永远挡着",而熔断是这条链
+   **唯一的逃生口**;一个每次返回垃圾的插件必须能被降级掉。
+   唯一的隐式放行仍然只有一种:**明文定义的沉默**(`undefined` / `null` /
+   `{action:'allow'}`)。
+4. **改写后过工具既有的校验(与 pi 的关键差异)走一个新方法
+   `validateToolArgs`,不复用 `analyzeTool`**。两者都 safeParse,但 `analyze()`
+   可能读文件、算 diff —— 拿它当校验器等于为了看一眼参数合不合法先把工具跑了
+   半个。新方法在
+   `packages/onething-runtime/src/tools/registry.ts`(`OnethingToolRegistry.validateToolArgs`),
+   经 `app/tools/registry.ts` 的同名门面接到链上。
+   校验失败 = block,理由里写清"**原始调用也不跑**"——改写本身就表示这个插件
+   不想让它按原样跑。
+5. **一处口径缝隙要如实记账:MCP / 外部 agent 工具在本地无 schema**,
+   `validateToolArgs` 对认不出的工具名返回 `ok:true`。我们保证的是"过得了本地
+   这份 zod 的才进本地工具",不是"替远端服务器把关"(MCP 服务器按自己的
+   inputSchema 拒绝并回 isError,那是它自己那份"既有的参数校验")。
+   另有一道**不依赖宿主**的结构闸在 core:`rewrite` 的 `input` 必须是 JSON 对象,
+   数组 / 标量 / null 一律 block。
+6. **block 不新造结果种类**:走 `{ success:false, error }` 这条既有的工具错误
+   结果路径(与工具自己抛错同路),模型据此改道。新造一个"被插件挡了"的状态会
+   要求 UI / 历史重建 / 评估各学一个新词,而它们对 isError 早有完整处置。
+   归因写在**理由的最前面**(`Blocked by plugin "<id>": …`)—— 这句话会被模型
+   转述给用户,"谁挡的"必须比"为什么"先出现,否则用户以为是工具坏了。
+7. **系统内部源 / collab 驱动的调用照样进链**(规格要求)。实现上这不需要额外
+   代码:挂点在工具执行的必经点,它天然不分来源。与 permission 的既有降级
+   (unattended 120s 自动拒、collab 30 分钟软提醒)不打架 —— 拦截排在权限之前,
+   被拦截挡下的调用**根本走不到**那些降级分支。
+8. **`toolCallId` 在 handler 契约里是可选的**(规格写的是 `toolCallId: string`)。
+   宿主的执行上下文里它本来就是可选字段(某些内部直调不铸 id),现造一个假 id
+   会让"按 toolCallId 归因"的插件拿到一个对不上任何东西的串。
+9. **超时 2s**(规格建议 ≤2s):高于 N2 的 1.5s(用户此刻在看"正在执行"的转圈,
+   比空白输入框耐受度高),远低于生命周期钩子的 5s(它同步阻塞在每一次工具执行
+   之前,每一次调用都要付这笔钱)。逐 handler,不设链总预算 —— 设了就要回答
+   "总预算用完时后半条链算放行还是算阻断",在 fail-closed 一侧那会把总超时
+   变成一把随机闸刀。
+10. **降级 surface 聚合到 `toolcall-intercept` 一个名字**(一个插件的所有拦截钩子
+    折成同一个界面)。在 fail-closed 这一侧聚合还多一层意义:降级必须一次性移除
+    该插件的**全部**拦截,否则它剩下那条钩子会继续挡工具,逃生口只开了一半。
+11. **兜底的兜底判 allow,不判 block**(`runPluginToolCallIntercept` 最外层的
+    catch)。那一层兜的是注册表本身出意外 —— 不归任何插件,也就没有任何连败账
+    可以开逃生口;判阻断就是永久失去所有工具。逐 handler 的 fail-closed 在
+    `registry.run` 里已经完整生效,这一层之外只可能是宿主自己的 bug,而宿主的
+    bug 不该表现为"你的工具全废了"。
+12. **装配层的测试不能 import zod**(boundary 那条 "plugin logic stays out of the
+    host assembly tree")。于是校验覆盖分两处:接线证明在
+    `app/plugins/__tests__/tool-call-intercept.test.ts`(用一个 `safeParse` 替身
+    工具),"真 zod 会怎么判"在产品层的
+    `packages/onething-runtime/src/tools/__tests__/registry.test.ts`。
+13. **`packages/shared/ipc` 与 `packages/renderer/types` 一行没碰**。装前披露
+    走既有链路:权限名与人话文案加在 `packages/core/plugins/sessions.ts` 的
+    `PLUGIN_PERMISSION_NOTES`,`PluginsSettingsTab.vue` 通过
+    `describePluginPermission` **一行不改**就把它念给用户听。
+14. **样本插件 `@onething-plugins/tool-guard` 1.0.0**(市场仓 `packages/tool-guard`,
+    只构建不安装):block 分支拦 `rm -rf /` 与 fork 炸弹,rewrite 分支给写向
+    `*.log` 的内容追加一行时间戳注释(演示"改写且改写后仍合法")。

@@ -5,6 +5,7 @@ import {
   type CoreDirectToolExecutionContext,
   type CoreDirectToolExecutionContextWithApproval,
   type CoreDirectToolExecutionResultLike,
+  type CoreDirectToolInterceptor,
   type CoreDirectToolLogger,
   type CoreDirectToolMCPExecutionOptions,
   type CoreDirectToolMetadataUpdate,
@@ -73,6 +74,8 @@ export interface ExecuteOnethingDirectToolOptions<
     context: TExecContext,
   ) => Promise<TResult>
   enforcePermission: (input: CoreDirectToolPermissionInput<TEffect, TPreview>) => Promise<void>
+  /** N4:插件工具调用拦截链(装配层注入;不传 = 没有这道闸)。 */
+  interceptToolCall?: CoreDirectToolInterceptor
   createExecutionContext?: (
     context: OnethingDirectToolContext<TMetadataUpdate, TPartialResultUpdate, TStep>,
   ) => TExecContext
@@ -146,6 +149,7 @@ export async function executeOnethingDirectTool<
     analyzeTool: options.analyzeTool,
     executeTool: options.executeTool,
     enforcePermission: options.enforcePermission,
+    interceptToolCall: options.interceptToolCall,
     createExecutionContext:
       options.createExecutionContext ??
       createOnethingDirectToolExecutionContext,

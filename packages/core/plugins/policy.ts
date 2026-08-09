@@ -62,6 +62,12 @@ export const pluginScope = {
    * 哪一条在坏;降级则聚合到同一个 surface(见 describePluginSurface)。
    */
   inputIntercept: (hookId: string) => brand(`inputIntercept:${hookId}`),
+  /**
+   * 工具调用拦截(N4)。与 inputIntercept 同形(带 hookId 记账、按 surface 降级),
+   * 但**自成一族**:那一族的罚则理由写着"失败对用户完全无害",而这一族的失败
+   * 会挡住一次工具执行 —— 同一条罚则文案不能同时为两种代价辩护。
+   */
+  toolCallIntercept: (hookId: string) => brand(`toolCallIntercept:${hookId}`),
   storage: (operation: string) => brand(`storage.${operation}`),
   settingsChange: () => brand('settings:onChange'),
   steer: () => brand('steer'),
@@ -163,6 +169,7 @@ export const PLUGIN_SCOPE_FAMILIES = [
   'settings-change',
   'conversation-control',
   'input-intercept',
+  'toolcall-intercept',
   'registration',
   'connector',
 ] as const
@@ -231,6 +238,18 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
       + '与 IM 渠道同规:没有"用户点重试"这种逃生口(闸在拦截口,拦截被跳过就'
       + '永远不会成功),所以它靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
   },
+  'toolcall-intercept': {
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
+    remedy: 'degrade-surface',
+    rationale: '工具调用拦截(N4)是 fail-closed 的:抛错 / 超时 / 返回值读不懂一律'
+      + '**阻断这一次调用**,因为默认动作是执行一个带副作用的工具,而我们无法确认'
+      + '它该不该跑。于是这一族的降级罚则承担的是与 input-intercept 相反的职责:'
+      + '它是这条链**唯一的逃生口**。连败三次说明这个拦截在持续坏,再让它每次'
+      + '挡掉一个工具就是让一个坏插件瘫痪整个应用 —— 停掉**这一个干预面**之后'
+      + '它不再参与判定,工具照常执行(单次 fail-closed、熔断后 fail-open)。'
+      + '仍然不是整体禁用:插件的工具/命令/面板/定时任务与它的判断力无关。'
+      + '半开同样靠时间(闸在拦截口,被跳过的插件永远不会有一次成功可记)。',
+  },
   // ── 用户主动触发的:失败当场可见,不该连坐 ──
   'ui-request': {
     threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
@@ -284,6 +303,7 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (scope.startsWith('settings:')) return 'settings-change'
   if (scope === 'steer' || scope === 'followUp' || scope === 'sendMessage') return 'conversation-control'
   if (scope.startsWith('inputIntercept')) return 'input-intercept'
+  if (scope.startsWith('toolCallIntercept')) return 'toolcall-intercept'
   if (scope.startsWith('register')) return 'registration'
   if (scope.startsWith('connector')) return 'connector'
   return null
@@ -345,6 +365,12 @@ const UI_SLOT_SURFACE_PATTERN = new RegExp(
  */
 export const PLUGIN_INPUT_INTERCEPT_SURFACE = 'input-intercept'
 
+/**
+ * 工具调用拦截(N4)降级时停掉的界面名。同住 policy.ts,同一条循环理由
+ * (tool-call-intercept.ts 要 runtime-guard,runtime-guard 要 policy)。
+ */
+export const PLUGIN_TOOL_CALL_INTERCEPT_SURFACE = 'toolcall-intercept'
+
 export function describePluginSurface(scope: string): string {
   const panel = PANEL_SURFACE_PATTERN.exec(scope)
   if (panel) return `panel:${panel[1]}`
@@ -357,6 +383,10 @@ export function describePluginSurface(scope: string): string {
   // 不是"它的第二个钩子被停了而第一个还在"。逐 hookId 的连败账仍然分开记
   // (scope 带 hookId),只有降级的判据聚合。
   if (scope.startsWith('inputIntercept')) return PLUGIN_INPUT_INTERCEPT_SURFACE
+  // 工具调用拦截(N4):同理聚合 —— 用户能理解的是"这个插件不再管我的工具了",
+  // 而在 fail-closed 这一侧聚合还多一层意义:降级必须一次性移除该插件的**全部**
+  // 拦截,否则它剩下的那条钩子会继续挡工具,逃生口只开了一半。
+  if (scope.startsWith('toolCallIntercept')) return PLUGIN_TOOL_CALL_INTERCEPT_SURFACE
   return scope
 }
 

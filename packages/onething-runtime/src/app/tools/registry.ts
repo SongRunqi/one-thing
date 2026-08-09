@@ -114,6 +114,17 @@ export async function analyzeTool(
   return await toolRegistry.analyzeTool(toolId, args, context as OnethingToolExecutionContext) as ToolAnalysisResult
 }
 
+/**
+ * N4:只校验参数,不 analyze / 不执行。插件改写完工具入参之后走这一道 ——
+ * 详见 `OnethingToolRegistry.validateToolArgs`。
+ */
+export async function validateToolArgs(
+  toolId: string,
+  args: JsonObject,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  return await toolRegistry.validateToolArgs(toolId, args)
+}
+
 export async function executeTool(
   toolId: string,
   args: JsonObject,

@@ -14,6 +14,7 @@ import type { Principal } from '@onething/core/permission'
 import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { enforcePermissionPolicy } from '../../tools/core/permission-policy.js'
+import { runPluginToolCallIntercept } from '../../plugins/tool-call-intercept.js'
 import {
   createCoreId,
   createToolExecutionStepWithFactory,
@@ -75,6 +76,16 @@ export async function executeToolDirectly(
     analyzeTool,
     executeTool,
     enforcePermission: enforcePermissionPolicy,
+    // N4:插件的工具调用拦截链。装配层在这里把它塞进 core 的必经点 ——
+    // core 只认一个函数类型,不认识插件系统(与 sandboxHost 同一个姿势)。
+    // 链本身在 `app/plugins/tool-call-intercept.ts`:逐 handler fail-closed,
+    // 该插件熔断后 fail-open。没有插件注册时它是一次零分配的早退。
+    interceptToolCall: async ({ sessionId, toolName, toolCallId, input }) => {
+      const outcome = await runPluginToolCallIntercept({ sessionId, toolName, toolCallId, input })
+      return outcome.action === 'block'
+        ? { action: 'block', reason: outcome.reason }
+        : { action: 'allow', input: outcome.input as JsonObject }
+    },
     logger: console,
   })
 }

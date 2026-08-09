@@ -29,6 +29,10 @@ import {
   type PluginInputInterceptHandler,
 } from './input-intercept.js'
 import {
+  PLUGIN_PERMISSION_TOOLCALL_INTERCEPT,
+  type PluginToolCallInterceptHandler,
+} from './tool-call-intercept.js'
+import {
   PLUGIN_PERMISSION_SESSIONS_PEEK,
   PLUGIN_PERMISSION_SESSIONS_POST,
   PLUGIN_PERMISSION_SESSIONS_TRIGGER,
@@ -84,6 +88,15 @@ export interface CorePluginAPIHost<
    * 拒绝注册,而不是静默假装注册成功 —— 那正是 pi 的死订阅。
    */
   registerInputInterceptHook?(pluginId: string, id: string, handler: PluginInputInterceptHandler): () => void
+  /**
+   * 工具调用拦截链的登记口(N4)—— 第二个**干预型**钩子。
+   *
+   * 与 `registerInputInterceptHook` 同构:core 只做声明门与登记,链的次序 /
+   * 预算 / fail-closed / 熔断闸全在注册表(`CorePluginToolCallInterceptRegistry`),
+   * 挂点在工具执行的唯一必经点。宿主没接这条线时 `api.interceptToolCall` 报错
+   * 并拒绝注册 —— 在一条安全链上,"以为自己装了守卫其实没装"是最坏的结局。
+   */
+  registerToolCallInterceptHook?(pluginId: string, id: string, handler: PluginToolCallInterceptHandler): () => void
   registerSkillRoot(pluginId: string, provider: TSkillRootProvider): () => void
   invalidateSkillsCache?(): void | Promise<void>
   /**
@@ -673,6 +686,43 @@ export function createCorePluginAPI<
       const unsub = host.registerInputInterceptHook(pluginId, id, handler)
       lifecycleUnsubs.push(unsub)
       logger.log(`[Plugin:${pluginId}] Registered input interceptor: ${id}`)
+    },
+
+    /**
+     * 工具调用拦截(N4)——**拦截族**的第二个成员,也是第一个 fail-closed 的。
+     *
+     * handler 返回 `{action:'allow'|'block'|'rewrite'}`(或什么都不返回 = allow),
+     * 多插件按全局规范顺序链式:rewrite 逐个累积参数,第一个 block 短路后续。
+     * 改写后的参数**要过工具自己的校验**,过不了当作 block。
+     *
+     * 抛错 / 超时 / 返回值读不懂 = **阻断这一次调用**(与 interceptInput 相反),
+     * 因为这里的默认动作是执行一个带副作用的工具。连败到阈值后这个插件的拦截面
+     * 被降级掉,之后它的调用一律放行 —— 一个坏插件挡得住三次,瘫痪不了应用。
+     *
+     * 声明门:`contributes.permissions` 要有 `toolcall:intercept`。未声明 = 报错 +
+     * 拒绝注册,**不计熔断**(manifest 笔误不该连坐整个插件,与 N1/N2 同规)。
+     */
+    interceptToolCall(id: string, handler: PluginToolCallInterceptHandler): void {
+      if (rejectLateCall('interceptToolCall')) return
+      if (!declaredPermissions.has(PLUGIN_PERMISSION_TOOLCALL_INTERCEPT)) {
+        logger.error(
+          `[Plugin:${pluginId}] interceptToolCall requires "${PLUGIN_PERMISSION_TOOLCALL_INTERCEPT}" in `
+          + 'contributes.permissions (plugin.json). The install page tells the user this plugin '
+          + 'can inspect, block, or rewrite tool calls before they run.',
+          undefined,
+        )
+        return
+      }
+      if (!host.registerToolCallInterceptHook) {
+        logger.error(
+          `[Plugin:${pluginId}] interceptToolCall is not available on this host (no tool pipeline).`,
+          undefined,
+        )
+        return
+      }
+      const unsub = host.registerToolCallInterceptHook(pluginId, id, handler)
+      lifecycleUnsubs.push(unsub)
+      logger.log(`[Plugin:${pluginId}] Registered tool-call interceptor: ${id}`)
     },
 
     registerSkillRoot(provider: TSkillRootProvider): void {

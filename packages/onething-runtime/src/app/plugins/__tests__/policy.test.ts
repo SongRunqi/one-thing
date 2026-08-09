@@ -226,6 +226,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       pluginScope.followUp(),
       pluginScope.sendMessage(),
       pluginScope.inputIntercept('big-macro'),
+      pluginScope.toolCallIntercept('guard'),
       pluginScope.registration('WorkspacePanel'),
       pluginScope.connector('wechat'),
     ]
@@ -275,6 +276,9 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       // N2:发送前拦截自成一族 —— 它 fail-open(失败对用户无害),所以罚则是
       // 停掉这一个干预面而不是整体禁用,与 conversation-control 分开。
       { factory: 'inputIntercept', scope: pluginScope.inputIntercept('big-macro'), family: 'input-intercept' },
+      // N4:工具调用拦截自成一族 —— 它 fail-closed(失败会挡住一次工具执行),
+      // 罚则的职责因此与 input-intercept 相反:降级是这条链唯一的逃生口。
+      { factory: 'toolCallIntercept', scope: pluginScope.toolCallIntercept('guard'), family: 'toolcall-intercept' },
       { factory: 'registration', scope: pluginScope.registration('WorkspacePanel'), family: 'registration' },
       { factory: 'connector', scope: pluginScope.connector('wechat'), family: 'connector' },
     ]
@@ -386,7 +390,7 @@ describe('R7 registry teardown table — 每个开放的注册表都要回答"�
     // `InputInterceptHook`(N2)与两个生命周期钩子同类:它是一个**能力面**
     // (宿主开的一个新钩子点),不是一个"插件可以占用、拆除时要问在飞怎么办"的
     // 既有注册表 —— 它的在飞语义由 fail-open 与 lifecycleUnsubs 回答。
-    const NOT_REGISTRIES = new Set(['Tool', 'PromptContextProvider', 'BeforeContextCompactHook', 'AfterAssistantResponseHook', 'InputInterceptHook', 'SkillRoot'])
+    const NOT_REGISTRIES = new Set(['Tool', 'PromptContextProvider', 'BeforeContextCompactHook', 'AfterAssistantResponseHook', 'InputInterceptHook', 'ToolCallInterceptHook', 'SkillRoot'])
 
     const registryPorts = forwarders.filter(name => !NOT_REGISTRIES.has(name))
     const expected = registryPorts.map(name => name
