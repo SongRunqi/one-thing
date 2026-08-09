@@ -119,6 +119,8 @@ async function createManager(input: {
   logger?: CorePluginManagerLogger
   /** 内置定义(测防撞闸用);扫描时先于一切用户插件占位。 */
   builtin?: TestDefinition[]
+  /** 每次加载拿到的热重载令牌 —— 宿主用它做 ESM cache-buster,复用即旧模块。 */
+  loadTokens?: Array<{ id: string; token: unknown }>
 }) {
   const logger = input.logger ?? { log: () => {}, warn: () => {}, error: () => {} }
   const host: CorePluginManagerHost<
@@ -132,7 +134,8 @@ async function createManager(input: {
       appVersion: HOST_APP_VERSION,
       scanMode: 'npm-ledger',
     }),
-    loadPluginEntry: async definition => {
+    loadPluginEntry: async (definition, reloadToken) => {
+      input.loadTokens?.push({ id: definition.id, token: reloadToken })
       // 与真宿主同一条规则:loadBlockedReason 置位的插件不执行任何代码。
       if (definition.loadBlockedReason) return null
       return () => {}
@@ -325,6 +328,45 @@ describe('updatePlugin / checkPluginUpdates', () => {
     expect(updated.success).toBe(false)
     expect(updated.error).toContain('legacy')
     expect(await manager.checkPluginUpdates()).toEqual([])
+  })
+})
+
+/**
+ * 热重载令牌 = 宿主的 ESM cache-buster(`?v=<token>`)。**令牌复用 = 模块缓存
+ * 命中 = 磁盘换了新代码、进程里跑的还是旧模块**,而 manifest 现读磁盘已经是
+ * 新版本 —— 表现为"版本号变了、行为没变,重启才生效"。
+ *
+ * 真机实录(2026-08-09,tps-meter 1.0.2 验收):卸载 1.0.1 → 装 1.0.2 之后,
+ * 那一轮跑的仍是 1.0.1 的纯内存实现,消息态一条也没落盘;重启 app 才正常。
+ * 病根有两条:uninstall 把令牌删回 0,而安装/更新根本不动令牌。
+ */
+describe('热重载令牌:换了代码就必须换令牌', () => {
+  it('装/更新/卸载重装/重新启用 —— 令牌只增不重复', async () => {
+    const pluginsDir = tempRoot()
+    const catalog = new Map<string, FakePackage>([
+      [PLAN_V1_URL, { pkg: 'plan-status', version: '1.0.0' }],
+      [PLAN_V2_URL, { pkg: 'plan-status', version: '2.0.0' }],
+    ])
+    const npm = createFakeNpm(pluginsDir, catalog)
+    const index: CorePluginMarketIndex = {
+      version: 1,
+      plugins: [{ id: 'plan-status', pkg: 'plan-status', version: '2.0.0', tarballUrl: PLAN_V2_URL }],
+    }
+    const loadTokens: Array<{ id: string; token: unknown }> = []
+    const manager = await createManager({ pluginsDir, npm, index, loadTokens })
+
+    await manager.installPlugin({ pkg: 'plan-status', tarballUrl: PLAN_V1_URL })
+    await manager.updatePlugin('plan-status')
+    await manager.disablePlugin('plan-status')
+    await manager.enablePlugin('plan-status')
+    // 卸载重装同一个 id —— 曾经的病根:uninstall 把令牌归零,重装拿回用过的号。
+    await manager.uninstallPlugin('plan-status')
+    await manager.installPlugin({ pkg: 'plan-status', tarballUrl: PLAN_V1_URL })
+
+    const tokens = loadTokens.filter(entry => entry.id === 'plan-status').map(entry => entry.token)
+    expect(tokens.length).toBeGreaterThanOrEqual(4)
+    // 唯一性是判据本身:重复一次就意味着那一次加载吃的是旧模块。
+    expect(new Set(tokens).size).toBe(tokens.length)
   })
 })
 

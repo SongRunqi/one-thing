@@ -193,6 +193,17 @@ export class CorePluginManager<
   private generation = 0
   private readonly toggleQueues = new Map<string, Promise<void>>()
   private readonly reloadTokens = new Map<string, number>()
+  /**
+   * 进程内单调的热重载计数 —— 令牌**永不重复使用**。
+   *
+   * 曾经是每插件 +1,于是两条路都能发出一个用过的令牌:uninstall 把计数删回 0,
+   * 而安装/更新根本不动计数。宿主拿令牌做 ESM cache-buster(`?v=<token>`),
+   * 令牌重复 = 说明符重复 = **模块缓存命中**:磁盘上换成了新代码,进程里跑的
+   * 还是旧模块,而 manifest(现读磁盘)已经是新版本 —— 版本号变了、行为没变,
+   * 直到重启 app。tps-meter 1.0.2 的验收就撞在这里(装完那一轮仍跑 1.0.1 的
+   * 纯内存实现,记录一条都没落盘)。
+   */
+  private reloadCounter = 0
   private readonly requests = new CorePluginRequestRegistry()
 
   constructor(
@@ -259,7 +270,7 @@ export class CorePluginManager<
       info.definition.enabled = true
       this.host.setPluginEnabled(pluginId, true)
       // 重新启用要拿新模块:改完插件代码 disable→enable 就该生效,不必重启 app。
-      this.reloadTokens.set(pluginId, (this.reloadTokens.get(pluginId) ?? 0) + 1)
+      this.bumpReloadToken(pluginId)
       await this.loadPlugin(info.definition)
     })
   }
@@ -290,6 +301,18 @@ export class CorePluginManager<
   /** 热重载令牌 —— 宿主的 importEntry 拿它做 ESM cache-buster。 */
   getReloadToken(pluginId: string): number {
     return this.reloadTokens.get(pluginId) ?? 0
+  }
+
+  /**
+   * 发一个**从没用过**的热重载令牌。
+   *
+   * 判据不是"这个插件重载过几次",而是"这个说明符在本进程里 import 过没有" ——
+   * 所以计数是全局单调的,不按插件计、也不随 uninstall 归零。磁盘上的代码换了
+   * 就必须换令牌(安装/更新/重新启用三处),否则新代码要等下次重启才生效。
+   */
+  private bumpReloadToken(pluginId: string): void {
+    this.reloadCounter += 1
+    this.reloadTokens.set(pluginId, this.reloadCounter)
   }
 
   // ── 统一请求通道 ──────────────────────────────
@@ -512,6 +535,8 @@ export class CorePluginManager<
 
       this.host.clearPluginSettings?.(pluginId)
       this.plugins.delete(pluginId)
+      // 删掉只是不再持有;重装时 bumpReloadToken 会从全局计数取一个新号,
+      // 不会退回 0(退回 0 = 重装后命中旧模块缓存,曾经的真实 bug)。
       this.reloadTokens.delete(pluginId)
       this.logger.log(`[PluginManager] Uninstalled plugin: ${pluginId}`)
 
@@ -578,6 +603,9 @@ export class CorePluginManager<
       if (!result.ok) {
         return { success: false, pluginId: result.pluginId, error: result.error }
       }
+      // 磁盘上的代码刚被换掉 —— 必须换令牌,否则下面这次加载会命中模块缓存
+      // 拿到旧模块(重装同 id 时尤其致命:uninstall 曾把令牌归零)。
+      this.bumpReloadToken(result.pluginId ?? incomingId)
       // 让全量扫描把插件装进表(含 catalog-changed 广播,R5 的通道直接复用)。
       await this.doRefreshPlugins()
       return { success: true, pluginId: result.pluginId }
@@ -630,6 +658,9 @@ export class CorePluginManager<
       if (!result.ok) {
         return { success: false, pluginId, error: result.error }
       }
+      // 新代码已落盘 —— 换令牌,否则这次刷新加载的还是旧模块(版本号会变、
+      // 行为不变,直到重启 app)。
+      this.bumpReloadToken(pluginId)
       await this.doRefreshPlugins()
 
       // 装后重校:tarball 自带的 plugin.json 才是版本闸的事实源。
@@ -639,7 +670,11 @@ export class CorePluginManager<
         if (previousSpec) {
           const undo = await this.host.installPluginPackage!({ pkg: entry.pkg, spec: previousSpec })
           rolledBack = undo.ok
-          if (undo.ok) await this.doRefreshPlugins()
+          if (undo.ok) {
+            // 回滚也是一次换代码 —— 令牌同样要动,否则回滚后跑的是刚刚被回滚掉的那份。
+            this.bumpReloadToken(pluginId)
+            await this.doRefreshPlugins()
+          }
         }
         return {
           success: false,
