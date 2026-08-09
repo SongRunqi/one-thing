@@ -241,6 +241,23 @@ interface SendMessageCommandLike {
   thinkingEffort?: string
   /** System-internal drives set this: their prompt text is not a title. */
   suppressTitleGeneration?: boolean
+  /**
+   * Persist and display the user message, then STOP — no provider resolution,
+   * no compaction check, no assistant message, no stream (N2 `handled`).
+   *
+   * The engine had no word for "the user said this, and nothing is going to
+   * answer it". `steerMessage` is the closest existing shape but it is a
+   * QUEUE: the text also gets consumed by whatever turn runs next, which is
+   * wrong here — a plugin that answered `=1+2` locally must not have `=1+2`
+   * re-injected into the next real turn as steering.
+   *
+   * The early return sits AFTER `message:user-created` so every consumer
+   * (renderer, coordinator, session store) sees an ordinary user message. It
+   * is deliberately BEFORE title generation: a message nothing answered is
+   * not what a session should be named after, and the whole point of the
+   * `handled` branch is that this send costs zero model calls.
+   */
+  persistOnly?: boolean
 }
 
 interface EditAndResendCommandLike {
@@ -578,6 +595,10 @@ export class CoreStreamEngine<
         type: 'message:user-created',
         message: userMessage,
       })
+
+      // N2 `handled`: the message is on record and on screen; nothing answers it.
+      // Zero model calls — that includes the title call (see persistOnly).
+      if (cmd.persistOnly) return
 
       if ((isFirstUserMessage || isBranchFirstMessage) && !cmd.suppressTitleGeneration) {
         this.generateAndApplySessionTitle(

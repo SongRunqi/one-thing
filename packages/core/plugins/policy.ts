@@ -57,6 +57,11 @@ export const pluginScope = {
   /** 锚点块请求(R5.x)。address = `<anchor>:<id>`;render/action 折叠为同一 surface。 */
   uiSlotRender: (address: string) => brand(`request:${PLUGIN_UI_RENDER_ACTION}:${address}`),
   uiSlotAction: (address: string) => brand(`request:${PLUGIN_UI_INVOKE_ACTION}:${address}`),
+  /**
+   * 发送前拦截(N2)。带 hookId —— 一个插件可以注册多条拦截,连败要分得清是
+   * 哪一条在坏;降级则聚合到同一个 surface(见 describePluginSurface)。
+   */
+  inputIntercept: (hookId: string) => brand(`inputIntercept:${hookId}`),
   storage: (operation: string) => brand(`storage.${operation}`),
   settingsChange: () => brand('settings:onChange'),
   steer: () => brand('steer'),
@@ -157,6 +162,7 @@ export const PLUGIN_SCOPE_FAMILIES = [
   'storage',
   'settings-change',
   'conversation-control',
+  'input-intercept',
   'registration',
   'connector',
 ] as const
@@ -213,6 +219,18 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
     rationale: '注册期违规(未声明的面板 id、抢占保留命名空间、连接器没有 id)是'
       + '**代码错误**,不是运行期抖动,重试没有意义 —— 阈值 1,第一次就算数。',
   },
+  // ── 干预型钩子:坏了要停掉这一个干预面,但绝不能连坐掉发消息 ──
+  'input-intercept': {
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
+    remedy: 'degrade-surface',
+    rationale: '发送前拦截(N2)是 fail-open 的:抛错 / 超时当作 continue,消息照常发出。'
+      + '连败三次说明这条拦截在持续坏,再让它每次消耗 1.5s 预算只是在给每一次发送'
+      + '加延迟 —— 停掉**这一个干预面**,插件的工具/命令/面板/定时任务全部照常。'
+      + '整体禁用在这里是错的罚则:拦截失败对用户完全无害(他的消息发出去了),'
+      + '为一个无害的失败面砍掉插件的全部能力是把小故障放大成大故障。'
+      + '与 IM 渠道同规:没有"用户点重试"这种逃生口(闸在拦截口,拦截被跳过就'
+      + '永远不会成功),所以它靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
+  },
   // ── 用户主动触发的:失败当场可见,不该连坐 ──
   'ui-request': {
     threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
@@ -265,6 +283,7 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (scope.startsWith('storage')) return 'storage'
   if (scope.startsWith('settings:')) return 'settings-change'
   if (scope === 'steer' || scope === 'followUp' || scope === 'sendMessage') return 'conversation-control'
+  if (scope.startsWith('inputIntercept')) return 'input-intercept'
   if (scope.startsWith('register')) return 'registration'
   if (scope.startsWith('connector')) return 'connector'
   return null
@@ -317,6 +336,15 @@ const UI_SLOT_SURFACE_PATTERN = new RegExp(
   `^request:(?:${PLUGIN_UI_RENDER_ACTION}|${PLUGIN_UI_INVOKE_ACTION}):(.+)$`,
 )
 
+/**
+ * 发送前拦截(N2)降级时停掉的界面名。
+ *
+ * 住在 policy.ts 而不是 input-intercept.ts,是为了避开一条真实的循环:
+ * input-intercept 要 `runWithPluginTimeout`(runtime-guard),而 runtime-guard
+ * 要 `resolvePluginScopeSeverity`(policy)。surface 名本来就是策略层的词汇。
+ */
+export const PLUGIN_INPUT_INTERCEPT_SURFACE = 'input-intercept'
+
 export function describePluginSurface(scope: string): string {
   const panel = PANEL_SURFACE_PATTERN.exec(scope)
   if (panel) return `panel:${panel[1]}`
@@ -324,6 +352,11 @@ export function describePluginSurface(scope: string): string {
   if (uiSlot) return `ui:${uiSlot[1]}`
   if (scope.startsWith('request:')) return scope
   if (scope.startsWith('connector')) return scope
+  // 发送前拦截(N2):一个插件的**所有**拦截钩子折成同一个界面。
+  // 与面板 render/action 折叠同理 —— 用户能理解的是"这个插件不再改我的输入了",
+  // 不是"它的第二个钩子被停了而第一个还在"。逐 hookId 的连败账仍然分开记
+  // (scope 带 hookId),只有降级的判据聚合。
+  if (scope.startsWith('inputIntercept')) return PLUGIN_INPUT_INTERCEPT_SURFACE
   return scope
 }
 

@@ -225,6 +225,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       pluginScope.steer(),
       pluginScope.followUp(),
       pluginScope.sendMessage(),
+      pluginScope.inputIntercept('big-macro'),
       pluginScope.registration('WorkspacePanel'),
       pluginScope.connector('wechat'),
     ]
@@ -271,6 +272,9 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       { factory: 'followUp', scope: pluginScope.followUp(), family: 'conversation-control' },
       // N1:跨会话投递就是那两条队列的上层门面,同族。
       { factory: 'sendMessage', scope: pluginScope.sendMessage(), family: 'conversation-control' },
+      // N2:发送前拦截自成一族 —— 它 fail-open(失败对用户无害),所以罚则是
+      // 停掉这一个干预面而不是整体禁用,与 conversation-control 分开。
+      { factory: 'inputIntercept', scope: pluginScope.inputIntercept('big-macro'), family: 'input-intercept' },
       { factory: 'registration', scope: pluginScope.registration('WorkspacePanel'), family: 'registration' },
       { factory: 'connector', scope: pluginScope.connector('wechat'), family: 'connector' },
     ]
@@ -379,7 +383,10 @@ describe('R7 registry teardown table — 每个开放的注册表都要回答"�
     // 形如 `registerIMConnector?(pluginId: string, …)` 的转发口。
     const forwarders = [...body.matchAll(/\bregister([A-Z][A-Za-z]*)\??\(\s*pluginId/g)].map(m => m[1])
     // 已知的**非注册表**转发口(它们是能力面,不是可被插件占用的既有注册表)。
-    const NOT_REGISTRIES = new Set(['Tool', 'PromptContextProvider', 'BeforeContextCompactHook', 'AfterAssistantResponseHook', 'SkillRoot'])
+    // `InputInterceptHook`(N2)与两个生命周期钩子同类:它是一个**能力面**
+    // (宿主开的一个新钩子点),不是一个"插件可以占用、拆除时要问在飞怎么办"的
+    // 既有注册表 —— 它的在飞语义由 fail-open 与 lifecycleUnsubs 回答。
+    const NOT_REGISTRIES = new Set(['Tool', 'PromptContextProvider', 'BeforeContextCompactHook', 'AfterAssistantResponseHook', 'InputInterceptHook', 'SkillRoot'])
 
     const registryPorts = forwarders.filter(name => !NOT_REGISTRIES.has(name))
     const expected = registryPorts.map(name => name

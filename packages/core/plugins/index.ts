@@ -39,6 +39,7 @@ export {
   PLUGIN_PERMISSION_SESSIONS_PEEK,
   PLUGIN_PERMISSION_SESSIONS_POST,
   PLUGIN_PERMISSION_SESSIONS_TRIGGER,
+  PLUGIN_PERMISSION_NOTES,
   PLUGIN_SESSION_PERMISSIONS,
   PLUGIN_SESSION_PERMISSION_NOTES,
   PLUGIN_TRIGGER_MAX_HOP,
@@ -61,6 +62,26 @@ export type {
   PluginSessionPermission,
   PluginSessionState,
 } from './sessions.js'
+export {
+  CORE_PLUGIN_INPUT_INTERCEPT_TIMEOUT_MS,
+  CorePluginInputInterceptRegistry,
+  PLUGIN_INPUT_INTERCEPT_ACTIONS,
+  PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE,
+  PLUGIN_INPUT_INTERCEPT_SURFACE,
+  PLUGIN_PERMISSION_INPUT_INTERCEPT,
+  emptyPluginInputInterceptOutcome,
+  normalizePluginInputInterceptResult,
+} from './input-intercept.js'
+export type {
+  CorePluginInputInterceptRegistryOptions,
+  PluginInputInterceptAction,
+  PluginInputInterceptContext,
+  PluginInputInterceptDecision,
+  PluginInputInterceptHandler,
+  PluginInputInterceptOutcome,
+  PluginInputInterceptResult,
+  PluginInputInterceptSource,
+} from './input-intercept.js'
 export {
   PLUGIN_WEBVIEW_DEFAULT_ROOT,
   PLUGIN_WEBVIEW_MESSAGE_TYPES,

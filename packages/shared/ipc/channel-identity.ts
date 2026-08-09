@@ -53,6 +53,21 @@ export interface PluginMessageOriginStamp {
   hop: number
 }
 
+/**
+ * 发送前被插件改写过的痕迹(N2)。
+ *
+ * **只记谁改的,不存原文。** 存原文 = 每条被改写的消息在盘上有两份内容,而
+ * 历史重建要回答"喂给模型的是哪一份"、编辑重发要回答"编辑框里放哪一份"、
+ * 上下文压缩要决定摘要哪一份 —— 三个已经很复杂的地方各多一个分叉,换来的
+ * 只是一次事后取证。改写的结果**就是**这条消息的真相(用户看到的、模型看到的、
+ * 重放看到的是同一份字节);这里留下的是归因,不是备份。
+ *
+ * `by` 是按发生顺序的 pluginId 列表 —— 链上可以有多个改写者。
+ */
+export interface InputTransformStamp {
+  by: string[]
+}
+
 export interface MessageOrigin {
   transport: OriginTransport
   source: 'text' | 'voice' | 'api' | string
@@ -64,6 +79,8 @@ export interface MessageOrigin {
   resolvedIdentity?: ResolvedIdentity
   /** 插件注入(N1)。缺席 = 不是插件写的。 */
   plugin?: PluginMessageOriginStamp
+  /** 发送前被插件改写(N2)。缺席 = 这就是用户逐字打出来的。 */
+  inputTransformed?: InputTransformStamp
 }
 
 export interface IMConnectorIncomingMessage {

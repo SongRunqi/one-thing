@@ -23,6 +23,8 @@ import {
 	isCollabRoomSession,
 } from "../collab/ingress.js";
 import { isTrustedCollabDrive } from "../collab/drive-guard.js";
+import { runPluginInputIntercept } from "../plugins/input-intercept.js";
+import { pluginPostInterceptReply } from "../plugins/sessions.js";
 import { mintTurnPrincipal } from "./turn-principal.js";
 import { getEventBus } from "../events/index.js";
 import { composeAgentPermissionMode } from "@onething/runtime/agents";
@@ -162,15 +164,74 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 			fallbackTransport: fallbackTransportForCommand(command),
 			preserveSessionId: shouldPreserveSessionId(command),
 		});
+
+		// ── N2: the plugin input-intercept chain ───────────────────────────────
+		//
+		// THE hook point for "rewrite / take over before sending". It sits here,
+		// and only here, for four reasons:
+		//
+		//  1. Every real user send funnels through this one method — desktop IPC,
+		//     the floating panel, voice, the search window, apps/server's HTTP
+		//     command forward. One hook point covers them all; a per-entry hook
+		//     would have to be re-added at every future entry.
+		//  2. It is AFTER the system-internal early return, so goal / radio /
+		//     collab drives and `plugin:<id>` pushes (N1) never enter the chain.
+		//     Otherwise one plugin would silently rewrite another's delivery and
+		//     nothing on record could say who wrote the text.
+		//  3. It is AFTER the collab room gate: room messages are driven by the
+		//     coordinator, and "handled" there has no meaning (nothing was going
+		//     to stream anyway).
+		//  4. It is AFTER routing, so `ctx.sessionId` is the session the message
+		//     actually lands in — a gateway message remapped onto an identity
+		//     session must not report the pre-routing id.
+		//
+		// fail-open is enforced inside runPluginInputIntercept: it never throws,
+		// and a broken plugin degrades to "the message goes out untouched".
+		const intercepted = await runPluginInputIntercept({
+			sessionId: routed.sessionId,
+			text: command.content,
+			source: "user",
+		});
+		const interceptedOrigin: MessageOrigin = intercepted.transformedBy.length
+			? { ...routed.origin, inputTransformed: { by: intercepted.transformedBy } }
+			: routed.origin;
+
 		const nextCommand = {
 			...command,
-			origin: routed.origin,
+			// The transform result IS the truth: what is persisted, what the model
+			// sees and what edit-and-resend reconstructs are the same bytes. The
+			// original is not kept — only who rewrote it (see InputTransformStamp).
+			content: intercepted.text,
+			origin: interceptedOrigin,
 			source: command.source || routed.origin.source,
 			channel: command.channel || channelForOrigin(routed.origin),
 			// Minted AFTER routing: the router is what resolves a gateway message
 			// to a channel identity, and that identity is the actor.
 			principal: mintTurnPrincipal(command, routed.origin),
 		};
+
+		if (intercepted.handled) {
+			// The user said it, so it is persisted and displayed like any other
+			// user message — but nothing answers it. `persistOnly` is the engine
+			// word for exactly that (no provider resolution, no title call, no
+			// stream): "handled" must cost zero tokens or the whole point of a
+			// local macro is gone.
+			await super.handleSendMessage(
+				routed.sessionId,
+				{ ...nextCommand, persistOnly: true },
+				sender,
+			);
+			if (intercepted.reply && intercepted.handledBy) {
+				pluginPostInterceptReply(
+					{ streamEngine: this },
+					intercepted.handledBy,
+					routed.sessionId,
+					intercepted.reply,
+				);
+			}
+			return;
+		}
+
 		await super.handleSendMessage(
 			routed.sessionId,
 			this.withAgentModelBinding(routed.sessionId, nextCommand),

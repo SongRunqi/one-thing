@@ -47,6 +47,7 @@ import {
   registerAfterAssistantResponseHook,
   registerBeforeContextCompactHook,
 } from './lifecycle.js'
+import { registerPluginInputInterceptHook } from './input-intercept.js'
 import { getScheduler } from '../scheduler/index.js'
 import type {
   AfterAssistantResponseHook,
@@ -405,6 +406,9 @@ export function createPluginAPI(
       registerPromptContextProvider: registerPromptContextProvider,
       registerBeforeContextCompactHook,
       registerAfterAssistantResponseHook,
+      // N2:发送前拦截(第一个干预型钩子)。声明门在 api-builder(`input:intercept`),
+      // 链的次序 / 预算 / fail-open / 熔断闸在 input-intercept.ts,挂点在引擎。
+      registerInputInterceptHook: registerPluginInputInterceptHook,
       registerSkillRoot: registerPluginSkillRootProvider,
       invalidateSkillsCache() {
         return import('../skills/session-skills.js')

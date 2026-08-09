@@ -46,8 +46,46 @@ export const PLUGIN_SESSION_PERMISSION_NOTES: Record<PluginSessionPermission, st
   [PLUGIN_PERMISSION_SESSIONS_TRIGGER]: 'can start a model turn on its own (spends tokens)',
 }
 
+/* ── 发送前拦截(N2)的声明门 ─────────────────────────────────────────────── */
+
+/**
+ * 这两个常量住在**这个文件**而不是 `input-intercept.ts`,原因是依赖形状:
+ *
+ *  - 本文件是一个**零依赖叶子**,渲染层直接按子路径引它
+ *    (`@onething/core/plugins/sessions`)来渲染装前披露;
+ *  - `input-intercept.ts` 要 `runWithPluginTimeout` / policy 表,把它拉进
+ *    渲染层的包只为了一句英文文案是不值的。
+ *
+ * 于是本文件事实上是**插件权限的词汇表 + 披露口径**(`describePluginPermission`
+ * 早就在这里),新权限加在这里,UI 一行不用改就把它念给用户听 ——
+ * "宿主判了、界面没说"的漂移在结构上不成立。`input-intercept.ts` 原样再导出
+ * 这两个名字,读那边代码的人不必跳文件。
+ */
+
+/**
+ * 发送前拦截(N2)。**目前最敏感的一条**:声明它的插件读得到你打的每一个字,
+ * 能把它改写成另一句话,也能让它根本不发给模型。
+ */
+export const PLUGIN_PERMISSION_INPUT_INTERCEPT = 'input:intercept'
+
+/**
+ * 披露文案。两件事都要说出来(rewrite / handle)—— 只说"读"会让人以为它是被动的。
+ * 与 persistent 槽的披露同级:一句人话,装前确认页与已装卡片共用同一句措辞。
+ */
+export const PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE =
+  'can rewrite or handle your messages before they are sent'
+
+/**
+ * **被消费的**权限名 → 披露文案。未登记的名字原样显示(向前兼容:未来的宿主
+ * 可能认识它),但凡是宿主真的会拿来判定的名字,都必须在这里有一句人话。
+ */
+export const PLUGIN_PERMISSION_NOTES: Readonly<Record<string, string>> = {
+  ...PLUGIN_SESSION_PERMISSION_NOTES,
+  [PLUGIN_PERMISSION_INPUT_INTERCEPT]: PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE,
+}
+
 export function describePluginPermission(name: string): string {
-  const note = PLUGIN_SESSION_PERMISSION_NOTES[name as PluginSessionPermission]
+  const note = PLUGIN_PERMISSION_NOTES[name]
   return note ? `${name} — ${note}` : name
 }
 

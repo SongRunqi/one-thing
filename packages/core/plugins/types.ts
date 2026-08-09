@@ -1,3 +1,4 @@
+import type { PluginInputInterceptHandler } from './input-intercept.js'
 import type { CorePluginRequestHandler } from './request-channel.js'
 import type { CorePluginStorage } from './storage.js'
 import type { CorePluginPanelRegistration } from './panel.js'
@@ -382,6 +383,19 @@ export interface CorePluginAPI<
   registerPromptContextProvider(id: string, provider: TPromptContextProvider): void
   beforeContextCompact(id: string, hook: TBeforeContextCompactHook): void
   afterAssistantResponse(id: string, hook: TAfterAssistantResponseHook): void
+  /**
+   * 发送前拦截(N2)——**干预型**钩子,与上面两个观察型钩子不是一个家族。
+   *
+   * handler 返回 `{action:'continue'|'transform'|'handled'}`(或什么都不返回
+   * = continue),多插件按全局规范顺序链式:transform 逐个累积文本,第一个
+   * handled 短路后续、**不起模型轮**(用户消息照常持久化与显示)。
+   *
+   * 只看真实用户发送:系统内部源(goal / radio / collab / 别的插件的投递)
+   * 一律不进链。抛错 / 超时 = 当作 continue(fail-open)—— 消息永远发得出去。
+   *
+   * 声明门:`contributes.permissions` 要有 `input:intercept`。
+   */
+  interceptInput(id: string, handler: PluginInputInterceptHandler): void
   registerSkillRoot(provider: TSkillRootProvider): void
   /**
    * 统一请求通道:UI 侧 `platformApi.pluginRequest(pluginId, action, payload)`

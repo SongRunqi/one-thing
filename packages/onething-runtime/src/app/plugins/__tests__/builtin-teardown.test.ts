@@ -20,18 +20,19 @@ process.env.ONETHING_STORE_PATH = storeRoot
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>
 
 async function loadModules() {
-  const [loader, api, tools, promptContext, skillRoots, lifecycle, scheduler, variables, connectors] = await Promise.all([
+  const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, scheduler, variables, connectors] = await Promise.all([
     import('../loader.js'),
     import('../api.js'),
     import('../../tools/index.js'),
     import('../../engine/prompt/plugin-context.js'),
     import('../../skills/plugin-roots.js'),
     import('../lifecycle.js'),
+    import('../input-intercept.js'),
     import('../../scheduler/index.js'),
     import('../../variables/index.js'),
     import('../../channel/connector-registry.js'),
   ])
-  return { loader, api, tools, promptContext, skillRoots, lifecycle, scheduler, variables, connectors }
+  return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, scheduler, variables, connectors }
 }
 
 /**
@@ -91,6 +92,8 @@ interface RegistrySnapshot {
   variableSubscriptions: number
   /** R7 开放的第一个既有注册表 —— 开一个就要进快照,否则守卫覆盖不到它。 */
   imConnectorIds: string[]
+  /** N2 的干预型钩子:开一个钩子点就要进快照,同一条"开一个漏一个"的规矩。 */
+  inputInterceptHooks: number
 }
 
 /** Counting EventBus stand-in: subscriptions are a registry too, and a leaked
@@ -159,6 +162,7 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
     promptContextProviders: mods.promptContext.getPromptContextProviderCount(),
     skillRoots: mods.skillRoots.listPluginSkillRoots().length,
     lifecycleHooks: mods.lifecycle.getLifecycleHookCounts(),
+    inputInterceptHooks: mods.inputIntercept.getInputInterceptHookCount(),
     eventSubscriptions: bus.subscriptionCount,
     schedulerTaskIds,
     variableSubscriptions,

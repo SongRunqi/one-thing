@@ -25,6 +25,10 @@ import {
   type CorePluginUiSlotRegistration,
 } from './ui-anchor.js'
 import {
+  PLUGIN_PERMISSION_INPUT_INTERCEPT,
+  type PluginInputInterceptHandler,
+} from './input-intercept.js'
+import {
   PLUGIN_PERMISSION_SESSIONS_PEEK,
   PLUGIN_PERMISSION_SESSIONS_POST,
   PLUGIN_PERMISSION_SESSIONS_TRIGGER,
@@ -70,6 +74,15 @@ export interface CorePluginAPIHost<
   registerPromptContextProvider(pluginId: string, id: string, provider: TPromptContextProvider): () => void
   registerBeforeContextCompactHook(pluginId: string, id: string, hook: TBeforeContextCompactHook): () => void
   registerAfterAssistantResponseHook(pluginId: string, id: string, hook: TAfterAssistantResponseHook): () => void
+  /**
+   * 发送前拦截链的登记口(N2)—— 第一个**干预型**钩子。
+   *
+   * 与 lifecycle 钩子同构:core 只做声明门与登记,链的次序 / 预算 / fail-open /
+   * 熔断闸全在注册表(`CorePluginInputInterceptRegistry`),挂点在装配层的引擎。
+   * 宿主没接这条线(headless / server 不跑插件)时 `api.interceptInput` 报错并
+   * 拒绝注册,而不是静默假装注册成功 —— 那正是 pi 的死订阅。
+   */
+  registerInputInterceptHook?(pluginId: string, id: string, handler: PluginInputInterceptHandler): () => void
   registerSkillRoot(pluginId: string, provider: TSkillRootProvider): () => void
   invalidateSkillsCache?(): void | Promise<void>
   /**
@@ -617,6 +630,41 @@ export function createCorePluginAPI<
       const unsub = host.registerAfterAssistantResponseHook(pluginId, id, hook)
       lifecycleUnsubs.push(unsub)
       logger.log(`[Plugin:${pluginId}] Registered afterAssistantResponse hook: ${id}`)
+    },
+
+    /**
+     * 发送前拦截(N2)——**拦截族**的第一个成员。
+     *
+     * 它刻意**不是** `api.on('input')`:观察族(`api.on`)的返回值今天被忽略,
+     * 把一个"返回值被消费"的点混进同一个函数,作者永远搞不清自己 return 的东西
+     * 到底算不算数;而裸 string 订阅名拼错就是 pi 那条静默死订阅。两个家族从
+     * 类型上分开之后,这两个问题一起消失:拦截点是函数名,拼错编译不过。
+     *
+     * 声明门:`contributes.permissions` 要有 `input:intercept`。未声明 = 报错 +
+     * 拒绝注册,**不计熔断**(与 sendMessage / theme.updateBackground 同规:
+     * 那是作者写错了 manifest,不该为一次笔误连坐整个插件)。
+     */
+    interceptInput(id: string, handler: PluginInputInterceptHandler): void {
+      if (rejectLateCall('interceptInput')) return
+      if (!declaredPermissions.has(PLUGIN_PERMISSION_INPUT_INTERCEPT)) {
+        logger.error(
+          `[Plugin:${pluginId}] interceptInput requires "${PLUGIN_PERMISSION_INPUT_INTERCEPT}" in `
+          + 'contributes.permissions (plugin.json). It is the most sensitive declaration there is — '
+          + 'the install page tells the user this plugin can rewrite or handle their messages.',
+          undefined,
+        )
+        return
+      }
+      if (!host.registerInputInterceptHook) {
+        logger.error(
+          `[Plugin:${pluginId}] interceptInput is not available on this host (no send pipeline).`,
+          undefined,
+        )
+        return
+      }
+      const unsub = host.registerInputInterceptHook(pluginId, id, handler)
+      lifecycleUnsubs.push(unsub)
+      logger.log(`[Plugin:${pluginId}] Registered input interceptor: ${id}`)
     },
 
     registerSkillRoot(provider: TSkillRootProvider): void {

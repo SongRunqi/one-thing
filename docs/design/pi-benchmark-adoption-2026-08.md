@@ -125,3 +125,76 @@ N4(tool_call)→ M1(通知音)→ M2(搜索供给方)→ N5-N7 → 轻通道**�
 12. **未声明权限的拒绝不计熔断**,与 `theme.updateBackground` 同规:那是作者写错
     了 manifest,不该为一次笔误连坐整个插件。宿主**抛错**才计(scope
     `sendMessage`,归 `conversation-control` 族)。
+
+## 7. N2 落地实录(2026-08-10)与**与规格的差异**
+
+三段式照旧:core 出协议(`packages/core/plugins/input-intercept.ts`:三态、
+归一化、链的次序与 fail-open 的注册表)→ api-builder 出声明门(`input:intercept`)
+→ 装配层出实现(`packages/onething-runtime/src/app/plugins/input-intercept.ts`
+接熔断,`app/engine/stream-engine.ts` 出挂点)。样本插件
+`@onething-plugins/input-macros`(市场仓 `packages/input-macros`)。
+
+**订阅面的形态(通用前置的最强兑现)**:`api.interceptInput(id, handler)`,与
+`beforeContextCompact` 同构。**不开** `api.on('input')` —— 于是"订阅名枚举化"
+不是加一张白名单,而是**根本没有名字可以拼错**:拦截点是一个函数名,拼错就是
+TypeError。观察族(`api.on`)的返回值继续被忽略,零污染。
+
+**逐条差异(规格 → 实际,及理由):**
+
+1. **超时预算取 1.5s**(`CORE_PLUGIN_INPUT_INTERCEPT_TIMEOUT_MS`),不是沿用生命
+   周期钩子的 5s。那两个钩子挂在压缩路径与回合结束后,用户不在等;这一条挂在
+   **回车与消息出现之间**,五秒的空白就已经是"应用卡了"。1.5s 高于任何本地计算,
+   低于用户开始重复按回车的阈值。逐 handler 计,链本身**不设总预算** —— 设了就要
+   回答"总预算用完时后半条链算 continue 还是算没跑",那是一个不可归因的状态。
+2. **熔断罚则是 degrade-surface 而不是 disable-plugin**(新家族 `input-intercept`,
+   surface 折成 `input-intercept`)。规格只说"熔断降级后该插件的拦截被跳过";
+   在严重度表里这句话只有 degrade-surface 说得出来。理由:拦截 fail-open,失败
+   对用户完全无害(他的消息发出去了),为一个无害的失败面砍掉插件的工具/命令/
+   面板是把小故障放大成大故障。闸在**链的入口**(拦截不走请求通道),没有"用户
+   点重试"的逃生口,所以靠时间半开(`PLUGIN_SURFACE_PROBE_INTERVAL_MS`)——
+   与 IM 渠道同一个先例。
+3. **`handled` 用新的 `persistOnly`,不复用 steering 队列**。N1 的 `posted` 是
+   steerMessage,而 steering 队列的语义包含"这段文本会被下一轮读到" —— 对一条
+   已经被本地答掉的 `=1+2` 来说那是错的(它会被再注入一次)。于是 core 的
+   `SendMessageCommandLike` 加了 `persistOnly`:持久化 + 显示 + `message:user-created`
+   之后**就地返回**,不解析 provider、不建 assistant 消息、不起流。它刻意排在
+   **标题生成之前**:handled 必须零模型调用,而标题也是一次调用。
+4. **`reply` 复用 N1 的 posted 那一格,但不过链长闸/频率闸**
+   (`pluginPostInterceptReply`)。闸存在的理由是插件能自己驱动自己;这里每一条
+   回应都由用户刚按下的那次回车一比一引出,不发就不答,天然收敛。套上 10 条/分钟
+   的窗口,唯一效果是用户连算十一次之后宏"莫名其妙不答了"。`origin.plugin.hop`
+   记 **0**,如实表示"这不是插件发起的链"。
+5. **改写痕迹只记归因,不存原文**:`origin.inputTransformed = { by: [pluginId…] }`
+   (shared 的 `MessageOrigin` append-only 又加了一个可选键)。存原文 = 每条被改写
+   的消息在盘上有两份内容,而历史重建要回答"喂给模型的是哪一份"、编辑重发要回答
+   "编辑框里放哪一份"、压缩要决定摘要哪一份 —— 三个已经很复杂的地方各多一个分叉,
+   换来的只是一次事后取证。**改写的结果就是这条消息的真相**。
+6. **挂点是 `StreamEngine.handleSendMessage`(装配层)的一处**,位置精确:
+   在系统内部源早退**之后**、协作房 ingress 门**之后**、渠道路由**之后**、
+   `super.handleSendMessage` 之前。四个"之后"各有理由:内部源(goal/radio/collab/
+   `plugin:` 前缀族)不进链,否则 N1 的插件投递会被别的插件二次改写、盘上那条消息
+   再也说不清是谁写的;协作房由协调者独占驱动,handled 在那里没有意义;路由之后
+   才有消息**真正落地**的 sessionId(网关消息会被改派到身份会话)。
+7. **"真实用户发送"的口径 = 系统内部源的补集**,而不是另立一张"用户源"白名单。
+   代价:网关(微信/Telegram)消息也进链 —— 那确实是一个真人在打字,但它意味着
+   一个宏插件也会改写渠道来的消息。收益:不需要第二份"什么算用户"的定义,而这个
+   仓库里同一个定义分两份的病已经犯过多次。`ctx.source` 今天恒为 `'user'`,
+   字段留着是给将来的第二类源一个位置。
+8. **`handleEditAndResend` / `handleRetryMessage` 不进链**。前者改的是一条已经
+   存在的消息(在那里 transform 等于原地改写历史),后者根本没有新文本。
+   "发送前拦截"就是字面意思:**新发出的那一条**。
+9. **返回值不合规 fail-open 但不静默**:未知 action、`transform` 少 `text`、
+   `reply` 不是字符串 —— 一律收敛成 continue(或丢掉 reply),同时记一条 error
+   日志点名说明。收敛与告警是两件事,少了后者就是又一个 pi 式的静默死订阅。
+   这类"作者写错了"**不计熔断**(与未声明权限同规)。
+10. **重复的 `(pluginId, id)` 被拒绝**并计 registration 熔断(阈值 1):让第二条
+    悄悄顶掉第一条,作者看到的是"我的第一个宏不生效了"。而**未声明
+    `input:intercept`** 只报错不计熔断 —— 那是 manifest 笔误,与 N1 的
+    `sendMessage`、`theme.updateBackground` 同规。
+11. **披露口径挪进 `sessions.ts`**。`input:intercept` 与它的人话文案定义在那里
+    (那个文件是零依赖叶子,渲染层按子路径直接引它做装前披露),
+    `input-intercept.ts` 原样再导出。渲染层**一行没改**就把新权限念给了用户 ——
+    "宿主判了、界面没说"的漂移在结构上不成立。
+12. **`InputTransformStamp` 没有从 `packages/shared/ipc/index.ts` 再导出**。
+    它今天只在引擎内以结构字面量构造,没有消费方需要这个名字;而那个 barrel
+    是一个高危脏文件(工作树里带着未提交的用户改动)。需要时再加一行。

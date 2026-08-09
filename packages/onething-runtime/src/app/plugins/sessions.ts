@@ -240,6 +240,40 @@ export async function pluginSendMessage(
   return { ok: true, delivered: delivery, targetWasBusy: busy, hop }
 }
 
+/**
+ * N2 的 `handled.reply` 投递口 —— **复用 `posted` 那一格**(同一条 steering
+ * 机制:立刻持久化并显示,空闲会话不因此起轮),同一个身份戳。
+ *
+ * 与 `pluginSendMessage` 的两处**刻意不同**,理由都是"这不是插件自发的投递":
+ *
+ *  1. **不过链长闸 / 频率闸**。闸存在的理由是插件能自己驱动自己(两个会话互相
+ *     回话是一个不收敛的循环)。这里的每一条回应都由**用户刚按下的那次回车**
+ *     一比一地引出:用户不发,它一条也不发,天然收敛。给它套上 10 条/分钟的
+ *     窗口,唯一的效果是用户连算十一次算术之后宏"莫名其妙不答了"。
+ *  2. **hop 记 0**。N1 的口径里"第一次由插件发起的投递是 1";0 如实表示
+ *     "这不是插件发起的链,是对用户输入的即答"。
+ */
+export function pluginPostInterceptReply(
+  /**
+   * 刻意只要 `streamEngine`,不要整个 `PluginSessionHostDeps`。
+   *
+   * 这条投递不碰事件总线,而调用点在**引擎内部** —— 在那里现取
+   * `getEventBus()` 只为把它塞进一个用不上的字段,而它在总线未初始化的宿主上
+   * 会抛;那一抛发生在 core 的 try 之外,后果是整条发送 reject。
+   * 依赖收窄成实际用到的那一个,这个失败模式在类型上就不存在了。
+   */
+  deps: Pick<PluginSessionHostDeps, 'streamEngine' | 'now'>,
+  pluginId: string,
+  sessionId: string,
+  content: string,
+): void {
+  const text = String(content ?? '').trim()
+  if (!text) return
+  const now = deps.now?.() ?? Date.now()
+  const origin = pluginOrigin(pluginId, 0, now)
+  deps.streamEngine.steerMessage(sessionId, text, origin.source, origin)
+}
+
 /* ── 感知快照 ─────────────────────────────────────────────────────────────── */
 
 /**
