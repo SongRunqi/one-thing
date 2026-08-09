@@ -272,6 +272,7 @@ import type {
 	GetPluginMarketRequest,
 	GetPluginMarketResponse,
 	PluginLifecycleInfoResponse,
+	ReadPluginTarballResponse,
 	PluginFootprintResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
@@ -1221,6 +1222,13 @@ export interface ElectronAPI {
 
 	/** 生命周期能力面:无 npm 时设置页把 Install/Update 置灰并说明。 */
 	getPluginLifecycleInfo: () => Promise<PluginLifecycleInfoResponse>;
+
+	/**
+	 * 装前清单预读(file: 开发通道):选中 .tgz 即拿到包名、版本与声明,
+	 * 用户不必再手抄包名。预读只喂 UI —— 安装闸一条不松。
+	 */
+	readPluginTarball: (path: string) => Promise<ReadPluginTarballResponse>;
+
 	/** 市场(P3):索引视图;断网回缓存并 stale 置位。 */
 	getPluginMarket: (request?: GetPluginMarketRequest) => Promise<GetPluginMarketResponse>;
 

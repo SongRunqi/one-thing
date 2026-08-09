@@ -27,6 +27,10 @@ describe('electron plugins IPC host', () => {
     const updatePlugin = vi.fn().mockResolvedValue({ success: true, pluginId: 'plan-status', version: '2.0.0' })
     const checkPluginUpdates = vi.fn().mockResolvedValue({ success: true, offers: [] })
     const getPluginLifecycleInfo = vi.fn().mockResolvedValue({ success: true, npmAvailable: true })
+    const readPluginTarball = vi.fn().mockReturnValue({
+      success: true,
+      summary: { path: '/tmp/plan-status-1.1.0.tgz', pkg: '@onething-plugins/plan-status', pluginId: 'plan-status', version: '1.1.0' },
+    })
     const getPluginMarket = vi.fn().mockResolvedValue({ success: true, entries: [], fetchedAt: null, stale: false })
 
     registerElectronPluginsIpcHandlers({
@@ -47,6 +51,7 @@ describe('electron plugins IPC host', () => {
         update: 'plugins:update',
         checkUpdates: 'plugins:check-updates',
         lifecycleInfo: 'plugins:lifecycle-info',
+        readTarball: 'plugins:read-tarball',
         market: 'plugins:market',
       },
       listPlugins,
@@ -65,11 +70,12 @@ describe('electron plugins IPC host', () => {
       updatePlugin,
       checkPluginUpdates,
       getPluginLifecycleInfo,
+      readPluginTarball,
       getPluginMarket,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(17)
+    expect(handle).toHaveBeenCalledTimes(18)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'plugins:list',
       'plugins:enable',
@@ -87,6 +93,7 @@ describe('electron plugins IPC host', () => {
       'plugins:update',
       'plugins:check-updates',
       'plugins:lifecycle-info',
+      'plugins:read-tarball',
       'plugins:market',
     ])
 
@@ -113,7 +120,13 @@ describe('electron plugins IPC host', () => {
       },
     })
     expect(getPluginFootprint).toHaveBeenCalledWith(toggleRequest)
-    await expect(handle.mock.calls[16][1]({}, { refresh: true }))
+    // 装前清单预读:选中 tarball 即可安装(包名由宿主读出,不再手输)。
+    expect(handle.mock.calls[16][1]({}, { path: '/tmp/plan-status-1.1.0.tgz' })).toEqual({
+      success: true,
+      summary: { path: '/tmp/plan-status-1.1.0.tgz', pkg: '@onething-plugins/plan-status', pluginId: 'plan-status', version: '1.1.0' },
+    })
+    expect(readPluginTarball).toHaveBeenCalledWith({ path: '/tmp/plan-status-1.1.0.tgz' })
+    await expect(handle.mock.calls[17][1]({}, { refresh: true }))
       .resolves.toEqual({ success: true, entries: [], fetchedAt: null, stale: false })
     expect(getPluginMarket).toHaveBeenCalledWith({ refresh: true })
 

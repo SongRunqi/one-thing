@@ -349,6 +349,9 @@ export const IPC_CHANNELS = {
 	PLUGINS_UPDATE: "plugins:update",
 	PLUGINS_CHECK_UPDATES: "plugins:check-updates",
 	PLUGINS_LIFECYCLE_INFO: "plugins:lifecycle-info",
+	// 装前清单预读(file: 开发通道):包名与声明本来就在 tarball 里,
+	// 宿主自己读出来,用户不必再抄一遍。预读只喂 UI,不是信任来源。
+	PLUGINS_READ_TARBALL: "plugins:read-tarball",
 	// 市场(P3):索引视图(声明 + 本机安装态 + 版本兼容 join 好),
 	// 拉取失败回上次缓存并 stale 置位 —— 断网时市场区明示过期而非消失。
 	PLUGINS_MARKET: "plugins:market",

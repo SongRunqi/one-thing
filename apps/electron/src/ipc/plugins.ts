@@ -18,6 +18,8 @@ import type {
   PluginLifecycleInfoResponse,
   GetPluginMarketRequest,
   GetPluginMarketResponse,
+  ReadPluginTarballRequest,
+  ReadPluginTarballResponse,
 } from '@shared/ipc/plugins.js'
 
 export interface ElectronIpcMainLike {
@@ -45,6 +47,8 @@ export interface ElectronPluginsIpcChannels {
   update: string
   checkUpdates: string
   lifecycleInfo: string
+  /** 装前清单预读(file: 开发通道):选中 tarball 即可安装。 */
+  readTarball: string
   // P3:市场(索引视图,主进程 join 好安装态与版本兼容)
   market: string
 }
@@ -99,6 +103,7 @@ export interface RegisterElectronPluginsIpcHandlersOptions {
   updatePlugin(request: UpdatePluginRequest): Promise<UpdatePluginResponse> | UpdatePluginResponse
   checkPluginUpdates(): Promise<CheckPluginUpdatesResponse> | CheckPluginUpdatesResponse
   getPluginLifecycleInfo(): Promise<PluginLifecycleInfoResponse> | PluginLifecycleInfoResponse
+  readPluginTarball(request: ReadPluginTarballRequest): ReadPluginTarballResponse
   getPluginMarket(request: GetPluginMarketRequest): Promise<GetPluginMarketResponse> | GetPluginMarketResponse
   ipcMain?: ElectronIpcMainLike
 }
@@ -172,6 +177,10 @@ export function registerElectronPluginsIpcHandlers(
 
   host.handle(options.channels.lifecycleInfo, () => {
     return options.getPluginLifecycleInfo()
+  })
+
+  host.handle(options.channels.readTarball, (_event, request: ReadPluginTarballRequest) => {
+    return options.readPluginTarball(request)
   })
 
   host.handle(options.channels.market, (_event, request: GetPluginMarketRequest) => {

@@ -8992,7 +8992,7 @@ function checkPluginLogicStaysOutOfHostAssembly(): void {
       const parked = path.join(testDir, entry.name)
       lines.push(...codeOnlyLines(fs.readFileSync(parked, 'utf-8'))
         .filter(({ code }) => /\bfrom\s+['"]/.test(code)
-          && !/from\s+['"](?:node:)?(?:fs|fs\/promises|os|path|crypto|util|url|events)['"]/.test(code)
+          && !/from\s+['"](?:node:)?(?:fs|fs\/promises|os|path|crypto|util|url|events|zlib)['"]/.test(code)
           && !/from\s+['"]vitest['"]/.test(code)
           && !/from\s+['"]@onething\/core(?:\/|['"])/.test(code)
           && !/from\s+['"]@onething\/app(?:\/|['"])/.test(code)

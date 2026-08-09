@@ -22,6 +22,7 @@ import type {
 	CheckPluginUpdatesResponse,
 	GetPluginMarketResponse,
 	PluginLifecycleInfoResponse,
+	ReadPluginTarballResponse,
 } from "@shared/ipc/plugins.js";
 import type { PlatformApi, PlatformCapabilities } from "./types";
 
@@ -1258,6 +1259,13 @@ const webApi = {
 		success: false,
 		pluginId: "",
 		error: "Plugins are updated on the desktop host only.",
+	}),
+
+	// 预读要读本机文件系统上的 tarball —— 浏览器里没有那个文件,也没有安装能力。
+	readPluginTarball: async (): Promise<ReadPluginTarballResponse> => ({
+		success: false,
+		errorCode: "not-supported",
+		error: "Plugin tarballs are inspected on the desktop host only.",
 	}),
 
 	getPluginMarket: async (): Promise<GetPluginMarketResponse> => ({

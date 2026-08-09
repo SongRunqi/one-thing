@@ -203,6 +203,64 @@ export interface InstallPluginResponse {
 	error?: string;
 }
 
+/**
+ * 装前清单预读(file: 开发通道):选中 tarball 即可安装。
+ *
+ * 包名写在 tarball 内的 `package/package.json` 里,宿主自己读得到 —— 让用户
+ * 再抄一遍是纯冗余。预读结果只用于 UI 预填与披露:安装链自己的名字一致性、
+ * SRI、零运行时依赖、内置撞名、失败回滚一概照旧,**不以预读为信任来源**。
+ */
+export interface ReadPluginTarballRequest {
+	/** 本地 .tgz 路径。 */
+	path: string;
+}
+
+/**
+ * 拒绝的分类 —— UI 据此说清"为什么这个文件装不了",而不是一律"读取失败"。
+ * `not-supported`:本宿主没有插件安装能力(方案 A 下的 web)。
+ */
+export type ReadPluginTarballErrorCode =
+	| "not-found"
+	| "unreadable"
+	| "too-large"
+	| "not-gzip"
+	| "not-tar"
+	| "missing-package-json"
+	| "invalid-package-json"
+	| "missing-name"
+	| "missing-version"
+	| "name-contract"
+	| "not-supported";
+
+export interface PluginTarballSummary {
+	/** 预读的那个文件(原样回传:UI 拿它当安装参数,免得两边各自 trim)。 */
+	path: string;
+	/** 包内 package.json 的 name;安装链要的 pkg 就是它。 */
+	pkg: string;
+	/** 包名去 scope。 */
+	pluginId: string;
+	version: string;
+	/** manifest 的显示名(package.json 的 name 是包名,不是给人看的标题)。 */
+	displayName?: string;
+	description?: string;
+	author?: string;
+	minAppVersion?: string;
+	/** plugin.json 的 contributes **原文** —— 与市场索引条目同形,披露同一套。 */
+	contributes?: unknown;
+	/**
+	 * plugin.json 缺失/坏时的说明。这种包装得上却永远不会被加载,
+	 * 所以不拒绝、但必须摆到确认页上。
+	 */
+	manifestIssue?: string;
+}
+
+export interface ReadPluginTarballResponse {
+	success: boolean;
+	summary?: PluginTarballSummary;
+	errorCode?: ReadPluginTarballErrorCode;
+	error?: string;
+}
+
 /** 更新(P1):索引比对 + install 新 URL;装后闸不通过自动回退旧版。 */
 export interface UpdatePluginRequest {
 	pluginId: string;

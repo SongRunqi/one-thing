@@ -61,6 +61,7 @@ import type {
 	UpdatePluginResponse,
 	CheckPluginUpdatesResponse,
 	PluginLifecycleInfoResponse,
+	ReadPluginTarballResponse,
 	PluginFootprintResponse,
 } from "@shared/ipc.js";
 
@@ -592,6 +593,10 @@ const electronAPI = {
 
 	getPluginLifecycleInfo: (): Promise<PluginLifecycleInfoResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_LIFECYCLE_INFO),
+
+	// 装前清单预读(file: 开发通道):选中 tarball 即可安装,包名不必手抄。
+	readPluginTarball: (path: string): Promise<ReadPluginTarballResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_READ_TARBALL, { path }),
 
 	// 市场(P3):索引视图主进程 join 好;断网回缓存并 stale 置位。
 	getPluginMarket: (request?: GetPluginMarketRequest): Promise<GetPluginMarketResponse> =>

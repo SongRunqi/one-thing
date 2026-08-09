@@ -44,6 +44,7 @@ import { getPluginManager } from '@onething/app/plugins/index.js'
 import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
 import { getPluginFootprint } from '@onething/app/plugins/loader.js'
 import { getPluginMarketIndexSnapshot, probePluginNpmAvailability } from '@onething/app/plugins/install.js'
+import { readPluginTarballSummary } from '@onething/app/plugins/tarball.js'
 import { getPluginAppVersion } from '@onething/app/plugins/app-version.js'
 import { getEventBus } from '@onething/app/events/index.js'
 import * as store from '@onething/app/store.js'
@@ -131,6 +132,7 @@ export function registerPluginHandlers(): void {
       update: IPC_CHANNELS.PLUGINS_UPDATE,
       checkUpdates: IPC_CHANNELS.PLUGINS_CHECK_UPDATES,
       lifecycleInfo: IPC_CHANNELS.PLUGINS_LIFECYCLE_INFO,
+      readTarball: IPC_CHANNELS.PLUGINS_READ_TARBALL,
       market: IPC_CHANNELS.PLUGINS_MARKET,
     },
     listPlugins: () => {
@@ -262,6 +264,11 @@ export function registerPluginHandlers(): void {
     // 裁决 8:v1 依赖本机 npm —— 能力面先行,设置页据此置灰并说明。
     getPluginLifecycleInfo: async () => {
       return { success: true as const, npmAvailable: await probePluginNpmAvailability() }
+    },
+    // 装前清单预读:包名与声明都在 tarball 里,宿主自己读出来。
+    // 纯读取,不落任何盘 —— 安装闸一条不松(预读不是信任来源)。
+    readPluginTarball: request => {
+      return readPluginTarballSummary(request?.path ?? '')
     },
     // P3:市场 —— 索引视图在主进程 join 好(安装态 + 版本兼容 + 缓存龄),
     // renderer 只渲染;拉取失败回上次缓存并 stale 置位(断网容忍)。

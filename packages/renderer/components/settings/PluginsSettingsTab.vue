@@ -514,7 +514,8 @@
       </div>
     </section>
 
-    <!-- Install(P1:npm 形态命令链;先吃 file: 开发通道与本地 tarball) -->
+    <!-- Install(P1:npm 形态命令链;file: 开发通道 —— 选中 tarball 即可安装:
+         包名写在包里,宿主自己读得出来,不该让人再抄一遍) -->
     <section class="settings-section">
       <h3 class="section-title">
         Install Plugin
@@ -528,28 +529,84 @@
             size="sm"
             message="npm is not available on this machine. Plugin installation and updates need a local npm (v1 targets developers); install Node.js/npm and restart the app."
           />
-          <div class="install-form">
-            <Input
-              v-model="installPkg"
-              placeholder="Package name (e.g. plan-status or @org/plan-status)"
-              :disabled="npmAvailable === false || installing"
-              aria-label="Plugin package name"
-            />
+          <!-- 逐条绑定而不是 v-on="handlers":对象形式的 v-on 走 toHandlers,
+               `onDrop` 这样的键会被再加一次前缀,监听器落在一个不存在的事件上。 -->
+          <div
+            class="install-form"
+            :class="{ 'is-drop-target': isTarballDragActive }"
+            @dragenter="tarballDropHandlers.onDragenter"
+            @dragover="tarballDropHandlers.onDragover"
+            @dragleave="tarballDropHandlers.onDragleave"
+            @drop="tarballDropHandlers.onDrop"
+          >
             <Input
               v-model="installPath"
-              placeholder="Local path — plugin directory or .tgz (file: dev channel)"
+              placeholder="Local .tgz — or drop one here (file: dev channel)"
               :disabled="npmAvailable === false || installing"
-              aria-label="Local plugin path"
+              aria-label="Local plugin tarball path"
+              @update:model-value="onInstallPathInput"
             />
-            <Button
-              unstyled
-              class="btn-sm install-btn"
-              :disabled="!installPkg.trim() || !installPath.trim() || npmAvailable === false || installing"
-              @click="installPlugin"
-            >
-              {{ installing ? 'Installing…' : 'Install' }}
-            </Button>
+            <div class="install-actions">
+              <Button
+                unstyled
+                class="btn-sm"
+                :disabled="npmAvailable === false || installing"
+                @click="chooseTarball"
+              >
+                Choose file…
+              </Button>
+              <Button
+                unstyled
+                class="btn-sm install-btn"
+                :disabled="!tarballSummary || npmAvailable === false || installing"
+                @click="installPlugin"
+              >
+                {{ installing ? 'Installing…' : 'Install' }}
+              </Button>
+            </div>
           </div>
+
+          <p
+            v-if="tarballReading"
+            class="hint"
+          >
+            Reading the tarball…
+          </p>
+          <ErrorNote
+            v-else-if="tarballError"
+            size="sm"
+            :message="tarballError"
+          />
+          <!-- 装前确认:与市场同一套披露口径 —— 点头前看到的就是 manifest。 -->
+          <div
+            v-else-if="tarballSummary"
+            class="market-confirm"
+          >
+            <p class="market-confirm-title">
+              {{ tarballSummary.pkg }} v{{ tarballSummary.version }} declares:
+            </p>
+            <ul class="market-confirm-list">
+              <li
+                v-for="item in tarballDeclares"
+                :key="item"
+              >
+                {{ item }}
+              </li>
+              <li v-if="tarballDeclares.length === 0">
+                No contributions declared.
+              </li>
+            </ul>
+            <ErrorNote
+              v-if="tarballSummary.manifestIssue"
+              size="sm"
+              :message="tarballSummary.manifestIssue"
+            />
+            <p class="hint">
+              No integrity hash on the dev channel — after install the package name is
+              re-checked against the tarball, and anything that fails a gate is rolled back.
+            </p>
+          </div>
+
           <p class="hint install-hint">
             Installs run through npm with lifecycle scripts disabled (<code>--ignore-scripts</code>);
             packages must ship fully bundled. Dropping a folder into <code>~/.onething/plugins/</code>
@@ -570,12 +627,17 @@ import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { SettingRow, SettingsField, SettingsGroup } from './settings-primitives'
-import type { PluginConfigErrorDetail, PluginConfigFieldDescriptor } from '@shared/ipc/plugins.js'
+import type {
+  PluginConfigErrorDetail,
+  PluginConfigFieldDescriptor,
+  PluginTarballSummary,
+} from '@shared/ipc/plugins.js'
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 import { isUiSlotTruncated } from '@/workspace/ui-anchor-registry'
 import { useConfirm } from '@/composables/useConfirm'
+import { useFileDrop } from '@/composables/useFileDrop'
 import { toast } from '@/composables/useToast'
 
 interface PluginInfo {
@@ -1107,9 +1169,20 @@ async function refreshPlugins() {
 
 /** null = 还在探测;false = 无 npm,Install/Update 置灰并说明。 */
 const npmAvailable = ref<boolean | null>(null)
-const installPkg = ref('')
 const installPath = ref('')
 const installing = ref(false)
+/**
+ * 装前预读出来的清单。**包名不再由用户手输** —— 它写在 tarball 里的
+ * package.json,宿主读得到;安装链装后还会拿包内 name 再校一次,预读只是
+ * 把这份情报提前到用户点头之前(它不是信任来源)。
+ */
+const tarballSummary = ref<PluginTarballSummary | null>(null)
+const tarballError = ref('')
+const tarballReading = ref(false)
+/** 手贴路径边打边预读没有意义;停手 300ms 才读。选文件/拖投则立刻读。 */
+let tarballReadTimer: ReturnType<typeof setTimeout> | null = null
+/** 预读是异步的,路径可能已经又变了 —— 只认最后一次发出的那一轮。 */
+let tarballReadSeq = 0
 /** pluginId → { current, latest };"有更新"徽标与 Update 按钮的数据源。 */
 const updateOffers = ref<Map<string, { current: string; latest: string }>>(new Map())
 const updatingPlugins = ref<Set<string>>(new Set())
@@ -1136,17 +1209,113 @@ async function loadUpdateOffers(): Promise<void> {
   }
 }
 
+/**
+ * 预读一个本地 .tgz:包名/版本/声明。
+ *
+ * 失败一律照实说(结构化原因由主进程给),而不是"行不行都让装" —— 装到
+ * 一半被回滚比装之前被拒绝贵得多。
+ */
+async function readTarball(rawPath: string): Promise<void> {
+  const path = rawPath.trim()
+  const seq = ++tarballReadSeq
+  tarballSummary.value = null
+  tarballError.value = ''
+  if (!path) {
+    tarballReading.value = false
+    return
+  }
+  tarballReading.value = true
+  try {
+    const result = await platformApi.readPluginTarball(path)
+    if (seq !== tarballReadSeq) return
+    if (result?.success && result.summary) {
+      tarballSummary.value = result.summary
+    } else {
+      tarballError.value = result?.error || 'Could not read this tarball'
+    }
+  } catch (e: any) {
+    if (seq !== tarballReadSeq) return
+    tarballError.value = e?.message || 'Could not read this tarball'
+  } finally {
+    if (seq === tarballReadSeq) tarballReading.value = false
+  }
+}
+
+function readTarballNow(path: string): void {
+  if (tarballReadTimer) clearTimeout(tarballReadTimer)
+  tarballReadTimer = null
+  void readTarball(path)
+}
+
+function onInstallPathInput(value: string | number): void {
+  const path = String(value ?? '')
+  // 打字中先把旧摘要撤下来:摘要与输入框对不上是最坏的那种"看着像对的"。
+  tarballSummary.value = null
+  tarballError.value = ''
+  if (tarballReadTimer) clearTimeout(tarballReadTimer)
+  tarballReadTimer = setTimeout(() => {
+    tarballReadTimer = null
+    void readTarball(path)
+  }, 300)
+}
+
+/** 原生选择器:过滤 .tgz(npm pack 的产物)。 */
+async function chooseTarball(): Promise<void> {
+  if (npmAvailable.value === false || installing.value) return
+  try {
+    const result = await platformApi.showOpenDialog({
+      title: 'Select a plugin tarball',
+      properties: ['openFile'],
+      filters: [{ name: 'Plugin package', extensions: ['tgz'] }],
+    })
+    if (result.canceled || result.filePaths.length === 0) return
+    installPath.value = result.filePaths[0]
+    readTarballNow(installPath.value)
+  } catch (e: any) {
+    tarballError.value = e?.message || 'Could not open the file picker'
+  }
+}
+
+// 拖投等价于"选中":复用聊天区那套 drop 状态机,别再造一个。
+const { isDragActive: isTarballDragActive, dropHandlers: tarballDropHandlers } = useFileDrop({
+  isDisabled: () => npmAvailable.value === false || installing.value,
+  onFiles: files => {
+    const file = files[0]
+    if (!file) return
+    // file: 通道要的是本机路径;浏览器宿主拿不到路径,那里本来也不能装。
+    const path = file ? platformApi.getPathForFile(file) : ''
+    if (!path) {
+      tarballSummary.value = null
+      tarballError.value = 'Could not resolve a local path for the dropped file'
+      return
+    }
+    installPath.value = path
+    readTarballNow(path)
+  },
+})
+
+/** 装前确认页的声明清单 —— 与市场那条路同一个拼装器。 */
+const tarballDeclares = computed(() => (tarballSummary.value
+  ? declaredContributions({
+    contributes: tarballSummary.value.contributes as MarketContributes | undefined,
+    ...(tarballSummary.value.minAppVersion ? { minAppVersion: tarballSummary.value.minAppVersion } : {}),
+  })
+  : []))
+
 async function installPlugin(): Promise<void> {
-  const pkg = installPkg.value.trim()
-  const path = installPath.value.trim()
-  if (!pkg || !path || installing.value || npmAvailable.value === false) return
+  const summary = tarballSummary.value
+  if (!summary || installing.value || npmAvailable.value === false) return
+  // 包名用预读出来的 —— 安装链装后仍会拿包内 package.json 的 name 再校一次,
+  // 对不上照旧回滚。这里省掉的是用户的抄写,不是那道闸。
+  const { pkg, path } = summary
   installing.value = true
   try {
     const result = await platformApi.installPlugin({ pkg, path })
     if (result?.success) {
       toast.success(`Installed ${result.pluginId ?? pkg}`)
-      installPkg.value = ''
       installPath.value = ''
+      tarballSummary.value = null
+      tarballError.value = ''
       await loadPlugins()
       emit('plugins-changed')
     } else {
@@ -1238,8 +1407,13 @@ const filteredMarket = computed(() => {
     || (entry.author ?? '').toLowerCase().includes(query))
 })
 
-/** 装前确认页的声明清单 —— contributesSummary 的市场版(未装,无截断/运行期事实)。 */
-function marketDeclares(entry: MarketEntry): string[] {
+/**
+ * 装前确认页的声明清单 —— contributesSummary 的"未装版"(无截断,无运行期事实)。
+ *
+ * 市场条目与本地 tarball 预读吃的都是 manifest **原文**,所以两条路共用这一个
+ * 拼装器:同一份声明在哪条通道装,用户读到的字句就该一模一样。
+ */
+function declaredContributions(entry: { contributes?: MarketContributes; minAppVersion?: string }): string[] {
   const contributes = entry.contributes
   const declares: string[] = []
   if (contributes?.panels?.length) {
@@ -1274,6 +1448,11 @@ function marketDeclares(entry: MarketEntry): string[] {
   }
   if (entry.minAppVersion) declares.push(`needs app >= ${entry.minAppVersion}`)
   return declares
+}
+
+/** 市场卡片的调用点(模板里读着更像人话)。 */
+function marketDeclares(entry: MarketEntry): string[] {
+  return declaredContributions(entry)
 }
 
 async function loadMarket(refresh = false): Promise<void> {
@@ -1367,6 +1546,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('onething:plugins-changed', handlePluginsChanged)
   for (const timer of savedTimers.values()) clearTimeout(timer)
   savedTimers.clear()
+  if (tarballReadTimer) clearTimeout(tarballReadTimer)
 })
 </script>
 
@@ -1648,6 +1828,17 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 10px;
   max-width: 460px;
+}
+
+.install-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 拖投等价于选中:一条发线亮起来就够了,画线风不铺色块。 */
+.install-form.is-drop-target {
+  outline: 1px dashed var(--settings-accent, var(--ui-accent-primary-fg));
+  outline-offset: 6px;
 }
 
 /* P3 市场区:与插件台账同一张画线皮,确认区只是卡内的一段发线。 */
