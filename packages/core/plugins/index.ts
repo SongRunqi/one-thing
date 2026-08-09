@@ -232,6 +232,21 @@ export type {
   PluginBackgroundResolution,
   PluginBackgroundStatus,
 } from './background.js'
+export {
+  PLUGIN_AMBIENT_MESSAGE_TYPES,
+  describePluginAmbientProblem,
+  pluginAmbientEntryUrl,
+  resolvePluginAmbients,
+} from './ambient.js'
+export type {
+  PluginAmbientDeclarationLike,
+  PluginAmbientDescriptor,
+  PluginAmbientEntry,
+  PluginAmbientInput,
+  PluginAmbientMessageType,
+  PluginAmbientResolution,
+  PluginAmbientStatus,
+} from './ambient.js'
 export { CorePluginStore } from './store.js'
 export type { PluginStoreOptions } from './store.js'
 export {

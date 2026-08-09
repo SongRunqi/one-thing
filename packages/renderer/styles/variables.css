@@ -166,6 +166,7 @@
      ============================================ */
 	--z-base: 0;
 	--z-sticky: 10; /* resize handles, sticky headers */
+	--z-ambient: 50; /* plugin ambient overlay (full-window animation, pointer-events:none) — above content, below every interactive floating layer */
 	--z-dropdown: 100; /* dropdowns, pickers, context menus */
 	--z-sidebar: 200; /* floating sidebar */
 	--z-overlay: 500; /* modal backdrops, panel overlays */

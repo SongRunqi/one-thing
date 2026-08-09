@@ -417,6 +417,8 @@ export const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
 export const DEFAULT_PLUGIN_PREFERENCES: PluginPreferences = {
   notifySoundsEnabled: true,
   notifySoundMutedPluginIds: [],
+  ambientEnabled: true,
+  ambientMutedPluginIds: [],
 }
 
 export const DEFAULT_MUSIC_SETTINGS: MusicSettings = {
@@ -563,9 +565,17 @@ export function normalizePluginPreferences(settings?: Partial<PluginPreferences>
   const muted = Array.isArray(settings?.notifySoundMutedPluginIds)
     ? settings.notifySoundMutedPluginIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
     : DEFAULT_PLUGIN_PREFERENCES.notifySoundMutedPluginIds
+  // 氛围静音名单同规(G2):挡住非数组、数组里的非字符串、重复 id —— 名单是
+  // "谁的氛围被关"的唯一账本,脏进去的代价是有人永远看不到某插件的氛围而
+  // 界面上看不出原因(与提示音静音名单同一个道理,别再吃漏列白名单的坑)。
+  const ambientMuted = Array.isArray(settings?.ambientMutedPluginIds)
+    ? settings.ambientMutedPluginIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : DEFAULT_PLUGIN_PREFERENCES.ambientMutedPluginIds
   return {
     notifySoundsEnabled: settings?.notifySoundsEnabled !== false,
     notifySoundMutedPluginIds: Array.from(new Set(muted)),
+    ambientEnabled: settings?.ambientEnabled !== false,
+    ambientMutedPluginIds: Array.from(new Set(ambientMuted)),
   }
 }
 

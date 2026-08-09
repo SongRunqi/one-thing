@@ -110,3 +110,23 @@ export const PLUGIN_WEBVIEW_MESSAGE = {
   invoke: 'invoke',
   result: 'result',
 } as const
+
+// ── 氛围层(G2,全窗动画覆盖)────────────────────
+//
+// 与 webview 面板同一套 token 握手,只是消息集不同:氛围层是纯视觉,没有
+// invoke/result(它永远不回调宿主),多了 geometry(枚举地标矩形)与
+// pause/resume(窗口失焦/隐藏即停)。协议常量单源在 core 的 `plugins/ambient.ts`;
+// renderer 吃不到 core,所以这里重述。形状漂移会在氛围层容器测试里当场暴露。
+
+export const PLUGIN_AMBIENT_MESSAGE = {
+  /** host → iframe:首帧握手,带 token。 */
+  init: 'ambient-init',
+  /** host → iframe:枚举地标的矩形(viewport + composerRect,…)。 */
+  geometry: 'ambient-geometry',
+  /** host → iframe:窗口失焦/隐藏,停 rAF。 */
+  pause: 'ambient-pause',
+  /** host → iframe:窗口重新可见,恢复 rAF。 */
+  resume: 'ambient-resume',
+  /** iframe → host:握手确认。 */
+  ready: 'ambient-ready',
+} as const

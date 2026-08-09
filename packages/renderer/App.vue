@@ -16,6 +16,14 @@
 
   <!-- Main App Mode -->
   <ErrorBoundary v-else-if="appReady">
+    <!-- 插件氛围层(G2 —— 全窗动画覆盖,内容之上、浮层之下)。只挂主窗聊天面:
+         辅助窗口(设置/搜索/todo)不挂氛围层。position:fixed + pointer-events:none,
+         DOM 位置不影响铺放。key 绑 pluginId:换一层氛围 = 换一代 iframe。 -->
+    <PluginAmbientLayer
+      v-if="activeAmbient"
+      :key="activeAmbient.pluginId"
+      :entry-url="activeAmbient.entryUrl"
+    />
     <div
       v-if="sidebarFloating || sidebarFloatingClosing"
       class="app-floating-sidebar-host"
@@ -277,6 +285,8 @@ import {
   usePluginBackground,
   usePluginBackgroundActive,
 } from '@/workspace/background-registry'
+import { usePluginAmbient } from '@/workspace/ambient-registry'
+import PluginAmbientLayer from '@/components/plugins/PluginAmbientLayer.vue'
 import { resolveDeliverablePath } from '@/components/workbench/collab-board-card'
 import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 
@@ -329,6 +339,26 @@ const appContentRef = ref<HTMLElement | null>(null)
  */
 const pluginBackground = usePluginBackground()
 const pluginBackgroundActive = usePluginBackgroundActive()
+
+/**
+ * 氛围层(G2 —— 全窗动画覆盖)。
+ *
+ * 注册表(`ambient-registry`)收的是**主进程裁决出的 winner**(全窗只有一层);
+ * 用户主权在**这里**叠加,而不是在裁决里 —— 这样关总闸能**当场**撤层,不必等
+ * 一次清单重拉:
+ *  - 总闸 `settings.plugins.ambientEnabled === false` → 一键全关;
+ *  - 赢家的插件在 `ambientMutedPluginIds` 里 → 单独关掉它这一层。
+ * 两者都是响应式 app settings,改一下 computed 立刻重算,层随之挂/撤。
+ */
+const pluginAmbient = usePluginAmbient()
+const activeAmbient = computed(() => {
+  const layer = pluginAmbient.value
+  if (!layer) return null
+  const preferences = settingsStore.settings.plugins
+  if (preferences?.ambientEnabled === false) return null
+  if (preferences?.ambientMutedPluginIds?.includes(layer.pluginId)) return null
+  return layer
+})
 const pluginBackgroundStyle = computed<Record<string, string>>(() => {
   const layer = pluginBackground.value
   if (!layer) return {}

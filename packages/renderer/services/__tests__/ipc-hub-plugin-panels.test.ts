@@ -186,6 +186,30 @@ describe('IPC hub → plugin workspace panels', () => {
     await vi.waitFor(() => expect(usePluginBackground().value).toBeNull())
   })
 
+  it('picks up the winning plugin ambient from the same catalog pull (G2 —— 全窗动画覆盖)', async () => {
+    // 氛围与背景搭同一班车。这条测试同时钉住**拆除撤层**语义:响应里没有
+    // ambient 就读成 null,而不是"保持上一次"(那会让一次降级把一层撤不掉的
+    // 动画钉在屏幕上)。
+    const { initializeIPCHub } = await import('../ipc-hub')
+    const { usePluginAmbient, setPluginAmbient } = await import('@/workspace/ambient-registry')
+    setPluginAmbient(null)
+    getPlugins.mockImplementation(async () => ({
+      success: true,
+      plugins: [plugin()],
+      ambient: {
+        pluginId: 'snow-scene',
+        entryUrl: 'onething-plugin://snow-scene/ambient.html',
+      },
+    }) as never)
+
+    initializeIPCHub()
+    await vi.waitFor(() => expect(usePluginAmbient().value?.pluginId).toBe('snow-scene'))
+
+    getPlugins.mockImplementation(async () => ({ success: true, plugins: [plugin()] }))
+    window.dispatchEvent(new Event('onething:plugins-changed'))
+    await vi.waitFor(() => expect(usePluginAmbient().value).toBeNull())
+  })
+
   it('re-pulls the list when the plugin catalog changes', async () => {
     const { initializeIPCHub } = await import('../ipc-hub')
 

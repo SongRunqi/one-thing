@@ -158,11 +158,25 @@ export interface PluginContributionActivation {
   events?: string[]
 }
 
+/**
+ * 氛围层(G2 —— 全窗动画覆盖)。
+ *
+ * `entry` 是**包内相对路径**(相对 `contributes.webviewRoot`,缺省 `webview/`),
+ * 由 C 期的 `onething-plugin://` 协议服务,跑在一块内容之上、`pointer-events:none`
+ * 的 sandbox iframe 里。判据与裁决全在 `ambient.ts`;非法声明**丢弃 ambient 并在
+ * 投影里标记**(不拒载)。装前披露:`draws animated effects over the window`。
+ */
+export interface PluginContributionAmbient {
+  entry: string
+}
+
 export interface PluginContributes {
   commands?: PluginContributionCommand[]
   panels?: PluginContributionPanel[]
   uiSlots?: PluginContributionUiSlot[]
   theme?: PluginContributionTheme
+  /** 氛围层(G2 —— 全窗动画覆盖,内容之上)。 */
+  ambient?: PluginContributionAmbient
   /**
    * webview 面板的静态资源根,**相对插件的 `dirPath`**(代码区,npm 形态即
    * `plugins/node_modules/<pkg>/`)。缺省 `webview`。

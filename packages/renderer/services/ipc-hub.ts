@@ -23,6 +23,7 @@ import { toast } from '@/composables/useToast'
 import { setPluginWorkspacePanels } from '@/workspace/panel-registry'
 import { setPluginUiSlots } from '@/workspace/ui-anchor-registry'
 import { setPluginBackground, type PluginBackgroundLayer } from '@/workspace/background-registry'
+import { setPluginAmbient, type PluginAmbientLayer } from '@/workspace/ambient-registry'
 import { shouldNotifyInbound, summarizeNotificationBody } from './notify-inbound'
 import { playPluginNotifySound } from './plugin-notify-sound'
 import type { SessionEventEnvelope } from '@shared/events/index.js'
@@ -424,6 +425,11 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
     // 响应里没有这个字段(旧宿主 / server 只读镜像)时读成 null = 没有背景,
     // 而不是"保持上一次" —— 那会让一次降级把一张撤不掉的图钉在屏幕上。
     setPluginBackground((result as { background?: PluginBackgroundLayer | null }).background ?? null)
+    // 氛围层(G2,全窗动画覆盖):与背景层同一条规矩 —— 裁决全在主进程投影里
+    // 做完,这里收的是**结论**(胜出的 winner 或 null),搭同一班车。字段缺失
+    // (旧宿主 / server 只读镜像)读成 null = 没有氛围,而不是"保持上一次"。
+    // 用户的总闸 / 每插件静音在 App.vue 那一层叠加,不在这里。
+    setPluginAmbient((result as { ambient?: PluginAmbientLayer | null }).ambient ?? null)
   } catch (error) {
     console.error('[IPC Hub] Failed to refresh plugin workspace panels:', error)
   }

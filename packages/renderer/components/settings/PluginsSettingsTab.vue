@@ -36,6 +36,23 @@
         </SettingRow>
       </SettingsGroup>
 
+      <!-- 氛围效果总闸(G2 —— 全窗动画覆盖)。一键关掉所有插件的氛围层
+           (整窗飘雪之类)。氛围是**内容之上、每层浮层之下**、点击穿透的纯视觉,
+           关掉不影响插件的任何别的能力。每插件的开关在各自卡片上。 -->
+      <SettingsGroup>
+        <SettingRow
+          label="Plugin ambient effects"
+          description="Plugins can draw animated effects over the whole window (e.g. falling snow). Effects never intercept clicks and always sit below menus and dialogs. Turning this off stops every plugin's ambient layer at once."
+        >
+          <Switch
+            variant="ledger"
+            :model-value="ambientEnabled"
+            aria-label="Enable plugin ambient effects"
+            @update:model-value="setAmbientEnabled"
+          />
+        </SettingRow>
+      </SettingsGroup>
+
       <!-- Loading -->
       <div
         v-if="loading"
@@ -331,6 +348,27 @@
               >
                 <component
                   :is="isMuted(plugin.id) ? BellOff : Bell"
+                  :size="13"
+                />
+              </Button>
+            </Tooltip>
+            <!-- 每插件氛围开关(G2)。只在插件声明了氛围、且总闸开着时出现 ——
+                 关掉只撤这一层动效,插件其余能力照常。与提示音静音同规:主权存
+                 app settings,不进插件目录。 -->
+            <Tooltip
+              v-if="ambientEnabled && plugin.contributes?.ambient"
+              :text="isAmbientMuted(plugin.id) ? `Show ${plugin.name}'s ambient effects` : `Hide ${plugin.name}'s ambient effects`"
+            >
+              <Button
+                unstyled
+                class="btn-sm mute-btn"
+                :class="{ muted: isAmbientMuted(plugin.id) }"
+                :aria-label="isAmbientMuted(plugin.id) ? `Show ${plugin.name} ambient` : `Hide ${plugin.name} ambient`"
+                :aria-pressed="isAmbientMuted(plugin.id)"
+                @click="toggleAmbientMute(plugin.id)"
+              >
+                <component
+                  :is="isAmbientMuted(plugin.id) ? EyeOff : Eye"
                   :size="13"
                 />
               </Button>
@@ -684,7 +722,7 @@ import type {
 // 浏览器包)。取的是权限披露文案的单一事实源。
 import { describePluginPermission } from '@onething/core/plugins/sessions'
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
-import { Bell, BellOff, RefreshCw } from 'lucide-vue-next'
+import { Bell, BellOff, Eye, EyeOff, RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 import { useSettingsStore } from '@/stores/settings'
 import { previewPluginNotifySound } from '@/services/plugin-notify-sound'
@@ -751,6 +789,16 @@ interface PluginInfo {
       opacity: number
       blur: number
       fit: string
+      reason?: string
+      shadowedBy?: string
+    } | null
+    /**
+     * 氛围层(G2 —— 全窗动画覆盖)—— 同样是**投影后的裁决**,`null` = 没声明。
+     * 氛围全窗只有一层,所以这里是单条而不是数组。
+     */
+    ambient?: {
+      status: 'active' | 'shadowed' | 'inactive' | 'invalid'
+      entry: string
       reason?: string
       shadowedBy?: string
     } | null
@@ -1049,6 +1097,15 @@ const WEBVIEW_PANEL_NOTE = 'runs sandboxed UI code'
 const BACKGROUND_NOTE = 'sets an app background image'
 
 /**
+ * 氛围层披露(G2 —— 全窗动画覆盖)。
+ *
+ * 与上面几句同规:一句话只说一次,已装卡片与装前确认页共用同一句措辞。
+ * 用户要知道的是"这插件会在整个窗口上画动效"—— 沙箱、点击穿透、内容之上、
+ * 每层浮层之下这些是宿主的保证,不进这句话。
+ */
+const AMBIENT_NOTE = 'draws animated effects over the window'
+
+/**
  * 权限披露(N1)。
  *
  * 与上面四句同规:一句话只说一次,已装卡片与装前确认页共用同一句措辞。
@@ -1133,6 +1190,16 @@ function contributesSummary(plugin: PluginInfo): string[] {
     else if (background.status === 'shadowed') summary.push(`background overridden by "${background.shadowedBy}"`)
     else summary.push(`background dropped — ${background.reason || 'invalid declaration'}`)
   }
+  // 氛围层(G2):与背景层同一条呈现规矩 —— 生效 / 被压 / 停用中 / 非法,四态都
+  // 要说得出来。氛围全窗只有一层,所以这里是单条而不是一串。用户的总闸 / 每插件
+  // 静音是**另一码事**(它决定"要不要画",不改这条"声明合不合法")。
+  const ambient = contributes?.ambient
+  if (ambient) {
+    if (ambient.status === 'active') summary.push(AMBIENT_NOTE)
+    else if (ambient.status === 'inactive') summary.push(`${AMBIENT_NOTE} — inactive while disabled`)
+    else if (ambient.status === 'shadowed') summary.push(`ambient overridden by "${ambient.shadowedBy}"`)
+    else summary.push(`ambient dropped — ${ambient.reason || 'invalid declaration'}`)
+  }
   if (contributes?.commands?.length) {
     summary.push(`declares ${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)
   }
@@ -1212,21 +1279,34 @@ const settingsStore = useSettingsStore()
 
 const notifySoundsEnabled = computed(() => settingsStore.settings.plugins?.notifySoundsEnabled !== false)
 const mutedPluginIds = computed(() => settingsStore.settings.plugins?.notifySoundMutedPluginIds ?? [])
+// 氛围主权(G2)。与提示音同规:总闸 + 每插件静音,存 app settings 而不是插件目录。
+const ambientEnabled = computed(() => settingsStore.settings.plugins?.ambientEnabled !== false)
+const ambientMutedPluginIds = computed(() => settingsStore.settings.plugins?.ambientMutedPluginIds ?? [])
 
 function isMuted(pluginId: string): boolean {
   return mutedPluginIds.value.includes(pluginId)
 }
 
+function isAmbientMuted(pluginId: string): boolean {
+  return ambientMutedPluginIds.value.includes(pluginId)
+}
+
 async function savePluginPreferences(patch: {
   notifySoundsEnabled?: boolean
   notifySoundMutedPluginIds?: string[]
+  ambientEnabled?: boolean
+  ambientMutedPluginIds?: string[]
 }): Promise<void> {
   const current = settingsStore.settings
+  // 四个字段全带上:plugins 是整体覆盖写,漏一个就被 normalize 填回缺省(把
+  // 用户的另一半偏好吃掉)——settings 白名单吞字段的旧坑,这里显式列全。
   await settingsStore.saveSettings({
     ...current,
     plugins: {
       notifySoundsEnabled: notifySoundsEnabled.value,
       notifySoundMutedPluginIds: mutedPluginIds.value,
+      ambientEnabled: ambientEnabled.value,
+      ambientMutedPluginIds: ambientMutedPluginIds.value,
       ...patch,
     },
   })
@@ -1238,11 +1318,22 @@ async function setNotifySoundsEnabled(enabled: unknown): Promise<void> {
   await savePluginPreferences({ notifySoundsEnabled: enabled === true })
 }
 
+async function setAmbientEnabled(enabled: unknown): Promise<void> {
+  await savePluginPreferences({ ambientEnabled: enabled === true })
+}
+
 async function toggleMute(pluginId: string): Promise<void> {
   const next = isMuted(pluginId)
     ? mutedPluginIds.value.filter(id => id !== pluginId)
     : [...mutedPluginIds.value, pluginId]
   await savePluginPreferences({ notifySoundMutedPluginIds: next })
+}
+
+async function toggleAmbientMute(pluginId: string): Promise<void> {
+  const next = isAmbientMuted(pluginId)
+    ? ambientMutedPluginIds.value.filter(id => id !== pluginId)
+    : [...ambientMutedPluginIds.value, pluginId]
+  await savePluginPreferences({ ambientMutedPluginIds: next })
 }
 
 /** 试听走 `chime` —— 六个音里最"叫人"的那个,最能听出开关有没有生效。 */
@@ -1505,8 +1596,11 @@ async function updatePlugin(plugin: PluginInfo): Promise<void> {
  * 数组(需要全体插件才算得出谁压谁),manifest 原文是 `{ overrides: {...} }`。
  * 装前确认页只能说"它声明要改哪几个 token" —— 还没装,谈不上生效与被压。
  */
-type MarketContributes = Omit<NonNullable<PluginInfo['contributes']>, 'theme' | 'background'> & {
+type MarketContributes = Omit<NonNullable<PluginInfo['contributes']>, 'theme' | 'background' | 'ambient'> & {
   theme?: { overrides?: Record<string, string>; background?: { image?: string } }
+  // 氛围层(G2):市场那条路吃 manifest 原文,声明形状是 `{ entry }`,不是投影后
+  // 的裁决 —— 装前只能说"它声明要在窗口上画动效",还没装,谈不上生效与被压。
+  ambient?: { entry?: string }
 }
 
 interface MarketEntry {
@@ -1584,6 +1678,9 @@ function declaredContributions(entry: { contributes?: MarketContributes; minAppV
   // 背景层(G 期):装前就要说清"它会给你的应用铺一张背景图"。这条路吃的是
   // manifest 原文,所以判据只看"声明了没有" —— 合法性要等装上之后才裁决得出。
   if (contributes?.theme?.background) declares.push(BACKGROUND_NOTE)
+  // 氛围层(G2):装前就要说清"它会在整个窗口上画动效"。同样吃 manifest 原文,
+  // 只看"声明了没有"。
+  if (contributes?.ambient) declares.push(AMBIENT_NOTE)
   if (contributes?.commands?.length) {
     declares.push(`${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)
   }

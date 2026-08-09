@@ -78,6 +78,7 @@ describe('projectOnethingPluginsForRenderer', () => {
           uiSlots: [],
           theme: [],
           background: null,
+          ambient: null,
         },
         requestActions: ['search'],
         configFields: [{
@@ -164,6 +165,7 @@ describe('projectOnethingPluginsForRenderer', () => {
           uiSlots: [],
           theme: [],
           background: null,
+          ambient: null,
           permissions: [],
           activationEvents: [],
         },

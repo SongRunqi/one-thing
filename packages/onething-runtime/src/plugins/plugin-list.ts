@@ -5,9 +5,13 @@ import {
   isIgnoredUiDrawerDeclaration,
   isUiAnchor,
   isPluginWebviewPanel,
+  resolvePluginAmbients,
   resolvePluginBackgrounds,
 } from '@onething/core/plugins'
 import type {
+  PluginAmbientDescriptor,
+  PluginAmbientEntry,
+  PluginAmbientInput,
   PluginBackgroundDescriptor,
   PluginBackgroundEntry,
   PluginBackgroundInput,
@@ -29,6 +33,7 @@ export interface OnethingPluginListManifestLike {
     panels?: Array<{ id: string; label: string; view?: string; entry?: string }>
     uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string; drawer?: boolean }>
     theme?: { overrides?: Record<string, string>; background?: unknown }
+    ambient?: unknown
     webviewRoot?: string
     settings?: {
       title?: string
@@ -157,6 +162,15 @@ export interface OnethingRendererPluginInfo {
      * 让设置页说得出"这张背景为什么没出现"。
      */
     background: PluginBackgroundEntry | null
+    /**
+     * 氛围层(G2 —— 全窗动画覆盖)。`null` = 这个插件没声明氛围。
+     *
+     * 与背景层同规:裁决在投影里做(谁压谁要看全体插件,全窗只有一层),
+     * 非法声明**不拒载**,只是 `status: 'invalid'` + `reason`,让设置页说得出
+     * "这层氛围为什么没出现"。用户的总闸 / 每插件静音是**另一码事**(渲染层
+     * 据 preference 决定 winner 画不画),不进这条逐插件裁决。
+     */
+    ambient: PluginAmbientEntry | null
     hasSettingsSchema: boolean
     permissions: string[]
     activationEvents: string[]
@@ -240,6 +254,30 @@ export function resolveOnethingPluginBackgroundForRenderer<TPlugin extends Oneth
   return resolvePluginBackgrounds(collectBackgroundInputs(plugins, options)).winner
 }
 
+/** 氛围裁决的输入 —— 逐插件投影与"胜出者"共用**同一个**收集器(与背景同规)。 */
+function collectAmbientInputs<TPlugin extends OnethingPluginListItemLike>(
+  plugins: TPlugin[],
+): PluginAmbientInput[] {
+  return plugins.map(plugin => ({
+    pluginId: plugin.definition.id,
+    enabled: plugin.definition.enabled,
+    ambient: plugin.definition.manifest.contributes?.ambient,
+  }))
+}
+
+/**
+ * 胜出的氛围层(G2 —— 全窗动画覆盖)—— renderer 直接拿它挂 iframe,不再判第二遍。
+ *
+ * 与背景描述符同规:全窗只有一层,挂进逐插件数组等于让 renderer 自己再跑一遍
+ * 裁决(而它只看得到自己那一张卡片)。用户主权(总闸 / 每插件静音)不在这里 ——
+ * 那是 renderer 侧的 preference,渲染层据它决定这个 winner 到底画不画。
+ */
+export function resolveOnethingPluginAmbientForRenderer<TPlugin extends OnethingPluginListItemLike>(
+  plugins: TPlugin[],
+): PluginAmbientDescriptor | null {
+  return resolvePluginAmbients(collectAmbientInputs(plugins)).winner
+}
+
 export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPluginListItemLike>(
   plugins: TPlugin[],
   options: ProjectOnethingPluginsOptions = {},
@@ -254,6 +292,8 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
   const backgroundResolution = resolvePluginBackgrounds(
     collectBackgroundInputs(plugins, options),
   )
+  // 氛围同理(G2):全窗只有一层,谁压谁必须看全体。
+  const ambientResolution = resolvePluginAmbients(collectAmbientInputs(plugins))
   return plugins.map(plugin => ({
     id: plugin.definition.id,
     source: plugin.definition.source || 'user',
@@ -295,6 +335,7 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
       })),
       theme: themeResolution.byPlugin.get(plugin.definition.id) ?? [],
       background: backgroundResolution.byPlugin.get(plugin.definition.id) ?? null,
+      ambient: ambientResolution.byPlugin.get(plugin.definition.id) ?? null,
       hasSettingsSchema: Boolean(plugin.definition.manifest.contributes?.settings?.schema),
       permissions: plugin.definition.manifest.contributes?.permissions ?? [],
       activationEvents: plugin.definition.manifest.contributes?.activation?.events ?? [],

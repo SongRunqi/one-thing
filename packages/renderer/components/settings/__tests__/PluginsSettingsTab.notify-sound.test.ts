@@ -85,6 +85,8 @@ describe('PluginsSettingsTab 提示音主权(M1)', () => {
     expect(savedPluginPreferences()).toEqual({
       notifySoundsEnabled: false,
       notifySoundMutedPluginIds: [],
+      ambientEnabled: true,
+      ambientMutedPluginIds: [],
     })
 
     // 总关之后逐个静音已无意义 —— 藏起来而不是置灰(置灰会让人以为点了有用)。
@@ -101,6 +103,8 @@ describe('PluginsSettingsTab 提示音主权(M1)', () => {
     expect(savedPluginPreferences()).toEqual({
       notifySoundsEnabled: true,
       notifySoundMutedPluginIds: ['tps-meter'],
+      ambientEnabled: true,
+      ambientMutedPluginIds: [],
     })
   })
 
@@ -115,6 +119,8 @@ describe('PluginsSettingsTab 提示音主权(M1)', () => {
     expect(savedPluginPreferences()).toEqual({
       notifySoundsEnabled: true,
       notifySoundMutedPluginIds: [],
+      ambientEnabled: true,
+      ambientMutedPluginIds: [],
     })
   })
 

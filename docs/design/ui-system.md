@@ -216,6 +216,7 @@ hljs-theme.css 与 StreamingCodeBlock 仍按那套名字消费,照旧双写。
 |---|---|---|
 | `--z-base` | 0 | 常规流 |
 | `--z-sticky` | 10 | sticky 头、resize 手柄、滚动条轨、局部悬浮触发区 |
+| `--z-ambient` | 50 | 插件氛围层(G2 全窗动画覆盖,`pointer-events:none`)。**浮在内容之上、每一层可交互浮层之下** —— 雪飘在消息/输入框上方,但在下拉/菜单/对话框/权限账页/tooltip 之下。覆盖层永不遮任何可交互浮层,是对"画假 UI 诱导点击"的结构性封堵 |
 | `--z-dropdown` | 100 | 锚定浮层:下拉、picker、popover、flyout、hover 卡 |
 | `--z-sidebar` | 200 | 浮动侧栏 |
 | `--z-overlay` | 500 | 全屏遮罩类面板:语音悬浮/通话、搜索结果阅读器 |

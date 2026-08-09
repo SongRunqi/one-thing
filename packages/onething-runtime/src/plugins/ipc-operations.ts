@@ -4,6 +4,7 @@ import type {
   CorePluginMarketIndex,
   CorePluginRequestInput,
   CorePluginRequestResult,
+  PluginAmbientDescriptor,
   PluginBackgroundDescriptor,
   PluginBackgroundParamsPatch,
 } from '@onething/core/plugins'
@@ -18,6 +19,7 @@ import type { PluginConfigError, PluginConfigField } from './config-schema.js'
 import {
   projectOnethingPluginCommandsForRenderer,
   projectOnethingPluginsForRenderer,
+  resolveOnethingPluginAmbientForRenderer,
   resolveOnethingPluginBackgroundForRenderer,
   type OnethingPluginCommandLike,
   type OnethingPluginListItemLike,
@@ -100,6 +102,15 @@ export type ListOnethingPluginsForIpcResult =
      * 背景描述符搭同一班车 —— 零新事件、零新 IPC channel。
      */
     background: PluginBackgroundDescriptor | null
+    /**
+     * 胜出的氛围层(G2 —— 全窗动画覆盖)。`null` = 没有任何一个已启用插件声明了
+     * 合法的氛围。
+     *
+     * 与背景层同规:搭清单响应这一班车,零新事件、零新 IPC channel —— renderer
+     * 已经在 `onething:plugins-changed` 上重拉清单。用户的总闸 / 每插件静音在
+     * renderer 侧据 preference 决定这个 winner 到底画不画(裁决与主权分层)。
+     */
+    ambient: PluginAmbientDescriptor | null
   }
   | { success: false; error: string }
 
@@ -123,6 +134,8 @@ export async function listOnethingPluginsForIpc<
       plugins: projectOnethingPluginsForRenderer(plugins, projectionOptions),
       // 同一份 options 喂两次裁决 —— 卡片上的明细与画在屏幕上的那一张必须同源。
       background: resolveOnethingPluginBackgroundForRenderer(plugins, projectionOptions),
+      // 氛围层(G2)只按 manifest 声明裁决,不吃 options(它没有运行期调参这回事)。
+      ambient: resolveOnethingPluginAmbientForRenderer(plugins),
     }
   } catch (error) {
     return pluginIpcError(options.logger, 'list', error, 'Failed to list plugins')

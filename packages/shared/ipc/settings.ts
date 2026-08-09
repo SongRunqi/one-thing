@@ -231,6 +231,13 @@ export interface PluginPreferences {
 	notifySoundsEnabled: boolean;
 	/** 被单独静音的插件 id。静音只掐声音,通知横幅不受影响。 */
 	notifySoundMutedPluginIds: string[];
+	/**
+	 * 氛围效果总闸(G2 —— 全窗动画覆盖)。关掉 = 一键停掉所有插件的氛围层
+	 * (整窗飘雪之类)。缺省开:能力不显式声明就永远没被看见过。
+	 */
+	ambientEnabled: boolean;
+	/** 被单独关掉氛围的插件 id。关掉只撤这一层,插件其余能力照常。 */
+	ambientMutedPluginIds: string[];
 }
 
 export interface AppSettings {

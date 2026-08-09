@@ -397,6 +397,8 @@ describe('插件提示音偏好(M1)', () => {
     expect(settings.plugins).toEqual({
       notifySoundsEnabled: false,
       notifySoundMutedPluginIds: ['tps-meter'],
+      ambientEnabled: true,
+      ambientMutedPluginIds: [],
     })
   })
 
@@ -404,12 +406,19 @@ describe('插件提示音偏好(M1)', () => {
     expect(mergeSettings({}).plugins).toEqual({
       notifySoundsEnabled: true,
       notifySoundMutedPluginIds: [],
+      ambientEnabled: true,
+      ambientMutedPluginIds: [],
     })
   })
 
   it('静音名单挡住脏值:非数组、非字符串项、重复 id', () => {
     expect(mergeSettings({ plugins: { notifySoundMutedPluginIds: 'tps-meter' } }).plugins)
-      .toEqual({ notifySoundsEnabled: true, notifySoundMutedPluginIds: [] })
+      .toEqual({
+        notifySoundsEnabled: true,
+        notifySoundMutedPluginIds: [],
+        ambientEnabled: true,
+        ambientMutedPluginIds: [],
+      })
 
     expect(mergeSettings({
       plugins: { notifySoundMutedPluginIds: ['a', 1, null, '', 'a', 'b'] },
@@ -419,5 +428,45 @@ describe('插件提示音偏好(M1)', () => {
   it('总开关只有显式 false 才算关 —— 缺失/脏值都按开', () => {
     expect(mergeSettings({ plugins: {} }).plugins?.notifySoundsEnabled).toBe(true)
     expect(mergeSettings({ plugins: { notifySoundsEnabled: false } }).plugins?.notifySoundsEnabled).toBe(false)
+  })
+})
+
+describe('插件氛围偏好(G2 —— 全窗动画覆盖)', () => {
+  it('缺省开着,静音名单为空', () => {
+    const settings = createDefaultSettings()
+    expect(settings.plugins?.ambientEnabled).toBe(true)
+    expect(settings.plugins?.ambientMutedPluginIds).toEqual([])
+  })
+
+  it('总闸落盘 + 每插件静音落盘,活过 merge', () => {
+    const settings = mergeSettings({
+      plugins: {
+        notifySoundsEnabled: true,
+        notifySoundMutedPluginIds: [],
+        ambientEnabled: false,
+        ambientMutedPluginIds: ['snow-scene'],
+      },
+    })
+    expect(settings.plugins?.ambientEnabled).toBe(false)
+    expect(settings.plugins?.ambientMutedPluginIds).toEqual(['snow-scene'])
+  })
+
+  it('氛围静音名单挡住脏值:非数组、非字符串项、重复 id', () => {
+    expect(mergeSettings({ plugins: { ambientMutedPluginIds: 'snow-scene' } }).plugins?.ambientMutedPluginIds)
+      .toEqual([])
+    expect(mergeSettings({
+      plugins: { ambientMutedPluginIds: ['x', 2, null, '', 'x', 'y'] },
+    }).plugins?.ambientMutedPluginIds).toEqual(['x', 'y'])
+  })
+
+  it('氛围总闸只有显式 false 才算关 —— 缺失/脏值都按开', () => {
+    expect(mergeSettings({ plugins: {} }).plugins?.ambientEnabled).toBe(true)
+    expect(mergeSettings({ plugins: { ambientEnabled: false } }).plugins?.ambientEnabled).toBe(false)
+  })
+
+  it('只写氛围段时不吃掉提示音缺省(两半偏好互不覆盖)', () => {
+    const plugins = mergeSettings({ plugins: { ambientEnabled: false } }).plugins
+    expect(plugins?.notifySoundsEnabled).toBe(true)
+    expect(plugins?.notifySoundMutedPluginIds).toEqual([])
   })
 })

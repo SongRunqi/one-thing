@@ -30,6 +30,7 @@
         ref="composerContainerRef"
         v-memo="[props.active, isGenerating, effectiveSessionId, isAgentExecutionSession, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, isCollabSessionActive]"
         class="composer-container"
+        data-ambient-anchor="composer"
       >
         <!-- S 状态带(docs/design/composer-bands-2026-08.md §2):后台任务 /
              目标 / 电台 / 插件 chat.status-bar 块收敛成一行 chips。

@@ -12,6 +12,7 @@
  */
 import path from 'path'
 import {
+  describePluginAmbientProblem,
   describePluginBackgroundProblem,
   describePluginWebviewPanelProblem,
   isPluginWebviewPanel,
@@ -33,10 +34,11 @@ export interface PluginWebviewStaticRoot {
  *  1. 插件系统已装配(未装配 = 桌面还没起插件,或者根本没有插件系统);
  *  2. 该 id 存在于清单;
  *  3. **enabled**(停用即刻停服 —— 这是拆除快照的判据之一);
- *  4. 至少有一条**合法的**静态资产声明 —— webview 面板(C 期)**或**背景图
- *     (G 期,L2.5)。两者服务的是同一个根、同一批闸,区别只在"谁要用它":
- *     背景图插件可以一个面板都没有(ink-brand 就是),把闸门写死在面板上
- *     会让它的图 404,而"没有静态资源面"这句话对它并不成立。
+ *  4. 至少有一条**合法的**静态资产声明 —— webview 面板(C 期)、背景图
+ *     (G 期,L2.5)**或**氛围层(G2 —— 全窗动画覆盖)。三者服务的是同一个根、
+ *     同一批闸,区别只在"谁要用它":氛围插件(snow-scene)可以既没有面板也没有
+ *     背景,把闸门写死在前两者上会让它的 `ambient.html` 404,而"没有静态资源面"
+ *     这句话对它并不成立。
  */
 export function resolvePluginWebviewStaticRoot(pluginId: string): PluginWebviewStaticRoot | null {
   if (!pluginId) return null
@@ -51,7 +53,11 @@ export function resolvePluginWebviewStaticRoot(pluginId: string): PluginWebviewS
   // 把这个插件的包目录端上一个 origin。
   const hasBackground = contributes?.theme?.background !== undefined
     && !describePluginBackgroundProblem(contributes.theme?.background)
-  if (!hasWebviewPanel && !hasBackground) return null
+  // 氛围层同样要**合法**才开根:一条被丢弃的氛围声明挂不出层,也就没有理由把
+  // 这个插件的包目录端上一个 origin(与背景图同规)。
+  const hasAmbient = contributes?.ambient !== undefined
+    && !describePluginAmbientProblem(contributes.ambient)
+  if (!hasWebviewPanel && !hasBackground && !hasAmbient) return null
   const dirPath = plugin.definition.dirPath
   if (!dirPath) return null
   return {
