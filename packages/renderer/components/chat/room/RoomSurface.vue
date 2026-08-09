@@ -855,8 +855,9 @@ defineExpose({
 }
 
 /* 顶边浮标签是蓝图框的构件,聊天面不要 —— 但录音计时 / 命令态 / 正在放的歌
-   是**活状态**,那几档照旧留着,不能连状态一起抹掉。 */
-.room-surface .room-composer :deep(.composer-frame-label:not(.listening):not(.transcribing):not(.command):not(.music)) {
+   是**活状态**,那几档照旧留着,不能连状态一起抹掉。
+   (电台档已随 E 期迁进 S 状态带,`.music` 这一档不再存在。) */
+.room-surface .room-composer :deep(.composer-frame-label:not(.listening):not(.transcribing):not(.command)) {
   display: none;
 }
 

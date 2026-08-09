@@ -1,270 +1,303 @@
 <template>
-  <Transition name="music-bar">
-    <div
-      v-if="visible"
-      ref="barEl"
-      class="music-bar"
-      :class="{ 'is-quiet': standby || idle }"
-      :data-status="nowPlaying?.status"
-      role="group"
-      aria-label="music player"
-      @click="onBarClick"
+  <Transition name="s-chip">
+    <StatusChip
+      v-if="chipVisible"
+      class="music-chip"
+      :class="{ 'is-playing': playing }"
+      :open="visible"
+      label="电台"
+      :flyout-width="320"
+      @update:open="onChipOpenChange"
+      @mouseenter="expanded = true"
+      @mouseleave="expanded = false"
+      @focus="expanded = true"
+      @blur="expanded = false"
     >
       <span
-        class="music-frame-label"
+        class="music-chip-dot"
         aria-hidden="true"
-      >{{ (playing ? 'NOW PLAYING' : 'RADIO') + (pinned ? ' · 已固定' : '') }}</span>
+      />
+      <span
+        class="music-chip-glyph"
+        aria-hidden="true"
+      >♪</span>
+      <span class="music-chip-title">{{ chipLabel }}</span>
 
-      <!-- Login gone: nothing below can work (every play silently fails), so
+      <!-- 展开态:926 行的播放器面板整体保留,只是从 composer-anchor 改锚到
+           chip 上(composer-bands §3.2)。 -->
+      <template #flyout>
+        <div
+          ref="barEl"
+          class="music-flyout"
+          @click="onBarClick"
+        >
+          <span
+            class="music-frame-label"
+            aria-hidden="true"
+          >{{ (playing ? 'NOW PLAYING' : 'RADIO') + (pinned ? ' · 已固定' : '') }}</span>
+
+          <div
+            class="music-bar"
+            :class="{ 'is-quiet': standby || idle }"
+            :data-status="nowPlaying?.status"
+            role="group"
+            aria-label="music player"
+          >
+            <!-- Login gone: nothing below can work (every play silently fails), so
            the bar says so instead of presenting healthy-looking controls. -->
-      <template v-if="loginMissing">
-        <span class="music-title"><span class="music-mark">⚠</span>{{ flash || '网易云未登录 · 电台无法播放' }}</span>
-        <span class="music-actions">
-          <button
-            type="button"
-            class="music-btn"
-            @mousedown.prevent
-            @click="openMusicSettings"
-          >去登录</button>
-        </span>
-      </template>
+            <template v-if="loginMissing">
+              <span class="music-title"><span class="music-mark">⚠</span>{{ flash || '网易云未登录 · 电台无法播放' }}</span>
+              <span class="music-actions">
+                <button
+                  type="button"
+                  class="music-btn"
+                  @mousedown.prevent
+                  @click="openMusicSettings"
+                >去登录</button>
+              </span>
+            </template>
 
-      <!-- The host's spoken patter IS the station broadcasting: while the TTS
+            <!-- The host's spoken patter IS the station broadcasting: while the TTS
            line plays into the gap before a song, the bar shows the line as a
            caption instead of claiming the radio stopped. Long lines scroll
            like a radio ticker, paced to the voice (same chars/sec model the
            talk-over timing uses), so the whole sentence is readable. -->
-      <template v-else-if="speaking">
-        <span
-          class="music-title music-patter"
-        ><span class="music-mark">◈</span><span class="music-patter-viewport"><span
-          v-if="!flash"
-          :key="musicStore.djPatter"
-          class="music-patter-text"
-          :style="{ animationDuration: `${patterScrollSeconds}s` }"
-        >{{ musicStore.djPatter }}</span><template v-else>{{ flash }}</template></span></span>
+            <template v-else-if="speaking">
+              <span
+                class="music-title music-patter"
+              ><span class="music-mark">◈</span><span class="music-patter-viewport"><span
+                v-if="!flash"
+                :key="musicStore.djPatter"
+                class="music-patter-text"
+                :style="{ animationDuration: `${patterScrollSeconds}s` }"
+              >{{ musicStore.djPatter }}</span><template v-else>{{ flash }}</template></span></span>
 
-        <span class="music-actions">
-          <button
-            type="button"
-            class="music-btn"
-            aria-label="跳过口播,直接放歌"
-            @mousedown.prevent
-            @click="skipPatter"
-          >⏭</button>
-          <button
-            type="button"
-            class="music-btn"
-            aria-label="停止电台:切断口播与音乐,DJ 不再续排"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="stopRadio"
-          >■</button>
-        </span>
-      </template>
+              <span class="music-actions">
+                <button
+                  type="button"
+                  class="music-btn"
+                  aria-label="跳过口播,直接放歌"
+                  @mousedown.prevent
+                  @click="skipPatter"
+                >⏭</button>
+                <button
+                  type="button"
+                  class="music-btn"
+                  aria-label="停止电台:切断口播与音乐,DJ 不再续排"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="stopRadio"
+                >■</button>
+              </span>
+            </template>
 
-      <!-- A deliberate transition gap: patter being synthesized, play
+            <!-- A deliberate transition gap: patter being synthesized, play
            spawning, verify pending. Named song when main knows it. -->
-      <template v-else-if="transitioning">
-        <span
-          class="music-title"
-        ><span class="music-mark">◈</span>换歌中{{ musicStore.radio.starting ? ` · ${musicStore.radio.starting}` : '…' }}</span>
+            <template v-else-if="transitioning">
+              <span
+                class="music-title"
+              ><span class="music-mark">◈</span>换歌中{{ musicStore.radio.starting ? ` · ${musicStore.radio.starting}` : '…' }}</span>
+            </template>
+
+            <!-- 意图输入:开电台/新电台点开后的内联一行。 -->
+            <template v-else-if="composingIntent">
+              <input
+                ref="intentInputEl"
+                v-model="intentDraft"
+                class="music-intent-input"
+                type="text"
+                spellcheck="false"
+                placeholder="想听什么?一句话——留空让 DJ 看着办"
+                @keydown.enter.prevent="submitIntent"
+                @keydown.esc.prevent="composingIntent = false"
+              >
+              <span class="music-actions">
+                <button
+                  type="button"
+                  class="music-btn"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="submitIntent"
+                >开台</button>
+                <button
+                  type="button"
+                  class="music-btn"
+                  aria-label="取消"
+                  @mousedown.prevent
+                  @click="composingIntent = false"
+                >✕</button>
+              </span>
+            </template>
+
+            <!-- 待命:无声但有节目单/onDeck——恢复,或换个方向重来。 -->
+            <template v-else-if="standby">
+              <span
+                class="music-title"
+              ><span class="music-mark">◦</span>{{ flash || `电台待命 · 剩 ${musicStore.radio.programmeLength} 首` }}</span>
+
+              <span class="music-actions">
+                <button
+                  type="button"
+                  class="music-btn"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="run('radio-resume')"
+                >▶ 恢复</button>
+                <button
+                  type="button"
+                  class="music-btn"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="startComposingIntent(true)"
+                >⟳ 新电台</button>
+              </span>
+            </template>
+
+            <!-- 空闲:什么都没有——这里就是开电台的入口。 -->
+            <template v-else-if="idle">
+              <span class="music-title"><span class="music-mark">◦</span>{{ flash || '电台' }}</span>
+
+              <span class="music-actions">
+                <button
+                  type="button"
+                  class="music-btn"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="startComposingIntent(false)"
+                >+ 开电台</button>
+              </span>
+            </template>
+
+            <template v-else>
+              <span
+                class="music-title"
+              ><span class="music-mark">{{ nowPlaying?.status === 'paused' ? '‖' : '▸' }}</span>{{ flash || nowPlaying?.title || '未知曲目' }}</span>
+
+              <span
+                class="music-track"
+                :class="{ seekable: canSeek }"
+                role="progressbar"
+                :aria-valuenow="Math.round(progressRatio * 100)"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                @mousedown.prevent
+                @click="onSeek"
+              ><i class="music-track-line" /><i
+                class="music-track-fill"
+                :style="{ transform: `scaleX(${progressRatio})` }"
+              /></span>
+
+              <span class="music-time">{{ timeLabel }}</span>
+
+              <span class="music-actions">
+                <button
+                  type="button"
+                  class="music-btn"
+                  aria-label="红心这首歌(写入你的网易云账号)"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="like"
+                >♥</button>
+                <button
+                  type="button"
+                  class="music-btn"
+                  aria-label="上一首"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="run('prev')"
+                >⏮</button>
+                <button
+                  type="button"
+                  class="music-btn"
+                  :aria-label="isPaused ? '继续' : '暂停'"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="toggle"
+                >{{ isPaused ? '▶' : '‖' }}</button>
+                <button
+                  type="button"
+                  class="music-btn"
+                  aria-label="下一首"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="run('next')"
+                >⏭</button>
+                <button
+                  v-if="musicStore.radio.active"
+                  type="button"
+                  class="music-btn"
+                  aria-label="换台:说个新方向,DJ 重新编排;新歌备好后自动切过去"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="startComposingIntent(true)"
+                >⟳</button>
+                <button
+                  v-if="musicStore.radio.active"
+                  type="button"
+                  class="music-btn"
+                  aria-label="停止电台:停下音乐,DJ 不再续排(节目单保留)"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="stopRadio"
+                >■</button>
+              </span>
+
+              <span
+                v-if="volume !== undefined"
+                class="music-vol"
+                role="group"
+                aria-label="音量"
+              >
+                <button
+                  type="button"
+                  class="music-btn music-vol-btn"
+                  :disabled="busy || volume <= 0"
+                  @mousedown.prevent
+                  @click="stepVolume(-VOLUME_STEP)"
+                >−</button>
+                <span class="music-vol-value">{{ volume }}</span>
+                <button
+                  type="button"
+                  class="music-btn music-vol-btn"
+                  :disabled="busy || volume >= 100"
+                  @mousedown.prevent
+                  @click="stepVolume(VOLUME_STEP)"
+                >+</button>
+              </span>
+
+              <Tooltip :text="modeTitle">
+                <button
+                  type="button"
+                  class="music-mode"
+                  :disabled="busy"
+                  @mousedown.prevent
+                  @click="toggleBackend"
+                >
+                  {{ backendLabel }}
+                </button>
+              </Tooltip>
+
+              <span
+                v-if="upNext"
+                class="music-next"
+              >↳ 接下来 · {{ upNext }}</span>
+            </template>
+          </div>
+        </div>
       </template>
-
-      <!-- 意图输入:开电台/新电台点开后的内联一行。 -->
-      <template v-else-if="composingIntent">
-        <input
-          ref="intentInputEl"
-          v-model="intentDraft"
-          class="music-intent-input"
-          type="text"
-          spellcheck="false"
-          placeholder="想听什么?一句话——留空让 DJ 看着办"
-          @keydown.enter.prevent="submitIntent"
-          @keydown.esc.prevent="composingIntent = false"
-        >
-        <span class="music-actions">
-          <button
-            type="button"
-            class="music-btn"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="submitIntent"
-          >开台</button>
-          <button
-            type="button"
-            class="music-btn"
-            aria-label="取消"
-            @mousedown.prevent
-            @click="composingIntent = false"
-          >✕</button>
-        </span>
-      </template>
-
-      <!-- 待命:无声但有节目单/onDeck——恢复,或换个方向重来。 -->
-      <template v-else-if="standby">
-        <span
-          class="music-title"
-        ><span class="music-mark">◦</span>{{ flash || `电台待命 · 剩 ${musicStore.radio.programmeLength} 首` }}</span>
-
-        <span class="music-actions">
-          <button
-            type="button"
-            class="music-btn"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="run('radio-resume')"
-          >▶ 恢复</button>
-          <button
-            type="button"
-            class="music-btn"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="startComposingIntent(true)"
-          >⟳ 新电台</button>
-        </span>
-      </template>
-
-      <!-- 空闲:什么都没有——这里就是开电台的入口。 -->
-      <template v-else-if="idle">
-        <span class="music-title"><span class="music-mark">◦</span>{{ flash || '电台' }}</span>
-
-        <span class="music-actions">
-          <button
-            type="button"
-            class="music-btn"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="startComposingIntent(false)"
-          >+ 开电台</button>
-        </span>
-      </template>
-
-      <template v-else>
-        <span
-          class="music-title"
-        ><span class="music-mark">{{ nowPlaying?.status === 'paused' ? '‖' : '▸' }}</span>{{ flash || nowPlaying?.title || '未知曲目' }}</span>
-
-        <span
-          class="music-track"
-          :class="{ seekable: canSeek }"
-          role="progressbar"
-          :aria-valuenow="Math.round(progressRatio * 100)"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          @mousedown.prevent
-          @click="onSeek"
-        ><i class="music-track-line" /><i
-          class="music-track-fill"
-          :style="{ transform: `scaleX(${progressRatio})` }"
-        /></span>
-
-        <span class="music-time">{{ timeLabel }}</span>
-
-        <span class="music-actions">
-          <button
-            type="button"
-            class="music-btn"
-            aria-label="红心这首歌(写入你的网易云账号)"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="like"
-          >♥</button>
-          <button
-            type="button"
-            class="music-btn"
-            aria-label="上一首"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="run('prev')"
-          >⏮</button>
-          <button
-            type="button"
-            class="music-btn"
-            :aria-label="isPaused ? '继续' : '暂停'"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="toggle"
-          >{{ isPaused ? '▶' : '‖' }}</button>
-          <button
-            type="button"
-            class="music-btn"
-            aria-label="下一首"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="run('next')"
-          >⏭</button>
-          <button
-            v-if="musicStore.radio.active"
-            type="button"
-            class="music-btn"
-            aria-label="换台:说个新方向,DJ 重新编排;新歌备好后自动切过去"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="startComposingIntent(true)"
-          >⟳</button>
-          <button
-            v-if="musicStore.radio.active"
-            type="button"
-            class="music-btn"
-            aria-label="停止电台:停下音乐,DJ 不再续排(节目单保留)"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="stopRadio"
-          >■</button>
-        </span>
-
-        <span
-          v-if="volume !== undefined"
-          class="music-vol"
-          role="group"
-          aria-label="音量"
-        >
-          <button
-            type="button"
-            class="music-btn music-vol-btn"
-            :disabled="busy || volume <= 0"
-            @mousedown.prevent
-            @click="stepVolume(-VOLUME_STEP)"
-          >−</button>
-          <span class="music-vol-value">{{ volume }}</span>
-          <button
-            type="button"
-            class="music-btn music-vol-btn"
-            :disabled="busy || volume >= 100"
-            @mousedown.prevent
-            @click="stepVolume(VOLUME_STEP)"
-          >+</button>
-        </span>
-
-        <Tooltip :text="modeTitle">
-          <button
-            type="button"
-            class="music-mode"
-            :disabled="busy"
-            @mousedown.prevent
-            @click="toggleBackend"
-          >
-            {{ backendLabel }}
-          </button>
-        </Tooltip>
-
-        <span
-          v-if="upNext"
-          class="music-next"
-        >↳ 接下来 · {{ upNext }}</span>
-      </template>
-    </div>
+    </StatusChip>
   </Transition>
 </template>
 
 <script setup lang="ts">
 /**
- * The composer's music bar.
+ * 电台 —— S 状态带成员(docs/design/composer-bands-2026-08.md §3.2)。
  *
- * A flyout on `.composer-anchor`, not a dock row: it is absolutely positioned
- * above the composer's top edge and never contributes height, so an idle chat
- * looks exactly as it did before music existed.
+ * E 期把它从输入框骨架(`.composer-anchor`)迁出:收起态是 S 带里的一枚
+ * `♪ <曲名>` chip,展开态是**原封不动的**播放器面板,只是重新锚定到 chip 的
+ * 浮层上(Teleport 走 StatusChip → Popover)。悬停展开 / 几何 held / 点击固定
+ * 三态语义守恒 —— 唯一没了的是 `--music-bar-reserve` 占位:浮层不再压在
+ * 输入框上沿,也就没有需要预留的高度。
  *
  * It steers the song that is already playing — it never picks one. Choosing is
  * the model's job (ncm-cli through bash), and the bar deliberately never touches
@@ -272,16 +305,18 @@
  * `queue add` simply wins.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import StatusChip from '@/components/common/StatusChip.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { platformApi } from '@/platform'
 import { useMusicStore } from '@/stores/music'
 import { useSettingsStore } from '@/stores/settings'
 import type { MusicCommand } from '@/types'
 
-const props = defineProps<{
-  /** The composer's NOW PLAYING/RADIO tag is hovered or focused. */
-  expanded: boolean
-}>()
+/**
+ * chip 被悬停/聚焦。以前是 InputBox 的 NOW PLAYING 帧标签传进来的 prop,
+ * 现在 chip 就在本组件里,这一态回到它自己手上。
+ */
+const expanded = ref(false)
 
 // Read through the store rather than storeToRefs: every InputBox test fakes its
 // stores with plain objects and no pinia instance, and storeToRefs needs a real
@@ -435,7 +470,7 @@ const LINGER_MS = 250
 const lingering = ref(false)
 let lingerTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  () => props.expanded || held.value,
+  () => expanded.value || held.value,
   hovered => {
     if (lingerTimer) clearTimeout(lingerTimer)
     lingerTimer = null
@@ -465,24 +500,48 @@ const configured = computed(
  * to hover rules — with the pointer still inside it simply stays.
  */
 const pinned = ref(false)
-// Pinning turns the flyout into a fixture, and a fixture must not sit on top of
-// the conversation: the composer reads this to reserve real height for the bar
-// (see .composer-anchor's margin-top) so the chat area is pushed up instead.
-watch(pinned, value => (musicStore.barPinned = value), { immediate: true })
-onBeforeUnmount(() => {
-  musicStore.barPinned = false
-})
 function onBarClick(event: MouseEvent) {
   const target = event.target as HTMLElement | null
   if (target?.closest('button, input, .music-track, .music-vol')) return
   pinned.value = !pinned.value
 }
 
+/**
+ * chip 自己按点击切换开合;开合的**真值**在这里,所以把 chip 的意图翻译回
+ * 本组件的三态:点开 = 固定,收起 = 解除固定并放掉悬停(Esc / 外部点击走
+ * 的也是这条,浮层由 Popover 的 closeOn 关掉)。
+ */
+function onChipOpenChange(value: boolean) {
+  if (value) {
+    pinned.value = true
+    return
+  }
+  pinned.value = false
+  expanded.value = false
+  held.value = false
+}
+
+/**
+ * chip 出现的条件 = 电台可用(设置里开了且 ncm-cli 配好了)。
+ * 播放中显曲名,空闲显「电台」—— 空闲态的 chip 就是开台入口,与迁出前
+ * 常驻的 RADIO 帧标签是同一个角色;没配电台的用户一枚 chip 都不会看到。
+ */
+const chipVisible = computed(() => configured.value)
+
+const chipLabel = computed(() => {
+  if (loginMissing.value) return '未登录'
+  if (speaking.value) return '口播中'
+  if (transitioning.value) return '换歌中'
+  if (playing.value) return nowPlaying.value?.title || '未知曲目'
+  if (standby.value) return '待命'
+  return '电台'
+})
+
 const visible = computed(
   () =>
     configured.value &&
     (pinned.value ||
-      props.expanded ||
+      expanded.value ||
       held.value ||
       lingering.value ||
       // Mid-interaction the bar must never vanish: an open intent input (the
@@ -527,33 +586,19 @@ onBeforeUnmount(() => {
   document.documentElement.removeEventListener('pointerleave', onWindowBlurOrLeave)
 })
 
-// Report the bar's live height to the store while it is on screen, so the goal
-// bar (a sibling in the composer column that this out-of-flow flyout floats over)
-// can lift clear and sit above it. Measured with a ResizeObserver because the bar
-// wraps to a second row for the 接下来 line; 0 whenever the bar is not rendered.
+/**
+ * 浮层的根元素,几何 hold 判定的量尺(见 onWindowPointerMove)。
+ *
+ * E 期起它不再向 store 汇报高度:浮层已 teleport 出输入区,谁都不用为它
+ * 预留高度了(`--music-bar-reserve` / `--goal-music-offset` 一并退役)。
+ */
 const barEl = ref<HTMLElement | null>(null)
-let barResize: ResizeObserver | null = null
 watch(barEl, el => {
-  barResize?.disconnect()
-  barResize = null
-  if (el) {
-    if (typeof ResizeObserver !== 'undefined') {
-      barResize = new ResizeObserver(() => {
-        if (barEl.value) musicStore.barHeight = barEl.value.offsetHeight
-      })
-      barResize.observe(el)
-    }
-    musicStore.barHeight = el.offsetHeight
-  } else {
-    musicStore.barHeight = 0
+  if (!el) {
     // No rect to test against: a stale "inside" verdict from the bar's last
     // on-screen moment must not resurrect it out of nowhere.
     held.value = false
   }
-})
-onBeforeUnmount(() => {
-  barResize?.disconnect()
-  musicStore.barHeight = 0
 })
 
 const isPaused = computed(() => nowPlaying.value?.status === 'paused')
@@ -684,34 +729,64 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* Anchored to the composer's top edge and out of flow entirely: the bar must
-   cost zero layout, or every chat pays for a feature most sessions never use. */
+/* 收起态:一枚 chip。外形归壳,这里只给播放指示与省略。 */
+.music-chip-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+}
+
+.music-chip.is-playing .music-chip-dot {
+  background: var(--ui-accent-primary-fg);
+  animation: music-chip-pulse 2s var(--ease-default) infinite;
+}
+
+@keyframes music-chip-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .music-chip.is-playing .music-chip-dot {
+    animation: none;
+  }
+}
+
+.music-chip-glyph {
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.music-chip-title {
+  min-width: 0;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 展开态:面由 Popover 画(发丝 / --shadow-floating / 圆角),这里只排内容。 */
+.music-flyout {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
 .music-bar {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  /* Above the message list's scroll-to-bottom button, which overlaps the
-     bar visually (z-index 4) — hovering "inside the bar" must stay on the bar. */
-  z-index: var(--z-sticky);
-  margin-bottom: 9px;
   display: flex;
   align-items: center;
   flex-wrap: wrap; /* the optional 接下来 line wraps to its own row */
   gap: 6px 12px;
-  padding: 8px 12px 7px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
-  border-radius: 3px;
-  background: var(--ui-surface-chat-bg);
+  min-width: 0;
 }
 
-/* Blueprint frame tag, same as the composer's own. */
+/* Blueprint frame tag, same as the composer's own — 现在是浮层的抬头行。 */
 .music-frame-label {
-  position: absolute;
-  top: -7px;
-  left: 12px;
-  padding: 0 6px;
-  background: var(--ui-surface-chat-bg);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
   font-weight: 600;
@@ -912,15 +987,4 @@ onBeforeUnmount(() => {
   padding-top: 5px;
 }
 
-/* Same vocabulary as the dock rows: 0.18s, a 6px lift. */
-.music-bar-enter-active,
-.music-bar-leave-active {
-  transition: opacity var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
-}
-
-.music-bar-enter-from,
-.music-bar-leave-to {
-  opacity: 0;
-  transform: translateY(6px);
-}
 </style>

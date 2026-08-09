@@ -43,22 +43,10 @@ export const useMusicStore = defineStore('music', () => {
   // --- now playing (composer's music bar) ---
 
   const nowPlaying = ref<MusicNowPlaying | null>(null)
-  /**
-   * The composer music bar's live rendered height in px, 0 when it is hidden.
-   * The bar is an out-of-flow flyout above the composer's top edge, so a sibling
-   * that shares the composer column (the goal bar) has no way to know it is there
-   * and would be covered by it. The bar reports its measured height here so the
-   * goal bar can lift clear and sit above it instead of colliding. Measured (not
-   * a constant) because the bar wraps to a second row for the 接下来 line.
+  /*
+   * `barHeight` / `barPinned` 已随 E 期(composer-bands)退役:播放器面板改由
+   * StatusChip 的浮层承载,teleport 出输入区,谁都不必再为它预留高度。
    */
-  const barHeight = ref(0)
-  /**
-   * The bar has been click-pinned: it stays on screen regardless of hover, so
-   * it stops being a transient flyout and becomes a fixture. A fixture must not
-   * cover the conversation — the composer reserves `barHeight` of real layout
-   * space above itself while this is true, pushing the chat area up.
-   */
-  const barPinned = ref(false)
   /** The DJ patter currently being spoken, '' when silent — for an optional caption. */
   const djPatter = ref('')
   /**
@@ -425,8 +413,6 @@ export const useMusicStore = defineStore('music', () => {
     isReady,
     playerBackend,
     nowPlaying,
-    barHeight,
-    barPinned,
     djPatter,
     stopDjPatter,
     radio,

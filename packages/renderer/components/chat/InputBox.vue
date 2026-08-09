@@ -58,38 +58,22 @@
       </TransitionGroup>
       <!-- Anchor keeps flyouts glued to the composer's top edge, floating
            above whatever is docked higher in the stack. -->
-      <div
-        class="composer-anchor"
-        :style="{ '--music-bar-reserve': musicBarReserve }"
-      >
-        <MusicStatusBar :expanded="musicBarExpanded" />
+      <div class="composer-anchor">
         <span
           class="composer-frame-label"
           :class="{
             listening: isVoiceRecordingActive,
             transcribing: isVoiceTranscribingActive,
             command: commandModeActive,
-            music: showsMusicTag,
           }"
-          :aria-hidden="showsMusicTag ? undefined : 'true'"
-          :tabindex="showsMusicTag ? 0 : undefined"
-          :role="showsMusicTag ? 'button' : undefined"
-          :aria-label="showsMusicTag ? musicNowPlayingTitle : undefined"
-          @mouseenter="onMusicLabelEnter"
-          @mouseleave="onMusicLabelLeave"
-          @focus="onMusicLabelEnter"
-          @blur="onMusicLabelLeave"
+          aria-hidden="true"
         >{{ composerFrameLabel }}<span
           v-if="isVoiceRecordingActive"
           class="composer-frame-elapsed"
         >{{ formattedVoiceElapsed }}</span><span
           v-else-if="commandModeActive && commandModeHint"
           class="composer-frame-hint"
-        >{{ commandModeHint }}</span><span
-          v-else-if="showsMusicTag"
-          class="composer-frame-note"
-          aria-hidden="true"
-        >♪</span></span>
+        >{{ commandModeHint }}</span></span>
         <button
           v-if="isVoiceRecordingActive"
           class="composer-voice-cancel"
@@ -433,7 +417,7 @@ import Button from '@/components/common/Button.vue'
 import UiSlotHost from '@/components/plugins/UiSlotHost.vue'
 import Select from '@/components/common/Select.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
-import { ref, computed, nextTick, onMounted, onUnmounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import { useCollabBoardStore } from '@/stores/collabBoard'
@@ -452,7 +436,6 @@ import ThinkToggle from './ThinkToggle.vue'
 import QueuePanel from './composer/QueuePanel.vue'
 import AttachmentRow from './composer/AttachmentRow.vue'
 import DropOverlay from './composer/DropOverlay.vue'
-import MusicStatusBar from './composer/MusicStatusBar.vue'
 import {
   decodeAttachmentText,
   hasDiffLikeContent,
@@ -995,9 +978,6 @@ const commandModeActive = computed(() =>
   !isVoiceTranscribingActive.value,
 )
 
-/** The music tag yields the frame to a pending command. */
-const showsMusicTag = computed(() => showsMusicLabel.value && !commandModeActive.value)
-
 const commandModeHint = computed(() => {
   const command = activeCommand.value
   if (!command) return ''
@@ -1150,45 +1130,9 @@ async function handleCallButton() {
 // Scheme「frame is the state」: during a voice turn the composer's own
 // frame carries the state — the caption flips to LISTENING + timer and the
 // live transcript ghosts into the entry as its placeholder.
-const musicBarExpanded = ref(false)
-let musicCollapseTimer: ReturnType<typeof setTimeout> | null = null
-
-/**
- * Height the composer reserves above itself for a PINNED music bar (the bar's
- * own 9px gap included). Hover-summoned it stays a zero-cost flyout; pinned it
- * is a fixture, and the reserved margin lifts the chat area clear of it.
- */
-const musicBarReserve = computed(() =>
-  musicStore.barPinned && musicStore.barHeight > 0
-    ? `${musicStore.barHeight + 9}px`
-    : '0px',
-)
-
-function onMusicLabelEnter() {
-  if (!showsMusicLabel.value) return
-  if (musicCollapseTimer) {
-    clearTimeout(musicCollapseTimer)
-    musicCollapseTimer = null
-  }
-  musicBarExpanded.value = true
-}
-
-/**
- * Delayed: the bar sits 9px above the tag, and without this the pointer crossing
- * that gap would collapse the bar out from under itself. The bar takes over the
- * hold once the pointer lands on it.
- */
-function onMusicLabelLeave() {
-  if (musicCollapseTimer) clearTimeout(musicCollapseTimer)
-  musicCollapseTimer = setTimeout(() => {
-    musicBarExpanded.value = false
-    musicCollapseTimer = null
-  }, 220)
-}
-
-onBeforeUnmount(() => {
-  if (musicCollapseTimer) clearTimeout(musicCollapseTimer)
-})
+//
+// E 期(composer-bands)起,帧标签**只**讲语音与命令:电台迁进了 S 状态带,
+// 输入框为播放器预留高度的那套占位机制与 NOW PLAYING/RADIO 标签一族随之退役。
 
 const composerPlaceholder = computed(() => {
   if (isVoiceRecordingActive.value) return voiceStore.lastTranscript || 'Listening...'
@@ -1206,80 +1150,10 @@ const composerPlaceholder = computed(() => {
   return props.placeholder || 'Ask anything...'
 })
 
-/**
- * The collapsed music state: the frame tag is already absolutely positioned, so
- * saying NOW PLAYING here costs zero layout — and it doubles as the hover target
- * for the bar. Voice wins: it is a live functional state, music is ambience.
- */
-const musicIsPlaying = computed(
-  () => !!musicStore.nowPlaying && musicStore.nowPlaying.status !== 'stopped',
-)
-
-/** The host's patter TTS is on air while the song player is silent. */
-const musicIsSpeaking = computed(
-  () => !musicIsPlaying.value && musicStore.radio.active && !!musicStore.djPatter,
-)
-
-/** A start is in flight (patter synthesis → play spawn → verify): 换歌中, not 停了. */
-const musicIsTransitioning = computed(
-  () =>
-    !musicIsPlaying.value &&
-    !musicIsSpeaking.value &&
-    musicStore.radio.active &&
-    !!musicStore.radio.starting,
-)
-
-/** Songs waiting (station open or closed earlier), no sound — resume from here. */
-const musicIsStandby = computed(
-  () =>
-    !musicIsPlaying.value &&
-    !musicIsSpeaking.value &&
-    !musicIsTransitioning.value &&
-    musicStore.radio.canResume,
-)
-
-/**
- * The music feature is set up, so the RADIO tag is the always-available summon
- * handle: hovering it brings up the bar even at rest (nothing playing, no
- * queue), which is exactly when the bar acts as the 开电台 launcher. Without a
- * resting handle the launcher would be unreachable in the hover-summon model.
- */
-const musicAvailable = computed(
-  () =>
-    settingsStore.settings.music?.enabled === true &&
-    musicStore.state.configured === true,
-)
-
-const showsMusicLabel = computed(
-  () =>
-    !isVoiceRecordingActive.value &&
-    !isVoiceTranscribingActive.value &&
-    (musicIsPlaying.value ||
-      musicIsSpeaking.value ||
-      musicIsTransitioning.value ||
-      musicIsStandby.value ||
-      musicAvailable.value),
-)
-
-const musicNowPlayingTitle = computed(() => {
-  if (musicIsSpeaking.value) return '主持人口播中 — 音乐马上接上'
-  if (musicIsTransitioning.value) return '换歌中 — 马上开始'
-  if (musicIsStandby.value) return '电台待命 — 悬停展开,可以继续播放'
-  if (musicIsPlaying.value) {
-    return musicStore.nowPlaying?.title
-      ? `${musicStore.nowPlaying.title} — 悬停展开播放器`
-      : undefined
-  }
-  return '电台 — 悬停展开,开一台'
-})
-
 const composerFrameLabel = computed(() => {
   if (isVoiceRecordingActive.value) return 'LISTENING'
   if (isVoiceTranscribingActive.value) return 'TRANSCRIBING'
-  // A pending command outranks the ambient music tag: it is something the
-  // user is about to run, not something playing in the background.
   if (commandModeActive.value) return `/${activeCommand.value?.id.toUpperCase()}`
-  if (showsMusicLabel.value) return musicIsPlaying.value ? 'NOW PLAYING' : 'RADIO'
   return 'COMPOSER'
 })
 
@@ -2010,11 +1884,6 @@ defineExpose({
 .composer-anchor {
   position: relative;
   width: 100%;
-  /* A pinned music bar stops being a transient flyout: the margin reserves its
-     measured height (it floats up into exactly this gap), so growing the
-     composer pushes the chat area up instead of letting the bar cover it. */
-  margin-top: var(--music-bar-reserve, 0px);
-  transition: margin-top var(--duration-normal) var(--ease-default);
 }
 
 /* Blueprint frame tag: floats on the composer's top border like a drawing
@@ -2048,31 +1917,6 @@ defineExpose({
   margin-left: 1em;
   letter-spacing: 0.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--ui-text-muted-fg);
-}
-
-/* --- music: the tag is the whole collapsed state, and the hover target --- */
-
-/* The label is pointer-events: none by default so it never eats a click meant
-   for the composer. While music plays it has a job, so it takes them back. */
-.composer-frame-label.music {
-  pointer-events: auto;
-  cursor: default;
-}
-
-.composer-frame-label.music:hover,
-.composer-frame-label.music:focus-visible {
-  color: var(--ui-text-muted-fg);
-}
-
-.composer-frame-label.music:focus-visible {
-  outline: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 70%, transparent);
-  outline-offset: 2px;
-}
-
-.composer-frame-note {
-  margin-left: 0.5em;
-  letter-spacing: 0;
   color: var(--ui-text-muted-fg);
 }
 

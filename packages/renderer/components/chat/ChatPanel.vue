@@ -21,14 +21,6 @@
       @review-goal="(goalSessionId) => emit('reviewGoal', goalSessionId)"
     />
 
-    <!-- 插件锚点 chat.status-bar(R5.x):聊天面底部状态条,MessageList 之下。
-         与既有的 BackgroundJobsStatusBar/GoalStatusBar 并列而不并入 ——
-         它们有专属交互逻辑,这里是插件的(描述树)块带。 -->
-    <UiSlotHost
-      anchor="chat.status-bar"
-      :session-id="effectiveSessionId"
-    />
-
     <Teleport
       :to="props.footerTarget ?? 'body'"
       :disabled="!props.footerTarget"
@@ -36,12 +28,24 @@
       <div
         v-show="props.active"
         ref="composerContainerRef"
-        v-memo="[props.active, isGenerating, effectiveSessionId, isAgentExecutionSession, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, isCollabSessionActive, goalMusicOffset]"
+        v-memo="[props.active, isGenerating, effectiveSessionId, isAgentExecutionSession, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, isCollabSessionActive]"
         class="composer-container"
-        :style="{ '--goal-music-offset': goalMusicOffset + 'px' }"
       >
-        <BackgroundJobsStatusBar />
-        <GoalStatusBar :session-id="effectiveSessionId" />
+        <!-- S 状态带(docs/design/composer-bands-2026-08.md §2):后台任务 /
+             目标 / 电台 / 插件 chat.status-bar 块收敛成一行 chips。
+             顺序写死 jobs → goal → music,插件块按全局规范顺序排在后面;
+             全员离场时整带零高度(`:empty`),输入区上方干净。
+             横向溢出走滚动而不换行 —— 浮层已 teleport,不受裁切影响。 -->
+        <div class="status-band">
+          <BackgroundJobsStatusBar />
+          <GoalStatusBar :session-id="effectiveSessionId" />
+          <MusicStatusBar />
+          <UiSlotHost
+            anchor="chat.status-bar"
+            chip-shell
+            :session-id="effectiveSessionId"
+          />
+        </div>
 
         <!-- 权限账页栏位:位置(composer 上方)与语义(按 toolCallId 应答、
              scope 档位、快捷键)由 `PermissionLedger` 组件持有,房面共用同一个
@@ -98,7 +102,6 @@
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { useMusicStore } from '@/stores/music'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
@@ -107,6 +110,7 @@ import ComposerReplyBar from './ComposerReplyBar.vue'
 import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
 import UiSlotHost from '@/components/plugins/UiSlotHost.vue'
 import GoalStatusBar from './GoalStatusBar.vue'
+import MusicStatusBar from './composer/MusicStatusBar.vue'
 import type { ChatMessage, ChatMessageMention, ChatMessageReplyTo, MessageAttachment, ToolCall } from '@/types'
 import { filterRoomMessages } from './message/room-grouping'
 import { isAgentExecutionSession as isAgentExecutionSessionKind } from '@/utils/agent-sessions'
@@ -146,20 +150,8 @@ const emit = defineEmits<{
 
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
-const musicStore = useMusicStore()
 
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
-
-// The music bar is an out-of-flow flyout floating up over the composer's top
-// edge, right where the goal bar sits. When it is showing, lift the goal bar
-// clear by its height (plus the bar's own 9px top gap) so the goal reads above
-// the music bar instead of being covered by it.
-// Pinned, the bar is no longer out of flow: the composer reserves its height
-// (InputBox's --music-bar-reserve), so the goal bar already clears it and
-// lifting again would just open a second empty gap.
-const goalMusicOffset = computed(() =>
-  musicStore.barHeight > 0 && !musicStore.barPinned ? musicStore.barHeight + 9 : 0,
-)
 
 const {
   messages,
@@ -810,20 +802,36 @@ defineExpose({
   z-index: 5;
 }
 
-.composer-container > :deep(.background-jobs-bar) {
-  align-self: center;
-}
-
-/* The goal bar rides the same measured column as the composer; without this
-   it sits at the container's flex-start edge, visibly off the reading column.
-   Top margin clears the frame legend that punches out above the border. */
-.composer-container > :deep(.goal-bar) {
+/* S 状态带:与 composer 同一条测量出来的阅读列,chip 左沿对齐输入框左沿。
+   零高度是它的静息态 —— 没有 padding、没有 min-height,成员全部离场时
+   flex 容器自然塌成 0(`:empty` 只补那点与输入框之间的呼吸)。 */
+.composer-container > .status-band {
   box-sizing: border-box;
   width: var(--chat-composer-width);
-  /* Bottom margin grows by the music bar's height (var set on the container)
-     so the goal bar lifts above the flyout that floats up from the composer. */
-  margin: 8px var(--chat-content-column-right, auto) calc(8px + var(--goal-music-offset, 0px)) var(--chat-content-column-left, auto);
-  transition: margin-bottom var(--duration-normal) var(--ease-default);
+  margin: 0 var(--chat-content-column-right, auto) 0 var(--chat-content-column-left, auto);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  /* 超宽横向滚动,不换行(共享 Table 的 overflow-x 判例)。纵轴被连带变成
+     auto 也无所谓:展开浮层已经 teleport 出去了。 */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.composer-container > .status-band::-webkit-scrollbar {
+  display: none;
+}
+
+.composer-container > .status-band:not(:empty) {
+  padding: 2px 0 8px;
+}
+
+/* 插件块带穿 chip 壳后就是一组并排 chip,不再是纵向块列。 */
+.composer-container > .status-band > :deep(.ui-slot-host[data-chip-shell]) {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
 }
 
 /* Agent 执行会话的只读说明:占输入框的位置,走同一条测量出来的阅读列,
@@ -864,7 +872,7 @@ defineExpose({
 }
 
 .composer-container.is-layout-animating :deep(.composer-wrapper),
-.composer-container.is-layout-animating :deep(.goal-bar),
+.composer-container.is-layout-animating .status-band,
 .composer-container.is-layout-animating :deep(.collab-typing),
 .composer-container.is-layout-animating :deep(.composer-reply),
 .composer-container.is-layout-animating .session-permission-panel {
