@@ -33,6 +33,7 @@ const MAX_PLUGIN_WEBVIEW_PATH_LENGTH = 256
  * Windows 盘符 —— 只校验"以 .html 结尾"挡不住 `javascript:x.html`。
  * `%` 挡的是编码变体(`%2e%2e`),反斜杠挡 Windows 分隔符,控制字符挡 NUL 截断。
  */
+// eslint-disable-next-line no-control-regex -- 控制字符正是这条要挡的东西(NUL 截断)
 const FORBIDDEN_PATH_CHARS = /[:\\?#%\u0000-\u001f]/
 
 function describeRelativePathProblem(value: unknown, label: string): string | null {
@@ -194,6 +195,7 @@ export function resolvePluginWebviewRequestSegments(decodedPath: string): string
   if (typeof decodedPath !== 'string') return null
   if (decodedPath.length > MAX_PLUGIN_WEBVIEW_PATH_LENGTH) return null
   // 反斜杠与控制字符(含 NUL 截断)在任何平台上都不该出现在这条协议的路径里。
+  // eslint-disable-next-line no-control-regex -- 控制字符正是这条要挡的东西(NUL 截断)
   if (/[\\\u0000-\u001f]/.test(decodedPath)) return null
   const segments: string[] = []
   for (const raw of decodedPath.split('/')) {
