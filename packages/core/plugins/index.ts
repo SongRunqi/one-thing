@@ -246,6 +246,8 @@ export {
   getCorePluginSettingsPath,
   getCorePluginStorePath,
   getCorePluginsDir,
+  getCoreLocalPluginsDir,
+  scanLocalPluginFiles,
   getPluginEnabledFromSettings,
   getPluginEnabledWithAdapters,
   getPluginConfigFromSettings,

@@ -135,6 +135,53 @@ export interface PluginAPI
   ): void
 }
 
+/**
+ * 轻通道(本地单文件脚本)拿到的**窄化 API**。
+ *
+ * 姿态:没有 manifest = 没有 `contributes` 声明 = 没有需要声明的能力(宪法第 3 条)。
+ * 于是本地脚本的 api 面**物理收窄**到"不需要声明就能用"的那些 —— 自己给自己加东西
+ * 够用:注册工具 / 斜杠命令、订阅观察型事件、发横幅、读写自己的 KV、排定时任务。
+ *
+ * **不给**(因为它们靠 manifest 声明门,本地脚本没有清单去声明):
+ * `sendMessage` / `sessions` / `isIdle` / `llm`(sessions:* / llm:complete)、
+ * `interceptInput` / `interceptToolCall` / `interceptToolResult`(input/toolcall/toolresult:intercept)、
+ * `registerWorkspacePanel` / `registerUiSlot` / `theme`(面板 / 锚点块 / 外观靠声明定位)、
+ * `registerSearchProvider`(search:provide)、`registerIMConnector`(试点注册表)、
+ * `registerRequestHandler` / `settings`(与 UI/清单面绑定)、`steer` / `followUp` /
+ * 生命周期钩子 / prompt-context / skill root。
+ *
+ * 这些方法在本地脚本的 api 对象上**物理不挂**(调用即 `undefined is not a function`),
+ * 而不是留一个会抛错的桩 —— 更干净,类型上也一眼看清能用什么。要用被收窄掉的能力,
+ * 就把脚本打包成正式插件并在 `contributes.permissions` 里声明。
+ */
+export type LocalPluginAPI = Pick<
+  PluginAPI,
+  | 'id'
+  | 'registerTool'
+  | 'registerCommand'
+  | 'on'
+  | 'events'
+  | 'ui'
+  | 'storage'
+  | 'store'
+  | 'scheduler'
+  | 'onDispose'
+>
+
+/** 本地脚本 api 上保留的键 —— 与 `LocalPluginAPI` 一一对应(运行期收窄据它裁剪)。 */
+export const LOCAL_PLUGIN_API_KEYS = [
+  'id',
+  'registerTool',
+  'registerCommand',
+  'on',
+  'events',
+  'ui',
+  'storage',
+  'store',
+  'scheduler',
+  'onDispose',
+] as const satisfies ReadonlyArray<keyof LocalPluginAPI>
+
 /** Event handler receives the full SessionEventEnvelope */
 export type PluginEventHandler = CorePluginEventHandler
 

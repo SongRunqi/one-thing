@@ -188,7 +188,16 @@ export interface PluginManifest {
   contributes?: PluginContributes
 }
 
-export type PluginSource = 'builtin' | 'user'
+/**
+ * 插件来源。
+ *
+ * - `builtin` = 与 app 同一份构建;
+ * - `user` = `~/.onething/plugins/` 的 npm 账本插件(有 plugin.json + package.json);
+ * - `local` = 轻通道:`~/.onething/plugins-dev/<name>.ts|js` 单文件脚本,无 manifest、
+ *   无 package.json、不进市场、不参与更新。能力面靠"没有声明就没有能力"自动收窄
+ *   (见 `scanLocalPluginFiles` 与装配层的窄化 API)。
+ */
+export type PluginSource = 'builtin' | 'user' | 'local'
 
 export interface CorePluginDefinition<TEntry = unknown> {
   id: string

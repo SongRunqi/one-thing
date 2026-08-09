@@ -53,6 +53,17 @@ export function getCorePluginSettingsPath(options: CorePluginLoaderPathOptions =
   return path.join(getCorePluginStorePath(options), 'plugin-settings.json')
 }
 
+/**
+ * 轻通道的专用目录:`<store>/plugins-dev/`。
+ *
+ * **与 `plugins/`(npm 账本唯一,2026-08-09 A 期)物理分离** —— 单文件脚本只从这里
+ * 扫,`plugins/` 的账本扫描一字不动。名字带 `-dev` 后缀,意在"给自己加个仪表"的
+ * 本地脚本,不是市场分发的正式插件。
+ */
+export function getCoreLocalPluginsDir(options: CorePluginLoaderPathOptions = {}): string {
+  return path.join(getCorePluginStorePath(options), 'plugins-dev')
+}
+
 export function ensureCorePluginsDir(
   pluginsDir: string,
   logger: Pick<CorePluginLoaderLogger, 'log'> = console,
@@ -732,6 +743,92 @@ export function scanPluginLedgerDirectories<TEntry = unknown>(input: {
     }
     plugins.push(definition)
     seen.add(definition.id)
+  }
+
+  return plugins
+}
+
+/**
+ * 轻通道能接受的单文件扩展名。
+ *
+ * `.ts` 是规格钦定的姿态(单文件即插件),`.js`/`.mjs`/`.cjs` 是无构建即可跑的
+ * 稳妥形态 —— 加载走的是与 npm/内置插件**同一个** `import()`(见 loadCorePluginEntry),
+ * `.ts` 能否直接跑取决于宿主运行时是否带 TS 加载器(dev 下 vite/electron-vite 带)。
+ */
+const LOCAL_PLUGIN_FILE_EXTENSIONS = ['.ts', '.mts', '.cts', '.js', '.mjs', '.cjs'] as const
+
+function localPluginIdFromFilename(filename: string): string | null {
+  // `.d.ts` 是类型声明,不是入口 —— 单独挡掉(endsWith('.ts') 会误收它)。
+  if (filename.endsWith('.d.ts')) return null
+  const ext = LOCAL_PLUGIN_FILE_EXTENSIONS.find(candidate => filename.endsWith(candidate))
+  if (!ext) return null
+  const id = filename.slice(0, -ext.length)
+  return id.trim() ? id : null
+}
+
+/**
+ * 轻通道扫描:`<localPluginsDir>/<name>.ts|js` 单文件 → 合成 `CorePluginDefinition`。
+ *
+ * **无 manifest、无 package.json、无构建**:id = 文件名去扩展名,manifest 只带
+ * name/version(**没有 contributes**)。没有 contributes 就没有任何 permissions /
+ * uiSlots / panels / theme 声明 —— 于是装配层的"声明先于代码"闸把所有需要声明的
+ * 能力(sessions:* / llm:complete / tool_call 拦截 / 面板 / 锚点块 / 外观 …)天然
+ * fail-closed 掉。这是宪法第 3 条(没有声明就没有能力)的自然结果,不是这里新加的判定。
+ *
+ * 与账本扫描一样:目录不存在 = 可信的空(还没建过 plugins-dev);读失败 = warn + 空,
+ * 什么都不删。单个坏文件的隔离发生在**加载期**(loadCorePluginEntry 自己 try/catch),
+ * 扫描期只负责列清单。
+ */
+export function scanLocalPluginFiles<TEntry = unknown>(input: {
+  localPluginsDir: string
+  seenIds?: Set<string>
+  getEnabled: (pluginId: string) => boolean
+}): CorePluginDefinition<TEntry>[] {
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(input.localPluginsDir, { withFileTypes: true })
+  } catch (error) {
+    const code = (error as { code?: string }).code
+    // ENOENT = 还没建过 plugins-dev,可信的空;其余读失败 = warn,什么都不删。
+    if (code && code !== 'ENOENT') {
+      console.warn(`[PluginLoader] cannot read local plugins dir ${input.localPluginsDir} (${code}); skipping local scan.`)
+    }
+    return []
+  }
+
+  const plugins: CorePluginDefinition<TEntry>[] = []
+  const seen = input.seenIds ?? new Set<string>()
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue
+    // 只认文件(含跟随符号链接到文件的情形);目录不是单文件脚本。
+    if (!entry.isFile()) {
+      if (!entry.isSymbolicLink()) continue
+      try {
+        if (!fs.statSync(path.join(input.localPluginsDir, entry.name)).isFile()) continue
+      } catch {
+        continue
+      }
+    }
+    const id = localPluginIdFromFilename(entry.name)
+    if (!id) continue
+    if (seen.has(id)) {
+      console.warn(
+        `[PluginLoader] Skipping local plugin file "${entry.name}": plugin id "${id}" is already taken `
+        + '(a builtin/npm plugin or another local file already claims it — later one loses)',
+      )
+      continue
+    }
+    plugins.push({
+      id,
+      source: 'local',
+      // 无 manifest:合成一份最小清单,**不带 contributes** —— 能力面据此收窄。
+      manifest: { name: id, version: '0.0.0' },
+      dirPath: input.localPluginsDir,
+      entryPath: path.join(input.localPluginsDir, entry.name),
+      enabled: input.getEnabled(id),
+    })
+    seen.add(id)
   }
 
   return plugins

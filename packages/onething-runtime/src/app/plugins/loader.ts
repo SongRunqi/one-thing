@@ -23,6 +23,7 @@ import {
   getCorePluginSettingsPath,
   getCorePluginDataFootprint,
   getCorePluginsDir,
+  getCoreLocalPluginsDir,
   getPluginConfigFromSettings,
   PLUGIN_SETTINGS_KEYS,
   getPluginEnabledWithAdapters,
@@ -31,6 +32,7 @@ import {
   loadCorePluginEntry,
   readPluginSettingsFile,
   scanCorePlugins,
+  scanLocalPluginFiles,
   getCorePluginConfigPath,
   assertNotInNodeModules,
   setPluginConfigInSettings,
@@ -48,6 +50,35 @@ import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
 export function getPluginsDir(): string {
   return getCorePluginsDir({ storePath: getOnethingStorePath() })
 }
+
+/**
+ * 轻通道的专用目录:`<store>/plugins-dev/`。与 `getPluginsDir()`(npm 账本唯一)
+ * 物理分离 —— 只有它扫单文件脚本,账本扫描不受影响。
+ */
+export function getLocalPluginsDir(): string {
+  return getCoreLocalPluginsDir({ storePath: getOnethingStorePath() })
+}
+
+/**
+ * 本轮扫描发现的轻通道脚本 id 集合。
+ *
+ * 由 `scanPlugins()` 每轮重建。装配层据它判定"这个插件是不是本地脚本",从而把
+ * 它的 api 面**物理收窄**成 `LocalPluginAPI`(见 api.ts 的 narrowApiForLocalPlugin)。
+ * 用集合而不是每次现扫盘:createPluginAPI 是 per-plugin 调用,而 scanPlugins 在它
+ * 之前已经跑过(bootstrap:先 scan 再逐个 load),集合总是最新的。
+ */
+const localPluginIds = new Set<string>()
+
+/** 这个插件是不是轻通道单文件脚本(装配层收窄能力面用)。 */
+export function isLocalPlugin(pluginId: string): boolean {
+  return localPluginIds.has(pluginId)
+}
+
+/**
+ * 上一轮记录过的本地脚本 id —— 只为"集合变了才吼一声"的启动可见性日志服务。
+ * null = 还没扫过(首扫必吼);之后只在增删时吼,避免 O(n²) 扫描下的刷屏。
+ */
+let loggedLocalPluginIds: string | null = null
 
 function getPluginSettingsPath(): string {
   return getCorePluginSettingsPath({ storePath: getOnethingStorePath() })
@@ -361,6 +392,29 @@ export function scanPlugins(): PluginDefinition[] {
     appVersion: getPluginAppVersion(),
     scanMode: 'npm-ledger',
   }) as PluginDefinition[]
+  // 轻通道(独立小期):`plugins-dev/` 的单文件脚本,**追加**在账本扫描之后。
+  // seenIds 带上已扫到的 id(内置 + npm),让本地脚本让位于同名的正式插件 ——
+  // `plugins/` 的账本扫描到此一字未动(A 期保证不回退)。
+  const localDefinitions = scanLocalPluginFiles<PluginEntry>({
+    localPluginsDir: getLocalPluginsDir(),
+    seenIds: new Set(definitions.map(def => def.id)),
+    getEnabled: pluginId => getPluginEnabled(pluginId),
+  }) as PluginDefinition[]
+  localPluginIds.clear()
+  for (const def of localDefinitions) localPluginIds.add(def.id)
+  definitions.push(...localDefinitions)
+  // 启动可见性:用户该知道 plugins-dev 里有什么在跑。只在集合变化时吼一声 ——
+  // scanPlugins 是热路径(createPluginAPI per-plugin 会触发),每轮都打会刷屏。
+  const localIdsSignature = [...localPluginIds].sort().join(',')
+  if (localIdsSignature !== loggedLocalPluginIds) {
+    loggedLocalPluginIds = localIdsSignature
+    if (localPluginIds.size > 0) {
+      console.log(
+        `[PluginLoader] Loaded ${localPluginIds.size} local dev script(s) from plugins-dev/: `
+        + [...localPluginIds].sort().join(', '),
+      )
+    }
+  }
   // 拆除闩的解除(§7.4):扫描里再现 = 已重装,闩自动放开。
   if (demolishedPluginIds.size > 0) {
     const found = new Set(definitions.map(def => def.id))

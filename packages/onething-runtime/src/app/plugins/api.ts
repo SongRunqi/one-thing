@@ -18,6 +18,7 @@ import {
   getDeclaredPermissions,
   getDeclaredUiSlots,
   getDeclaredWebviewPanelIds,
+  isLocalPlugin,
 } from './loader.js'
 import { createPluginSessionHostPorts } from './sessions.js'
 import { pluginLlmComplete } from './llm.js'
@@ -64,6 +65,7 @@ import type {
   PluginSchedulerAPI,
   PluginToolDefinition,
 } from './types.js'
+import { LOCAL_PLUGIN_API_KEYS } from './types.js'
 import {
   createCorePluginAPI,
   createScopedPluginScheduler,
@@ -176,6 +178,28 @@ export interface CreatePluginAPIOptions {
   declaredBackground?: boolean
   /** manifest contributes.permissions 原文(N1);同上,参数只为注入/测试留着。 */
   declaredPermissions?: string[]
+}
+
+/**
+ * 轻通道:把完整 api 物理收窄成 `LocalPluginAPI`。
+ *
+ * 只保留 `LOCAL_PLUGIN_API_KEYS` 里的键,其余(sessions / llm / 面板 / 拦截钩子 …)
+ * **物理不挂** —— 本地脚本调它们得到的是 `undefined`,而不是一个会抛错的桩。函数
+ * 绑回原 api(保住闭包/this),子对象(ui/events/storage/store/scheduler)按引用透传。
+ *
+ * 注意:只收窄**交给插件 entry 的那个 api**;`state.api` 仍是完整对象,宿主侧的
+ * dispose / 状态清扫照常读它(它是被信任的一侧)。
+ */
+export function narrowApiForLocalPlugin(api: PluginAPI): PluginAPI {
+  const narrowed: Record<string, unknown> = {}
+  const source = api as unknown as Record<string, unknown>
+  for (const key of LOCAL_PLUGIN_API_KEYS) {
+    const value = source[key]
+    narrowed[key] = typeof value === 'function'
+      ? (value as (...args: unknown[]) => unknown).bind(api)
+      : value
+  }
+  return narrowed as unknown as PluginAPI
 }
 
 export function createPluginAPI(
@@ -497,6 +521,11 @@ export function createPluginAPI(
     // 上一条生命周期里的时间戳吃掉,看起来像声音坏了。
     forgetPluginNotifySoundThrottle(pluginId)
   })
+  // 轻通道(本地单文件脚本):把交给 entry 的 api 物理收窄。state 不动 —— 宿主侧
+  // 拆除/清扫读的是 state.api(完整),插件侧拿到的是窄化面。
+  if (isLocalPlugin(pluginId)) {
+    return { api: narrowApiForLocalPlugin(result.api), state: result.state }
+  }
   return result
 }
 
