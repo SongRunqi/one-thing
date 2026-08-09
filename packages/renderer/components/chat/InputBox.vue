@@ -59,7 +59,11 @@
       <!-- Anchor keeps flyouts glued to the composer's top edge, floating
            above whatever is docked higher in the stack. -->
       <div class="composer-anchor">
+        <!-- 帧标签只在真有帧状态(语音/命令)时出现 —— 静息态的 COMPOSER
+             装饰字已裁(2026-08-09 拍板,与带系统 demo 一致:静息的输入框
+             上沿只剩一道图纸描边)。 -->
         <span
+          v-if="composerFrameLabel"
           class="composer-frame-label"
           :class="{
             listening: isVoiceRecordingActive,
@@ -1289,7 +1293,8 @@ const composerFrameLabel = computed(() => {
   if (isVoiceRecordingActive.value) return 'LISTENING'
   if (isVoiceTranscribingActive.value) return 'TRANSCRIBING'
   if (commandModeActive.value) return `/${activeCommand.value?.id.toUpperCase()}`
-  return 'COMPOSER'
+  // 静息态无标签(空串即 v-if 隐藏):框上只留描边,不留装饰字。
+  return ''
 })
 
 const formattedVoiceElapsed = computed(() => {
@@ -2256,8 +2261,10 @@ defineExpose({
 .composer-input {
   width: 100%;
   --editor-font-size: 15px;
-  /* The draft is set like manuscript text: display serif over UI sans. */
-  --editor-font-family: var(--font-display, var(--font-sans));
+  /* 2026-08-09 拍板(带系统 demo 复刻):草稿回归正文无衬线 —— 此前的
+     "手稿衬线"(--font-display)与工具条 mono、消息正文都不同族,三种
+     字面挤在一个框里。要回手稿风换回 var(--font-display, ...) 即可。 */
+  --editor-font-family: var(--font-sans);
   min-height: 42px;
 }
 
@@ -2348,7 +2355,6 @@ defineExpose({
      rules below) so its hover paints the cell edge-to-edge. */
   flex-shrink: 0;
   padding: 0;
-  border-right: 1px solid var(--composer-cell-divider);
 }
 
 .toolbar-right {
@@ -2360,13 +2366,6 @@ defineExpose({
 .toolbar-right > * {
   display: flex;
   align-items: center;
-  border-left: 1px solid var(--composer-cell-divider);
-}
-
-/* messenger 形态左边一格工程控件都没有,首格的竖线就成了一道悬空分隔 ——
-   去掉它,按钮带自己的左边缘由第一颗按钮画。 */
-.composer-toolbar[data-profile='messenger'] .toolbar-right > *:first-child {
-  border-left: 0;
 }
 
 /* Cell-fill: each cell holds exactly one control; stretch it (through any
@@ -2421,9 +2420,15 @@ defineExpose({
 .toolbar-right > .voice-aux-btn,
 .toolbar-right > .send-btn {
   border: 0;
-  border-left: 1px solid var(--composer-cell-divider);
   border-radius: 0;
   height: 100%;
+}
+
+/* 分隔线只留 SEND 前这一道(2026-08-09 拍板,与带系统 demo 一致):
+   逐格竖线的账页分段被裁 —— 裸文本/图标 + hover 底色即可辨格,
+   唯一保留的这道线把"发送"从工具组里划出来。 */
+.toolbar-right > .send-btn {
+  border-left: 1px solid var(--composer-cell-divider);
 }
 
 .toolbar-right > .voice-btn,

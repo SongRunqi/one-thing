@@ -70,7 +70,12 @@ describe('房面 composer 皮相', () => {
   })
 
   it('房独有的 messenger 门仍然只在 messenger 形态生效(旧壳不受影响)', () => {
-    expect(INPUT_BOX).toContain(".composer-toolbar[data-profile='messenger']")
+    // 2026-08-09 工具条去分隔线后,InputBox 里不再有 messenger 专属的
+    // toolbar 选择器 —— 守卫翻转:确保它不会再回来(房面的 messenger
+    // 差异全部住在房面自己的皮相文件里)。
+    expect(INPUT_BOX).not.toContain(".composer-toolbar[data-profile='messenger']")
+    // data-profile 挂点本身仍在(房面皮相靠它选择),只是 InputBox 不消费。
+    expect(INPUT_BOX).toContain(':data-profile="composerProfile"')
   })
 
   /**
