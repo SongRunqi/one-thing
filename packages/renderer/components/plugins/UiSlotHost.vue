@@ -3,15 +3,31 @@
     v-if="visibleSlots.length || failedCount"
     class="ui-slot-host"
     :data-anchor="anchor"
+    :data-chip-shell="chipShell || undefined"
   >
-    <UiSlotBlock
+    <!-- chipShell:块穿 StatusChip 的**静态**壳(无浮层)进 S 状态带。
+         换的只有外壳 —— 清单、顺序、容量裁决、失败折叠、重拉时机全部走
+         上面同一条路,锚点契约零变化(composer-bands §3.2)。 -->
+    <template
       v-for="slot in visibleSlots"
       :key="`${slot.pluginId}:${slot.slotId}`"
-      :entry="slot"
-      :session-id="sessionId ?? null"
-      :message-id="messageId ?? null"
-      :max-height="maxHeight"
-    />
+    >
+      <StatusChip v-if="chipShell">
+        <UiSlotBlock
+          :entry="slot"
+          :session-id="sessionId ?? null"
+          :message-id="messageId ?? null"
+          :max-height="maxHeight"
+        />
+      </StatusChip>
+      <UiSlotBlock
+        v-else
+        :entry="slot"
+        :session-id="sessionId ?? null"
+        :message-id="messageId ?? null"
+        :max-height="maxHeight"
+      />
+    </template>
     <!-- 加载失败的块不占容量,折叠为一个聚合指示(详情在设置页)。
          否则 3 个坏插件能永久占满整条锚点带。 -->
     <Tooltip
@@ -27,6 +43,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import StatusChip from '@/components/common/StatusChip.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import UiSlotBlock from './UiSlotBlock.vue'
 import {
@@ -48,9 +65,15 @@ const props = withDefaults(defineProps<{
   sessionId?: string | null
   /** 仅消息级锚点(message.footer):该宿主所属的消息 id,透传给每个块。 */
   messageId?: string | null
+  /**
+   * 每块穿 StatusChip 静态壳(S 状态带用)。**只影响外壳**:块清单、全局
+   * 规范顺序、容量裁决、失败折叠一个字节都不变。
+   */
+  chipShell?: boolean
 }>(), {
   sessionId: null,
   messageId: null,
+  chipShell: false,
 })
 
 const visibleSlots = useVisibleAnchorUiSlots(props.anchor)
@@ -69,6 +92,22 @@ const failedTitles = computed(() =>
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+}
+
+/* chip 壳形态:块并排成一行,块自身不再画自己的高度框。 */
+.ui-slot-host[data-chip-shell] {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 块在壳里以壳的高度为准(壳就是锚点容量的 24px),纵向滚动条在一枚 chip
+   里没有意义 —— 溢出直接裁掉。`!important` 是压 UiSlotBlock 的内联
+   max-height,容量数字本身仍由 UI_ANCHOR_CAPACITY_MIRROR 说了算。 */
+.ui-slot-host[data-chip-shell] :deep(.ui-slot-block) {
+  max-height: 100% !important;
+  overflow: hidden;
+  line-height: 1;
 }
 
 .ui-slot-failed {
