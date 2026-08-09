@@ -52,13 +52,14 @@
             >
               Log in
             </button>
-            <span
+            <Tooltip
               v-else-if="server.oauth?.status === 'authorized'"
-              class="oauth-authorized"
-              :title="`Authorized with ${server.oauth.issuer}`"
+              :text="`Authorized with ${server.oauth.issuer}`"
             >
-              Authorized
-            </span>
+              <span class="oauth-authorized">
+                Authorized
+              </span>
+            </Tooltip>
           </div>
         </div>
       </div>

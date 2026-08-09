@@ -14,18 +14,20 @@
     />
     <!-- 加载失败的块不占容量,折叠为一个聚合指示(详情在设置页)。
          否则 3 个坏插件能永久占满整条锚点带。 -->
-    <span
+    <Tooltip
       v-if="failedCount"
-      class="ui-slot-failed"
-      :title="failedTitles"
+      :text="failedTitles"
     >
-      {{ failedCount }} plugin block{{ failedCount > 1 ? 's' : '' }} not running
-    </span>
+      <span class="ui-slot-failed">
+        {{ failedCount }} plugin block{{ failedCount > 1 ? 's' : '' }} not running
+      </span>
+    </Tooltip>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import UiSlotBlock from './UiSlotBlock.vue'
 import {
   UI_ANCHOR_CAPACITY_MIRROR,

@@ -288,16 +288,19 @@
               @update:model-value="togglePlugin(plugin)"
             />
             <!-- 有更新才出现;无 npm 时置灰(裁决 8)。 -->
-            <Button
+            <Tooltip
               v-if="updateOffers.has(plugin.id)"
-              unstyled
-              class="btn-sm update-btn"
-              :disabled="npmAvailable === false || updatingPlugins.has(plugin.id)"
-              :title="npmAvailable === false ? 'npm is not available on this machine' : `Update to v${updateOffers.get(plugin.id)!.latest}`"
-              @click="updatePlugin(plugin)"
+              :text="npmAvailable === false ? 'npm is not available on this machine' : `Update to v${updateOffers.get(plugin.id)!.latest}`"
             >
-              {{ updatingPlugins.has(plugin.id) ? 'Updating…' : 'Update' }}
-            </Button>
+              <Button
+                unstyled
+                class="btn-sm update-btn"
+                :disabled="npmAvailable === false || updatingPlugins.has(plugin.id)"
+                @click="updatePlugin(plugin)"
+              >
+                {{ updatingPlugins.has(plugin.id) ? 'Updating…' : 'Update' }}
+              </Button>
+            </Tooltip>
             <!-- 仅用户插件可卸载:内置插件与 app 同一份构建,没有"源目录"可删。 -->
             <Button
               v-if="canUninstall(plugin)"
@@ -469,28 +472,34 @@
             </div>
 
             <div class="plugin-toggle">
-              <Button
+              <Tooltip
                 v-if="entry.installedVersion && entry.hasUpdate"
-                unstyled
-                class="btn-sm update-btn"
-                :disabled="npmAvailable === false || updatingPlugins.has(entry.id)"
-                :title="npmAvailable === false ? 'npm is not available on this machine' : `Update to v${entry.version}`"
-                @click="updateMarketPlugin(entry)"
+                :text="npmAvailable === false ? 'npm is not available on this machine' : `Update to v${entry.version}`"
               >
-                {{ updatingPlugins.has(entry.id) ? 'Updating…' : 'Update' }}
-              </Button>
-              <Button
+                <Button
+                  unstyled
+                  class="btn-sm update-btn"
+                  :disabled="npmAvailable === false || updatingPlugins.has(entry.id)"
+                  @click="updateMarketPlugin(entry)"
+                >
+                  {{ updatingPlugins.has(entry.id) ? 'Updating…' : 'Update' }}
+                </Button>
+              </Tooltip>
+              <Tooltip
                 v-else-if="!entry.installedVersion"
-                unstyled
-                class="btn-sm install-btn"
-                :disabled="npmAvailable === false || Boolean(entry.versionBlockedReason) || installingMarket.has(entry.id)"
-                :title="npmAvailable === false
+                :text="npmAvailable === false
                   ? 'npm is not available on this machine'
                   : (entry.versionBlockedReason ?? 'Review the manifest, then install')"
-                @click="confirmingMarket = confirmingMarket === entry.id ? null : entry.id"
               >
-                Install
-              </Button>
+                <Button
+                  unstyled
+                  class="btn-sm install-btn"
+                  :disabled="npmAvailable === false || Boolean(entry.versionBlockedReason) || installingMarket.has(entry.id)"
+                  @click="confirmingMarket = confirmingMarket === entry.id ? null : entry.id"
+                >
+                  Install
+                </Button>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -559,6 +568,7 @@ import Input from '@/components/common/Input.vue'
 import InputNumber from '@/components/common/InputNumber.vue'
 import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { SettingRow, SettingsField, SettingsGroup } from './settings-primitives'
 import type { PluginConfigErrorDetail, PluginConfigFieldDescriptor } from '@shared/ipc/plugins.js'
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'

@@ -7,6 +7,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PluginsSettingsTab from '../PluginsSettingsTab.vue'
+import Tooltip from '../../common/Tooltip.vue'
 
 const MARKET_ENTRIES = [
   {
@@ -260,7 +261,11 @@ describe('PluginsSettingsTab 市场区(P3)', () => {
     const buttons = wrapper.findAll('.market-list .plugin-toggle .install-btn')
     const tooNew = buttons[1]
     expect(tooNew.attributes('disabled')).toBeDefined()
-    expect(tooNew.attributes('title')).toContain('requires app >= 9.9.9')
+    // 置灰原因走 Tooltip(ui:gate 禁原生 title),断言它的 text prop。
+    const tooltips = wrapper.findAllComponents(Tooltip)
+    expect(
+      tooltips.some(t => String(t.props('text') ?? '').includes('requires app >= 9.9.9')),
+    ).toBe(true)
     wrapper.unmount()
   })
 

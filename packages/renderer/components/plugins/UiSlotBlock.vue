@@ -6,24 +6,30 @@
   >
     <!-- 锚点块的错误态必须**小** —— 它住在输入框上方/状态条里,
          一整面错误墙会把宿主 UI 挤烂。 -->
-    <button
+    <Tooltip
       v-if="degraded"
-      type="button"
-      class="ui-slot-state"
-      :title="degradedReason || 'Switched off after repeated failures. Click to try once more.'"
-      @click="render({ bypassDegraded: true })"
+      :text="degradedReason || 'Switched off after repeated failures. Click to try once more.'"
     >
-      ⚠ {{ entry.label }} — paused
-    </button>
-    <button
+      <button
+        type="button"
+        class="ui-slot-state"
+        @click="render({ bypassDegraded: true })"
+      >
+        ⚠ {{ entry.label }} — paused
+      </button>
+    </Tooltip>
+    <Tooltip
       v-else-if="error"
-      type="button"
-      class="ui-slot-state"
-      :title="error"
-      @click="render()"
+      :text="error"
     >
-      ⚠ {{ entry.label }} — retry
-    </button>
+      <button
+        type="button"
+        class="ui-slot-state"
+        @click="render()"
+      >
+        ⚠ {{ entry.label }} — retry
+      </button>
+    </Tooltip>
     <span
       v-else-if="loading && !tree"
       class="ui-slot-state is-passive"
@@ -44,6 +50,7 @@
 
 <script setup lang="ts">
 import { onErrorCaptured, onMounted, ref, watch } from 'vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import PluginPanelNode from './PluginPanelNode.vue'
 import { usePluginUiBlock } from './usePluginUiBlock'
 import { uiSlotSurface, type PluginContributedUiSlot } from '@/workspace/ui-anchor-registry'
