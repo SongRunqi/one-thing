@@ -4,6 +4,8 @@
  * Events not scoped to any session.
  */
 
+import type { PluginNotifySound } from '@onething/core/plugins/notify-sound'
+
 // ── App lifecycle ───────────────────────────────
 
 export interface AppInitializedEvent {
@@ -88,6 +90,12 @@ export interface PluginNotificationEvent {
   kind?: 'config-changed' | 'panel-refresh' | 'catalog-changed'
   /** kind = panel-refresh 时的面板 id。 */
   panelId?: string
+  /**
+   * 提示音(M1)——**宿主裁决后的结果**:枚举校验、静音、限频都已经在装配层
+   * 算完。省略 = 不出声,与 M1 之前逐字节一致。机械信号(带 kind 的那些)永远
+   * 不带它:那些不给人看,自然也不该给人听。
+   */
+  sound?: PluginNotifySound
 }
 
 // ── Union ───────────────────────────────────────

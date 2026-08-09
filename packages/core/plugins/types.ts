@@ -2,6 +2,7 @@ import type { PluginInputInterceptHandler } from './input-intercept.js'
 import type { PluginToolCallInterceptHandler } from './tool-call-intercept.js'
 import type { CorePluginRequestHandler } from './request-channel.js'
 import type { CorePluginStorage } from './storage.js'
+import type { PluginNotifyOptions } from './notify-sound.js'
 import type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
 import type { CorePluginPanelRegistration } from './panel.js'
 import type { CorePluginUiSlotRegistration } from './ui-anchor.js'
@@ -323,7 +324,16 @@ export interface CorePluginStore {
 }
 
 export interface MinimalCorePluginUI {
+  /**
+   * 静默横幅,可选带一声宿主音效(M1)。
+   *
+   * 第二参是**重载而不是替换**:`notify(msg, 'warn')` 是老签名,原样保留;
+   * `notify(msg, { level, sound })` 是新形态。sound 只能点名
+   * `PLUGIN_NOTIFY_SOUNDS` 里的枚举成员 —— 插件不带音频文件,也不能传频率/波形。
+   * 缺省不出声;用户可在设置里对单个插件静音或一键全静(静音只掐声音,横幅照旧)。
+   */
   notify(message: string, level?: 'info' | 'warn' | 'error'): void
+  notify(message: string, options: PluginNotifyOptions): void
 }
 
 /**

@@ -24,6 +24,7 @@ import { setPluginWorkspacePanels } from '@/workspace/panel-registry'
 import { setPluginUiSlots } from '@/workspace/ui-anchor-registry'
 import { setPluginBackground, type PluginBackgroundLayer } from '@/workspace/background-registry'
 import { shouldNotifyInbound, summarizeNotificationBody } from './notify-inbound'
+import { playPluginNotifySound } from './plugin-notify-sound'
 import type { SessionEventEnvelope } from '@shared/events/index.js'
 
 let initialized = false
@@ -337,6 +338,10 @@ export function initializeIPCHub() {
     if (!isMechanical) {
       if (payload.level === 'error') toast.error(payload.message)
       else toast.info(payload.message)
+      // 提示音(M1)。横幅在上面已经弹了 —— 声音是**独立的第二件事**:被静音时
+      // 主进程把 sound 抹成 'none',横幅照常。这里不再判静音/限频,那两道闸在
+      // 主进程判过了(判两遍 = 两份口径,多窗口下还会各响一次)。
+      playPluginNotifySound(payload.sound)
     }
     // 面板清单只有**一条**重拉路径:派发 onething:plugins-changed,由下面那个
     // 唯一的监听器去拉。此前这里既直接调 refresh 又派发事件,同一条通知会拉两次。

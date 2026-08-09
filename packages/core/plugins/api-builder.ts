@@ -4,6 +4,12 @@ import {
   type PluginBackgroundParamsPatch,
 } from './background.js'
 import { deepFreezeCorePluginValue } from './freeze.js'
+import {
+  PLUGIN_NOTIFY_SOUNDS,
+  normalizePluginNotifySound,
+  type PluginNotifyOptions,
+  type PluginNotifySound,
+} from './notify-sound.js'
 import { PluginStorageError, type CorePluginMessageStateStore, type CorePluginStorage } from './storage.js'
 import {
   PLUGIN_PANEL_INIT_ACTION,
@@ -75,7 +81,11 @@ export interface CorePluginAPIHost<
   subscribeEvent(pluginId: string, eventType: string, handler: TEventHandler): () => void
   steer(pluginId: string, sessionId: string, content: string): void
   followUp(pluginId: string, sessionId: string, content: string): void
-  notify(pluginId: string, message: string, level: 'info' | 'warn' | 'error'): void
+  /**
+   * `sound` 是 M1 追加的**可选**第四参:core 已归一到枚举成员('none' = 不出声)。
+   * 老宿主实现不读它就是今天的行为,加法不破坏任何既有调用点。
+   */
+  notify(pluginId: string, message: string, level: 'info' | 'warn' | 'error', sound?: PluginNotifySound): void
   registerPromptContextProvider(pluginId: string, id: string, provider: TPromptContextProvider): () => void
   registerBeforeContextCompactHook(pluginId: string, id: string, hook: TBeforeContextCompactHook): () => void
   registerAfterAssistantResponseHook(pluginId: string, id: string, hook: TAfterAssistantResponseHook): () => void
@@ -1190,10 +1200,31 @@ export function createCorePluginAPI<
     },
 
     ui: {
-      notify(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
+      /**
+       * 静默横幅 + 可选提示音(M1)。
+       *
+       * 第二参有两种长相,**加法而不是改法**:
+       * - `notify(msg)` / `notify(msg, 'warn')` —— 老签名,逐字节等价于从前(不出声);
+       * - `notify(msg, { level: 'warn', sound: 'chime' })` —— 新形态。
+       *
+       * sound 缺省 `'none'`;名字不在 `PLUGIN_NOTIFY_SOUNDS` 里就降级 none 并记一条
+       * 日志(不抛错 —— 一个错音名不该把这条通知整个打掉)。真正决定响不响的是
+       * 宿主:静音开关与限频闸都在装配层,core 这里只做形状归一。
+       */
+      notify(message: string, levelOrOptions: 'info' | 'warn' | 'error' | PluginNotifyOptions = 'info'): void {
         if (rejectLateCall('ui.notify')) return
+        const isOptions = typeof levelOrOptions === 'object' && levelOrOptions !== null
+        const level = (isOptions ? levelOrOptions.level : levelOrOptions) ?? 'info'
+        const normalized = normalizePluginNotifySound(isOptions ? levelOrOptions.sound : undefined)
+        if (normalized.unknown) {
+          logger.error(
+            `[Plugin:${pluginId}] ui.notify: unknown sound ${JSON.stringify(
+              (levelOrOptions as PluginNotifyOptions).sound,
+            )} — falling back to silence. Allowed: ${PLUGIN_NOTIFY_SOUNDS.join(', ')}`,
+          )
+        }
         try {
-          host.notify(pluginId, message, level)
+          host.notify(pluginId, message, level, normalized.sound)
         } catch (error) {
           logger.error(`[Plugin:${pluginId}] notify error:`, error)
         }

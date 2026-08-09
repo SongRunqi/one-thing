@@ -45,6 +45,10 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   // Same reason as request-channel: a zero-import leaf (N1 的会话动词协议:枚举 +
   // 常量 + 纯函数),披露文案要在设置页复用同一份口径,所以它必须排在桶前面。
   { find: '@onething/core/plugins/sessions', replacement: resolve(projectRoot, 'packages/core/plugins/sessions.ts') },
+  // 同理的第三片叶子(M1 通知音效集):枚举 + 常量 + 纯函数,零 import。
+  // 音效名的事实源要被 renderer 的合成配方表引用(exhaustive Record),所以它
+  // 必须排在桶前面 —— 走桶会把 loader.ts 拖进浏览器包。
+  { find: '@onething/core/plugins/notify-sound', replacement: resolve(projectRoot, 'packages/core/plugins/notify-sound.ts') },
   { find: '@onething/core/plugins', replacement: resolve(projectRoot, 'packages/core/plugins/index.ts') },
   { find: '@onething/core/session/storage', replacement: resolve(projectRoot, 'packages/core/session/storage/index.ts') },
   { find: '@onething/core/session', replacement: resolve(projectRoot, 'packages/core/session/index.ts') },

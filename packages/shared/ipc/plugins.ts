@@ -8,6 +8,12 @@
  *
  * 全段必须 JSON-可序列化(宪法第 2 条):它过 IPC,也过 HTTP。
  */
+// 枚举本体在 core(`@onething/core/plugins`)—— 与 `shared/tool-errors.ts` 从
+// `@onething/core/permission` 再导出同一条做法:契约只有一份,过线形状引用它。
+import type { PluginNotifySound } from "@onething/core/plugins/notify-sound";
+
+export type { PluginNotifySound };
+
 export interface PluginRequestPayload {
 	pluginId: string;
 	action: string;
@@ -73,6 +79,16 @@ export interface PluginNotificationPayload {
 	kind?: "config-changed" | "panel-refresh" | "catalog-changed";
 	/** kind = panel-refresh 时的面板 id。 */
 	panelId?: string;
+	/**
+	 * 这一条要不要出声(M1)—— **宿主已经裁决完的结果**,不是插件的请求。
+	 *
+	 * 主进程在发出这条事件之前就把三件事算完了:枚举校验、每插件/全局静音、
+	 * 每插件限频。所以 renderer 见到什么就播什么,不再自己判 —— 判两遍就会有
+	 * 两份口径,而多窗口下每个窗口判一遍还会各响一次。
+	 *
+	 * 缺省(字段不存在)= 'none' = 不出声,与 M1 之前的行为逐字节一致。
+	 */
+	sound?: PluginNotifySound;
 }
 
 /**

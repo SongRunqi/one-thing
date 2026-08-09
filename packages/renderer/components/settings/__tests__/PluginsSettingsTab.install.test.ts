@@ -8,6 +8,8 @@
  */
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+// M1:提示音的每插件静音开关读 app settings,于是这个 tab 现在也是 Pinia 的消费者。
+import { createPinia, setActivePinia } from 'pinia'
 import PluginsSettingsTab from '../PluginsSettingsTab.vue'
 
 const TARBALL = '/Users/dev/plugin/packages/tps-meter/dist/onething-plugins-tps-meter-1.0.3.tgz'
@@ -37,6 +39,9 @@ const platform = vi.hoisted(() => ({
   installPlugin: vi.fn(async () => ({ success: true, pluginId: 'tps-meter' })),
   refreshPlugins: vi.fn(async () => ({ success: true })),
   getPathForFile: vi.fn(() => TARBALL),
+  // 设置 store 在创建时就挂系统主题订阅(M1 起本 tab 是它的消费者)。
+  onSystemThemeChanged: vi.fn(() => vi.fn()),
+  getSystemTheme: vi.fn(async () => ({ success: true, theme: 'dark' })),
   environment: 'electron',
 }))
 
@@ -52,6 +57,7 @@ function installButton(wrapper: ReturnType<typeof mount>) {
 
 describe('PluginsSettingsTab 本地安装(file: 开发通道)', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
     platform.readPluginTarball.mockResolvedValue({ success: true, summary: SUMMARY })
     platform.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [TARBALL] })

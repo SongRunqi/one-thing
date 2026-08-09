@@ -9,6 +9,33 @@
         Plugins live in <code>~/.onething/plugins/</code>
       </p>
 
+      <!-- 提示音总开关(M1)。声音是通知的一个受限参数,不是单独的能力 ——
+           所以主权控件放在这里,而不是给它开一道声明门。关掉只掐声音,
+           插件的通知横幅照常显示。 -->
+      <SettingsGroup>
+        <SettingRow
+          label="Plugin notification sounds"
+          description="Plugins can attach one of a small set of built-in sounds to a notification. Muting never hides the notification itself — only the sound."
+        >
+          <div class="notify-sound-control">
+            <Button
+              unstyled
+              class="btn-sm"
+              :disabled="!notifySoundsEnabled"
+              @click="previewNotifySound"
+            >
+              Test
+            </Button>
+            <Switch
+              variant="ledger"
+              :model-value="notifySoundsEnabled"
+              aria-label="Enable plugin notification sounds"
+              @update:model-value="setNotifySoundsEnabled"
+            />
+          </div>
+        </SettingRow>
+      </SettingsGroup>
+
       <!-- Loading -->
       <div
         v-if="loading"
@@ -287,6 +314,27 @@
               :aria-label="`Enable ${plugin.name}`"
               @update:model-value="togglePlugin(plugin)"
             />
+            <!-- 每插件静音(M1)。总开关关着时这一条无意义,所以整个藏起来 ——
+                 置灰会让人以为点了有用。静音是**用户对插件的主权**,与插件自己的
+                 config 无关,所以它存在 app settings 而不是插件目录。 -->
+            <Tooltip
+              v-if="notifySoundsEnabled"
+              :text="isMuted(plugin.id) ? `Unmute ${plugin.name}'s notification sounds` : `Mute ${plugin.name}'s notification sounds`"
+            >
+              <Button
+                unstyled
+                class="btn-sm mute-btn"
+                :class="{ muted: isMuted(plugin.id) }"
+                :aria-label="isMuted(plugin.id) ? `Unmute ${plugin.name}` : `Mute ${plugin.name}`"
+                :aria-pressed="isMuted(plugin.id)"
+                @click="toggleMute(plugin.id)"
+              >
+                <component
+                  :is="isMuted(plugin.id) ? BellOff : Bell"
+                  :size="13"
+                />
+              </Button>
+            </Tooltip>
             <!-- 有更新才出现;无 npm 时置灰(裁决 8)。 -->
             <Tooltip
               v-if="updateOffers.has(plugin.id)"
@@ -636,8 +684,10 @@ import type {
 // 浏览器包)。取的是权限披露文案的单一事实源。
 import { describePluginPermission } from '@onething/core/plugins/sessions'
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
-import { RefreshCw } from 'lucide-vue-next'
+import { Bell, BellOff, RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
+import { useSettingsStore } from '@/stores/settings'
+import { previewPluginNotifySound } from '@/services/plugin-notify-sound'
 import { isUiSlotTruncated } from '@/workspace/ui-anchor-registry'
 import { useConfirm } from '@/composables/useConfirm'
 import { useFileDrop } from '@/composables/useFileDrop'
@@ -1152,6 +1202,53 @@ const samplePluginsPath = ref('~/data/code/start-electron')
 const emit = defineEmits<{
   'plugins-changed': []
 }>()
+
+// ── 提示音主权(M1)────────────────────────────────
+//
+// 存在既有的 app settings(`settings.plugins`),不新造存储:"谁被静音"是宿主的
+// 账,插件既读不到也改不了,所以它不该落在插件自己的 config.json 里。
+
+const settingsStore = useSettingsStore()
+
+const notifySoundsEnabled = computed(() => settingsStore.settings.plugins?.notifySoundsEnabled !== false)
+const mutedPluginIds = computed(() => settingsStore.settings.plugins?.notifySoundMutedPluginIds ?? [])
+
+function isMuted(pluginId: string): boolean {
+  return mutedPluginIds.value.includes(pluginId)
+}
+
+async function savePluginPreferences(patch: {
+  notifySoundsEnabled?: boolean
+  notifySoundMutedPluginIds?: string[]
+}): Promise<void> {
+  const current = settingsStore.settings
+  await settingsStore.saveSettings({
+    ...current,
+    plugins: {
+      notifySoundsEnabled: notifySoundsEnabled.value,
+      notifySoundMutedPluginIds: mutedPluginIds.value,
+      ...patch,
+    },
+  })
+}
+
+// Switch 的 model 是 SwitchValue(布尔开关与分段控件共用一个组件),所以这里
+// 收窄成布尔而不是直接标注 boolean。
+async function setNotifySoundsEnabled(enabled: unknown): Promise<void> {
+  await savePluginPreferences({ notifySoundsEnabled: enabled === true })
+}
+
+async function toggleMute(pluginId: string): Promise<void> {
+  const next = isMuted(pluginId)
+    ? mutedPluginIds.value.filter(id => id !== pluginId)
+    : [...mutedPluginIds.value, pluginId]
+  await savePluginPreferences({ notifySoundMutedPluginIds: next })
+}
+
+/** 试听走 `chime` —— 六个音里最"叫人"的那个,最能听出开关有没有生效。 */
+function previewNotifySound(): void {
+  previewPluginNotifySound('chime')
+}
 
 async function loadPlugins() {
   loading.value = true
@@ -1698,6 +1795,26 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin-left: 14px;
   margin-top: 4px;
+}
+
+/* 静音按钮:图标态,与同列的 Update / Uninstall 同一把尺寸。
+   静音时降到次级前景色 —— 它是"关掉了一件事"的态,不是警告。 */
+.mute-btn {
+  margin-top: 0 !important;
+  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ui-text-secondary);
+}
+
+.mute-btn.muted {
+  color: var(--ui-text-tertiary);
+}
+
+.notify-sound-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .uninstall-btn {

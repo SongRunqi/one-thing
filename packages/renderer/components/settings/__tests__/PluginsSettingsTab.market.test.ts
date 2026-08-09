@@ -6,6 +6,8 @@
  */
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+// M1:提示音的每插件静音开关读 app settings,于是这个 tab 现在也是 Pinia 的消费者。
+import { createPinia, setActivePinia } from 'pinia'
 import PluginsSettingsTab from '../PluginsSettingsTab.vue'
 import Tooltip from '../../common/Tooltip.vue'
 
@@ -71,6 +73,9 @@ const platform = vi.hoisted(() => {
     installPlugin: vi.fn(async () => ({ success: true, pluginId: 'fresh-plugin' })),
     updatePlugin: vi.fn(async () => ({ success: true, pluginId: 'plan-status', version: '2.0.0' })),
     refreshPlugins: vi.fn(async () => ({ success: true })),
+    // 设置 store 在创建时就挂系统主题订阅(M1 起本 tab 是它的消费者)。
+    onSystemThemeChanged: vi.fn(() => vi.fn()),
+    getSystemTheme: vi.fn(async () => ({ success: true, theme: 'dark' })),
     environment: 'electron',
   }
 })
@@ -83,6 +88,7 @@ function mountTab() {
 
 describe('PluginsSettingsTab 市场区(P3)', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
     platform.getPluginMarket.mockResolvedValue({
       success: true,

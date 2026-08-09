@@ -219,6 +219,20 @@ export interface EvalsSettings {
 	analysisModel?: { providerId: string; model: string };
 }
 
+/**
+ * 插件的**宿主侧**偏好(M1)。
+ *
+ * 与插件自己的 `config.json`(schema 由 manifest 声明、插件读得到)分得很开:
+ * 这里是用户对插件行使主权的地方,插件既读不到也改不了。所以它落在 app settings
+ * 而不是每插件目录 —— "谁被静音"是宿主的账,不是插件的数据。
+ */
+export interface PluginPreferences {
+	/** 提示音总开关。关掉 = 所有插件都不出声(横幅照常显示)。 */
+	notifySoundsEnabled: boolean;
+	/** 被单独静音的插件 id。静音只掐声音,通知横幅不受影响。 */
+	notifySoundMutedPluginIds: string[];
+}
+
 export interface AppSettings {
 	ai: AISettings;
 	theme: "light" | "dark" | "system";
@@ -234,6 +248,7 @@ export interface AppSettings {
 	skills?: SkillSettings;
 	storage?: StorageSettings;
 	evals?: EvalsSettings;
+	plugins?: PluginPreferences;
 }
 
 // Settings IPC Request/Response types

@@ -20,6 +20,7 @@ import {
   getDeclaredWebviewPanelIds,
 } from './loader.js'
 import { createPluginSessionHostPorts } from './sessions.js'
+import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './notify-sound.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
 import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
@@ -385,12 +386,22 @@ export function createPluginAPI(
        * 把 eventBus / streamEngine 这两个装配期才有的东西喂进去。
        */
       ...createPluginSessionHostPorts({ eventBus, streamEngine }),
-      notify(id, message, level) {
+      /**
+       * 横幅 + 可选一声(M1)。
+       *
+       * `sound` 在**这里**就裁决完:静音开关、每插件静音、限频三道闸全在
+       * `resolvePluginNotifySound` 里。renderer 拿到的是结论不是请求 ——
+       * 这条通知走 `sendToAllWindows` 广播,让每个窗口自己判就会响两声。
+       *
+       * 被静音/被限频时只是 sound 变 'none',`message` 原样发出:横幅照常显示。
+       */
+      notify(id, message, level, sound) {
         eventBus.emitGlobal({
           type: 'plugin:notification',
           pluginId: id,
           message,
           level,
+          sound: resolvePluginNotifySound(id, sound),
         })
       },
       getPluginConfig: getEffectivePluginConfig,
@@ -454,6 +465,9 @@ export function createPluginAPI(
     // 一份用户早就忘了的旧透明度,而 manifest 上写的明明是另一个值。
     // 层本身的撤除不需要动作:清单里没有这条 active 声明,下一次投影就没有赢家。
     clearPluginBackgroundParams(pluginId)
+    // 同理:限频账是内存态,拆除即清。留着的话"停用→立刻启用"的第一声会被
+    // 上一条生命周期里的时间戳吃掉,看起来像声音坏了。
+    forgetPluginNotifySoundThrottle(pluginId)
   })
   return result
 }

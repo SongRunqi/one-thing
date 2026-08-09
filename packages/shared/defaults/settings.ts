@@ -12,6 +12,7 @@ import type {
   ChatSettings,
   EditorSettings,
   NetworkSettings,
+  PluginPreferences,
 } from '../ipc/settings.js'
 import type { VoiceSettings } from '../ipc/voice.js'
 import type { MusicRadioSource, MusicSettings } from '../ipc/music.js'
@@ -407,6 +408,17 @@ export const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
   },
 }
 
+/**
+ * 插件提示音缺省**开着**(M1)。
+ *
+ * 缺省开不等于吵:插件必须显式点名 sound 才会出声,而绝大多数 notify 不点名;
+ * 再叠每插件 3 秒限频。缺省关会让这个能力从来没被听见过 —— 那不如不做。
+ */
+export const DEFAULT_PLUGIN_PREFERENCES: PluginPreferences = {
+  notifySoundsEnabled: true,
+  notifySoundMutedPluginIds: [],
+}
+
 export const DEFAULT_MUSIC_SETTINGS: MusicSettings = {
   enabled: false,
   provider: 'ncm-cli',
@@ -440,6 +452,7 @@ export function createDefaultSettings(): AppSettings {
     network: JSON.parse(JSON.stringify(DEFAULT_NETWORK_SETTINGS)),
     channels: JSON.parse(JSON.stringify(DEFAULT_CHANNEL_SETTINGS)),
     acp: JSON.parse(JSON.stringify(DEFAULT_ACP_SETTINGS)),
+    plugins: JSON.parse(JSON.stringify(DEFAULT_PLUGIN_PREFERENCES)),
   }
 }
 
@@ -524,6 +537,7 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     mcp: settings.mcp,
     acp: normalizeACPSettings(settings.acp),
     skills: settings.skills,
+    plugins: normalizePluginPreferences(settings.plugins),
     // 必须显式列出:`merged` 是白名单式重建,漏掉的键会被静默丢弃
     // (settings.json 里改了也不生效),而结尾的 `as AppSettings` 断言把这件事
     // 藏了起来。C0 审计:`storage` 与 `evals` 就是这样两个既有漏项(见
@@ -538,6 +552,21 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
   }
 
   return merged as AppSettings
+}
+
+/**
+ * 静音名单要挡住三种脏值:非数组、数组里的非字符串、以及重复 id。
+ * 名单是"谁被静音"的唯一账本,脏进去的代价是有人永远听不到某个插件的声音而
+ * 界面上看不出原因。
+ */
+export function normalizePluginPreferences(settings?: Partial<PluginPreferences>): PluginPreferences {
+  const muted = Array.isArray(settings?.notifySoundMutedPluginIds)
+    ? settings.notifySoundMutedPluginIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : DEFAULT_PLUGIN_PREFERENCES.notifySoundMutedPluginIds
+  return {
+    notifySoundsEnabled: settings?.notifySoundsEnabled !== false,
+    notifySoundMutedPluginIds: Array.from(new Set(muted)),
+  }
 }
 
 function normalizeChannelSettings(settings?: Partial<ChannelSettings>): ChannelSettings {

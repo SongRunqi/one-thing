@@ -380,3 +380,44 @@ describe('legacy network interface settings', () => {
     expect((settings.ai.customProviders?.[0] as ProviderConfigWithLocalAddress | undefined)?.localAddress).toBeUndefined()
   })
 })
+
+describe('插件提示音偏好(M1)', () => {
+  it('缺省开着,静音名单为空', () => {
+    const settings = createDefaultSettings()
+
+    expect(settings.plugins?.notifySoundsEnabled).toBe(true)
+    expect(settings.plugins?.notifySoundMutedPluginIds).toEqual([])
+  })
+
+  it('活过 merge —— 这是「白名单漏键」那个坑的第三次点名', () => {
+    const settings = mergeSettings({
+      plugins: { notifySoundsEnabled: false, notifySoundMutedPluginIds: ['tps-meter'] },
+    })
+
+    expect(settings.plugins).toEqual({
+      notifySoundsEnabled: false,
+      notifySoundMutedPluginIds: ['tps-meter'],
+    })
+  })
+
+  it('用户没写过 plugins 段时补出缺省(而不是 undefined)', () => {
+    expect(mergeSettings({}).plugins).toEqual({
+      notifySoundsEnabled: true,
+      notifySoundMutedPluginIds: [],
+    })
+  })
+
+  it('静音名单挡住脏值:非数组、非字符串项、重复 id', () => {
+    expect(mergeSettings({ plugins: { notifySoundMutedPluginIds: 'tps-meter' } }).plugins)
+      .toEqual({ notifySoundsEnabled: true, notifySoundMutedPluginIds: [] })
+
+    expect(mergeSettings({
+      plugins: { notifySoundMutedPluginIds: ['a', 1, null, '', 'a', 'b'] },
+    }).plugins?.notifySoundMutedPluginIds).toEqual(['a', 'b'])
+  })
+
+  it('总开关只有显式 false 才算关 —— 缺失/脏值都按开', () => {
+    expect(mergeSettings({ plugins: {} }).plugins?.notifySoundsEnabled).toBe(true)
+    expect(mergeSettings({ plugins: { notifySoundsEnabled: false } }).plugins?.notifySoundsEnabled).toBe(false)
+  })
+})
