@@ -86,11 +86,18 @@ export function useFileDrop({ onFiles, isDisabled }: UseFileDropOptions) {
 
 	return {
 		isDragActive: readonly(isDragActive),
+		/**
+		 * 键是**裸事件名**,专为 `v-on="dropHandlers"` 的对象式绑定。
+		 * Vue 的 toHandlers 会给每个键加 `on` 前缀再首字母大写 —— 此前键叫
+		 * `onDrop`,被转成 `onOnDrop`,运行时监听在不存在的事件名 "onDrop" 上,
+		 * 聊天区拖拽上传因此从未触发(2026-08-09 真机实锤)。逐条 `@drop="…"`
+		 * 绑定的消费者直接引用同名键即可。
+		 */
 		dropHandlers: {
-			onDragenter: onDragEnter,
-			onDragover: onDragOver,
-			onDragleave: onDragLeave,
-			onDrop,
+			dragenter: onDragEnter,
+			dragover: onDragOver,
+			dragleave: onDragLeave,
+			drop: onDrop,
 		},
 	};
 }

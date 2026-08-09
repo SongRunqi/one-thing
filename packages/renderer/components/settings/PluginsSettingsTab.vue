@@ -534,10 +534,10 @@
           <div
             class="install-form"
             :class="{ 'is-drop-target': isTarballDragActive }"
-            @dragenter="tarballDropHandlers.onDragenter"
-            @dragover="tarballDropHandlers.onDragover"
-            @dragleave="tarballDropHandlers.onDragleave"
-            @drop="tarballDropHandlers.onDrop"
+            @dragenter="tarballDropHandlers.dragenter"
+            @dragover="tarballDropHandlers.dragover"
+            @dragleave="tarballDropHandlers.dragleave"
+            @drop="tarballDropHandlers.drop"
           >
             <Input
               v-model="installPath"

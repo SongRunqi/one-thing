@@ -33,12 +33,12 @@ describe('useFileDrop', () => {
     const { api } = mountDrop({ onFiles })
 
     const enter = dragEvent(['text/plain'])
-    api.dropHandlers.onDragenter(enter)
+    api.dropHandlers.dragenter(enter)
 
     expect(api.isDragActive.value).toBe(false)
     expect(enter.preventDefault).not.toHaveBeenCalled()
 
-    await api.dropHandlers.onDrop(dragEvent(['text/plain']))
+    await api.dropHandlers.drop(dragEvent(['text/plain']))
     expect(onFiles).not.toHaveBeenCalled()
   })
 
@@ -46,13 +46,13 @@ describe('useFileDrop', () => {
     const { api } = mountDrop({ onFiles: vi.fn() })
 
     // enter zone → enter child → leave zone (bubbled from the child boundary)
-    api.dropHandlers.onDragenter(dragEvent(['Files']))
-    api.dropHandlers.onDragenter(dragEvent(['Files']))
-    api.dropHandlers.onDragleave(dragEvent(['Files']))
+    api.dropHandlers.dragenter(dragEvent(['Files']))
+    api.dropHandlers.dragenter(dragEvent(['Files']))
+    api.dropHandlers.dragleave(dragEvent(['Files']))
 
     expect(api.isDragActive.value).toBe(true)
 
-    api.dropHandlers.onDragleave(dragEvent(['Files']))
+    api.dropHandlers.dragleave(dragEvent(['Files']))
     expect(api.isDragActive.value).toBe(false)
   })
 
@@ -62,13 +62,13 @@ describe('useFileDrop', () => {
     const file = new File(['x'], 'a.txt', { type: 'text/plain' })
 
     const over = dragEvent(['Files'])
-    api.dropHandlers.onDragover(over)
+    api.dropHandlers.dragover(over)
     // Without preventDefault on dragover the browser refuses the drop outright.
     expect(over.preventDefault).toHaveBeenCalled()
     expect(over.dataTransfer!.dropEffect).toBe('copy')
 
     const drop = dragEvent(['Files'], [file])
-    await api.dropHandlers.onDrop(drop)
+    await api.dropHandlers.drop(drop)
 
     expect(drop.preventDefault).toHaveBeenCalled()
     expect(onFiles).toHaveBeenCalledWith([file])
@@ -79,10 +79,10 @@ describe('useFileDrop', () => {
     const onFiles = vi.fn()
     const { api } = mountDrop({ onFiles, isDisabled: () => true })
 
-    api.dropHandlers.onDragenter(dragEvent(['Files']))
+    api.dropHandlers.dragenter(dragEvent(['Files']))
     expect(api.isDragActive.value).toBe(false)
 
-    await api.dropHandlers.onDrop(dragEvent(['Files'], [new File(['x'], 'a.txt')]))
+    await api.dropHandlers.drop(dragEvent(['Files'], [new File(['x'], 'a.txt')]))
     expect(onFiles).not.toHaveBeenCalled()
   })
 })
