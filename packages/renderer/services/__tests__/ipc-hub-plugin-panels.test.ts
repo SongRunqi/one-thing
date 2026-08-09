@@ -158,6 +158,34 @@ describe('IPC hub → plugin workspace panels', () => {
     expect(getPlugins.mock.calls.length).toBe(before)
   })
 
+  it('picks up the winning plugin background from the same catalog pull (G 期,L2.5)', async () => {
+    // 背景搭的是**同一班车**:同一次 getPlugins、同一条 plugins-changed。
+    // 这条测试同时钉住撤除语义 —— 响应里没有 background 就读成 null,
+    // 而不是"保持上一次"(那会让一次降级把一张撤不掉的图钉在屏幕上)。
+    const { initializeIPCHub } = await import('../ipc-hub')
+    const { usePluginBackground, setPluginBackground } = await import('@/workspace/background-registry')
+    setPluginBackground(null)
+    getPlugins.mockImplementation(async () => ({
+      success: true,
+      plugins: [plugin()],
+      background: {
+        pluginId: 'ink-brand',
+        imageUrl: 'onething-plugin://ink-brand/bg.svg',
+        darkImageUrl: 'onething-plugin://ink-brand/bg-dark.svg',
+        opacity: 0.35,
+        blur: 0,
+        fit: 'cover',
+      },
+    }) as never)
+
+    initializeIPCHub()
+    await vi.waitFor(() => expect(usePluginBackground().value?.pluginId).toBe('ink-brand'))
+
+    getPlugins.mockImplementation(async () => ({ success: true, plugins: [plugin()] }))
+    window.dispatchEvent(new Event('onething:plugins-changed'))
+    await vi.waitFor(() => expect(usePluginBackground().value).toBeNull())
+  })
+
   it('re-pulls the list when the plugin catalog changes', async () => {
     const { initializeIPCHub } = await import('../ipc-hub')
 

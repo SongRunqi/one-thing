@@ -12,7 +12,13 @@ import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
 import { PluginStore, createPluginMessageState, createPluginStorage } from './store.js'
-import { getDeclaredPanelIds, getDeclaredUiSlots, getDeclaredWebviewPanelIds } from './loader.js'
+import {
+  getDeclaredBackground,
+  getDeclaredPanelIds,
+  getDeclaredUiSlots,
+  getDeclaredWebviewPanelIds,
+} from './loader.js'
+import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
 import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
@@ -158,6 +164,8 @@ export interface CreatePluginAPIOptions {
   declaredWebviewPanelIds?: string[]
   /** manifest contributes.uiSlots 里声明过的锚点块(R5.x);同上,参数只为注入/测试留着。 */
   declaredUiSlots?: PluginContributionUiSlot[]
+  /** manifest 声明了合法背景(G 期,L2.5);同上,参数只为注入/测试留着。 */
+  declaredBackground?: boolean
 }
 
 export function createPluginAPI(
@@ -229,6 +237,8 @@ export function createPluginAPI(
     // C 期:webview 面板的 render 挂 `panel:init:<id>`(返回初始化数据而不是树)。
     declaredWebviewPanelIds: options?.declaredWebviewPanelIds ?? getDeclaredWebviewPanelIds(pluginId),
     declaredUiSlots: options?.declaredUiSlots ?? getDeclaredUiSlots(pluginId),
+    // G 期:api.theme.updateBackground 的门控 —— 没在 manifest 里声明背景就调不动。
+    declaredBackground: options?.declaredBackground ?? getDeclaredBackground(pluginId),
     // 全进程一本账(R6):清扫按会话进行,每插件一本就扫不干净。
     statusRegistry: getPluginStatusRegistry(),
     scheduler: pluginScheduler,
@@ -363,6 +373,23 @@ export function createPluginAPI(
       },
       getPluginConfig: getEffectivePluginConfig,
       onPluginConfigChange: subscribePluginConfigChange,
+      /**
+       * 背景层运行期调参的落点(G 期,L2.5)。
+       *
+       * 记进内存态,然后**复用 catalog-changed** 这一条既有信号 —— renderer 已经
+       * 在监听它重拉插件清单(面板入口、锚点块、主题覆盖都走这条路),背景描述符
+       * 就挂在同一份清单响应里,于是这里零新通道、零新事件。
+       */
+      updatePluginBackground(id, patch) {
+        setPluginBackgroundParams(id, patch)
+        eventBus.emitGlobal({
+          type: 'plugin:notification',
+          pluginId: id,
+          message: `plugin-catalog-changed:${id}`,
+          level: 'info',
+          kind: 'catalog-changed',
+        })
+      },
       registerPromptContextProvider: registerPromptContextProvider,
       registerBeforeContextCompactHook,
       registerAfterAssistantResponseHook,
@@ -394,6 +421,10 @@ export function createPluginAPI(
     for (const unsub of cascadeUnsubs) unsub()
     closeStorage()
     closeStore()
+    // G 期:背景层的运行期参数是内存态,拆除即撤 —— 留着的话重新启用会带回
+    // 一份用户早就忘了的旧透明度,而 manifest 上写的明明是另一个值。
+    // 层本身的撤除不需要动作:清单里没有这条 active 声明,下一次投影就没有赢家。
+    clearPluginBackgroundParams(pluginId)
   })
   return result
 }

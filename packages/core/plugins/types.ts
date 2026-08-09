@@ -112,8 +112,32 @@ export interface PluginContributionSettings {
  * **形状**;键不在表里 / 值不过颜色白名单的条目在投影层被丢弃并标记,
  * **不拒载、不计熔断**(与未知锚点同规)。
  */
+/**
+ * 背景/材质层(G 期,L2.5 —— 表达力文档 §3.3.5)。
+ *
+ * `image` / `darkImage` 是**包内相对路径**(相对 `contributes.webviewRoot`,
+ * 缺省 `webview/`),由 C 期的 `onething-plugin://` 协议服务 —— 那条协议只服务
+ * 已启用插件的静态根,于是"背景图"不需要打开任意 URL 这个红线。
+ *
+ * 三个旋钮 opacity / blur / fit 是**枚举出来的**,不是 CSS 片段。判据与裁决
+ * 全在 `background.ts`;非法声明**丢弃 background 并在投影里标记**(不拒载)。
+ */
+export interface PluginContributionThemeBackground {
+  image: string
+  darkImage?: string
+  opacity?: number
+  blur?: number
+  fit?: 'cover' | 'contain' | 'tile'
+}
+
 export interface PluginContributionTheme {
-  overrides: Record<string, string>
+  /**
+   * token 覆盖。**可选** —— G 期起 `contributes.theme` 可以只声明 background
+   * 而一个 token 都不覆盖(把它留成必填等于逼作者写一个空对象)。
+   */
+  overrides?: Record<string, string>
+  /** 背景/材质层(G 期,L2.5)。 */
+  background?: PluginContributionThemeBackground
 }
 
 export interface PluginContributionActivation {
@@ -370,6 +394,26 @@ export interface CorePluginAPI<
   settings: {
     get<T = Record<string, unknown>>(): T
     onChange(callback: (config: Record<string, unknown>) => void): () => void
+  }
+  /**
+   * 外观面的运行期调参(G 期,L2.5)。
+   *
+   * **仅 manifest 声明了 `contributes.theme.background` 的插件可调** —— 声明先于
+   * 代码,和面板/锚点块同一条规矩。没声明就调,记一条 error 日志然后拒绝:
+   * 它是作者写错了,但不该为它开一个熔断面(那会让一次笔误连坐整个插件)。
+   *
+   * partial 只收 opacity / blur / fit;**image 不可运行时换** —— 换图 = 发新版本。
+   * 值同样钳制(用户拖滑杆的结果不该把控件卡住)。
+   *
+   * **不持久**:重启后回 manifest 缺省。要记住用户的选择,插件自己在 entry 启动时
+   * 读一次 `api.settings.get()` 再调一次 —— 持久归插件,坐标系归宿主。
+   */
+  theme: {
+    updateBackground(patch: {
+      opacity?: number
+      blur?: number
+      fit?: 'cover' | 'contain' | 'tile'
+    }): void
   }
   onDispose(callback: () => void): void
   store: TStore

@@ -48,6 +48,9 @@ describe('electron session security', () => {
     // sandbox iframe 在加载之前就被挡掉,子文档自己的 CSP 根本没机会生效。
     expect(csp).toContain('frame-src onething-plugin:')
     expect(csp).not.toContain("frame-src 'none'")
+    // 插件背景层(G 期,L2.5):CSS `background-image` 走 **img-src**,不是
+    // frame-src —— 少这个 scheme 的症状是"协议、文件、声明全对,就是不显示"。
+    expect(csp).toMatch(/img-src[^;]*onething-plugin:/)
   })
 
   it('omits unsafe-eval outside development', async () => {

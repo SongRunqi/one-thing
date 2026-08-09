@@ -49,7 +49,13 @@ export function registerElectronContentSecurityPolicy(
         ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
         : "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' blob: data: https: file: media:",
+      // `onething-plugin:`(G 期,L2.5):插件背景层是 `background-image: url(...)`,
+      // 而 CSS 背景走的是 **img-src**。少这一个 scheme,协议那边一切正常、
+      // 图也确实在包里,但父页的 CSP 会在请求发出前就把它挡掉 —— 症状是
+      // "什么都对,就是不显示",最难查的那一种。
+      // 与 frame-src 同规:只放 scheme,不放 host —— 谁能被服务的判定在协议
+      // handler 那一侧(已装 + 已启用 + 声明了静态资产),不在这行字符串里。
+      "img-src 'self' blob: data: https: file: media: onething-plugin:",
       "font-src 'self' data:",
       "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepseek.com https://api.moonshot.cn https://open.bigmodel.cn https://*.zhipuai.cn https://*.aliyuncs.com ws://127.0.0.1:* http://127.0.0.1:*",
       "media-src 'self' blob: data: file:",

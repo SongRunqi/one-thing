@@ -10,6 +10,7 @@
 import fs from 'fs'
 import path from 'path'
 import {
+  describePluginBackgroundProblem,
   describePluginWebviewPanelProblem,
   isPluginWebviewPanel,
   type PluginContributionUiSlot,
@@ -262,6 +263,13 @@ interface DeclaredContributes {
   /** 其中的 webview 面板(C 期)—— render 挂 `panel:init:<id>` 而不是 render。 */
   webviewPanels: string[]
   uiSlots: PluginContributionUiSlot[]
+  /**
+   * 声明了合法的 `contributes.theme.background`(G 期,L2.5)。
+   *
+   * 它是 `api.theme.updateBackground` 的门控。判据用的是与投影层**同一个**
+   * `describePluginBackgroundProblem` —— 非法声明既画不出层,也不该给出调参口。
+   */
+  background: boolean
 }
 let declaredPanelIdsCache: {
   at: number
@@ -283,6 +291,8 @@ function declaredContributesByPlugin(): Map<string, DeclaredContributes> {
         panels: declared.map(panel => panel.id),
         webviewPanels: declared.filter(isPluginWebviewPanel).map(panel => panel.id),
         uiSlots: contributes?.uiSlots ?? [],
+        background: contributes?.theme?.background !== undefined
+          && !describePluginBackgroundProblem(contributes.theme?.background),
       })
     }
     declaredPanelIdsCache = { at: now, byPlugin }
@@ -305,6 +315,14 @@ export function getDeclaredWebviewPanelIds(pluginId: string): string[] {
  */
 export function getDeclaredUiSlots(pluginId: string): PluginContributionUiSlot[] {
   return declaredContributesByPlugin().get(pluginId)?.uiSlots ?? []
+}
+
+/**
+ * manifest 声明了合法背景(G 期,L2.5)—— `api.theme.updateBackground` 的门控。
+ * 与面板/锚点块同一份缓存、同一条"声明先于代码"。
+ */
+export function getDeclaredBackground(pluginId: string): boolean {
+  return declaredContributesByPlugin().get(pluginId)?.background ?? false
 }
 
 /**

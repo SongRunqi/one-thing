@@ -112,9 +112,11 @@ describe('contributes.theme manifest shape', () => {
     expect(validatePluginContributes({ theme: { overrides: { primary: 'url(https://x)' } } })).toBeNull()
   })
 
-  it('形状错才拒载:不是对象 / overrides 缺失 / 值不是字符串 / 条目超上限', () => {
+  it('形状错才拒载:不是对象 / overrides 不是对象 / 值不是字符串 / 条目超上限', () => {
     expect(validatePluginContributes({ theme: 'red' })).toContain('theme must be an object')
-    expect(validatePluginContributes({ theme: {} })).toContain('theme.overrides must be an object')
+    // G 期起 overrides 可缺省:`contributes.theme` 也可能只带 background,
+    // 逼作者写一个空的 overrides 才算合法是没有道理的。
+    expect(validatePluginContributes({ theme: {} })).toBeNull()
     expect(validatePluginContributes({ theme: { overrides: [] } })).toContain('theme.overrides must be an object')
     expect(validatePluginContributes({ theme: { overrides: { primary: 1 } } }))
       .toContain('theme.overrides.primary must be a string')

@@ -687,6 +687,20 @@ interface PluginInfo {
       reason?: 'unknown-token' | 'invalid-color'
       shadowedBy?: string
     }>
+    /**
+     * 背景层(G 期,L2.5)—— 同样是**投影后的裁决**,`null` = 没声明。
+     * 背景全局只有一块,所以这里是单条而不是数组。
+     */
+    background?: {
+      status: 'active' | 'shadowed' | 'inactive' | 'invalid'
+      image: string
+      darkImage: string
+      opacity: number
+      blur: number
+      fit: string
+      reason?: string
+      shadowedBy?: string
+    } | null
     hasSettingsSchema?: boolean
     permissions?: string[]
     activationEvents?: string[]
@@ -972,6 +986,15 @@ function themeOverrideNote(tokens: string[]): string {
  */
 const WEBVIEW_PANEL_NOTE = 'runs sandboxed UI code'
 
+/**
+ * 背景层披露(G 期,L2.5)。
+ *
+ * 与上面三句同规:一句话只说一次,已装卡片与装前确认页共用同一句措辞。
+ * 用户要知道的是"这插件会给应用铺一张背景图" —— 图从哪来(包内资产、
+ * 走 onething-plugin:// 协议、不出网)是宿主的保证,不进这句话。
+ */
+const BACKGROUND_NOTE = 'sets an app background image'
+
 /** 判据只在这里判一次:已装卡片走投影后的清单,市场走 manifest 原文。 */
 function isWebviewPanel(panel: { view?: string }): boolean {
   return panel.view === 'webview'
@@ -1034,6 +1057,15 @@ function contributesSummary(plugin: PluginInfo): string[] {
     summary.push(entry.reason === 'unknown-token'
       ? `theme override "${entry.token}" dropped — not a theme token`
       : `theme override "${entry.token}" dropped — not an allowed color value`)
+  }
+  // 背景层(G 期):与 token 覆盖同一条呈现规矩 —— 生效 / 被压 / 停用中 / 非法,
+  // 四态都要说得出来。背景全局只有一块,所以这里是单条而不是一串。
+  const background = contributes?.background
+  if (background) {
+    if (background.status === 'active') summary.push(BACKGROUND_NOTE)
+    else if (background.status === 'inactive') summary.push(`${BACKGROUND_NOTE} — inactive while disabled`)
+    else if (background.status === 'shadowed') summary.push(`background overridden by "${background.shadowedBy}"`)
+    else summary.push(`background dropped — ${background.reason || 'invalid declaration'}`)
   }
   if (contributes?.commands?.length) {
     summary.push(`declares ${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)
@@ -1360,8 +1392,8 @@ async function updatePlugin(plugin: PluginInfo): Promise<void> {
  * 数组(需要全体插件才算得出谁压谁),manifest 原文是 `{ overrides: {...} }`。
  * 装前确认页只能说"它声明要改哪几个 token" —— 还没装,谈不上生效与被压。
  */
-type MarketContributes = Omit<NonNullable<PluginInfo['contributes']>, 'theme'> & {
-  theme?: { overrides?: Record<string, string> }
+type MarketContributes = Omit<NonNullable<PluginInfo['contributes']>, 'theme' | 'background'> & {
+  theme?: { overrides?: Record<string, string>; background?: { image?: string } }
 }
 
 interface MarketEntry {
@@ -1436,6 +1468,9 @@ function declaredContributions(entry: { contributes?: MarketContributes; minAppV
   // 覆盖是全局的,装完再发现比装前拒绝贵得多。
   const declaredTokens = Object.keys(contributes?.theme?.overrides ?? {})
   if (declaredTokens.length) declares.push(themeOverrideNote(declaredTokens))
+  // 背景层(G 期):装前就要说清"它会给你的应用铺一张背景图"。这条路吃的是
+  // manifest 原文,所以判据只看"声明了没有" —— 合法性要等装上之后才裁决得出。
+  if (contributes?.theme?.background) declares.push(BACKGROUND_NOTE)
   if (contributes?.commands?.length) {
     declares.push(`${contributes.commands.length} command${contributes.commands.length > 1 ? 's' : ''}`)
   }

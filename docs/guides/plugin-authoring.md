@@ -45,7 +45,7 @@ node scripts/build-plugin.mjs packages/my-plugin
 | `panels` | `[{id,label,view?,entry?}]` | 工作区面板。缺省 `view: "descriptor"`(描述树,UI 不执行插件代码);`view: "webview"` + `entry` 走逃生舱,见下 |
 | `webviewRoot` | `string` | webview 面板的静态资源根,**相对包目录**,缺省 `webview` |
 | `uiSlots` | `[{anchor,id,label,lifetime?,drawer?}]` | UI 锚点(常显块或触发式,**由锚点决定**,见下);未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"`;`drawer: true` 开抽屉三态(**仅 `composer.above`**,别处声明被忽略,见下) |
-| `theme` | `{overrides:{token:color}}` | 主题 token 覆盖(见下);装前确认页列出被改的 token |
+| `theme` | `{overrides?:{token:color}, background?:{image,darkImage?,opacity?,blur?,fit?}}` | 主题 token 覆盖 + 背景图(见下);装前确认页列出被改的 token 与"会铺背景图" |
 | `settings` | `{schema}` | JSON Schema 子集,宿主渲染并校验设置表单 |
 | `permissions` | `string[]` | 装前确认页如实列出 |
 | `activationEvents` | `string[]` | 激活事件声明 |
@@ -321,6 +321,64 @@ api.registerUiSlot({
   `:root` 逐字回到主题原值。
 - 装前确认页会写 `overrides theme colors (<token 清单>)` —— 用户在装之前就知道
   你要动他的配色。
+
+### 背景图:`contributes.theme.background`
+
+颜色之外唯一开出来的外观能力(L2.5)。图必须是**包内资产** —— 路径相对
+`contributes.webviewRoot`(缺省 `webview/`),由 `onething-plugin://` 协议服务,
+和 webview 面板同一条协议、同一批闸。**没有远程 URL 这个选项**。
+
+```jsonc
+{ "contributes": {
+  "webviewRoot": "webview",
+  "theme": { "background": {
+    "image": "bg.svg",          // 必填,相对静态根
+    "darkImage": "bg-dark.svg", // 可选;不写就深浅共用一张
+    "opacity": 0.35,            // 0–1,缺省 1
+    "blur": 0,                  // 0–40 px,缺省 0
+    "fit": "cover"              // cover | contain | tile,缺省 cover
+  } }
+} }
+```
+
+规矩:
+
+- **扩展名白名单**:png / jpg / jpeg / webp / svg / gif。相对路径、不许 `..`、
+  不许 scheme、不许百分号编码 —— 判据与 webview entry 逐字相同。
+- **越界即丢弃**:`opacity` 不在 0–1、`blur` 不在 0–40、`fit` 不在三选一里,
+  整条 background 被丢掉,插件照常加载,设置页卡片写明
+  `background dropped — <原因>`。声明是你写死的常量,宿主宁可说出来。
+- **全局只有一块**。两个插件都声明时按 pluginId 字典序**后者胜**,被压的那条
+  在卡片上标 `background overridden by "<pluginId>"`。停用/卸载即刻撤层。
+- 背景铺的是**主内容区**(聊天 + 工作台),左栏与右侧工作台保留自己的底色。
+- 装前确认页会写 `sets an app background image`。
+
+**让用户能调透明度** —— 走 R3 设置 schema + 运行期 `api.theme.updateBackground`:
+
+```jsonc
+// plugin.json
+{ "contributes": { "settings": { "schema": {
+  "type": "object",
+  "properties": { "opacity": { "type": "number", "default": 0.35, "minimum": 0, "maximum": 1 } }
+} } } }
+```
+
+```js
+// index.js
+export default function (api) {
+  const apply = () => {
+    const { opacity } = api.settings.get()
+    if (typeof opacity === 'number') api.theme.updateBackground({ opacity })
+  }
+  apply()                      // ← 启动时读一次:持久化归你自己
+  api.settings.onChange(apply) // ← 用户在设置页改了就跟着变
+}
+```
+
+`updateBackground` 只收 `opacity` / `blur` / `fit`;**`image` 换不了** ——
+换图 = 发新版本。值同样钳制(越界钳进区间,坏类型忽略)。**它不持久**:
+重启后回 manifest 缺省,所以上面那句"启动时读一次"是必须的,不是可选的。
+没在 manifest 里声明 background 就调它,是一条 error 日志 + 拒绝(不熔断)。
 
 **动画:描述树里没有,也不会有。** 描述树是纯数据,动画是"执行"的一种,
 按宪法第 1 条划给宿主。宿主自带一小撮受限动效,你只声明状态:

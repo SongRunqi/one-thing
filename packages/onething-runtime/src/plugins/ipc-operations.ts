@@ -4,6 +4,8 @@ import type {
   CorePluginMarketIndex,
   CorePluginRequestInput,
   CorePluginRequestResult,
+  PluginBackgroundDescriptor,
+  PluginBackgroundParamsPatch,
 } from '@onething/core/plugins'
 import { compareCoreSemver, unscopedPluginIdFromPackageName } from '@onething/core/plugins'
 import {
@@ -16,6 +18,7 @@ import type { PluginConfigError, PluginConfigField } from './config-schema.js'
 import {
   projectOnethingPluginCommandsForRenderer,
   projectOnethingPluginsForRenderer,
+  resolveOnethingPluginBackgroundForRenderer,
   type OnethingPluginCommandLike,
   type OnethingPluginListItemLike,
   type OnethingRendererPluginCommandInfo,
@@ -78,10 +81,26 @@ interface OnethingPluginIpcOperationOptions<
   logger?: OnethingPluginIpcLogger
   /** 有效配置取值器(R3);省略时列表里的配置值退回默认。 */
   getPluginConfig?(pluginId: string): Record<string, unknown>
+  /**
+   * 背景层运行期参数取值器(G 期,L2.5);省略时只按 manifest 缺省投影。
+   * 方案 A 下 server 只读镜像不跑插件代码,那侧天然省略。
+   */
+  getPluginBackgroundParams?(pluginId: string): PluginBackgroundParamsPatch | undefined
 }
 
 export type ListOnethingPluginsForIpcResult =
-  | { success: true; plugins: OnethingRendererPluginInfo[] }
+  | {
+    success: true
+    plugins: OnethingRendererPluginInfo[]
+    /**
+     * 胜出的插件背景(G 期,L2.5)。`null` = 没有任何一个已启用插件声明了背景。
+     *
+     * 挂在清单响应上而不是新开一条通道:renderer 已经在
+     * `onething:plugins-changed` 上重拉这份清单(面板入口、锚点块、主题都走它),
+     * 背景描述符搭同一班车 —— 零新事件、零新 IPC channel。
+     */
+    background: PluginBackgroundDescriptor | null
+  }
   | { success: false; error: string }
 
 export async function listOnethingPluginsForIpc<
@@ -93,12 +112,17 @@ export async function listOnethingPluginsForIpc<
 ): Promise<ListOnethingPluginsForIpcResult> {
   try {
     const manager = requireOnethingPluginManager(options.manager)
+    const plugins = manager.getPlugins()
+    const projectionOptions = {
+      getRequestActions: (pluginId: string) => manager.getRequestActions?.(pluginId) ?? [],
+      getConfig: options.getPluginConfig,
+      getBackgroundParams: options.getPluginBackgroundParams,
+    }
     return {
       success: true,
-      plugins: projectOnethingPluginsForRenderer(manager.getPlugins(), {
-        getRequestActions: pluginId => manager.getRequestActions?.(pluginId) ?? [],
-        getConfig: options.getPluginConfig,
-      }),
+      plugins: projectOnethingPluginsForRenderer(plugins, projectionOptions),
+      // 同一份 options 喂两次裁决 —— 卡片上的明细与画在屏幕上的那一张必须同源。
+      background: resolveOnethingPluginBackgroundForRenderer(plugins, projectionOptions),
     }
   } catch (error) {
     return pluginIpcError(options.logger, 'list', error, 'Failed to list plugins')

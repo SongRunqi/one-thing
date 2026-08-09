@@ -52,6 +52,18 @@ function describeRelativePathProblem(value: unknown, label: string): string | nu
   return null
 }
 
+/**
+ * 包内相对资产路径的判据 —— **对外的那一份**。
+ *
+ * webview entry 与 L2.5 背景图(G 期)共用它:两者都是"插件包里的一个文件,
+ * 由 `onething-plugin://` 服务",于是穿越、scheme、编码变体这些判据只能有
+ * 一份。背景图那边**只在扩展名白名单上分叉**(图片 vs .html),别的一个字不改 ——
+ * 抄第二份就是漂移的开始(与 CSS_VAR_MAP 当白名单同一个道理)。
+ */
+export function describePluginRelativeAssetPathProblem(value: unknown, label: string): string | null {
+  return describeRelativePathProblem(value, label)
+}
+
 /** `contributes.webviewRoot` 的判据。undefined = 用缺省根,合法。 */
 export function describePluginWebviewRootProblem(root: unknown): string | null {
   if (root === undefined) return null

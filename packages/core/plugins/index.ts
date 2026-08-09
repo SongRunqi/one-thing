@@ -14,6 +14,7 @@ export type {
   MinimalCorePluginUI,
   PluginContributes,
   PluginContributionTheme,
+  PluginContributionThemeBackground,
   PluginContributionUiSlot,
   PluginPermissionGuard,
   PersistedPluginHealth,
@@ -51,6 +52,36 @@ export type {
   PluginPanelDeclarationLike,
   PluginPanelView,
 } from './webview.js'
+export { describePluginRelativeAssetPathProblem } from './webview.js'
+export {
+  PLUGIN_BACKGROUND_DEFAULT_BLUR,
+  PLUGIN_BACKGROUND_DEFAULT_FIT,
+  PLUGIN_BACKGROUND_DEFAULT_OPACITY,
+  PLUGIN_BACKGROUND_DEFAULT_PARAMS,
+  PLUGIN_BACKGROUND_FITS,
+  PLUGIN_BACKGROUND_IMAGE_EXTENSIONS,
+  PLUGIN_BACKGROUND_MAX_BLUR,
+  PLUGIN_BACKGROUND_MAX_OPACITY,
+  PLUGIN_BACKGROUND_MIN_BLUR,
+  PLUGIN_BACKGROUND_MIN_OPACITY,
+  clampPluginBackgroundParamsPatch,
+  describePluginBackgroundProblem,
+  isPluginBackgroundFit,
+  mergePluginBackgroundParams,
+  pluginBackgroundImageUrl,
+  resolvePluginBackgrounds,
+} from './background.js'
+export type {
+  PluginBackgroundDeclarationLike,
+  PluginBackgroundDescriptor,
+  PluginBackgroundEntry,
+  PluginBackgroundFit,
+  PluginBackgroundInput,
+  PluginBackgroundParams,
+  PluginBackgroundParamsPatch,
+  PluginBackgroundResolution,
+  PluginBackgroundStatus,
+} from './background.js'
 export { CorePluginStore } from './store.js'
 export type { PluginStoreOptions } from './store.js'
 export {

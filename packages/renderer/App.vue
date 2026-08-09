@@ -99,7 +99,18 @@
         <div
           ref="appContentRef"
           class="app-content"
+          :class="{ 'has-plugin-background': pluginBackgroundActive }"
         >
+          <!-- 插件背景层(G 期,L2.5)。纯静态绘制:不做 rAF、不做过渡 ——
+               mac 上主窗是 transparent:true,任何逐帧动画都会把合成器拖进
+               掉帧(project_transparent_window_jank_2026_07 的判例)。
+               它铺的是**主内容区**(聊天 + 工作台),不是整窗:左栏有自己的
+               不透明底色语义,详见 <style> 里的取舍说明。 -->
+          <div
+            v-if="pluginBackgroundActive"
+            class="app-background-layer"
+            :style="pluginBackgroundStyle"
+          />
           <Splitter
             ref="contentSplitterRef"
             class="app-content-splitter"
@@ -262,6 +273,10 @@ import {
   registerCollabMentionResolver,
   registerCollabTagVerifier,
 } from '@/composables/collabInlineTags'
+import {
+  usePluginBackground,
+  usePluginBackgroundActive,
+} from '@/workspace/background-registry'
 import { resolveDeliverablePath } from '@/components/workbench/collab-board-card'
 import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 
@@ -304,6 +319,36 @@ const browserStore = useBrowserStore()
 watch(() => evalsWorkbenchStore.open, open => overlayPresenceStore.setOverlay('evals', open))
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
 const appContentRef = ref<HTMLElement | null>(null)
+
+/**
+ * 插件背景层(G 期,L2.5)。
+ *
+ * 层的**数值**(opacity / blur / 图 URL)是数据不是样式字面量 —— 它们由插件
+ * 声明、宿主钳制,不可能事先写进 token 表,所以内联是唯一诚实的写法。
+ * 铺放方式则映射成两个枚举出来的 CSS 值,不接受插件传任何 CSS 片段。
+ */
+const pluginBackground = usePluginBackground()
+const pluginBackgroundActive = usePluginBackgroundActive()
+const pluginBackgroundStyle = computed<Record<string, string>>(() => {
+  const layer = pluginBackground.value
+  if (!layer) return {}
+  const style: Record<string, string> = {
+    '--plugin-background-image': `url("${layer.imageUrl}")`,
+    '--plugin-background-dark-image': `url("${layer.darkImageUrl}")`,
+    opacity: String(layer.opacity),
+  }
+  if (layer.fit === 'tile') {
+    style.backgroundRepeat = 'repeat'
+    style.backgroundSize = 'auto'
+  } else {
+    style.backgroundRepeat = 'no-repeat'
+    style.backgroundSize = layer.fit
+  }
+  // blur 只在插件真的要了它的时候才加:filter 会把这一层提成独立合成层,
+  // 半径为 0 的模糊仍然要付那笔代价,而它什么也没做。
+  if (layer.blur > 0) style.filter = `blur(${layer.blur}px)`
+  return style
+})
 const rightWorkbenchRef = ref<InstanceType<typeof RightWorkbenchPanel> | null>(null)
 const inspectorOpen = computed({
   get: () => chatStore.inspectorOpen,
@@ -1414,6 +1459,57 @@ onUnmounted(() => {
   position: relative;
   overflow: hidden;
   background: var(--ui-surface-app-bg);
+}
+
+/*
+ * 插件背景层(G 期,L2.5)。
+ *
+ * **铺的是主内容区,不是整窗** —— 这是实现中实测出来的取舍,记在这里:
+ * 每一块 UI 都自带不透明底色(`--ui-surface-app-bg` / `--ui-surface-chat-bg` /
+ * `--ui-surface-sidebar-bg`),一张画在最底下的图会被逐层盖死。要让它露出来,
+ * 上面的面必须让路;而"让哪些面让路"如果开成全局规则,就是一次不可控的
+ * 底色改造(左栏、工作台、浮层、菜单全在射程内)。
+ * 于是这里**逐条枚举**,而且只枚举主内容区那一列的三层:
+ *   `.app-content` → `.app-main-region` → ChatContainer 根 + ChatWindow 的
+ *   `--chat-surface`(它本来就是为覆盖而设的局部变量)。
+ * 左栏与右侧工作台保留自己的底色 —— 它们是"面板"语义,读文字的地方,
+ * 背景图在那里只会降低可读性。
+ *
+ * `.app-shell` 的底色一个字不动:主窗在 mac 上是 transparent:true,
+ * 把最外层弄透明就是让桌面直接透上来。
+ */
+.app-background-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* 深浅两张图。data-theme 由 settings store 解析成 light/dark 后写死在 html 上
+     （'system' 永远不会落到 DOM 上），所以这条选择器不需要 prefers-color-scheme。 */
+  background-image: var(--plugin-background-image);
+  background-position: center center;
+  /* 纯静态:不加 transition/animation。透明窗上的逐帧合成就是掉帧本身。 */
+  transition: none;
+}
+
+html[data-theme='dark'] .app-background-layer {
+  background-image: var(--plugin-background-dark-image);
+}
+
+/* 内容压在层之上。层是 z-index:0 的定位元素,不给内容显式抬一层的话,
+   同为定位元素的后代会按文档顺序压过来 —— 结果是随组件顺序漂移的层序。 */
+.app-content.has-plugin-background > .app-content-splitter {
+  position: relative;
+  z-index: 1;
+}
+
+.app-content.has-plugin-background,
+.app-content.has-plugin-background :deep(.app-main-region),
+.app-content.has-plugin-background :deep(.chat-container-wrapper) {
+  background: transparent;
+}
+
+.app-content.has-plugin-background :deep(.chat) {
+  --chat-surface: transparent;
 }
 
 .app-main-region {

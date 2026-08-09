@@ -77,6 +77,7 @@ describe('projectOnethingPluginsForRenderer', () => {
           activationEvents: ['onCommand:/demo'],
           uiSlots: [],
           theme: [],
+          background: null,
         },
         requestActions: ['search'],
         configFields: [{
@@ -162,6 +163,7 @@ describe('projectOnethingPluginsForRenderer', () => {
           hasSettingsSchema: false,
           uiSlots: [],
           theme: [],
+          background: null,
           permissions: [],
           activationEvents: [],
         },

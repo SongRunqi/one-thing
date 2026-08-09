@@ -67,6 +67,7 @@ describe('plugin IPC operations', () => {
           hasSettingsSchema: false,
           uiSlots: [],
           theme: [],
+          background: null,
           permissions: [],
           activationEvents: [],
         },
@@ -83,6 +84,8 @@ describe('plugin IPC operations', () => {
         healthReason: '',
         degradedSurfaces: [],
       }],
+      // G 期:胜出背景搭清单响应这班车 —— 没插件声明背景时是 null。
+      background: null,
     })
 
     await expect(listOnethingPluginCommandsForIpc({ manager })).resolves.toEqual({

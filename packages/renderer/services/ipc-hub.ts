@@ -22,6 +22,7 @@ import {
 import { toast } from '@/composables/useToast'
 import { setPluginWorkspacePanels } from '@/workspace/panel-registry'
 import { setPluginUiSlots } from '@/workspace/ui-anchor-registry'
+import { setPluginBackground, type PluginBackgroundLayer } from '@/workspace/background-registry'
 import { shouldNotifyInbound, summarizeNotificationBody } from './notify-inbound'
 import type { SessionEventEnvelope } from '@shared/events/index.js'
 
@@ -412,6 +413,12 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
           drawer: Boolean(slot.drawer),
         })),
       ))
+    // 背景层(G 期,L2.5):裁决(谁压谁、启用闸门、钳制、URL 拼装)全在主进程
+    // 的清单投影里做完,这里收的是**结论**。搭的是同一班车 —— 同一次拉取、
+    // 同一条 onething:plugins-changed,没有第二条通道。
+    // 响应里没有这个字段(旧宿主 / server 只读镜像)时读成 null = 没有背景,
+    // 而不是"保持上一次" —— 那会让一次降级把一张撤不掉的图钉在屏幕上。
+    setPluginBackground((result as { background?: PluginBackgroundLayer | null }).background ?? null)
   } catch (error) {
     console.error('[IPC Hub] Failed to refresh plugin workspace panels:', error)
   }

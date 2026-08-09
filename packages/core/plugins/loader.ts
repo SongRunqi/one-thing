@@ -401,17 +401,24 @@ export function validatePluginContributes(raw: unknown): string | null {
   if (theme !== undefined) {
     if (!isPlainRecord(theme)) return 'contributes.theme must be an object'
     const overrides = theme.overrides
-    if (!isPlainRecord(overrides)) return 'contributes.theme.overrides must be an object'
-    const entries = Object.entries(overrides)
-    if (entries.length > PLUGIN_THEME_OVERRIDE_MAX_ENTRIES) {
-      return `contributes.theme.overrides must not exceed ${PLUGIN_THEME_OVERRIDE_MAX_ENTRIES} entries`
-    }
-    for (const [token, value] of entries) {
-      if (!token.trim()) return 'contributes.theme.overrides keys must be non-empty strings'
-      if (typeof value !== 'string') {
-        return `contributes.theme.overrides.${token} must be a string`
+    // G 期起 overrides 可缺省:`contributes.theme` 也可能只带 background。
+    if (overrides !== undefined) {
+      if (!isPlainRecord(overrides)) return 'contributes.theme.overrides must be an object'
+      const entries = Object.entries(overrides)
+      if (entries.length > PLUGIN_THEME_OVERRIDE_MAX_ENTRIES) {
+        return `contributes.theme.overrides must not exceed ${PLUGIN_THEME_OVERRIDE_MAX_ENTRIES} entries`
+      }
+      for (const [token, value] of entries) {
+        if (!token.trim()) return 'contributes.theme.overrides keys must be non-empty strings'
+        if (typeof value !== 'string') {
+          return `contributes.theme.overrides.${token} must be a string`
+        }
       }
     }
+    // `contributes.theme.background`(G 期,L2.5)**不在这里判**:路径穿越 /
+    // 坏扩展名 / 越界数值全部是"丢弃 background 并在投影里标记"的降级,
+    // 不是拒载(与未知锚点、token 覆盖同规)。判据在 core 的 background.ts,
+    // 裁决在清单投影里 —— 拒载的插件根本不进清单,理由就没地方说。
   }
 
   const settings = raw.settings

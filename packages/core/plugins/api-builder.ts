@@ -1,4 +1,8 @@
 import type { CorePluginAPIState } from './api-state.js'
+import {
+  clampPluginBackgroundParamsPatch,
+  type PluginBackgroundParamsPatch,
+} from './background.js'
 import { deepFreezeCorePluginValue } from './freeze.js'
 import { PluginStorageError, type CorePluginMessageStateStore, type CorePluginStorage } from './storage.js'
 import {
@@ -89,6 +93,14 @@ export interface CorePluginAPIHost<
     pluginId: string,
     callback: (config: Record<string, unknown>) => void,
   ): () => void
+  /**
+   * 背景层运行期调参的落点(G 期,L2.5)。
+   *
+   * core 只做门控与钳制;"记在哪、什么时候广播"是宿主的事(装配层把它记进
+   * 内存态并发一条 catalog-changed,renderer 照既有路径重拉清单)。
+   * 宿主没接这条线(headless / server)时是安静的 no-op。
+   */
+  updatePluginBackground?(pluginId: string, patch: PluginBackgroundParamsPatch): void
 }
 
 export interface CreateCorePluginAPIOptions<
@@ -130,6 +142,13 @@ export interface CreateCorePluginAPIOptions<
    * registerUiSlot 拿它做(anchor, id) 匹配 —— 与面板同一条"声明先于代码"。
    */
   declaredUiSlots?: Array<{ anchor: string; id: string }>
+  /**
+   * manifest 是否声明了 `contributes.theme.background`(G 期,L2.5)。
+   *
+   * `api.theme.updateBackground` 的**门控** —— 声明先于代码,与面板 id / 锚点块
+   * 同一条规矩。缺省 false:没声明就调不动(headless / 测试替身的自然缺省)。
+   */
+  declaredBackground?: boolean
   /**
    * 状态账本(R6)。宿主注入**同一个实例**给所有插件 —— 清扫按会话进行,
    * 每插件一本账就扫不干净。不注入时 api.status 是安静的 no-op(headless)。
@@ -860,6 +879,39 @@ export function createCorePluginAPI<
       disposeCallbacks.push(release)
       logger.log(`[Plugin:${pluginId}] Registered IM connector: ${connectorId}`)
       return release
+    },
+
+    /**
+     * 外观面(G 期,L2.5)。今天只有背景层这一格。
+     *
+     * 三道闸,顺序有意义:
+     *  1. **拆除闩** —— 停用之后再调,等于往一张已经撤掉的层上写参数;
+     *  2. **声明门** —— manifest 没声明 background 就没有可调的东西。记一条 error
+     *     日志然后拒绝,**不计熔断**:开一个熔断面意味着一次笔误能连坐整个插件,
+     *     而这条调用本身没有任何副作用可言(与未声明的 panel id 不同 —— 那个会
+     *     留下一个画不出来的入口);
+     *  3. **钳制** —— 越界数字钳进区间、未知 fit 忽略。用户拖滑杆的结果不该
+     *     把控件卡住。
+     */
+    theme: {
+      updateBackground(patch: PluginBackgroundParamsPatch): void {
+        if (rejectLateCall('theme.updateBackground')) return
+        if (!options.declaredBackground) {
+          logger.error(
+            `[Plugin:${pluginId}] theme.updateBackground requires contributes.theme.background in plugin.json`,
+            undefined,
+          )
+          return
+        }
+        const clamped = clampPluginBackgroundParamsPatch(patch)
+        // 空补丁不广播:插件传了一堆非法值,等于什么也没说。
+        if (!Object.keys(clamped).length) return
+        try {
+          host.updatePluginBackground?.(pluginId, clamped)
+        } catch (error) {
+          logger.error(`[Plugin:${pluginId}] theme.updateBackground failed:`, error)
+        }
+      },
     },
 
     ui: {

@@ -43,6 +43,7 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getPluginManager } from '@onething/app/plugins/index.js'
 import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
 import { getPluginFootprint } from '@onething/app/plugins/loader.js'
+import { getPluginBackgroundParams } from '@onething/app/plugins/background.js'
 import { getPluginMarketIndexSnapshot, probePluginNpmAvailability } from '@onething/app/plugins/install.js'
 import { readPluginTarballSummary } from '@onething/app/plugins/tarball.js'
 import { getPluginAppVersion } from '@onething/app/plugins/app-version.js'
@@ -141,6 +142,9 @@ export function registerPluginHandlers(): void {
         logger: console,
         // 设置页从列表一次拿全配置材料(字段表 + 当前值),不必逐插件再问一轮。
         getPluginConfig: pluginConfigAccess.read,
+        // G 期(L2.5):背景层的运行期调参是内存态,只有桌面宿主有它 ——
+        // 方案 A 下只有这一个宿主执行插件代码,也就只有这里存在 updateBackground。
+        getPluginBackgroundParams: getPluginBackgroundParams,
       })
     },
     enablePlugin: (request: ElectronPluginToggleRequest) => {

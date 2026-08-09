@@ -5,6 +5,13 @@ import {
   isIgnoredUiDrawerDeclaration,
   isUiAnchor,
   isPluginWebviewPanel,
+  resolvePluginBackgrounds,
+} from '@onething/core/plugins'
+import type {
+  PluginBackgroundDescriptor,
+  PluginBackgroundEntry,
+  PluginBackgroundInput,
+  PluginBackgroundParamsPatch,
 } from '@onething/core/plugins'
 import {
   resolvePluginThemeOverrides,
@@ -21,7 +28,7 @@ export interface OnethingPluginListManifestLike {
     commands?: Array<{ name: string }>
     panels?: Array<{ id: string; label: string; view?: string; entry?: string }>
     uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string; drawer?: boolean }>
-    theme?: { overrides?: Record<string, string> }
+    theme?: { overrides?: Record<string, string>; background?: unknown }
     webviewRoot?: string
     settings?: {
       title?: string
@@ -66,6 +73,13 @@ export interface ProjectOnethingPluginsOptions {
   getRequestActions?(pluginId: string): string[]
   /** 已校验、已填默认值的有效配置(宿主持有;未启用的插件也有)。 */
   getConfig?(pluginId: string): Record<string, unknown>
+  /**
+   * 该插件最近一次 `api.theme.updateBackground` 的结果(G 期,内存态)。
+   *
+   * 省略 = 只按 manifest 缺省投影(server 只读镜像的自然缺省 —— 方案 A 下那侧
+   * 不跑插件代码,也就没有运行期调参这回事)。
+   */
+  getBackgroundParams?(pluginId: string): PluginBackgroundParamsPatch | undefined
 }
 
 export interface OnethingRendererPluginInfo {
@@ -135,6 +149,14 @@ export interface OnethingRendererPluginInfo {
      * 投影 —— 声明透传,合成不发生在那一侧(方案 A)。
      */
     theme: PluginThemeOverrideEntry[]
+    /**
+     * 背景/材质层(G 期,L2.5)。`null` = 这个插件没声明背景。
+     *
+     * 与 token 覆盖同规:裁决在投影里做(谁压谁要看全体插件,renderer 只拿到
+     * 一张卡片判不出来),非法声明**不拒载**,只是 `status: 'invalid'` + `reason`,
+     * 让设置页说得出"这张背景为什么没出现"。
+     */
+    background: PluginBackgroundEntry | null
     hasSettingsSchema: boolean
     permissions: string[]
     activationEvents: string[]
@@ -186,6 +208,38 @@ export interface OnethingRendererPluginCommandInfo {
   usage: string
 }
 
+/**
+ * 背景裁决的输入 —— 逐插件投影与"胜出者"共用**同一个**收集器。
+ *
+ * 两处各拼一遍就是漂移的开始:一处忘了带 runtimeParams,卡片上说的透明度
+ * 就会与画在屏幕上的那一张对不上,而两边都"看着对"。
+ */
+function collectBackgroundInputs<TPlugin extends OnethingPluginListItemLike>(
+  plugins: TPlugin[],
+  options: ProjectOnethingPluginsOptions,
+): PluginBackgroundInput[] {
+  return plugins.map(plugin => ({
+    pluginId: plugin.definition.id,
+    enabled: plugin.definition.enabled,
+    background: plugin.definition.manifest.contributes?.theme?.background,
+    runtimeParams: options.getBackgroundParams?.(plugin.definition.id),
+  }))
+}
+
+/**
+ * 胜出的背景描述符(G 期,L2.5)—— renderer 直接拿它画层,不再判第二遍。
+ *
+ * 它**不挂在逐插件的投影里**:背景是全局唯一那一格,挂进数组等于让 renderer
+ * 自己再跑一遍裁决(而它只看得到自己那一张卡片)。宿主把结论放在清单响应的
+ * 同一层上,零新通道 —— renderer 已经在 `onething:plugins-changed` 上重拉清单。
+ */
+export function resolveOnethingPluginBackgroundForRenderer<TPlugin extends OnethingPluginListItemLike>(
+  plugins: TPlugin[],
+  options: ProjectOnethingPluginsOptions = {},
+): PluginBackgroundDescriptor | null {
+  return resolvePluginBackgrounds(collectBackgroundInputs(plugins, options)).winner
+}
+
 export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPluginListItemLike>(
   plugins: TPlugin[],
   options: ProjectOnethingPluginsOptions = {},
@@ -196,6 +250,10 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
     enabled: plugin.definition.enabled,
     overrides: plugin.definition.manifest.contributes?.theme?.overrides,
   })))
+  // 背景同理(G 期):全局只有一块背景,谁压谁必须看全体。
+  const backgroundResolution = resolvePluginBackgrounds(
+    collectBackgroundInputs(plugins, options),
+  )
   return plugins.map(plugin => ({
     id: plugin.definition.id,
     source: plugin.definition.source || 'user',
@@ -236,6 +294,7 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
         drawerIgnored: isIgnoredUiDrawerDeclaration(slot.anchor, slot.drawer),
       })),
       theme: themeResolution.byPlugin.get(plugin.definition.id) ?? [],
+      background: backgroundResolution.byPlugin.get(plugin.definition.id) ?? null,
       hasSettingsSchema: Boolean(plugin.definition.manifest.contributes?.settings?.schema),
       permissions: plugin.definition.manifest.contributes?.permissions ?? [],
       activationEvents: plugin.definition.manifest.contributes?.activation?.events ?? [],
