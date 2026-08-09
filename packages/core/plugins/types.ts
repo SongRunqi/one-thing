@@ -1,6 +1,7 @@
 import type { PluginInputInterceptHandler } from './input-intercept.js'
 import type { CorePluginRequestHandler } from './request-channel.js'
 import type { CorePluginStorage } from './storage.js'
+import type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
 import type { CorePluginPanelRegistration } from './panel.js'
 import type { CorePluginUiSlotRegistration } from './ui-anchor.js'
 import type {
@@ -265,6 +266,14 @@ export interface CorePluginToolDefinition<
   parameters: TParameters
   execute(args: TArgs, ctx: TContext): Promise<TResult>
   permissionGuard?: PluginPermissionGuard
+  /**
+   * 与同一条 assistant 消息里的兄弟 tool_use 能不能重叠(N3)。
+   *
+   * `'parallel'` = 声明本工具无共享状态冲突,可与兄弟并发;`'sequential'` =
+   * 执行屏障,等前面的落定并挡住后面的(pi 的判例:多个调用抢同一个共享游标);
+   * 不声明 = 缺省 = 屏障 = 今天的行为。语义与校验见 `tool-execution-mode.ts`。
+   */
+  executionMode?: CorePluginToolExecutionMode
 }
 
 export interface CorePluginCommandContext {

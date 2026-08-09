@@ -185,6 +185,30 @@ describe('onething runtime tool registry', () => {
     expect(registry.getToolExecutionMode('dynamic-tool')).toBe('sequential')
   })
 
+  /**
+   * N3:声明必须活到**注入模型的那份定义**上 —— 那是 agent-loop runner
+   * 真正读的一跳(`AgentTool.executionMode !== 'parallel'` → 屏障)。
+   * `getToolExecutionMode()` 是另一条(今天没有生产消费方的)线,它绿了
+   * 不代表调度器看得见。缺省不声明的工具必须保持 undefined:那是"屏障"。
+   */
+  it('carries executionMode onto the injected tool definitions (N3 scheduling hop)', async () => {
+    const registry = createOnethingToolRegistry({
+      logger: { log: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    })
+
+    registry.registerTool(createStaticTool('plugin:sample:peek', { executionMode: 'parallel' }))
+    registry.registerTool(createStaticTool('plugin:sample:cursor', { executionMode: 'sequential' }))
+    registry.registerTool(createStaticTool('plugin:sample:plain'))
+
+    const byId = new Map(
+      (await registry.getAllToolsAsync()).map(definition => [definition.id, definition]),
+    )
+
+    expect(byId.get('plugin:sample:peek')?.executionMode).toBe('parallel')
+    expect(byId.get('plugin:sample:cursor')?.executionMode).toBe('sequential')
+    expect(byId.get('plugin:sample:plain')?.executionMode).toBeUndefined()
+  })
+
   it('owns permission rejection and ordinary execution error projection', async () => {
     const logger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() }
     const registry = createOnethingToolRegistry({ logger })

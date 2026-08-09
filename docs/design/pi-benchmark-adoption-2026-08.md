@@ -198,3 +198,84 @@ TypeError。观察族(`api.on`)的返回值继续被忽略,零污染。
 12. **`InputTransformStamp` 没有从 `packages/shared/ipc/index.ts` 再导出**。
     它今天只在引擎内以结构字面量构造,没有消费方需要这个名字;而那个 barrel
     是一个高危脏文件(工作树里带着未提交的用户改动)。需要时再加一行。
+
+## 8. N3 落地实录(2026-08-10)与**与规格的差异**
+
+### 8.1 先考古:今天同一批工具调用到底怎么排
+
+规格假定"executionMode 是新东西",实测**它已经在,而且是生产路径的判据**。
+工具并发审计时代的"生产 runner 严格串行、并发 B 链路空转"早已被 diff 竞态
+根治那一轮翻页,今天的事实是:
+
+- **调度器只有一处**:`packages/core/agent-loop/runner.ts:397`
+  —— `const barrier = toolsByName.get(event.toolCall.name)?.executionMode !== 'parallel'`,
+  交给 `scheduler.enqueue(fn, { barrier })`(`runner.ts:363` 每回合一个
+  `ToolExecutionScheduler`)。
+- **屏障语义**(`packages/core/agent-loop/tool-execution-scheduler.ts:20-53`):
+  非屏障任务挂在当前段里彼此重叠;屏障任务先等上一道屏障、再
+  `allSettled` 当前段所有在飞任务、然后独占执行,并成为下一道屏障。
+  即"读并行、写串行",粒度是**工具**,不是文件/资源 —— 没有读写锁,
+  屏障就是锁。
+- **上限**:`createConcurrencyGate(options.maxConcurrentTools ?? 8)`
+  (`runner.ts:510-512`),今天全仓无人传该选项,即默认 8 并发。
+- **缺省 = 屏障**:未声明的工具走 `!== 'parallel'` 的那一侧。
+  `packages/core/agent-loop/tools.ts:87-93` 还把**任何未知值**安全降级成
+  屏障。
+- **内置工具早已逐个声明**:read / find / grep / glob / notebook / history /
+  time / fart / bash-jobs(查询面)= `parallel`;edit / write / variable /
+  goal / practice / say / radio / bash-jobs(写面)= `sequential`。
+- **一条死线**:`resolveCoreToolExecutionMode`(`packages/core/tools/registry.ts:571`,
+  带 `SEQUENTIAL_TOOL_ID_FALLBACKS` 与 mcp 前缀强制串行)只被
+  `OnethingToolRegistry.getToolExecutionMode` 调,而后者**零生产消费方**
+  (只有测试)。生产路径读的是定义上的 `executionMode` 字段本身,不经过它。
+  本期没有动它 —— 删死码是另一次评审。
+
+**唯一真缺口**:插件。`CorePluginToolDefinition` 里根本没有这个字段,
+`app/plugins/api.ts` 的 `Tool.define(...)` 也没有这一行,于是**每个插件工具
+都恒定落在屏障侧**,作者无从表达"我这个只读工具可以并发"。N3 补的就是这一格。
+
+### 8.2 逐条差异(规格 → 实际,及理由)
+
+1. **声明面加在 `CorePluginToolDefinition`,不是 `packages/core/tools/types.ts`
+   的 `ToolDefinition`**。后者是 `executeToolCalls`(严格 for-await 串行)那条
+   遗留小路的类型,加上字段不会有任何人读 —— 那是造第二个说法。我们**对应
+   pi `ToolDefinition` 的类型是 `AgentTool`**(`agent-loop/types.ts:182`),
+   它早就有这个字段。
+2. **内置工具一行没动**(规格要求),但要如实记账:它们**不是"未声明"**,
+   而是早就逐个声明过了(见 8.1 清单)。"本期不给内置补声明"在这里等于
+   "本期不重审内置的声明"。
+3. **`'parallel'` 不是空声明**。规格给了"若现状无并行通道则声明如实记录但
+   当前无效果"的退路 —— 用不上:并行通道真实存在且是默认路径,插件工具声明
+   `'parallel'` 立刻生效。
+4. **`'sequential'` 的实现强于 pi 的字面语义**。pi 说的是"不与兄弟并发";
+   我们的屏障还额外**挡住它后面的调用**。没有为它新造一个"只是不并发但不
+   阻塞后续"的第三种档位:那要求第二套排队原语,而它能救的场景(共享游标)
+   本来就要求独占。文档按屏障口径写。
+5. **调度器读声明的落点仍然只有一处**(`runner.ts:397`),本期**一行没改**。
+   N3 全部的改动都在"让声明流到那一跳",不在那一跳本身 —— 这是"纯声明式
+   小期"的字面意思。
+6. **校验闸放在 core 的 `api.registerTool`,只此一处**
+   (`packages/core/plugins/api-builder.ts`,调
+   `assertCorePluginToolExecutionMode`)。不在 `OnethingToolRegistry.registerTool`
+   再加一道:那里的值来自我们自己的代码(编译期就是联合类型),再校验一次
+   等于同一个判据两份。闸只设在**不可信数据进门的地方**。
+7. **非法值拒注册这一个工具,不计熔断**。处置与既有的工具注册失败**同规**:
+   `api-builder` 的 `registerTool` 本来就把 `host.registerTool` 包在 try/catch
+   里 —— 抛错 = 该 toolId 不进 `toolIds`、不进注册表、日志里一条点名错误、
+   插件其余的面照常。这与"未声明权限"、"钩子返回值不合规"是同一档:**作者
+   写错了,不是运行时故障**,所以不进熔断计数。
+8. **不做未知值静默降级**(与 `agent-loop/tools.ts:87-93` 的宿主侧降级看似
+   矛盾,实则分工):宿主侧那次降级面对的是**已经过闸**的自家数据,兜的是
+   类型系统之外的意外;插件侧这一次面对的是作者手写的字面量,降级的代价是
+   `'paralell'` 永远拿不到任何线索。**入口严、内部宽**。
+9. **没有新建样本插件**(规格允许)。覆盖落在
+   `packages/core/plugins/__tests__/tool-execution-mode.test.ts`(透传 / 缺省 /
+   非法值只拒一个工具)、`packages/core/agent-loop/runner.test.ts` 新增
+   "declared sequential 夹在两个 parallel 兄弟中间零重叠"、
+   `packages/onething-runtime/src/tools/__tests__/registry.test.ts` 新增
+   "声明活到注入模型的那份定义上"(补住 8.1 那条死线造成的假绿风险:
+   `getToolExecutionMode` 绿不代表调度器看得见)。
+10. **`packages/shared/ipc` 一行没碰**。`ToolExecutionMode` 那边早就有,
+    插件侧用的是 core 自己的 `CorePluginToolExecutionMode`(零依赖叶子
+    `packages/core/plugins/tool-execution-mode.ts`)—— 插件协议不该反向依赖
+    宿主的 IPC 契约,而那个 barrel 是高危脏文件。

@@ -23,6 +23,7 @@ export type {
   PluginToolDefinition,
   PluginToolContext,
   PluginToolResult,
+  CorePluginToolExecutionMode,
   PluginCommandDefinition,
   PluginCommandContext,
   PluginPromptContext,

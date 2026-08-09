@@ -187,6 +187,76 @@ describe('runAgentLoop concurrent tool execution', () => {
     expect(toolMessages.map(message => message.toolCallId)).toEqual(['call_edit', 'call_read'])
   })
 
+  it('serializes a tool declared executionMode "sequential" against parallel siblings (N3)', async () => {
+    // pi 的判例:一个抢共享游标的工具,即便夹在两个可并发的只读兄弟中间,
+    // 也不能与任何一个重叠。声明 'sequential' 就是在说这句话 —— 语义上
+    // 等同于不声明,但写出来表示这是作者的判断而不是遗漏。
+    const events: string[] = []
+    const releaseFirstRead = deferred()
+    let inFlight = 0
+    let maxOverlapDuringCursor = 0
+    const provider = baseProvider(async function* (request) {
+      if (request.turn === 1) {
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_read_a', name: 'read', arguments: '{"path":"a"}' } }
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_cursor', name: 'cursor', arguments: '{}' } }
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_read_b', name: 'read', arguments: '{"path":"b"}' } }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'text-delta', turn: request.turn, delta: 'done' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    const readTool: AgentTool = {
+      name: 'read',
+      parameters: { type: 'object' },
+      executionMode: 'parallel',
+      async execute(args) {
+        const path = String(args.path)
+        inFlight += 1
+        events.push(`execute:read-${path}:start`)
+        if (path === 'a') await releaseFirstRead.promise
+        events.push(`execute:read-${path}:end`)
+        inFlight -= 1
+        return { content: `read ${path}` }
+      },
+    }
+    const cursorTool: AgentTool = {
+      name: 'cursor',
+      parameters: { type: 'object' },
+      executionMode: 'sequential',
+      async execute() {
+        inFlight += 1
+        maxOverlapDuringCursor = Math.max(maxOverlapDuringCursor, inFlight)
+        events.push('execute:cursor:start')
+        await new Promise(resolve => setTimeout(resolve, 5))
+        events.push('execute:cursor:end')
+        inFlight -= 1
+        return { content: 'cursor' }
+      },
+    }
+
+    const run = runAgentLoop({
+      ...baseOptions(provider, readTool, events),
+      tools: [readTool, cursorTool],
+    })
+
+    // The declared-sequential tool streamed in while read(a) is still running:
+    // it must stay queued, and so must the parallel sibling behind it.
+    await waitFor(() => events.includes('execute:read-a:start'))
+    expect(events).not.toContain('execute:cursor:start')
+    expect(events).not.toContain('execute:read-b:start')
+
+    releaseFirstRead.resolve()
+    await run
+
+    // Nothing ever overlapped the cursor — in either direction.
+    expect(maxOverlapDuringCursor).toBe(1)
+    expect(events.indexOf('execute:cursor:start'))
+      .toBeGreaterThan(events.indexOf('execute:read-a:end'))
+    expect(events.indexOf('execute:read-b:start'))
+      .toBeGreaterThan(events.indexOf('execute:cursor:end'))
+  })
+
   it('lets sibling tools settle before pausing for confirmation, and pauses on the first declared', async () => {
     const events: string[] = []
     const provider = baseProvider(async function* (request) {

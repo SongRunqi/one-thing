@@ -47,6 +47,7 @@ import {
   type CorePluginRequestContext,
   type CorePluginRequestHandler,
 } from './request-channel.js'
+import { assertCorePluginToolExecutionMode } from './tool-execution-mode.js'
 import type {
   CorePluginToolContext,
   CorePluginToolDefinition,
@@ -447,6 +448,13 @@ export function createCorePluginAPI<
       if (rejectLateCall('registerTool')) return
       const toolId = `plugin:${pluginId}:${tool.name}`
       try {
+        // N3:并发声明是**这一个工具**的注册前提。非法值拒注册它一个
+        // (插件其余的面照常),而不是静默降级成屏障 —— 降级安全,但作者
+        // 把 'parallel' 拼错之后永远看不到任何线索。
+        assertCorePluginToolExecutionMode(
+          (tool as { executionMode?: unknown }).executionMode,
+          tool.name,
+        )
         host.registerTool(pluginId, toolId, tool)
         if (!toolIds.includes(toolId)) {
           toolIds.push(toolId)

@@ -23,6 +23,12 @@ export type {
   PluginSource,
 } from './types.js'
 export {
+  CORE_PLUGIN_TOOL_EXECUTION_MODES,
+  assertCorePluginToolExecutionMode,
+  isCorePluginToolExecutionMode,
+} from './tool-execution-mode.js'
+export type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
+export {
   CSS_NAMED_COLORS,
   PLUGIN_THEME_COLOR_MAX_LENGTH,
   PLUGIN_THEME_OVERRIDE_MAX_ENTRIES,

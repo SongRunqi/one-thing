@@ -285,6 +285,14 @@ export function createPluginAPI(
             category: 'custom',
             parameters: tool.parameters,
             permissionGuard: 'permission-gated',
+            /*
+             * N3:并发声明原样透传。core 的注册闸已经保证它只可能是
+             * 'parallel' / 'sequential' / undefined,所以这里不再兜一层 ——
+             * 归一化有两处就迟早不一致。缺省(undefined)= 屏障 = 插件工具
+             * 今天的行为,一字不改。真正读它的只有一处:agent-loop runner
+             * 的 `executionMode !== 'parallel'` 判据。
+             */
+            executionMode: tool.executionMode,
             async execute(args: unknown, ctx: any) {
               return executeCorePluginTool(tool, args as any, {
                 sessionId: ctx.sessionId,

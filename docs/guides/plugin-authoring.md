@@ -94,6 +94,53 @@ git tag my-plugin-v1.1.0 && git push origin main --tags
 - 数据不随更新动:config/KV/storage 住在家目录(见下),npm 只碰
   node_modules。
 
+## 工具(api.registerTool)
+
+```js
+api.registerTool({
+  name: 'peek_index',
+  description: '读一份只读索引',
+  parameters: z.object({ key: z.string() }),
+  executionMode: 'parallel',        // 可选,见下
+  async execute(args, ctx) {
+    return { title: 'peek', output: '…', metadata: {} }
+  },
+})
+```
+
+工具 id 由宿主加命名空间:`plugin:<你的插件 id>:<name>`。
+`permissionGuard` **不由你决定** —— 插件工具一律 `permission-gated`
+(填别的值只会收到一条警告,判定不变)。
+
+### `executionMode`:这个工具能不能和兄弟并发
+
+模型可以在**同一条回复里**一次开出多个 tool_use。宿主的调度器按每个工具的
+声明决定它们怎么排:
+
+| 声明 | 调度行为 |
+| --- | --- |
+| `'parallel'` | 与同批**其它同样声明 parallel 的**兄弟重叠执行 |
+| `'sequential'` | **执行屏障**:等前面所有调用落定,并挡住后面的,全程独占 |
+| 不声明(缺省) | 同 `'sequential'` |
+
+缺省就是屏障 —— 不写这个字段,你的工具行为与今天**一字不差**。
+`'sequential'` 与不声明在调度上等价,写出来的意义是:**这是我的判断,
+不是我忘了**。
+
+**什么时候必须声明 `sequential`**:工具内部抓着一份**跨调用共享的可变
+状态** —— 一个游标 / 偏移量、一个连接的读写位置、一份边读边改的缓存、
+一个只能有一个 owner 的外部会话。两个并发的调用会互相踩,而症状是间歇性
+的错数据,不是异常。(这是 pi 的原始判例:多个调用抢同一个共享游标。)
+
+**什么时候可以声明 `parallel`**:纯函数、纯读取、每次调用自带全部状态、
+对外部只做幂等查询。收益是几个慢查询能重叠,一次回合少等几秒。
+
+**拼错就装不上**:`executionMode` 只接受这两个字面量。写成 `'paralell'`
+或 `true`,**这一个工具**会被拒绝注册(插件其余的命令 / 面板 / 事件照常
+工作),日志里有一条点名的错误。宿主刻意不做"未知值默默当 sequential"
+的降级 —— 降级是安全的,但你永远不会知道自己拼错了,只会觉得"我的工具
+好像没并发起来"。
+
 ## 事件订阅(api.on)
 
 `api.on(type, handler)` 订阅宿主事件面(`stream:start`、`stream:complete`、

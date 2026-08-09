@@ -167,6 +167,12 @@ Notes:
   `api` object. Current surface:
   - **AI capabilities**: tools, slash commands, events (+ plugin-namespaced custom events),
     prompt-context providers, skill roots, lifecycle hooks, scheduler.
+    A registered tool may declare `executionMode: 'parallel' | 'sequential'` (N3,
+    2026-08-10 — `docs/design/pi-benchmark-adoption-2026-08.md` §8): it flows through
+    to `AgentTool.executionMode`, whose **single** reader is the agent-loop runner
+    (`packages/core/agent-loop/runner.ts:397` → `ToolExecutionScheduler` barrier).
+    Undeclared = barrier = unchanged behavior; an illegal literal rejects that one
+    tool at registration (no silent degrade, no breaker count).
   - **Cross-session messenger + session peek** (N1, 2026-08-10 —
     `docs/design/pi-benchmark-adoption-2026-08.md` §6): `api.sendMessage(sessionId,
     content, {triggerTurn} | {deliverAs})` is a three-state matrix, not a boolean —
