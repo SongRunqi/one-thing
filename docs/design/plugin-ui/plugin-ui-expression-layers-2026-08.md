@@ -223,13 +223,17 @@ host → iframe:  { requestId, type: 'render', tree | error }
   事件桥"。这保持了"声明先于代码":manifest 声明 entry,宿主就能渲染
   占位,加载失败也说得出。
 
-### 4.4 为什么 H 线才做
+### 4.4 排期归属(2026-08-09 修订:与 ext host 解耦)
 
-webview = UI 侧执行插件代码(在 iframe 沙箱里)。虽然隔离边界清晰,
-但它打开了"插件代码在 renderer 进程附近执行"的面 —— 与 H 线
-(backend 子进程 ext host)是同一波安全面加固的产物。**顺序**:
-R5.x 先把 L1/L2 跑透(覆盖 80% 真实场景),H 线做 L3 时一次性把
-"renderer 侧插件执行"与"backend 侧插件执行"两个沙箱一起落地。
+本节初版把 webview 与 H 线(backend 子进程 ext host)绑成同一波
+("同一波安全面加固的产物")。**2026-08-09 拍板推翻这个绑定**:两者是
+独立的隔离面 —— webview 的插件**逻辑代码仍在 main 进程**(与描述树同一
+执行模型),iframe 内只有插件目录的静态 HTML/JS,隔离靠独立 origin +
+CSP + postMessage-only,与插件代码跑在哪个进程无关;真正的技术前置只有
+R1 软隔离(已完成)。绑定是排期偏好,不是依赖。
+
+修订后顺序:R5.x 跑透 L1 ✓ → B 期 L2 → **C 期 webview 单独落地**
+(清单见 rollout 文档 §6.2),backend ext host 留在 H 线终局。
 
 ---
 
