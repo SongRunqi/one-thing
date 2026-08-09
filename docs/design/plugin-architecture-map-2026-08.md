@@ -32,7 +32,8 @@
 | 斜杠命令 | ✅ | `api.registerCommand`(须同步 core 注册表) |
 | **系统提示注入** | ✅ **(用户以为没有)** | `prompt-context providers` —— builder 每次组装收插件贡献(`prompts/builder.ts` 的 `collectPluginPromptContext`) |
 | 事件订阅 | ✅ | `api.on`(会话/流/步骤事件 + 插件自定义事件) |
-| 生命周期钩子 | ✅ | `beforeContextCompact` 等 |
+| 生命周期钩子(观察型) | ✅ | 仅 2 个:`beforeContextCompact` / `afterAssistantResponse` —— 带全上下文的**通知点**,返回值被忽略,不能拦不能改;5s 预算+熔断 |
+| **拦截钩子(干预型)** | ⏸ | 内联关键路径,风险另一等级 —— 按点解冻,候选序:`beforeSend`(改写待发消息)→ `beforeToolCall`(审改参数)→ `beforeProviderRequest`;每点单独设计预算/超时回退(=当没改)/次序/幂等 |
 | 技能根 | ✅ | `api.registerSkillRoot` |
 | 调度器 | ✅ | `api.scheduler`(定时任务) |
 | 变量系统 | ⏸ | 变量是运行时状态面板;插件写变量 = 污染模型上下文的口子,等真实需求 |
