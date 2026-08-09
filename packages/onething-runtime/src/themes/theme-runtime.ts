@@ -57,7 +57,16 @@ export class OnethingThemeRuntime {
     }
   }
 
-  async applyTheme(themeId: string, mode: 'dark' | 'light'): Promise<ApplyThemeResponse> {
+  /**
+   * @param tokenOverrides 已裁决完的 token → 颜色字面量覆盖。宿主(装配层持有
+   *   插件清单)把它当**参数**递进来 —— 而不是拿到响应再往 cssVariables 上叠,
+   *   那样只有原始变量会变色,派生层留在旧色上。
+   */
+  async applyTheme(
+    themeId: string,
+    mode: 'dark' | 'light',
+    tokenOverrides?: Record<string, string>
+  ): Promise<ApplyThemeResponse> {
     try {
       await this.initialize()
       const debugCallback = (data: ThemeDebugData) => {
@@ -71,7 +80,7 @@ export class OnethingThemeRuntime {
           )
         } catch { /* silent — debug writes must never crash theme loading */ }
       }
-      return { success: true, cssVariables: applyTheme(themeId, mode, debugCallback) }
+      return { success: true, cssVariables: applyTheme(themeId, mode, debugCallback, tokenOverrides) }
     } catch (error) {
       return { success: false, error: errorMessage(error) }
     }

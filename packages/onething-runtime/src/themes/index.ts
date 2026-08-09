@@ -14,7 +14,7 @@ import {
   resolveThemeHighlights,
   resolveThemeUI,
 } from './resolver.js'
-import { generateCSSVariables } from './css-mapper.js'
+import { CSS_VAR_MAP, generateCSSVariables } from './css-mapper.js'
 import { parseBase46Lua, convertBase46ToTheme } from './base46-parser.js'
 import type { ThemeDebugData } from './theme-debug.js'
 
@@ -315,12 +315,36 @@ export function getThemeBackgroundColor(
 }
 
 /**
+ * token 覆盖的键白名单 = `CSS_VAR_MAP` 本身(主题系统认得的 token 全集)。
+ *
+ * 这是**主题系统自己的门**:谁调 `applyTheme` 都塞不进一个主题不认识的键,
+ * 也塞不进空值。不另抄一份白名单 —— 抄一份就一定会漂移。
+ */
+export function sanitizeThemeTokenOverrides(
+  tokenOverrides?: Record<string, string>
+): Record<string, string> | undefined {
+  if (!tokenOverrides) return undefined
+  const sanitized: Record<string, string> = {}
+  for (const [token, value] of Object.entries(tokenOverrides)) {
+    if (!Object.prototype.hasOwnProperty.call(CSS_VAR_MAP, token)) continue
+    if (typeof value !== 'string' || !value.trim()) continue
+    sanitized[token] = value
+  }
+  return Object.keys(sanitized).length ? sanitized : undefined
+}
+
+/**
  * Apply a theme and get CSS variables
+ *
+ * `tokenOverrides` 是**参数**,不是事后叠加:它在 `resolveThemeUI` /
+ * `generateCSSVariables` 之前落位,ui 语义层、-rgb 变体、primary 色阶都按
+ * 覆盖色重新派生。主题系统不知道覆盖是谁给的(插件在装配层,产品层不认识它)。
  */
 export function applyTheme(
   themeId: string,
   mode: 'dark' | 'light',
-  onDebug?: (data: ThemeDebugData) => void
+  onDebug?: (data: ThemeDebugData) => void,
+  tokenOverrides?: Record<string, string>
 ): Record<string, string> {
   const theme = getTheme(themeId)
   if (!theme) {
@@ -329,10 +353,10 @@ export function applyTheme(
     if (!defaultTheme) {
       throw new Error(`Default theme ${DEFAULT_THEME_ID} not found`)
     }
-    return applyThemeInternal(defaultTheme, mode, DEFAULT_THEME_ID, onDebug)
+    return applyThemeInternal(defaultTheme, mode, DEFAULT_THEME_ID, onDebug, tokenOverrides)
   }
 
-  return applyThemeInternal(theme, mode, themeId, onDebug)
+  return applyThemeInternal(theme, mode, themeId, onDebug, tokenOverrides)
 }
 
 /**
@@ -342,10 +366,11 @@ function applyThemeInternal(
   theme: Theme,
   mode: 'dark' | 'light',
   themeId: string,
-  onDebug?: (data: ThemeDebugData) => void
+  onDebug?: (data: ThemeDebugData) => void,
+  tokenOverrides?: Record<string, string>
 ): Record<string, string> {
-  // Resolve all color references
-  const resolvedColors = resolveTheme(theme, mode)
+  // Resolve all color references（token 覆盖在语义派生之前落位，见 resolveTheme）
+  const resolvedColors = resolveTheme(theme, mode, sanitizeThemeTokenOverrides(tokenOverrides))
   const resolvedUI = resolveThemeUI(theme, mode, resolvedColors)
   const resolvedHighlights = resolveThemeHighlights(
     theme,

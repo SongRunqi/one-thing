@@ -193,8 +193,13 @@ api.storage.message(sessionId, messageId).exists()
 - **一个插件最多 32 条**;超了是形状错,插件进 error 态。
 - **覆盖是全局的**。两个插件覆盖同一个 token 时,按 pluginId 字典序**后者胜**;
   被压的那条在卡片上标 `theme "<token>" overridden by "<pluginId>"`。
-- 覆盖叠在**用户当前主题之上**,主题切换时保留;停用/卸载即刻撤除,
-  `:root` 回到主题原值。
+- 覆盖是**参数,不是贴纸**:它在主题算色之前落位,所以 `--ui-*` 语义层、
+  `-rgb` 变体、primary 色阶(hover/bg/border/text)会一起按你的颜色重算 ——
+  覆盖一个 `primary` 就能把界面真的换个色系,不必逐条列几十个 token。
+  同理:覆盖只写 `primary` 时,`accent`/`accentMain` 跟随它(与主题作者写
+  `primary` 时同规);想让强调色跟主色分开,就把 `accent` 也显式写出来。
+- 覆盖跟着**用户当前主题**每次重算,主题/明暗切换时保留;停用/卸载即刻撤除,
+  `:root` 逐字回到主题原值。
 - 装前确认页会写 `overrides theme colors (<token 清单>)` —— 用户在装之前就知道
   你要动他的配色。
 

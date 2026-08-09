@@ -9,7 +9,7 @@ import {
   type ElectronThemeMode,
 } from '@onething/electron-host/ipc/themes'
 import { defaultOnethingThemeRuntime } from '@onething/runtime/themes/theme-runtime'
-import { applyPluginThemeOverrides } from '@onething/app/plugins/theme-overrides.js'
+import { getPluginThemeOverrideTokenValues } from '@onething/app/plugins/theme-overrides.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 
 /**
@@ -40,14 +40,16 @@ export function registerThemeHandlers() {
       return defaultOnethingThemeRuntime.getTheme(themeId)
     },
     applyTheme: async (themeId: string, mode: ElectronThemeMode) => {
-      // 合成点(B 期,L2):主题产出 ⊕ 插件 `contributes.theme` 覆盖。
+      // 合成点(B 期,L2):插件 `contributes.theme` 覆盖以**参数**进入主题计算,
+      // 在 `resolveThemeUI` / `generateCSSVariables` **之前**落位 —— ui 语义层、
+      // -rgb 变体、primary 色阶都按覆盖色重新派生。
       //
-      // 放在**变量流出宿主之前**的最后一步 —— 主题系统本身(generateCSSVariables)
-      // 零改动,renderer 的 applyThemeVariables 也零改动:它只是消费下发的表。
+      // 旧做法是拿到响应再往 cssVariables 上 spread:只盖得住原始变量,而 renderer
+      // 上可见的 UI 绝大多数消费 `--ui-*`,真机上肉眼几乎无感(差异记录见
+      // docs/design/plugin-ui/plugin-ui-rollout-2026-08.md §6.1.1)。
+      // renderer 的 applyThemeVariables 仍然零改动:它只是消费下发的表。
       // 方案 A 口径:只有 desktop 这一个宿主做合成,server 只透传声明。
-      const response = await defaultOnethingThemeRuntime.applyTheme(themeId, mode)
-      if (!response.success || !response.cssVariables) return response
-      return { ...response, cssVariables: applyPluginThemeOverrides(response.cssVariables) }
+      return defaultOnethingThemeRuntime.applyTheme(themeId, mode, getPluginThemeOverrideTokenValues())
     },
     refreshThemes: (projectPath?: string) => {
       return defaultOnethingThemeRuntime.refreshThemes(projectPath)

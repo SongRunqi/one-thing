@@ -2,8 +2,12 @@
  * 插件主题 token 覆盖的**裁决层**(B 期,L2)。
  *
  * 住在产品层是因为它需要两样东西:core 的安全判据(颜色白名单)与主题的
- * token 表(`CSS_VAR_MAP`)。产品层 → 产品层是合法方向;主题模块本身零改动
- * (`generateCSSVariables` 一行没动),覆盖是叠在它**产出之上**的一层。
+ * token 表(`CSS_VAR_MAP`)。产品层 → 产品层是合法方向;主题模块**不认识插件**,
+ * 只收一张 token → 颜色的表当参数(`applyTheme(…, tokenOverrides)`)。
+ *
+ * 合成点在主题计算**之内**(`resolveThemeUI` / `generateCSSVariables` 之前),
+ * 不在它产出之后 —— 后者只能盖住原始变量,而 renderer 上可见的 UI 绝大多数
+ * 消费的是从 resolvedColors 派生出来的 `--ui-*` / `-rgb` / 色阶变量。
  *
  * 这里只做纯函数裁决,不碰插件管理器、不碰宿主 IPC:
  *  - 键必须 ∈ `CSS_VAR_MAP` 的键集合(**白名单就是这张表本身**,不另抄一份 ——
@@ -52,7 +56,19 @@ export interface PluginThemeOverrideInput {
 export interface PluginThemeOverrideResolution {
   /** 逐插件的裁决结果(键 = pluginId,顺序即声明顺序)。 */
   byPlugin: Map<string, PluginThemeOverrideEntry[]>
-  /** 合成后的 CSS 变量表:token 经 `CSS_VAR_MAP` 展开后的变量名 → 值。 */
+  /**
+   * 裁决后"谁生效"的扁平表:**主题 token 路径** → 颜色字面量。
+   *
+   * 这是喂给主题计算的那一份 —— 它在 `resolveThemeUI` / `generateCSSVariables`
+   * 之前落位,所以 ui 语义层、-rgb 变体、primary 色阶都按覆盖色重新派生。
+   */
+  tokenValues: Record<string, string>
+  /**
+   * `tokenValues` 经 `CSS_VAR_MAP` 展开后的**原始**变量名 → 值。
+   *
+   * 只是"这条覆盖会写到哪些变量上"的说明性投影(设置页明细)。**不要**拿它去
+   * 叠主题产出:那样只有这些原始变量会变色,派生层会整片留在旧色上。
+   */
   cssVariables: Record<string, string>
 }
 
@@ -108,7 +124,7 @@ export function resolvePluginThemeOverrides(
     byPlugin.set(input.pluginId, entries)
   }
 
-  return { byPlugin, cssVariables: expandThemeTokens(resolvedTokens) }
+  return { byPlugin, tokenValues: resolvedTokens, cssVariables: expandThemeTokens(resolvedTokens) }
 }
 
 /**
@@ -125,18 +141,4 @@ function expandThemeTokens(tokens: Record<string, string>): Record<string, strin
     }
   }
   return result
-}
-
-/**
- * 合成:主题产出 ⊕ 插件覆盖。
- *
- * 覆盖永远叠在**当前主题产出之上** —— 于是主题切换时覆盖天然保留
- * (新主题产出一张新表,这一层照样往上叠),不需要任何"记住覆盖"的状态。
- */
-export function composeThemeVariablesWithPluginOverrides(
-  themeVariables: Record<string, string>,
-  overrideVariables: Record<string, string>,
-): Record<string, string> {
-  if (!Object.keys(overrideVariables).length) return themeVariables
-  return { ...themeVariables, ...overrideVariables }
 }

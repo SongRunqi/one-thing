@@ -9,8 +9,12 @@
  *     加载期错误。
  *  3. **冲突顺序确定性** —— 多插件覆盖同一 token 按全局规范顺序后者胜,
  *     输入顺序不影响结果。
- *  4. **拆除双面** —— 停用/卸载后覆盖从合成表里消失,`:root` 回到主题原值。
- *  5. **主题切换保留覆盖** —— 覆盖叠在"当前主题产出"之上,换一张产出照样叠。
+ *  4. **拆除双面** —— 停用/卸载后覆盖从表里消失,整张 `:root` 逐字回到主题原值
+ *     (派生层也要一起退,不能留下半新半旧的一张表)。
+ *  5. **主题切换保留覆盖** —— 覆盖是每次算主题都递进去的**参数**,不是记住的状态。
+ *  6. **合成点在主题计算之内** —— 覆盖当参数进 `applyTheme`,在 `resolveThemeUI` /
+ *     `generateCSSVariables` 之前落位;三层(原始 / ui 语义 / -rgb)一起变色。
+ *     曾经是拿到响应再往 cssVariables 上 spread,只盖得住原始变量。
  */
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -22,12 +26,12 @@ import {
   validatePluginContributes,
 } from '@onething/core/plugins'
 import {
-  composeThemeVariablesWithPluginOverrides,
   isPluginThemeOverrideToken,
   resolvePluginThemeOverrides,
 } from '../../../plugins/theme-overrides.js'
 import { projectOnethingPluginsForRenderer } from '../../../plugins/plugin-list.js'
 import { CSS_VAR_MAP } from '../../../themes/css-mapper.js'
+import { applyTheme, initializeThemes } from '../../../themes/index.js'
 
 /**
  * 装配层只从插件管理器的**内存清单**读声明,所以这里把管理器换成一个假的
@@ -37,7 +41,14 @@ const managedPlugins: Array<{ definition: { id: string; enabled: boolean; manife
 vi.mock('../manager.js', () => ({
   getPluginManager: () => (managedPlugins.length ? { getPlugins: () => managedPlugins } : null),
 }))
-const { applyPluginThemeOverrides } = await import('../theme-overrides.js')
+const { getPluginThemeOverrideTokenValues } = await import('../theme-overrides.js')
+
+initializeThemes()
+
+/** 宿主链路的一次完整走位:插件清单 → 裁决 → 作为参数进入主题计算。 */
+function applyThemeWithPlugins(mode: 'dark' | 'light' = 'dark') {
+  return applyTheme('flexoki', mode, undefined, getPluginThemeOverrideTokenValues())
+}
 
 // ── 1. 颜色字面量白名单(安全面) ─────────────────
 
@@ -236,42 +247,36 @@ describe('teardown', () => {
     expect(zDisabled.cssVariables['--color-primary']).toBe('#aaaaaa')
   })
 
-  it('拆除快照:卸载(清单里没有了)后合成表回到主题原值', () => {
-    const themeOutput = { '--color-primary': '#000000', '--bg-app': '#101010' }
-    const withPlugin = composeThemeVariablesWithPluginOverrides(
-      themeOutput,
-      resolvePluginThemeOverrides([
-        { pluginId: 'brand', enabled: true, overrides: { primary: '#ff0000' } },
-      ]).cssVariables,
-    )
-    expect(withPlugin['--color-primary']).toBe('#ff0000')
+  it('拆除快照:卸载(清单里没有了)后整张表逐字回到主题原值', () => {
+    const pristine = applyTheme('flexoki', 'dark')
 
-    const afterUninstall = composeThemeVariablesWithPluginOverrides(
-      themeOutput,
-      resolvePluginThemeOverrides([]).cssVariables,
-    )
-    expect(afterUninstall).toEqual(themeOutput)
-    // 合成不改主题产出本身(它会被复用)。
-    expect(themeOutput['--color-primary']).toBe('#000000')
+    const withPlugin = applyTheme('flexoki', 'dark', undefined, resolvePluginThemeOverrides([
+      { pluginId: 'brand', enabled: true, overrides: { primary: '#ff4d00' } },
+    ]).tokenValues)
+    expect(withPlugin['--color-primary']).toBe('#ff4d00')
+
+    // 派生层也必须一起退回 —— 只退原始变量就会留下一张半新半旧的表。
+    const afterUninstall = applyTheme('flexoki', 'dark', undefined,
+      resolvePluginThemeOverrides([]).tokenValues)
+    expect(afterUninstall).toEqual(pristine)
   })
 })
 
 // ── 6. 主题切换保留覆盖 ──────────────────────────
 
 describe('theme switching', () => {
-  it('覆盖叠在"当前主题产出"之上 —— 换主题照样叠,不需要记住任何状态', () => {
-    const { cssVariables } = resolvePluginThemeOverrides([
-      { pluginId: 'brand', enabled: true, overrides: { primary: '#ff0000' } },
+  it('覆盖是每次算主题都递进去的参数 —— 换模式照样生效,不需要记住任何状态', () => {
+    const { tokenValues } = resolvePluginThemeOverrides([
+      { pluginId: 'brand', enabled: true, overrides: { primary: '#ff4d00' } },
     ])
-    const dark = composeThemeVariablesWithPluginOverrides(
-      { '--color-primary': '#111111', '--bg-app': '#000000' }, cssVariables)
-    const light = composeThemeVariablesWithPluginOverrides(
-      { '--color-primary': '#eeeeee', '--bg-app': '#ffffff' }, cssVariables)
-    expect(dark['--color-primary']).toBe('#ff0000')
-    expect(light['--color-primary']).toBe('#ff0000')
-    // 没被覆盖的 token 仍跟随主题。
-    expect(dark['--bg-app']).toBe('#000000')
-    expect(light['--bg-app']).toBe('#ffffff')
+    const dark = applyTheme('flexoki', 'dark', undefined, tokenValues)
+    const light = applyTheme('flexoki', 'light', undefined, tokenValues)
+    expect(dark['--color-primary']).toBe('#ff4d00')
+    expect(light['--color-primary']).toBe('#ff4d00')
+    // 没被覆盖的 token 仍跟随主题(明暗两套背景不会因为覆盖而合流)。
+    expect(dark['--bg-app']).not.toBe(light['--bg-app'])
+    // 派生层跟着模式各自重算 —— 覆盖不是一张贴上去的静态表。
+    expect(dark['--color-primary-bg']).not.toBe(light['--color-primary-bg'])
   })
 })
 
@@ -302,23 +307,34 @@ describe('renderer projection', () => {
 // ── 8. 装配层:宿主合成链路 ──────────────────────
 
 describe('host composition', () => {
-  it('插件系统没起来 = 主题变量原样流出(不抛,也不复制一份)', () => {
+  it('插件系统没起来 = 空覆盖表(不抛),主题产出与没有插件时逐字相同', () => {
     managedPlugins.length = 0
-    const themeOutput = { '--color-primary': '#000000' }
-    expect(applyPluginThemeOverrides(themeOutput)).toBe(themeOutput)
+    expect(getPluginThemeOverrideTokenValues()).toEqual({})
+    expect(applyThemeWithPlugins()).toEqual(applyTheme('flexoki', 'dark'))
   })
 
-  it('启用的插件覆盖叠上;停用后下一次下发就回到主题原值(拆除快照)', () => {
-    const themeOutput = { '--color-primary': '#000000', '--bg-app': '#101010' }
+  it('宿主递的是 token 表(不是变量表):派生层因此吃得到覆盖色', () => {
+    const pristine = applyTheme('flexoki', 'dark')
 
     managedPlugins.length = 0
-    managedPlugins.push(makeListItem('brand', true, { primary: '#ff0000' }))
-    const applied = applyPluginThemeOverrides(themeOutput)
-    expect(applied['--color-primary']).toBe('#ff0000')
-    expect(applied['--bg-app']).toBe('#101010')
+    managedPlugins.push(makeListItem('brand', true, { primary: '#ff4d00', accent: '#ff8800' }))
+    expect(getPluginThemeOverrideTokenValues()).toEqual({ primary: '#ff4d00', accent: '#ff8800' })
 
+    const applied = applyThemeWithPlugins()
+    // 原始变量。
+    expect(applied['--color-primary']).toBe('#ff4d00')
+    // ui 语义层 —— renderer 上可见的 UI 绝大多数消费这一族。
+    expect(applied['--ui-action-primary-bg']).toBe('#ff4d00')
+    expect(applied['--ui-action-primary-bg']).not.toBe(pristine['--ui-action-primary-bg'])
+    // -rgb 变体。
+    expect(applied['--color-primary-rgb']).toBe('255, 77, 0')
+    // 没被覆盖的 token 仍跟随主题。
+    expect(applied['--bg-app']).toBe(pristine['--bg-app'])
+
+    // 停用后下一次下发整张表回到主题原值(拆除快照)。
     managedPlugins[0].definition.enabled = false
-    expect(applyPluginThemeOverrides(themeOutput)).toEqual(themeOutput)
+    expect(getPluginThemeOverrideTokenValues()).toEqual({})
+    expect(applyThemeWithPlugins()).toEqual(pristine)
   })
 })
 

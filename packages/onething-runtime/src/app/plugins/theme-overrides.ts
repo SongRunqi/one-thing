@@ -21,13 +21,19 @@ import {
 } from '@onething/runtime/plugins/theme-overrides'
 
 export interface PluginThemeOverrideTable {
-  /** 可直接叠在主题产出上的 CSS 变量表(已按规范顺序裁决完冲突)。 */
+  /** 喂给主题计算的那一份:主题 token 路径 → 颜色字面量(已裁决完冲突)。 */
+  tokenValues: Record<string, string>
+  /** token 展开成原始 CSS 变量名后的说明性投影(设置页明细用,别拿去叠产出)。 */
   cssVariables: Record<string, string>
   /** 逐插件裁决明细(设置页卡片用)。 */
   byPlugin: Map<string, PluginThemeOverrideEntry[]>
 }
 
-const EMPTY_TABLE: PluginThemeOverrideTable = { cssVariables: {}, byPlugin: new Map() }
+const EMPTY_TABLE: PluginThemeOverrideTable = {
+  tokenValues: {},
+  cssVariables: {},
+  byPlugin: new Map(),
+}
 
 /**
  * 从插件管理器读取覆盖声明。
@@ -54,16 +60,17 @@ export function getPluginThemeOverrideTable(): PluginThemeOverrideTable {
 }
 
 /**
- * 主题产出 ⊕ 插件覆盖 —— 宿主把主题变量发给 renderer 之前的最后一步。
+ * 宿主算主题时要递进去的那张覆盖表 —— **参数**,不是事后叠加。
  *
- * 覆盖叠在"当前主题产出"之上,所以主题切换时天然保留(新主题算出新表,
- * 这一层照样往上叠),不需要任何额外状态。停用/卸载后表里就没有这条了,
- * 下一次下发 `:root` 自动回到主题原值 —— 这就是拆除语义。
+ * 递进 `applyTheme(themeId, mode, tokenValues)`,覆盖就在 `resolveThemeUI` /
+ * `generateCSSVariables` 之前落位,ui 语义层、-rgb 变体、primary 色阶全部按
+ * 覆盖色重新派生。曾经的做法是拿到响应再往 cssVariables 上 spread —— 那只盖得住
+ * 原始变量,派生层整片留在旧色上,真机上肉眼几乎无感。
+ *
+ * 主题切换天然保留:每次算主题都重新问一次这张表,不需要任何"记住覆盖"的状态。
+ * 停用/卸载后表里就没有这条了,下一次下发 `:root` 自动回到主题原值 —— 这就是
+ * 拆除语义。
  */
-export function applyPluginThemeOverrides(
-  themeVariables: Record<string, string>,
-): Record<string, string> {
-  const { cssVariables } = getPluginThemeOverrideTable()
-  if (!Object.keys(cssVariables).length) return themeVariables
-  return { ...themeVariables, ...cssVariables }
+export function getPluginThemeOverrideTokenValues(): Record<string, string> {
+  return getPluginThemeOverrideTable().tokenValues
 }

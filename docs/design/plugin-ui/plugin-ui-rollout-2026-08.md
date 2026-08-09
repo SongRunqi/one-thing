@@ -227,11 +227,11 @@ H 线  webview 逃生舱(L3,与 backend 子进程 ext host 同批)
 | 键白名单 + 冲突裁决 + token→CSS 变量展开 | `packages/onething-runtime/src/plugins/theme-overrides.ts`(产品层,吃 `CSS_VAR_MAP` 本体) |
 | 清单投影(逐条裁决可见) | `packages/onething-runtime/src/plugins/plugin-list.ts` |
 | 装配接线(从插件管理器收集) | `packages/onething-runtime/src/app/plugins/theme-overrides.ts` |
-| 宿主合成 | `apps/electron/src/main/ipc/themes.ts` 的 `applyTheme` 响应侧 |
+| 合成点(覆盖进主题计算) | `packages/onething-runtime/src/themes/{index,resolver}.ts` 的 `tokenOverrides` 参数 |
+| 宿主接线 | `apps/electron/src/main/ipc/themes.ts` 把 `getPluginThemeOverrideTokenValues()` 当参数递进 `applyTheme` |
 | 重推 | `packages/renderer/stores/themes.ts` 监听 `onething:plugins-changed` |
 
-`packages/onething-runtime/src/themes/*` 与 renderer 的 `applyThemeVariables`
-**一行未改** —— 覆盖是叠在主题产出之上的一层,不是主题系统的功能。
+renderer 的 `applyThemeVariables` **一行未改** —— 它只消费下发的表。
 
 与 §6.1 的逐条差异:
 
@@ -265,6 +265,25 @@ H 线  webview 逃生舱(L3,与 backend 子进程 ext host 同批)
    **内容**用 `<Transition mode="out-in">`(只做透明度)。不做位移:描述树
    内容高度不可预知,位移会把整块面板抖起来。`progress` indeterminate 的宿主
    动画 R5.x-b 已带,本期核对无需补。
+8. **合成点从 IPC 响应侧前移到主题计算之内(2026-08-09 真机走查发现)。**
+   初版按"主题模块零改动"的口径,把覆盖 spread 在 `applyTheme` 返回的
+   `cssVariables` 上。真机上装了 `{ primary, accent }` 的品牌插件后界面几乎看不出
+   变化 —— 因为覆盖表只展开了 `CSS_VAR_MAP` 列出的**原始变量**,而:
+   `resolveThemeUI` 派生的整个 `--ui-*` 语义层、`generateCSSVariables` 现算的
+   `-rgb` 三元组、`applyThemeColorSemantics` 现算的 primary 色阶,全部在**生成期**
+   从 `resolvedColors` 派生;renderer 上可见的 UI 消费 `--ui-accent*` 一族 526 处、
+   消费原始 `--accent`/`--color-primary` 仅约 50 处。事后盖原始变量 = 派生层整片
+   留在旧色上,实测只有 3 条变量会变。
+   改法:覆盖以**参数**(`tokenOverrides`)递进 `applyTheme` → `resolveTheme`,
+   分三处落位 —— ① 顶层(无点)token 先进 `defs`/flat 表,主题里按名字引用的取值
+   (`bg.btn.primary: "accent"`)才跟着走;② 语义派生前写进 `resolvedColors`,
+   色阶/ui 层/-rgb 全部按覆盖色重算;③ 语义派生后再写一次,保证"声明什么、
+   `:root` 上就是什么"(内部加工如 danger 向红偏移不得改写出口值)。
+   同一组覆盖实测变色变量 3 → 38(其中 `--ui-*` 20 条)。
+   产品层 themes **仍不认识插件**:它只收一张 token → 颜色字面量的表。
+   宿主侧的事后 spread(`applyPluginThemeOverrides` / `composeThemeVariables-
+   WithPluginOverrides`)一并删除 —— 留着会形成"原始变量来自覆盖、派生变量来自
+   重派生"的双源。方案 A 口径不变:server 不消费,不传该参数。
 
 ### 6.2 C 期落地清单(L3 webview,配方展开见表达力文档 §4)
 

@@ -847,11 +847,15 @@ export function resolveThemeColorScaleDiagnostics(
  * Resolve all colors in a theme for a specific mode
  * @param theme - The theme to resolve
  * @param mode - "dark" or "light"
+ * @param tokenOverrides - 已过白名单的 token → 颜色字面量覆盖(见
+ *   `applyThemeTokenOverrides`)。主题系统对"谁给的覆盖"无知,只知道它比主题
+ *   自身的取值更靠后。
  * @returns Flat map of theme property path -> resolved color string
  */
 export function resolveTheme(
   theme: Theme,
-  mode: 'dark' | 'light'
+  mode: 'dark' | 'light',
+  tokenOverrides?: Record<string, string>
 ): Record<string, string> {
   const resolved: Record<string, string> = {}
   const resolvedMap = new Map<string, ResolvedColorValue>()
@@ -859,6 +863,14 @@ export function resolveTheme(
 
   // Flatten the theme colors to dot-notation
   const flatColors = flattenObject(theme.theme as unknown as Record<string, any>)
+
+  // 顶层 token(primary / accent / accentMain / …)同时是主题里的**引用名**:
+  // `bg.btn.primary: "accent"` 这类取值靠名字查表。所以顶层覆盖要先进 defs 与
+  // flat 表,引用才跟着覆盖走 —— 只写解析结果的话,主按钮之类"按名字引用"的
+  // 表面会整片留在旧色上。带点的 token 不是引用名,留到语义派生前再落位。
+  const rootOverrides = pickRootThemeTokenOverrides(tokenOverrides)
+  seedThemeTokenOverrides(defs, flatColors, rootOverrides)
+
   const explicitPrimary = flatColors.primary
   if (
     explicitPrimary !== undefined &&
@@ -870,6 +882,10 @@ export function resolveTheme(
     flatColors.accent = explicitPrimary
     flatColors.accentMain = explicitPrimary
   }
+
+  // primary 的传播(上一段)会把 accent / accentMain 一起带走 —— 那是主题作者
+  // 写 primary 时的既有语义,但不能把**显式声明过**的覆盖顶掉:声明是终局。
+  seedThemeTokenOverrides(defs, flatColors, rootOverrides)
 
   // Resolve each color
   for (const [path, value] of Object.entries(flatColors)) {
@@ -898,9 +914,75 @@ export function resolveTheme(
     resolved['accentLight'] = resolved['accentSub'] || resolved['accent'] || '#4385BE'
   }
 
+  // token 覆盖必须落在**语义派生之前**:primary 色阶、状态色、neutral 语义
+  // 全部由 `applyThemeColorSemantics` 从这张表现算,ui 语义层(`resolveThemeUI`)
+  // 与 -rgb 变体(`generateCSSVariables`)又从算完的表里派生。覆盖若落在这条链
+  // **之后**,只有原始变量会变色,派生层整片留在旧色上 —— 那正是真机走查里
+  // "装了品牌色插件却几乎看不出变化"的病根。
+  applyThemeTokenOverrides(resolved, tokenOverrides)
+
   applyThemeColorSemantics(resolved, mode)
 
+  // 语义层会把声明值再加工(如 danger 向红偏移、primary 回填 accent)。
+  // **派生用加工值,出口用声明值** —— "声明什么、:root 上就是什么"是对外承诺,
+  // 不能被内部加工改写。
+  applyThemeTokenOverrides(resolved, tokenOverrides)
+
   return resolved
+}
+
+/** 顶层(无点)token —— 它们同时是主题里可被引用的名字。 */
+function pickRootThemeTokenOverrides(
+  tokenOverrides: Record<string, string> | undefined
+): Record<string, string> | undefined {
+  if (!tokenOverrides) return undefined
+  const root: Record<string, string> = {}
+  for (const [token, value] of Object.entries(tokenOverrides)) {
+    if (!token.includes('.')) root[token] = value
+  }
+  return Object.keys(root).length ? root : undefined
+}
+
+/** 顶层覆盖同时写进 defs(引用名)与 flat 表(自身取值)。 */
+function seedThemeTokenOverrides(
+  defs: ThemeDefs,
+  flatColors: Record<string, any>,
+  rootOverrides: Record<string, string> | undefined
+): void {
+  if (!rootOverrides) return
+  for (const [token, value] of Object.entries(rootOverrides)) {
+    defs[token] = value
+    flatColors[token] = value
+  }
+}
+
+/**
+ * 把 token 覆盖写进解析表。
+ *
+ * 值按**颜色字面量**直写,不过 `resolveColorValue` —— 覆盖不是主题作者写的引用,
+ * `red` 就该是红色,不能被当成 defs 里的一个名字去查表。键白名单不在这里判:
+ * 调用方(`applyTheme`)已用 `CSS_VAR_MAP` 筛过,这里再抄一份表就一定会漂移。
+ */
+function applyThemeTokenOverrides(
+  resolved: Record<string, string>,
+  tokenOverrides: Record<string, string> | undefined
+): void {
+  if (!tokenOverrides) return
+
+  for (const [token, value] of Object.entries(tokenOverrides)) {
+    resolved[token] = value
+  }
+
+  // `accentRgb` 是主题**手写**的三元组,不会跟着 accent 变。accent 被覆盖成一个
+  // 六位 hex、而 accentRgb 自己没被覆盖时,让出手写值,交给 css-mapper 从新的
+  // accent 现算 —— 否则 `rgba(var(--accent-rgb), …)` 一族会整片留在旧色上。
+  if (
+    typeof tokenOverrides.accent === 'string' &&
+    tokenOverrides.accentRgb === undefined &&
+    /^#[0-9a-f]{6}$/i.test(tokenOverrides.accent)
+  ) {
+    delete resolved.accentRgb
+  }
 }
 
 function isSemanticHighlightToken(value: string): value is SemanticHighlightToken {

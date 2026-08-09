@@ -179,8 +179,12 @@ Notes:
     existing `CSS_VAR_MAP` token paths, values must pass a color-literal whitelist;
     illegal entries are dropped and shown in the catalog projection, never a load
     error; conflicts resolve by canonical order (pluginId lexicographic) last-wins;
-    composed onto the theme output in `apps/electron/src/main/ipc/themes.ts`, desktop
-    only — the theme system itself is untouched),
+    the resolved token table is passed as a **parameter** into `applyTheme` from
+    `apps/electron/src/main/ipc/themes.ts` (desktop only) and lands *inside* the
+    theme computation — before `resolveThemeUI` / `generateCSSVariables`, so the
+    `--ui-*` layer, `-rgb` variants and the primary color scale all re-derive from
+    the override. Never spread it onto the finished `cssVariables`: that only covers
+    the raw vars and leaves the derived layers on the old colors),
     its own settings schema (`contributes.settings.schema`, JSON Schema
     subset, host renders and validates it), a unified request channel
     (`api.registerRequestHandler`; requestId is in use, while abort/progress are wired
