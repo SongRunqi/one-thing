@@ -376,6 +376,13 @@ function confettiStyle(i: number) {
   transition: all var(--duration-slow) var(--ease-default);
 }
 
+/* 波 3 判定:硬编码的金红渐变**保留**,不迁主题 token,也不需要 `ui-gate-allow`
+   注释 —— 现行 10 条行级规则里没有一条命中这两行(`ui:check` 实测 ui-hex-fallback
+   与 shadow-literal-floating 皆为 0),所以它本来就不是红的。
+   理由:节日主题的整块表达就是"春节的金",它刻意**不跟随**用户选的配色 —— 同一对
+   金色 rgba(251,191,36) / rgba(245,158,11) 在本文件另有 8 处非 hover 的用法
+   (243–263、355–357 行:卡片静息底、边、光晕),只把 hover 一处换成 accent 会让
+   它与自己的画面脱节。它不是"忘了用 token",是主题之外的一张画。 */
 .suggestion-card:hover {
   transform: translateY(-4px);
   background: linear-gradient(135deg, rgba(251, 191, 36, 0.5), rgba(245, 158, 11, 0.3));

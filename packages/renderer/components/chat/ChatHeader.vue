@@ -224,8 +224,14 @@ defineEmits<{
   color: var(--ui-text-muted-fg);
 }
 
+/* 危险动作的 hover 底走语义档 `--ui-action-danger-hover-bg`(= danger 20% 掺面色),
+   而不是写死的 Tailwind red-500 15% —— 那个字面值不跟主题走,在纸墨/浅色主题上是
+   一块与全窗无关的塑料红(字那一行早就在用 `--ui-status-danger-fg` 了,底却没跟上)。
+   实测:换成 token 后 ΔRGB 中位 18.3,正是"从不跟主题"到"跟主题"的那段差;它与
+   中性 hover 底分得开(中位 34,最小 19),与 chat 面分得开(中位 31,最小 18)。
+   备选 `--ui-status-danger-bg` 是徽标底,实测差 172.8 —— 完全另一档,不是这里要的。 */
 .chat-header-btn.close-btn:hover {
-  background: rgba(239, 68, 68, 0.15);
+  background: var(--ui-action-danger-hover-bg);
   color: var(--ui-status-danger-fg);
 }
 

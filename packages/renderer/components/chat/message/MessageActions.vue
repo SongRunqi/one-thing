@@ -852,8 +852,15 @@ onUnmounted(disarmRegenerate)
   position: relative;
 }
 
+/* 底走 G6 的「叠 accent 淡底」档 —— 配方就是 accent 10%,与这里原来手写的百分比
+   逐字相同;字仍是 accent 本色,两个通道各自独立。
+   如实记:token 是以 panel 面解析出的**实色**,而原来的 10% 是半透明叠在 chat
+   面上,18 主题实测 ΔRGB 中位 11.2,hover 底相对 chat 面的可见度从中位 10.9 升到
+   30 —— 不是配方变了,是 `--ui-state-*` 全族"一窗一值、以 panel 为基"的固有性质。
+   同一条消息旁边的 ChatHeader / composer 按钮早就在 chat 面上画 panel 解析的
+   `--ui-state-hover-bg`,迁过来是让操作条回到邻居的同一套解析,不是新造观感。 */
 .action-btn:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  background: var(--ui-state-hover-accent-bg);
   color: var(--ui-accent-primary-fg);
 }
 
@@ -941,8 +948,11 @@ onUnmounted(disarmRegenerate)
   color: var(--ui-accent-primary-fg);
 }
 
+/* 已表态的按钮 hover 要比普通按钮压得住:走同族的重档(配方 accent 16%,原手写
+   15%,ΔRGB 中位 12.2)。阶梯 18/18 主题实测仍单调 —— 重档离 chat 面的距离
+   (中位 41)始终大于淡档(中位 30)。 */
 .downvote-btn.downvoted:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 15%, transparent);
+  background: var(--ui-state-hover-accent-strong-bg);
 }
 
 /* Copy button success state - when showing check icon */
@@ -955,8 +965,9 @@ onUnmounted(disarmRegenerate)
   color: var(--ui-accent-primary-fg);
 }
 
+/* 同「已表态」的那一档(见上),同一枚 token —— 两处原本各写一次 15%。 */
 .speak-btn.speaking:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 15%, transparent);
+  background: var(--ui-state-hover-accent-strong-bg);
 }
 
 /* Branch button with count */
@@ -1019,6 +1030,12 @@ onUnmounted(disarmRegenerate)
   transition: background var(--duration-fast) var(--ease-default);
 }
 
+/* 三个菜单项 hover(branch-menu-item / branch-menu-new / more-menu-item)与
+   react-picker-item 暂不归位 `--ui-state-hover-*`:这几张面是 `:surface="false"`
+   的自绘玻璃面(`--ui-surface-floating-bg` + backdrop-filter),而统一态 token 以
+   **panel** 面解析成实色,18 主题实测 ΔRGB 中位 21.6(tokyo-night 35.9)、
+   react-picker 中位 27.5。面本身属于波 4「浮面皮肤收口(G1)」的同一批,面先归位
+   再迁 hover;现在单迁会在玻璃面上落一块按 panel 算的实色补丁。 */
 .branch-menu-item:hover {
   background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
 }

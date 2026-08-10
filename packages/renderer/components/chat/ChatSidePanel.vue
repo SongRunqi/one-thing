@@ -731,8 +731,11 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
+/* 中性 hover 底走统一档 —— 与波 1 的 SessionSegmentList 逐字同一条配方("灰墨
+   10%"),这里同样画在 panel 面上,所以是全波最干净的一处:18 主题实测 ΔRGB
+   中位 1.8 / 最大 5.2,可见度中位 9.9→9.0(等价),并额外拿到壁纸的 S 级覆写。 */
 .chat-side-usermsg-row:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent);
+  background: var(--ui-state-hover-bg);
 }
 
 .chat-side-usermsg-tick {

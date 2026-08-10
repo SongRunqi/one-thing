@@ -102,6 +102,10 @@
 	cursor: pointer;
 }
 
+/* 这条**不能**迁 `--ui-state-hover-bg`:标签的**静息**底(99 行)已经就是那枚 token,
+   hover 迁过去两态会变成同一个实色,hover 直接归零(现状相对静息 ΔRGB 中位 8.1)。
+   真正的归位要一枚"在 hover 底上再进一档"的通用档,`--ui-state-*` 族目前没有
+   (`--ui-state-active-bg` 是按下态,换档不是归位)。记为 token 族缺口。 */
 .collab-tag.is-live:hover {
 	border-color: var(--ui-text-muted-fg);
 	background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
@@ -178,6 +182,9 @@
 	cursor: pointer;
 }
 
+/* 这条**不能**迁统一 accent 档:`--md-mention-color` 是**每个提及各自的颜色**,由
+   collabInlineTags.ts:441 逐个 element.style.setProperty 打进来(同事色)。换成
+   全窗一枚 accent token 会把"谁被提及"这条信息抹平。accent 只是没解析到色时的兜底。 */
 .md-mention.is-live:hover {
 	background: color-mix(in srgb, var(--md-mention-color, var(--ui-accent-primary-fg)) 18%, transparent);
 }
@@ -225,9 +232,12 @@
 		box-shadow var(--duration-normal) var(--ease-default);
 }
 
+/* C2:同 MessageBubble 的两条 —— `--ui-content-media-hover-shadow` 在 variables.css
+   里明暗两套都有定义(577 行别名 → 575/1145),字面 rgba 兜底是死码,删掉后实色
+   ΔRGB = 0。下面那条 light 规则同样只留作层叠次序(压住 234 行的静息阴影)。 */
 .md-body img:hover {
 	transform: scale(1.02);
-	box-shadow: var(--ui-content-media-hover-shadow, 0 8px 24px rgba(0, 0, 0, 0.3));
+	box-shadow: var(--ui-content-media-hover-shadow);
 }
 
 html[data-theme="light"] .md-body img {
@@ -235,7 +245,7 @@ html[data-theme="light"] .md-body img {
 }
 
 html[data-theme="light"] .md-body img:hover {
-	box-shadow: var(--ui-content-media-hover-shadow, 0 8px 24px rgba(0, 0, 0, 0.15));
+	box-shadow: var(--ui-content-media-hover-shadow);
 }
 
 /* Table styles — grid (稿纸): full but whisper-faint grid, slightly darker

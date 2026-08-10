@@ -3060,6 +3060,11 @@ defineExpose({
   background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, var(--ui-state-hover-bg));
 }
 
+/* 底**不**迁 `--ui-state-hover-accent-strong-bg`(百分比正好也是 16):静息态
+   (3060 行)是"accent 10% 掺进 hover 底"的同族手写式,只迁 hover 那一半会把阶梯
+   拧反 —— 18 主题里有 7 个(after-rain-night/-rainbow、catppuccin-latte、
+   gruvbox-dark、nord、one-light、paper-ink)静息离 hover 底比 token 还远,hover
+   反而更浅。这一对要一起迁,而本波只动 hover。 */
 .voice-btn.needs-setup:hover {
   color: var(--ui-accent-primary-fg);
   border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 56%, var(--ui-border-default-border));
@@ -3130,6 +3135,10 @@ defineExpose({
   white-space: nowrap;
 }
 
+/* 同样**不**迁淡档 token:下面的 `:active`(18%)是同族手写式且不在本波范围内,
+   只迁 hover 后 18 主题里有 3 个(after-rain-night / gruvbox-dark / nord)hover 会
+   压到与 :active 同一格(差 0.2–1.4 ΔRGB,阶梯失去单调 —— 按下去看着比悬停还浅)。
+   hover 与 active 成对迁。 */
 .send-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--ui-accent-primary-fg) 12%, transparent);
 }

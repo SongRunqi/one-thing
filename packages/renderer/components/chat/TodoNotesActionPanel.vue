@@ -279,6 +279,10 @@ onBeforeUnmount(() => {
   display: contents;
 }
 
+/* 不迁统一态 token:底色源是私有 token 岛 `--todo-*`(审计缺口 G8),而且这一条与
+   256 行的 `--app-button-hover-fill` 是同一条配方的两处写法,只迁一处会两态脱钩。
+   等 `--todo-*` 的区域墨阶并进 REGION_OVERLAY_STEPS 之后,与 TodoPlanPanel 的 9 条
+   一起迁。 */
 .action-row.selected,
 .action-row:hover:not(:disabled) {
   background: color-mix(in srgb, var(--todo-text) 10%, transparent);

@@ -708,7 +708,10 @@ function openAttachmentImage(attachment: MessageAttachment): void {
 
 /* hover 锚(im-message §E):整行衬底告诉你操作条/表情面板属于哪条消息。
    类驱动而不是 :hover —— 鼠标进了 teleport 到 body 的面板后行会丢 :hover,
-   但归属感不能跟着丢;barPinned(面板/菜单开着)期间衬底钉住。 */
+   但归属感不能跟着丢;barPinned(面板/菜单开着)期间衬底钉住。
+   波 3 复核:类驱动的机制**正当**(不是该改成 :hover 的疏漏);值也保留 —— 4% 是
+   "整行衬底"刻意取的半档,统一档 `--ui-state-hover-bg` 相当于墨 8%(实测差 ΔRGB
+   中位 14.1),迁过去会把一整行压成控件级 hover 的分量。 */
 .say-row.is-hover-anchor {
   background: color-mix(in srgb, var(--ui-text-primary-fg) 4%, transparent);
 }

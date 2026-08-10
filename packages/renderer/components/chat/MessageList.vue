@@ -2493,6 +2493,11 @@ defineExpose({
   transition: border-color var(--duration-normal) var(--ease-default), color var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
+/* 底**不**迁 `--ui-state-hover-accent-bg`:这颗药丸的静息面自己就是手写的
+   `elevated 84%` 半透明(2486 行),而 token 以 panel 面解析成实色 —— 18 主题里有
+   4 个(after-rain-night / gruvbox-dark / nord / tokyo-night,都在各自的自然深色
+   模式)token 与这颗药丸的静息面只差 ΔRGB 2.8–4.0,hover 会**看不见**(现状 10.6–17.5)。
+   要归位得先让静息面归位,不是单迁 hover 能解决的。 */
 .history-page-summary:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 36%, var(--ui-border-default-border));
   background: color-mix(in srgb, var(--ui-accent-primary-fg) 8%, var(--ui-surface-elevated-bg));

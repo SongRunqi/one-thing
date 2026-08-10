@@ -746,9 +746,12 @@ onUnmounted(() => {
   opacity: 0.58;
 }
 
+/* accent 淡底走 G6 统一档。这张卡是 `elevated 64%` 的半透明面,把 token(以 panel
+   解析的实色)叠上去与原来手写的 10% 实测 ΔRGB 中位仅 3.2(tokyo-night 最大 11.0),
+   相对卡面的可见度中位 15.0 —— 全波最贴合的一处。 */
 .assistant-nav-page-cue:hover,
 .assistant-nav-page-cue:focus-visible {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  background: var(--ui-state-hover-accent-bg);
   color: var(--ui-accent-primary-fg);
   opacity: 0.9;
   outline: none;
@@ -843,6 +846,11 @@ onUnmounted(() => {
     opacity var(--duration-fast) var(--ease-default);
 }
 
+/* 这一条**不**迁 `--ui-state-hover-bg`(而下面 .can-pin 的 accent 档迁了):中性
+   档是主题输入的 `--bg-hover`,比"墨 8%"淡得多,画在这张 64% 半透明卡上可见度
+   从中位 14.7 掉到 5.9(最小 4.3,已低于 state-overlay-audit 的 5 门槛),hover
+   会几乎看不见。同一个按钮两档走两条路是实测结论,不是疏漏 —— 缺的是"半透明面
+   上的中性 hover"档,面归位(G1/波 4)之后再统一。 */
 .assistant-nav-close:hover,
 .assistant-nav-close:focus-visible {
   background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
@@ -856,9 +864,10 @@ onUnmounted(() => {
   opacity: 0.7;
 }
 
+/* 同 page-cue 的那一档(见上),同一枚 token。 */
 .assistant-nav-close.can-pin:hover,
 .assistant-nav-close.can-pin:focus-visible {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  background: var(--ui-state-hover-accent-bg);
   color: var(--ui-accent-primary-fg);
   opacity: 1;
 }

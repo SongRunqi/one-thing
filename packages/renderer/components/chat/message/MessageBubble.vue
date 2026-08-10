@@ -1190,9 +1190,15 @@ html[data-theme='light'] .image-generation-skeleton::after {
   transition: transform var(--duration-normal) var(--ease-default), box-shadow var(--duration-normal) var(--ease-default);
 }
 
+/* C2:两条 hover 阴影原来带字面 rgba 兜底。`--ui-message-media-hover-shadow` 在
+   variables.css 的明暗两套里都有定义(575 / 1145 行),兜底从来没被用到 —— 删掉的
+   是死码,实色 ΔRGB = 0。
+   下面那条 light 规则不能删:它与本条特异性同为 (0,3,1),靠"写在后面"压住 light
+   的**静息**阴影(1198 行),否则浅色主题下 hover 会被静息规则吃掉。两条现在同值,
+   留着的是层叠次序不是颜色。 */
 .content :deep(img:hover) {
   transform: scale(1.02);
-  box-shadow: var(--ui-message-media-hover-shadow, 0 8px 24px rgba(0, 0, 0, 0.3));
+  box-shadow: var(--ui-message-media-hover-shadow);
 }
 
 html[data-theme='light'] .content :deep(img) {
@@ -1200,7 +1206,7 @@ html[data-theme='light'] .content :deep(img) {
 }
 
 html[data-theme='light'] .content :deep(img:hover) {
-  box-shadow: var(--ui-message-media-hover-shadow, 0 8px 24px rgba(0, 0, 0, 0.15));
+  box-shadow: var(--ui-message-media-hover-shadow);
 }
 
 /* Table styles */
