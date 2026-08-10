@@ -661,10 +661,81 @@ export default function (api) {
 }
 ```
 
-`updateBackground` 只收 `opacity` / `blur` / `fit`;**`image` 换不了** ——
-换图 = 发新版本。值同样钳制(越界钳进区间,坏类型忽略)。**它不持久**:
-重启后回 manifest 缺省,所以上面那句"启动时读一次"是必须的,不是可选的。
-没在 manifest 里声明 background 就调它,是一条 error 日志 + 拒绝(不熔断)。
+`updateBackground` 收 `opacity` / `blur` / `fit`(钳制:越界钳进区间,坏类型
+忽略)与 `image`(见下一节 —— **仅 `storage:` 寻址**,包内换图仍然等于发新
+版本)。**它不持久**:重启后回 manifest 缺省,所以上面那句"启动时读一次"
+是必须的,不是可选的。没在 manifest 里声明 background 就调它,是一条 error
+日志 + 拒绝(不熔断)。
+
+### 让用户换成自己的图:`file-pick` 节点 + `storage:` 寻址
+
+核心裁决先说清楚:**字节不过你的手**。你声明一个按钮,宿主拉原生文件对话框、
+宿主校验、宿主把文件拷进**你的**数据目录,回给你的只有一个地址。你拿不到
+用户磁盘上的路径,也拿不到文件内容 —— 于是"让用户换张壁纸"这件事不需要给
+插件开任何读文件的权限。
+
+**第一步:在你的描述树里放一个 `file-pick` 节点**(面板或锚点块都行):
+
+```js
+{ type: 'file-pick',
+  label: '选择壁纸',
+  accept: ['png', 'jpg', 'webp'],  // 可选:宿主白名单的**子集**
+  maxBytes: 5 * 1024 * 1024,       // 可选:宿主硬顶 10MB
+  actionId: 'wallpaper-picked' }
+```
+
+- `accept` **只能收窄**。宿主白名单是 `png` `jpg` `jpeg` `webp` `svg` `gif`;
+  写一个不在里面的扩展名(`exe`、`bmp`),**整棵树被拒**(面板变错误态)——
+  这不是降级,是当场说出来。省略 = 全白名单。
+- `maxBytes` 是这里唯一被**钳**的旋钮:写得比 10MB 大按 10MB 算(不报错);
+  写一个非正数则整棵树被拒。
+- `actionId` 与 `button` 同规:靠 id 寻址,不是塞闭包。
+
+**第二步:在 `onAction` 里接住那个地址**:
+
+```js
+api.registerWorkspacePanel({
+  id: 'wallpaper',
+  render: () => ({ version: 2, body: { type: 'file-pick', label: '选择壁纸', actionId: 'wallpaper-picked' } }),
+  onAction: ({ actionId, payload }) => {
+    if (actionId !== 'wallpaper-picked') return
+    // payload = { path: 'storage:imports/<name>', name, size }
+    api.theme.updateBackground({ image: payload.path })
+    api.store.set('wallpaper', payload.path)   // ← 持久化归你自己
+    return { notice: `换成了 ${payload.name}` }
+  },
+})
+```
+
+三条出口,写代码时按这个心智模型:
+
+| 用户做了什么 | 你会收到 |
+| --- | --- |
+| 选中一个合法文件 | 一次 `onAction`,payload 是 `{ path, name, size }` |
+| 按了取消 | **什么也没有** —— 你根本不会被叫醒 |
+| 选了超限 / 类型不符的文件 | **什么也没有** —— 宿主 toast 一句人话,不计你的熔断账 |
+
+`name` 是**清洗后的落盘名**(只留 `[a-zA-Z0-9._-]`,中文名会回落成
+`import.png`),不是用户磁盘上的原名。同名不覆盖:第二张 `paper.png` 落成
+`paper-2.png`。
+
+**第三步:`storage:` 寻址**。`updateBackground({ image })` 只接受
+`storage:<相对路径>`,解析到你的 `plugins/<你的 id>/storage/<相对路径>` ——
+也就是 `api.storage` 那个目录(导入的文件落在它的 `imports/` 子目录里,
+你自己也能 `api.storage` 列出来)。
+
+- **包内的图换不了**:`updateBackground({ image: 'bg/paper.png' })` 会被拒。
+  manifest 里那张 `contributes.theme.background.image` 是**缺省**,换它 = 发版本。
+- 非法寻址(穿越、绝对路径、非图片扩展名)或**文件不存在** → **这一次调用
+  整条被拒**,背景保持原样,记一条 error 日志,不计熔断。不是"忽略 image
+  字段、只改透明度" —— 半条命令比不执行更难解释。
+- 运行期换的图会压过 manifest 缺省图,并且**同时接管深色**:用户挑的是
+  "这一张",不是"浅色这一张",所以不会在切主题时换成包里的 `darkImage`。
+- 与别的运行期参数一样**不持久**:重启回 manifest 缺省。想记住用户选的那张,
+  自己 `api.store.set` / `api.settings`,在 entry 启动时读一次再调一次。
+
+**`file-pick` 只在 Electron 桌面宿主能用**(方案 A:插件只在桌面执行)。
+web 端点下去会得到一句"仅桌面可用",而不是静默无反应。
 
 **动画:描述树里没有,也不会有。** 描述树是纯数据,动画是"执行"的一种,
 按宪法第 1 条划给宿主。宿主自带一小撮受限动效,你只声明状态:

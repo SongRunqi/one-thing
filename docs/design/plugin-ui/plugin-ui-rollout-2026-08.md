@@ -649,6 +649,62 @@ dump 成 JSON(1,021,201 字节)逐字节比对 —— 完全相同。不给覆�
 `inline`/`block` 都归 `syntax.plain`、两族撞车权威胜(与书写顺序无关)、
 跨插件冲突按权威键比、宿主链路(插件清单 → 裁决 → applyTheme)走通且停用即撤除。
 
+### 6.7 B 期"用户壁纸"落地实录(2026-08-10)与规格差异
+
+**宿主口三件**:`file-pick` 描述树节点、背景管线 `storage:` 寻址、
+`api.theme.updateBackground` 放开 `image`。裁决与理由见表达力文档 §3.3.5.1;
+这里只记落地清单、方案取舍与差异。壁纸插件本身另派,不在本仓。
+
+#### 落地清单(三段提交,每段独立过门)
+
+| 层 | 文件 | 做了什么 |
+| --- | --- | --- |
+| core 判据 | `plugins/file-pick.ts`(新) | accept 收窄判据、maxBytes 钳制、文件名清洗、防覆盖、拷贝闸;扩展名白名单**直接复用**背景图那一份 |
+| core 协议 | `plugins/panel.ts` | 节点词表 +`file-pick`,校验委托给 file-pick.ts |
+| core 寻址 | `plugins/background.ts` | `PLUGIN_STORAGE_IMAGE_PREFIX`、`parsePluginStorageImageRef`、`pluginBackgroundImageUrl` 分流、runtime image 压过缺省图 |
+| core URL | `plugins/webview.ts` | `PLUGIN_STORAGE_URL_SEGMENT = '__storage__'` + `pluginStorageAssetUrl` |
+| core API | `plugins/api-builder.ts` / `types.ts` | updateBackground 的图源门(第 3 道闸) |
+| 协议服务 | `apps/electron/src/plugins/protocol.ts` | 代码区/数据区的**唯一分岔点** + 数据区图片扩展名闸(两处:join 前、realpath 后) |
+| 数据区供给线 | `app/plugins/webview.ts` | `resolvePluginStorageRoot`(闸门同代码区,第 4 条收紧为"必须声明合法 background") |
+| 拷贝 | `app/plugins/file-import.ts`(新) | stat → 闸 → node_modules 铁律 → mkdir → 防覆盖 → copy;+ `pluginStorageImageExists` |
+| 对话框 | `apps/electron/src/plugins/file-pick.ts`(新) | showOpenDialog 挂在发起点击的窗口上 |
+| IPC | `plugins:pick-file` | 挂 PLUGINS_* 家族(授权语境是"某个插件的某个节点"),不另开家族 |
+| 渲染 | `PluginPanelNode.vue` | 复用既有 Button + `.panel-button`;`pluginId` 可选 prop 沿树下传 |
+
+#### 三个方案取舍(记下来,免得下次重问)
+
+1. **数据区路由:同 scheme 保留首段,不是第二个 scheme / 第二个 host。**
+   后两者会把 CSP 与 origin 的同步点从一处变成三处,而隔离并不因此变强。
+   保留首段只多一条分支,隔离靠"选根"执行。代价:插件包里的 `__storage__/`
+   目录取不到(双下划线哨兵,已在 webview.ts 里写明)。
+2. **非法图源拒整条调用,不是丢一个字段。** 与既有"越界数值钳制"看似不
+   同调,其实同规:钳制针对的是**用户拖滑杆**的连续量,而 `image` 是一条
+   离散命令 —— 只把透明度改掉、图还是老的那张,比什么也不做更难解释。
+   这条改动了一条既有测试的期望(`background.test.ts` 的 "image 不可运行时换"),
+   立意没变:包内路径照样被拒。
+3. **`accept` 非法整棵树拒,`maxBytes` 越界钳制。** 前者是作者挑错了集合
+   (说出来才有人改),后者是作者想要更大而宿主不给(拒掉只换来一个用不了的
+   面板)。这与背景层"声明严、运行期宽"的不对称是同一条线。
+
+#### 顺带修掉的一条静默死路
+
+`PluginPanelNode.vue` 的 link 节点走 `window.platformApi.openExternal` ——
+**那个全局从来没有被赋值过**(全仓仅此一处引用)。于是在此之前,带 `url`
+的 link 节点点下去什么也不发生,而且不报错。本期把它改成与 file-pick 同一个
+`platformApi` 出处。
+
+#### 测试(共 55 条新增)
+
+core 24(accept 收窄/超白名单拒、maxBytes 钳制、文件名清洗与防覆盖、拷贝闸、
+storage: 路径判据穿越/绝对/编码变体、代码区与数据区 URL 分流、运行期值域)、
+协议 8(代码区↔数据区互不越界、只服务图片、穿越与软链逃逸、无供给线全 404、
+不做目录索引)、拷贝 9(落点/清洗/防覆盖/两道闸/被拒不留空目录/存在性)、
+对话框 6(取消不叫醒插件、过滤器与 accept 同源、回包里没有用户路径)、
+渲染 8(三条出口、声明透传、置灰态、pluginId 沿树下传)。
+
+另改 1 条既有测试的期望(`background.test.ts` 的 "image 不可运行时换"),
+理由见上面取舍 2 —— 立意没变,包内路径照样被拒。
+
 ---
 
 ## 7. 风险与对策
