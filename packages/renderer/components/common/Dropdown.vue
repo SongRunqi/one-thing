@@ -18,14 +18,23 @@
     <div
       ref="menuRef"
       class="app-context-menu"
-      :class="surfaceClass"
+      :class="[surfaceClass, { 'is-columns': columns > 1 }]"
       role="menu"
       :aria-label="ariaLabel"
-      :style="{ minWidth: `${minWidth}px` }"
+      :style="menuStyle"
       v-bind="$attrs"
       @click.stop
       @contextmenu.prevent.stop
     >
+      <!-- 固定抬头(G4):搜索框 / 筛选行住这里,不随列表滚动。它在默认插槽
+           **之外**,所以自绘内容的消费者也拿得到。 -->
+      <div
+        v-if="$slots.header"
+        class="app-context-header"
+      >
+        <slot name="header" />
+      </div>
+
       <slot>
         <template
           v-for="(item, index) in items"
@@ -35,6 +44,14 @@
             v-if="item.separatorBefore && index > 0"
             class="app-context-divider"
           />
+          <!-- 分组只是**一行小标题**,不是容器 —— 行仍是平的一串,于是键盘漫游 /
+               分隔线 / 双列三者都不必知道分组存在(G4)。 -->
+          <div
+            v-if="groupLabelAt(index)"
+            class="app-context-group-label"
+          >
+            {{ groupLabelAt(index) }}
+          </div>
           <!-- 原生 button 而非 Button.vue:菜单行不需要 Button 的任何能力
                (loading/icon/group),而套上去就要和 `.app-button` 打一场特异性官司。
                当初的直接起因(unstyled 仍把 transparent 刷给 BorderBox,且
@@ -142,6 +159,16 @@ const props = withDefaults(defineProps<{
   minWidth?: number
   ariaLabel?: string
   /**
+   * Lay the rows out in N columns (G4, 2026-08-11). The grid lives on the menu
+   * box itself — no wrapper element — so the DOM of a 1-column menu (every
+   * existing consumer) is unchanged, and the header / group captions / dividers
+   * simply span all columns.
+   *
+   * For long flat lists of short labels (emoji, glyphs, presets). A menu of
+   * sentences does not want columns.
+   */
+  columns?: number
+  /**
    * Draw the shared menu surface; off when the caller's class already does.
    * Accepts a Popover surface tier too — Dropdown's default tier is `menu`
    * (the face it has always drawn), so `true` / omitted is unchanged.
@@ -163,6 +190,7 @@ const props = withDefaults(defineProps<{
   transition: 'app-popover',
   minWidth: 184,
   ariaLabel: undefined,
+  columns: 1,
   surface: true,
 })
 
@@ -176,6 +204,23 @@ const menuRef = ref<HTMLElement | null>(null)
 
 /** 缺省档(menu)不加修饰类,既有调用点的 DOM 与命中规则不变。 */
 const surfaceClass = computed(() => popoverSurfaceClasses(props.surface, 'menu'))
+
+/** 单列(缺省)时这个对象与档位化之前逐字节相同 —— 多的那一枚只在多列时出现。 */
+const menuStyle = computed(() => {
+  const style: Record<string, string> = { minWidth: `${props.minWidth}px` }
+  if (props.columns > 1) style['--app-context-columns'] = String(props.columns)
+  return style
+})
+
+/**
+ * 小标题只在**分组名换了**的那一行之上出现。判据是与前一行比,不是把数组重排 ——
+ * 重排会悄悄挪动调用方精心排过的次序。
+ */
+function groupLabelAt(index: number): string | null {
+  const group = props.items[index]?.group
+  if (!group) return null
+  return props.items[index - 1]?.group === group ? null : group
+}
 
 /** Same derived-not-mirrored open state as Popover — see the note there. */
 const uncontrolled = ref(false)
@@ -470,5 +515,48 @@ defineExpose({ menuEl: menuRef })
   height: 1px;
   margin: 4px 6px;
   background: var(--ui-border-subtle-border);
+}
+
+/* ── G4:抬头 / 分组小标题 / 双列 ──────────────────────────────────────────
+   三者共一条纪律:行仍是**平的一串**,栅格画在菜单盒自己身上而不是套一层
+   wrapper —— 单列菜单(现有全部消费者)的 DOM 因此一个节点都不多。 */
+.app-context-header {
+  padding: 2px 6px 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--ui-border-subtle-border);
+}
+
+.app-context-group-label {
+  padding: 8px 12px 4px;
+  font-family: var(--type-label-font);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+  user-select: none;
+}
+
+/* 第一条小标题不必再顶一格:菜单的 padding 已经给了。 */
+.app-context-group-label:first-child {
+  padding-top: 2px;
+}
+
+.app-context-menu.is-columns {
+  display: grid;
+  grid-template-columns: repeat(var(--app-context-columns, 2), minmax(0, 1fr));
+  gap: 2px;
+}
+
+/* 抬头、小标题、分隔线都是整排的东西 —— 它们跨满所有列。 */
+.app-context-menu.is-columns > .app-context-header,
+.app-context-menu.is-columns > .app-context-group-label,
+.app-context-menu.is-columns > .app-context-divider {
+  grid-column: 1 / -1;
+}
+
+/* 双列是给"短标签的长列表"用的(表情 / 字形 / 预设),不是给句子用的。 */
+.app-context-menu.is-columns > .app-context-item {
+  padding: 6px 10px;
 }
 </style>

@@ -12,6 +12,16 @@ export interface ContextMenuItem {
   /** Draws a hairline above this row — use it to group actions. */
   separatorBefore?: boolean
   /**
+   * Named section this row belongs to (G4, 2026-08-11). The first row of each
+   * consecutive run carrying a new name gets a small caption above it. It is a
+   * *label*, not a container: the rows stay a flat list, so keyboard roving,
+   * separators and the two-column mode all keep working unchanged.
+   *
+   * Order is the caller's — the component never regroups the array, because
+   * re-sorting would silently move whatever the caller carefully ordered.
+   */
+  group?: string
+  /**
    * Nested rows (G3, 2026-08-11). A row that has them opens a SECOND floating
    * menu beside itself instead of emitting `select` — hover to open, and the
    * pointer is protected on the way over by the safe triangle
