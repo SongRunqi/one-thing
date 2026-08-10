@@ -16,6 +16,10 @@ import {
   SKILL_REF_PATTERN,
 } from '@shared/prompt-references'
 import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
+import {
+  computeFloatingStyle,
+  elementAnchorRect,
+} from '@/composables/floating/compute-position'
 import type { CommandDefinition } from '@/types/commands'
 
 export interface PromptCardData {
@@ -265,29 +269,26 @@ class PromptRefWidget extends WidgetType {
     return popover
   }
 
+  /**
+   * 坐标走浮层内核的命令式出口(G5)。这里是 CodeMirror 的 widget —— 没有 Vue
+   * 组件可挂,所以拿不到 `useFloatingLayer()`;在内核开出纯函数出口之前,这段
+   * 只能自己拼一遍 `top-start` + flip + clamp 的算术(原样十七行)。
+   *
+   * 语义与原来的手拼版一致:优先开在上方,上方装不下就翻到下方,最后钳进视口
+   * 12px 的边距内 —— 只是这三步现在由 `computePosition` 做,和全窗其它浮层同一份。
+   */
   private positionPopover(anchor: HTMLElement): void {
     if (!this.popover) return
-    const gap = 8
-    const viewportPad = 12
-    const anchorRect = anchor.getBoundingClientRect()
     const popoverRect = this.popover.getBoundingClientRect()
-    const width = popoverRect.width || Math.min(420, window.innerWidth - viewportPad * 2)
-    const height = popoverRect.height || 80
-
-    const left = Math.min(
-      Math.max(viewportPad, anchorRect.left),
-      Math.max(viewportPad, window.innerWidth - width - viewportPad),
+    const { style } = computeFloatingStyle(
+      elementAnchorRect(anchor),
+      {
+        width: popoverRect.width || Math.min(420, window.innerWidth - 24),
+        height: popoverRect.height || 80,
+      },
+      { placement: 'top-start', offset: 8, margin: 12 },
     )
-    let top = anchorRect.top - height - gap
-    if (top < viewportPad) {
-      top = anchorRect.bottom + gap
-    }
-    top = Math.min(
-      Math.max(viewportPad, top),
-      Math.max(viewportPad, window.innerHeight - height - viewportPad),
-    )
-
-    this.popover.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`
+    this.popover.style.transform = `translate(${style.left}, ${style.top})`
   }
 }
 

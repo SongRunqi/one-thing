@@ -205,3 +205,67 @@ export function computePosition(
     clampedY,
   }
 }
+
+/* ─────────────────── 命令式出口(G5, 2026-08-11) ───────────────────────────
+ * 上面这半份内核是纯的,但唯一的**出口**至今是 `useFloatingLayer()` —— 一个
+ * Vue composable。于是非 Vue 的宿主(CodeMirror 插件、编辑器 widget、任何在
+ * `document` 上手搓元素的地方)够不着它,只能自己拼一遍 `position: fixed` 的
+ * 钳制算术 —— 拼错的那几种形态(菜单飞出右缘、面板掉到折线下)正是这份内核
+ * 存在的理由。
+ *
+ * 所以这里再开一个**纯函数**出口:锚点矩形 + 盒子尺寸 → 可以直接 Object.assign
+ * 到 `element.style` 上的定位样式。Vue 壳一个字节不动 —— `useFloatingLayer`
+ * 保持原样(它还要管 width/anchor 宽度匹配、可见性遮帧、ResizeObserver),这里
+ * 只把"算坐标"这一件事单独递出去。
+ */
+
+/** 直接可以往 `element.style` 上抹的定位样式。 */
+export interface FloatingStyle {
+  position: 'fixed'
+  left: string
+  top: string
+  zIndex?: string
+}
+
+export interface ComputeFloatingStyleOptions extends ComputePositionOptions {
+  /** 缺省读 `window`;传值是为了测试和非浏览器宿主。 */
+  viewport?: ViewportSize
+  /** 完整的 z-index 表达式(`'var(--z-max)'` 这种),原样写进样式。 */
+  zIndex?: string
+}
+
+/**
+ * 把任何"有 getBoundingClientRect 的东西"变成锚点矩形。
+ *
+ * 单独导出是因为这一步是命令式宿主最容易写歪的地方:`getBoundingClientRect()`
+ * 给的是 `left/top`,而内核要的是 `x/y` —— 两者在滚动的文档里不是一回事。
+ */
+export function elementAnchorRect(element: { getBoundingClientRect(): DOMRect }): AnchorRect {
+  const rect = element.getBoundingClientRect()
+  return { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+}
+
+/**
+ * `computePosition` 的命令式包装:同一套 place → flip → clamp,产出直接可用的
+ * 样式对象。返回值同时带上 `position`,因为翻转后的方位是调用方画箭头 / 建安全
+ * 三角要用的那一条信息。
+ */
+export function computeFloatingStyle(
+  anchor: AnchorRect | { x: number, y: number },
+  floating: FloatingSize,
+  options: ComputeFloatingStyleOptions = {},
+): { position: ComputedPosition, style: FloatingStyle } {
+  const { viewport, zIndex, ...placementOptions } = options
+  const box = viewport ?? (typeof window === 'undefined'
+    ? { width: 0, height: 0 }
+    : { width: window.innerWidth, height: window.innerHeight })
+
+  const position = computePosition(anchor, floating, box, placementOptions)
+  const style: FloatingStyle = {
+    position: 'fixed',
+    left: `${position.x}px`,
+    top: `${position.y}px`,
+  }
+  if (zIndex) style.zIndex = zIndex
+  return { position, style }
+}
