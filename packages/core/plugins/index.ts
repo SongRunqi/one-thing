@@ -42,6 +42,36 @@ export type {
   SanitizedPluginSearchResult,
 } from './search-provider.js'
 export {
+  DEEPLINK_HOST_VERBS,
+  DEEPLINK_PLUGIN_ID_PATTERN,
+  DEEPLINK_PLUGIN_PREFIX,
+  DEEPLINK_TEXT_MAX_BYTES,
+  DEEPLINK_VISIBLE_REJECTIONS,
+  ONETHING_DEEPLINK_SCHEME,
+  PLUGIN_DEEPLINK_ACTION_NAME_PATTERN,
+  PLUGIN_DEEPLINK_HANDLER_TIMEOUT_MS,
+  PLUGIN_DEEPLINK_HANDLE_PERMISSION_NOTE,
+  PLUGIN_DEEPLINK_NOTICE_MAX_CHARS,
+  PLUGIN_PERMISSION_DEEPLINK_HANDLE,
+  deepLinkTextByteLength,
+  isVisibleDeepLinkRejection,
+  normalizePluginDeepLinkResult,
+  parseDeepLink,
+  pluginDeepLinkAddress,
+  pluginDeepLinkSurface,
+} from './deep-link.js'
+export type {
+  CorePluginDeepLinkActionRegistration,
+  CorePluginDeepLinkContext,
+  CorePluginDeepLinkResult,
+  DeepLinkAskIntent,
+  DeepLinkHostVerb,
+  DeepLinkIntent,
+  DeepLinkParseResult,
+  DeepLinkPluginIntent,
+  DeepLinkRejectReason,
+} from './deep-link.js'
+export {
   CORE_PLUGIN_TOOL_EXECUTION_MODES,
   assertCorePluginToolExecutionMode,
   isCorePluginToolExecutionMode,

@@ -231,6 +231,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       pluginScope.registration('WorkspacePanel'),
       pluginScope.connector('wechat'),
       pluginScope.searchProvide('emoji'),
+      pluginScope.deepLinkAction('plugin:trans:translate'),
     ]
     // 工厂数量与样本数量对齐 —— 加了工厂却忘了在这里取样,这条会红。
     expect(samples).toHaveLength(Object.keys(pluginScope).length)
@@ -289,6 +290,9 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       // M2:搜索供给方自成一族 —— 一个供给方超时/抛错只影响它自己那一组结果,
       // 降级停这一个供给方,不连坐插件其余能力。生产者在聚合器(app/search)。
       { factory: 'searchProvide', scope: pluginScope.searchProvide('emoji'), family: 'search-provide' },
+      // H4:深链动作自成一族 —— 一个动作抛错/超时只影响那一个入口,`onething://ask`
+      // 与插件其余动作照常。生产者在派发口(app/deeplink/registry)。
+      { factory: 'deepLinkAction', scope: pluginScope.deepLinkAction('plugin:trans:translate'), family: 'deep-link' },
     ]
 
     // 声明本身要对。
@@ -335,7 +339,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
 
 describe('R7 registry teardown table — 每个开放的注册表都要回答"在飞的怎么办"', () => {
   it('declares a teardown policy for every open registry', () => {
-    expect([...PLUGIN_OPEN_REGISTRIES]).toEqual(['im-connector', 'search-provider'])
+    expect([...PLUGIN_OPEN_REGISTRIES]).toEqual(['im-connector', 'search-provider', 'deep-link-action'])
     for (const registry of PLUGIN_OPEN_REGISTRIES) {
       const policy = PLUGIN_REGISTRY_POLICY[registry]
       expect(policy, registry).toBeTruthy()

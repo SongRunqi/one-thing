@@ -76,6 +76,12 @@ export const pluginScope = {
    */
   toolResultIntercept: (hookId: string) => brand(`toolResultIntercept:${hookId}`),
   storage: (operation: string) => brand(`storage.${operation}`),
+  /**
+   * 深链动作(H4)。address = `plugin:<pluginId>:<name>` —— 一个插件可以注册多个
+   * 动作,连败要分得清是哪一个在坏,降级也只停那一个(整条 `onething://` 的门
+   * 不因此关上)。
+   */
+  deepLinkAction: (address: string) => brand(`deepLink:${address}`),
   settingsChange: () => brand('settings:onChange'),
   steer: () => brand('steer'),
   followUp: () => brand('followUp'),
@@ -186,6 +192,7 @@ export const PLUGIN_SCOPE_FAMILIES = [
   'registration',
   'connector',
   'search-provide',
+  'deep-link',
 ] as const
 
 export type PluginScopeFamily = (typeof PLUGIN_SCOPE_FAMILIES)[number]
@@ -311,6 +318,16 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
       + '闸不在请求通道上,而在聚合器调用供给方之前;没有"用户点重试"这种逃生口'
       + '(下一次键入还是会跳过它),所以它靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
   },
+  'deep-link': {
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
+    remedy: 'degrade-surface',
+    rationale: '一个深链动作抛错 / 超时只影响那一个动作:`onething://ask` 与插件的其余'
+      + '动作照常,整体禁用会把一个入口故障放大成插件故障。它与 ui-request 同族气质'
+      + '(用户刚按下确认、当场看得到结果),但闸不在请求通道上,而在派发口 —— '
+      + '降级之后确认卡上那一条**变灰而不是消失**(与触发式锚点同规:说得清"它'
+      + '暂时不在",而不是让用户以为自己记错了)。没有"用户点重试"的逃生口,'
+      + '靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
+  },
 }
 
 /**
@@ -346,6 +363,8 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   if (scope.startsWith('connector')) return 'connector'
   // 搜索供给方(M2):必须在 register/connector 之后,`searchProvide` 不与它们撞前缀。
   if (scope.startsWith('searchProvide')) return 'search-provide'
+  // 深链动作(H4):同样不与上面任何一个撞前缀 —— `deepLink:` 是它独占的。
+  if (scope.startsWith('deepLink:')) return 'deep-link'
   return null
 }
 
@@ -437,6 +456,9 @@ export function describePluginSurface(scope: string): string {
   // pluginSearchProviderSurface 是同一把尺,聚合器据它短路。search 与 onAction
   // 共用同一 surface(一个供给方就是一块界面),降级一起挡。
   if (scope.startsWith('searchProvide:')) return `search:${scope.slice('searchProvide:'.length)}`
+  // 深链动作(H4):`deepLink:<address>` 折成 `deeplink:<address>` —— 与
+  // pluginDeepLinkSurface 是同一把尺,派发口据它短路(灰掉那一条,不关整扇门)。
+  if (scope.startsWith('deepLink:')) return `deeplink:${scope.slice('deepLink:'.length)}`
   return scope
 }
 
@@ -485,7 +507,7 @@ export interface PluginRegistryPolicy {
  *  4. app 层 host 对象加转发,必要时给注册表补 ownerPluginId 归属;
  *  5. 拆除快照测试加一行,并确认 C17 那条"转发口 ↔ 开放清单"守卫仍然绿。
  */
-export const PLUGIN_OPEN_REGISTRIES = ['im-connector', 'search-provider'] as const
+export const PLUGIN_OPEN_REGISTRIES = ['im-connector', 'search-provider', 'deep-link-action'] as const
 
 export type PluginOpenRegistry = (typeof PLUGIN_OPEN_REGISTRIES)[number]
 
@@ -521,6 +543,24 @@ export const PLUGIN_REGISTRY_POLICY: Record<PluginOpenRegistry, PluginRegistryPo
     trafficNote: '**当前无生产流量**:没有内置插件注册搜索供给方,样本 emoji-search '
       + '只构建不安装。验证的是**契约、并发聚合/超时即弃/熔断跳过、拆除语义**,'
       + '真实插件供结果的投递链路待第三方插件安装后。',
+  },
+  'deep-link-action': {
+    // 停用即撤下:派发口查不到该动作,深链落到"这个动作不在了"这条**看得见的**
+    // 拒绝上(用户刚点了一个链接,他得到一句回话)。没有"宿主默认动作"这种
+    // 回退,所以不是 degrade-to-default —— 那会描述一个不存在的默认路径。
+    teardown: 'fail-open',
+    inFlight: '停用时退订函数被调用,动作从注册表摘除;此后指向它的 onething:// 链接'
+      + '在**确认之前**就被判为"该动作已不可用"(确认卡直接说这句,而不是让用户'
+      + '确认一个不会发生的动作)。已经确认、handler 正在跑的那一次不被打断 —— '
+      + '它已经是插件自己进程里的一次调用,拆的是入口不是在飞的调用。'
+      + '`onething://ask` 与其它插件的动作完全不受影响。',
+    hostDivergence: '仅桌面宿主执行插件(§6 方案 A),而深链本身也只有桌面宿主接'
+      + '(server 没有 URL scheme,CLI daemon 没有窗口)。两个"只在桌面"叠在一起,'
+      + '这条注册表在别的宿主上是不存在而不是降级。',
+    hasProductionTraffic: false,
+    trafficNote: '**当前无生产流量**:主仓没有内置插件注册深链动作(样例翻译插件'
+      + '另派)。`onething://ask` 这个**宿主**动词是真流量,但它不经过本注册表。'
+      + '试点验证的是契约、声明门、超时/熔断与拆除语义。',
   },
 }
 

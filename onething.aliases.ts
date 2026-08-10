@@ -49,6 +49,9 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   // 音效名的事实源要被 renderer 的合成配方表引用(exhaustive Record),所以它
   // 必须排在桶前面 —— 走桶会把 loader.ts 拖进浏览器包。
   { find: '@onething/core/plugins/notify-sound', replacement: resolve(projectRoot, 'packages/core/plugins/notify-sound.ts') },
+  // 第四片叶子(H4 深链协议):枚举 + 常量 + 纯解析函数,零 import。确认卡要在
+  // renderer 侧复用同一份口径(长度上限、可见拒绝),所以它必须排在桶前面。
+  { find: '@onething/core/plugins/deep-link', replacement: resolve(projectRoot, 'packages/core/plugins/deep-link.ts') },
   { find: '@onething/core/plugins', replacement: resolve(projectRoot, 'packages/core/plugins/index.ts') },
   { find: '@onething/core/session/storage', replacement: resolve(projectRoot, 'packages/core/session/storage/index.ts') },
   { find: '@onething/core/session', replacement: resolve(projectRoot, 'packages/core/session/index.ts') },

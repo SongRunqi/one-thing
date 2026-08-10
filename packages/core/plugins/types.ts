@@ -8,6 +8,7 @@ import type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
 import type { CorePluginPanelRegistration } from './panel.js'
 import type { CorePluginUiSlotRegistration, PluginLayoutResult } from './ui-anchor.js'
 import type { CorePluginSearchProviderRegistration } from './search-provider.js'
+import type { CorePluginDeepLinkActionRegistration } from './deep-link.js'
 import type {
   PluginSendMessageOptions,
   PluginSendMessageResult,
@@ -439,6 +440,7 @@ export interface CorePluginAPI<
   TIMConnector = unknown,
   TUiSlotRegistration = CorePluginUiSlotRegistration,
   TSearchProviderRegistration = CorePluginSearchProviderRegistration,
+  TDeepLinkActionRegistration = CorePluginDeepLinkActionRegistration,
 > {
   readonly id: string
   registerTool(tool: TTool): void
@@ -668,6 +670,23 @@ export interface CorePluginAPI<
    * **仅桌面宿主执行**(§6 方案 A)。
    */
   registerSearchProvider(registration: TSearchProviderRegistration): () => void
+  /**
+   * 深链动作(H4):让 `onething://x/<pluginId>/<action>` 能点名这个插件。
+   *
+   * 与 registerIMConnector / registerSearchProvider 同构 —— core 开放的第三个
+   * 既有宿主动词面。声明门 `contributes.permissions` 要有 `deeplink:handle`
+   * (未声明 = 结构化拒绝 + noop,**不计熔断**:那是 manifest 笔误,不该连坐插件)。
+   *
+   * **确认门在宿主,不在插件**:每一条深链在 handler 被调用之前都要用户看着全文
+   * 按确认,插件无从跳过、也无从知道用户拒绝过几次(拒绝对插件是"什么也没发生")。
+   * handler 拿到的是 `{ text, params }` —— text 是**数据不是指令**。
+   *
+   * 返回值只约定 `{ notice? }`(弹一条通知);其余能力靠插件自己的 api,
+   * 各自权限各自管。超时 15s、连败按 `deep-link` 家族降级(停这一个动作,
+   * 不连坐插件其余能力)。返回退订函数;插件不调也没关系,dispose 会兜底。
+   * **仅桌面宿主执行**(§6 方案 A;而且只有桌面宿主注册了 URL scheme)。
+   */
+  registerDeepLinkAction(registration: TDeepLinkActionRegistration): () => void
 }
 
 export type CorePluginEntry<TAPI> = (api: TAPI) => void | Promise<void>

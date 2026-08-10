@@ -26,6 +26,7 @@ import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './not
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
 import { pluginStorageImageExists } from './file-import.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
+import { registerPluginDeepLinkAction } from '../deeplink/registry.js'
 import { registerPluginSearchProvider } from '../search/plugin-search-registry.js'
 import { forgetUiActionGestures } from '@onething/core/plugins'
 import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
@@ -409,6 +410,16 @@ export function createPluginAPI(
             sound: resolvePluginNotifySound(id, undefined),
           }),
         })
+      },
+      /**
+       * 深链动作(H4)—— 第三个既有宿主动词面。转发到装配层的注册表;
+       * 确认门与派发在 Electron 宿主(它才认识窗口与 URL scheme)。
+       *
+       * 这里**只登记**:一个动作被注册不代表它会被调用,调用永远要经过一次
+       * 用户看着全文按下的确认。
+       */
+      registerDeepLinkAction(id, registration) {
+        return registerPluginDeepLinkAction(id, registration)
       },
       emitPluginEvent(id, eventName, payload) {
         // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast

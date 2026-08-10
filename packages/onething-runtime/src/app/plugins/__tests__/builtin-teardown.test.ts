@@ -20,7 +20,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>
 
 async function loadModules() {
-  const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors] = await Promise.all([
+  const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks] = await Promise.all([
     import('../loader.js'),
     import('../api.js'),
     import('../../tools/index.js'),
@@ -33,8 +33,9 @@ async function loadModules() {
     import('../../scheduler/index.js'),
     import('../../variables/index.js'),
     import('../../channel/connector-registry.js'),
+    import('../../deeplink/registry.js'),
   ])
-  return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors }
+  return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks }
 }
 
 /**
@@ -94,6 +95,8 @@ interface RegistrySnapshot {
   variableSubscriptions: number
   /** R7 开放的第一个既有注册表 —— 开一个就要进快照,否则守卫覆盖不到它。 */
   imConnectorIds: string[]
+  /** H4 开放的第三个注册表(深链动作)。同一条规矩:开一个就要进快照。 */
+  deepLinkActionAddresses: string[]
   /** N2 的干预型钩子:开一个钩子点就要进快照,同一条"开一个漏一个"的规矩。 */
   inputInterceptHooks: number
   /** N4 的干预型钩子:同上。fail-closed 让漏拆的代价更大 —— 一条被遗忘的
@@ -159,6 +162,15 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
   } catch {
     imConnectorIds = []
   }
+  let deepLinkActionAddresses: string[] = []
+  try {
+    deepLinkActionAddresses = mods.deepLinks
+      .listPluginDeepLinkActions()
+      .map((info: { address: string }) => info.address)
+      .sort()
+  } catch {
+    deepLinkActionAddresses = []
+  }
   let variableSubscriptions = 0
   try {
     variableSubscriptions = mods.variables.getVariablesStore().listenerCount()
@@ -177,6 +189,7 @@ function snapshot(mods: LoadedModules, bus: ReturnType<typeof createCountingEven
     schedulerTaskIds,
     variableSubscriptions,
     imConnectorIds,
+    deepLinkActionAddresses,
   }
 }
 

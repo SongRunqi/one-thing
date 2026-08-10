@@ -79,6 +79,12 @@ import {
   PLUGIN_PERMISSION_SEARCH_PROVIDE,
   type CorePluginSearchProviderRegistration,
 } from './search-provider.js'
+import {
+  PLUGIN_DEEPLINK_ACTION_NAME_PATTERN,
+  PLUGIN_PERMISSION_DEEPLINK_HANDLE,
+  pluginDeepLinkAddress,
+  type CorePluginDeepLinkActionRegistration,
+} from './deep-link.js'
 import type {
   CorePluginToolContext,
   CorePluginToolDefinition,
@@ -177,6 +183,17 @@ export interface CorePluginAPIHost<
   registerSearchProvider?(
     pluginId: string,
     registration: CorePluginSearchProviderRegistration,
+  ): (() => void) | undefined
+  /**
+   * 深链动作注册表的转发口(H4)。返回退订函数。
+   *
+   * 宿主注入;core 不认识 URL scheme、不认识窗口,也不做超时/熔断(那些要认识
+   * 健康账本与确认门,住在装配层 + Electron 宿主)。开放模式照抄
+   * registerIMConnector 那一行 + 策略表加条目。
+   */
+  registerDeepLinkAction?(
+    pluginId: string,
+    registration: CorePluginDeepLinkActionRegistration & { name: string },
   ): (() => void) | undefined
   /**
    * 插件自有配置的访问面(R3)。
@@ -1422,6 +1439,80 @@ export function createCorePluginAPI<
       }
       disposeCallbacks.push(release)
       logger.log(`[Plugin:${pluginId}] Registered search provider: ${providerId}`)
+      return release
+    },
+
+    /**
+     * 深链动作(H4)。第三个既有宿主动词面,五件事与前两个同构:
+     *  - **形状**:`{ name, title, handler }` 三件全要,name 限 `[a-z0-9-]+` ——
+     *    它要进 URL 路径,松一点就得在解析侧补一堆转义;
+     *  - **声明门**:manifest 没声明 `deeplink:handle` 就拒绝 —— 报错 + 返回 noop,
+     *    **不计熔断**(manifest 笔误不该连坐整个插件,与 sessions:* / search:provide 同规);
+     *  - **disposed 闩**:拆除之后再注册 = 往一个没人再会来清扫的表里塞东西;
+     *  - **退订进 disposeCallbacks**:插件不调也能拆干净;
+     *  - **命名空间**:全局地址由宿主拼(`plugin:<id>:<name>`),插件抢不到别人的格子。
+     *
+     * 确认门、超时、熔断都在宿主侧(它们要认识窗口与健康账本);core 只做门控与
+     * 转发。宿主没接这条线(headless / server / CLI daemon —— 它们连 URL scheme
+     * 都没有)时如实告诉插件它被忽略了,而不是假装成功。
+     */
+    registerDeepLinkAction(registration: CorePluginDeepLinkActionRegistration): () => void {
+      if (rejectLateCall('registerDeepLinkAction')) return () => {}
+      const name = String(registration?.name ?? '').trim()
+      const title = String(registration?.title ?? '').trim()
+      if (!name || !title || typeof registration?.handler !== 'function') {
+        logger.error(
+          `[Plugin:${pluginId}] registerDeepLinkAction needs { name, title, handler() }`,
+          undefined,
+        )
+        reportFailure(pluginScope.registration('DeepLinkAction'), new Error('malformed deep link action'))
+        return () => {}
+      }
+      if (!PLUGIN_DEEPLINK_ACTION_NAME_PATTERN.test(name)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerDeepLinkAction("${name}") — the name must match `
+          + `${PLUGIN_DEEPLINK_ACTION_NAME_PATTERN} (it goes into a URL path).`,
+          undefined,
+        )
+        reportFailure(pluginScope.registration('DeepLinkAction'), new Error(`illegal action name: ${name}`))
+        return () => {}
+      }
+      if (!declaredPermissions.has(PLUGIN_PERMISSION_DEEPLINK_HANDLE)) {
+        logger.error(
+          `[Plugin:${pluginId}] registerDeepLinkAction requires "${PLUGIN_PERMISSION_DEEPLINK_HANDLE}" in `
+          + 'contributes.permissions (plugin.json). Declare it first — the install page tells the user '
+          + 'this plugin can be invoked by onething:// links from outside the app.',
+          undefined,
+        )
+        return () => {}
+      }
+      const address = pluginDeepLinkAddress(pluginId, name)
+      let unregister: (() => void) | undefined
+      try {
+        unregister = host.registerDeepLinkAction?.(pluginId, { ...registration, name, title })
+      } catch (error) {
+        logger.error(`[Plugin:${pluginId}] registerDeepLinkAction("${address}") failed:`, error)
+        reportFailure(pluginScope.registration('DeepLinkAction'), error)
+        return () => {}
+      }
+      if (!unregister) {
+        logger.log(
+          `[Plugin:${pluginId}] Deep links are not available on this host; "${address}" was ignored`,
+        )
+        return () => {}
+      }
+      let released = false
+      const release = (): void => {
+        if (released) return
+        released = true
+        try {
+          unregister?.()
+        } catch (error) {
+          logger.error(`[Plugin:${pluginId}] Failed to unregister deep link action "${address}":`, error)
+        }
+      }
+      disposeCallbacks.push(release)
+      logger.log(`[Plugin:${pluginId}] Registered deep link action: ${address}`)
       return release
     },
 
