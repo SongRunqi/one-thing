@@ -14,7 +14,11 @@ import {
   resolveThemeHighlights,
   resolveThemeUI,
 } from './resolver.js'
-import { CSS_VAR_MAP, generateCSSVariables } from './css-mapper.js'
+import {
+  generateCSSVariables,
+  isThemeTokenOverridable,
+  pickHighlightTokenOverrides,
+} from './css-mapper.js'
 import { generateSkinVariables } from './skin.js'
 import { parseBase46Lua, convertBase46ToTheme } from './base46-parser.js'
 import type { ThemeDebugData } from './theme-debug.js'
@@ -316,7 +320,8 @@ export function getThemeBackgroundColor(
 }
 
 /**
- * token 覆盖的键白名单 = `CSS_VAR_MAP` 本身(主题系统认得的 token 全集)。
+ * token 覆盖的键白名单 = 主题系统认得的 token 全集(`CSS_VAR_MAP` ∪ 代码色权威族,
+ * 见 `isThemeTokenOverridable`)。
  *
  * 这是**主题系统自己的门**:谁调 `applyTheme` 都塞不进一个主题不认识的键,
  * 也塞不进空值。不另抄一份白名单 —— 抄一份就一定会漂移。
@@ -327,7 +332,7 @@ export function sanitizeThemeTokenOverrides(
   if (!tokenOverrides) return undefined
   const sanitized: Record<string, string> = {}
   for (const [token, value] of Object.entries(tokenOverrides)) {
-    if (!Object.prototype.hasOwnProperty.call(CSS_VAR_MAP, token)) continue
+    if (!isThemeTokenOverridable(token)) continue
     if (typeof value !== 'string' || !value.trim()) continue
     sanitized[token] = value
   }
@@ -373,13 +378,18 @@ function applyThemeInternal(
   skinTiers?: Record<string, string>
 ): Record<string, string> {
   // Resolve all color references（token 覆盖在语义派生之前落位，见 resolveTheme）
-  const resolvedColors = resolveTheme(theme, mode, sanitizeThemeTokenOverrides(tokenOverrides))
+  const sanitizedOverrides = sanitizeThemeTokenOverrides(tokenOverrides)
+  const resolvedColors = resolveTheme(theme, mode, sanitizedOverrides)
   const resolvedUI = resolveThemeUI(theme, mode, resolvedColors)
+  // 代码色(`syntax.*` / `text.code.*`)必须**再走一遍高亮层**：这批变量由
+  // `resolveThemeHighlights` 发出，只写 resolvedColors 会被高亮层原样盖回去
+  // （L2 曾经的死键就是这么来的）。递进去的是输入层，护栏在它之后照常重跑。
   const resolvedHighlights = resolveThemeHighlights(
     theme,
     mode,
     resolvedColors,
-    resolvedUI['ui.surface.codeBlock'].bg
+    resolvedUI['ui.surface.codeBlock'].bg,
+    pickHighlightTokenOverrides(sanitizedOverrides)
   )
   const colorScaleDiagnostics = resolveThemeColorScaleDiagnostics(resolvedColors, mode)
 

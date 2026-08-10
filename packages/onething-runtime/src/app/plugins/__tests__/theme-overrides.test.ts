@@ -340,6 +340,90 @@ describe('host composition', () => {
   })
 })
 
+// ── 9. 代码色:两族键归一到权威族 ────────────────
+
+/**
+ * 代码色曾经是**死键**(H3 §6.6 实证):`syntax.*` 进不了白名单、`text.code.*`
+ * 进得来却被高亮层原样盖回去。修完之后这里钉住裁决层这一半:
+ *  - 权威族是 `syntax.*`(它就是 `SemanticHighlightToken`,与高亮解析 1:1);
+ *  - `text.code.*` 是**合法别名**,裁决期归一到权威键,投影里带 `canonicalToken`;
+ *  - 冲突按权威键比,不按字面键 —— 两个插件各写一族不能双双"生效";
+ *  - 同一插件两族撞车:**权威族胜**,被吞的标 `shadowed` + `shadowedByToken`。
+ */
+describe('code colour token normalization', () => {
+  it('权威族与别名族都放行,归一表两边一致', () => {
+    expect(isPluginThemeOverrideToken('syntax.keyword')).toBe(true)
+    expect(isPluginThemeOverrideToken('text.code.keyword')).toBe(true)
+    // 权威族全 21 条都是真 token(每条都有 --hg-*-fg 出口)。
+    expect(isPluginThemeOverrideToken('syntax.atom')).toBe(true)
+    expect(isPluginThemeOverrideToken('syntax.nope')).toBe(false)
+  })
+
+  it('别名声明归一成权威键,投影带 canonicalToken', () => {
+    const { tokenValues, byPlugin, cssVariables } = resolvePluginThemeOverrides([
+      { pluginId: 'a', enabled: true, overrides: { 'text.code.keyword': '#123456' } },
+    ])
+    expect(tokenValues).toEqual({ 'syntax.keyword': '#123456' })
+
+    const entry = byPlugin.get('a')![0]
+    expect(entry.token).toBe('text.code.keyword')
+    expect(entry.canonicalToken).toBe('syntax.keyword')
+    expect(entry.status).toBe('active')
+
+    // 投影走高亮层的出口(--hg-*-fg + legacy 别名),不是 CSS_VAR_MAP。
+    expect(cssVariables['--hg-syntax-keyword-fg']).toBe('#123456')
+    expect(cssVariables['--text-code-keyword']).toBe('#123456')
+    expect(cssVariables['--syntax-keyword']).toBe('#123456')
+  })
+
+  it('跨插件冲突按权威键比:各写一族也只有一个赢家', () => {
+    const { tokenValues, byPlugin } = resolvePluginThemeOverrides([
+      { pluginId: 'zzz', enabled: true, overrides: { 'text.code.keyword': '#222222' } },
+      { pluginId: 'aaa', enabled: true, overrides: { 'syntax.keyword': '#111111' } },
+    ])
+    // 规范顺序后者(zzz)胜。
+    expect(tokenValues).toEqual({ 'syntax.keyword': '#222222' })
+
+    const loser = byPlugin.get('aaa')![0]
+    expect(loser.status).toBe('shadowed')
+    expect(loser.shadowedBy).toBe('zzz')
+    expect(loser.shadowedByToken).toBe('text.code.keyword')
+  })
+
+  it('同一插件两族撞车:权威族胜,与书写顺序无关', () => {
+    for (const overrides of [
+      { 'text.code.keyword': '#222222', 'syntax.keyword': '#111111' },
+      { 'syntax.keyword': '#111111', 'text.code.keyword': '#222222' },
+    ]) {
+      const { tokenValues, byPlugin } = resolvePluginThemeOverrides([
+        { pluginId: 'a', enabled: true, overrides },
+      ])
+      expect(tokenValues).toEqual({ 'syntax.keyword': '#111111' })
+
+      const swallowed = byPlugin.get('a')!.find(e => e.token === 'text.code.keyword')!
+      expect(swallowed.status).toBe('shadowed')
+      expect(swallowed.shadowedByToken).toBe('syntax.keyword')
+    }
+  })
+
+  it('宿主链路走通:插件声明代码色,:root 上的代码色变量真的换了', () => {
+    const pristine = applyTheme('flexoki', 'dark')
+    managedPlugins.length = 0
+    managedPlugins.push(makeListItem('a', true, { 'text.code.keyword': '#ff00ff' }))
+
+    const themed = applyThemeWithPlugins()
+    expect(themed['--hg-syntax-keyword-fg']).not.toBe(pristine['--hg-syntax-keyword-fg'])
+    expect(themed['--text-code-keyword']).toBe(themed['--hg-syntax-keyword-fg'])
+    expect(themed['--hljs-keyword']).toBe(themed['--hg-syntax-keyword-fg'])
+    expect(themed['--syntax-keyword']).toBe(themed['--hg-syntax-keyword-fg'])
+
+    // 拆除:停用后整张表逐字回到主题原值。
+    managedPlugins[0].definition.enabled = false
+    expect(applyThemeWithPlugins()).toEqual(pristine)
+    managedPlugins.length = 0
+  })
+})
+
 function makeListItem(id: string, enabled: boolean, overrides: Record<string, string> | undefined) {
   return {
     definition: {

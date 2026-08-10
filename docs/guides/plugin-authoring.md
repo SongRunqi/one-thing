@@ -602,12 +602,42 @@ api.registerUiSlot({
 
 #### 为什么没有"代码高亮主题"这个旋钮
 
-它被**并回 L2** 了,不是被砍了:代码块的每一种颜色(`syntax.keyword`、
-`text.code.string` …)本来就是主题 token,按"颜色归 `overrides`、形归 `skin`"
-的分工,它属于前者。**注意**:截至 2026-08-10 这条路径上有一个已知缺陷 ——
-`syntax.*` / `text.code.*` 覆盖会被高亮层原样盖回去,声明得到 `active`
-却看不见变化。修复前不要用它,详见
-`docs/design/plugin-ui/plugin-ui-rollout-2026-08.md` §6.6。
+它被**并回 L2** 了,不是被砍了:代码块的每一种颜色本来就是主题 token,
+按"颜色归 `overrides`、形归 `skin`"的分工,它属于前者。
+
+#### 代码色的合同(`overrides` 里的代码色键)
+
+```jsonc
+{ "contributes": { "theme": { "overrides": {
+  "syntax.keyword":     "#c678dd",
+  "syntax.string":      "#98c379",
+  "syntax.comment":     "#5c6370",
+  "syntax.plain":       "#abb2bf"
+} } } }
+```
+
+- **权威族是 `syntax.*`** —— 写它。它就是高亮层的 token 名,与 `--hg-syntax-*-fg`
+  一一对应。可用的键:`plain` `comment` `keyword` `atom` `string` `number`
+  `function` `definition` `variable` `property` `type` `tag` `operator`
+  `punctuation` `invalid` `inserted` `deleted` `heading` `link` `emphasis` `strong`。
+- **`text.code.*` 是合法别名,但不推荐** —— `text.code.keyword` 等价于
+  `syntax.keyword`,解析期会归一过去,设置页把它显示成 "alias of syntax.keyword"。
+  两个特例:`text.code.inline` 与 `text.code.block` **都**归到 `syntax.plain`
+  (高亮层只有一个"正文码色"),所以写其中任意一个,行内码与块内正文会一起变。
+- **同时写两族会吞掉一条** —— 同一个插件里 `syntax.keyword` 与
+  `text.code.keyword` 都给了值时,**权威族胜**(与书写顺序无关),被吞的那条在
+  设置页标 `shadowed`。不要靠这个行为写"回退值",直接只写权威族。
+- **对比度护栏会改写你给的颜色** —— 代码色落地前要过 `ensureHighlightContrast`:
+  与代码块底色对比度不够的颜色会被朝可读方向重算(实测 `#ff00ff` 落地成
+  `#F661F0`)。这不是 bug,主题自己写的代码色走的是同一道护栏。想要**一模一样**
+  的色号就选一个对比度本来就够的颜色。
+- 一次覆盖会同时写到这批变量上(三条渲染路共用):`--hg-syntax-<token>-fg`
+  (正主)、`--text-code-*` / `--hljs-*`(聊天代码块)、`--syntax-*`(diff UI)。
+- 覆盖不需要"跟着主题走" —— 它是每次算主题都递进去的参数,换主题/明暗自动保留,
+  停用或卸载即刻撤除,代码块逐字回到主题原色。
+
+历史:2026-08-10 之前这两族键是**死键**(声明得到 `active`、屏幕上什么都不变),
+根因与修法见 `docs/design/plugin-ui/plugin-ui-rollout-2026-08.md` §6.6。
 
 **让用户能调透明度** —— 走 R3 设置 schema + 运行期 `api.theme.updateBackground`:
 

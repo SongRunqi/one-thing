@@ -309,6 +309,113 @@ const HIGHLIGHT_LEGACY_FG_VAR_MAP: Partial<Record<SemanticHighlightToken, string
   'syntax.punctuation': ['--text-code-punctuation', '--hljs-punctuation', '--syntax-punct'],
 }
 
+/**
+ * 代码色 token 的**别名族 → 权威族**归一表。
+ *
+ * 为什么权威族是 `syntax.*`:它**就是** `SemanticHighlightToken` 本身 —— 与
+ * `resolveThemeHighlights` 的原生输出结构、与它发出的 `--hg-syntax-*` 变量名
+ * 一一对应。`text.code.*` 只是同一批变量在 `CSS_VAR_MAP` 里的**另一条路**:
+ * 它没有对应的解析结构,写它等于隔着一层去指同一个高亮 token。两族写同一批
+ * 变量,只能有一个正主,正主是有解析结构的那一族。
+ *
+ * `text.code.inline` / `text.code.block` 都归到 `syntax.plain`:高亮层只有一个
+ * "正文码色",inline 与 block 从来是它的两个出口(见 `HIGHLIGHT_LEGACY_FG_VAR_MAP`
+ * 里 `syntax.plain` 同时写这两个变量)。声明别名族的任意一个 = 声明 `syntax.plain`。
+ *
+ * `text.code.*` **仍然是合法声明**(别名不是弃用),只是在覆盖解析期归一 ——
+ * 目录投影里会带上 `canonicalToken`,设置页据此说得出 "alias of syntax.…"。
+ */
+export const HIGHLIGHT_TOKEN_ALIASES: Readonly<Record<string, SemanticHighlightToken>> = {
+  'text.code.inline': 'syntax.plain',
+  'text.code.block': 'syntax.plain',
+  'text.code.comment': 'syntax.comment',
+  'text.code.keyword': 'syntax.keyword',
+  'text.code.string': 'syntax.string',
+  'text.code.number': 'syntax.number',
+  'text.code.function': 'syntax.function',
+  'text.code.variable': 'syntax.variable',
+  'text.code.operator': 'syntax.operator',
+  'text.code.type': 'syntax.type',
+  'text.code.property': 'syntax.property',
+  'text.code.punctuation': 'syntax.punctuation',
+}
+
+const SEMANTIC_HIGHLIGHT_TOKEN_SET: ReadonlySet<string> = new Set(SEMANTIC_HIGHLIGHT_TOKENS)
+
+/** 这个 token 是别名族里的键吗(权威族返回 false)。 */
+export function isHighlightAliasToken(token: string): boolean {
+  return Object.prototype.hasOwnProperty.call(HIGHLIGHT_TOKEN_ALIASES, token)
+}
+
+/**
+ * token → 代码色权威键。不是代码色(既不在 `syntax.*` 也不在别名表里)返回 `null`。
+ *
+ * 这是**唯一**一张归一表:主题层(`pickHighlightTokenOverrides`)与插件裁决层
+ * (`resolvePluginThemeOverrides`)都查它,两边不可能漂移。
+ */
+export function canonicalHighlightToken(token: string): SemanticHighlightToken | null {
+  if (SEMANTIC_HIGHLIGHT_TOKEN_SET.has(token)) return token as SemanticHighlightToken
+  // hasOwnProperty，不是直接取值：`toString` 之类的原型链成员不是 token。
+  if (!isHighlightAliasToken(token)) return null
+  return HIGHLIGHT_TOKEN_ALIASES[token]
+}
+
+/**
+ * 一个 token 能不能被覆盖(`applyTheme(…, tokenOverrides)` 与插件 L2 共用这道门)。
+ *
+ * 两张表的并集,不是抄一份第三张:
+ *  - `CSS_VAR_MAP` —— 走 `resolvedColors` 出去的普通主题 token;
+ *  - 代码色权威族 `syntax.*` —— 走 `resolvedHighlights` 出去,**从来不在**
+ *    `CSS_VAR_MAP` 里(它在 `HIGHLIGHT_LEGACY_FG_VAR_MAP`)。这正是老缺陷的
+ *    另一半:白名单只认 `CSS_VAR_MAP`,于是权威族连门都进不来,别名族进得来
+ *    却被高亮层盖回去 —— 两族都是死键,一族死在门口,一族死在出口。
+ */
+export function isThemeTokenOverridable(token: string): boolean {
+  if (Object.prototype.hasOwnProperty.call(CSS_VAR_MAP, token)) return true
+  return canonicalHighlightToken(token) !== null
+}
+
+/**
+ * 一个可覆盖 token 会写到哪些 CSS 变量上(说明性投影用,不是产出路径)。
+ *
+ * 代码色查的是高亮层的出口(`--hg-<token>-fg` + legacy 别名),不是 `CSS_VAR_MAP`。
+ */
+export function themeTokenCssVariables(token: string): string[] {
+  const canonical = canonicalHighlightToken(token)
+  if (canonical) {
+    return [highlightVarName(canonical, 'fg'), ...(HIGHLIGHT_LEGACY_FG_VAR_MAP[canonical] || [])]
+  }
+  return CSS_VAR_MAP[token] ?? []
+}
+
+/**
+ * 从一张 token 覆盖表里挑出代码色那部分,并归一到权威键。
+ *
+ * 挑出来是为了把它送进 `resolveThemeHighlights` 的**输入层**(在对比度护栏
+ * 之前),而不是往成品变量上打补丁 —— 代码色变量由高亮层发出,补丁会被高亮层
+ * 原样盖回去(这正是 `syntax.*` / `text.code.*` 曾经是死键的根因)。
+ *
+ * 同一张表里两族撞车(`syntax.keyword` 与 `text.code.keyword` 都给了值)时
+ * **权威族胜**:先写别名族、再写权威族,后者覆盖前者。
+ */
+export function pickHighlightTokenOverrides(
+  tokenOverrides?: Record<string, string>
+): Partial<Record<SemanticHighlightToken, string>> | undefined {
+  if (!tokenOverrides) return undefined
+  const picked: Partial<Record<SemanticHighlightToken, string>> = {}
+  let found = false
+  for (const pass of ['alias', 'canonical'] as const) {
+    for (const [token, value] of Object.entries(tokenOverrides)) {
+      const canonical = canonicalHighlightToken(token)
+      if (!canonical) continue
+      if ((pass === 'alias') !== isHighlightAliasToken(token)) continue
+      picked[canonical] = value
+      found = true
+    }
+  }
+  return found ? picked : undefined
+}
+
 type UIStyleField = keyof ResolvedUIStyle
 
 /**

@@ -599,13 +599,55 @@ anchors §9.3.1 的抽屉 —— **不是新 kind,是 `block` 在 `composer.abov
 高亮层把同名变量原样盖回去。后果是**静默说谎**:插件声明合法、设置页显示
 `active`、屏幕上什么都没变 —— 比报错难查得多。
 
-**本期没有修**,因为修它要先拍两个板,都不属于 H3:
+**H3 期内没有修**,因为修它要先拍两个板,都不属于 H3:
 
 1. `syntax.*` 与 `text.code.*` 映射到同一批变量,**谁是正主**?
 2. 插件给的颜色要不要继续过 `ensureHighlightContrast`(它会为了对比度改写颜色,
    也就是"插件说的不算")?
 
-在拍板前,作者指南已写明"修复前不要用 `syntax.*` / `text.code.*` 覆盖"。
+#### 已修(2026-08-10):两个板都拍了
+
+**裁决 ①:权威族是 `syntax.*`,`text.code.*` 是它的合法别名。**
+理由是"哪一族有解析结构":`syntax.*` **就是** `SemanticHighlightToken` 本身 ——
+与 `resolveThemeHighlights` 的原生输出、与它发出的 `--hg-syntax-*` 变量一一对应,
+21 条全员在册。`text.code.*` 没有对应的解析结构,它只是同一批变量在
+`CSS_VAR_MAP` 里的另一条路(12 个键指向其中 11 个 token,`inline` / `block`
+双双指 `syntax.plain` —— 高亮层只有一个"正文码色")。两族写同一批变量,
+正主只能是有结构的那一族。别名**仍然合法**,覆盖解析期归一到权威键,
+目录投影带 `canonicalToken`,设置页可以照直说 "alias of syntax.…"。
+
+**裁决 ②:插件代码色照过 `ensureHighlightContrast`。** 覆盖进的是高亮解析的
+**输入层**(在护栏之前),对比度护栏等派生照常重跑 —— 476b653d 判例:覆盖先于派生。
+护栏改写了插件给的值不是错误(实测 `#ff00ff` → `#F661F0`),主题自己写的
+代码色走的是同一道护栏,覆盖没有豁免权,因此也不需要投影告警。
+
+**根因其实有两半,原记录只写了后一半:**
+
+| 半 | 症状 | 修法 |
+| --- | --- | --- |
+| 死在门口 | `syntax.*` **根本不在 `CSS_VAR_MAP` 里**(它在 `HIGHLIGHT_LEGACY_FG_VAR_MAP`),白名单只认 `CSS_VAR_MAP` → 权威族被 `sanitizeThemeTokenOverrides` 整族筛掉 | 白名单改成 `isThemeTokenOverridable` = `CSS_VAR_MAP` ∪ 代码色权威族 |
+| 死在出口 | `text.code.*` 进得来,但只写进 `resolvedColors`,高亮层随后把同名变量原样盖回去 | `pickHighlightTokenOverrides` 挑出代码色并归一,作为**参数**进 `resolveThemeHighlights`,落在 `ensureHighlightContrast` 之前 |
+
+落点(5 个文件):
+
+| 层 | 文件 | 改动 |
+| --- | --- | --- |
+| 值表 / 归一表 | `themes/css-mapper.ts` | 新增 `HIGHLIGHT_TOKEN_ALIASES` + `canonicalHighlightToken` / `isHighlightAliasToken` / `isThemeTokenOverridable` / `themeTokenCssVariables` / `pickHighlightTokenOverrides` |
+| 解析输入层 | `themes/resolver.ts` | `resolveThemeHighlights` 收第 5 个参数 `highlightOverrides`,在护栏**之前**落位 |
+| 合成点 | `themes/index.ts` | `sanitizeThemeTokenOverrides` 改用新白名单;`applyThemeInternal` 把挑出来的代码色递给 `resolveThemeHighlights` |
+| 裁决层 | `plugins/theme-overrides.ts` | 冲突按**权威键**比;别名先写权威后写(同插件两族撞车 → 权威胜);条目新增 `canonicalToken` / `shadowedByToken`;CSS 变量展开改走 `themeTokenCssVariables` |
+| 测试 | `themes/__tests__/code-color-overrides.test.ts`(新)+ `app/plugins/__tests__/theme-overrides.test.ts` §9 | 见下 |
+
+零回归的证明方式:修复前后各把**全部内置主题 × 双模式**的 `applyTheme` 产出
+dump 成 JSON(1,021,201 字节)逐字节比对 —— 完全相同。不给覆盖时这条路一个
+分支都不会走。
+
+新增测试(9 + 5 条):变量真的变了(`--hg-syntax-*-fg` / `--text-code-*` /
+`--hljs-*` / `--syntax-*` 四组名字逐条点名,聊天代码块与 diff UI 两条渲染路
+共用的名字都覆盖到)、11 条可覆盖 token 逐条能动、护栏确实重跑(与码块底色
+同色的覆盖被修掉、鲜色也被重算)、别名族产出与权威族**逐字节相同**、
+`inline`/`block` 都归 `syntax.plain`、两族撞车权威胜(与书写顺序无关)、
+跨插件冲突按权威键比、宿主链路(插件清单 → 裁决 → applyTheme)走通且停用即撤除。
 
 ---
 

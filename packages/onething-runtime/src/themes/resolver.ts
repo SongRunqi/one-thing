@@ -2093,12 +2093,20 @@ function ensureHighlightContrast(
 /**
  * Resolve app-level highlight groups from a theme. Themes without `highlights`
  * are upgraded from `theme.text.code.*` so old JSON files continue to work.
+ *
+ * `highlightOverrides` 是**输入层**,不是成品补丁:它在 `ensureHighlightContrast`
+ * 之前落位,所以对比度护栏照常在覆盖色上重跑。护栏改写了给进来的颜色不是错误 ——
+ * 主题自己写的代码色也走同一道护栏,覆盖没有豁免权。
+ *
+ * 键必须是权威族 `syntax.*`(别名族 `text.code.*` 由调用方经
+ * `pickHighlightTokenOverrides` 归一后再递进来)。
  */
 export function resolveThemeHighlights(
   theme: Theme,
   mode: 'dark' | 'light',
   resolvedTheme: Record<string, string> = resolveTheme(theme, mode),
-  codeBlockBg: string = fallbackCodeBlockHighlightBg(resolvedTheme, mode)
+  codeBlockBg: string = fallbackCodeBlockHighlightBg(resolvedTheme, mode),
+  highlightOverrides?: Partial<Record<SemanticHighlightToken, string>>
 ): Record<SemanticHighlightToken, ResolvedHighlightStyle> {
   const defs = theme.defs || {}
   const resolvedMap = buildResolvedMap(resolvedTheme)
@@ -2191,6 +2199,19 @@ export function resolveThemeHighlights(
     const groupStyle = resolveGroupDefinition(groupName)
     if (groupStyle) {
       styles.set(token, mergeHighlightStyle(styles.get(token) || {}, groupStyle))
+    }
+  }
+
+  // 覆盖是**最后一句声明**(压过主题的 semanticTokens / groups / aliases),
+  // 但仍然是**声明**:它落在护栏之前,派生照常重跑。
+  if (highlightOverrides) {
+    for (const [token, fg] of Object.entries(highlightOverrides)) {
+      if (!isSemanticHighlightToken(token)) {
+        console.warn(`[ThemeResolver] Unknown highlight override token: ${token}`)
+        continue
+      }
+      if (typeof fg !== 'string' || !fg.trim()) continue
+      styles.set(token, { ...(styles.get(token) || {}), fg })
     }
   }
 
