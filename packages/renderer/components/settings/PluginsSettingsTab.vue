@@ -644,52 +644,74 @@
               <Button
                 unstyled
                 class="btn-sm install-btn"
-                :disabled="!tarballSummary || npmAvailable === false || installing"
+                :disabled="installableEntries.length === 0 || npmAvailable === false || installing"
                 @click="installPlugin"
               >
-                {{ installing ? 'Installing…' : 'Install' }}
+                {{ installLabel }}
               </Button>
             </div>
           </div>
 
-          <p
-            v-if="tarballReading"
-            class="hint"
-          >
-            Reading the tarball…
-          </p>
+          <!-- 拖投里解析不出本机路径的文件走这条表单级错误(不属于任何一个 tarball)。 -->
           <ErrorNote
-            v-else-if="tarballError"
+            v-if="installError"
             size="sm"
-            :message="tarballError"
+            :message="installError"
           />
-          <!-- 装前确认:与市场同一套披露口径 —— 点头前看到的就是 manifest。 -->
+          <!-- 批量装前确认:每个待装 tarball 一行 —— 与市场同一套披露口径,点头前
+               看到的就是 manifest。预读中/失败/成功三态各自呈现;失败的条目单独
+               标红,不阻塞其它能装的。 -->
           <div
-            v-else-if="tarballSummary"
-            class="market-confirm"
+            v-if="installEntries.length"
+            class="install-entries"
           >
-            <p class="market-confirm-title">
-              {{ tarballSummary.pkg }} v{{ tarballSummary.version }} declares:
-            </p>
-            <ul class="market-confirm-list">
-              <li
-                v-for="item in tarballDeclares"
-                :key="item"
+            <div
+              v-for="(entry, index) in installEntries"
+              :key="index"
+              class="install-entry"
+            >
+              <p
+                v-if="entry.reading"
+                class="hint"
               >
-                {{ item }}
-              </li>
-              <li v-if="tarballDeclares.length === 0">
-                No contributions declared.
-              </li>
-            </ul>
-            <ErrorNote
-              v-if="tarballSummary.manifestIssue"
-              size="sm"
-              :message="tarballSummary.manifestIssue"
-            />
-            <p class="hint">
-              No integrity hash on the dev channel — after install the package name is
-              re-checked against the tarball, and anything that fails a gate is rolled back.
+                Reading {{ entry.path }}…
+              </p>
+              <ErrorNote
+                v-else-if="entry.error"
+                size="sm"
+                :message="entry.error"
+              />
+              <div
+                v-else-if="entry.summary"
+                class="market-confirm"
+              >
+                <p class="market-confirm-title">
+                  {{ entry.summary.pkg }} v{{ entry.summary.version }} declares:
+                </p>
+                <ul class="market-confirm-list">
+                  <li
+                    v-for="item in entryDeclares(entry.summary)"
+                    :key="item"
+                  >
+                    {{ item }}
+                  </li>
+                  <li v-if="entryDeclares(entry.summary).length === 0">
+                    No contributions declared.
+                  </li>
+                </ul>
+                <ErrorNote
+                  v-if="entry.summary.manifestIssue"
+                  size="sm"
+                  :message="entry.summary.manifestIssue"
+                />
+              </div>
+            </div>
+            <p
+              v-if="installableEntries.length"
+              class="hint"
+            >
+              No integrity hash on the dev channel — after install each package name is
+              re-checked against its tarball, and anything that fails a gate is rolled back.
             </p>
           </div>
 
@@ -1408,17 +1430,32 @@ const npmAvailable = ref<boolean | null>(null)
 const installPath = ref('')
 const installing = ref(false)
 /**
- * 装前预读出来的清单。**包名不再由用户手输** —— 它写在 tarball 里的
- * package.json,宿主读得到;安装链装后还会拿包内 name 再校一次,预读只是
- * 把这份情报提前到用户点头之前(它不是信任来源)。
+ * 批量装前预读出来的清单 —— 一次可选/拖投多个 tarball(file: 开发通道)。
+ * 每条各自带预读态:`reading` 时显示进度,`error` 时单独标红(不阻塞其它能装的),
+ * `summary` 就绪时给披露摘要。**包名不再由用户手输** —— 它写在 tarball 里的
+ * package.json,宿主读得到;安装链装后还会拿包内 name 再校一次,预读只是把这份
+ * 情报提前到用户点头之前(它不是信任来源)。
  */
-const tarballSummary = ref<PluginTarballSummary | null>(null)
-const tarballError = ref('')
-const tarballReading = ref(false)
+interface InstallEntry {
+  path: string
+  reading: boolean
+  summary?: PluginTarballSummary
+  error?: string
+}
+const installEntries = ref<InstallEntry[]>([])
+/** 表单级错误(不属于任何一个 tarball,如拖投里解析不出本机路径)。 */
+const installError = ref('')
 /** 手贴路径边打边预读没有意义;停手 300ms 才读。选文件/拖投则立刻读。 */
 let tarballReadTimer: ReturnType<typeof setTimeout> | null = null
 /** 预读是异步的,路径可能已经又变了 —— 只认最后一次发出的那一轮。 */
 let tarballReadSeq = 0
+/** 有摘要即可装(manifestIssue 不拦:装得上但不会加载,让用户自己判)。 */
+const installableEntries = computed(() => installEntries.value.filter(entry => entry.summary))
+const installLabel = computed(() => {
+  if (installing.value) return 'Installing…'
+  const count = installableEntries.value.length
+  return count > 1 ? `Install ${count} plugins` : 'Install'
+})
 /** pluginId → { current, latest };"有更新"徽标与 Update 按钮的数据源。 */
 const updateOffers = ref<Map<string, { current: string; latest: string }>>(new Map())
 const updatingPlugins = ref<Set<string>>(new Set())
@@ -1446,119 +1483,146 @@ async function loadUpdateOffers(): Promise<void> {
 }
 
 /**
- * 预读一个本地 .tgz:包名/版本/声明。
+ * 批量预读一组本地 .tgz:每个各自出包名/版本/声明。
  *
- * 失败一律照实说(结构化原因由主进程给),而不是"行不行都让装" —— 装到
- * 一半被回滚比装之前被拒绝贵得多。
+ * 预读是只读的(不碰账本),所以并行 —— 串行留给真正会写 plugins/package.json
+ * 的安装环节。失败一律照实说(结构化原因由主进程给),而且**逐条**失败:一个
+ * 读不了不该拖垮其它能装的。装到一半被回滚比装之前被拒绝贵得多。
  */
-async function readTarball(rawPath: string): Promise<void> {
-  const path = rawPath.trim()
+async function readEntries(paths: string[]): Promise<void> {
   const seq = ++tarballReadSeq
-  tarballSummary.value = null
-  tarballError.value = ''
-  if (!path) {
-    tarballReading.value = false
-    return
-  }
-  tarballReading.value = true
-  try {
-    const result = await platformApi.readPluginTarball(path)
-    if (seq !== tarballReadSeq) return
-    if (result?.success && result.summary) {
-      tarballSummary.value = result.summary
-    } else {
-      tarballError.value = result?.error || 'Could not read this tarball'
+  installEntries.value = paths.map(path => ({ path, reading: true }))
+  await Promise.all(paths.map(async (path, index) => {
+    try {
+      const result = await platformApi.readPluginTarball(path.trim())
+      if (seq !== tarballReadSeq) return
+      const entry = installEntries.value[index]
+      if (!entry) return
+      if (result?.success && result.summary) {
+        entry.summary = result.summary
+        entry.error = undefined
+      } else {
+        entry.error = result?.error || 'Could not read this tarball'
+      }
+      entry.reading = false
+    } catch (e: any) {
+      if (seq !== tarballReadSeq) return
+      const entry = installEntries.value[index]
+      if (!entry) return
+      entry.error = e?.message || 'Could not read this tarball'
+      entry.reading = false
     }
-  } catch (e: any) {
-    if (seq !== tarballReadSeq) return
-    tarballError.value = e?.message || 'Could not read this tarball'
-  } finally {
-    if (seq === tarballReadSeq) tarballReading.value = false
-  }
+  }))
 }
 
-function readTarballNow(path: string): void {
+function readNow(paths: string[]): void {
   if (tarballReadTimer) clearTimeout(tarballReadTimer)
   tarballReadTimer = null
-  void readTarball(path)
+  void readEntries(paths)
 }
 
 function onInstallPathInput(value: string | number): void {
   const path = String(value ?? '')
   // 打字中先把旧摘要撤下来:摘要与输入框对不上是最坏的那种"看着像对的"。
-  tarballSummary.value = null
-  tarballError.value = ''
+  installEntries.value = []
+  installError.value = ''
   if (tarballReadTimer) clearTimeout(tarballReadTimer)
   tarballReadTimer = setTimeout(() => {
     tarballReadTimer = null
-    void readTarball(path)
+    void readEntries(path.trim() ? [path] : [])
   }, 300)
 }
 
-/** 原生选择器:过滤 .tgz(npm pack 的产物)。 */
+/** 原生选择器:过滤 .tgz(npm pack 的产物),一次可多选批量装。 */
 async function chooseTarball(): Promise<void> {
   if (npmAvailable.value === false || installing.value) return
   try {
     const result = await platformApi.showOpenDialog({
       title: 'Select a plugin tarball',
-      properties: ['openFile'],
+      properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Plugin package', extensions: ['tgz'] }],
     })
     if (result.canceled || result.filePaths.length === 0) return
-    installPath.value = result.filePaths[0]
-    readTarballNow(installPath.value)
+    // 选一个时路径回填输入框(观感与从前一致);多选则清空输入框,由下面的条目
+    // 列表承担呈现 —— 一个框装不下多条路径。
+    installPath.value = result.filePaths.length === 1 ? result.filePaths[0] : ''
+    installError.value = ''
+    readNow(result.filePaths)
   } catch (e: any) {
-    tarballError.value = e?.message || 'Could not open the file picker'
+    installError.value = e?.message || 'Could not open the file picker'
   }
 }
 
-// 拖投等价于"选中":复用聊天区那套 drop 状态机,别再造一个。
+// 拖投等价于"选中":复用聊天区那套 drop 状态机,别再造一个。一次可拖多个。
 const { isDragActive: isTarballDragActive, dropHandlers: tarballDropHandlers } = useFileDrop({
   isDisabled: () => npmAvailable.value === false || installing.value,
   onFiles: files => {
-    const file = files[0]
-    if (!file) return
+    if (!files.length) return
     // file: 通道要的是本机路径;浏览器宿主拿不到路径,那里本来也不能装。
-    const path = file ? platformApi.getPathForFile(file) : ''
-    if (!path) {
-      tarballSummary.value = null
-      tarballError.value = 'Could not resolve a local path for the dropped file'
+    const paths = files.map(file => platformApi.getPathForFile(file)).filter(Boolean)
+    if (!paths.length) {
+      installEntries.value = []
+      installError.value = 'Could not resolve a local path for the dropped file'
       return
     }
-    installPath.value = path
-    readTarballNow(path)
+    installPath.value = paths.length === 1 ? paths[0] : ''
+    installError.value = ''
+    readNow(paths)
   },
 })
 
-/** 装前确认页的声明清单 —— 与市场那条路同一个拼装器。 */
-const tarballDeclares = computed(() => (tarballSummary.value
-  ? declaredContributions({
-    contributes: tarballSummary.value.contributes as MarketContributes | undefined,
-    ...(tarballSummary.value.minAppVersion ? { minAppVersion: tarballSummary.value.minAppVersion } : {}),
+/** 每个待装 tarball 的声明清单 —— 与市场那条路同一个拼装器。 */
+function entryDeclares(summary: PluginTarballSummary): string[] {
+  return declaredContributions({
+    contributes: summary.contributes as MarketContributes | undefined,
+    ...(summary.minAppVersion ? { minAppVersion: summary.minAppVersion } : {}),
   })
-  : []))
+}
 
 async function installPlugin(): Promise<void> {
-  const summary = tarballSummary.value
-  if (!summary || installing.value || npmAvailable.value === false) return
-  // 包名用预读出来的 —— 安装链装后仍会拿包内 package.json 的 name 再校一次,
-  // 对不上照旧回滚。这里省掉的是用户的抄写,不是那道闸。
-  const { pkg, path } = summary
+  const entries = installableEntries.value
+  if (!entries.length || installing.value || npmAvailable.value === false) return
   installing.value = true
+  // 串行装:账本是 plugins/package.json 单文件,并发 npm 会写账本竞态。单个失败
+  // 不中断后续 —— 继续装剩下的,最后汇总一条。
+  const installed: string[] = []
+  let failed = 0
   try {
-    const result = await platformApi.installPlugin({ pkg, path })
-    if (result?.success) {
-      toast.success(`Installed ${result.pluginId ?? pkg}`)
+    for (const entry of entries) {
+      // 包名用预读出来的 —— 安装链装后仍会拿包内 package.json 的 name 再校一次,
+      // 对不上照旧回滚。这里省掉的是用户的抄写,不是那道闸。
+      const { pkg, path } = entry.summary!
+      try {
+        const result = await platformApi.installPlugin({ pkg, path })
+        if (result?.success) {
+          installed.push(result.pluginId ?? pkg)
+        } else {
+          failed++
+          toast.error(result?.error || `Failed to install ${pkg}`)
+        }
+      } catch (e: any) {
+        failed++
+        toast.error(e?.message || `Failed to install ${pkg}`)
+      }
+    }
+    // 汇总:单个成功照旧报名字;批量全成报数;有成有败报 "Installed N, M failed"。
+    // 全失败则只留上面逐条的 error toast,不再补一条空的成功。
+    if (installed.length === 1 && !failed) {
+      toast.success(`Installed ${installed[0]}`)
+    } else if (installed.length && !failed) {
+      toast.success(`Installed ${installed.length} plugins`)
+    } else if (installed.length && failed) {
+      toast.success(`Installed ${installed.length}, ${failed} failed`)
+    }
+    // 只要装上了至少一个就清场 + 刷一次列表(全部结束后统一刷,不是每装一个刷
+    // 一次);全失败则保留条目原样,方便用户重试。
+    if (installed.length) {
       installPath.value = ''
-      tarballSummary.value = null
-      tarballError.value = ''
+      installEntries.value = []
+      installError.value = ''
       await loadPlugins()
       emit('plugins-changed')
-    } else {
-      toast.error(result?.error || `Failed to install ${pkg}`)
     }
-  } catch (e: any) {
-    toast.error(e?.message || `Failed to install ${pkg}`)
   } finally {
     installing.value = false
   }

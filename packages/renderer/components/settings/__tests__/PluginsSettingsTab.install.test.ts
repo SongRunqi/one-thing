@@ -34,11 +34,11 @@ const platform = vi.hoisted(() => ({
   getPluginLifecycleInfo: vi.fn(async () => ({ success: true, npmAvailable: true })),
   checkPluginUpdates: vi.fn(async () => ({ success: true, offers: [] })),
   getPluginMarket: vi.fn(async () => ({ success: true, entries: [], fetchedAt: null, stale: false })),
-  readPluginTarball: vi.fn(async (): Promise<Record<string, unknown>> => ({ success: true, summary: SUMMARY })),
+  readPluginTarball: vi.fn(async (_path: string): Promise<Record<string, unknown>> => ({ success: true, summary: SUMMARY })),
   showOpenDialog: vi.fn(async () => ({ canceled: false, filePaths: [TARBALL] })),
-  installPlugin: vi.fn(async () => ({ success: true, pluginId: 'tps-meter' })),
+  installPlugin: vi.fn(async (): Promise<Record<string, unknown>> => ({ success: true, pluginId: 'tps-meter' })),
   refreshPlugins: vi.fn(async () => ({ success: true })),
-  getPathForFile: vi.fn(() => TARBALL),
+  getPathForFile: vi.fn((_file: File) => TARBALL),
   // 设置 store 在创建时就挂系统主题订阅(M1 起本 tab 是它的消费者)。
   onSystemThemeChanged: vi.fn(() => vi.fn()),
   getSystemTheme: vi.fn(async () => ({ success: true, theme: 'dark' })),
@@ -83,7 +83,7 @@ describe('PluginsSettingsTab 本地安装(file: 开发通道)', () => {
 
     expect(platform.showOpenDialog).toHaveBeenCalledWith({
       title: 'Select a plugin tarball',
-      properties: ['openFile'],
+      properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Plugin package', extensions: ['tgz'] }],
     })
     expect(platform.readPluginTarball).toHaveBeenCalledWith(TARBALL)
@@ -181,6 +181,138 @@ describe('PluginsSettingsTab 本地安装(file: 开发通道)', () => {
     await flushPromises()
 
     expect(platform.readPluginTarball).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  // ── 批量:一次选多个 tarball 串行装 ─────────────────────────────
+
+  const TARBALL_B = '/Users/dev/plugin/packages/foo/dist/onething-plugins-foo-2.0.0.tgz'
+  const SUMMARY_B = {
+    path: TARBALL_B,
+    pkg: '@onething-plugins/foo',
+    pluginId: 'foo',
+    version: '2.0.0',
+    contributes: { commands: ['foo'] },
+  }
+
+  /** 按路径分流预读:每个 tarball 各出各的摘要。 */
+  function readByPath(map: Record<string, Record<string, unknown>>) {
+    platform.readPluginTarball.mockImplementation(async (path: string) => map[path]
+      ?? { success: false, error: `no fixture for ${path}` })
+  }
+
+  it('多选返回多路径 → 批量预读 → 逐条渲染 → 串行装两个', async () => {
+    platform.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [TARBALL, TARBALL_B] })
+    readByPath({
+      [TARBALL]: { success: true, summary: SUMMARY },
+      [TARBALL_B]: { success: true, summary: SUMMARY_B },
+    })
+    const wrapper = mount(PluginsSettingsTab)
+    await flushPromises()
+
+    await chooseButton(wrapper).trigger('click')
+    await flushPromises()
+
+    // 两条待装,各自的披露摘要逐条渲染
+    expect(platform.readPluginTarball).toHaveBeenCalledWith(TARBALL)
+    expect(platform.readPluginTarball).toHaveBeenCalledWith(TARBALL_B)
+    expect(wrapper.text()).toContain('@onething-plugins/tps-meter v1.0.3 declares:')
+    expect(wrapper.text()).toContain('@onething-plugins/foo v2.0.0 declares:')
+    // 多选:输入框清空(一个框装不下多条路径)
+    expect((wrapper.get('input[aria-label="Local plugin tarball path"]').element as HTMLInputElement).value)
+      .toBe('')
+    // 按钮文案带数量
+    expect(installButton(wrapper).text()).toContain('Install 2 plugins')
+
+    await installButton(wrapper).trigger('click')
+    await flushPromises()
+
+    // 串行装两个,顺序与选中一致
+    expect(platform.installPlugin).toHaveBeenCalledTimes(2)
+    expect(platform.installPlugin).toHaveBeenNthCalledWith(1, { pkg: '@onething-plugins/tps-meter', path: TARBALL })
+    expect(platform.installPlugin).toHaveBeenNthCalledWith(2, { pkg: '@onething-plugins/foo', path: TARBALL_B })
+    // 装完清场
+    expect(wrapper.text()).not.toContain('declares:')
+    wrapper.unmount()
+  })
+
+  it('批量预读部分失败:坏的那条标红,好的那条照样能装', async () => {
+    platform.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [TARBALL, TARBALL_B] })
+    readByPath({
+      [TARBALL]: { success: true, summary: SUMMARY },
+      [TARBALL_B]: { success: false, error: 'Package name does not match the naming contract' },
+    })
+    const wrapper = mount(PluginsSettingsTab)
+    await flushPromises()
+
+    await chooseButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('@onething-plugins/tps-meter v1.0.3 declares:')
+    expect(wrapper.text()).toContain('does not match the naming contract')
+    // 只有一条能装:按钮不置灰,文案退回单数
+    expect(installButton(wrapper).attributes('disabled')).toBeUndefined()
+    expect(installButton(wrapper).text()).toContain('Install')
+    expect(installButton(wrapper).text()).not.toContain('2 plugins')
+
+    await installButton(wrapper).trigger('click')
+    await flushPromises()
+
+    // 只装能装的那条,坏的那条不进安装链
+    expect(platform.installPlugin).toHaveBeenCalledTimes(1)
+    expect(platform.installPlugin).toHaveBeenCalledWith({ pkg: '@onething-plugins/tps-meter', path: TARBALL })
+    wrapper.unmount()
+  })
+
+  it('串行安装中单个失败不中断后续', async () => {
+    platform.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [TARBALL, TARBALL_B] })
+    readByPath({
+      [TARBALL]: { success: true, summary: SUMMARY },
+      [TARBALL_B]: { success: true, summary: SUMMARY_B },
+    })
+    // 第一个装失败,第二个仍要被尝试
+    platform.installPlugin
+      .mockResolvedValueOnce({ success: false, error: 'boom' })
+      .mockResolvedValueOnce({ success: true, pluginId: 'foo' })
+    const wrapper = mount(PluginsSettingsTab)
+    await flushPromises()
+
+    await chooseButton(wrapper).trigger('click')
+    await flushPromises()
+    await installButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(platform.installPlugin).toHaveBeenCalledTimes(2)
+    // 有成有败仍收敛列表(装上了至少一个)
+    expect(platform.getPlugins).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('把多个 .tgz 一起拖进安装区 = 批量选中', async () => {
+    const fileA = new File(['x'], 'onething-plugins-tps-meter-1.0.3.tgz')
+    const fileB = new File(['y'], 'onething-plugins-foo-2.0.0.tgz')
+    platform.getPathForFile.mockImplementation((file: File) =>
+      (file.name.includes('foo') ? TARBALL_B : TARBALL))
+    readByPath({
+      [TARBALL]: { success: true, summary: SUMMARY },
+      [TARBALL_B]: { success: true, summary: SUMMARY_B },
+    })
+    const wrapper = mount(PluginsSettingsTab)
+    await flushPromises()
+
+    const zone = wrapper.get('.install-form')
+    const dropEvent = new Event('drop', { bubbles: true })
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: { types: ['Files'], files: [fileA, fileB], dropEffect: '' },
+    })
+    zone.element.dispatchEvent(dropEvent)
+    await flushPromises()
+
+    expect(platform.readPluginTarball).toHaveBeenCalledWith(TARBALL)
+    expect(platform.readPluginTarball).toHaveBeenCalledWith(TARBALL_B)
+    expect(wrapper.text()).toContain('@onething-plugins/tps-meter v1.0.3 declares:')
+    expect(wrapper.text()).toContain('@onething-plugins/foo v2.0.0 declares:')
+    expect(installButton(wrapper).text()).toContain('Install 2 plugins')
     wrapper.unmount()
   })
 })
