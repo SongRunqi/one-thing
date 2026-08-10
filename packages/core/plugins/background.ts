@@ -31,6 +31,7 @@
 import { comparePluginCanonicalOrder } from './canonical-order.js'
 import {
   describePluginRelativeAssetPathProblem,
+  pluginStorageAssetUrl,
   pluginWebviewEntryUrl,
 } from './webview.js'
 
@@ -68,11 +69,22 @@ export interface PluginBackgroundParams {
   fit: PluginBackgroundFit
 }
 
-/** 运行期可调的那一部分。**image 不在里面** —— 换图 = 发新版本。 */
+/**
+ * 运行期可调的那一部分。
+ *
+ * **image 的值域是 `storage:` 那一格,不是任意路径**(B 期,用户壁纸)。
+ * 包内换图仍然等于发新版本 —— 那条语义一个字没变:`image` 在这里只接受
+ * `storage:<相对 storage 根的路径>`,指向的是**用户自己导进来的**那张图
+ * (经 `file-pick` 由宿主拷进 `plugins/<id>/storage/imports/`)。
+ * 一条相对包根的路径(`bg/paper.png`)在这里会被拒 —— 想换包内那张图,
+ * 改 manifest、发版本。
+ */
 export interface PluginBackgroundParamsPatch {
   opacity?: number
   blur?: number
   fit?: PluginBackgroundFit
+  /** 仅 `storage:` 前缀;见上。 */
+  image?: string
 }
 
 /** manifest 里的声明形状(未校验)。 */
@@ -109,6 +121,50 @@ function describeBackgroundImageProblem(value: unknown, label: string): string |
     return `${label} must point at an image file (${PLUGIN_BACKGROUND_IMAGE_EXTENSIONS.join(', ')})`
   }
   return null
+}
+
+/**
+ * 运行期换图的寻址前缀。`storage:imports/paper.png` →
+ * `plugins/<id>/storage/imports/paper.png`。
+ *
+ * 为什么是一个前缀而不是"第二个字段":`image` 的语义(哪张图当背景)没变,
+ * 变的只是**这张图住哪个区**。两个字段意味着两处都要判"谁赢",而背景只有
+ * 一块 —— 那份裁决没有第二个正确答案,只有两处会写歪的地方。
+ */
+export const PLUGIN_STORAGE_IMAGE_PREFIX = 'storage:'
+
+/** 是不是一条 `storage:` 寻址。 */
+export function isPluginStorageImageRef(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith(PLUGIN_STORAGE_IMAGE_PREFIX)
+}
+
+/**
+ * `storage:<rel>` → `<rel>`。非法(不是 storage: 前缀 / 路径判据不过 /
+ * 扩展名不在白名单)一律 null。
+ *
+ * 路径判据复用**包内资产那一份**(穿越、scheme、编码变体、绝对路径),
+ * 只在"相对哪个根"上分叉 —— 抄第二份就是漂移的开始。
+ */
+export function parsePluginStorageImageRef(value: unknown): string | null {
+  if (!isPluginStorageImageRef(value)) return null
+  const relative = value.slice(PLUGIN_STORAGE_IMAGE_PREFIX.length)
+  return describeBackgroundImageProblem(relative, 'image') ? null : relative
+}
+
+/**
+ * 运行期 `image` 的判据。返回错误字符串 = **拒掉这一次 updateBackground**
+ * (不是丢一个字段:插件明说了"把背景换成这张",半条命令比不执行更难解释)。
+ */
+export function describePluginRuntimeBackgroundImageProblem(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) {
+    return 'image must be a non-empty string'
+  }
+  if (!isPluginStorageImageRef(value)) {
+    return `image must start with "${PLUGIN_STORAGE_IMAGE_PREFIX}" `
+      + '(package assets are swapped by shipping a new version, not at runtime)'
+  }
+  const relative = value.slice(PLUGIN_STORAGE_IMAGE_PREFIX.length)
+  return describeBackgroundImageProblem(relative, 'image')
 }
 
 export function isPluginBackgroundFit(value: unknown): value is PluginBackgroundFit {
@@ -180,7 +236,12 @@ function clamp(value: number, min: number, max: number): number {
  * 运行期补丁的钳制。
  *
  * 非数字 / NaN / 未知 fit 一律**忽略该字段**(保留上一次的值),越界数字钳进区间。
- * `image` 即使传进来也不看 —— 换图是发新版本的事,不是运行期的事。
+ *
+ * `image` 是这里唯一的**非**钳制字段:合法的 `storage:` 寻址留下,别的一律丢。
+ * 真正拒掉整条调用的判断在 `api.theme.updateBackground`
+ * (`describePluginRuntimeBackgroundImageProblem`)—— 这里这一道是兜底:
+ * 任何绕开 api-builder 的登记路径(第二个宿主、直接写 runtimeParams 的测试
+ * 替身)都不该能把一条包内路径塞进背景的图源。
  */
 export function clampPluginBackgroundParamsPatch(
   patch: unknown,
@@ -194,6 +255,9 @@ export function clampPluginBackgroundParamsPatch(
     result.blur = clamp(patch.blur, PLUGIN_BACKGROUND_MIN_BLUR, PLUGIN_BACKGROUND_MAX_BLUR)
   }
   if (isPluginBackgroundFit(patch.fit)) result.fit = patch.fit
+  if (patch.image !== undefined && !describePluginRuntimeBackgroundImageProblem(patch.image)) {
+    result.image = patch.image as string
+  }
   return result
 }
 
@@ -223,8 +287,15 @@ export function mergePluginBackgroundParams(
  *
  * 路径相对**静态根**(`contributes.webviewRoot`,缺省 `webview/`),协议那边
  * join 的时候会补上根,所以 URL 里不带根这一段。
+ *
+ * `storage:` 寻址走**数据区路由**(`__storage__` 保留首段,见 webview.ts):
+ * 同一个 scheme、同一个 origin,协议 handler 顶上一条分支决定查哪个根。
+ * 分叉在这一个函数里,是因为"图源在哪个区"只有这一处知道 —— 让 renderer
+ * 或协议 handler 自己去认那个前缀,就等于把同一份判据抄第二遍。
  */
 export function pluginBackgroundImageUrl(pluginId: string, image: string): string {
+  const storageRelative = parsePluginStorageImageRef(image)
+  if (storageRelative) return pluginStorageAssetUrl(pluginId, storageRelative)
   return pluginWebviewEntryUrl(pluginId, image)
 }
 
@@ -311,12 +382,15 @@ export function resolvePluginBackgrounds(
       continue
     }
     const declaration = input.background as PluginBackgroundDeclarationLike
-    const params = mergePluginBackgroundParams(
-      declaration,
-      clampPluginBackgroundParamsPatch(input.runtimeParams ?? undefined),
-    )
-    const image = declaration.image as string
-    const darkImage = typeof declaration.darkImage === 'string' ? declaration.darkImage : ''
+    const runtime = clampPluginBackgroundParamsPatch(input.runtimeParams ?? undefined)
+    const params = mergePluginBackgroundParams(declaration, runtime)
+    // 用户导入的壁纸压过 manifest 缺省图(声明是**缺省**,不是终值)。
+    // darkImage 随之清空:用户挑的是"这一张",不是"浅色这一张" ——
+    // 留着包里的深色图会让同一次选择在切主题时换成另一幅画。
+    const image = runtime.image ?? (declaration.image as string)
+    const darkImage = runtime.image
+      ? ''
+      : (typeof declaration.darkImage === 'string' ? declaration.darkImage : '')
     if (!input.enabled) {
       byPlugin.set(input.pluginId, { status: 'inactive', image, darkImage, ...params })
       continue

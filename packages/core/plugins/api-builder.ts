@@ -1,6 +1,7 @@
 import type { CorePluginAPIState } from './api-state.js'
 import {
   clampPluginBackgroundParamsPatch,
+  describePluginRuntimeBackgroundImageProblem,
   type PluginBackgroundParamsPatch,
 } from './background.js'
 import { deepFreezeCorePluginValue } from './freeze.js'
@@ -1433,7 +1434,11 @@ export function createCorePluginAPI<
      *     日志然后拒绝,**不计熔断**:开一个熔断面意味着一次笔误能连坐整个插件,
      *     而这条调用本身没有任何副作用可言(与未声明的 panel id 不同 —— 那个会
      *     留下一个画不出来的入口);
-     *  3. **钳制** —— 越界数字钳进区间、未知 fit 忽略。用户拖滑杆的结果不该
+     *  3. **图源门**(B 期,用户壁纸)—— `image` 只收 `storage:` 寻址。非法
+     *     图源**拒掉整条调用**而不是丢一个字段:插件明说了"把背景换成这张",
+     *     半条命令(换了透明度没换图)比什么也不做更难解释。同样不计熔断 ——
+     *     它是作者写错了寻址,与未声明 background 同规;
+     *  4. **钳制** —— 越界数字钳进区间、未知 fit 忽略。用户拖滑杆的结果不该
      *     把控件卡住。
      */
     theme: {
@@ -1445,6 +1450,14 @@ export function createCorePluginAPI<
             undefined,
           )
           return
+        }
+        const requestedImage = (patch as { image?: unknown } | null | undefined)?.image
+        if (requestedImage !== undefined) {
+          const problem = describePluginRuntimeBackgroundImageProblem(requestedImage)
+          if (problem) {
+            logger.error(`[Plugin:${pluginId}] theme.updateBackground rejected: ${problem}`, undefined)
+            return
+          }
         }
         const clamped = clampPluginBackgroundParamsPatch(patch)
         // 空补丁不广播:插件传了一堆非法值,等于什么也没说。

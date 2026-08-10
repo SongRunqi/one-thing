@@ -158,6 +158,39 @@ export function pluginWebviewEntryUrl(pluginId: string, entry: string): string {
 }
 
 /**
+ * **数据区路由的保留首段**(B 期,用户壁纸)。
+ *
+ * 用户导进来的壁纸住数据区(`plugins/<id>/storage/`),而这个文件开头那条
+ * "静态根是代码区,不是家目录"的裁决一个字不改 —— 代码区与数据区**不得
+ * 互相越界**。问题只是:数据区那张图要怎么被浏览器取到。
+ *
+ * 三个候选,选了第三个:
+ *  1. **第二个 scheme**(`onething-plugin-data://`)。要第二次
+ *     `registerSchemesAsPrivileged`、第二个 CSP builder、并且每条 CSP 里多一个
+ *     host-source —— 三处必须与第一条同步演进的地方,也就是三处会漂移的地方。
+ *  2. **第二个 host**(`onething-plugin://<id>.data/`)。它换了 origin,于是
+ *     webview 的 CSP `'self'` / host-source 全部失配,等于 1 的成本再加上一个
+ *     "pluginId 里能不能有点"的新坑。
+ *  3. **同 scheme、同 host、保留首段**(选中)。一个 scheme、一个 origin、
+ *     一份 CSP;代码区与数据区的隔离靠协议 handler 顶上**一条分支**:首段是
+ *     `__storage__` 就只查 storage 根,否则只查包根,两条路各自 realpath 复核,
+ *     谁也够不到谁。隔离点少一个,能漂移的地方就少一个。
+ *
+ * 代价是**这个名字被保留了**:插件包里真有一个 `__storage__/` 目录的话,
+ * 它里面的文件取不到。双下划线哨兵 + 文档一句话,换隔离面收敛成一条分支。
+ */
+export const PLUGIN_STORAGE_URL_SEGMENT = '__storage__'
+
+/**
+ * 数据区资产的 URL:`onething-plugin://<id>/__storage__/<相对 storage 根的路径>`。
+ *
+ * 与 `pluginWebviewEntryUrl` 同一个 origin —— 见 PLUGIN_STORAGE_URL_SEGMENT。
+ */
+export function pluginStorageAssetUrl(pluginId: string, relativePath: string): string {
+  return `${pluginWebviewOrigin(pluginId)}/${PLUGIN_STORAGE_URL_SEGMENT}/${relativePath.replace(/^\/+/, '')}`
+}
+
+/**
  * 响应头里的 CSP。
  *
  * **`'self'` 与 host-source 都写,因为实测两种都放行。**

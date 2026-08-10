@@ -585,8 +585,13 @@ export interface CorePluginAPI<
    * 代码,和面板/锚点块同一条规矩。没声明就调,记一条 error 日志然后拒绝:
    * 它是作者写错了,但不该为它开一个熔断面(那会让一次笔误连坐整个插件)。
    *
-   * partial 只收 opacity / blur / fit;**image 不可运行时换** —— 换图 = 发新版本。
-   * 值同样钳制(用户拖滑杆的结果不该把控件卡住)。
+   * partial 收 opacity / blur / fit(钳制:用户拖滑杆的结果不该把控件卡住)
+   * 与 `image`(B 期,用户壁纸)。
+   *
+   * **image 只收 `storage:<相对路径>`** —— 指向用户经 `file-pick` 导进来、由宿主
+   * 拷进 `plugins/<id>/storage/` 的那张图。包内换图仍然等于发新版本:一条相对
+   * 包根的路径在这里会被拒。非法寻址或文件不存在 = **这一次调用整条被拒**
+   * (背景保持原样),不计熔断。
    *
    * **不持久**:重启后回 manifest 缺省。要记住用户的选择,插件自己在 entry 启动时
    * 读一次 `api.settings.get()` 再调一次 —— 持久归插件,坐标系归宿主。
@@ -596,6 +601,8 @@ export interface CorePluginAPI<
       opacity?: number
       blur?: number
       fit?: 'cover' | 'contain' | 'tile'
+      /** `storage:<相对 storage 根的路径>`;别的前缀一律拒。 */
+      image?: string
     }): void
   }
   onDispose(callback: () => void): void

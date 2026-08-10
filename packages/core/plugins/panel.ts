@@ -12,6 +12,7 @@
  * 宪法第 2 条在这里是硬约束:**描述树禁函数成员**。按钮回调用 actionId 寻址,
  * 不是塞一个闭包 —— 闭包过不了 IPC,更过不了 H 线的进程边界。
  */
+import { describePluginFilePickNodeProblem } from './file-pick.js'
 import { describeNonSerializable } from './request-channel.js'
 import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './ui-anchor.js'
 
@@ -200,6 +201,31 @@ export interface PluginPanelDividerNode {
 }
 
 /**
+ * 宿主托管的文件导入(B 期,用户壁纸)。
+ *
+ * **字节不过插件的手**:宿主画按钮、宿主拉原生对话框、宿主校验、宿主拷贝进
+ * 这个插件的数据目录,onAction 只递一个**地址**
+ * (`{ path: 'storage:imports/<name>', name, size }`)。插件拿不到用户磁盘上的
+ * 路径,也拿不到文件内容 —— "让用户换张壁纸"因此不需要给插件开任何读文件的
+ * 权限,判据与钳制全在 `file-pick.ts`。
+ *
+ * 取消选择 = **没有 action**(不是一条 `canceled: true` 的 action):插件不该
+ * 因为用户按了 Esc 而被叫醒。
+ */
+export interface PluginPanelFilePickNode {
+  type: 'file-pick'
+  label: string
+  /**
+   * 可选扩展名,**只能是宿主白名单的子集**(收窄,不能加)。
+   * 缺省 = 全白名单(`PLUGIN_FILE_PICK_EXTENSIONS`)。
+   */
+  accept?: string[]
+  /** 单文件上限;宿主硬顶 10MB,声明更大按 10MB 算。 */
+  maxBytes?: number
+  actionId: string
+}
+
+/**
  * image 节点的 url 白名单(data: 内联小图 / https: 远程图 /
  * onething-plugin: 插件自有静态资源)。
  *
@@ -229,6 +255,7 @@ export type PluginPanelNode =
   | PluginPanelLinkNode
   | PluginPanelCodeNode
   | PluginPanelDividerNode
+  | PluginPanelFilePickNode
 
 export interface PluginPanelTree {
   version: number
@@ -260,6 +287,9 @@ const PANEL_NODE_TYPES = new Set([
   'stack', 'row', 'list', 'markdown', 'button', 'form', 'empty-state',
   // v2
   'table', 'tabs', 'progress', 'spinner', 'badge', 'image', 'link', 'code', 'divider',
+  // B 期(用户壁纸):宿主托管的文件导入。词表 append-only,老宿主见到它
+  // 会画那条 "Unsupported panel element" 占位 —— 而不是静默空白。
+  'file-pick',
 ])
 
 const FORM_CONTROLS = new Set([
@@ -453,6 +483,10 @@ function validateNode(node: unknown, path: string, depth: number): string | null
       return typeof node.text === 'string' ? null : `${path}.text must be a string`
     case 'divider':
       return null
+    case 'file-pick':
+      // 判据整条住 file-pick.ts —— 拷贝闸(宿主侧)要用同一批常量,
+      // 分两处写就是"校验放行了、拷贝拒了"这种自相矛盾的来源。
+      return describePluginFilePickNodeProblem(node, path)
     default:
       return `${path}.type "${type}" is not supported`
   }

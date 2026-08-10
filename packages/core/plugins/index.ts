@@ -205,6 +205,26 @@ export type {
 } from './webview.js'
 export { describePluginRelativeAssetPathProblem } from './webview.js'
 export {
+  PLUGIN_STORAGE_URL_SEGMENT,
+  pluginStorageAssetUrl,
+} from './webview.js'
+export {
+  PLUGIN_FILE_PICK_EXTENSIONS,
+  PLUGIN_FILE_PICK_MAX_BYTES,
+  PLUGIN_IMPORTS_DIR_NAME,
+  clampPluginFilePickMaxBytes,
+  describePluginFileImportProblem,
+  describePluginFilePickNodeProblem,
+  nextAvailablePluginImportFileName,
+  resolvePluginFilePickAccept,
+  sanitizePluginImportFileName,
+} from './file-pick.js'
+export type {
+  PluginFileImportCandidate,
+  PluginFilePickNodeLike,
+  PluginFilePickResult,
+} from './file-pick.js'
+export {
   PLUGIN_BACKGROUND_DEFAULT_BLUR,
   PLUGIN_BACKGROUND_DEFAULT_FIT,
   PLUGIN_BACKGROUND_DEFAULT_OPACITY,
@@ -215,9 +235,13 @@ export {
   PLUGIN_BACKGROUND_MAX_OPACITY,
   PLUGIN_BACKGROUND_MIN_BLUR,
   PLUGIN_BACKGROUND_MIN_OPACITY,
+  PLUGIN_STORAGE_IMAGE_PREFIX,
   clampPluginBackgroundParamsPatch,
   describePluginBackgroundProblem,
+  describePluginRuntimeBackgroundImageProblem,
   isPluginBackgroundFit,
+  isPluginStorageImageRef,
+  parsePluginStorageImageRef,
   mergePluginBackgroundParams,
   pluginBackgroundImageUrl,
   resolvePluginBackgrounds,
@@ -418,6 +442,7 @@ export type {
   PluginPanelCodeNode,
   PluginPanelDividerNode,
   PluginPanelEmptyStateNode,
+  PluginPanelFilePickNode,
   PluginPanelFormField,
   PluginPanelFormNode,
   PluginPanelImageNode,

@@ -278,10 +278,35 @@ describe('api.theme.updateBackground', () => {
     })
   })
 
-  it('image 不可运行时换 —— 换图 = 发新版本', () => {
-    const { api, updatePluginBackground } = createApi({ declaredBackground: true })
+  /*
+   * B 期(用户壁纸)改了这一条的形状,没有改它的立意。
+   *
+   * 从前:`image` 整个字段被无视 —— 换图只能发新版本。
+   * 现在:**包内**换图仍然只能发新版本(下面第二条),多出来的是
+   * `storage:` 那一格 —— 用户经 file-pick 导进来的图,插件只拿到地址。
+   *
+   * 非法图源从"丢一个字段"改成"拒整条调用":插件明说了"把背景换成这张",
+   * 只把透明度改掉、图还是老的那一张,比什么也不做更难解释。
+   */
+  it('包内路径换图仍然被拒,并且拒的是整条调用(不是丢一个字段)', () => {
+    const { api, updatePluginBackground, onPluginFailure, error } = createApi({ declaredBackground: true })
     api.theme.updateBackground({ image: '../../etc/passwd.png', opacity: 0.5 } as never)
-    expect(updatePluginBackground).toHaveBeenCalledWith('demo', { opacity: 0.5 })
+    expect(updatePluginBackground).not.toHaveBeenCalled()
+    expect(error).toHaveBeenCalledTimes(1)
+    // 与未声明 background 同规:作者写错寻址,不开熔断面。
+    expect(onPluginFailure).not.toHaveBeenCalled()
+
+    api.theme.updateBackground({ image: 'bg/paper.png' } as never)
+    expect(updatePluginBackground).not.toHaveBeenCalled()
+  })
+
+  it('storage: 寻址的图可以运行期换 —— 那是用户自己导进来的那张', () => {
+    const { api, updatePluginBackground } = createApi({ declaredBackground: true })
+    api.theme.updateBackground({ image: 'storage:imports/paper.png', opacity: 0.5 } as never)
+    expect(updatePluginBackground).toHaveBeenCalledWith('demo', {
+      image: 'storage:imports/paper.png',
+      opacity: 0.5,
+    })
   })
 
   it('全是非法值 = 什么也没说,不广播', () => {
