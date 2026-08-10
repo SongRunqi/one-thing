@@ -42,8 +42,33 @@ const TELEPORT_PRIMITIVES = new Set([
  * 不是原生 tooltip —— 规则要放它们过去,否则 P2 之后每个迁走的对话框都会被
  * 自己的标题绊倒。名单刻意只列确认过的组件:`<Button :title>` 这类会透传成
  * 原生 title 的,仍然该被抓。
+ *
+ * 判据是 `ctx.tag` = **接收这个 title 的组件标签名**,不是"行里出现过 title"。
+ * 所以名单只对 `<SettingsSection title="…">` 这种组件调用生效;同一行若写在
+ * 原生元素上(`<div title="…">`),tag 是 `div`,照报不误。
+ * 2026-08-10 扩表(自绘 UI 收敛波 0):下面每一枚都已逐个核对过组件里确有
+ * `title?: string` 的 props 声明,且那个 prop 渲染成**可见文案**而不是原生
+ * tooltip —— 名单不是"看着像组件就放行"。
+ *
+ * 反例,故意留红:`components/common/MenuItem.vue` 与 `SubMenu.vue` **内部**
+ * 那两行(`<component :title="title || undefined">` / `<button :title=…>`)是
+ * 真·原生 title 属性 —— 它们在 §1 的表里有独立裁决(菜单项自己的可见文案,
+ * 原生 title 只当"截断了才浮出来"的兜底),但那是**语义豁免**,不是 prop,
+ * 所以它们留在基线里,不进这张表。一刀切把 `component` / `button` 加进来
+ * 等于把整条规则废掉。
  */
-const TITLE_PROP_COMPONENTS = new Set(['Dialog', 'SettingsEmptyState'])
+const TITLE_PROP_COMPONENTS = new Set([
+  'Dialog',
+  'SettingsEmptyState',
+  'SettingsSection',
+  'ComposerExtensionPanel',
+  'FilePicker',
+  'PromptReferenceCard',
+  'AttachmentThumb',
+  'MenuItem',
+  'SubMenu',
+  'ThreadChatDetail',
+])
 
 /**
  * zones: 规则只在它讲得通的分区里跑。

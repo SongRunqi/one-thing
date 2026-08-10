@@ -21,7 +21,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const baselinePath = path.join(root, 'docs/audit/ui-baseline-2026-08-07.txt')
+// 2026-08-10 重录(自绘 UI 收敛波 0):title-attr 豁免名单扩到组件 prop 之后
+// 58 → 12。**基线只录 HEAD 的状态** —— 检查器读的是工作树,所以重录必须在
+// `git worktree add --detach <tmp> HEAD` 出来的干净树里跑,否则会把当时未提交的
+// 工作(healed 的、以及新引入的红)一起录进去,棘轮当场失去公信力。
+const baselinePath = path.join(root, 'docs/audit/ui-baseline-2026-08-10.txt')
 
 const ANSI_CSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g')
 const FAILURE_PREFIX = '[ui] failed:'
