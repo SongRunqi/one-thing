@@ -14,6 +14,11 @@
 @import '../components/chat/todo-popover.css';
 @import './hljs-theme.css';
 @import './markdown.css';
+/* 壁纸模式的全窗覆盖体系。必须在上面所有面/主题之后:它的规则要盖过它们,而且
+   一律 key 在根类 `html.has-wallpaper` 上,壁纸没开时整份文件是死的。
+   放在全局层而不是 App.vue 的 scoped 块里,是因为浮层全部 teleport 到 body,
+   scoped 属性够不着它们(详见文件头注)。 */
+@import './wallpaper.css';
 
 :root {
   --breakpoint-mobile: 480px;

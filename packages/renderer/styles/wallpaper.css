@@ -1,0 +1,417 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   壁纸模式(wallpaper mode)—— 全窗表面覆盖体系
+   ──────────────────────────────────────────────────────────────────────────
+   插件背景层(`.app-background-layer`,App.vue)铺满整窗之后,真正的问题不是
+   "哪个元素忘了透明",而是**每张面上读不读字、读多少**。按这个问出六档,新面
+   进树时**先定级再落规则**,别逐个打地鼠:
+
+     A 级·让位   纯布局包装,面上一个字都不读       → background: transparent
+     B 级·纱     区域 chrome(侧栏 / 顶栏 / 工作台 / media 面板)
+                                                   → var(--wallpaper-veil)
+     S 级·态     hover / active / selected 等交互反馈,全窗所有 chrome 按钮
+                                                   → 半透明 mix(45% / 60%)
+     C 级·可读卡 内容面(代码块 / 表头 / 引用 / 工具卡)→ --wallpaper-card-alpha
+     E 级·磨砂   浮层家族(菜单 / popover / 下拉 / 会话预览卡 / 抽屉)
+                                                   → 半透明底 + backdrop blur
+     ×  ·不适用  辅助窗口(设置 / 搜索 / todo / 图片预览)—— 那些窗不铺壁纸
+
+   2026-08-10 的裁决把旧 D 级("弹层永不透")推翻了:**壁纸是全局行为,所有表面
+   都要按各自方式支持它**。浮层的可读性靠"高不透明度 + 磨砂"而不是"完全不透"。
+
+   ── 性能红线(透明窗掉帧判例在案)────────────────────────────────────────
+   `backdrop-filter` **只许上浮层**:数量少(同一时刻通常只有一层)、几何静态、
+   生命周期短。禁止用于大面积常驻区域(侧栏 / 工作台 / 消息列表 / 背景层本身),
+   禁止 `transition` 它 —— 逐帧重算模糊就是掉帧本身。E 级清单是**枚举制**,
+   新面进表要先问一句"它同时在屏的兄弟有几个"。
+
+   ── 调法:六个旋钮,改这六个数,全窗一起变 ───────────────────────────────
+     --wallpaper-veil-alpha    B 级纱的浓度
+     --wallpaper-card-alpha    C 级可读卡的浓度
+     --wallpaper-hover-alpha   S 级 hover 反馈的浓度
+     --wallpaper-active-alpha  S 级 active / selected 反馈的浓度
+     --wallpaper-frost-alpha   E 级磨砂底的浓度
+     --wallpaper-frost-blur    E 级磨砂的模糊半径
+   同级全体只认同一个数 —— 用户一处调、处处齐,"侧栏和主区观感不一致"就是各写
+   各的浓度造出来的。
+
+   ── 实现纪律 1:层级优先 token ───────────────────────────────────────────
+   能覆写 CSS 变量的绝不写类名规则 —— 覆写 `--ui-sidebar-surface-bg` 一次,
+   `.sidebar` 本体 / `.sidebar-header` / 会话分组 pill / 以及任何**尚未被枚举到**
+   的后代面会一起跟随。类名规则只留给变量够不着的面。
+
+   ── 实现纪律 2:自定义属性按**计算值**继承,别指望派生 token 自动跟随 ──────
+   `--ui-sidebar-action-hover-bg: var(--ui-state-hover-bg)` 定义在 `:root`,它在
+   `:root` 处就被算成一个**实色**并按计算值继承下去。在 `.app-shell` 上改
+   `--ui-state-hover-bg` **不会**让它重算 —— 派生 token 必须逐条列出来(见 S 级)。
+   同理:一枚 token 若在 X 元素上被声明为 `var(--Y)`,那么只有在 **X 自己或它的
+   祖先**上改 `--Y` 才推得动它。E 级里 `--todo-popover-bg` / `--app-menu-bg` 要单
+   独列名,就是因为它们声明在浮层的**祖先**上,改浮层自己的上游 token 够不着。
+
+   ── 实现纪律 3:CSS 环坑 —— 快照层必须夹在"主题定义层"和"覆写层"之间 ──────
+   自定义属性是惰性求值的,`--x: color-mix(…, var(--x) …)` 在同一元素上构成自引用
+   循环,按规范整条作废(**静默失效,真机才看得见**)。主题 token(`--ui-*`)定义
+   在 `:root` / `html` 上;所有 teleport 出去的浮层都是 `body` 的**子元素**。于是
+   `body` 是唯一同时满足这两条的层:
+     · 它在 `:root` 之下 —— `var(--ui-x)` 在这里读到的是主题原值;
+     · 它在每一张要治的面之上 —— 包括 `Teleport to="body"` 的整个浮层家族。
+   所以:**旋钮 + ink 快照 + 派生值住在 `html.has-wallpaper body`,token 覆写一律
+   住在 body 的后代选择器上**。快照在 body 处已被算成实色并按计算值继承下来,后代
+   再怎么覆写同名 token 都构不成环。
+   **禁止**把任何 `--ui-*` 覆写写到 `html.has-wallpaper` 或 `html.has-wallpaper body`
+   上 —— 那一刻整条纱/磨砂链会静默作废。
+
+   ── 作用域根 ────────────────────────────────────────────────────────────
+   根类 `html.has-wallpaper` 由 App.vue 的 watch 挂/摘(卸载时清理)。之所以是
+   **根级**而不是 `.app-shell` / `.app-content`:浮层全部 teleport 到 `body`,挂在
+   shell 上的选择器够不着它们。挂到 documentElement 之后,今天的浮层和明天任何新
+   teleport 面都自然进入体系。辅助窗口是各自的 BrowserWindow,它们的
+   documentElement 上没有这个类,整份文件对它们是死的。
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── 旋钮 + ink 快照 + 派生值(唯一一处)───────────────────────────────── */
+html.has-wallpaper body {
+  /* 六个旋钮 */
+  /* veil 35% → 18%:真机二轮反馈,用户要侧栏与主区更接近的通透度。 */
+  --wallpaper-veil-alpha: 18%;
+  --wallpaper-card-alpha: 88%;
+  --wallpaper-hover-alpha: 45%;
+  --wallpaper-active-alpha: 60%;
+  /* 磨砂底:76% 是"字压在插画上仍是纯色底质感"的下沿(深浅两套主题都量过);
+     再稀就开始看见图案穿过字重。blur 14px 落在 12–16px 带的中间。 */
+  --wallpaper-frost-alpha: 76%;
+  --wallpaper-frost-blur: 14px;
+
+  /* ── ink 快照:后代覆写同名 token 之后,这里仍是主题的原始值 ── */
+  --wallpaper-veil-ink: var(--ui-surface-app-bg);
+  --wallpaper-chat-ink: var(--ui-surface-chat-bg, var(--ui-surface-app-bg));
+  --wallpaper-panel-ink: var(--ui-surface-panel-bg, var(--ui-surface-app-bg));
+  --wallpaper-elevated-ink: var(--ui-surface-elevated-bg);
+  --wallpaper-floating-ink: var(--ui-surface-floating-bg);
+  --wallpaper-menu-ink: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
+  --wallpaper-code-ink: var(--ui-surface-code-block-bg);
+  --wallpaper-code-header-ink: var(--ui-surface-code-header-bg);
+  --wallpaper-table-head-ink: var(--ui-table-header-bg, var(--ui-state-hover-bg));
+  /* 侧栏两条 hover 链(分组 pill 的 --app-menu-item-hover-bg 与会话行的
+     --sidebar-row-hover-fill)都汇在这枚 token 上,一处覆写双杀。 */
+  --wallpaper-hover-ink: var(--ui-sidebar-item-hover-bg);
+  --wallpaper-active-ink: var(--ui-sidebar-item-active-bg);
+  --wallpaper-state-hover-ink: var(--ui-state-hover-bg);
+  --wallpaper-state-active-ink: var(--ui-state-active-bg);
+  --wallpaper-state-selected-ink: var(--ui-state-selected-bg);
+  --wallpaper-state-selected-hover-ink: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg));
+  --wallpaper-tab-item-hover-ink: var(--ui-tab-bar-item-hover-bg);
+  --wallpaper-tab-action-hover-ink: var(--ui-tab-bar-action-hover-bg);
+
+  /* ── B 级唯一的纱。所有区域 chrome 面引它,不许各自再写 color-mix。 ── */
+  --wallpaper-veil: color-mix(
+    in srgb,
+    var(--wallpaper-veil-ink) var(--wallpaper-veil-alpha),
+    transparent
+  );
+
+  /* ── S 级:交互反馈的半透明配方 ── */
+  --wallpaper-hover: color-mix(
+    in srgb,
+    var(--wallpaper-hover-ink) var(--wallpaper-hover-alpha),
+    transparent
+  );
+  /* 选中态比 hover 深一档 —— 选中要站得住,但同样让壁纸透气。 */
+  --wallpaper-active: color-mix(
+    in srgb,
+    var(--wallpaper-active-ink) var(--wallpaper-active-alpha),
+    transparent
+  );
+  --wallpaper-state-hover: color-mix(
+    in srgb,
+    var(--wallpaper-state-hover-ink) var(--wallpaper-hover-alpha),
+    transparent
+  );
+  --wallpaper-state-active: color-mix(
+    in srgb,
+    var(--wallpaper-state-active-ink) var(--wallpaper-active-alpha),
+    transparent
+  );
+  --wallpaper-state-selected: color-mix(
+    in srgb,
+    var(--wallpaper-state-selected-ink) var(--wallpaper-active-alpha),
+    transparent
+  );
+  --wallpaper-state-selected-hover: color-mix(
+    in srgb,
+    var(--wallpaper-state-selected-hover-ink) var(--wallpaper-active-alpha),
+    transparent
+  );
+  --wallpaper-tab-item-hover: color-mix(
+    in srgb,
+    var(--wallpaper-tab-item-hover-ink) var(--wallpaper-hover-alpha),
+    transparent
+  );
+  --wallpaper-tab-action-hover: color-mix(
+    in srgb,
+    var(--wallpaper-tab-action-hover-ink) var(--wallpaper-hover-alpha),
+    transparent
+  );
+
+  /* ── E 级:一族一枚磨砂底。族色各自保留(菜单面比 floating 面暗一档是
+     2026-08-09 拍板的既有语言),只是统一稀释到同一个 alpha。 ── */
+  --wallpaper-frost-app: color-mix(
+    in srgb,
+    var(--wallpaper-veil-ink) var(--wallpaper-frost-alpha),
+    transparent
+  );
+  --wallpaper-frost-chat: color-mix(
+    in srgb,
+    var(--wallpaper-chat-ink) var(--wallpaper-frost-alpha),
+    transparent
+  );
+  --wallpaper-frost-panel: color-mix(
+    in srgb,
+    var(--wallpaper-panel-ink) var(--wallpaper-frost-alpha),
+    transparent
+  );
+  --wallpaper-frost-elevated: color-mix(
+    in srgb,
+    var(--wallpaper-elevated-ink) var(--wallpaper-frost-alpha),
+    transparent
+  );
+  --wallpaper-frost-floating: color-mix(
+    in srgb,
+    var(--wallpaper-floating-ink) var(--wallpaper-frost-alpha),
+    transparent
+  );
+  --wallpaper-frost-menu: color-mix(
+    in srgb,
+    var(--wallpaper-menu-ink) var(--wallpaper-frost-alpha),
+    transparent
+  );
+}
+
+/* ══ A 级·让位 ═══════════════════════════════════════════════════════════
+   纯布局包装。两种形态外壳的包装树(workspace-view-stack / app-shell splitter)
+   各自把 --ui-bg 画成不透明底,恰好整张盖住 z0 的背景层 —— 真机排查实录
+   2026-08-10:图正常加载、图层正常挂载,肉眼却什么都没有。
+   透明化白名单是**枚举制**,新的不透明包装元素进树时必须来这里登记一行
+   (类不存在时选择器惰性,不伤任何布局)。 */
+html.has-wallpaper .app-shell {
+  /* shell 让位给 z0 的壁纸层(body 仍有不透明底,mac 透明窗不漏桌面)。 */
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+/* 内容压在层之上。层是 z-index:0 的定位元素,不给内容显式抬一层的话,
+   同为定位元素的后代会按文档顺序压过来 —— 结果是随组件顺序漂移的层序。 */
+html.has-wallpaper .app-content > .app-content-splitter {
+  position: relative;
+  z-index: 1;
+}
+
+html.has-wallpaper .app-content,
+html.has-wallpaper .app-main-region,
+html.has-wallpaper .chat-container-wrapper,
+html.has-wallpaper .workspace-view-stack {
+  background: transparent;
+}
+
+html.has-wallpaper .chat {
+  --chat-surface: transparent;
+}
+
+/* ══ B 级·纱 ═════════════════════════════════════════════════════════════ */
+
+/* ── 侧栏(报障 1 / 3 / 4 的旧轮)────────────────────────────────────────
+   token 级收口:`--sidebar-bg` 的定义是
+   `var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg))`,覆写第一个 arm 之后
+   fallback 永不触发,于是 `.sidebar` 本体、`.sidebar-header`、会话分组 pill
+   (SessionList 的 `.session-group :deep(.app-sub-menu-title)`)、以及任何别的
+   引这枚 token 的后代面**一起**跟随。
+   注意不能顺手去动 `--ui-surface-app-bg`:它是 `--wallpaper-veil-ink` 的来源,
+   在 body 上动它就成环,整条纱静默作废。
+   迁根副作用(如实记):选择器从 `.app-shell …` 变成根级之后,**浮层侧栏**
+   (`.app-floating-sidebar-host` 里那份,DOM 上是 `.app-shell` 的兄弟)第一次真
+   被这些规则命中 —— 旧写法够不着它,那条 D 级例外其实一直是死码。 */
+html.has-wallpaper .sidebar {
+  --ui-sidebar-surface-bg: var(--wallpaper-veil);
+  --ui-sidebar-item-hover-bg: var(--wallpaper-hover);
+  --ui-sidebar-item-active-bg: var(--wallpaper-active);
+}
+
+/* 分组 pill 静置时不再自己画底(真机二轮:与侧栏纱叠成 58% 复合浓度,用户判
+   不齐)。代价如实记:sticky 组头滚动时不再遮住滚过的行文 —— 用户裁决通透
+   优先。hover 反馈由下面的半透明 hover token 承接。 */
+html.has-wallpaper .sidebar .app-sub-menu-title {
+  background: transparent;
+}
+
+html.has-wallpaper .sidebar .app-sub-menu-title:hover,
+html.has-wallpaper .sidebar .app-sub-menu-title:focus-visible {
+  background: var(--wallpaper-hover);
+}
+
+/* A 级·让位|侧栏头自己不再画底(否则与 .sidebar 的纱叠成两截深浅)。 */
+html.has-wallpaper .sidebar-header {
+  background: transparent;
+}
+
+/* A 级·让位|侧栏头下缘那条 12px 的"不透明底 → 透明"渐变。上一刀把
+   .sidebar-header 本体改透明时漏了这枚伪元素,它就单独留在那里,在纱上显成一道
+   横白。滚动遮罩的职责交给分组 pill(sticky)承担。 */
+html.has-wallpaper .sidebar-header::after {
+  background: transparent;
+}
+
+/* A 级·让位|rail 的底色是一层**相对**色阶(比侧栏底稍重一档),用来把这 46px
+   与列表区分开。壁纸之上"稍重一档"失去参照,只会显成一根实心竖条 —— 交出底色,
+   它的 hover / current 填充本来就是半透明叠加,分层照旧成立。 */
+html.has-wallpaper .sidebar-rail {
+  --ui-sidebar-rail-bg: transparent;
+}
+
+/* ── 右侧工作台(报障 3)──────────────────────────────────────────────────
+   `.right-workbench` 画 `var(--ui-surface-panel-bg)`,同一枚 token 还被它的整棵
+   子树消费(browser 工具条 / 编辑器工作台 / 成员台 / 排程台 / 房间线程台)。
+   **不在 body 上改这枚 token**:`--ui-surface-panel-bg` 不是"区域面"专用 token,
+   `.session-preview`、`.prompt-ref-popover`、`.app-select-dropdown` 也在引它 ——
+   全局改一次就把浮层一并稀释成 18% 的纱,那是不可读。所以覆写落在**区域根**上,
+   与侧栏同一个手法。 */
+html.has-wallpaper .right-workbench {
+  --ui-surface-panel-bg: var(--wallpaper-veil);
+}
+
+/* ── media / workspace 面板(报障 5)────────────────────────────────────── */
+html.has-wallpaper .media-panel {
+  --ui-surface-chat-bg: var(--wallpaper-veil);
+}
+
+/* ══ S 级·态 ═════════════════════════════════════════════════════════════
+   全窗 chrome 按钮的交互反馈。覆写落在**窗内两棵树的根**上(停靠壳 + 浮层侧栏
+   宿主),而不是 body —— body 上一改,teleport 出去的浮层内部 hover 会跟着变淡,
+   而磨砂底上本来就该用满强度的反馈。E 级块里再把它们回满,两处正交。
+
+   下面每一行都是**必须列名**的:派生 token(`--ui-sidebar-action-hover-bg:
+   var(--ui-state-hover-bg)`、`--ui-tab-bar-item-active-bg:
+   var(--ui-state-selected-bg)`)在 `:root` 处就被算成实色,改上游不会让它们重算。 */
+html.has-wallpaper .app-shell,
+html.has-wallpaper .app-floating-sidebar-host {
+  --ui-state-hover-bg: var(--wallpaper-state-hover);
+  --ui-state-active-bg: var(--wallpaper-state-active);
+  --ui-state-selected-bg: var(--wallpaper-state-selected);
+  --ui-state-selected-hover-bg: var(--wallpaper-state-selected-hover);
+  /* 派生 token,逐条列名(见上) */
+  --ui-sidebar-action-hover-bg: var(--wallpaper-state-hover);
+  --ui-tab-bar-item-hover-bg: var(--wallpaper-tab-item-hover);
+  --ui-tab-bar-item-active-bg: var(--wallpaper-state-selected);
+  --ui-tab-bar-action-hover-bg: var(--wallpaper-tab-action-hover);
+}
+
+/* ══ C 级·可读卡 ═════════════════════════════════════════════════════════
+   主区顶栏与消息正文里的内容面。
+   顶栏勘误:画底的不是 Container.vue 的 `.layout-container-header`(那个组件通篇
+   没有任何 background 声明),是 ChatHeader 之上的 `.session-header`,它画
+   `var(--ui-tab-bar-surface-bg, var(--ui-surface-chat-bg))`。覆写第一个 arm,
+   fallback 不再触发,页签条一族(主区顶栏 / 工作台顶栏)一起跟随。
+   `--ui-surface-chat-bg` 保持原样:frame-label 一族靠它盖住边框缺口,那是功能不是底色。
+
+   内容压在插画上必须先可读,所以是高不透明度而不是全透。改的是**根 ink token**
+   而不是 markdown 的派生变量:`--md-code-block-bg` 一族定义在 `.md-body` 作用域里,
+   那里的定义会盖过从这里继承下去的值,只有改它们的上游才推得动。
+   代码块最终 alpha ≈ 0.62×0.88 + 0.38×1 ≈ 0.93(markdown.css 还会再兑 38% 的
+   chat 底),表头 0.88,斑马行 0.40×0.88 ≈ 0.35 —— 都落在"看得清、透一点气"的带里。
+   消息气泡(--ui-surface-elevated-bg)与输入框(--ui-surface-input-bg)不在此列:
+   它们各有透明链与皮肤管辖,这里一个字不动。 */
+html.has-wallpaper .app-content {
+  /* 真机二轮:用户要顶栏与主区同亮度 —— B 级纱降为 A 级让位(全透明)。 */
+  --ui-tab-bar-surface-bg: transparent;
+
+  --ui-surface-code-block-bg: color-mix(
+    in srgb,
+    var(--wallpaper-code-ink) var(--wallpaper-card-alpha),
+    transparent
+  );
+  --ui-surface-code-header-bg: color-mix(
+    in srgb,
+    var(--wallpaper-code-header-ink) var(--wallpaper-card-alpha),
+    transparent
+  );
+  --ui-table-header-bg: color-mix(
+    in srgb,
+    var(--wallpaper-table-head-ink) var(--wallpaper-card-alpha),
+    transparent
+  );
+}
+
+/* ══ E 级·磨砂 ═══════════════════════════════════════════════════════════
+   浮层家族。清单是**枚举制**(性能红线),新浮层进表加一行选择器即可 —— 底色
+   走 token,所以不必知道它引的是哪一枚。
+
+   为什么这里同时覆写六枚 surface token:浮层各自引不同的族色(菜单面 / floating
+   面 / panel 面 / chat 面 / app 面),而一个选择器列表里的元素只会命中自己那一枚,
+   其余是惰性的。这样"新面进表"不需要先去读它的实现。
+
+   `--app-popover-bg` / `--inputbox-select-panel-bg` / `--composer-extension-surface`
+   **故意不列**:它们都声明在浮层**自己**这个元素上,形如
+   `--app-popover-bg: var(--ui-surface-menu-bg, …)` —— 覆写上游即可推动,而且这样
+   才保得住 2026-08-09 拍板的族色区分(S 带/trigger/ctx 走菜单面,其余走 floating
+   面)。反过来 `--todo-popover-bg` / `--app-menu-bg` 声明在浮层的**祖先**上,上游
+   够不着,只能列名。 */
+html.has-wallpaper :is(
+    .app-popover.is-surface,
+    .app-context-menu.is-surface,
+    .app-select-dropdown,
+    .app-mention-dropdown,
+    .app-sub-menu-panel.is-popper,
+    .app-table-filter-menu,
+    .composer-extension-panel,
+    .session-preview,
+    .prompt-ref-popover,
+    .react-picker,
+    .branch-menu,
+    .more-menu,
+    .practice-menu,
+    .practice-submenu,
+    .workbench-tab-picker,
+    .todo-plan-panel .todo-popover,
+    .todo-plan-panel .todo-popover-list,
+    .media-panel .inspector-drawer,
+    .sidebar.floating .sidebar-content
+  ) {
+  --ui-surface-menu-bg: var(--wallpaper-frost-menu);
+  --ui-surface-floating-bg: var(--wallpaper-frost-floating);
+  --ui-surface-elevated-bg: var(--wallpaper-frost-elevated);
+  --ui-surface-panel-bg: var(--wallpaper-frost-panel);
+  --ui-surface-chat-bg: var(--wallpaper-frost-chat);
+  --ui-surface-app-bg: var(--wallpaper-frost-app);
+  /* 声明在祖先上、上游够不着的两枚(见块首注) */
+  --todo-popover-bg: var(--wallpaper-frost-app);
+  --app-menu-bg: var(--wallpaper-frost-menu);
+
+  /* 可读性地板:磨砂底上 45% 的反馈读不出来 —— S 级在浮层内回满。
+     ink 快照在 body 上,读到的是主题原值,不是被 .app-shell 稀释过的那份。 */
+  --ui-state-hover-bg: var(--wallpaper-state-hover-ink);
+  --ui-state-active-bg: var(--wallpaper-state-active-ink);
+  --ui-state-selected-bg: var(--wallpaper-state-selected-ink);
+  --ui-state-selected-hover-bg: var(--wallpaper-state-selected-hover-ink);
+  --ui-sidebar-item-hover-bg: var(--wallpaper-hover-ink);
+  --ui-sidebar-item-active-bg: var(--wallpaper-active-ink);
+
+  /* 静态模糊。**不加 transition** —— 逐帧重算模糊就是掉帧本身(透明窗判例)。 */
+  backdrop-filter: blur(var(--wallpaper-frost-blur));
+  -webkit-backdrop-filter: blur(var(--wallpaper-frost-blur));
+}
+
+/* 浮层侧栏的内容卡自己写死 background,token 推不动,单独还一行。 */
+html.has-wallpaper .sidebar.floating .sidebar-content {
+  background: var(--wallpaper-frost-app);
+}
+
+/* ══ 不参与磨砂,理由逐条记在这里 ═════════════════════════════════════════
+   · `.tooltip`(common/Tooltip.vue):它是**反色**小卡(深色主题下反而是浅底),
+     且自带 `blur(8px)`。反色本身就是压任何底的手段,再兑透明只会让它两边都不像。
+   · `.app-dialog` / `.app-dialog-overlay`:对话框是**任务面**(表单 / 长文 / 破坏性
+     确认),而且它自带遮罩已经把壁纸压暗了 —— 在遮罩之上再磨砂,收益为零、
+     可读性有损。保持不透。
+   · `.image-preview-overlay` / `.evals-workbench-overlay` / `.voice-overlay`:
+     全屏遮罩类面板,职责本来就是"盖住一切"。
+   · `.browser-frame`(webview)/ 插件 webview:内容不归我们画。
+   · 设置窗 / 搜索窗 / todo 窗 / 图片预览窗:各自的 BrowserWindow,不铺壁纸,
+     `html.has-wallpaper` 不会挂上去 —— **窗外不适用**。 */
