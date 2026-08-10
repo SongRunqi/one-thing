@@ -353,6 +353,8 @@ kind 只有两个值 —— "菜单项"和"工具条按钮"不是两种 kind,是
 | `message.footer` | block | **per-item** | message | tree | 6 块 / 24px | ✅ 已开(消息态一期) |
 | `message.actions` | **trigger** | per-item(入口) | message | 入口=宿主原语;弹层=tree | 3 项,超出折叠 | ✅ 已开(D 期) |
 | `composer.actions` | **trigger** | singleton | session | 同上 | 3 项,超出折叠 | ✅ 已开(D 期) |
+| `composer.aside` | block | **左右各 singleton** | session | tree | 每侧 1 块 / 宽 ≤ 48px、高 ≤ 输入框;窄窗(≤768px)整侧隐藏 | ✅ 已开(I 期);**+ 分侧**(`uiSlots[].side`,缺省 right) |
+| `composer.below` | block | singleton | session | tree | 2 块 / 每块 ≤ 24px、宽随输入框;**无降级**(纵向恒在) | ✅ 已开(I 期) |
 | `chat.header` | trigger | singleton | session | 同上 | — | 候选,不排期(价值待证) |
 | `sidebar.menu` | — | — | — | — | — | 已由面板导航收编(72c983d0),不是锚点 |
 | `composer.dock` | — | — | — | — | — | 不开:与 composer.above 同位,语义属草稿上下文 |
@@ -425,6 +427,35 @@ per-item 位置只能以 **trigger** 形态存在 —— 入口按条目繁殖�
    第 4 块该顶上来),但占 S 状态带上一枚 chip 位。
 7. **不是浮层**:展开是**原地长高**的带内块,不涉 teleport —— E/D 两期的
    浮层判例(rollout §6.3/§6.4)在这里没有射程。
+
+### 9.3.2 分侧:`composer.aside` 的两翼(I 期,2026-08-10)
+
+**分侧不是新 kind,也不是 cardinality 的新取值**:它说的是同一个 address
+上有两个**互不相干的席位**(左翼 / 右翼),因此 `maxBlocks` 在这条锚点上读作
+**每侧**的容量而不是总量 —— 与抽屉同规,加的是容量表上的一个可选字段
+(`sided: true`)+ 一个声明门控(`contributes.uiSlots[].side`)。
+
+1. **声明**:`side: 'left' | 'right'`,**缺省 `'right'`**(输入框右侧已经是
+   动作侧,辅助指示落在同一侧读起来是一条视线)。未知值归缺省侧,不拒载 ——
+   未来的第三个侧位在今天的宿主上只是"落到了缺省侧",不是加载错误。
+2. **不分侧的锚点上声明 `side`**:该字段**被忽略**并在清单投影标 `sideIgnored`,
+   插件照常加载(与 `drawer` 在非抽屉锚点上的处置逐字相同)。
+3. **同侧的第二条声明按容量截断**,走既有 truncated 那条路(设置页说"锚点
+   已满"),**不是**加载错误、**不计熔断**。左右各裁各的:右侧的一块永远不会
+   把左侧的一块挤掉。
+4. **翼占的是边距空间**:宿主把两翼绝对定位在输入框盒子**外侧**(`.composer-anchor`
+   的左右),输入框本体一个像素都不动 —— 宪法在这条锚点上的具体形态是
+   "你可以住在输入框旁边,永远不许进输入框"。
+5. **窄窗整侧隐藏**:阈值 768px(与 ChatPanel 既有的窄窗断点同一个数 ——
+   那一档内容列变成 `calc(100% - 48px)`,每侧只剩 24px,摆不下 48px 的翼)。
+   因此语义上**只允许放辅助性内容**:核心功能只住这里 = 窄窗下这个功能消失。
+6. **render ctx 不带 side**:插件按 `id` 就知道自己申报的是哪一侧(那是它自己
+   写在 manifest 里的),宿主不必再告诉它一遍。
+
+`composer.below` 不需要这一节:它是一条**普通的常显块锚点**(2 块 / 24px),
+与 `composer.above` 的区别只有位置与分工 —— above 是"这一轮带着什么"
+(草稿上下文),below 是"发出去之后会怎样"(后勤:提示、配额、状态)。
+它**没有降级**:纵向空间不吃窄窗,块该在就一直在。
 
 ### 9.4 治理(append-only 的具体含义)
 

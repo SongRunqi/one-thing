@@ -411,9 +411,9 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
     setPluginUiSlots((result.plugins || [])
       .filter((plugin: any) => plugin.enabled)
       .flatMap((plugin: any) =>
-        // drawer 是投影层**裁决后**的结果(锚点开了抽屉能力 + 这条声明了它);
-        // renderer 不再判第二遍,原样收下。
-        (plugin.contributes?.uiSlots || []).map((slot: { anchor: string; id: string; label: string; unsupported?: boolean; drawer?: boolean }) => ({
+        // drawer / side 都是投影层**裁决后**的结果(锚点开了那个能力 + 这条
+        // 声明了它;side 已归一到缺省侧);renderer 不再判第二遍,原样收下。
+        (plugin.contributes?.uiSlots || []).map((slot: { anchor: string; id: string; label: string; unsupported?: boolean; drawer?: boolean; side?: string }) => ({
           pluginId: plugin.id,
           pluginName: plugin.name,
           anchor: slot.anchor,
@@ -422,6 +422,9 @@ async function refreshPluginWorkspacePanels(): Promise<void> {
           loaded: Boolean(plugin.loaded),
           unsupported: Boolean(slot.unsupported),
           drawer: Boolean(slot.drawer),
+          // 响应里没有这个字段(旧宿主 / server 只读镜像)时留空 ——
+          // 分侧锚点上 uiSlotSideOf 会兜回缺省侧,不分侧的锚点本来就没有侧。
+          side: typeof slot.side === 'string' ? slot.side : '',
         })),
       ))
     // 背景层(G 期,L2.5):裁决(谁压谁、启用闸门、钳制、URL 拼装)全在主进程

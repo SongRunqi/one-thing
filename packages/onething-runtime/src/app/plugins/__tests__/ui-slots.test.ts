@@ -19,6 +19,7 @@ import {
   PLUGIN_UI_RENDER_ACTION,
   UI_ANCHORS,
   UI_ANCHOR_CAPACITY,
+  UI_SLOT_DEFAULT_SIDE,
   assertUiAnchorRegistryConsistency,
   classifyPluginScope,
   createCorePluginAPI,
@@ -26,12 +27,17 @@ import {
   disposeCorePluginState,
   isEffectiveUiDrawerSlot,
   isIgnoredUiDrawerDeclaration,
+  isIgnoredUiSlotSideDeclaration,
   isTriggerUiAnchor,
   isUiAnchor,
+  isUiSlotSide,
   pluginScope,
+  resolveUiSlotSide,
   supportsUiDrawer,
+  supportsUiSlotSide,
   uiDrawerExpandedMaxHeight,
   uiAnchorKind,
+  uiSlotMaxWidth,
   uiSlotSurfaceId,
   validatePluginContributes,
   type CorePluginDefinition,
@@ -146,7 +152,7 @@ describe('UI anchor registry', () => {
   })
 
   it('未知锚点不是锚点', () => {
-    expect(isUiAnchor('composer.below')).toBe(false)
+    expect(isUiAnchor('composer.dock')).toBe(false)
     expect(isUiAnchor('chat.header')).toBe(false)
   })
 
@@ -180,14 +186,66 @@ describe('UI anchor registry', () => {
     expect(supportsUiDrawer('composer.above')).toBe(true)
     expect(UI_ANCHOR_CAPACITY['composer.above'].kind).toBe('block')
     expect(uiDrawerExpandedMaxHeight('composer.above')).toBe(240)
-    for (const anchor of ['chat.status-bar', 'message.footer', 'message.actions', 'composer.actions']) {
+    for (const anchor of [
+      'chat.status-bar', 'message.footer', 'message.actions', 'composer.actions',
+      // I 期两个新锚点同样不开抽屉 —— 能力扩展不随新锚点自动继承。
+      'composer.aside', 'composer.below',
+    ]) {
       expect(supportsUiDrawer(anchor)).toBe(false)
       // 没开抽屉的锚点问展开高度 = 回落到它自己的 maxHeight(不是 undefined,
       // 也不是 240):调用方永远拿得到一个能用的数。
       expect(uiDrawerExpandedMaxHeight(anchor)).toBe(UI_ANCHOR_CAPACITY[anchor as UiAnchor].maxHeight)
     }
-    expect(supportsUiDrawer('composer.below')).toBe(false)
-    expect(uiDrawerExpandedMaxHeight('composer.below')).toBeUndefined()
+    expect(supportsUiDrawer('composer.dock')).toBe(false)
+    expect(uiDrawerExpandedMaxHeight('composer.dock')).toBeUndefined()
+  })
+
+  /**
+   * I 期:两个新锚点。§9.4 的"开新锚点 = 9.2 表加一行 + 五处代码"在这里
+   * 兑现其中两处(容量表 + UI_ANCHORS 的一致性守卫已由上面那条用例覆盖);
+   * 本用例钉的是**语义**:kind/容量/分侧,以及既有五个锚点一字未动。
+   */
+  it('I 期两个新锚点已开,既有五个锚点的语义一字未动(append-only)', () => {
+    expect(isUiAnchor('composer.aside')).toBe(true)
+    expect(isUiAnchor('composer.below')).toBe(true)
+    expect(uiAnchorKind('composer.aside')).toBe('block')
+    expect(uiAnchorKind('composer.below')).toBe('block')
+    // 两翼:每侧 1 块、宽 48px、高 ≤ 输入框(160px 兜底)。
+    expect(UI_ANCHOR_CAPACITY['composer.aside'].maxBlocks).toBe(1)
+    expect(UI_ANCHOR_CAPACITY['composer.aside'].maxWidth).toBe(48)
+    expect(uiSlotMaxWidth('composer.aside')).toBe(48)
+    // 后勤带:2 块 / 24px,宽随输入框(没有 maxWidth 这个概念)。
+    expect(UI_ANCHOR_CAPACITY['composer.below'].maxBlocks).toBe(2)
+    expect(UI_ANCHOR_CAPACITY['composer.below'].maxHeight).toBe(24)
+    expect(uiSlotMaxWidth('composer.below')).toBeUndefined()
+    // 既有五个锚点:kind 与容量数字都不许被 I 期改写。
+    expect(UI_ANCHOR_CAPACITY['composer.above'].maxBlocks).toBe(3)
+    expect(UI_ANCHOR_CAPACITY['chat.status-bar'].maxBlocks).toBe(8)
+    expect(UI_ANCHOR_CAPACITY['message.footer'].maxBlocks).toBe(6)
+  })
+
+  it('分侧只在 composer.aside 上开;缺省 right,未知值归缺省,别处声明被忽略并标记', () => {
+    expect(supportsUiSlotSide('composer.aside')).toBe(true)
+    expect(UI_SLOT_DEFAULT_SIDE).toBe('right')
+    expect(resolveUiSlotSide('composer.aside', 'left')).toBe('left')
+    expect(resolveUiSlotSide('composer.aside', 'right')).toBe('right')
+    expect(resolveUiSlotSide('composer.aside', undefined)).toBe('right')
+    // 未来的第三个侧位值在今天的宿主上归缺省侧,不拒载(与未知锚点同规)。
+    expect(resolveUiSlotSide('composer.aside', 'top')).toBe('right')
+    for (const anchor of [
+      'composer.above', 'chat.status-bar', 'message.footer', 'message.actions',
+      'composer.actions', 'composer.below',
+    ]) {
+      expect(supportsUiSlotSide(anchor)).toBe(false)
+      // 不分侧的锚点上没有"侧"这个概念 —— 不是缺省 right,是 undefined。
+      expect(resolveUiSlotSide(anchor, 'left')).toBeUndefined()
+      // "被忽略"要说得出来(投影层据此标记,设置页可解释)。
+      expect(isIgnoredUiSlotSideDeclaration(anchor, 'left')).toBe(true)
+      expect(isIgnoredUiSlotSideDeclaration(anchor, undefined)).toBe(false)
+    }
+    expect(isIgnoredUiSlotSideDeclaration('composer.aside', 'left')).toBe(false)
+    expect(isUiSlotSide('left')).toBe(true)
+    expect(isUiSlotSide('top')).toBe(false)
   })
 
   it('drawer 的裁决判据只有一处:锚点开了能力 + 这条声明了它', () => {
@@ -213,7 +271,7 @@ describe('contributes.uiSlots manifest validation', () => {
 
   it('未知锚点**不是**加载期错误(降级为 unsupported 是投影层的职责)', () => {
     expect(validatePluginContributes({
-      uiSlots: [{ anchor: 'composer.below', id: 'x', label: 'X' }],
+      uiSlots: [{ anchor: 'composer.dock', id: 'x', label: 'X' }],
     })).toBeNull()
   })
 
@@ -224,6 +282,7 @@ describe('contributes.uiSlots manifest validation', () => {
     [{ uiSlots: [{ anchor: 'composer.above', id: 'x' }] }, 'label must be a non-empty string'],
     [{ uiSlots: [{ anchor: 'composer.above', id: 'x', label: 'X', lifetime: 42 }] }, 'lifetime must be a string'],
     [{ uiSlots: [{ anchor: 'composer.above', id: 'x', label: 'X', drawer: 'yes' }] }, 'drawer must be a boolean'],
+    [{ uiSlots: [{ anchor: 'composer.aside', id: 'x', label: 'X', side: 3 }] }, 'side must be a string'],
   ])('形状非法被拒: %j', (contributes, message) => {
     expect(validatePluginContributes(contributes)).toContain(message)
   })
@@ -535,11 +594,11 @@ describe('registerUiSlot', () => {
   it('未知锚点在注册期是代码错误(与 manifest 层的降级不同)', async () => {
     const def = definition('plan-status', api => {
       api.registerUiSlot({
-        anchor: 'composer.below',
+        anchor: 'composer.dock',
         id: 'plan-status',
         render: () => simpleTree('x'),
       })
-    }, [{ anchor: 'composer.below', id: 'plan-status', label: 'Plan' }])
+    }, [{ anchor: 'composer.dock', id: 'plan-status', label: 'Plan' }])
 
     const { manager, errors, failures } = createManager([def])
     await boot(manager)
@@ -685,7 +744,7 @@ describe('renderer projection', () => {
           contributes: {
             uiSlots: [
               { anchor: 'composer.above', id: 'a', label: 'A' },
-              { anchor: 'composer.below', id: 'b', label: 'B' },
+              { anchor: 'composer.dock', id: 'b', label: 'B' },
             ],
           },
         },
@@ -694,8 +753,8 @@ describe('renderer projection', () => {
       commands: [],
     }])
     expect(plugin.contributes.uiSlots).toEqual([
-      { anchor: 'composer.above', id: 'a', label: 'A', unsupported: false, lifetime: '', drawer: false, drawerIgnored: false },
-      { anchor: 'composer.below', id: 'b', label: 'B', unsupported: true, lifetime: '', drawer: false, drawerIgnored: false },
+      { anchor: 'composer.above', id: 'a', label: 'A', unsupported: false, lifetime: '', drawer: false, drawerIgnored: false, side: '', sideIgnored: false },
+      { anchor: 'composer.dock', id: 'b', label: 'B', unsupported: true, lifetime: '', drawer: false, drawerIgnored: false, side: '', sideIgnored: false },
     ])
   })
 
@@ -719,7 +778,7 @@ describe('renderer projection', () => {
               { anchor: 'composer.above', id: 'plain', label: 'P' },
               { anchor: 'chat.status-bar', id: 'nope', label: 'N', drawer: true },
               { anchor: 'message.footer', id: 'also-nope', label: 'M', drawer: true },
-              { anchor: 'composer.below', id: 'alien', label: 'X', drawer: true },
+              { anchor: 'composer.dock', id: 'alien', label: 'X', drawer: true },
             ],
           },
         },

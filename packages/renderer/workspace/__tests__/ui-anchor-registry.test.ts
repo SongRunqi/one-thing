@@ -10,8 +10,12 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   UI_ANCHOR_CAPACITY_MIRROR,
+  UI_SLOT_DEFAULT_SIDE,
   computeAnchorOverflow,
+  isSidedAnchor,
+  isUiSlotTruncated,
   setPluginUiSlots,
+  uiSlotSideOf,
   uiSlotSurface,
   useAnchorUiSlots,
   usePluginUiSlots,
@@ -84,24 +88,35 @@ describe('ui-anchor-registry', () => {
       fileURLToPath(new URL('../../../core/plugins/ui-anchor.ts', import.meta.url)),
       'utf8',
     )
+    // 逐条抠出 `'<anchor>': { … }` 的对象体再按键解析。**不按字段顺序匹配**:
+    // 容量表的可选字段是逐期长出来的(drawer/expandedMaxHeight/maxWidth/sided),
+    // 一条把顺序写死的正则会在下一期悄悄漏掉新字段 —— 漏掉 = 这条守卫失效而
+    // 不报错,正是它要防的那件事。`rootHint` 是给插件的提示,不进镜像。
+    const MIRRORED_KEYS = ['kind', 'maxBlocks', 'maxHeight', 'drawer', 'expandedMaxHeight', 'maxWidth', 'sided']
     const coreCapacities = Object.fromEntries(
-      [...coreSource.matchAll(
-        /'([^']+)':\s*\{\s*kind:\s*'(\w+)',\s*maxBlocks:\s*(\d+),\s*maxHeight:\s*(\d+)(?:,\s*drawer:\s*(true|false))?(?:,\s*expandedMaxHeight:\s*(\d+))?/g,
-      )]
-        .map(match => [match[1], {
-          kind: match[2],
-          maxBlocks: Number(match[3]),
-          maxHeight: Number(match[4]),
-          // 抽屉两项(F 期)是可选的:没写的锚点在镜像里也不该出现这两个键。
-          ...(match[5] ? { drawer: match[5] === 'true' } : {}),
-          ...(match[6] ? { expandedMaxHeight: Number(match[6]) } : {}),
-        }]),
+      [...coreSource.matchAll(/'([\w.-]+)':\s*\{([^}]*)\}/g)]
+        // 容量表之外的对象字面量(UI_ANCHORS 的值是裸字符串,匹配不上)自然不进。
+        .filter(match => /kind:\s*'/.test(match[2]))
+        .map((match) => {
+          const body = match[2]
+          const entry: Record<string, unknown> = {}
+          for (const key of MIRRORED_KEYS) {
+            const found = body.match(new RegExp(`\\b${key}:\\s*('(\\w+)'|true|false|\\d+)`))
+            if (!found) continue
+            const raw = found[1]
+            if (raw === 'true' || raw === 'false') entry[key] = raw === 'true'
+            else if (found[2] !== undefined) entry[key] = found[2]
+            else entry[key] = Number(raw)
+          }
+          return [match[1], entry]
+        }),
     )
     expect(UI_ANCHOR_CAPACITY_MIRROR).toEqual(coreCapacities)
-    // 五个锚点(D 期后):三个常显块 + 两个触发式。少一个 = 有人开了锚点却
+    // 七个锚点(I 期后):五个常显块 + 两个触发式。少一个 = 有人开了锚点却
     // 忘了 §9.4 的五处清单里的这一处。
     expect(Object.keys(coreCapacities).sort()).toEqual([
-      'chat.status-bar', 'composer.above', 'composer.actions', 'message.actions', 'message.footer',
+      'chat.status-bar', 'composer.above', 'composer.actions', 'composer.aside',
+      'composer.below', 'message.actions', 'message.footer',
     ])
   })
 
@@ -121,9 +136,65 @@ describe('ui-anchor-registry', () => {
   it('抽屉能力只在 composer.above 上开(其余锚点镜像里没有这两个键)', () => {
     expect(UI_ANCHOR_CAPACITY_MIRROR['composer.above'].drawer).toBe(true)
     expect(UI_ANCHOR_CAPACITY_MIRROR['composer.above'].expandedMaxHeight).toBe(240)
-    for (const anchor of ['chat.status-bar', 'message.footer', 'message.actions', 'composer.actions']) {
+    for (const anchor of [
+      'chat.status-bar', 'message.footer', 'message.actions', 'composer.actions',
+      'composer.aside', 'composer.below',
+    ]) {
       expect(UI_ANCHOR_CAPACITY_MIRROR[anchor].drawer).toBeUndefined()
     }
+  })
+
+  // ── I 期:分侧锚点 composer.aside ────────────
+
+  it('分侧只在 composer.aside 上开;缺省侧是 right,未知值也归缺省', () => {
+    expect(isSidedAnchor('composer.aside')).toBe(true)
+    expect(UI_SLOT_DEFAULT_SIDE).toBe('right')
+    for (const anchor of [
+      'composer.above', 'chat.status-bar', 'message.footer', 'message.actions',
+      'composer.actions', 'composer.below',
+    ]) {
+      expect(isSidedAnchor(anchor)).toBe(false)
+      // 不分侧的锚点上问"哪一侧" = 没有这个概念,不是"缺省 right"。
+      expect(uiSlotSideOf(slot({ anchor, side: 'left' }))).toBeUndefined()
+    }
+    expect(uiSlotSideOf(slot({ anchor: 'composer.aside', side: 'left' }))).toBe('left')
+    expect(uiSlotSideOf(slot({ anchor: 'composer.aside', side: 'right' }))).toBe('right')
+    expect(uiSlotSideOf(slot({ anchor: 'composer.aside' }))).toBe('right')
+    expect(uiSlotSideOf(slot({ anchor: 'composer.aside', side: 'top' }))).toBe('right')
+  })
+
+  it('两翼是两个独立席位池:每侧 1 块,同侧第二条才被截断', () => {
+    setPluginUiSlots([
+      slot({ pluginId: 'a', slotId: 'l1', anchor: 'composer.aside', side: 'left' }),
+      slot({ pluginId: 'b', slotId: 'r1', anchor: 'composer.aside', side: 'right' }),
+      // 未声明 = 缺省侧 right —— 于是它是**右侧的第二条**,该被截断。
+      slot({ pluginId: 'c', slotId: 'r2', anchor: 'composer.aside' }),
+      slot({ pluginId: 'd', slotId: 'l2', anchor: 'composer.aside', side: 'left' }),
+    ])
+    expect(useVisibleAnchorUiSlots('composer.aside', 'left').value.map(entry => entry.slotId))
+      .toEqual(['l1'])
+    expect(useVisibleAnchorUiSlots('composer.aside', 'right').value.map(entry => entry.slotId))
+      .toEqual(['r1'])
+    // 左右各裁各的:右侧那一块没有把左侧的挤掉,截断集合是两侧之和。
+    expect(computeAnchorOverflow('composer.aside').truncated.map(entry => entry.slotId).sort())
+      .toEqual(['l2', 'r2'])
+    // 设置页的"锚点已满"读的是同一份裁决(不带 side 地问)。
+    expect(isUiSlotTruncated('c', 'composer.aside', 'r2')).toBe(true)
+    expect(isUiSlotTruncated('a', 'composer.aside', 'l1')).toBe(false)
+  })
+
+  it('composer.below 是普通常显块:2 块 / 24px,不分侧不抽屉', () => {
+    expect(UI_ANCHOR_CAPACITY_MIRROR['composer.below'])
+      .toEqual({ kind: 'block', maxBlocks: 2, maxHeight: 24 })
+    setPluginUiSlots([
+      slot({ pluginId: 'a', slotId: 'a1', anchor: 'composer.below' }),
+      slot({ pluginId: 'b', slotId: 'b1', anchor: 'composer.below' }),
+      slot({ pluginId: 'c', slotId: 'c1', anchor: 'composer.below' }),
+    ])
+    expect(useVisibleAnchorUiSlots('composer.below').value.map(entry => entry.pluginId))
+      .toEqual(['a', 'b'])
+    expect(computeAnchorOverflow('composer.below').truncated.map(entry => entry.pluginId))
+      .toEqual(['c'])
   })
 
   it('触发式锚点同样吃容量截断与 unsupported 过滤(与常显块一套裁决)', () => {

@@ -60,6 +60,21 @@
       <!-- Anchor keeps flyouts glued to the composer's top edge, floating
            above whatever is docked higher in the stack. -->
       <div class="composer-anchor">
+        <!-- 插件锚点 composer.aside(I 期):输入框两翼。绝对定位在 anchor 的
+             左右外侧 —— 占的是输入框居中留下的**边距空间**,不挤输入框本体。
+             每侧一个独立席位池(容量表 sided: true),窄窗整侧隐藏。 -->
+        <UiSlotHost
+          anchor="composer.aside"
+          side="left"
+          class="composer-aside composer-aside--left"
+          :session-id="props.sessionId ?? null"
+        />
+        <UiSlotHost
+          anchor="composer.aside"
+          side="right"
+          class="composer-aside composer-aside--right"
+          :session-id="props.sessionId ?? null"
+        />
         <!-- 帧标签只在真有帧状态(语音/命令)时出现 —— 静息态的 COMPOSER
              装饰字已裁(2026-08-09 拍板,与带系统 demo 一致:静息的输入框
              上沿只剩一道图纸描边)。 -->
@@ -524,6 +539,13 @@
           </div>
         </div>
       </div>
+      <!-- 插件锚点 composer.below(I 期):输入框正下方的**后勤带**。
+           与 composer.above 的上下文带上下分工;纵向恒在,不吃窄窗降级。 -->
+      <UiSlotHost
+        anchor="composer.below"
+        class="composer-below"
+        :session-id="props.sessionId ?? null"
+      />
     </div>
   </div>
 </template>
@@ -2102,6 +2124,50 @@ defineExpose({
 .composer-anchor {
   position: relative;
   width: 100%;
+}
+
+/* ── 插件锚点 composer.aside(I 期):输入框两翼 ──────────────────
+   绝对定位在 anchor 的**外侧**:翼吃的是输入框居中留下的边距,输入框本体
+   的盒子一个像素都不动(宪法:插件可以住在输入框旁边,永远不许进输入框)。
+   高度与输入框同高(top/bottom 拉满),宽度预算由容量表的 maxWidth 内联
+   到宿主根元素上 —— 这里只画位置。 */
+.composer-aside {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  justify-content: center;
+  overflow: hidden;
+  /* 浮层选择器(model/file picker)开在 anchor 上并盖住两翼时,翼不该抢点击。
+     块自身仍然可交互 —— 只有宿主壳是穿透的。 */
+  pointer-events: none;
+}
+
+.composer-aside > :deep(*) {
+  pointer-events: auto;
+}
+
+.composer-aside--left {
+  right: calc(100% + 8px);
+}
+
+.composer-aside--right {
+  left: calc(100% + 8px);
+}
+
+/* 窄窗**整侧隐藏**(§9.2 的降级):768px 是既有的窄窗断点 —— ChatPanel 在
+   同一个断点把内容列改成 `calc(100% - 48px)`,每侧只剩 24px 边距,摆不下
+   48px 的翼 + 8px 间距。两翼是辅助内容,它是第一个该让路的东西。 */
+@media (max-width: 768px) {
+  .composer-aside {
+    display: none;
+  }
+}
+
+/* ── 插件锚点 composer.below(I 期):输入框正下方的后勤带 ──────────
+   常规流,宽随输入框;无降级(纵向恒在)。空清单时 UiSlotHost 自己不渲染
+   根元素,于是这条 margin 不会在没有插件时留下一道空隙。 */
+.composer-below {
+  margin-top: 4px;
 }
 
 /* Blueprint frame tag: floats on the composer's top border like a drawing

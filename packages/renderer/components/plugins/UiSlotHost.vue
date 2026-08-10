@@ -3,7 +3,9 @@
     v-if="visibleSlots.length || failedCount || chipCollapsedDrawers.length"
     class="ui-slot-host"
     :data-anchor="anchor"
+    :data-side="side || undefined"
     :data-chip-shell="chipShell || undefined"
+    :style="hostStyle"
   >
     <!-- chipShell:块穿 StatusChip 的**静态**壳(无浮层)进 S 状态带。
          换的只有外壳 —— 清单、顺序、容量裁决、失败折叠、重拉时机全部走
@@ -139,6 +141,7 @@ import {
   useCollapsedDrawerSlots,
   useVisibleAnchorUiSlots,
   type PluginContributedUiSlot,
+  type UiSlotSide,
 } from '@/workspace/ui-anchor-registry'
 
 /**
@@ -166,29 +169,46 @@ const props = withDefaults(defineProps<{
    * 东西还剩一个入口"的归口)。
    */
   chipShell?: boolean
+  /**
+   * 仅分侧锚点(I 期,composer.aside):这个挂点画的是哪一侧。
+   * 清单、容量裁决都按侧走 —— 每侧是一个独立的席位池,不是同一条带的两半。
+   */
+  side?: UiSlotSide | null
 }>(), {
   sessionId: null,
   messageId: null,
   chipShell: false,
+  side: null,
 })
 
 /**
- * 氛围层地标(L0,ambient-landmarks-2026-08 §5):**只有 composer.above 的块**
- * 是可落面。message.footer 的块住在气泡里 —— 气泡区在氛围语义里是"天空"
- * (滚一格全错位),那是明确的否决项,所以这里按挂点查表而不是一律挂。
+ * 氛围层地标(L0,ambient-landmarks-2026-08 §5):**输入框一带的块**是可落面。
+ * message.footer 的块住在气泡里 —— 气泡区在氛围语义里是"天空"(滚一格全错位),
+ * 那是明确的否决项,所以这里按挂点查表而不是一律挂。
  * chip 壳形态的块另有 `status.chip`,不走这一支。
+ *
+ * I 期两个新锚点(两翼 / 正下方)都贴着输入框、都不随消息列表滚动 ——
+ * 与 composer.above 同一片可落面,照规矩加进白名单,插件零改动就有雪。
  */
 const AMBIENT_ANCHOR_BY_UI_ANCHOR: Record<string, string> = {
   'composer.above': 'composer.block',
+  'composer.aside': 'composer.block',
+  'composer.below': 'composer.block',
 }
 
-const visibleSlots = useVisibleAnchorUiSlots(props.anchor)
+const visibleSlots = useVisibleAnchorUiSlots(props.anchor, props.side ?? undefined)
 const blockAmbientAnchor = computed(() =>
   (props.chipShell ? undefined : AMBIENT_ANCHOR_BY_UI_ANCHOR[props.anchor]),
 )
 const maxHeight = UI_ANCHOR_CAPACITY_MIRROR[props.anchor]?.maxHeight ?? 32
+/**
+ * 横向预算(I 期):只有容量表给了 `maxWidth` 的锚点才有(今天 = 两翼)。
+ * 数字仍然只有**一个**出处 —— 容量表镜像;组件不写第二份 48。
+ */
+const maxWidth = UI_ANCHOR_CAPACITY_MIRROR[props.anchor]?.maxWidth
+const hostStyle = computed(() => (maxWidth ? { maxWidth: `${maxWidth}px` } : undefined))
 
-const overflow = computed(() => computeAnchorOverflow(props.anchor))
+const overflow = computed(() => computeAnchorOverflow(props.anchor, props.side ?? undefined))
 const failedCount = computed(() => overflow.value.failed.length)
 const failedTitles = computed(() =>
   overflow.value.failed.map(slot => `${slot.pluginName}: ${slot.label}`).join('\n'),

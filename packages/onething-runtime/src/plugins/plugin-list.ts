@@ -3,7 +3,9 @@ import {
   describePluginWebviewPanelProblem,
   isEffectiveUiDrawerSlot,
   isIgnoredUiDrawerDeclaration,
+  isIgnoredUiSlotSideDeclaration,
   isUiAnchor,
+  resolveUiSlotSide,
   isPluginWebviewPanel,
   resolvePluginAmbients,
   resolvePluginBackgrounds,
@@ -31,7 +33,7 @@ export interface OnethingPluginListManifestLike {
   contributes?: {
     commands?: Array<{ name: string }>
     panels?: Array<{ id: string; label: string; view?: string; entry?: string; placements?: string[] }>
-    uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string; drawer?: boolean }>
+    uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string; drawer?: boolean; side?: string }>
     theme?: { overrides?: Record<string, string>; background?: unknown }
     ambient?: unknown
     webviewRoot?: string
@@ -149,6 +151,14 @@ export interface OnethingRendererPluginInfo {
       lifetime: string
       drawer: boolean
       drawerIgnored: boolean
+      /**
+       * 裁决后的**侧位**(I 期,composer.aside):分侧锚点上是 `'left'` /
+       * `'right'`(未声明或未知值归一成缺省侧),不分侧的锚点上是 `''` +
+       * `sideIgnored: true`。判据在 core 的 `resolveUiSlotSide` ——
+       * 与 drawer 同规:一处裁决,两处消费。
+       */
+      side: string
+      sideIgnored: boolean
     }>
     /**
      * 主题 token 覆盖(B 期)。逐条带裁决结果:
@@ -343,6 +353,8 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
         lifetime: slot.lifetime ?? '',
         drawer: isEffectiveUiDrawerSlot(slot.anchor, slot.drawer),
         drawerIgnored: isIgnoredUiDrawerDeclaration(slot.anchor, slot.drawer),
+        side: resolveUiSlotSide(slot.anchor, slot.side) ?? '',
+        sideIgnored: isIgnoredUiSlotSideDeclaration(slot.anchor, slot.side),
       })),
       theme: themeResolution.byPlugin.get(plugin.definition.id) ?? [],
       background: backgroundResolution.byPlugin.get(plugin.definition.id) ?? null,

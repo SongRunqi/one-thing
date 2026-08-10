@@ -91,6 +91,15 @@ export interface PluginContributionUiSlot {
    * 抽屉"不是代码错误)。未声明的块形态一字不变(定高,无开合钮)。
    */
   drawer?: boolean
+  /**
+   * 落在哪一侧(I 期)—— **仅在分侧锚点上有效**(今天只有 `composer.aside`
+   * 的输入框两翼)。缺省 `'right'`。每侧只有 1 个席位,同侧的第二条声明按
+   * 容量截断(设置页说"锚点已满"),不是加载错误。
+   *
+   * 不分侧的锚点上声明它:**该字段被忽略**并在清单投影标 `sideIgnored`,
+   * 插件照常加载 —— 与 `drawer` 降级同规。
+   */
+  side?: 'left' | 'right'
 }
 
 /** 呈现提示:不给则由 schema 推导控件。 */

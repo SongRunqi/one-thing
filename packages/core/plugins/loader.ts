@@ -402,6 +402,13 @@ export function validatePluginContributes(raw: unknown): string | null {
       if (slot.drawer !== undefined && typeof slot.drawer !== 'boolean') {
         return `contributes.uiSlots[${index}].drawer must be a boolean`
       }
+      // side(I 期)同样只校验**形状**(必须是字符串)。"这个锚点分不分侧"
+      // 与"这个字符串是不是 left/right"都不在这里判:前者是宿主能力(不分侧
+      // 的锚点上忽略并标记),后者留给投影层归一到缺省侧 —— 未来第三个侧位
+      // 值在旧宿主上不能拒载,与未知锚点降级同规。
+      if (slot.side !== undefined && typeof slot.side !== 'string') {
+        return `contributes.uiSlots[${index}].side must be a string`
+      }
       // 锚点块**不开** webview(C 期拍板,D 期原样适用于 trigger):
       // composer.above 是 32px 单行,chat.status-bar 24px —— 往里塞一个 iframe
       // 没有正经场景;trigger 的弹层同样只画描述树(§9.1 expression 轴:

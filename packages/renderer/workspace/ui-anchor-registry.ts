@@ -28,6 +28,12 @@ export interface PluginContributedUiSlot {
    * 锚点开了抽屉能力 + 这条声明了 drawer),renderer 只消费,不再判第二遍。
    */
   drawer?: boolean
+  /**
+   * 分侧锚点上的**侧位**(I 期,composer.aside)。同样是**投影层裁决完的结果**
+   * (core 的 `resolveUiSlotSide`:未声明/未知值已归一成缺省侧);不分侧的
+   * 锚点上是空/未定义。
+   */
+  side?: string
 }
 
 const pluginUiSlots: Ref<PluginContributedUiSlot[]> = ref([])
@@ -54,10 +60,20 @@ export function usePluginUiSlots(): Ref<PluginContributedUiSlot[]> {
 /**
  * 某个锚点上**可渲染**的块清单(未知锚点的块不进 —— 它连挂点都不存在,
  * 渲染出来就是一块永远错误的占位)。
+ *
+ * `side`(I 期)只在分侧锚点上有意义:给了就只出那一侧的块。不给 = 整条锚点
+ * (设置页与总量视图仍然看整条),不分侧的锚点上给了也无效 —— "侧"是锚点的
+ * 属性,不是调用方的选择。
  */
-export function useAnchorUiSlots(anchor: string): ComputedRef<PluginContributedUiSlot[]> {
+export function useAnchorUiSlots(
+  anchor: string,
+  side?: UiSlotSide,
+): ComputedRef<PluginContributedUiSlot[]> {
   return computed(() =>
-    pluginUiSlots.value.filter(slot => slot.anchor === anchor && !slot.unsupported),
+    pluginUiSlots.value.filter(slot =>
+      slot.anchor === anchor
+      && !slot.unsupported
+      && (!side || !isSidedAnchor(anchor) || uiSlotSideOf(slot) === side)),
   )
 }
 
@@ -87,6 +103,10 @@ export const UI_ANCHOR_CAPACITY_MIRROR: Record<string, UiAnchorCapacityMirror> =
   // **弹层内容**的最大高度 —— 入口是宿主原语,本身没有高度可言。
   'message.actions': { kind: 'trigger', maxBlocks: 3, maxHeight: 320 },
   'composer.actions': { kind: 'trigger', maxBlocks: 3, maxHeight: 320 },
+  // I 期:composer.aside 是**唯一**分侧的锚点 —— maxBlocks 读作"每侧 1 块",
+  // maxWidth 是两翼的横向预算(它占的是输入框的边距空间)。
+  'composer.aside': { kind: 'block', maxBlocks: 1, maxHeight: 160, maxWidth: 48, sided: true },
+  'composer.below': { kind: 'block', maxBlocks: 2, maxHeight: 24 },
 }
 
 export interface UiAnchorCapacityMirror {
@@ -98,6 +118,34 @@ export interface UiAnchorCapacityMirror {
   drawer?: boolean
   /** 抽屉展开档的高度预算(px)。 */
   expandedMaxHeight?: number
+  /** 单块宽度预算(px);只有横向受限的锚点才有(I 期,composer.aside)。 */
+  maxWidth?: number
+  /** 该锚点分不分侧(I 期);为真时 maxBlocks 读作**每侧**的容量。 */
+  sided?: boolean
+}
+
+// ── 分侧锚点(I 期,composer.aside) ────────────
+
+/** 两翼的两个席位(core `UiSlotSide` 的镜像)。 */
+export type UiSlotSide = 'left' | 'right'
+
+/** 没点名时落哪一侧 —— 与 core 的 `UI_SLOT_DEFAULT_SIDE` 同值。 */
+export const UI_SLOT_DEFAULT_SIDE: UiSlotSide = 'right'
+
+/** 这个锚点分不分侧。 */
+export function isSidedAnchor(anchor: string): boolean {
+  return UI_ANCHOR_CAPACITY_MIRROR[anchor]?.sided === true
+}
+
+/**
+ * 一条块声明落在哪一侧。
+ *
+ * 投影层已经归一过(`resolveUiSlotSide`),这里只是把"响应里没有这个字段"
+ * (旧宿主 / server 只读镜像)兜回缺省侧 —— 不是第二次裁决。
+ */
+export function uiSlotSideOf(slot: PluginContributedUiSlot): UiSlotSide | undefined {
+  if (!isSidedAnchor(slot.anchor)) return undefined
+  return slot.side === 'left' ? 'left' : UI_SLOT_DEFAULT_SIDE
 }
 
 // ── 抽屉三态(F 期) ─────────────────────────
@@ -298,20 +346,37 @@ function occupiesCapacity(slot: PluginContributedUiSlot): boolean {
  *  - **全收的抽屉块同样不计入**(它不在这条带上了);
  *  - 健康的块按注册表顺序(全局规范顺序)取前 maxBlocks 个,其余进 truncated。
  */
-export function computeAnchorOverflow(anchor: string): AnchorOverflowInfo {
-  const slots = pluginUiSlots.value.filter(slot => slot.anchor === anchor && !slot.unsupported)
+export function computeAnchorOverflow(anchor: string, side?: UiSlotSide): AnchorOverflowInfo {
+  const capacity = UI_ANCHOR_CAPACITY_MIRROR[anchor]
+  // 分侧锚点(I 期)上 maxBlocks 是**每侧**的容量,所以裁决必须逐侧做:
+  // 不带 side 地问一条分侧锚点,答案是两侧各自裁完再合并 —— 否则右侧的
+  // 一块会把左侧的一块挤成 truncated,而它们根本不在同一个席位池里。
+  if (isSidedAnchor(anchor) && !side) {
+    const left = computeAnchorOverflow(anchor, 'left')
+    const right = computeAnchorOverflow(anchor, 'right')
+    return {
+      truncated: [...left.truncated, ...right.truncated],
+      failed: [...left.failed, ...right.failed],
+    }
+  }
+  const slots = useAnchorUiSlots(anchor, side).value
   const failed = slots.filter(slot => !slot.loaded)
   const healthy = slots.filter(slot => slot.loaded && occupiesCapacity(slot))
-  const capacity = UI_ANCHOR_CAPACITY_MIRROR[anchor]
   const truncated = capacity ? healthy.slice(capacity.maxBlocks) : []
   return { truncated, failed }
 }
 
-/** 某个锚点上**实际要渲染**的块(健康 & 未全收 & 未截断)。 */
-export function useVisibleAnchorUiSlots(anchor: string): ComputedRef<PluginContributedUiSlot[]> {
+/**
+ * 某个锚点上**实际要渲染**的块(健康 & 未全收 & 未截断)。
+ * 分侧锚点上必须带 `side` —— 挂点画的是一侧,容量也是一侧的。
+ */
+export function useVisibleAnchorUiSlots(
+  anchor: string,
+  side?: UiSlotSide,
+): ComputedRef<PluginContributedUiSlot[]> {
   return computed(() => {
     const capacity = UI_ANCHOR_CAPACITY_MIRROR[anchor]
-    const healthy = useAnchorUiSlots(anchor).value.filter(slot => slot.loaded && occupiesCapacity(slot))
+    const healthy = useAnchorUiSlots(anchor, side).value.filter(slot => slot.loaded && occupiesCapacity(slot))
     return capacity ? healthy.slice(0, capacity.maxBlocks) : healthy
   })
 }
@@ -319,7 +384,7 @@ export function useVisibleAnchorUiSlots(anchor: string): ComputedRef<PluginContr
 /**
  * 某个块是否因容量被截断(设置页"锚点已满"的依据)。
  * 截断集合来自 computeAnchorOverflow —— 同一份裁决:UiSlotHost 不画它,
- * 设置页解释它。
+ * 设置页解释它。分侧锚点走上面的"两侧各裁再合并",于是这里一行不用改。
  */
 export function isUiSlotTruncated(pluginId: string, anchor: string, slotId: string): boolean {
   return computeAnchorOverflow(anchor).truncated

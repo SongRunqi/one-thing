@@ -65,6 +65,24 @@ export interface UiAnchorCapacity {
   drawer?: boolean
   /** 抽屉展开档的高度预算(px);超出在块内滚动。仅 `drawer: true` 的锚点有意义。 */
   expandedMaxHeight?: number
+  /**
+   * 单块最大宽度(px)。**只有横向受限的锚点**才给(今天 = composer.aside 的
+   * 两翼:它占的是输入框的边距空间,再宽就把输入框顶窄了)。不给 = 宽度由
+   * 挂点的常规布局决定(横条上是内容宽,弹层里是弹层宽)。
+   */
+  maxWidth?: number
+  /**
+   * 该锚点是否**分侧**(I 期,composer.aside)。
+   *
+   * 分侧不是新 kind,也不是新 cardinality 值:它说的是同一个 address 上有两个
+   * 互不相干的席位(左/右),`maxBlocks` 因此读作**每侧**的容量而不是总量。
+   * 插件在 `contributes.uiSlots[].side` 里点名要哪一侧(缺省 right);同侧的
+   * 第二条声明按容量截断(走既有 truncated 那条路,设置页说"锚点已满")。
+   *
+   * 不给 = 该锚点上的 `side` 声明**被忽略**(投影层标 sideIgnored,不拒载)——
+   * 与 drawer 同规:多宿主/版本偏斜下"这个宿主的这个位置不分侧"不是代码错误。
+   */
+  sided?: boolean
   /** 推荐的描述树根节点形态(提示,不强制)。 */
   rootHint?: 'row' | 'stack' | 'any'
 }
@@ -110,6 +128,26 @@ export const UI_ANCHOR_CAPACITY = {
    * 会话级 ctx(带 sessionId,不带 messageId)。
    */
   'composer.actions': { kind: 'trigger', maxBlocks: 3, maxHeight: 320, rootHint: 'stack' },
+  /**
+   * 输入框**两翼**(InputBox 的 .composer-anchor,左右各一条竖窄带,占的是
+   * 输入框居中留下的边距空间)。I 期第一个**分侧**锚点:`sided: true` 让
+   * `maxBlocks: 1` 读作**每侧 1 块**,插件用 `contributes.uiSlots[].side`
+   * (`'left' | 'right'`,缺省 right)点名要哪一侧,同侧第二条按容量截断。
+   *
+   * 宽 ≤ 48px、高 ≤ 输入框(壳与输入框同排,超出块内裁切)。窄窗**整侧隐藏**
+   * ——边距摆不下两翼时它是第一个该让路的东西(阈值见 §9.2 与 InputBox 的
+   * `@media`)。语义:**只放辅助性内容**,核心功能不许只住这里(会被窄窗吃掉)。
+   */
+  'composer.aside': {
+    kind: 'block', maxBlocks: 1, maxHeight: 160, maxWidth: 48, sided: true, rootHint: 'stack',
+  },
+  /**
+   * 输入框**正下方**横条(composer-stack 底部,输入框与面板下沿之间)。
+   * 输入的**后勤带**:与 composer.above 的"上下文带"上下分工 —— 上面放
+   * "这一轮带着什么"(草稿上下文),下面放"发出去之后会怎样"(提示、配额、
+   * 状态)。2 块 / 每块 ≤ 24px、宽随输入框;**无降级**(纵向恒在,不吃窄窗)。
+   */
+  'composer.below': { kind: 'block', maxBlocks: 2, maxHeight: 24, rootHint: 'row' },
 } as const satisfies Record<string, UiAnchorCapacity>
 
 /** 锚点 id 的字面量联合 —— 由容量表派生,不另写一份。
@@ -131,6 +169,8 @@ export const UI_ANCHORS = {
   messageFooter: 'message.footer',
   messageActions: 'message.actions',
   composerActions: 'composer.actions',
+  composerAside: 'composer.aside',
+  composerBelow: 'composer.below',
 } as const satisfies Record<string, UiAnchor>
 
 /** 这个字符串是不是宿主认识的锚点。未知锚点的处置见 loader/投影层(降级,不拒绝)。 */
@@ -149,6 +189,50 @@ export function uiAnchorKind(anchor: string): UiAnchorKind | undefined {
 /** 触发式锚点判定(宿主挂点用;协议上 trigger 与 block 走同一套通道)。 */
 export function isTriggerUiAnchor(anchor: string): boolean {
   return uiAnchorKind(anchor) === 'trigger'
+}
+
+// ── 分侧锚点(I 期,composer.aside) ────────────
+
+/** 两翼的两个席位。左右各是一个**独立**的容量池。 */
+export type UiSlotSide = 'left' | 'right'
+
+/**
+ * 没点名时落哪一侧。
+ *
+ * 选 right 而不是 left:输入框右侧已经是"动作侧"(工具条、发送钮),辅助
+ * 指示落在同一侧读起来是一条视线;left 留给显式点名的插件。
+ */
+export const UI_SLOT_DEFAULT_SIDE: UiSlotSide = 'right'
+
+/** 这个锚点分不分侧(今天只有 composer.aside)。 */
+export function supportsUiSlotSide(anchor: string): boolean {
+  return isUiAnchor(anchor) && capacityOf(anchor).sided === true
+}
+
+/** 过线的 side 是不是两个合法值之一(未知值一律读成"没声明")。 */
+export function isUiSlotSide(value: unknown): value is UiSlotSide {
+  return value === 'left' || value === 'right'
+}
+
+/**
+ * 一条声明**实际**落在哪一侧。
+ *
+ * 不分侧的锚点返回 `undefined`(它没有"侧"这个概念);分侧锚点上未声明或
+ * 声明了未知值 → 缺省侧。这是判据本体:投影层与 renderer 都问它,不各判各的。
+ */
+export function resolveUiSlotSide(anchor: string, declared: unknown): UiSlotSide | undefined {
+  if (!supportsUiSlotSide(anchor)) return undefined
+  return isUiSlotSide(declared) ? declared : UI_SLOT_DEFAULT_SIDE
+}
+
+/** 声明了 side 但锚点不分侧 —— 投影层据此标记(设置页可解释),不拒载。 */
+export function isIgnoredUiSlotSideDeclaration(anchor: string, declared: unknown): boolean {
+  return declared !== undefined && !supportsUiSlotSide(anchor)
+}
+
+/** 分侧锚点上单块的宽度预算(px);不分侧的锚点没有这个数。 */
+export function uiSlotMaxWidth(anchor: string): number | undefined {
+  return isUiAnchor(anchor) ? capacityOf(anchor).maxWidth : undefined
 }
 
 // ── 抽屉形态(F 期) ─────────────────────────

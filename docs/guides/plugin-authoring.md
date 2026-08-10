@@ -305,7 +305,7 @@ const free = await api.isIdle(id)       // 读不到会话 = false
 
 ## 锚点清单与两种形态(常显块 / 触发式)
 
-宿主认识的锚点是**编译期常量**,你不能发明。今天有五个:
+宿主认识的锚点是**编译期常量**,你不能发明。今天有七个:
 
 | anchor | 形态 | 在哪 | ctx 带什么 | 容量 |
 |---|---|---|---|---|
@@ -314,13 +314,27 @@ const free = await api.isIdle(id)       // 读不到会话 = false
 | `message.footer` | 常显块 | 每条 assistant 消息尾部 | `sessionId` + `messageId` | 6 块 / 24px |
 | `message.actions` | **触发式** | 每条 assistant 消息的 ⋯ 菜单 | `sessionId` + `messageId` | 3 项,超出折叠 |
 | `composer.actions` | **触发式** | 输入框工具条(附件按钮之前) | `sessionId` | 3 项,超出折叠 |
+| `composer.aside` | 常显块(**分侧**) | 输入框左右两翼(边距空间) | `sessionId` | **每侧 1 块** / 宽 ≤ 48px、高 ≤ 输入框 |
+| `composer.below` | 常显块 | 输入框正下方(后勤带) | `sessionId` | 2 块 / 每块 ≤ 24px,宽随输入框 |
+
+- **`composer.aside`(两翼)**:容量是**每侧 1 块**,用 `"side": "left" \| "right"`
+  点名(缺省 `right`);同侧的第二条声明按容量截断,设置页会说"锚点已满"。
+  **降级**:窄窗(≤768px)整侧隐藏 —— 边距摆不下 48px 的翼时它第一个让路。
+  **语义**:只放**辅助性内容**(一枚指示、一个计数);核心功能只住这里 =
+  窄窗下这个功能对用户就是消失了。
+- **`composer.below`(后勤带)**:**没有降级**,纵向恒在。**语义**:与
+  `composer.above` 上下分工 —— above 放"这一轮带着什么"(草稿上下文),
+  below 放"发出去之后会怎样"(提示、配额、状态)。
 
 **形态由宿主的锚点表决定,不是你声明的** —— 声明形状两种一字不差:
 
 ```jsonc
 { "contributes": { "uiSlots": [
   { "anchor": "message.footer",  "id": "tps",       "label": "TPS" },
-  { "anchor": "message.actions", "id": "tps-usage", "label": "Token usage" }
+  { "anchor": "message.actions", "id": "tps-usage", "label": "Token usage" },
+  // 分侧锚点上多一个可选字段;别的锚点上写了它会被忽略(不拒载)。
+  { "anchor": "composer.aside",  "id": "tps-wing",  "label": "TPS", "side": "left" },
+  { "anchor": "composer.below",  "id": "tps-hint",  "label": "TPS hint" }
 ] } }
 ```
 
