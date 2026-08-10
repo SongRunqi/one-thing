@@ -44,7 +44,7 @@ null = 离场。插件对矩形做物理,永远看不见 DOM。
 | 轴 | 取值 | 说明 |
 | --- | --- | --- |
 | name | 词表内语义名 | 宿主命名,append-only |
-| kind | `surface` \| `envelope` \| `region`(预留) | surface = 可落面;**envelope = 兜底包络**——也可落,但只在没有更细的 surface 罩住该列时才算数(L0 评审裁决:该语义进词表由 kind 说话,插件不点名 composer,否则违背"通用物理不硬编码名字");region 预留给"氛围区",**v2 不建**,kind 表 append-only |
+| kind | `surface` \| `envelope` \| `region`(预留) | surface = 可落面;**envelope = 参考几何,非落面**(真机判例 2026-08-10,见 §8:它是含不可见 padding 的**布局盒**,当落面必得悬空雪——此前"兜底可落"的 L0 裁决被真机推翻);region 预留给"氛围区",**v2 不建**,kind 表 append-only |
 | cardinality | `singleton` \| `per-item` | singleton 用 querySelector;per-item 用 querySelectorAll,同名多矩形 |
 
 ## 4. 协议(v1 兼容,零破坏)
@@ -70,7 +70,7 @@ null = 离场。插件对矩形做物理,永远看不见 DOM。
 
 | name | kind | cardinality | 挂点 | 说明 |
 | --- | --- | --- | --- | --- |
-| `composer` | **envelope** | singleton | ChatPanel `.composer-container`(现状) | **保留**:v1 兼容 + 物理兜底包络(kind 即语义) |
+| `composer` | **envelope** | singleton | ChatPanel `.composer-container`(现状) | **保留**:v1 兼容 + 参考几何(非落面,kind 即语义) |
 | `composer.input` | surface | singleton | InputBox 输入框本体根元素 | 真正的"输入框顶边" |
 | `status.chip` | surface | per-item | 状态带各 chip 根:BackgroundJobsStatusBar / GoalStatusBar / MusicStatusBar / UiSlotHost chip 壳 | **radio 即 MusicStatusBar chip,在此免费获得**;插件 chip 也免费 |
 | `composer.block` | surface | per-item | composer.above 各块壳 + 抽屉壳(UiSlotHost/UiSlotBlock 宿主侧) | **用户自加的任何 above 块免费获得**;抽屉三态跟随 |
@@ -113,6 +113,21 @@ above 块顶积雪、抽屉 240↔32 切换积雪跟随、radio 关闭该列积�
   包络平顶只是"会升降的地平线"。v1 把 composer 挂在整摞容器上省了三个名字,
   省掉的正是真实感。
 - **雪 1.0 的兼容责任在宿主**:v1 字段照发,老插件不知道 v2 发生过。
+
+### 8.0 真机走查判例(2026-08-10,雪 2.0 首轮)
+
+- **布局盒 ≠ 视觉盒(envelope 落面裁决被推翻)**。`.composer-container` 左右
+  含不可见 padding,把它当"兜底可落"的结果是:雪悬空堆在"看不见的容器上沿"
+  (左右留白两段浮雪)、雪人挂在半空、积雪超出输入框可见边缘。修正
+  (snow 2.0.1 + §3 表):envelope 是**参考几何,非落面**;没被 surface 罩住
+  的列一律落到窗底 —— 这也正是用户的原始诉求。落面必须是**视觉盒**
+  (带边框/底色的可见元素),挂标时以此为准。v1 回退里 composerRect 仍当
+  落面用(老宿主仅有的信息,1.0 观感即它)。
+- **MO 挂在会出没的容器上 = 给自己挖洞**。空态启动时容器不存在,MO 无处可挂,
+  此后 composer 挂载没有任何信号触发重测(surfaces 冻在空态帧,雪只认窗底);
+  容器卸载发生在其父节点的 childList 上,容器自身的 MO 同样看不见。修正
+  (9201b1c8):MO 常驻 `document.body`,回调过滤纯文本变更再汇入 rAF 合并。
+  教训:**观察者必须挂在比被观察者生命周期更长的节点上**。
 
 ### 8.1 "插件能否控制 X"三层口诀(2026-08-10 与用户对齐)
 
