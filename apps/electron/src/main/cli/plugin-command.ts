@@ -16,6 +16,26 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { PLUGIN_MARKET_INDEX_URL } from '@shared/ipc/plugins.js'
+// 这些必须是**静态** import,而且不只是风格问题:cli 与 Electron 主进程在同一张
+// rollup 图里打包,一个只被主进程入口静态引用的模块会被内联进 out/main/index.js;
+// 若这里用动态 import,会被解析成 import("../index.js") —— 纯 node 进程加载整个
+// Electron 主进程,当场炸在 electron 的 CJS named export 上。静态引用让这些模块
+// 拥有第二个引用方,rollup 必须把它们拆成不含 electron 的共享 chunk。
+// (plugin-command 自身仍由 index.ts 动态 import,文件级惰性不丢。)
+import {
+  configurePluginMarketIndex,
+  getPluginMarketIndexSnapshot,
+  installPluginPackage,
+  probePluginNpmAvailability,
+  uninstallPluginPackage,
+} from '@onething/app/plugins/install.js'
+import { PLUGIN_PACKAGE_SCOPE, readPluginTarballSummary } from '@onething/app/plugins/tarball.js'
+import { getPluginsDir } from '@onething/app/plugins/loader.js'
+import {
+  findMarketIndexEntry,
+  readPluginLedger,
+  unscopedPluginIdFromPackageName,
+} from '@onething/core/plugins'
 import type { CorePluginMarketIndex } from '@onething/core/plugins'
 
 /** 装完/卸完的提示 —— CLI 不加载插件,桌面那边要自己刷新。 */
@@ -52,7 +72,6 @@ async function installPlugins(targets: string[]): Promise<void> {
     throw new Error('plugin install requires at least one <path.tgz> or <market id>')
   }
 
-  const { probePluginNpmAvailability, installPluginPackage } = await import('@onething/app/plugins/install.js')
   // 裁决 8:v1 依赖本机 npm。点了才炸不如装前明说 —— 桌面设置页也是这条裁决。
   if (!await probePluginNpmAvailability()) {
     throw new Error(
@@ -61,8 +80,7 @@ async function installPlugins(targets: string[]): Promise<void> {
     )
   }
 
-  const { readPluginTarballSummary } = await import('@onething/app/plugins/tarball.js')
-  const pluginsDir = await resolvePluginsDir()
+  const pluginsDir = resolvePluginsDir()
   // 市场索引只在第一次真要用时拉一次:全是本地 .tgz 的场景不该起网络。
   let market: CorePluginMarketIndex | null | undefined
   let failures = 0
@@ -99,7 +117,6 @@ async function installPlugins(targets: string[]): Promise<void> {
       failures += 1
       continue
     }
-    const { findMarketIndexEntry, unscopedPluginIdFromPackageName } = await import('@onething/core/plugins')
     const wanted = unscopedPluginIdFromPackageName(target)
     const entry = findMarketIndexEntry(market, wanted)
     if (!entry) {
@@ -157,7 +174,6 @@ function looksLikeLocalTarball(target: string): boolean {
  * 所以这里自己配一次(import 的是同一个常量,不抄字面量)。
  */
 async function fetchMarketIndex(): Promise<CorePluginMarketIndex | null> {
-  const { configurePluginMarketIndex, getPluginMarketIndexSnapshot } = await import('@onething/app/plugins/install.js')
   configurePluginMarketIndex(PLUGIN_MARKET_INDEX_URL)
   const snapshot = await getPluginMarketIndexSnapshot({ refresh: true })
   if (!snapshot.index && snapshot.error) console.error(`Market index fetch failed: ${snapshot.error}`)
@@ -167,12 +183,11 @@ async function fetchMarketIndex(): Promise<CorePluginMarketIndex | null> {
 // ── list ──
 
 async function listPlugins(): Promise<void> {
-  const ledger = await readLedger(await resolvePluginsDir())
+  const ledger = await readLedger(resolvePluginsDir())
   if (ledger.entries.length === 0) {
     console.log('(none) — no plugin is installed through the npm ledger')
     return
   }
-  const { unscopedPluginIdFromPackageName } = await import('@onething/core/plugins')
   printRows(
     ledger.entries.map(entry => ({
       id: unscopedPluginIdFromPackageName(entry.name),
@@ -189,9 +204,8 @@ async function uninstallPlugin(target: string | undefined): Promise<void> {
   const wanted = (target ?? '').trim()
   if (!wanted) throw new Error('plugin uninstall requires a plugin id or package name')
 
-  const pluginsDir = await resolvePluginsDir()
+  const pluginsDir = resolvePluginsDir()
   const ledger = await readLedger(pluginsDir)
-  const { PLUGIN_PACKAGE_SCOPE } = await import('@onething/app/plugins/tarball.js')
   const names = ledger.entries.map(entry => entry.name)
   // 完整包名直查 → 补 scope 前缀试探 → 账里某条去 scope 后相等(别的 scope 装的)。
   const pkg = names.find(name => name === wanted)
@@ -204,7 +218,6 @@ async function uninstallPlugin(target: string | undefined): Promise<void> {
     )
   }
 
-  const { uninstallPluginPackage } = await import('@onething/app/plugins/install.js')
   const result = await uninstallPluginPackage(pluginsDir, pkg)
   if (!result.removed) throw new Error(result.error ?? `npm uninstall failed for ${pkg}`)
   console.log(`✓ uninstalled ${pkg}`)
@@ -218,14 +231,12 @@ async function uninstallPlugin(target: string | undefined): Promise<void> {
 
 /** 账本读不可信(坏 JSON / 读不动)时不能当空账用 —— 那会把"什么都没装"当事实。 */
 async function readLedger(pluginsDir: string): Promise<{ entries: Array<{ name: string; spec: string }> }> {
-  const { readPluginLedger } = await import('@onething/core/plugins')
   const ledger = readPluginLedger(pluginsDir)
   if (!ledger.trusted) throw new Error(ledger.reason ?? `cannot read the plugin ledger in ${pluginsDir}`)
   return { entries: ledger.entries }
 }
 
-async function resolvePluginsDir(): Promise<string> {
-  const { getPluginsDir } = await import('@onething/app/plugins/loader.js')
+function resolvePluginsDir(): string {
   return getPluginsDir()
 }
 
