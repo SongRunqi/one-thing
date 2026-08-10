@@ -345,8 +345,6 @@ import type {
 	GetSessionUsageResponse,
 	OnethingUsageBreakdownEntry,
 	OnethingUsageBucket,
-	OnethingUsagePricingQuality,
-	OnethingUsageProjectTotals,
 	OnethingUsageSummaryGranularity,
 	// Project directories types (independent module)
 	ProjectDirsListResponse,
@@ -428,8 +426,6 @@ export type {
 	PracticeSummaryResult,
 	OnethingUsageBreakdownEntry,
 	OnethingUsageBucket,
-	OnethingUsagePricingQuality,
-	OnethingUsageProjectTotals,
 	OnethingUsageSummaryGranularity,
 	AgentDefinition,
 	AgentsListResponse,
