@@ -180,6 +180,11 @@ export const PLUGIN_AMBIENT_ANCHORS: Readonly<Record<string, PluginAmbientAnchor
   'composer.input': { kind: 'surface', cardinality: 'singleton' },
   /** S 状态带上的每一枚 chip(后台任务 / 目标 / 电台 / 插件块)。 */
   'status.chip': { kind: 'surface', cardinality: 'per-item' },
-  /** composer.above 上的每一块(含抽屉壳)。 */
+  /**
+   * 输入区内的每个可见块:composer.above 各块与抽屉壳、权限账页、
+   * dock(队列/引用/附件)、协作输入提示行。语义是"输入摞里一切看得见的
+   * 卡片状东西",不限于插件贡献的 —— 雪该落在最上面那张卡上,而不是
+   * 穿过它落到输入框顶边(2026-08-10 盲区盘点)。
+   */
   'composer.block': { kind: 'surface', cardinality: 'per-item' },
 } as const

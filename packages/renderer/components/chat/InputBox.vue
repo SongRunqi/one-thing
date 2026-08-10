@@ -31,6 +31,7 @@
         name="dock-row"
         tag="div"
         class="composer-dock"
+        data-ambient-anchor="composer.block"
       >
         <QueuePanel
           v-if="queuedDockVisible"

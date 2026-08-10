@@ -53,6 +53,7 @@
              (去复用重构 R1 §8 铁律 1)。 -->
         <PermissionLedger
           v-if="currentPendingPermission"
+          data-ambient-anchor="composer.block"
           :tool-call="currentPendingPermission.toolCall"
           :queued-count="queuedBehindPermission.length"
           :collab-scope-only="isCollabSessionActive"
@@ -65,6 +66,7 @@
              self-guards on an empty roster, so a quiet room costs no row. -->
         <CollabTypingLine
           v-if="isCollabRoomActive"
+          data-ambient-anchor="composer.block"
           :session-id="effectiveSessionId"
         />
 

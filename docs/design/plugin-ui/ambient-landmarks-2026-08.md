@@ -73,7 +73,7 @@ null = 离场。插件对矩形做物理,永远看不见 DOM。
 | `composer` | **envelope** | singleton | ChatPanel `.composer-container`(现状) | **保留**:v1 兼容 + 参考几何(非落面,kind 即语义) |
 | `composer.input` | surface | singleton | InputBox 输入框本体根元素 | 真正的"输入框顶边" |
 | `status.chip` | surface | per-item | 状态带各 chip 根:BackgroundJobsStatusBar / GoalStatusBar / MusicStatusBar / UiSlotHost chip 壳 | **radio 即 MusicStatusBar chip,在此免费获得**;插件 chip 也免费 |
-| `composer.block` | surface | per-item | composer.above 各块壳 + 抽屉壳(UiSlotHost/UiSlotBlock 宿主侧) | **用户自加的任何 above 块免费获得**;抽屉三态跟随 |
+| `composer.block` | surface | per-item | composer.above 各块壳 + 抽屉壳(UiSlotHost/UiSlotBlock 宿主侧)+ 权限账页 + dock + 协作输入提示行 | **用户自加的任何 above 块免费获得**;抽屉三态跟随。语义 = "输入摞里一切可见的卡片状块"(2026-08-10 盲区盘点补挂三处 —— 标注制的维护义务:新的可见块进输入摞时挂一行 attribute) |
 
 挂标全部在**宿主壳**上,插件内容永不自挂(治理与 uiSlot 一致)。
 
