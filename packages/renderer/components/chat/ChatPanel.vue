@@ -105,6 +105,9 @@
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
+import { useSettingsStore } from '@/stores/settings'
+import { normalizeComposerWidth } from '@shared/defaults/settings'
+import { resolveComposerWidth } from './composer-width'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
@@ -153,6 +156,7 @@ const emit = defineEmits<{
 
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
 
@@ -288,6 +292,17 @@ function getContentColumnElement(): HTMLElement | null {
   return chatPanelRef.value?.querySelector<HTMLElement>('.message-list-content') ?? null
 }
 
+/* 输入区宽度档位。裁决本身是 `./composer-width` 的纯函数(那里有四档的完整
+   口径与"为什么在 JS 不在 CSS"的理由);这里只负责取档位与 rem→px。 */
+const composerWidthGear = computed(() =>
+  normalizeComposerWidth(settingsStore.settings?.general?.composerWidth))
+
+function remToPx(rem: number): number {
+  const root = typeof document !== 'undefined' ? document.documentElement : null
+  const base = root ? Number.parseFloat(getComputedStyle(root).fontSize) : 16
+  return rem * (Number.isFinite(base) && base > 0 ? base : 16)
+}
+
 function getLayoutVariableTargets(): HTMLElement[] {
   return [composerContainerRef.value].filter((element): element is HTMLElement => Boolean(element))
 }
@@ -324,14 +339,24 @@ function measureContentColumn() {
   const columnRect = column.getBoundingClientRect()
   lastMeasuredPanelLeft = panelRect.left
   const left = columnRect.left - panelRect.left
-  const right = panelRect.right - columnRect.right
   const width = columnRect.width
   const center = left + width / 2
 
+  // 输入区可以与内容列不同宽(宽度档位),于是它的左右外边距按**中线对齐**
+  // 现算,而不是照抄内容列的两侧留白。standard 档 composerWidth === width,
+  // 三个表达式逐项等于改造前的 left / right / width。
+  const composerWidth = resolveComposerWidth(
+    composerWidthGear.value,
+    { columnWidth: width, panelWidth: panelRect.width },
+    remToPx,
+  )
+  const composerLeft = center - composerWidth / 2
+  const composerRight = panelRect.width - composerLeft - composerWidth
+
   const values = {
-    '--chat-composer-width': cssPx(width),
-    '--chat-content-column-left': cssPx(left),
-    '--chat-content-column-right': cssPx(right),
+    '--chat-composer-width': cssPx(composerWidth),
+    '--chat-content-column-left': cssPx(composerLeft),
+    '--chat-content-column-right': cssPx(composerRight),
     '--chat-content-column-center': cssPx(center),
   }
 
@@ -363,6 +388,13 @@ function observeContentColumn() {
     contentColumnResizeObserver.observe(column)
   }
 }
+
+/* 档位换了要重量一次:内容列本身没变尺寸,ResizeObserver 不会自己醒。
+   量完写下的仍是同一组内联变量,氛围层地标那边的 RO 观察的是**元素**,
+   宽度一变它自己就跟上,不需要第二条通知。 */
+watch(composerWidthGear, () => {
+  scheduleContentColumnMeasure()
+})
 
 function setComposerHeightVariable(height: number) {
   const measuredHeight = Math.max(0, Math.ceil(height))

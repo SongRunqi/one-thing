@@ -166,6 +166,8 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
   darkThemeId: 'flexoki',
   lightThemeId: 'flexoki',
   typographyDensity: 'compact',
+  // 缺省 = 现状:standard 档的量尺就是内容列量尺(ChatPanel 不为它写第二份数字)。
+  composerWidth: 'standard',
   messageListDensity: 'comfortable',
   shortcuts: {
     sendMessage: { key: 'Enter' },
@@ -485,6 +487,10 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...settings.general?.shortcuts,
       },
       typographyDensity: normalizeTypographyDensity(settings.general?.typographyDensity),
+      // 白名单式重建:枚举键必须**显式**归一,否则 settings.json 里的脏值
+      // (拼错的档位、旧版本留下的值)会原样流进 CSS 选择器,变成一个谁也
+      // 匹配不上的 data 属性 —— 界面无声地停在缺省档而没人知道为什么。
+      composerWidth: normalizeComposerWidth(settings.general?.composerWidth),
       quickCommands: settings.general?.quickCommands ?? defaults.general.quickCommands,
       dailyNotes: {
         ...defaults.general.dailyNotes,
@@ -773,6 +779,19 @@ function normalizeTypographyDensity(
   value: GeneralSettings['typographyDensity'] | string | null | undefined
 ): GeneralSettings['typographyDensity'] {
   return value === 'comfortable' ? 'comfortable' : DEFAULT_GENERAL_SETTINGS.typographyDensity
+}
+
+/** 输入区宽度档位:非法/缺失一律回落缺省档(= 现状),不抛错。 */
+const COMPOSER_WIDTHS: ReadonlyArray<NonNullable<GeneralSettings['composerWidth']>> = [
+  'narrow', 'standard', 'wide', 'full',
+]
+
+export function normalizeComposerWidth(
+  value: GeneralSettings['composerWidth'] | string | null | undefined
+): GeneralSettings['composerWidth'] {
+  return COMPOSER_WIDTHS.includes(value as NonNullable<GeneralSettings['composerWidth']>)
+    ? (value as GeneralSettings['composerWidth'])
+    : DEFAULT_GENERAL_SETTINGS.composerWidth
 }
 
 function stripProviderLocalAddress(providers: Record<string, ProviderConfig>): void {

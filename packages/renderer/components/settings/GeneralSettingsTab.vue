@@ -147,6 +147,22 @@
           </div>
         </SettingRow>
 
+        <!-- 输入区宽度:极简裁决 —— 只给四档,不给像素。量尺住在
+             components/chat/composer-width.ts,设置页一个数字都不认识。 -->
+        <SettingRow
+          label="Composer Width"
+          description="How wide the input area is. Standard follows the reading column."
+        >
+          <Select
+            v-bind="LEDGER_SELECT"
+            class="prefer-select"
+            :model-value="currentComposerWidth"
+            :options="COMPOSER_WIDTH_OPTIONS"
+            aria-label="Composer Width"
+            @update:model-value="updateComposerWidth(String($event) as ComposerWidthGear)"
+          />
+        </SettingRow>
+
         <!-- Font Size -->
         <SettingRow description="Font size for chat text.">
           <template #label>
@@ -430,6 +446,7 @@ import { computed, ref } from 'vue'
 import { RotateCcw } from 'lucide-vue-next'
 import type { SelectOptionLike } from '@/components/common/select'
 import type { AppSettings, TypographyDensity } from '@/types'
+import { normalizeComposerWidth } from '@shared/defaults/settings'
 import type { DailyNoteSettings, UserProfileSettings } from '@shared/ipc/settings'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import { AVATAR_IMAGE_MAX_PX, downscaleImageToPngDataUrl } from '@/components/common/agent-avatar'
@@ -474,6 +491,20 @@ const THEME_MODE_OPTIONS: SelectOptionLike[] = [
   { value: 'dark', label: 'Dark' },
 ]
 
+/**
+ * 输入区宽度档位:**只暴露档位,不暴露数字**。四档背后的量尺(34rem /
+ * 内容列 / 56rem / 撑满)住在 ChatPanel 的测量里 —— 这里连一个像素值都不该有。
+ * 类型从 settings 上现取:少一条 import,就少一处与契约漂移的机会。
+ */
+type ComposerWidthGear = NonNullable<AppSettings['general']['composerWidth']>
+
+const COMPOSER_WIDTH_OPTIONS: SelectOptionLike[] = [
+  { value: 'narrow', label: 'Narrow' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'wide', label: 'Wide' },
+  { value: 'full', label: 'Full' },
+]
+
 /** Font rows keep their own family on the option so the list previews itself. */
 type FontOption = { value: string, label: string, family: string }
 
@@ -494,6 +525,9 @@ const currentFontSize = computed(() => props.settings.chat?.chatFontSize ?? defa
 const currentTypographyDensity = computed<TypographyDensity>(() => (
   props.settings.general.typographyDensity === 'comfortable' ? 'comfortable' : 'compact'
 ))
+/** 归一走 @shared 的那一个 —— 非法/缺失回落缺省档,判据不在这里再写一遍。 */
+const currentComposerWidth = computed<ComposerWidthGear>(() =>
+  normalizeComposerWidth(props.settings.general.composerWidth) ?? 'standard')
 const currentFontEn = computed(() => props.settings.chat?.chatFontEn ?? DEFAULT_FONT_EN)
 const currentFontZh = computed(() => props.settings.chat?.chatFontZh ?? DEFAULT_FONT_ZH)
 const contextCompactEnabled = computed(() => props.settings.chat?.contextCompactEnabled !== false)
@@ -614,6 +648,16 @@ function updateTypographyDensity(typographyDensity: TypographyDensity) {
     general: {
       ...props.settings.general,
       typographyDensity,
+    },
+  })
+}
+
+function updateComposerWidth(composerWidth: ComposerWidthGear) {
+  emit('update:settings', {
+    ...props.settings,
+    general: {
+      ...props.settings.general,
+      composerWidth,
     },
   })
 }

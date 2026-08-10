@@ -27,6 +27,20 @@ export type MessageListDensity = "compact" | "comfortable" | "spacious";
 // Global typography density mode
 export type TypographyDensity = "compact" | "comfortable";
 
+/**
+ * 输入区宽度档位。
+ *
+ * 四档映射到**输入区自己的量尺** `--chat-composer-measure`(ChatPanel):
+ *  - `narrow` = 34rem;
+ *  - `standard`(缺省)= 内容列量尺,即改造前的行为 —— **现状值不在这里
+ *    再抄一份**,它就是 `--chat-content-width`;
+ *  - `wide` = 56rem(既有的 `--content-measure-wide`);
+ *  - `full` = 100%,由 `--chat-measure-cap` 收口(撑满内容列)。
+ *
+ * 四档之上永远还有 cap 一道钳:窄窗下不管选哪档都不会顶破面板。
+ */
+export type ComposerWidth = "narrow" | "standard" | "wide" | "full";
+
 // Base theme controls the overall look (backgrounds, text colors, etc.)
 export type BaseTheme =
 	| "obsidian"
@@ -103,6 +117,7 @@ export interface GeneralSettings {
 	lightThemeId?: string; // Theme ID for light mode (e.g., 'flexoki')
 	shortcuts?: ShortcutSettings; // Custom keyboard shortcuts
 	typographyDensity?: TypographyDensity; // Global typography density, default 'compact'
+	composerWidth?: ComposerWidth; // Composer (input area) width gear, default 'standard' = 现状
 	messageListDensity?: MessageListDensity; // Message list display density, default 'comfortable'
 	messageLineHeight?: number; // Message line height, 1.2-2.2, default 1.6
 	quickCommands?: QuickCommandConfig[]; // Quick command buttons shown above InputBox

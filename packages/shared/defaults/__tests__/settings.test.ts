@@ -313,6 +313,26 @@ describe('mergeWithDefaults 白名单漏键审计', () => {
     })
     expect(merged.general.dmNotifications).toBe(false)
   })
+
+  /**
+   * 输入区宽度档位(I 期)。`general` 是白名单式重建里**显式列出**的枚举归一
+   * 之一,不是靠展开幸存的 —— 于是这条钉三件事:缺省不变、合法值活过 merge、
+   * 脏值回落缺省(而不是原样流进 CSS 选择器,让界面无声地停在缺省档)。
+   */
+  it('general.composerWidth:缺省 standard、合法值幸存、非法值回落', () => {
+    expect(createDefaultSettings().general.composerWidth).toBe('standard')
+    expect(mergeWithDefaults({}).general.composerWidth).toBe('standard')
+
+    for (const gear of ['narrow', 'standard', 'wide', 'full'] as const) {
+      expect(mergeWithDefaults({ general: { composerWidth: gear } } as Partial<AppSettings>)
+        .general.composerWidth).toBe(gear)
+    }
+
+    for (const dirty of ['NARROW', 'huge', '', null, 42, undefined]) {
+      expect(mergeWithDefaults({ general: { composerWidth: dirty } } as unknown as Partial<AppSettings>)
+        .general.composerWidth).toBe('standard')
+    }
+  })
 })
 
 describe('network settings defaults', () => {
