@@ -44,7 +44,7 @@ null = 离场。插件对矩形做物理,永远看不见 DOM。
 | 轴 | 取值 | 说明 |
 | --- | --- | --- |
 | name | 词表内语义名 | 宿主命名,append-only |
-| kind | `surface`(v2 唯一)\| `region`(预留) | surface = 可落面(雪可堆积);region 预留给"氛围区"(如"避开正文区"),**v2 不建**,kind 表 append-only 保证将来加不破老插件 |
+| kind | `surface` \| `envelope` \| `region`(预留) | surface = 可落面;**envelope = 兜底包络**——也可落,但只在没有更细的 surface 罩住该列时才算数(L0 评审裁决:该语义进词表由 kind 说话,插件不点名 composer,否则违背"通用物理不硬编码名字");region 预留给"氛围区",**v2 不建**,kind 表 append-only |
 | cardinality | `singleton` \| `per-item` | singleton 用 querySelector;per-item 用 querySelectorAll,同名多矩形 |
 
 ## 4. 协议(v1 兼容,零破坏)
@@ -70,7 +70,7 @@ null = 离场。插件对矩形做物理,永远看不见 DOM。
 
 | name | kind | cardinality | 挂点 | 说明 |
 | --- | --- | --- | --- | --- |
-| `composer` | surface | singleton | ChatPanel `.composer-container`(现状) | **保留**:v1 兼容 + 物理兜底包络 |
+| `composer` | **envelope** | singleton | ChatPanel `.composer-container`(现状) | **保留**:v1 兼容 + 物理兜底包络(kind 即语义) |
 | `composer.input` | surface | singleton | InputBox 输入框本体根元素 | 真正的"输入框顶边" |
 | `status.chip` | surface | per-item | 状态带各 chip 根:BackgroundJobsStatusBar / GoalStatusBar / MusicStatusBar / UiSlotHost chip 壳 | **radio 即 MusicStatusBar chip,在此免费获得**;插件 chip 也免费 |
 | `composer.block` | surface | per-item | composer.above 各块壳 + 抽屉壳(UiSlotHost/UiSlotBlock 宿主侧) | **用户自加的任何 above 块免费获得**;抽屉三态跟随 |

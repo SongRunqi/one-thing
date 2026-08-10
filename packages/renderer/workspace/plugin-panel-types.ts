@@ -139,11 +139,14 @@ export const PLUGIN_AMBIENT_MESSAGE = {
 } as const
 
 /**
- * 地标的**种类**。v2 只有 `surface`(可落面:雪能堆在它顶边上);`region`
+ * 地标的**种类**。`surface` = 可落面(雪能堆在它顶边上);`envelope` = 兜底
+ * 包络 —— 也可落,但只在**没有更细的 surface 罩住该列**时才算数(否则天际线
+ * 会被包络压成平顶,v1 的病根)。语义进词表而不是让插件点名 composer,
+ * 是为了插件对着 kind 写通用物理、不对名字硬编码(§8.1 口诀)。`region`
  * (氛围区,如"避开正文区")是预留格,**本期不建** —— 表 append-only,将来
  * 加一个种类不破老插件(设计文档 §3)。
  */
-export type PluginAmbientAnchorKind = 'surface'
+export type PluginAmbientAnchorKind = 'surface' | 'envelope'
 
 /**
  * 地标的**基数**。singleton 走 querySelector(至多一个,map 里一格);
@@ -172,7 +175,7 @@ export interface PluginAmbientAnchorSpec {
  */
 export const PLUGIN_AMBIENT_ANCHORS: Readonly<Record<string, PluginAmbientAnchorSpec>> = {
   /** 输入区整摞的**包络**(ChatPanel `.composer-container`):v1 兼容 + 物理兜底。 */
-  composer: { kind: 'surface', cardinality: 'singleton' },
+  composer: { kind: 'envelope', cardinality: 'singleton' },
   /** 输入框本体(InputBox `.composer`)—— 真正的"输入框顶边"。 */
   'composer.input': { kind: 'surface', cardinality: 'singleton' },
   /** S 状态带上的每一枚 chip(后台任务 / 目标 / 电台 / 插件块)。 */

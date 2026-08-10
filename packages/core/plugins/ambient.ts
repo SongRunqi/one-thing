@@ -30,8 +30,9 @@ import {
 /**
  * 宿主 ⇄ 氛围 iframe 的消息名。
  *
- * host → iframe:`init`(首帧握手,带 token)、`geometry`(枚举地标矩形,
- * resize/布局变化时节流推送)、`pause`/`resume`(窗口失焦/隐藏即停)。
+ * host → iframe:`init`(首帧握手,带 token)、`vocabulary`(地标词表,握手
+ * 确认后发一次)、`geometry`(枚举地标矩形,resize/布局变化时节流推送)、
+ * `pause`/`resume`(窗口失焦/隐藏即停)。
  * iframe → host:`ready`(握手确认,宿主据此判定页面真的起来了)。
  *
  * **token 是唯一的身份凭据**:sandbox=allow-scripts(无 allow-same-origin)的
@@ -42,6 +43,8 @@ import {
 export const PLUGIN_AMBIENT_MESSAGE_TYPES = {
   /** host → iframe:首帧握手,带 token。 */
   init: 'ambient-init',
+  /** host → iframe:地标词表(名字 × kind × cardinality),握手确认后发一次。 */
+  vocabulary: 'ambient-vocabulary',
   /** host → iframe:枚举地标的矩形(viewport + composerRect,…)。 */
   geometry: 'ambient-geometry',
   /** host → iframe:窗口失焦/隐藏,停 rAF。 */

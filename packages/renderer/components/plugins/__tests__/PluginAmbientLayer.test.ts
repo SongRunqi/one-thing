@@ -171,14 +171,17 @@ describe('氛围层:词表(L0 —— 名字 × kind × cardinality)', () => {
     expect(vocabIndex).toBeLessThan(geometryIndex)
   })
 
-  it('词表就是宿主那张静态表(首批四个地标,全 surface)', async () => {
+  it('词表就是宿主那张静态表(包络是 envelope,其余全 surface)', async () => {
     const { posted } = await mountReady()
     const vocabulary = posted.find(m => m.type === 'ambient-vocabulary')
     expect(vocabulary.anchors).toEqual(PLUGIN_AMBIENT_ANCHORS)
     expect(Object.keys(vocabulary.anchors)).toEqual(['composer', 'composer.input', 'status.chip', 'composer.block'])
     expect(vocabulary.anchors.composer.cardinality).toBe('singleton')
     expect(vocabulary.anchors['status.chip'].cardinality).toBe('per-item')
-    expect(Object.values(vocabulary.anchors).every((spec: any) => spec.kind === 'surface')).toBe(true)
+    // composer 是兜底包络 —— kind 说话,插件不必点名(§8.1:通用物理不硬编码名字)。
+    expect(vocabulary.anchors.composer.kind).toBe('envelope')
+    const rest = Object.entries(vocabulary.anchors).filter(([name]) => name !== 'composer')
+    expect(rest.every(([, spec]: [string, any]) => spec.kind === 'surface')).toBe(true)
   })
 
   it('重复的 ready 不重发词表(静态表只发一次)', async () => {
