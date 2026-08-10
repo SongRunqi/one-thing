@@ -46,6 +46,16 @@ import {
   type InteractiveTooltip,
 } from './interactive-tooltip-registry.js'
 
+/** The measured half of a `DOMRect` — the only fields `updatePosition` reads. */
+interface AnchorBox {
+  top: number
+  bottom: number
+  left: number
+  right: number
+  width: number
+  height: number
+}
+
 interface Props {
   /** Plain text body. Ignored when a `content` slot is provided. */
   text?: string
@@ -73,6 +83,21 @@ interface Props {
    * host the floating panel.
    */
   triggerEl?: HTMLElement | null
+  /**
+   * Position against a viewport POINT instead of the trigger's box (G2,
+   * 2026-08-11). Same idea as the floating kernel's `VirtualAnchor` and
+   * ContextMenu's `{x, y}`: a chart bubble hangs off the cursor, not off the
+   * `<svg>` that happens to contain it.
+   *
+   * It only replaces the *measuring* rect. Hovering, the safe triangle and the
+   * "am I still on the trigger" test all keep using the real element — a
+   * zero-sized rect would answer that question wrong at every edge. So the
+   * shape a chart wants is `:trigger-el="chartEl"` + `:virtual-anchor="cursor"`
+   * (+ `:delay="0"`): the element decides *whether*, the point decides *where*.
+   *
+   * `null` (the default) is the pre-G2 path byte for byte.
+   */
+  virtualAnchor?: { x: number, y: number } | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -82,6 +107,7 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   interactive: false,
   triggerEl: null,
+  virtualAnchor: null,
 })
 
 const wrapperRef = ref<HTMLElement | null>(null)
@@ -290,16 +316,30 @@ function clampVerticalCenter(center: number, padding: number): number {
   return Math.min(Math.max(center, min), max)
 }
 
-/** What the tooltip hovers on and positions against. */
+/** What the tooltip hovers on. Never the virtual anchor — see the prop's note. */
 function anchorEl(): HTMLElement | null {
   return props.triggerEl ?? wrapperRef.value
 }
 
-function updatePosition() {
-  const anchor = anchorEl()
-  if (!anchor) return
+/**
+ * What the tooltip *measures against*. A virtual anchor is a zero-sized rect at
+ * the point, exactly like `toAnchorRect()` in the floating kernel, so every
+ * placement branch below reads it without a second code path.
+ */
+function anchorRect(): AnchorBox | null {
+  const point = props.virtualAnchor
+  if (point) {
+    return {
+      top: point.y, bottom: point.y, left: point.x, right: point.x, width: 0, height: 0,
+    }
+  }
+  return anchorEl()?.getBoundingClientRect() ?? null
+}
 
-  const rect = anchor.getBoundingClientRect()
+function updatePosition() {
+  const rect = anchorRect()
+  if (!rect) return
+
   const padding = 8
 
   // Handle left/right positions. These are vertically centred on the trigger,
@@ -421,6 +461,19 @@ watch(
 function handleViewportChange() {
   if (visible.value) updatePosition()
 }
+
+/**
+ * A moving virtual anchor is the whole point of one (the cursor over a chart),
+ * so it re-places while up. Same shape as the kernel's anchor watcher: compare
+ * the coordinates, not the object — a fresh `{x, y}` every mousemove would
+ * otherwise re-place on frames where nothing moved.
+ */
+watch(
+  () => props.virtualAnchor ? `${props.virtualAnchor.x},${props.virtualAnchor.y}` : null,
+  () => {
+    if (visible.value) updatePosition()
+  },
+)
 
 watch(visible, (isVisible) => {
   if (isVisible) {
