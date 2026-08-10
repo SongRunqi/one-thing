@@ -1620,11 +1620,17 @@ html[data-theme='dark'] .app-background-layer {
   background: transparent;
 
   /* ── 两个旋钮:改这两个数,全窗一起变 ── */
-  --wallpaper-veil-alpha: 35%;
+  /* 35% → 18%:真机二轮反馈,用户要侧栏与主区更接近的通透度。 */
+  --wallpaper-veil-alpha: 18%;
   --wallpaper-card-alpha: 88%;
 
   /* ── ink 快照:后代覆写同名 token 之后,这里仍是主题的原始值 ── */
   --wallpaper-veil-ink: var(--ui-surface-app-bg);
+  /* hover 反馈的 ink(真机二轮:悬停底色没进名单,一悬停就整块不透明)。
+     侧栏两条 hover 链(分组 pill 的 --app-menu-item-hover-bg 与会话行的
+     --sidebar-row-hover-fill)都汇在这枚 token 上,一处覆写双杀。 */
+  --wallpaper-hover-ink: var(--ui-sidebar-item-hover-bg);
+  --wallpaper-hover: color-mix(in srgb, var(--wallpaper-hover-ink) 45%, transparent);
   --wallpaper-code-ink: var(--ui-surface-code-block-bg);
   --wallpaper-code-header-ink: var(--ui-surface-code-header-bg);
   --wallpaper-table-head-ink: var(--ui-table-header-bg, var(--ui-state-hover-bg));
@@ -1647,6 +1653,19 @@ html[data-theme='dark'] .app-background-layer {
    动了就成环,整条纱静默作废。 */
 .app-shell.has-plugin-background :deep(.sidebar) {
   --ui-sidebar-surface-bg: var(--wallpaper-veil);
+  --ui-sidebar-item-hover-bg: var(--wallpaper-hover);
+}
+
+/* 分组 pill 静置时不再自己画底(真机二轮:与侧栏纱叠成 58% 复合浓度,用户判
+   不齐)。代价如实记:sticky 组头滚动时不再遮住滚过的行文 —— 用户裁决通透
+   优先。hover 反馈由上面的半透明 hover token 承接。 */
+.app-shell.has-plugin-background :deep(.sidebar .app-sub-menu-title) {
+  background: transparent;
+}
+
+.app-shell.has-plugin-background :deep(.sidebar .app-sub-menu-title:hover),
+.app-shell.has-plugin-background :deep(.sidebar .app-sub-menu-title:focus-visible) {
+  background: var(--wallpaper-hover);
 }
 
 /* A 级·让位|侧栏头自己不再画底(否则与 .sidebar 的纱叠成两截深浅)。 */
@@ -1691,7 +1710,8 @@ html[data-theme='dark'] .app-background-layer {
    消息气泡(--ui-surface-elevated-bg)与输入框(--ui-surface-input-bg)不在此列:
    它们各有透明链与皮肤管辖,这里一个字不动。 */
 .app-content.has-plugin-background {
-  --ui-tab-bar-surface-bg: var(--wallpaper-veil);
+  /* 真机二轮:用户要顶栏与主区同亮度 —— B 级纱降为 A 级让位(全透明)。 */
+  --ui-tab-bar-surface-bg: transparent;
 
   --ui-surface-code-block-bg: color-mix(
     in srgb,
