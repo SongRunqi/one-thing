@@ -60,6 +60,11 @@ async function main(): Promise<void> {
     case 'collab':
       await collabCommand(command, rest, parsed)
       break
+    case 'plugin':
+      // 唯一不经 daemon 的 scope:插件只在桌面宿主执行,CLI daemon 不装配
+      // 插件系统。这里直接动账本,装完由用户去桌面刷新(命令自己会说)。
+      await (await import('./plugin-command.js')).pluginCommand(command, rest)
+      break
     default:
       throw new Error(`Unknown command: ${scope}`)
   }
@@ -595,9 +600,17 @@ Usage:
   onething provider list|use|enable|disable|configure|models
   onething tools list|enable|disable
   onething permission set <mode>
+  onething plugin install <path.tgz | market id> [more...]
+  onething plugin list
+  onething plugin uninstall <id | package name>
 
 Global:
   --store <path>  Use a non-default store directory
+
+Notes:
+  plugin commands only edit the npm ledger under <store>/plugins — plugins run on
+  the desktop host, so a running desktop app needs Settings → Plugins → Refresh
+  (or a restart) before an install/uninstall takes effect. Requires a local npm.
 `)
 }
 
