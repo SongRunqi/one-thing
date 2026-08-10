@@ -672,6 +672,66 @@ export default function (api) {
   插件的工具/命令/提示词照常。
 - 停用或卸载之后,`onething-plugin://<你的 id>/…` 立刻 404。
 
+## 氛围层(ambient):全窗动画覆盖层 + 地标词表
+
+webview 的第三个住址(前两个是工作区/工作台面板)。声明:
+
+```json
+{ "contributes": { "webviewRoot": "webview", "ambient": { "entry": "ambient.html" } } }
+```
+
+页面环境与 webview 面板同一套(sandbox iframe、独立 origin、CSP 只放行包内
+同源资源、token 握手),另加三条**住址特性**:铺满整窗、`pointer-events: none`
+(永远点击穿透,你画不出可交互的东西 —— 这是住址属性不是限制)、层级压在
+菜单/对话框**之下**(浮层永远盖住你)。窗口失焦/隐藏时宿主推 `pause`,
+回来推 `resume` —— 收到 pause 必须停 rAF。
+
+### 协议(全部消息)
+
+```
+host → 你   ambient-init        首帧握手,带 token(此后出入境消息都带它)
+你 → host   ambient-ready       回握手
+host → 你   ambient-vocabulary  地标词表,握手后只发一次
+host → 你   ambient-geometry    地标矩形,布局变化时 rAF 合并推送
+host → 你   ambient-pause / ambient-resume
+```
+
+`vocabulary`:`{ anchors: { <name>: { kind, cardinality } } }` —— 屏幕语义
+地图的静态表。kind 目前有 `surface`(可落面:带边框/底色的**可见**元素)与
+`envelope`(**参考几何,不是落面** —— 它是布局盒,含不可见 padding,把东西
+"放"上去会悬空);cardinality `singleton | per-item`。
+
+`geometry`:`{ viewport, composerRect, anchors, surfaces }`。
+`surfaces: [{ name, index, rect }]` 是你该用的那份 —— **在列即在场,离场即
+缺席**(没有 null 占位);`rect` 是视口坐标,iframe 铺满整窗,**视口坐标即
+你的 canvas 坐标**,不用换算。`composerRect`/`anchors` 是 v1 兼容字段。
+
+### 五条铁律(每条都有真机判例垫底)
+
+1. **按 kind 分流,不对名字硬编码**。词表 append-only,将来会加新 kind
+   (如 region);未知 kind 一律忽略。你的物理对着 kind 写,换个宿主版本
+   不用改代码。
+2. **envelope 不是落面**。判例:把 composer 容器当落面,雪悬空堆在
+   "看不见的容器上沿"、雪人挂半空。需要"兜底"时,兜到视口底,不是兜到包络。
+3. **`index` 不是跨帧身份**。它只在同一条 geometry 内稳定。进出场判定用
+   "这一帧在不在列";要跟踪同一个面,自己用 `name + 水平位置` 做签名
+   (对**垂直**位移免疫 —— 抽屉 240↔32 过渡时 rect.top 逐帧在变,签名不变,
+   你的堆积物才能骑着顶边走而不是被判离场重来)。
+4. **离散化别越可见边**。判例:按列切画布 + "重叠即归属"判据,边缘列搭上
+   1px 就整列归属,画出来的东西探出可见元素几个像素。要么用列中心点判据
+   (窄于一列的矩形特判),要么绘制时把横向范围钳到 rect 的 left/right 内
+   ——最好两个都做。
+5. **面离场时,它上面的东西要有个交代**。宿主不发"即将消失"预告(那要求
+   宿主为你延迟卸载,不可能给);你 diff 前后两帧 surfaces 自察进出场,
+   用最后一次的 rect 做退场演出(解冻重落、淡出、扬尘,随你)。
+
+### 预算与降级
+
+粒子/绘制预算自律(参考:全窗粒子 ≤ 60、堆积转静态路径而非粒子、单面堆积
+高度设上限)。宿主不强制预算,但真机走查会看帧。设置页有"氛围层"总闸 +
+每插件开关,被关时 iframe 直接销毁 —— 不需要你配合,但别把状态只存在
+iframe 里(重开就没了;要持久用 `api.storage`)。
+
 ## 安全与边界(速查)
 
 - UI 不执行插件代码:面板/锚点块都是**描述树**,宿主渲染。
