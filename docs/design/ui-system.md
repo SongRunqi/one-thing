@@ -332,3 +332,99 @@ P0 首录 1144 条 → P2 实测 1044(`native-confirm` 归零、`raw-teleport` 1
 ```bash
 node scripts/ui-style-check.mjs > docs/audit/ui-baseline-<date>.txt   # 记得同步改 scripts/ui-gate.mjs 里的路径
 ```
+
+---
+
+## 6. 壁纸模式(wallpaper mode)
+
+插件可以给主窗铺一张整窗背景图(`.app-background-layer`,`position:fixed` z0,
+App.vue)。**壁纸是全局行为,不是主内容区的局部效果** —— 所有表面都要按各自方式
+支持它。规则全文在 **`packages/renderer/styles/wallpaper.css`**(文件头注是唯一
+出处),这里只留查表卡。
+
+### 6.1 六级分级表
+
+新面进树时**先定级再落规则**,别逐个打地鼠。
+
+| 级 | 面 | 处理 |
+|---|---|---|
+| **A·让位** | 纯布局包装,面上一个字都不读(`.app-content` / `.app-main-region` / `.workspace-view-stack` / `.sidebar-header` / rail) | `background: transparent` |
+| **B·纱** | 区域 chrome:侧栏、右侧工作台(`.right-workbench`)、media / workspace 面板(`.media-panel`) | `var(--wallpaper-veil)`(18%) |
+| **S·态** | hover / active / selected 等交互反馈,**全窗所有 chrome 按钮**(侧栏折叠/搜索/设置钮、页签条、复合器工具条…) | 半透明 mix(hover 45% / active 60%) |
+| **C·可读卡** | 内容面:代码块、代码头、表头 | `--wallpaper-card-alpha`(88%) |
+| **E·磨砂** | 浮层家族:菜单 / popover / 下拉 / @面板 / 会话预览卡 / 表情面板 / ⋯ 菜单 / media inspector 抽屉 / 浮层侧栏 | 半透明底(76%)+ `backdrop-filter: blur(14px)` |
+| **×·窗外不适用** | 设置窗 / 搜索窗 / todo 窗 / 图片预览窗 / 语音运行时窗 | 各自独立 BrowserWindow,根类不挂,整份文件对它们是死的 |
+
+**E 级取代了旧的 D 级"弹层永不透"**(2026-08-10 用户裁决推翻)。浮层的可读性靠
+"高不透明度 + 磨砂"而不是"完全不透"。
+
+**不参与磨砂的三类,理由记在 wallpaper.css 里**:`.tooltip`(反色小卡 + 已自带
+`blur(8px)`,再兑透明两边都不像)、`.app-dialog`(任务面 + 自带遮罩已把壁纸压暗,
+磨砂收益为零)、全屏遮罩类(`image-preview` / `evals-workbench` / `voice-overlay`,
+职责本来就是盖住一切)。
+
+### 6.2 六个旋钮(唯一出处:`html.has-wallpaper body`)
+
+| 旋钮 | 值 | 管谁 |
+|---|---|---|
+| `--wallpaper-veil-alpha` | `18%` | B 级纱 |
+| `--wallpaper-card-alpha` | `88%` | C 级可读卡 |
+| `--wallpaper-hover-alpha` | `45%` | S 级 hover |
+| `--wallpaper-active-alpha` | `60%` | S 级 active / selected |
+| `--wallpaper-frost-alpha` | `76%` | E 级磨砂底浓度 |
+| `--wallpaper-frost-blur` | `14px` | E 级磨砂半径 |
+
+同级全体只认同一个数 —— 用户一处调、处处齐。"侧栏和主区观感不一致"就是各写各的
+浓度造出来的。
+
+### 6.3 作用域根:`html.has-wallpaper`
+
+由 App.vue 的 `watch` 挂/摘(`onUnmounted` 清理),只在主窗挂
+(`pluginBackgroundActive && !isAuxiliaryWindow`)。
+
+**为什么是根级而不是 `.app-shell` / `.app-content`**:菜单、popover、下拉、会话
+预览卡、@面板全部 `Teleport to="body"`,是 `.app-shell` 的**兄弟** —— 挂在 shell 上
+的选择器(哪怕加了 `:deep`)永远够不着。上一轮那条治浮层侧栏的
+`.app-shell.has-plugin-background :deep(.sidebar.floating .sidebar-content)` 就是这么
+变成死码的(浮层侧栏同样在 shell 之外)。根类一挂,今天的浮层和明天任何新
+teleport 面都自然进入体系。
+
+### 6.4 三条实现纪律
+
+1. **层级优先 token。** 能覆写 CSS 变量的绝不写类名规则 —— 覆写
+   `--ui-sidebar-surface-bg` 一次,`.sidebar` 本体 / `.sidebar-header` / 会话分组
+   pill / 以及任何尚未被枚举到的后代面会一起跟随。类名规则只留给变量够不着的面。
+   **但覆写要落在"区域根"上而不是全局**:`--ui-surface-panel-bg` 既是工作台的区域
+   面,也是 `.session-preview` / `.app-select-dropdown` 的浮层面 —— 在 body 上改一次
+   就把浮层一并稀释成 18% 的纱。
+
+2. **自定义属性按计算值继承,派生 token 不会自动跟随。**
+   `--ui-sidebar-action-hover-bg: var(--ui-state-hover-bg)` 定义在 `:root`,它在
+   `:root` 处就被算成一个**实色**并按计算值继承下去;在 `.app-shell` 上改
+   `--ui-state-hover-bg` **不会**让它重算。派生 token 必须逐条列名。
+   同理:一枚 token 若在 X 元素上声明为 `var(--Y)`,只有在 **X 自己或它的祖先**上
+   改 `--Y` 才推得动它 —— 这就是 E 级块里 `--app-popover-bg` / `--composer-extension-surface`
+   **不用列**(声明在浮层自己身上,改上游即可,还保得住族色区分)而
+   `--todo-popover-bg` / `--app-menu-bg` **必须列**(声明在浮层的祖先上)的分界。
+
+3. **CSS 环坑:快照层必须夹在"主题定义层"和"覆写层"之间。**
+   `--x: color-mix(…, var(--x) …)` 在同一元素上构成自引用循环,按规范整条作废
+   (**静默失效,真机才看得见**)。主题 token(`--ui-*`)定义在 `:root` / `html` 上;
+   所有 teleport 出去的浮层是 `body` 的子元素。于是 **`body` 是唯一同时满足两条的层**
+   ——在 `:root` 之下(读得到主题原值),在每一张要治的面之上(含全部浮层)。
+   所以:旋钮 + `*-ink` 快照 + 派生值住在 `html.has-wallpaper body`,token 覆写一律
+   住在 body 的**后代**选择器上。**禁止**把任何 `--ui-*` 覆写写到
+   `html.has-wallpaper` 或 `html.has-wallpaper body` 上。
+
+### 6.5 性能红线
+
+`backdrop-filter` **只许上浮层**:数量少(同一时刻通常只有一层)、几何静态、
+生命周期短。
+
+- 禁止用于大面积常驻区域(侧栏 / 工作台 / 消息列表 / 背景层本身);
+- 禁止 `transition` 它 —— 逐帧重算模糊就是掉帧本身(mac `transparent:true` 透明窗
+  掉帧判例在案,见 `project_transparent_window_jank_2026_07`);
+- E 级清单是**枚举制**,新面进表先问一句"它同时在屏的兄弟有几个"。
+
+背景层本身同样纯静态:不做 rAF、不加 `transition`,`blur` 只在插件真的要了它的
+时候才加(半径为 0 的 `filter` 仍然要付独立合成层那笔代价)。
