@@ -39,6 +39,7 @@ import {
   refreshOnethingPluginsForIpc,
 } from '@onething/runtime/plugins'
 import type { GatewayCommandProvider } from '@onething/gateway'
+import { pickPluginFileOnDesktop } from '@onething/electron-host/plugins/file-pick'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getPluginManager } from '@onething/app/plugins/index.js'
 import { clearPluginRuntimeHealth } from '@onething/app/plugins/health.js'
@@ -135,7 +136,18 @@ export function registerPluginHandlers(): void {
       lifecycleInfo: IPC_CHANNELS.PLUGINS_LIFECYCLE_INFO,
       readTarball: IPC_CHANNELS.PLUGINS_READ_TARBALL,
       market: IPC_CHANNELS.PLUGINS_MARKET,
+      pickFile: IPC_CHANNELS.PLUGINS_PICK_FILE,
     },
+    /**
+     * `file-pick` 的一次导入(B 期,用户壁纸)。
+     *
+     * 全程在主进程:对话框 → 闸 → 拷贝 → 返回一个 `storage:` 地址。
+     * renderer 收到的是地址,插件收到的也是地址 —— **字节两边都不过手**。
+     *
+     * 手势锚定是天然的:原生对话框只能由用户那一次点击拉起来。这里不需要
+     * (也无法伪造)一个 `userGesture` 布尔。
+     */
+    pickPluginFile: (request, sender) => pickPluginFileOnDesktop(request, sender),
     listPlugins: () => {
       return listOnethingPluginsForIpc({
         manager: getPluginManager(),

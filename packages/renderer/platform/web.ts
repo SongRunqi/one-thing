@@ -22,6 +22,7 @@ import type {
 	CheckPluginUpdatesResponse,
 	GetPluginMarketResponse,
 	PluginLifecycleInfoResponse,
+	PickPluginFileResponse,
 	ReadPluginTarballResponse,
 } from "@shared/ipc/plugins.js";
 import type { PlatformApi, PlatformCapabilities } from "./types";
@@ -1241,6 +1242,12 @@ const webApi = {
 	getPluginFootprint: async (): Promise<PluginFootprintResponse> => ({
 		success: false,
 		error: "Plugin data lives on the desktop host only.",
+	}),
+
+	// file-pick 要的是原生文件对话框与插件数据目录 —— 浏览器里两样都没有。
+	// 说出来而不是静默:按钮点下去毫无反应是最难解释的那种失败。
+	pickPluginFile: async (): Promise<PickPluginFileResponse> => ({
+		error: "Importing files into a plugin works on the desktop app only.",
 	}),
 
 	uninstallPlugin: async (): Promise<UninstallPluginResponse> => ({

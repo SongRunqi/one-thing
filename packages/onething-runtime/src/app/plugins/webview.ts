@@ -15,9 +15,11 @@ import {
   describePluginAmbientProblem,
   describePluginBackgroundProblem,
   describePluginWebviewPanelProblem,
+  getCorePluginScratchDir,
   isPluginWebviewPanel,
   resolvePluginWebviewRoot,
 } from '@onething/core/plugins'
+import { getPluginsDir } from './loader.js'
 import { getPluginManager } from './manager.js'
 
 export interface PluginWebviewStaticRoot {
@@ -63,5 +65,37 @@ export function resolvePluginWebviewStaticRoot(pluginId: string): PluginWebviewS
   return {
     pluginId,
     root: path.resolve(dirPath, resolvePluginWebviewRoot(contributes?.webviewRoot)),
+  }
+}
+
+/**
+ * 一个插件的**数据区**静态根:`plugins/<id>/storage/`(B 期,用户壁纸)。
+ *
+ * 协议 handler 的第二条供给线。与代码区那一条**并列而不互通** —— 同一个
+ * scheme、同一个 origin,但 `__storage__` 首段的请求只查这个根,别的请求只查
+ * 包根,两条各自 realpath 复核(`apps/electron/src/plugins/protocol.ts`)。
+ *
+ * 闸门与代码区同规,只是第 4 条收得更紧:**必须声明了合法的
+ * `contributes.theme.background`**。今天数据区唯一的用途是背景图(用户导进来
+ * 的壁纸),一个不画背景的插件没有任何理由把自己的数据目录端上一个 origin ——
+ * 那目录里还有 kv.json 与它自己写的东西。将来有第二个用途,是在这里加一个
+ * 或(与代码区那三条一样),不是把闸拆掉。
+ *
+ * 注意根是 `storage/` 而不是家目录:`config.json` / `kv.json` 与消息态目录
+ * **不在**服务范围内(它们是家目录的直接子项,不是 storage 的子项)。
+ */
+export function resolvePluginStorageRoot(pluginId: string): PluginWebviewStaticRoot | null {
+  if (!pluginId) return null
+  const manager = getPluginManager()
+  if (!manager) return null
+  const plugin = manager.getPlugins().find(item => item.definition.id === pluginId)
+  if (!plugin || !plugin.definition.enabled) return null
+  const contributes = plugin.definition.manifest.contributes
+  const hasBackground = contributes?.theme?.background !== undefined
+    && !describePluginBackgroundProblem(contributes.theme?.background)
+  if (!hasBackground) return null
+  return {
+    pluginId,
+    root: getCorePluginScratchDir(getPluginsDir(), pluginId),
   }
 }

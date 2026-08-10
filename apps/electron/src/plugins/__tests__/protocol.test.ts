@@ -21,6 +21,7 @@ import {
 
 let tmp = ''
 let root = ''
+let storageRoot = ''
 
 beforeAll(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-webview-'))
@@ -35,6 +36,18 @@ beforeAll(() => {
   fs.writeFileSync(path.join(tmp, 'outside', 'secret.html'), 'SECRET')
   fs.symlinkSync(path.join(tmp, 'outside', 'secret.html'), path.join(root, 'escape.html'))
   fs.symlinkSync(path.join(tmp, 'outside'), path.join(root, 'escape-dir'))
+
+  // ── 数据区(B 期,用户壁纸):`plugins/<id>/storage/` ──
+  storageRoot = path.join(tmp, 'home', 'demo', 'storage')
+  fs.mkdirSync(path.join(storageRoot, 'imports'), { recursive: true })
+  fs.writeFileSync(path.join(storageRoot, 'imports', 'paper.png'), 'PNG')
+  // 插件自己写在 storage 根里的 JSON —— 数据区**不服务**它。
+  fs.writeFileSync(path.join(storageRoot, 'notes.json'), '{}')
+  fs.writeFileSync(path.join(storageRoot, 'imports', 'evil.html'), '<b>x</b>')
+  // 家目录里与 storage 平级的宿主文件(kv.json)—— 根就不是它,够不到。
+  fs.writeFileSync(path.join(tmp, 'home', 'demo', 'kv.json'), '{"secret":1}')
+  // 数据区里的一条软链,指向 storage 之外。
+  fs.symlinkSync(path.join(tmp, 'outside', 'secret.html'), path.join(storageRoot, 'escape.png'))
 })
 
 afterAll(() => {
@@ -44,6 +57,7 @@ afterAll(() => {
 function options(overrides: Partial<ElectronPluginProtocolOptions> = {}): ElectronPluginProtocolOptions {
   return {
     resolveStaticRoot: pluginId => (pluginId === 'demo' ? { pluginId, root } : null),
+    resolveStorageRoot: pluginId => (pluginId === 'demo' ? { pluginId, root: storageRoot } : null),
     ...overrides,
   }
 }
@@ -161,5 +175,61 @@ describe('onething-plugin 协议:响应头', () => {
     expect(unsupported.status).toBe(415)
     // 一次都没有去读文件。
     expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
+
+// ── 数据区路由(B 期,用户壁纸)────────────────
+//
+// 钉的是那条裁决本身:**代码区与数据区不得互相越界**。同一个 scheme、同一个
+// origin,首段 `__storage__` 是唯一的分岔点,两条路各自取根、各自复核。
+
+describe('onething-plugin 协议:数据区路由(__storage__)', () => {
+  it('服务用户导入的图片', () => {
+    const result = resolve('onething-plugin://demo/__storage__/imports/paper.png')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.filePath).toBe(fs.realpathSync.native(path.join(storageRoot, 'imports', 'paper.png')))
+      expect(result.mime).toBe('image/png')
+    }
+  })
+
+  it('代码区请求够不到数据区', () => {
+    // 包根下没有 imports/paper.png —— 同一个路径在另一条路上就是不存在。
+    expect(resolve('onething-plugin://demo/imports/paper.png')).toEqual({ ok: false, status: 404 })
+  })
+
+  it('数据区请求够不到代码区', () => {
+    // index.html 在包根里躺着,数据区这条路上不存在(而且 .html 先被 415 挡掉)。
+    expect(resolve('onething-plugin://demo/__storage__/index.html')).toEqual({ ok: false, status: 415 })
+    expect(resolve('onething-plugin://demo/__storage__/ui/app.js')).toEqual({ ok: false, status: 415 })
+  })
+
+  it('数据区只服务图片 —— 插件自己写的 JSON 与 HTML 一律 415', () => {
+    expect(resolve('onething-plugin://demo/__storage__/notes.json')).toEqual({ ok: false, status: 415 })
+    expect(resolve('onething-plugin://demo/__storage__/imports/evil.html')).toEqual({ ok: false, status: 415 })
+  })
+
+  it('穿越出 storage 根一律 404(编码变体同样)', () => {
+    expect(resolve('onething-plugin://demo/__storage__/../kv.json')).toEqual({ ok: false, status: 404 })
+    expect(resolve('onething-plugin://demo/__storage__/%2e%2e/kv.json')).toEqual({ ok: false, status: 404 })
+  })
+
+  it('数据区里的软链解析之后仍须落在 storage 根内', () => {
+    // realpath 复核先开火(404),扩展名复核是它后面的第二道 —— 顺序有意义:
+    // "根外的东西"比"类型不对"更该被当成不存在。
+    expect(resolve('onething-plugin://demo/__storage__/escape.png')).toEqual({ ok: false, status: 404 })
+  })
+
+  it('没有数据区供给线 = 全 404(两条线各自独立)', () => {
+    expect(resolve('onething-plugin://demo/__storage__/imports/paper.png', { resolveStorageRoot: undefined }))
+      .toEqual({ ok: false, status: 404 })
+    // 代码区那一条不受影响。
+    expect(resolve('onething-plugin://demo/index.html', { resolveStorageRoot: undefined }).ok).toBe(true)
+  })
+
+  it('裸的 __storage__ 目录请求不做索引', () => {
+    expect(resolve('onething-plugin://demo/__storage__/')).toEqual({ ok: false, status: 404 })
+    expect(resolve('onething-plugin://demo/__storage__')).toEqual({ ok: false, status: 404 })
   })
 })

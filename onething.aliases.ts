@@ -113,6 +113,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/electron-host/media/protocol', replacement: resolve(projectRoot, 'apps/electron/src/media/protocol.ts') },
   { find: '@onething/electron-host/network/proxy', replacement: resolve(projectRoot, 'apps/electron/src/network/proxy.ts') },
   { find: '@onething/electron-host/oauth/events', replacement: resolve(projectRoot, 'apps/electron/src/oauth/events.ts') },
+  { find: '@onething/electron-host/plugins/file-pick', replacement: resolve(projectRoot, 'apps/electron/src/plugins/file-pick.ts') },
   { find: '@onething/electron-host/power/resume', replacement: resolve(projectRoot, 'apps/electron/src/power/resume.ts') },
   { find: '@onething/electron-host/search/ipc', replacement: resolve(projectRoot, 'apps/electron/src/search/ipc.ts') },
   { find: '@onething/electron-host/search/window-actions', replacement: resolve(projectRoot, 'apps/electron/src/search/window-actions.ts') },

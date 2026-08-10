@@ -357,6 +357,10 @@ export const IPC_CHANNELS = {
 	PLUGINS_MARKET: "plugins:market",
 	// 落盘足迹(R4 建枚举,R5 接出口):卸载确认框据此展示"将被归档的东西"。
 	PLUGINS_FOOTPRINT: "plugins:footprint",
+	// file-pick 节点的宿主托管导入(B 期,用户壁纸):renderer 只递节点的声明,
+	// 对话框 + 闸 + 拷贝全在主进程,回来的是一个 `storage:` 地址而不是字节。
+	// 挂在 PLUGINS_* 家族里而不是另开一支:它的授权语境是"某个插件的某个节点"。
+	PLUGINS_PICK_FILE: "plugins:pick-file",
 
 	// Generic scheduler
 	SCHEDULER_LIST: "scheduler:list",

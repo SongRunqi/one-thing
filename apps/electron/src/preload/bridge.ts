@@ -52,6 +52,8 @@ import type {
 	PluginRequestProgressPayload,
 	PluginRequestResult,
 	PluginConfigResponse,
+	PickPluginFileRequest,
+	PickPluginFileResponse,
 	SetPluginConfigResponse,
 	UninstallPluginResponse,
 	GetPluginMarketRequest,
@@ -605,6 +607,11 @@ const electronAPI = {
 	// 落盘足迹:卸载确认框据此展示"将被归档的东西"。
 	getPluginFootprint: (pluginId: string): Promise<PluginFootprintResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_FOOTPRINT, { pluginId }),
+
+	// file-pick 节点的宿主托管导入(B 期,用户壁纸):递声明,回一个
+	// `storage:` 地址 —— 用户选的路径与文件字节都不过 renderer 的手。
+	pickPluginFile: (request: PickPluginFileRequest): Promise<PickPluginFileResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PLUGINS_PICK_FILE, request),
 
 	onPluginNotification: (
 		callback: (payload: PluginNotificationPayload) => void,

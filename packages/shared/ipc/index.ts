@@ -485,6 +485,8 @@ export type {
 	PluginMarketEntryView,
 	GetPluginMarketRequest,
 	GetPluginMarketResponse,
+	PickPluginFileRequest,
+	PickPluginFileResponse,
 } from "./plugins.js";
 
 // Plugin market index URL(P3 裁决:纯硬编码;唯一事实源)
@@ -832,6 +834,8 @@ export type {
 	GetUsageSummaryResponse,
 	OnethingUsageBreakdownEntry,
 	OnethingUsageBucket,
+	OnethingUsagePricingQuality,
+	OnethingUsageProjectTotals,
 	OnethingUsageSummaryGranularity,
 } from "./usage.js";
 

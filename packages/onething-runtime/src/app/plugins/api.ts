@@ -24,6 +24,7 @@ import { createPluginSessionHostPorts } from './sessions.js'
 import { pluginLlmComplete } from './llm.js'
 import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './notify-sound.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
+import { pluginStorageImageExists } from './file-import.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
 import { registerPluginSearchProvider } from '../search/plugin-search-registry.js'
 import { forgetUiActionGestures } from '@onething/core/plugins'
@@ -486,6 +487,15 @@ export function createPluginAPI(
        * 就挂在同一份清单响应里,于是这里零新通道、零新事件。
        */
       updatePluginBackground(id, patch) {
+        // 图源的最后一道闸(B 期):core 判得了 `storage:` 寻址的形状,判不了
+        // 文件存不存在(它不吃 fs)。指向空气的一次换图**整条被拒**、背景保持
+        // 原样 —— 记进内存态的话,设置页会说"生效中"而屏幕上什么也没有。
+        if (patch.image !== undefined && !pluginStorageImageExists(id, patch.image)) {
+          console.error(
+            `[Plugin:${id}] theme.updateBackground rejected: "${patch.image}" is not in this plugin's storage`,
+          )
+          return
+        }
         setPluginBackgroundParams(id, patch)
         eventBus.emitGlobal({
           type: 'plugin:notification',

@@ -23,6 +23,8 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { net, protocol, session } from 'electron'
 import {
+  PLUGIN_BACKGROUND_IMAGE_EXTENSIONS,
+  PLUGIN_STORAGE_URL_SEGMENT,
   PLUGIN_WEBVIEW_SCHEME,
   buildPluginWebviewCsp,
   pluginWebviewMimeType,
@@ -42,6 +44,14 @@ export interface ElectronPluginProtocolOptions {
    * 协议 handler 自己不认识插件系统,于是它可以被单测直接喂假根。
    */
   resolveStaticRoot(pluginId: string): ElectronPluginProtocolStaticRoot | null
+  /**
+   * pluginId → 绝对**数据区**根(`plugins/<id>/storage/`)。null = 404
+   * (B 期,用户壁纸;装配层的 `resolvePluginStorageRoot`)。
+   *
+   * 不给 = 这个宿主不服务数据区,`__storage__/…` 一律 404 —— 两条供给线
+   * 各自独立,少一条不影响另一条。
+   */
+  resolveStorageRoot?(pluginId: string): ElectronPluginProtocolStaticRoot | null
   /** 挂 handler 的 session。缺省 `session.defaultSession`(主窗口用的那个)。 */
   getSession?(): { protocol: { handle: typeof protocol.handle } }
   fetch?: typeof net.fetch
@@ -79,6 +89,20 @@ export function registerElectronPluginProtocolScheme(
   ])
 }
 
+/**
+ * 数据区放行的文件类型 —— **只有图片**(B 期,用户壁纸)。
+ *
+ * 比 `PLUGIN_WEBVIEW_MIME_TYPES` 严:那张表服务的是插件包(作者自己放进去的
+ * 代码与资产),这张服务的是**用户导进来的东西 + 插件自己写的 storage 文件**。
+ * 白名单与背景图那一份是同一张(`PLUGIN_BACKGROUND_IMAGE_EXTENSIONS`)——
+ * 今天数据区被服务的唯一理由就是当背景。
+ */
+function isServableDataZoneAsset(fileName: string): boolean {
+  const dot = fileName.lastIndexOf('.')
+  if (dot < 0) return false
+  return PLUGIN_BACKGROUND_IMAGE_EXTENSIONS.includes(fileName.slice(dot + 1).toLowerCase())
+}
+
 function textResponse(status: number, body: string): Response {
   return new Response(body, {
     status,
@@ -106,8 +130,7 @@ export function resolvePluginProtocolFile(
     return { ok: false, status: 404 }
   }
   const pluginId = url.hostname
-  const staticRoot = pluginId ? options.resolveStaticRoot(pluginId) : null
-  if (!staticRoot) return { ok: false, status: 404 }
+  if (!pluginId) return { ok: false, status: 404 }
 
   let decoded: string
   try {
@@ -116,8 +139,32 @@ export function resolvePluginProtocolFile(
     // 坏的百分号编码 —— 不猜,直接不服务。
     return { ok: false, status: 404 }
   }
-  const segments = resolvePluginWebviewRequestSegments(decoded)
-  if (!segments) return { ok: false, status: 404 }
+  const allSegments = resolvePluginWebviewRequestSegments(decoded)
+  if (!allSegments) return { ok: false, status: 404 }
+
+  /*
+   * **代码区 / 数据区的唯一分岔点**(B 期,用户壁纸)。
+   *
+   * 首段是 `__storage__` → 只查数据根(`plugins/<id>/storage/`);否则 → 只查
+   * 包根。两条路各自取根、各自 join、各自 realpath 复核,**谁也够不到谁**:
+   * 一个包内请求写不出通向数据区的路径(它的根就不是那个根),一个数据区请求
+   * 同理。隔离靠"选根"这一步,不靠事后比对两个前缀 —— 后者每加一个根就多一
+   * 条要维护的比对。
+   *
+   * 数据区还多一道**图片扩展名闸**:那目录里躺的是用户导进来的东西与插件
+   * 自己写的 JSON,MIME 白名单(放行 .js/.html/.json)对它太宽 —— 把插件
+   * 自己写的 storage JSON 端上一个可导航的 origin 不是这一期要开的口子。
+   */
+  const isStorageRequest = allSegments[0] === PLUGIN_STORAGE_URL_SEGMENT
+  const segments = isStorageRequest ? allSegments.slice(1) : allSegments
+  if (!segments.length) return { ok: false, status: 404 }
+  const staticRoot = isStorageRequest
+    ? (options.resolveStorageRoot?.(pluginId) ?? null)
+    : options.resolveStaticRoot(pluginId)
+  if (!staticRoot) return { ok: false, status: 404 }
+  if (isStorageRequest && !isServableDataZoneAsset(segments[segments.length - 1])) {
+    return { ok: false, status: 415 }
+  }
 
   const realpath = options.realpath ?? ((target: string) => fs.realpathSync.native(target))
   const statSync = options.statSync ?? ((target: string) => fs.statSync(target))
@@ -155,6 +202,11 @@ export function resolvePluginProtocolFile(
   }
   // 解析之后扩展名可能变了(`a.html` → `../secrets.env`)—— 复核一次。
   if (pluginWebviewMimeType(path.basename(realFile)) !== mime) {
+    return { ok: false, status: 415 }
+  }
+  // 数据区的图片闸同样复核:软链把 `a.png` 指到 `kv.json` 的话,上面那条
+  // MIME 复核会通过(两边都是白名单里的类型),挡住它的只有这一条。
+  if (isStorageRequest && !isServableDataZoneAsset(path.basename(realFile))) {
     return { ok: false, status: 415 }
   }
 

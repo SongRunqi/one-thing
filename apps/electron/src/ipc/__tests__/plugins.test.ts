@@ -32,6 +32,7 @@ describe('electron plugins IPC host', () => {
       summary: { path: '/tmp/plan-status-1.1.0.tgz', pkg: '@onething-plugins/plan-status', pluginId: 'plan-status', version: '1.1.0' },
     })
     const getPluginMarket = vi.fn().mockResolvedValue({ success: true, entries: [], fetchedAt: null, stale: false })
+    const pickPluginFile = vi.fn().mockResolvedValue({ path: 'storage:imports/paper.png', name: 'paper.png', size: 12 })
 
     registerElectronPluginsIpcHandlers({
       channels: {
@@ -53,6 +54,7 @@ describe('electron plugins IPC host', () => {
         lifecycleInfo: 'plugins:lifecycle-info',
         readTarball: 'plugins:read-tarball',
         market: 'plugins:market',
+        pickFile: 'plugins:pick-file',
       },
       listPlugins,
       enablePlugin,
@@ -72,10 +74,11 @@ describe('electron plugins IPC host', () => {
       getPluginLifecycleInfo,
       readPluginTarball,
       getPluginMarket,
+      pickPluginFile,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(18)
+    expect(handle).toHaveBeenCalledTimes(19)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'plugins:list',
       'plugins:enable',
@@ -95,6 +98,7 @@ describe('electron plugins IPC host', () => {
       'plugins:lifecycle-info',
       'plugins:read-tarball',
       'plugins:market',
+      'plugins:pick-file',
     ])
 
     const toggleRequest = { pluginId: 'notes' }

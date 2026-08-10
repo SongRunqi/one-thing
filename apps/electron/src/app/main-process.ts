@@ -21,7 +21,10 @@ import { configureSandboxHost } from "@onething/app/tools/core/sandbox.js";
 import { configurePluginAppVersion } from "@onething/app/plugins/app-version.js";
 import { configureMCPClientIdentity } from "@onething/app/mcp/identity.js";
 import { getPluginManager } from "@onething/app/plugins/manager.js";
-import { resolvePluginWebviewStaticRoot } from "@onething/app/plugins/webview.js";
+import {
+	resolvePluginStorageRoot,
+	resolvePluginWebviewStaticRoot,
+} from "@onething/app/plugins/webview.js";
 import {
 	getConversationRuntime,
 	getStreamEngine,
@@ -377,7 +380,12 @@ export function startOnethingElectronMain(): void {
 		mediaProtocol: { getMediaImagesDir },
 		// 插件 webview 静态协议(C 期):供给线是装配层的静态根解析器 ——
 		// 协议 handler 自己不认识插件系统,未装/停用/没声明 webview 一律 404。
-		pluginProtocol: { resolveStaticRoot: resolvePluginWebviewStaticRoot },
+		// 第二条供给线(B 期,用户壁纸)是**数据区**根:`__storage__/…` 的请求
+		// 只查它,与包根并列而不互通。
+		pluginProtocol: {
+			resolveStaticRoot: resolvePluginWebviewStaticRoot,
+			resolveStorageRoot: resolvePluginStorageRoot,
+		},
 		powerResume: {
 			getMainWindow: () => mainWindow,
 			recoverMainWindow: recoverMainWindowAfterSystemResume,

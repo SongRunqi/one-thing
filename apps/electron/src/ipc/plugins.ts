@@ -20,6 +20,8 @@ import type {
   GetPluginMarketResponse,
   ReadPluginTarballRequest,
   ReadPluginTarballResponse,
+  PickPluginFileRequest,
+  PickPluginFileResponse,
 } from '@shared/ipc/plugins.js'
 
 export interface ElectronIpcMainLike {
@@ -51,6 +53,8 @@ export interface ElectronPluginsIpcChannels {
   readTarball: string
   // P3:市场(索引视图,主进程 join 好安装态与版本兼容)
   market: string
+  /** B 期:`file-pick` 节点的宿主托管导入(对话框 + 闸 + 拷贝全在主进程)。 */
+  pickFile: string
 }
 
 export interface ElectronPluginToggleRequest {
@@ -105,6 +109,17 @@ export interface RegisterElectronPluginsIpcHandlersOptions {
   getPluginLifecycleInfo(): Promise<PluginLifecycleInfoResponse> | PluginLifecycleInfoResponse
   readPluginTarball(request: ReadPluginTarballRequest): ReadPluginTarballResponse
   getPluginMarket(request: GetPluginMarketRequest): Promise<GetPluginMarketResponse> | GetPluginMarketResponse
+  /**
+   * `file-pick` 的一次导入。
+   *
+   * 拿 `sender` 是为了把对话框挂在**发起这次点击的那个窗口**上(设置窗与主窗
+   * 都可能画描述树)—— 与 pluginRequest 的 progress 同一个理由:挂错窗口的
+   * 模态对话框在 macOS 上是一张飘在别处的纸。
+   */
+  pickPluginFile(
+    request: PickPluginFileRequest,
+    sender: unknown,
+  ): Promise<PickPluginFileResponse> | PickPluginFileResponse
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -185,5 +200,9 @@ export function registerElectronPluginsIpcHandlers(
 
   host.handle(options.channels.market, (_event, request: GetPluginMarketRequest) => {
     return options.getPluginMarket(request)
+  })
+
+  host.handle(options.channels.pickFile, (event, request: PickPluginFileRequest) => {
+    return options.pickPluginFile(request, (event as { sender?: unknown } | undefined)?.sender)
   })
 }

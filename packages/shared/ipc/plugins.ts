@@ -398,3 +398,32 @@ export interface GetPluginMarketResponse {
 	stale: boolean
 	error?: string
 }
+
+/**
+ * `file-pick` 描述树节点的宿主托管导入(B 期,用户壁纸)。
+ *
+ * renderer 递的是**节点上的声明**(哪个插件、accept、maxBytes),不是路径 ——
+ * 路径由主进程的原生对话框产生,并且一步也不回到 renderer:回来的只有一个
+ * `storage:` 地址。**字节不过插件的手**,也不过 renderer 的手。
+ */
+export interface PickPluginFileRequest {
+	pluginId: string;
+	/** 节点声明的 accept(扩展名,不带点);省略 = 宿主全白名单。 */
+	accept?: string[];
+	/** 节点声明的上限;省略或超过宿主硬顶 = 硬顶(10MB)。 */
+	maxBytes?: number;
+	/** 对话框标题(节点的 label)。 */
+	label?: string;
+}
+
+export interface PickPluginFileResponse {
+	/** 用户按了取消 —— **不是失败**,调用方什么也不做(不发 action)。 */
+	canceled?: boolean;
+	/** 拷贝成功时的地址,可直接喂 `api.theme.updateBackground({ image })`。 */
+	path?: string;
+	/** 清洗后的落盘文件名(不是用户磁盘上的原名)。 */
+	name?: string;
+	size?: number;
+	/** 闸不过 / IO 失败时给用户看的一句人话。 */
+	error?: string;
+}

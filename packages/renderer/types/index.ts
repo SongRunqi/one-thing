@@ -263,6 +263,8 @@ import type {
 	PluginRequestProgressPayload,
 	PluginRequestResult,
 	PluginConfigResponse,
+	PickPluginFileRequest,
+	PickPluginFileResponse,
 	SetPluginConfigResponse,
 	UninstallPluginResponse,
 	InstallPluginRequest,
@@ -343,6 +345,8 @@ import type {
 	GetSessionUsageResponse,
 	OnethingUsageBreakdownEntry,
 	OnethingUsageBucket,
+	OnethingUsagePricingQuality,
+	OnethingUsageProjectTotals,
 	OnethingUsageSummaryGranularity,
 	// Project directories types (independent module)
 	ProjectDirsListResponse,
@@ -424,6 +428,8 @@ export type {
 	PracticeSummaryResult,
 	OnethingUsageBreakdownEntry,
 	OnethingUsageBucket,
+	OnethingUsagePricingQuality,
+	OnethingUsageProjectTotals,
 	OnethingUsageSummaryGranularity,
 	AgentDefinition,
 	AgentsListResponse,
@@ -616,6 +622,8 @@ export type {
 	PluginRequestProgressPayload,
 	PluginRequestResult,
 	PluginConfigResponse,
+	PickPluginFileRequest,
+	PickPluginFileResponse,
 	SetPluginConfigResponse,
 	UninstallPluginResponse,
 	PluginFootprintResponse,
@@ -1234,6 +1242,14 @@ export interface ElectronAPI {
 
 	/** 落盘足迹(R4 枚举 + R5 出口):卸载确认框展示"将被归档的东西"。 */
 	getPluginFootprint: (pluginId: string) => Promise<PluginFootprintResponse>;
+
+	/**
+	 * `file-pick` 节点的宿主托管导入(B 期,用户壁纸)。
+	 *
+	 * 递的是节点上的声明,回的是一个 `storage:` 地址 —— 用户选中的路径与
+	 * 文件字节**都不过 renderer 的手**,更不过插件的手。取消 = `canceled`。
+	 */
+	pickPluginFile: (request: PickPluginFileRequest) => Promise<PickPluginFileResponse>;
 
 	/**
 	 * 插件通知(api.ui.notify + 熔断自动禁用告警 + 配置变更同步信号)。
