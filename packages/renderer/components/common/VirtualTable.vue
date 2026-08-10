@@ -1371,10 +1371,17 @@ defineExpose<VirtualTableRef>({
   cursor: pointer;
 }
 
+/* 底走 `--ui-state-hover-accent-bg`(G6 的「叠 accent 淡底」档,配方即 accent
+   10%,与原来手写的百分比逐字相同),字仍是 `--virtual-table-accent`。同一条
+   规则同时服务 `:hover` 与 `.active` —— 一个通道,不拆两处。
+   迁过来才拿得到壁纸的 S 级覆写;残差(token 以 panel 面解析成实色,原式是叠在
+   表头的 elevated 面上,18 主题实测 ΔRGB 中位 11)是 `--ui-state-*` 全族的固有
+   性质,这张表的行 hover(`--virtual-table-row-hover-bg: var(--ui-state-hover-bg)`)
+   一直就是这么解析的。 */
 .virtual-table-sort-button:hover,
 .virtual-table-sort-button.active {
   color: var(--virtual-table-accent);
-  background: color-mix(in srgb, var(--virtual-table-accent) 10%, transparent);
+  background: var(--ui-state-hover-accent-bg);
 }
 
 /* `.virtual-table-selection-input` now lands on `Checkbox variant="box"`'s root

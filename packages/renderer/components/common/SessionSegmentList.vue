@@ -194,8 +194,11 @@ function fileSummary(files: SessionSegmentFile[]): string {
   transition: background var(--duration-fast) var(--ease-default);
 }
 
+/* 中性 hover 底走统一档 `--ui-state-hover-bg`,不再手写"灰墨 10%":两者在 18
+   主题(各自的自然明暗模式)上解析出的实色实测 ΔRGB 中位 2 / 最大 5,观感等价,
+   而 token 一侧多拿到壁纸的 S 级覆写。 */
 .segment-item.clickable .segment-row:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent);
+  background: var(--ui-state-hover-bg);
 }
 
 /* A segment with no anchor cannot be jumped to; say so by going inert rather
@@ -331,8 +334,9 @@ function fileSummary(files: SessionSegmentFile[]): string {
   transition: background var(--duration-fast) var(--ease-default);
 }
 
+/* 同段落行的那一档(见上),同一枚 token —— 两处原本各写一次灰墨 10%。 */
 .topic-message-row:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent);
+  background: var(--ui-state-hover-bg);
 }
 
 .topic-message-tick {

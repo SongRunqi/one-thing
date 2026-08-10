@@ -1677,9 +1677,17 @@ defineExpose({
     color var(--duration-fast) var(--ease-default);
 }
 
+/* 底走 `--ui-state-hover-accent-bg`(G6 的「叠 accent 淡底」档,配方就是 accent
+   10%,与这里原来手写的百分比逐字相同);字仍是 `--app-table-accent`,两个通道
+   各自独立。换来的是壁纸模式下的 S 级覆写 —— 手写 color-mix 拿不到那一层。
+   如实记:token 是以 panel 面解析出的**实色**,而原来的 10% 是半透明叠在表头
+   面(chat 面 + 4% 墨)上,两者在 18 主题上实测差 ΔRGB 中位 6;这不是配方变了,
+   是 `--ui-state-*` 全族"一窗一值、以 panel 为基"的固有性质 —— 同一张表的行
+   hover(`--app-table-row-hover-bg: var(--ui-state-hover-bg)`)早就是这么解析的,
+   迁过来反而让按钮与行落在同一套解析上。 */
 .app-table-head-icon-button:hover {
   color: var(--app-table-accent);
-  background: color-mix(in srgb, var(--app-table-accent) 10%, transparent);
+  background: var(--ui-state-hover-accent-bg);
 }
 
 .app-table-head-icon-button.active,
@@ -1850,9 +1858,10 @@ defineExpose({
   transition: color var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default), transform var(--duration-normal) var(--ease-default);
 }
 
+/* 同表头图标钮的那一档(见上),同一枚 token —— 两处原本各写一次 10%。 */
 .app-table-expand-button:hover {
   color: var(--app-table-accent);
-  background: color-mix(in srgb, var(--app-table-accent) 10%, transparent);
+  background: var(--ui-state-hover-accent-bg);
 }
 
 .app-table-expand-button.expanded {
