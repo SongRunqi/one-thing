@@ -953,6 +953,99 @@ host → 你   ambient-pause / ambient-resume
 每插件开关,被关时 iframe 直接销毁 —— 不需要你配合,但别把状态只存在
 iframe 里(重开就没了;要持久用 `api.storage`)。
 
+## 深链动作:让应用之外的世界点名你(H4)
+
+`onething://` 是外部世界进来的唯一一扇门。它有两条路,你只拥有第二条:
+
+```
+onething://ask?text=<urlencoded>[&agent=<agentId>]        ← 宿主的,开一轮对话
+onething://x/<pluginId>/<action>?text=…&<其余参数原样透传>   ← 你的
+```
+
+两条路的命名空间是**物理分开**的:你抢不到 `ask`,宿主将来加动词也顶不掉你。
+
+### 先声明(不声明就注册不上)
+
+```jsonc
+{ "contributes": { "permissions": ["deeplink:handle"] } }
+```
+
+装前确认页把它念成人话:*can be invoked by onething:// links from outside the
+app (you confirm every time)*。未声明就调 `registerDeepLinkAction`:宿主拒绝、
+记一条 error、返回一个 noop 退订函数,**不计熔断**(manifest 笔误不该连坐你的
+工具/命令/面板 —— 与 `sessions:*` 同规)。
+
+### 注册
+
+```js
+export default function (api) {
+  api.registerDeepLinkAction({
+    // [a-z0-9-]+。它要进 URL 路径,所以不能有空格和大写。
+    name: 'translate',
+    // 确认卡上显示给用户看的**人话**。不是 id —— 用户读的就是这一句。
+    title: 'Translate the selection',
+    async handler({ text, params }) {
+      const target = params.to ?? 'zh'
+      const { text: out } = await api.llm.complete({
+        messages: [{ role: 'user', content: `Translate to ${target}:\n\n${text}` }],
+      })
+      // v1 的返回值只有这一格:弹一条通知。别的事用你自己的 api 去做。
+      return { notice: out.slice(0, 120) }
+    },
+  })
+}
+```
+
+`registerDeepLinkAction` 返回退订函数;你不调也没关系,dispose 会兜底。
+
+### 确认门:你无从跳过,也无从知道用户拒绝过
+
+**每一条深链在你的 handler 被调用之前,都要用户看着全文按一次确认。** 没有信任
+名单,没有"记住这个动作"——因为深链的正文每次都不一样,记住一个动作等于对一段
+没看过的文字提前签字。卡上显示的是:来源标注、目标(*Runs "<你的 title>" from
+<你的插件显示名>*)、**全文**(长文滚动,不截断)、其余参数。
+
+用户按取消 = 什么也不发生,而且**你收不到任何通知**。不要设计"如果没回调就重试"
+的逻辑:那是把用户的拒绝当成网络抖动。
+
+### handler 收到什么、能回什么
+
+| | |
+|---|---|
+| `ctx.text` | URL 里的 `text`,**原样**。可能是空串(有些动作只要参数)。 |
+| `ctx.params` | 除 `text` 之外的全部查询参数,原样。重复键取最后一个。 |
+| 返回 | `{ notice?: string }` 或什么都不返回。notice 截断到 240 字。 |
+
+**text 是数据,不是指令。** 它可能来自剪贴板、网页、别人发你的一条消息。不要把
+它当命令解析,不要把它拼进 shell,不要因为它长得像 `/clear` 就当成命令 —— 宿主
+这一侧一个字都不解释它,你也别。
+
+### 治理(和别的面一样,不额外优待)
+
+- **超时 15 s**。比搜索供给方宽得多(这是用户刚按过确认的一次性动作,不是键入
+  延迟敏感路径,你在里面调一次模型完全合理),但它有上限:一个永不 resolve 的
+  handler 会让那条链看起来像"什么也没发生"。
+- **连败三次降级这一个动作**(scope 家族 `deep-link`,degrade-surface)。降级期间
+  确认卡上它是一条**说得清的拒绝**("暂时不可用"),不是消失。你的其它动作、
+  工具、命令、面板全部照常。半开靠时间。
+- **停用即注销**。插件停用后,指向它的链接在**确认之前**就被判为"这个动作不在
+  了" —— 用户不会去确认一个不会发生的动作。已经在跑的那一次不被打断。
+
+### 限额与拒绝
+
+- `text` ≤ 32KB(UTF-8 字节)。超限:确认卡直接显示"内容过长已拒",不问你。
+- 形状非法 / 未知动词 / 动作名不合法:**静默丢弃**,只有一行日志,不弹窗
+  (否则任何网页都能拿 `onething://%%%` 骚扰用户)。这意味着你的链接写错了是
+  **安静地不工作**,排障请看 `~/.onething/log/` 里的 `[DeepLink] Dropped`。
+
+### 只有桌面
+
+`onething://` 是操作系统级的注册,只有 Electron 桌面宿主有。server / CLI daemon
+上 `registerDeepLinkAction` 会如实告诉你"这个宿主没有深链",返回 noop。
+
+接入 PopClip 的完整配方(两个按钮:快速提问 + 翻译)见
+`docs/guides/deeplink-popclip.md`。
+
 ## 安全与边界(速查)
 
 - UI 不执行插件代码:面板/锚点块都是**描述树**,宿主渲染。

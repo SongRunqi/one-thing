@@ -84,6 +84,79 @@
 - 成本:中低,价值/成本比是四条里最高的。安全面:同意闸 + 声明门 +
   payload 大小限 + 速率限,红线是**永不**免确认执行副作用类 action。
 
+### 4.1 H4 落地记录(2026-08-10)
+
+已实施并合入主仓。**落地形态与上面那份设计有四处实质偏离**,逐条记在这里,
+因为每一条都是拍板时改的口径,不是实现走样。
+
+**偏离一:URL 语法从 `onething://plugin/<id>/<action>?payload=<json>` 改成两条
+分开的路。**
+
+```
+onething://ask?text=<urlencoded>[&agent=<agentId>]      ← 宿主动词
+onething://x/<pluginId>/<action>?text=…&<其余参数原样透传>  ← 插件动作
+```
+
+两个改动各有理由:
+
+- **加了 `ask` 这个宿主动词**。原设计只想着"打进插件",但用户真正最常要的那件
+  事(选中一段字 → 丢进一轮新对话)根本不需要插件。没有它,PopClip 的第一个
+  按钮就得先装一个插件才能用。v1 只开 `ask` 一个,append-only 留位。
+- **插件支路的前缀是 `x/` 而不是 `plugin/`,payload 从一坨 JSON 改成普通查询
+  参数**。前者是为了让宿主动词与插件动作的命名空间**物理分开** —— 插件永远抢
+  不到 `ask`,将来加 `open`/`run` 也永远不会顶掉某个插件。后者是因为 PopClip
+  这类工具拼的是 URL 模板,`payload={"a":1}` 要嵌套转义两层,而
+  `?text=…&to=zh` 是它天然会写的形状;handler 收到的是 `{ text, params }`,
+  text 与其余参数分成两格。
+
+**偏离二:同意闸从"按 (pluginId, action) 记忆 + 设置页可撤"改成最严档 ——
+每次必弹,没有信任名单。**
+
+原设计的记忆式同意是对的方向,但它把一件事算漏了:**深链的正文每次都不一样**。
+"允许 X 触发 Y" 这句话记住之后,用户授权的是一个动作,而实际发生的是一段他没看
+过的文字被送进模型/插件。所以确认卡上显示的是**全文**(长文滚动,**不静默截断**)
++ 来源标注 + 目标(发送到新会话 / 交给某插件的某动作)+ 确认/取消。免确认档
+append-only 留位,但 v1 一格都不开。
+
+**偏离三:声明门从新造的 `contributes.externalActions` 改成既有的
+`contributes.permissions: ["deeplink:handle"]`。**
+
+原设计要为深链单开一张声明表。但插件系统已经有一张披露表(`permissions` +
+`describePluginPermission` + 装前确认页),再开一张的唯一效果是让"这个插件能做
+什么"分散在两个地方读。动作的人话标题走 `registerDeepLinkAction({ title })` —— 它
+本来就要出现在确认卡上,让它在注册处一次说清,比在 manifest 里再抄一遍更难漂。
+
+**偏离四:不走 R2 请求通道,新开一个注册表。**
+
+请求通道是**渲染层发起、插件应答**的形状(requestId、abort、progress 都是为它
+设计的);深链是**外部世界发起、宿主确认、插件应答**,方向与生命周期都不同。
+硬塞进去会得到一个没有渲染层调用方的假 request。所以按 `registerIMConnector`
+的先例开了第三个注册表 `deep-link-action`(`PLUGIN_OPEN_REGISTRIES`),
+`policy.ts` 里有它的拆除语义条目,`deep-link` 是一个新的 scope 家族
+(degrade-surface:一个动作坏掉不连坐插件其余能力)。
+`PLUGIN_DEFERRED_REGISTRIES` 里**没有**深链的记录 —— 它不是被推迟过的候选,
+是一个新开的口。
+
+**其余按原设计落地**:v1 单向触发(handler 只能回 `{ notice? }` 弹一条通知,
+要显示译文的同步回程仍然是"本地回环 HTTP + 一次性 token"的第二步,未做);
+text 大小限 32KB(超限是**看得见的**拒绝);形状非法 / 未知动词**静默丢弃 +
+一行日志**(弹窗权不外包 —— 任何网页都能构造 `onething://%%%`,对它弹窗等于
+把骚扰权交出去)。
+
+**冷启动时序**是实施里唯一的硬骨头:macOS 上 app 没在跑时点链接,`open-url`
+可能在 `app.on('ready')` 之前就到,窗口还没建、renderer 还没挂监听。做法是
+协议口在**同步段**注册(与 privileged scheme 同一位置、同一理由),到达的 URL
+先进队列(上限 5,溢出丢最旧),**放行信号由渲染层给**(`deeplink:ready`,
+overlay host 挂载时发)——不是主进程猜"窗口大概建好了"。猜的那一版会在慢机器
+上偶发丢链。
+
+代码地址:协议与解析 `packages/core/plugins/deep-link.ts`;确认卡内容与派发
+`packages/onething-runtime/src/app/deeplink/`;协议口与确认门
+`apps/electron/src/deeplink/`;卡片契约 `packages/shared/ipc/deeplink.ts`;
+渲染侧 `packages/renderer/services/deeplink.ts` + `components/deeplink/`。
+作者指南见 `docs/guides/plugin-authoring.md` 的「深链动作」一节,PopClip 接入
+配方见 `docs/guides/deeplink-popclip.md`。
+
 ## 4.5 G2:氛围层(ambient overlay)—— 场景类能力(2026-08-09 立项)
 
 用户场景原话:圣诞节,"整个窗口下雪,雪花落到输入框之上堆积一点雪,
