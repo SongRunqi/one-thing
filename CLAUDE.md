@@ -223,7 +223,19 @@ Notes:
     the override. Never spread it onto the finished `cssVariables`: that only covers
     the raw vars and leaves the derived layers on the old colors),
     its own settings schema (`contributes.settings.schema`, JSON Schema
-    subset, host renders and validates it), a unified request channel
+    subset, host renders and validates it — the subset **is** the renderable
+    control set: boolean/string/number/integer/string-enum/string-array plus
+    `{"type":"string","format":"file-import","accept"?,"maxBytes"?}`, added
+    2026-08-10 after a user correctly objected that a wallpaper picker had been
+    built as a workspace panel. **Placement precedent: configuration-shaped
+    interactions belong in Settings; panels are for live content** — when the
+    host lacks a control, add the control, don't move the config into a panel.
+    `accept`/`maxBytes` semantics and their validator are literally the same
+    ones the `file-pick` descriptor node uses
+    (`core/plugins/file-pick.ts` → `describePluginFileImportDeclarationProblem`);
+    unknown `format` values are ignored per JSON Schema, an illegal declaration
+    marks the whole config area unsupported without blocking the load),
+    a unified request channel
     (`api.registerRequestHandler`; requestId is in use, while abort/progress are wired
     end-to-end but have no consumer yet — no renderer caller, no built-in producer), a
     per-plugin data directory

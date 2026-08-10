@@ -214,6 +214,92 @@ api.storage.message(sessionId, messageId).exists()
   `ctx.sessionId` / `ctx.messageId`(消息级锚点的 ctx 携带),按坐标现取。
 - 插件不在场时发生的流没有记录,装上之后也不会追认 —— 老消息就是空的。
 
+## 设置 schema:宿主替你画配置表单
+
+`contributes.settings.schema` 是一段 **JSON Schema 子集**,也是你这个插件配置的
+**唯一事实源** —— 没有运行期 `registerSettings`。宿主只读清单就能渲染配置区、
+校验、填默认值,**一行你的代码都不执行**,于是**未启用的插件也能配**。
+
+读值用 `api.settings.get()`(快照,深冻结),跟变化用
+`api.settings.onChange(cb)`(用户按 Save 之后推)。
+
+支持的属性形状 —— **子集 = 设置页画得出来的控件集**,这两件事必须是同一份清单:
+
+| 属性 schema | 控件 | 存的值 |
+| --- | --- | --- |
+| `{"type":"boolean"}` | 开关 | boolean |
+| `{"type":"string"}` | 文本框 | string |
+| `{"type":"number"｜"integer", "minimum"?, "maximum"?}` | 数字框 | number |
+| `{"enum":["a","b"]}`(仅字符串枚举) | 下拉 | string |
+| `{"type":"array","items":{"type":"string"}}` | 逗号分隔文本 | string[] |
+| `{"type":"string","format":"file-import","accept"?,"maxBytes"?}` | **选择文件**按钮 + 当前值 | string(`storage:` 地址) |
+
+`title` / `description` 变标签与说明;`required` 只是**呈现**上的星号(每个字段
+都有默认值,"缺失"这个状态不存在);`contributes.settings.ui[key]` 可以覆盖
+`label` / `hint` / `control`,但**覆盖不许改变值的类型契约**。
+
+超出子集(嵌套对象、数字枚举、非字符串数组…)→ 配置区整块显示"schema 不受
+支持"并**逐条**列出原因,插件照常加载。修一条报一条太慢,所以一次全报。
+
+### `format: "file-import"`:让用户选一个文件(配置类)
+
+```jsonc
+{ "contributes": { "settings": {
+  "title": "外观",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "wallpaper": {
+        "type": "string",
+        "format": "file-import",
+        "title": "壁纸",
+        "accept": ["png", "jpg", "webp"],   // 可选:宿主白名单的**子集**
+        "maxBytes": 5242880                  // 可选:宿主硬顶 10MB
+      }
+    }
+  }
+} } }
+```
+
+```js
+export default function (api) {
+  const apply = () => {
+    const { wallpaper } = api.settings.get()
+    if (wallpaper) api.theme.updateBackground({ image: wallpaper })
+  }
+  apply()                       // ← 启动时读一次(运行期背景不持久,持久归你)
+  api.settings.onChange(apply)  // ← 用户换了图就跟着变(与别的字段同一条链)
+}
+```
+
+- 存进去的值是**地址**(`storage:imports/<name>`),不是用户磁盘上的路径。
+  **字节不过你的手**:宿主拉原生对话框、宿主校验、宿主拷进**你的**数据目录,
+  回给你的只有那个地址 —— 所以"让用户换张壁纸"不需要给插件开任何读文件权限。
+- `accept` **只能收窄**宿主白名单(`png` `jpg` `jpeg` `webp` `svg` `gif`);
+  写一个不在里面的扩展名,配置区显示"schema 不受支持"(插件照常加载)。
+  省略 = 全白名单。
+- `maxBytes` 是唯一被**钳**的旋钮:写得比 10MB 大按 10MB 算(不报错);
+  写一个非正数则这份 schema 被判不受支持。
+- `format` 只能挂在 `type: "string"` 上,且不能与 `enum` 同用。
+  **宿主不认识的 `format` 一律忽略**(JSON Schema 的规矩)——
+  写 `"format":"uri"` 得到的是一个普通文本框,不是一个错误。
+- 只在 Electron 桌面宿主可用(方案 A)。web 端按钮置灰,点了会说一句
+  "仅桌面可用",不是静默无反应。
+
+### 该用哪一个:schema `file-import` vs 描述树 `file-pick`
+
+两者共用同一条托管导入链、同一份 accept/maxBytes 判据,**差别只在家在哪**:
+
+| 你要的是 | 用 | 家 |
+| --- | --- | --- |
+| 选一次、长期生效的偏好(壁纸、模板文件、字体) | 设置 schema `format: "file-import"` | 设置页的配置区 |
+| 面板里**现场**的一次导入(批量处理、临时预览) | 描述树 `file-pick` 节点(见下文) | 你的面板 / 锚点块 |
+
+**判例(2026-08-10,用户批评驱动):配置类交互归设置页,面板留活内容。**
+在此之前宿主的 schema 子集里没有文件控件,于是"选一张壁纸"只能借 `file-pick`
+节点落进工作台面板 —— 那不是作者选错了地方,是**能力缺口把 UX 拽错了位置**。
+现在两个家都在,按上表选。
+
 ## 跨会话信使:让一个会话给另一个会话发消息(N1)
 
 `api.steer` / `api.followUp` 是**纯入队**:空闲的会话不会因为它们醒过来。要把
@@ -668,6 +754,10 @@ export default function (api) {
 日志 + 拒绝(不熔断)。
 
 ### 让用户换成自己的图:`file-pick` 节点 + `storage:` 寻址
+
+> 先看一眼「设置 schema」那节的**该用哪一个**:壁纸这种"选一次、长期生效"的
+> 偏好,家在**设置页**(`format: "file-import"`),不在面板。本节的 `file-pick`
+> 节点是面板里**现场**导入用的那一个 —— 两者共用同一条托管链,只是家不同。
 
 核心裁决先说清楚:**字节不过你的手**。你声明一个按钮,宿主拉原生文件对话框、
 宿主校验、宿主把文件拷进**你的**数据目录,回给你的只有一个地址。你拿不到

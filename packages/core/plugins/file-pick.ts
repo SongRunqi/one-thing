@@ -44,6 +44,25 @@ export const PLUGIN_FILE_PICK_MAX_BYTES = 10 * 1024 * 1024
 /** 导入落点的子目录:`plugins/<id>/storage/imports/`。 */
 export const PLUGIN_IMPORTS_DIR_NAME = 'imports'
 
+/**
+ * `contributes.settings.schema` 里声明"选文件"控件用的 `format` 值。
+ *
+ * **为什么设置页也要有这个入口**(用户批评驱动的裁决):选一张壁纸是**配置**,
+ * 配置的家是设置页;面板留给活内容。此前宿主的 schema 子集没有文件控件,
+ * 于是"选图"这件事被 file-pick 节点的渲染位置一路拽进了工作台面板 ——
+ * 能力缺口把 UX 拽错了位置,不是作者选错了地方。
+ *
+ * 落在 `format` 而不是一个自造的键:`format` 是 JSON Schema 自己的扩展位,
+ * 不认识它的读者(别的校验器、编辑器补全)按规范**忽略**它,于是这条声明
+ * 在别处退化成一个普通的 string 字段,而不是一个"非法的 schema"。
+ *
+ * 语义与 file-pick 节点**逐字相同**:字节不过插件的手,插件只拿到
+ * `storage:imports/<name>` 这个地址;`accept` 只能收窄宿主白名单,
+ * `maxBytes` 被硬顶钳住。判据也是同一份(见
+ * `describePluginFileImportDeclarationProblem`)。
+ */
+export const PLUGIN_SETTINGS_FILE_IMPORT_FORMAT = 'file-import'
+
 /** 清洗后文件名主干的长度上限(扩展名另算)。 */
 const MAX_IMPORT_STEM_LENGTH = 64
 
@@ -92,11 +111,30 @@ export function describePluginFilePickNodeProblem(
     // 与 button 同规:回调靠 actionId 寻址,不是塞一个闭包。
     return `${path}.actionId must be a non-empty string (file-pick addresses actions by id, not by callback)`
   }
-  if (node.accept !== undefined) {
-    if (!Array.isArray(node.accept) || node.accept.length === 0) {
+  return describePluginFileImportDeclarationProblem(node, path)
+}
+
+/**
+ * `accept` / `maxBytes` 这一对声明的判据 —— **面板节点与设置页 schema 共用这一份**。
+ *
+ * 抽出来不是为了少写几行:两处各写一份,今天逐字相同,明天白名单变了就只改
+ * 一边,得到的是"面板里能导入、设置页说不支持"这种没人能解释的分裂。
+ *
+ * 两条语义各自的裁决没有变:
+ *  - `accept` **只能收窄**宿主白名单,越界 = 拒(不是悄悄过滤);
+ *  - `maxBytes` 只挡"不是正数",声明得比硬顶大**不是错**,由
+ *    `clampPluginFilePickMaxBytes` 收(见 PLUGIN_FILE_PICK_MAX_BYTES 的裁决)。
+ */
+export function describePluginFileImportDeclarationProblem(
+  declaration: { accept?: unknown; maxBytes?: unknown },
+  path: string,
+): string | null {
+  const accept = declaration.accept
+  if (accept !== undefined) {
+    if (!Array.isArray(accept) || accept.length === 0) {
       return `${path}.accept must be a non-empty array of file extensions`
     }
-    for (const item of node.accept) {
+    for (const item of accept) {
       if (typeof item !== 'string' || !item) {
         return `${path}.accept entries must be non-empty strings`
       }
@@ -107,8 +145,9 @@ export function describePluginFilePickNodeProblem(
       }
     }
   }
-  if (node.maxBytes !== undefined) {
-    if (typeof node.maxBytes !== 'number' || !Number.isFinite(node.maxBytes) || node.maxBytes <= 0) {
+  const maxBytes = declaration.maxBytes
+  if (maxBytes !== undefined) {
+    if (typeof maxBytes !== 'number' || !Number.isFinite(maxBytes) || maxBytes <= 0) {
       return `${path}.maxBytes must be a positive finite number`
     }
   }

@@ -274,6 +274,24 @@
                       @update:model-value="setStringListText(plugin, field.key, String($event))"
                       @blur="commitStringList(plugin, field.key)"
                     />
+                    <!-- 文件导入:配置类的"选文件"住这里,不住工作台面板。
+                         按钮 + 当前值,值是**地址**不是路径 —— 用户磁盘上的
+                         原路径一步也不到这一层。 -->
+                    <div
+                      v-else-if="field.control === 'file-import'"
+                      class="plugin-config-file"
+                    >
+                      <Button
+                        unstyled
+                        class="btn-sm"
+                        :disabled="!isConfigEditable(plugin) || pickingFields.has(fieldKey(plugin, field.key))"
+                        :aria-label="field.label"
+                        @click="pickConfigFile(plugin, field)"
+                      >
+                        {{ pickingFields.has(fieldKey(plugin, field.key)) ? 'Choosing…' : 'Choose file…' }}
+                      </Button>
+                      <span class="plugin-config-file-value">{{ fileValueLabel(plugin, field.key) }}</span>
+                    </div>
                     <Input
                       v-else
                       :model-value="String(draftFor(plugin)[field.key] ?? '')"
@@ -749,6 +767,7 @@ import { platformApi } from '@/platform'
 import { useSettingsStore } from '@/stores/settings'
 import { previewPluginNotifySound } from '@/services/plugin-notify-sound'
 import { isUiSlotTruncated } from '@/workspace/ui-anchor-registry'
+import { toPlainData } from '@/workspace/plain-data'
 import { useConfirm } from '@/composables/useConfirm'
 import { useFileDrop } from '@/composables/useFileDrop'
 import { toast } from '@/composables/useToast'
@@ -945,6 +964,59 @@ function commitStringList(plugin: PluginInfo, key: string): void {
   const { [fieldKey(plugin, key)]: _dropped, ...rest } = stringListText.value
   stringListText.value = rest
   setDraft(plugin, key, parseStringList(pending))
+}
+
+/**
+ * 文件导入字段(schema `format: 'file-import'`)。
+ *
+ * **判例**:选文件是配置,配置的家是设置页;面板留给活内容。此前宿主的
+ * schema 子集没有文件控件,于是"选图"只能借 file-pick 节点落进工作台面板 ——
+ * 能力缺口把 UX 拽错了位置。这一段就是把那条路补回设置页。
+ *
+ * 走的是**既有**的托管导入链:宿主拉原生对话框、宿主校验、宿主拷进这个插件
+ * 的数据目录,回来的只有一个 `storage:` 地址。字节与用户的原路径一步也不进
+ * 这一层,所以"选一张壁纸"不需要给插件开任何读文件的权限。
+ */
+const pickingFields = ref<Set<string>>(new Set())
+
+/** 值是 `storage:imports/<name>` 这样的地址 —— 显示尾段(文件名)就够了。 */
+function fileValueLabel(plugin: PluginInfo, key: string): string {
+  const value = draftFor(plugin)[key]
+  if (typeof value !== 'string' || !value) return 'No file chosen'
+  const tail = value.split('/').pop()
+  return tail || value
+}
+
+async function pickConfigFile(plugin: PluginInfo, field: PluginConfigFieldDescriptor): Promise<void> {
+  const id = fieldKey(plugin, field.key)
+  if (pickingFields.value.has(id) || !isConfigEditable(plugin)) return
+  pickingFields.value = withId(pickingFields.value, id)
+  try {
+    // accept 来自响应式的字段表,是 Vue 的 Proxy —— 原样递过边界会炸
+    // "An object can't be cloned"。边界铁律见 toPlainData 的文档(同病已犯两次)。
+    const result = await platformApi.pickPluginFile(toPlainData({
+      pluginId: plugin.id,
+      accept: field.accept,
+      maxBytes: field.maxBytes,
+      label: field.label,
+    }))
+    // 取消 = **不是失败**:什么也不做,草稿不脏。
+    if (result?.canceled) return
+    if (result?.error) {
+      toast.error(result.error)
+      return
+    }
+    if (!result?.path) return
+    // 只写草稿:与其余字段同一条路,Save 才落盘(setPluginConfig)。
+    // 代价是诚实的 —— 字节在"选中"那一刻就已经拷进插件数据目录了,选完又
+    // Reset 会在 imports/ 里留下一个没人引用的文件。宁可留一份孤儿数据,
+    // 也不要为一个字段破例发明"点一下就直接落盘"的第二条保存语义。
+    setDraft(plugin, field.key, result.path)
+  } catch (e) {
+    toast.error((e as Error)?.message || 'That file could not be imported.')
+  } finally {
+    pickingFields.value = withoutId(pickingFields.value, id)
+  }
 }
 
 function withId(set: Set<string>, id: string): Set<string> {
@@ -2193,6 +2265,24 @@ onBeforeUnmount(() => {
   font-family: var(--font-mono, monospace);
   font-size: 10px;
   color: var(--ui-status-success-fg);
+}
+
+.plugin-config-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 文件名可能很长:让它自己截断,而不是把这一行的按钮挤出可视区。 */
+.plugin-config-file-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg));
 }
 
 .meta-tag.readonly {

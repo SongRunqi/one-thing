@@ -116,7 +116,13 @@ export interface PluginConfigFieldDescriptor {
 	key: string;
 	/** 校验依据(control 只管长相)。 */
 	type: "boolean" | "string" | "string-enum" | "number" | "integer" | "string-array";
-	control: "switch" | "text" | "number" | "select" | "string-list";
+	control:
+		| "switch"
+		| "text"
+		| "number"
+		| "select"
+		| "string-list"
+		| "file-import";
 	label: string;
 	hint?: string;
 	required: boolean;
@@ -124,6 +130,12 @@ export interface PluginConfigFieldDescriptor {
 	minimum?: number;
 	maximum?: number;
 	integer?: boolean;
+	/**
+	 * file-import 的**已裁决**声明:accept 已 ⊕ 宿主白名单,maxBytes 已被硬顶
+	 * 钳住。设置页拿它直接发起一次导入 —— 不在 UI 侧重算一遍裁决。
+	 */
+	accept?: string[];
+	maxBytes?: number;
 	defaultValue: unknown;
 }
 

@@ -12,12 +12,18 @@
  * 但渲染不出来 = 用户改不了;能渲染但校验不了 = 脏值进盘。所以子集清单写成
  * 常量,将来扩控件时同步扩这里("表达力不够就补原语",不是放宽校验)。
  *
- * 支持:boolean / string / number / integer / enum(string) / string 数组;
- * 顶层单层 object。超出子集 → 整个插件的配置区显示"schema 不受支持"并列出原因,
- * 不崩、不静默。
+ * 支持:boolean / string / number / integer / enum(string) / string 数组 /
+ * 文件导入(`format: 'file-import'` 的 string);顶层单层 object。超出子集 →
+ * 整个插件的配置区显示"schema 不受支持"并列出原因,不崩、不静默。
  */
 
-import { deepFreezeCorePluginValue } from '@onething/core/plugins'
+import {
+  clampPluginFilePickMaxBytes,
+  deepFreezeCorePluginValue,
+  describePluginFileImportDeclarationProblem,
+  resolvePluginFilePickAccept,
+  PLUGIN_SETTINGS_FILE_IMPORT_FORMAT,
+} from '@onething/core/plugins'
 
 /** 控件集 —— 与 PluginsSettingsTab 的渲染分支一一对应。 */
 export const PLUGIN_CONFIG_CONTROLS = [
@@ -26,6 +32,7 @@ export const PLUGIN_CONFIG_CONTROLS = [
   'number',
   'select',
   'string-list',
+  'file-import',
 ] as const
 
 export type PluginConfigControl = (typeof PLUGIN_CONFIG_CONTROLS)[number]
@@ -49,7 +56,10 @@ export type PluginConfigValueType =
 const COMPATIBLE_CONTROLS: Record<PluginConfigValueType, readonly PluginConfigControl[]> = {
   boolean: ['switch'],
   // 纯 string 没有候选值,渲染成下拉是空下拉 —— 那是个永远存不进去的字段。
-  string: ['text'],
+  // file-import 在这里合法是因为它存的**就是**一个字符串(`storage:` 地址):
+  // 呈现覆盖不许改变值的类型契约,而这一条没有改。声明的正门仍是
+  // `format: 'file-import'` —— 只有它能同时带上 accept / maxBytes。
+  string: ['text', 'file-import'],
   'string-enum': ['select', 'text'],
   number: ['number'],
   integer: ['number'],
@@ -91,6 +101,14 @@ export interface PluginConfigField {
   maximum?: number
   /** integer 时步进为 1。 */
   integer?: boolean
+  /**
+   * file-import 的**已裁决**声明:accept 已 ⊕ 宿主白名单,maxBytes 已被硬顶钳住。
+   *
+   * 存裁决后的值而不是 manifest 原文 —— 设置页拿它直接发起导入,也拿它给用户
+   * 显示"这里能选什么、多大"。让 UI 自己再算一遍等于把裁决复制到第二个地方。
+   */
+  accept?: string[]
+  maxBytes?: number
   defaultValue: unknown
 }
 
@@ -156,6 +174,10 @@ interface FieldSchema {
   title?: unknown
   minimum?: unknown
   maximum?: unknown
+  /** JSON Schema 的扩展位;宿主只认 `file-import`,别的一律**忽略**(见 describeField)。 */
+  format?: unknown
+  accept?: unknown
+  maxBytes?: unknown
 }
 
 /**
@@ -176,6 +198,40 @@ function describeField(
   const hint = ui[key]?.hint ?? (typeof schema.description === 'string' ? schema.description : undefined)
   const label = ui[key]?.label ?? (typeof schema.title === 'string' ? schema.title : humanizeKey(key))
   const base = { key, label, hint, required: required.has(key) }
+
+  /**
+   * 文件导入(`format: 'file-import'`)—— 配置类的"选文件"住设置页的入口。
+   *
+   * 判在 enum/type 之前:它对 schema 的其余部分有约束(只能是 string,不能带
+   * enum),先判掉才能给出一句说得清的理由,而不是让它掉进 string 分支后
+   * 悄悄变成一个自由文本框(那正是"能力缺口把 UX 拽错位置"的翻版)。
+   *
+   * **未知的 format 一律忽略**:JSON Schema 规范就是这么说的(format 是注解),
+   * 于是 `format: 'uri'` 退化成普通文本框而不是让整份 schema 变成不受支持。
+   */
+  if (schema.format === PLUGIN_SETTINGS_FILE_IMPORT_FORMAT) {
+    if (schema.enum !== undefined) {
+      return `"${key}": format "${PLUGIN_SETTINGS_FILE_IMPORT_FORMAT}" cannot be combined with enum`
+    }
+    if (schema.type !== undefined && schema.type !== 'string') {
+      return `"${key}": format "${PLUGIN_SETTINGS_FILE_IMPORT_FORMAT}" is only supported on string properties `
+        + `(the stored value is a "storage:" address)`
+    }
+    // accept / maxBytes 的判据与 file-pick 节点**同一份**(core)。
+    const problem = describePluginFileImportDeclarationProblem(schema, `"${key}"`)
+    if (problem) return problem
+    if (schema.default !== undefined && typeof schema.default !== 'string') {
+      return `"${key}": schema default is invalid — "${key}" must be a string`
+    }
+    return {
+      ...base,
+      type: 'string',
+      control: 'file-import',
+      accept: resolvePluginFilePickAccept(schema.accept),
+      maxBytes: clampPluginFilePickMaxBytes(schema.maxBytes),
+      defaultValue: cloneDefault(schema.default ?? ''),
+    }
+  }
 
   // enum 优先于 type:一个带 enum 的 string 默认渲染成下拉,不是自由文本。
   if (schema.enum !== undefined) {
@@ -312,7 +368,20 @@ export function describePluginConfigSchema(
       )
       continue
     }
-    fields.push({ ...described, control: requestedControl as PluginConfigControl })
+    const control = requestedControl as PluginConfigControl
+    // `ui.control: 'file-import'` 走的是呈现覆盖这道侧门(正门是 format),
+    // 它带不了 accept / maxBytes —— 那就把缺省裁决补齐,别让设置页拿到一个
+    // 半张的声明再自己去猜宿主的白名单。
+    if (control === 'file-import' && described.accept === undefined) {
+      fields.push({
+        ...described,
+        control,
+        accept: resolvePluginFilePickAccept(undefined),
+        maxBytes: clampPluginFilePickMaxBytes(undefined),
+      })
+      continue
+    }
+    fields.push({ ...described, control })
   }
 
   if (reasons.length > 0) return { supported: false, reasons }

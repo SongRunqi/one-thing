@@ -6,6 +6,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  PLUGIN_FILE_PICK_EXTENSIONS,
+  PLUGIN_FILE_PICK_MAX_BYTES,
+} from '@onething/core/plugins'
+import {
   coercePluginConfig,
   deepFreezePluginConfig,
   describePluginConfigSchema,
@@ -277,5 +281,140 @@ describe('R3 acceptance — log-monitor moved a hardcoded constant into schema',
       retentionDays: 2,
       flushIntervalMs: 1000,
     })
+  })
+})
+
+/**
+ * 文件导入控件(`format: 'file-import'`)。
+ *
+ * **判例**:选文件是配置,配置的家是设置页;面板留给活内容。此前这个子集里
+ * 没有文件控件,于是"选图"只能借 file-pick 节点落进工作台面板 —— 能力缺口
+ * 把 UX 拽错了位置。语义与 file-pick 节点逐字相同,判据也是**同一份**(core)。
+ */
+describe('file-import — 配置类的"选文件"住设置页', () => {
+  it('归约成 file-import 控件,accept / maxBytes 是**裁决后**的值', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: {
+        wallpaper: {
+          type: 'string',
+          format: 'file-import',
+          accept: ['png', 'WEBP'],
+          maxBytes: 5_000_000,
+          title: 'Wallpaper',
+        },
+      },
+    })
+    expect(described.supported).toBe(true)
+    if (!described.supported) return
+    expect(described.fields[0]).toMatchObject({
+      key: 'wallpaper',
+      // 值的类型契约没有变:存的是一个字符串(`storage:` 地址)。
+      type: 'string',
+      control: 'file-import',
+      label: 'Wallpaper',
+      accept: ['png', 'webp'],
+      maxBytes: 5_000_000,
+      defaultValue: '',
+    })
+  })
+
+  it('accept 只能收窄宿主白名单 —— 越界是拒,不是悄悄过滤', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: {
+        wallpaper: { type: 'string', format: 'file-import', accept: ['png', 'exe'] },
+      },
+    })
+    expect(described.supported).toBe(false)
+    if (described.supported) return
+    expect(described.reasons.join(' ')).toContain('outside the host whitelist')
+  })
+
+  it('未声明 accept = 全白名单(不是空表)', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: { wallpaper: { type: 'string', format: 'file-import' } },
+    })
+    expect(described.supported).toBe(true)
+    if (!described.supported) return
+    expect(described.fields[0].accept).toEqual([...PLUGIN_FILE_PICK_EXTENSIONS])
+    expect(described.fields[0].maxBytes).toBe(PLUGIN_FILE_PICK_MAX_BYTES)
+  })
+
+  it('maxBytes 声明得更大 = **钳**到硬顶(作者想要更大,拒掉只换来一个用不了的字段)', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: {
+        wallpaper: { type: 'string', format: 'file-import', maxBytes: 999_000_000 },
+      },
+    })
+    expect(described.supported).toBe(true)
+    if (!described.supported) return
+    expect(described.fields[0].maxBytes).toBe(PLUGIN_FILE_PICK_MAX_BYTES)
+  })
+
+  it('maxBytes 不是正数 = 拒(那是笔误,不是"想要更大")', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: { wallpaper: { type: 'string', format: 'file-import', maxBytes: 0 } },
+    })
+    expect(described.supported).toBe(false)
+    if (described.supported) return
+    expect(described.reasons.join(' ')).toContain('positive finite number')
+  })
+
+  it('挂在非 string / enum 上 = 拒,而不是掉进 string 分支变成一个自由文本框', () => {
+    const onNumber = describePluginConfigSchema({
+      type: 'object',
+      properties: { size: { type: 'number', format: 'file-import' } },
+    })
+    expect(onNumber.supported).toBe(false)
+    if (!onNumber.supported) expect(onNumber.reasons.join(' ')).toContain('only supported on string properties')
+
+    const onEnum = describePluginConfigSchema({
+      type: 'object',
+      properties: { pick: { enum: ['a', 'b'], format: 'file-import' } },
+    })
+    expect(onEnum.supported).toBe(false)
+    if (!onEnum.supported) expect(onEnum.reasons.join(' ')).toContain('cannot be combined with enum')
+  })
+
+  it('默认值必须是字符串 —— 与"manifest 自己的 default 也要过校验"同规', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: { wallpaper: { type: 'string', format: 'file-import', default: 42 } },
+    })
+    expect(described.supported).toBe(false)
+    if (described.supported) return
+    expect(described.reasons.join(' ')).toContain('schema default is invalid')
+  })
+
+  it('宿主不认识的 format 一律**忽略**(JSON Schema 的规矩),退化成普通文本框', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: { home: { type: 'string', format: 'uri', default: 'https://x' } },
+    })
+    expect(described.supported).toBe(true)
+    if (!described.supported) return
+    expect(described.fields[0]).toMatchObject({ control: 'text', defaultValue: 'https://x' })
+  })
+
+  it('存的值仍按 string 校验;侧门 ui.control 也补齐宿主缺省裁决', () => {
+    const described = describePluginConfigSchema(
+      { type: 'object', properties: { wallpaper: { type: 'string' } } },
+      { ui: { wallpaper: { control: 'file-import' } } },
+    )
+    expect(described.supported).toBe(true)
+    if (!described.supported) return
+    expect(described.fields[0]).toMatchObject({
+      control: 'file-import',
+      accept: [...PLUGIN_FILE_PICK_EXTENSIONS],
+      maxBytes: PLUGIN_FILE_PICK_MAX_BYTES,
+    })
+
+    const coerced = coercePluginConfig(described.fields, { wallpaper: 7 })
+    expect(coerced.config.wallpaper).toBe('')
+    expect(coerced.errors[0]).toMatchObject({ key: 'wallpaper', message: expect.stringContaining('must be a string') })
   })
 })

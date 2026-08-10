@@ -13,7 +13,9 @@ import { describe, it, expect } from 'vitest'
 import {
   PLUGIN_FILE_PICK_EXTENSIONS,
   PLUGIN_FILE_PICK_MAX_BYTES,
+  PLUGIN_SETTINGS_FILE_IMPORT_FORMAT,
   clampPluginFilePickMaxBytes,
+  describePluginFileImportDeclarationProblem,
   describePluginFileImportProblem,
   describePluginFilePickNodeProblem,
   nextAvailablePluginImportFileName,
@@ -202,5 +204,40 @@ describe('runtime background image value domain', () => {
     expect(describePluginRuntimeBackgroundImageProblem('')).toMatch(/non-empty string/)
     expect(describePluginRuntimeBackgroundImageProblem(42)).toMatch(/non-empty string/)
     expect(describePluginRuntimeBackgroundImageProblem('storage:../x.png')).toMatch(/".." segments/)
+  })
+})
+
+/**
+ * 设置页 schema 的文件导入声明与面板节点**共用同一份判据**。
+ *
+ * 抽出来不是为了少写几行:两处各写一份,今天逐字相同,明天白名单变了就只改
+ * 一边,得到的是"面板里能导入、设置页说不支持"这种没人能解释的分裂。
+ */
+describe('file-import declaration — shared by the panel node and the settings schema', () => {
+  it('accept can only narrow the host whitelist', () => {
+    expect(describePluginFileImportDeclarationProblem({ accept: ['png'] }, '"wallpaper"')).toBeNull()
+    expect(describePluginFileImportDeclarationProblem({ accept: ['exe'] }, '"wallpaper"'))
+      .toMatch(/outside the host whitelist/)
+    expect(describePluginFileImportDeclarationProblem({ accept: [] }, '"wallpaper"'))
+      .toMatch(/non-empty array/)
+    expect(describePluginFileImportDeclarationProblem({ accept: [''] }, '"wallpaper"'))
+      .toMatch(/non-empty strings/)
+  })
+
+  it('maxBytes rejects only non-positive shapes — "bigger than the cap" is clamped, not refused', () => {
+    expect(describePluginFileImportDeclarationProblem({ maxBytes: 999_000_000 }, '"wallpaper"')).toBeNull()
+    expect(describePluginFileImportDeclarationProblem({ maxBytes: 0 }, '"wallpaper"'))
+      .toMatch(/positive finite number/)
+    expect(clampPluginFilePickMaxBytes(999_000_000)).toBe(PLUGIN_FILE_PICK_MAX_BYTES)
+  })
+
+  it('the node validator routes through the very same判据 (one implementation, not two)', () => {
+    const node = { label: 'Pick', actionId: 'picked', accept: ['exe'] }
+    expect(describePluginFilePickNodeProblem(node, 'panel.body[0]'))
+      .toBe(describePluginFileImportDeclarationProblem(node, 'panel.body[0]'))
+  })
+
+  it('the settings-schema format value is the one the host advertises', () => {
+    expect(PLUGIN_SETTINGS_FILE_IMPORT_FORMAT).toBe('file-import')
   })
 })
