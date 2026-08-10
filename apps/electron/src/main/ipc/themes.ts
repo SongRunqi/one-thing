@@ -10,6 +10,7 @@ import {
 } from '@onething/electron-host/ipc/themes'
 import { defaultOnethingThemeRuntime } from '@onething/runtime/themes/theme-runtime'
 import { getPluginThemeOverrideTokenValues } from '@onething/app/plugins/theme-overrides.js'
+import { getPluginSkinTiers } from '@onething/app/plugins/skin.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 
 /**
@@ -49,7 +50,17 @@ export function registerThemeHandlers() {
       // docs/design/plugin-ui/plugin-ui-rollout-2026-08.md §6.1.1)。
       // renderer 的 applyThemeVariables 仍然零改动:它只是消费下发的表。
       // 方案 A 口径:只有 desktop 这一个宿主做合成,server 只透传声明。
-      return defaultOnethingThemeRuntime.applyTheme(themeId, mode, getPluginThemeOverrideTokenValues())
+      //
+      // 合成点(H3,皮肤包):插件 `contributes.theme.skin` 的**档位名**同样以参数
+      // 进入主题计算。档位 → CSS 值的翻译在主题层查 `SKIN_TIER_VALUES` 完成 ——
+      // 插件递进来的字符串永远不会出现在 CSS 里,所以皮肤没有、也不需要 L2 那套
+      // 颜色字面量白名单。皮肤变量(`--skin-*`)与主题变量名不相交。
+      return defaultOnethingThemeRuntime.applyTheme(
+        themeId,
+        mode,
+        getPluginThemeOverrideTokenValues(),
+        getPluginSkinTiers(),
+      )
     },
     refreshThemes: (projectPath?: string) => {
       return defaultOnethingThemeRuntime.refreshThemes(projectPath)

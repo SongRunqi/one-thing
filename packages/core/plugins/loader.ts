@@ -10,7 +10,7 @@ import type {
   PluginSettings,
   PluginSource,
 } from './types.js'
-import { PLUGIN_THEME_OVERRIDE_MAX_ENTRIES } from './theme-contribution.js'
+import { PLUGIN_SKIN_MAX_ENTRIES, PLUGIN_THEME_OVERRIDE_MAX_ENTRIES } from './theme-contribution.js'
 
 export const DEFAULT_PLUGIN_ENTRY = 'plugin-entry.js'
 
@@ -442,6 +442,23 @@ export function validatePluginContributes(raw: unknown): string | null {
         if (!token.trim()) return 'contributes.theme.overrides keys must be non-empty strings'
         if (typeof value !== 'string') {
           return `contributes.theme.overrides.${token} must be a string`
+        }
+      }
+    }
+    // skin(H3)同规:只校验**形状**。旋钮名是否开放、档位是否在枚举内**不在这里
+    // 判** —— 旋钮表住在主题层(core 吃不到),而非法值按 §6.1 是"丢弃该键并在
+    // 投影里标记"的降级,不是拒载。
+    const skin = theme.skin
+    if (skin !== undefined) {
+      if (!isPlainRecord(skin)) return 'contributes.theme.skin must be an object'
+      const skinEntries = Object.entries(skin)
+      if (skinEntries.length > PLUGIN_SKIN_MAX_ENTRIES) {
+        return `contributes.theme.skin must not exceed ${PLUGIN_SKIN_MAX_ENTRIES} entries`
+      }
+      for (const [knob, tier] of skinEntries) {
+        if (!knob.trim()) return 'contributes.theme.skin keys must be non-empty strings'
+        if (typeof tier !== 'string') {
+          return `contributes.theme.skin.${knob} must be a string`
         }
       }
     }

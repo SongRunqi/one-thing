@@ -15,6 +15,7 @@ import {
   resolveThemeUI,
 } from './resolver.js'
 import { CSS_VAR_MAP, generateCSSVariables } from './css-mapper.js'
+import { generateSkinVariables } from './skin.js'
 import { parseBase46Lua, convertBase46ToTheme } from './base46-parser.js'
 import type { ThemeDebugData } from './theme-debug.js'
 
@@ -344,7 +345,8 @@ export function applyTheme(
   themeId: string,
   mode: 'dark' | 'light',
   onDebug?: (data: ThemeDebugData) => void,
-  tokenOverrides?: Record<string, string>
+  tokenOverrides?: Record<string, string>,
+  skinTiers?: Record<string, string>
 ): Record<string, string> {
   const theme = getTheme(themeId)
   if (!theme) {
@@ -353,10 +355,10 @@ export function applyTheme(
     if (!defaultTheme) {
       throw new Error(`Default theme ${DEFAULT_THEME_ID} not found`)
     }
-    return applyThemeInternal(defaultTheme, mode, DEFAULT_THEME_ID, onDebug, tokenOverrides)
+    return applyThemeInternal(defaultTheme, mode, DEFAULT_THEME_ID, onDebug, tokenOverrides, skinTiers)
   }
 
-  return applyThemeInternal(theme, mode, themeId, onDebug, tokenOverrides)
+  return applyThemeInternal(theme, mode, themeId, onDebug, tokenOverrides, skinTiers)
 }
 
 /**
@@ -367,7 +369,8 @@ function applyThemeInternal(
   mode: 'dark' | 'light',
   themeId: string,
   onDebug?: (data: ThemeDebugData) => void,
-  tokenOverrides?: Record<string, string>
+  tokenOverrides?: Record<string, string>,
+  skinTiers?: Record<string, string>
 ): Record<string, string> {
   // Resolve all color references（token 覆盖在语义派生之前落位，见 resolveTheme）
   const resolvedColors = resolveTheme(theme, mode, sanitizeThemeTokenOverrides(tokenOverrides))
@@ -403,7 +406,14 @@ function applyThemeInternal(
   // Map to CSS variables
   const cssVariables = generateCSSVariables(resolvedColors, resolvedHighlights, resolvedUI)
 
-  return cssVariables
+  // 皮肤档位(H3)：和主题变量走同一张出口表，但**来源是 skin 声明，不是 theme
+  // token** —— 主题 JSON 里没有、也不会有 radius 字段（“主题不能定义形”那条裁决
+  // 没被推翻）；这里是宿主开的枚举档位口，值查 `SKIN_TIER_VALUES` 得到。
+  //
+  // 合并放在最后是安全的，且**只对皮肤成立**：`--skin-*` 与主题变量名不相交，
+  // 没有任何东西从皮肤变量派生。颜色覆盖必须前移到 resolveThemeUI 之前，正是
+  // 因为反过来 —— 派生层整片挂在颜色上（见 §6.1.1 的差异记录）。
+  return { ...cssVariables, ...generateSkinVariables(skinTiers) }
 }
 
 /**

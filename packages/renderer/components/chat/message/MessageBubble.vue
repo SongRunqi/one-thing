@@ -690,7 +690,11 @@ html[data-theme='light'] .bubble.user.editing {
      when scanning — a fully transparent box reads as an empty input, not a
      said thing. */
   background: color-mix(in srgb, var(--ui-text-primary-fg) 4%, transparent);
-  border-radius: var(--radius-xs, 4px);
+  /* Skin knob `bubbleRadius` (H3). The fallback IS the app's own value and the
+     ONLY copy of it — the `standard` tier deliberately emits no variable, so
+     "no plugin" and "plugin picked standard" both land here, byte for byte.
+     A plugin only ever picks a tier name; the host looks the value up. */
+  border-radius: var(--skin-bubble-radius, var(--radius-xs, 4px));
   border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   box-shadow: var(--ui-message-user-shadow, none);
   width: fit-content;

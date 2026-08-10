@@ -25,6 +25,16 @@ export const PLUGIN_THEME_OVERRIDE_MAX_ENTRIES = 32
 export const PLUGIN_THEME_COLOR_MAX_LENGTH = 128
 
 /**
+ * `contributes.theme.skin`(H3,皮肤包)一个插件最多拧多少个旋钮 —— 超过即形状
+ * 非法(拒载),不是"截断"。
+ *
+ * 这里**只有形状上限**,没有旋钮名、没有档位名、更没有 CSS 值:那三样住在主题层
+ * (`SKIN_TIER_VALUES`),core 吃不到主题模块。皮肤不需要 L2 那套颜色字面量白名单 ——
+ * 插件递进来的是**档位名**,CSS 值由宿主查表得到,插件的字符串永远不进 CSS。
+ */
+export const PLUGIN_SKIN_MAX_ENTRIES = 16
+
+/**
  * CSS 标准命名色(148 个)+ `transparent`。
  *
  * 不含 `currentColor` / `inherit` / `initial` / `unset`:它们是**引用**而不是

@@ -23,6 +23,10 @@ import {
   resolvePluginThemeOverrides,
   type PluginThemeOverrideEntry,
 } from './theme-overrides.js'
+import {
+  resolvePluginSkins,
+  type PluginSkinEntry,
+} from './skin.js'
 
 export interface OnethingPluginListManifestLike {
   name: string
@@ -34,7 +38,11 @@ export interface OnethingPluginListManifestLike {
     commands?: Array<{ name: string }>
     panels?: Array<{ id: string; label: string; view?: string; entry?: string; placements?: string[] }>
     uiSlots?: Array<{ anchor: string; id: string; label: string; lifetime?: string; drawer?: boolean; side?: string }>
-    theme?: { overrides?: Record<string, string>; background?: unknown }
+    theme?: {
+      overrides?: Record<string, string>
+      background?: unknown
+      skin?: Record<string, string>
+    }
     ambient?: unknown
     webviewRoot?: string
     settings?: {
@@ -171,6 +179,14 @@ export interface OnethingRendererPluginInfo {
      */
     theme: PluginThemeOverrideEntry[]
     /**
+     * 皮肤包(H3)。逐条带裁决结果,词与 token 覆盖同一套:
+     * `active` 生效中 / `shadowed` 被规范顺序更后的插件压过 / `inactive` 插件未启用 /
+     * `invalid` 旋钮不认识或档位在枚举外(丢弃该键,但要说得出来)。
+     *
+     * 与 token 覆盖同规:裁决在投影里做(谁压谁要看全体插件),非法**不拒载**。
+     */
+    skin: PluginSkinEntry[]
+    /**
      * 背景/材质层(G 期,L2.5)。`null` = 这个插件没声明背景。
      *
      * 与 token 覆盖同规:裁决在投影里做(谁压谁要看全体插件,renderer 只拿到
@@ -304,6 +320,12 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
     enabled: plugin.definition.enabled,
     overrides: plugin.definition.manifest.contributes?.theme?.overrides,
   })))
+  // 皮肤同理(H3):一个旋钮全局只有一个档位,谁压谁必须看全体。
+  const skinResolution = resolvePluginSkins(plugins.map(plugin => ({
+    pluginId: plugin.definition.id,
+    enabled: plugin.definition.enabled,
+    skin: plugin.definition.manifest.contributes?.theme?.skin,
+  })))
   // 背景同理(G 期):全局只有一块背景,谁压谁必须看全体。
   const backgroundResolution = resolvePluginBackgrounds(
     collectBackgroundInputs(plugins, options),
@@ -357,6 +379,7 @@ export function projectOnethingPluginsForRenderer<TPlugin extends OnethingPlugin
         sideIgnored: isIgnoredUiSlotSideDeclaration(slot.anchor, slot.side),
       })),
       theme: themeResolution.byPlugin.get(plugin.definition.id) ?? [],
+      skin: skinResolution.byPlugin.get(plugin.definition.id) ?? [],
       background: backgroundResolution.byPlugin.get(plugin.definition.id) ?? null,
       ambient: ambientResolution.byPlugin.get(plugin.definition.id) ?? null,
       hasSettingsSchema: Boolean(plugin.definition.manifest.contributes?.settings?.schema),

@@ -67,6 +67,7 @@ describe('plugin IPC operations', () => {
           hasSettingsSchema: false,
           uiSlots: [],
           theme: [],
+          skin: [],
           background: null,
           ambient: null,
           permissions: [],

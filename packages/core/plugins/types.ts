@@ -160,6 +160,18 @@ export interface PluginContributionTheme {
   overrides?: Record<string, string>
   /** 背景/材质层(G 期,L2.5)。 */
   background?: PluginContributionThemeBackground
+  /**
+   * 皮肤包(H3)—— token 表达不了的**形**,以枚举档位的方式开放。
+   *
+   * 键是宿主开放的旋钮名,值是该旋钮的**档位名**(不是 CSS 值):插件永远碰不到
+   * CSS 值,宿主查表把档位翻成变量。所以这里没有、也不需要任何值的消毒 ——
+   * 这与 `overrides` 收自由颜色字符串是两种安全模型。
+   *
+   * 旋钮/档位的唯一事实源是主题层的 `SKIN_TIER_VALUES`(core 吃不到主题模块,
+   * 所以这里只标形状)。不认识的旋钮、枚举外的档位一律**丢弃该键并在投影里
+   * 标记**,不是拒载(与未知锚点、token 覆盖同规)。
+   */
+  skin?: Record<string, string>
 }
 
 export interface PluginContributionActivation {

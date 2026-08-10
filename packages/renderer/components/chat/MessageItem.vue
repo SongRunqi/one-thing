@@ -1668,14 +1668,19 @@ function handleUpdateThinkingTime(time: number) {
 /* THE frame. Read straight off `.bubble.user` in MessageBubble.vue — same
    hairline, same 4% ink wash, same 4px radius, same padding token. An agent
    message must be framed the way a user message is framed; only the side of
-   the column and the avatar/signature say who is speaking. */
+   the column and the avatar/signature say who is speaking.
+
+   That sameness extends to the `bubbleRadius` skin knob (H3): this frame is a
+   bubble, so it turns with the knob. The bare `.bubble.assistant` outside a
+   room is NOT — it has no border, no background and no padding, so a radius
+   there would round nothing. */
 .message.is-room-agent :deep(.bubble.assistant) {
   width: fit-content;
   max-width: 100%;
   min-width: 3.5em;
   padding: var(--message-padding, 14px 18px);
   border: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
-  border-radius: var(--radius-xs, 4px);
+  border-radius: var(--skin-bubble-radius, var(--radius-xs, 4px));
   background: color-mix(in srgb, var(--ui-text-primary-fg) 4%, transparent);
   /* Landing from a quote deepens the frame — STATE, not an animation; only
      the 120ms fade is motion (§3.6). */

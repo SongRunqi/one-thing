@@ -801,6 +801,17 @@ interface PluginInfo {
       shadowedBy?: string
     }>
     /**
+     * 皮肤包(H3)—— 同样是**投影后的逐条裁决**,四态与 token 覆盖同一套词。
+     * 值是**档位名**而不是 CSS 值:插件选档,宿主查表。
+     */
+    skin?: Array<{
+      knob: string
+      tier: string
+      status: 'active' | 'shadowed' | 'inactive' | 'invalid'
+      reason?: 'unknown-knob' | 'unknown-tier'
+      shadowedBy?: string
+    }>
+    /**
      * 背景层(G 期,L2.5)—— 同样是**投影后的裁决**,`null` = 没声明。
      * 背景全局只有一块,所以这里是单条而不是数组。
      */
@@ -1101,6 +1112,27 @@ function themeOverrideNote(tokens: string[]): string {
 }
 
 /**
+ * 皮肤包披露(H3)。
+ *
+ * 与 themeOverrideNote 同规:一句话只说一次,已装卡片与装前确认页共用同一句
+ * 措辞。用户要知道的是"这插件会改界面的**形状**,改哪几处" —— 与"改配色"分开说,
+ * 因为它们是两种不同的改动(颜色能被主题吞掉,形不能)。档位名一起念出来:
+ * 用户对 `round` 是有直觉的,对 `bubbleRadius=round` 也是。
+ */
+function skinNote(entries: Array<{ knob: string; tier: string }>): string {
+  const pairs = entries.map(entry => `${SKIN_KNOB_LABELS[entry.knob] ?? entry.knob}: ${entry.tier}`)
+  return `changes UI shape (${pairs.join(', ')})`
+}
+
+/**
+ * 旋钮名 → 用户读得懂的说法。未登记的旋钮原样显示(向前兼容:未来的宿主
+ * 可能认识它,而这一版的界面不该假装它不存在)。
+ */
+const SKIN_KNOB_LABELS: Record<string, string> = {
+  bubbleRadius: 'bubble corners',
+}
+
+/**
  * webview 面板披露(C 期,L3)。
  *
  * 与上面两句同规:一句话只说一次,已装卡片与装前确认页共用同一句措辞。
@@ -1202,6 +1234,23 @@ function contributesSummary(plugin: PluginInfo): string[] {
     summary.push(entry.reason === 'unknown-token'
       ? `theme override "${entry.token}" dropped — not a theme token`
       : `theme override "${entry.token}" dropped — not an allowed color value`)
+  }
+  // 皮肤包(H3):与 token 覆盖同一条呈现规矩,顺序也一样(生效 → 被压 → 非法)。
+  // 皮肤是**全局**的(一个旋钮全窗一个档位),所以卡片同样必须把三件事说全。
+  const skinEntries = contributes?.skin ?? []
+  const activeSkin = skinEntries.filter(entry => entry.status === 'active')
+  if (activeSkin.length) summary.push(skinNote(activeSkin))
+  const inactiveSkin = skinEntries.filter(entry => entry.status === 'inactive')
+  if (inactiveSkin.length) {
+    summary.push(`${skinNote(inactiveSkin)} — inactive while disabled`)
+  }
+  for (const entry of skinEntries.filter(item => item.status === 'shadowed')) {
+    summary.push(`skin "${entry.knob}" overridden by "${entry.shadowedBy}"`)
+  }
+  for (const entry of skinEntries.filter(item => item.status === 'invalid')) {
+    summary.push(entry.reason === 'unknown-knob'
+      ? `skin "${entry.knob}" dropped — not a skin option`
+      : `skin "${entry.knob}" dropped — "${entry.tier}" is not one of its presets`)
   }
   // 背景层(G 期):与 token 覆盖同一条呈现规矩 —— 生效 / 被压 / 停用中 / 非法,
   // 四态都要说得出来。背景全局只有一块,所以这里是单条而不是一串。
@@ -1663,8 +1712,16 @@ async function updatePlugin(plugin: PluginInfo): Promise<void> {
  * 数组(需要全体插件才算得出谁压谁),manifest 原文是 `{ overrides: {...} }`。
  * 装前确认页只能说"它声明要改哪几个 token" —— 还没装,谈不上生效与被压。
  */
-type MarketContributes = Omit<NonNullable<PluginInfo['contributes']>, 'theme' | 'background' | 'ambient'> & {
-  theme?: { overrides?: Record<string, string>; background?: { image?: string } }
+type MarketContributes = Omit<
+  NonNullable<PluginInfo['contributes']>,
+  'theme' | 'background' | 'ambient' | 'skin'
+> & {
+  // `skin` 同理(H3):投影后是逐条裁决的数组,manifest 原文是 `{ 旋钮: 档位 }`。
+  theme?: {
+    overrides?: Record<string, string>
+    background?: { image?: string }
+    skin?: Record<string, string>
+  }
   // 氛围层(G2):市场那条路吃 manifest 原文,声明形状是 `{ entry }`,不是投影后
   // 的裁决 —— 装前只能说"它声明要在窗口上画动效",还没装,谈不上生效与被压。
   ambient?: { entry?: string }
@@ -1742,6 +1799,12 @@ function declaredContributions(entry: { contributes?: MarketContributes; minAppV
   // 覆盖是全局的,装完再发现比装前拒绝贵得多。
   const declaredTokens = Object.keys(contributes?.theme?.overrides ?? {})
   if (declaredTokens.length) declares.push(themeOverrideNote(declaredTokens))
+  // 皮肤包(H3):装前就要说清"它会改界面的形状(气泡圆角…)"。皮肤同样是全局的,
+  // 与配色分两句说 —— 用户对"改颜色"和"改形状"的容忍度不是一回事。这条路吃
+  // manifest 原文,所以档位合法性要等装上之后才裁决得出,这里照念声明值。
+  const declaredSkin = Object.entries(contributes?.theme?.skin ?? {})
+    .map(([knob, tier]) => ({ knob, tier: String(tier) }))
+  if (declaredSkin.length) declares.push(skinNote(declaredSkin))
   // 背景层(G 期):装前就要说清"它会给你的应用铺一张背景图"。这条路吃的是
   // manifest 原文,所以判据只看"声明了没有" —— 合法性要等装上之后才裁决得出。
   if (contributes?.theme?.background) declares.push(BACKGROUND_NOTE)

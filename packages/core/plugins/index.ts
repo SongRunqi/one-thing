@@ -49,6 +49,7 @@ export {
 export type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
 export {
   CSS_NAMED_COLORS,
+  PLUGIN_SKIN_MAX_ENTRIES,
   PLUGIN_THEME_COLOR_MAX_LENGTH,
   PLUGIN_THEME_OVERRIDE_MAX_ENTRIES,
   isPluginThemeColorValue,
