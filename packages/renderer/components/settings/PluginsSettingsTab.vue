@@ -240,12 +240,15 @@
                     :label="field.label + (field.required ? ' *' : '')"
                     :hint="fieldError(plugin, field.key) || field.hint"
                   >
+                    <!-- 非整数字段不给 step 就会回退成 1,0~1 的比例字段(透明度、
+                         模糊度一类)于是只能在 0 和 1 之间跳,箭头点不出中间值。
+                         量程落在 0~1 时给 0.05,其余非整数维持默认。 -->
                     <InputNumber
                       v-if="field.control === 'number'"
                       :model-value="Number(draftFor(plugin)[field.key])"
                       :min="field.minimum"
                       :max="field.maximum"
-                      :step="field.integer ? 1 : undefined"
+                      :step="numberFieldStep(field)"
                       :disabled="!isConfigEditable(plugin)"
                       :aria-label="field.label"
                       @update:model-value="setDraft(plugin, field.key, Number($event))"
@@ -905,6 +908,17 @@ const savedTimers = new Map<string, ReturnType<typeof setTimeout>>()
  */
 function isConfigEditable(plugin: PluginInfo): boolean {
   return plugin.configEditable ?? (platformApi.environment !== 'web')
+}
+
+/**
+ * InputNumber 的 step:整数字段 1;量程恰好落在 0~1 的比例字段(插件里的
+ * 透明度、模糊度一类)给 0.05 —— 不给 step 会回退成 1,箭头只能在 0 和 1
+ * 之间跳,中间值根本点不出来。其余非整数字段维持组件默认。
+ */
+function numberFieldStep(field: PluginConfigFieldDescriptor): number | undefined {
+  if (field.integer) return 1
+  if (field.minimum === 0 && field.maximum === 1) return 0.05
+  return undefined
 }
 
 function fieldKey(plugin: PluginInfo, key: string): string {
