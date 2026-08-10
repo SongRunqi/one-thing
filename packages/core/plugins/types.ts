@@ -6,7 +6,7 @@ import type { CorePluginStorage } from './storage.js'
 import type { PluginNotifyOptions } from './notify-sound.js'
 import type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
 import type { CorePluginPanelRegistration } from './panel.js'
-import type { CorePluginUiSlotRegistration } from './ui-anchor.js'
+import type { CorePluginUiSlotRegistration, PluginLayoutResult } from './ui-anchor.js'
 import type { CorePluginSearchProviderRegistration } from './search-provider.js'
 import type {
   PluginSendMessageOptions,
@@ -374,6 +374,25 @@ export interface MinimalCorePluginUI {
    */
   notify(message: string, level?: 'info' | 'warn' | 'error'): void
   notify(message: string, options: PluginNotifyOptions): void
+  /**
+   * 开合左栏(I 期)。
+   *
+   * **没有 manifest 权限门**:"能不能开合侧栏"不是一种数据访问,申报了用户
+   * 也看不出它会在什么时候动。治理走**手势锚定** —— 只在这个插件刚刚收到
+   * 一次 `ui:action` 派发之后的 5 秒内有效(`PLUGIN_LAYOUT_GESTURE_WINDOW_MS`)。
+   *
+   * 窗外调用回 `{ ok: false, error: 'gesture-required' }`,没有窗口的宿主
+   * (CLI daemon / headless server)回 `'unsupported'`。**两种都是规则拒绝,
+   * 不计熔断**(与声明门同规:插件没坏,是规则不让)。从不抛错。
+   */
+  toggleSidebar(): Promise<PluginLayoutResult>
+  /**
+   * 展开右工作台(I 期)。不传 `panelId` = 只展开;传了 = 同时聚焦该插件
+   * 声明了 `placements: ['workbench']` 的那个面板 tab(复用 H1 的打开路径)。
+   *
+   * 手势锚定与错误码同 `toggleSidebar`。
+   */
+  openWorkbench(panelId?: string): Promise<PluginLayoutResult>
 }
 
 /**

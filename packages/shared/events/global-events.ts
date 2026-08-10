@@ -87,9 +87,21 @@ export interface PluginNotificationEvent {
    * `plugin-panel-refresh:log-monitor:logs` 弹窗;message 里那串是给日志看的
    * 地址,不是给人读的句子。给人看的通知(api.ui.notify、熔断告警)不带 kind。
    */
-  kind?: 'config-changed' | 'panel-refresh' | 'catalog-changed'
+  kind?: 'config-changed' | 'panel-refresh' | 'catalog-changed' | 'layout'
   /** kind = panel-refresh 时的面板 id。 */
   panelId?: string
+  /**
+   * kind = layout 时的布局动词(I 期,`api.ui.toggleSidebar` / `openWorkbench`)。
+   *
+   * 搭既有这班车而不是新开一条通道:带 kind 的通知本来就是"机械信号,不弹
+   * toast",新增一个 kind 因此不动 toast 那一侧一行代码。**手势闸与
+   * unsupported 都在主进程判完了**,过线的每一条都是已放行的命令。
+   */
+  layout?: {
+    verb: 'toggle-sidebar' | 'open-workbench'
+    /** open-workbench 才有:要聚焦的插件面板 id(缺省 = 只展开右栏)。 */
+    panelId?: string
+  }
   /**
    * 提示音(M1)——**宿主裁决后的结果**:枚举校验、静音、限频都已经在装配层
    * 算完。省略 = 不出声,与 M1 之前逐字节一致。机械信号(带 kind 的那些)永远

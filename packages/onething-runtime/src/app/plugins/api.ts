@@ -26,6 +26,7 @@ import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './not
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
 import { registerPluginSearchProvider } from '../search/plugin-search-registry.js'
+import { forgetUiActionGestures } from '@onething/core/plugins'
 import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
 import {
@@ -452,6 +453,29 @@ export function createPluginAPI(
           sound: resolvePluginNotifySound(id, sound),
         })
       },
+      /**
+       * 布局动词的投递(I 期)。
+       *
+       * **零新通道**:搭的是 panel-refresh / catalog-changed 那班既有的
+       * `plugin:notification` 车 —— 带 `kind` 的通知是**机械信号**,renderer
+       * 一律不弹 toast(判据是"有没有 kind",不是白名单),于是新增一个 kind
+       * 不需要动 toast 那一侧的任何代码。
+       *
+       * 手势闸与 unsupported 都在 core 判完了:这里只负责把结论发出去。
+       * 广播到所有窗口 —— "开合侧栏"是每个窗口自己的布局,谁在前台谁响应。
+       */
+      applyLayoutVerb(id, verb, panelId) {
+        eventBus.emitGlobal({
+          type: 'plugin:notification',
+          pluginId: id,
+          // message 是机器串(与 panel-refresh 同款):有 kind 就不给人看,
+          // 但日志与调试里要认得出是哪一条。
+          message: `plugin-layout:${verb}${panelId ? `:${panelId}` : ''}`,
+          level: 'info',
+          kind: 'layout',
+          layout: { verb, ...(panelId ? { panelId } : {}) },
+        })
+      },
       getPluginConfig: getEffectivePluginConfig,
       onPluginConfigChange: subscribePluginConfigChange,
       /**
@@ -520,6 +544,10 @@ export function createPluginAPI(
     // 同理:限频账是内存态,拆除即清。留着的话"停用→立刻启用"的第一声会被
     // 上一条生命周期里的时间戳吃掉,看起来像声音坏了。
     forgetPluginNotifySoundThrottle(pluginId)
+    // 同理:手势账也是内存态,拆除即清。留着的话"停用 → 立刻启用"会带回
+    // 上一条生命周期里的手势,一个刚装回来的插件能在用户什么都没点的情况下
+    // 先弹一次工作台 —— 那正是手势锚定要挡住的那件事。
+    forgetUiActionGestures(pluginId)
   })
   // 轻通道(本地单文件脚本):把交给 entry 的 api 物理收窄。state 不动 —— 宿主侧
   // 拆除/清扫读的是 state.api(完整),插件侧拿到的是窄化面。

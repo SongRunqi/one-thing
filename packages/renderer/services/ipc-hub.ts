@@ -344,6 +344,19 @@ export function initializeIPCHub() {
       // 主进程判过了(判两遍 = 两份口径,多窗口下还会各响一次)。
       playPluginNotifySound(payload.sound)
     }
+    // 布局动词(I 期):同一条通知轨上的另一种机械信号。手势闸与 unsupported
+    // 都在主进程判完了,这里只负责把动词交给持有布局的那一层(App.vue)——
+    // 深在组件树里的 ipc-hub 够不着侧栏/右栏的状态,与 practice/todo-plan 同款
+    // window 事件解耦线路。
+    if (payload.kind === 'layout') {
+      if (payload.layout?.verb) {
+        window.dispatchEvent(new CustomEvent('onething:plugin-layout', {
+          detail: { ...payload.layout, pluginId: payload.pluginId },
+        }))
+      }
+      // 布局动词与插件清单无关 —— 不该顺手触发一次面板重拉。
+      return
+    }
     // 面板清单只有**一条**重拉路径:派发 onething:plugins-changed,由下面那个
     // 唯一的监听器去拉。此前这里既直接调 refresh 又派发事件,同一条通知会拉两次。
     if (payload.kind !== 'panel-refresh') {

@@ -235,6 +235,77 @@ export function uiSlotMaxWidth(anchor: string): number | undefined {
   return isUiAnchor(anchor) ? capacityOf(anchor).maxWidth : undefined
 }
 
+// ── 布局动词与手势锚定(I 期) ────────────────
+
+/**
+ * 插件可以请求的两件**布局**事:开合左栏、打开右工作台。
+ *
+ * 它们和其余 API 面有一个本质区别:**没有可申报的权限门**。"能不能开合侧栏"
+ * 不是一种数据访问,写在 manifest 里也只是一句"我想要",用户看不出它会在
+ * 什么时候动。于是治理不走声明门,走**手势锚定**:动词只在用户刚刚点过这个
+ * 插件的东西之后的一小段时间里有效。
+ */
+export type PluginLayoutVerb = 'toggle-sidebar' | 'open-workbench'
+
+/** 拒绝的两种理由 —— **都是规则拒绝,不是插件故障**,一律不计熔断。 */
+export type PluginLayoutRejection =
+  /** 窗外调用:用户没有刚刚点过这个插件的东西。 */
+  | 'gesture-required'
+  /** 这个宿主没有布局这回事(CLI daemon / headless server 没有窗口)。 */
+  | 'unsupported'
+
+/**
+ * 结构化结果 —— 与 N1 的 sendMessage 同规:**从不抛错**,回一份带理由的结果。
+ * 插件必须**感知得到**自己被拒了以及为什么,否则它只会以为"开出去了"。
+ */
+export interface PluginLayoutResult {
+  ok: boolean
+  error?: PluginLayoutRejection
+  reason?: string
+}
+
+/**
+ * 手势窗口(ms)。
+ *
+ * 5 秒:够一次"点了块里的按钮 → 宿主拉 onAction → 插件算完 → 请求开工作台"
+ * 的往返(含一次网络/磁盘读),又短到用户不会把几分钟后突然跳出来的面板
+ * 与自己刚才那一下联系不起来。
+ */
+export const PLUGIN_LAYOUT_GESTURE_WINDOW_MS = 5_000
+
+/**
+ * 每个插件最近一次收到 `ui:action` 派发的时刻。
+ *
+ * 记在**主进程**(core 与装配层同进程):renderer 侧记账的话,一个多窗口
+ * 的宿主会有几份互相不认识的账,而"用户点过没有"是一件全局事实。
+ * 只记一个时间戳,不记是哪个块 —— 手势锚定要回答的问题是"用户刚刚在跟这个
+ * 插件互动吗",不是"是哪一次互动"。
+ */
+const uiActionGestures = new Map<string, number>()
+
+/** 宿主派发了一次 `ui:action` —— 由 api-builder 的块 action 包装层调用。 */
+export function noteUiActionGesture(pluginId: string, now: number = Date.now()): void {
+  if (!pluginId) return
+  uiActionGestures.set(pluginId, now)
+}
+
+/** 现在还在这个插件的手势窗口里吗。 */
+export function hasFreshUiActionGesture(pluginId: string, now: number = Date.now()): boolean {
+  const last = uiActionGestures.get(pluginId)
+  return last !== undefined && now - last >= 0 && now - last <= PLUGIN_LAYOUT_GESTURE_WINDOW_MS
+}
+
+/**
+ * 拆除面:插件停用/卸载即清账(不传 pluginId = 全清,测试用)。
+ *
+ * 留着的话"停用 → 立刻启用"会带回上一条生命周期里的手势,一个刚装回来的
+ * 插件能在用户什么都没点的情况下先弹一次工作台。
+ */
+export function forgetUiActionGestures(pluginId?: string): void {
+  if (pluginId === undefined) uiActionGestures.clear()
+  else uiActionGestures.delete(pluginId)
+}
+
 // ── 抽屉形态(F 期) ─────────────────────────
 
 /**

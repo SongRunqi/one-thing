@@ -436,6 +436,54 @@ api.registerUiSlot({
   未知值(未来新档)在老宿主上读成 `undefined` = 半收,向后兼容白送。
 - 全收的块**不占** `composer.above` 的 3 块容量 —— 你收起来,别人顶上来。
 
+## 布局动词:开合侧栏、打开工作台(手势锚定)
+
+两个动词,都在 `api.ui` 上:
+
+```js
+await api.ui.toggleSidebar()          // 开合左栏
+await api.ui.openWorkbench()          // 只展开右工作台
+await api.ui.openWorkbench('logs')    // 展开 + 聚焦你自己的这个面板 tab
+```
+
+**它们没有 manifest 权限**,治理走的是另一条路 —— **手势锚定**:
+
+> 布局动词只在**你的某个 ui slot 刚刚被用户点过**之后的 **5 秒**内有效。
+
+理由:一句"我要能开合侧栏"申报在 manifest 里,用户读不出它会在**什么时候**
+动;而"你刚点了它、它才动得了"是用户当场就能验证的因果。所以授权从一次性的
+申报,挪到了每一次的互动。
+
+- **窗内**(在 `registerUiSlot` 的 `onAction` 里调,或它触发的异步收尾里):照常生效。
+- **窗外**(定时器里、事件订阅里、启动时):回
+  `{ ok: false, error: 'gesture-required' }`。
+- **没有窗口的宿主**(CLI daemon、headless server):回
+  `{ ok: false, error: 'unsupported' }`。
+
+两种错误码**都是规则拒绝,不是你的插件故障** —— 它们不计熔断、不会让你被
+自动停用,而且**从不抛错**:动词永远回一份结果,你得自己看 `ok`。
+
+```js
+api.registerUiSlot({
+  anchor: 'composer.above',
+  id: 'plan',
+  render: () => ({ /* … */ }),
+  async onAction({ actionId }) {
+    if (actionId !== 'open-details') return
+    const result = await api.ui.openWorkbench('plan-details')
+    if (!result.ok) api.ui.notify(`打不开:${result.error}`, 'warn')
+  },
+})
+```
+
+两条容易踩的:
+
+- **`render` 不算手势**。宿主重画你的块不等于用户点了它 —— 否则每次重拉都
+  等于开一次门。只有 `ui:action`(块里的按钮、trigger 弹层里的操作)记账。
+- **`openWorkbench(panelId)` 只认你自己的面板**,而且那个面板必须在
+  `contributes.panels[].placements` 里声明了 `'workbench'`。传别人的 id 不会
+  报错,只是什么也不会发生(右栏仍然展开)。
+
 ## 样式与动画:你能改颜色,不能写动画
 
 **默认就跟随主题**:描述树的每个节点都用宿主的 `--ui-*` 变量画,用户切深色

@@ -265,6 +265,8 @@ import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/
 import { platformApi } from '@/platform'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import {
+  pluginPanelHasPlacement,
+  usePluginWorkspacePanels,
   workspacePanelWindowEvent,
   type WorkspaceNavId,
 } from '@/workspace/panel-registry'
@@ -380,6 +382,8 @@ const pluginBackgroundStyle = computed<Record<string, string>>(() => {
   return style
 })
 const rightWorkbenchRef = ref<InstanceType<typeof RightWorkbenchPanel> | null>(null)
+/** 插件面板清单(H1 投影)—— 布局动词按它把 panelId 解成一个真面板。 */
+const pluginWorkspacePanels = usePluginWorkspacePanels()
 const inspectorOpen = computed({
   get: () => chatStore.inspectorOpen,
   set: (val) => { chatStore.inspectorOpen = val }
@@ -914,7 +918,38 @@ async function focusCardInRightWorkbench(taskId: string) {
   rightWorkbenchRef.value?.openBoard()
 }
 
+/**
+ * 插件布局动词的落点(I 期,`api.ui.toggleSidebar` / `api.ui.openWorkbench`)。
+ *
+ * 手势闸(5s 窗口)与 unsupported 都在**主进程**判完了 —— 到这里的每一条都是
+ * 已经放行的命令,renderer 不再判第二遍(判两遍 = 两份口径,多窗口下还会各判
+ * 一次)。这里只做一件事:把动词接到侧栏/右栏**既有**的那两个动作上。
+ *
+ * 辅助窗口(设置/搜索/todo)没有这套布局,直接忽略。
+ */
+async function handlePluginLayout(event: Event) {
+  if (isAuxiliaryWindow.value) return
+  const detail = (event as CustomEvent<{ verb?: string; panelId?: string; pluginId?: string }>).detail
+  if (detail?.verb === 'toggle-sidebar') {
+    handleSidebarToggle()
+    return
+  }
+  if (detail?.verb !== 'open-workbench') return
+  inspectorOpen.value = true
+  if (!detail.panelId) return
+  await nextTick()
+  // 面板 tab 走 H1 既有的打开路径。**只认自己的面板、只认声明了 workbench 位的
+  // 那些**:插件不能借这条动词把别人的面板顶到前台。标题从清单现取,不信
+  // 插件传来的字(入口文案永远来自 manifest 投影)。
+  const panel = pluginWorkspacePanels.value.find(item =>
+    item.pluginId === detail.pluginId
+    && item.panelId === detail.panelId
+    && pluginPanelHasPlacement(item, 'workbench'))
+  if (panel) rightWorkbenchRef.value?.openPluginTab(panel.pluginId, panel.panelId, panel.label)
+}
+
 onMounted(() => {
+  window.addEventListener('onething:plugin-layout', handlePluginLayout)
   window.addEventListener('onething:collab-open-board', () => { void openBoardInRightWorkbench() })
   window.addEventListener('onething:room-workbench', handleRoomWorkbench)
   window.addEventListener('onething:collab-open-folder', event => {
@@ -1344,6 +1379,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('onething:plugin-layout', handlePluginLayout)
   window.removeEventListener('onething:room-workbench', handleRoomWorkbench)
   window.removeEventListener('hashchange', syncCurrentHash)
   window.removeEventListener('focus', handleWindowFocused)

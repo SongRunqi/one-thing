@@ -76,9 +76,23 @@ export interface PluginNotificationPayload {
 	 * 保存是用户自己点的,再弹一条就是噪音。
 	 * `panel-refresh` 同理:插件说"我的面板该重画了",带 panelId。
 	 */
-	kind?: "config-changed" | "panel-refresh" | "catalog-changed";
+	kind?: "config-changed" | "panel-refresh" | "catalog-changed" | "layout";
 	/** kind = panel-refresh 时的面板 id。 */
 	panelId?: string;
+	/**
+	 * kind = layout 时的布局动词(I 期)。
+	 *
+	 * 搭的是同一条 `plugin:notification` 车而不是新开一条 IPC 家族:带 kind 的
+	 * 通知本来就是"机械信号,不弹 toast",新增一个 kind 因此不动 toast 那一侧。
+	 *
+	 * **手势闸与 unsupported 都在主进程判完了** —— renderer 见到这条消息就执行,
+	 * 不再判第二遍(判两遍 = 两份口径,多窗口下还会各判一次)。
+	 */
+	layout?: {
+		verb: "toggle-sidebar" | "open-workbench";
+		/** open-workbench 才有:要聚焦的插件面板 id(缺省 = 只展开右栏)。 */
+		panelId?: string;
+	};
 	/**
 	 * 这一条要不要出声(M1)—— **宿主已经裁决完的结果**,不是插件的请求。
 	 *

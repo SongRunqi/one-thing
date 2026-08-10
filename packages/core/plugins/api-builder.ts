@@ -20,15 +20,20 @@ import {
   type CorePluginPanelRegistration,
 } from './panel.js'
 import {
+  PLUGIN_LAYOUT_GESTURE_WINDOW_MS,
   PLUGIN_UI_INVOKE_ACTION,
   PLUGIN_UI_RENDER_ACTION,
+  hasFreshUiActionGesture,
   isReservedPluginUiAction,
   isUiAnchor,
   isUiDrawerRenderState,
+  noteUiActionGesture,
   uiSlotAddress,
   uiSlotSurfaceId,
   type CorePluginUiSlotContext,
   type CorePluginUiSlotRegistration,
+  type PluginLayoutResult,
+  type PluginLayoutVerb,
 } from './ui-anchor.js'
 import {
   PLUGIN_PERMISSION_INPUT_INTERCEPT,
@@ -139,6 +144,15 @@ export interface CorePluginAPIHost<
   emitPluginEvent?(pluginId: string, eventName: string, payload: unknown): void
   /** 面板主动刷新的投递口(R5)——走既有的 plugin:notification 轨。 */
   emitPanelRefresh?(pluginId: string, panelId: string): void
+  /**
+   * 布局动词的投递口(I 期)——同样走既有的 plugin:notification 轨
+   * (kind: 'layout'),不开第二条 IPC 家族。
+   *
+   * **不接 = `unsupported`**:CLI daemon 与 headless server 没有窗口,那里
+   * "开合侧栏"不是失败,是不存在。core 据此回结构化拒绝,不抛错、不计熔断。
+   * 手势闸在 core 判完才会走到这里 —— 宿主不必再判一次。
+   */
+  applyLayoutVerb?(pluginId: string, verb: PluginLayoutVerb, panelId?: string): void
   /**
    * 流状态的投递口(R6)——走既有的 `content:part` 会话事件。
    *
@@ -495,6 +509,54 @@ export function createCorePluginAPI<
       undefined,
     )
     return false
+  }
+
+  /**
+   * 布局动词的**唯一**闸(I 期)。
+   *
+   * 三条判据按代价排序,全部是**规则拒绝**,一条都不计熔断 ——
+   * 与声明门同规:插件没坏,是规则不让它这么干。
+   *
+   *  1. 拆除之后的晚到调用:静默丢(rejectLateCall 已经记过一条日志);
+   *  2. 宿主没接这条线(CLI daemon / headless server 没有窗口):`unsupported`;
+   *  3. 不在手势窗口里:`gesture-required`。
+   *
+   * 治理为什么是手势而不是 manifest 权限:一句"我要能开合侧栏"用户读不出
+   * 它会在**什么时候**动;而"你刚点了它、它才动得了"是用户当场就能验证的
+   * 因果 —— 把授权从一次性的申报挪到每一次的互动。
+   */
+  async function runLayoutVerb(
+    verb: PluginLayoutVerb,
+    panelId?: string,
+  ): Promise<PluginLayoutResult> {
+    if (rejectLateCall(`ui.${verb}`)) {
+      return { ok: false, error: 'unsupported', reason: 'plugin was torn down' }
+    }
+    if (!host.applyLayoutVerb) {
+      return { ok: false, error: 'unsupported', reason: 'this host has no window layout' }
+    }
+    if (!hasFreshUiActionGesture(pluginId)) {
+      logger.error(
+        `[Plugin:${pluginId}] ui.${verb} was refused: layout verbs only work within `
+        + `${PLUGIN_LAYOUT_GESTURE_WINDOW_MS}ms of the user interacting with one of your `
+        + 'ui slots (gesture anchoring). Call it from a ui slot onAction, not on a timer.',
+        undefined,
+      )
+      return {
+        ok: false,
+        error: 'gesture-required',
+        reason: `no user gesture on this plugin within ${PLUGIN_LAYOUT_GESTURE_WINDOW_MS}ms`,
+      }
+    }
+    try {
+      host.applyLayoutVerb(pluginId, verb, panelId)
+      return { ok: true }
+    } catch (error) {
+      // 投递失败是**宿主侧**的故障,不是规则拒绝 —— 但也不该炸掉插件:
+      // 与 notify 同规,记一条日志、回一份失败结果。
+      logger.error(`[Plugin:${pluginId}] ui.${verb} failed:`, error)
+      return { ok: false, error: 'unsupported', reason: 'host refused the layout command' }
+    }
   }
 
   async function peekSessionForPlugin(sessionId: string): Promise<PluginSessionPeek | null> {
@@ -1097,6 +1159,11 @@ export function createCorePluginAPI<
         registration.render(withSession(slotContext(ctx), payload)))
 
       requestHandlers.set(`${PLUGIN_UI_INVOKE_ACTION}:${address}`, async (payload, ctx) => {
+        // **手势锚定的记账点**(I 期):宿主把一次用户点击派发给了这个插件。
+        // 记在 onAction 之前,插件才能在 onAction 里同步地请求布局动词。
+        // 记的是"用户刚刚在跟这个插件互动",不是"哪一次互动" —— 因此
+        // 连没登记 onAction 的块也照记:用户确实点了它。
+        noteUiActionGesture(pluginId)
         if (!registration.onAction) return { refresh: false }
         const input = (payload ?? {}) as { actionId?: unknown; payload?: unknown }
         const actionId = String(input.actionId ?? '')
@@ -1419,6 +1486,18 @@ export function createCorePluginAPI<
         } catch (error) {
           logger.error(`[Plugin:${pluginId}] notify error:`, error)
         }
+      },
+
+      /**
+       * 布局动词(I 期)。两个动词共用一条闸,闸在 `runLayoutVerb` 里 ——
+       * 两处各写一遍判据就是两份口径的开始。
+       */
+      toggleSidebar(): Promise<PluginLayoutResult> {
+        return runLayoutVerb('toggle-sidebar')
+      },
+      openWorkbench(panelId?: string): Promise<PluginLayoutResult> {
+        const target = String(panelId ?? '').trim()
+        return runLayoutVerb('open-workbench', target || undefined)
       },
     },
   } as unknown as TApi

@@ -435,6 +435,7 @@ export type {
   PluginPanelTree,
 } from './panel.js'
 export {
+  PLUGIN_LAYOUT_GESTURE_WINDOW_MS,
   PLUGIN_UI_INVOKE_ACTION,
   PLUGIN_UI_RENDER_ACTION,
   UI_ANCHORS,
@@ -442,6 +443,9 @@ export {
   UI_DRAWER_DEFAULT_STATE,
   UI_SLOT_DEFAULT_SIDE,
   assertUiAnchorRegistryConsistency,
+  forgetUiActionGestures,
+  hasFreshUiActionGesture,
+  noteUiActionGesture,
   isEffectiveUiDrawerSlot,
   isIgnoredUiDrawerDeclaration,
   isIgnoredUiSlotSideDeclaration,
@@ -465,6 +469,9 @@ export type {
   UiAnchor,
   UiAnchorCapacity,
   UiAnchorKind,
+  PluginLayoutRejection,
+  PluginLayoutResult,
+  PluginLayoutVerb,
   UiDrawerRenderState,
   UiDrawerState,
   UiSlotSide,
