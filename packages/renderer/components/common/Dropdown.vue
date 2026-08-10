@@ -43,10 +43,15 @@
                它本来就更合适,不再是绕坑。见 docs/design/ui-system.md §1。 -->
           <button
             type="button"
-            :class="['app-context-item', { danger: item.danger }]"
+            :class="['app-context-item', { danger: item.danger, 'has-submenu': hasChildren(item) }]"
             role="menuitem"
             :disabled="item.disabled"
-            @click="onSelect(item)"
+            :aria-haspopup="hasChildren(item) ? 'menu' : undefined"
+            :aria-expanded="hasChildren(item) ? (openSubmenuId === item.id) : undefined"
+            @click="onSelect(item, $event)"
+            @mouseenter="onRowEnter(item, $event)"
+            @mouseleave="onRowLeave(item, $event)"
+            @keydown.right="hasChildren(item) && openSubmenu(item, $event)"
           >
             <component
               :is="item.icon"
@@ -55,8 +60,37 @@
               :stroke-width="2"
             />
             <span>{{ item.label }}</span>
+            <ChevronRight
+              v-if="hasChildren(item)"
+              class="app-context-item-chevron"
+              :size="13"
+              :stroke-width="2"
+            />
           </button>
         </template>
+
+        <!-- 二级浮层(G3):它是**另一层 Popover**,不是画在行里的绝对定位面 ——
+             菜单本身是 overflow 裁剪语境,画在原地必然被切。递归用自己,于是
+             三级、四级都不需要新代码。 -->
+        <Dropdown
+          v-if="openSubmenuItem"
+          ref="submenuRef"
+          :open="true"
+          :anchor="submenuAnchor"
+          :items="openSubmenuItem.children"
+          placement="right-start"
+          :offset="2"
+          :z-layer="zLayer"
+          :z-offset="zOffset + 1"
+          :base-z="baseZ"
+          :surface="surface"
+          :min-width="minWidth"
+          :transition="transition"
+          :close-on="SUBMENU_CLOSE_ON"
+          :aria-label="openSubmenuItem.label"
+          @mouseenter="cancelSubmenuTravel"
+          @select="onSubmenuSelect"
+        />
       </slot>
     </div>
   </Popover>
@@ -75,10 +109,16 @@
  * child component's root is a fragile place to hang scoped CSS (Popover's root
  * is a Teleport), and the menu keeps its own class names that consumers and
  * tests already select on.
+ *
+ * An item carrying `children` opens a second floating menu beside itself — the
+ * component recurses into itself, so depth costs no code. See `onRowEnter` for
+ * why the safe triangle is the only correct way to hover across the gap.
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { ChevronRight } from 'lucide-vue-next'
 import Popover from './Popover.vue'
 import { popoverSurfaceClasses, type PopoverSurface } from './popover-surface'
+import { buildSafeTriangle, isPointInRect, isPointInTriangle, type SafeTriangle } from './safe-triangle'
 import type { ContextMenuItem } from './context-menu'
 import type { FloatingAnchor, FloatingCloseOn, FloatingZLayer } from '@/composables/floating/useFloatingLayer'
 import type { FloatingPlacement } from '@/composables/floating/compute-position'
@@ -147,8 +187,97 @@ const isOpen = computed<boolean>({
   },
 })
 
-function onSelect(item: ContextMenuItem) {
+/* ───────────────────────── 二级浮层(G3, 2026-08-11) ─────────────────────────
+ * 悬停开、指针可以斜着走过去。斜线会扫过中间那几行 —— 光靠 mouseenter 判断,
+ * 半路就把子菜单换掉了。安全三角(./safe-triangle.ts,Tooltip 用了两年的那份)
+ * 把"从离开父行的那一点到子面板近边"的楔形认作仍在悬停,是这条路唯一正确的判法。
+ *
+ * 楔形的顶点必须是**离开父行的那一点**,不是当前指针 —— 拿当前点当顶点的话它
+ * 永远是三角形的一个顶,测试恒真,等于没有护栏。
+ */
+
+/** 停在楔形里多久算"不去了"。每次落在楔形内的移动都会重新上弦。 */
+const SUBMENU_TRAVEL_GRACE_MS = 400
+
+/** 子菜单自己不听外点/滚动:父菜单关时它跟着关,这两条会重复关两次。 */
+const SUBMENU_CLOSE_ON = Object.freeze({ esc: false, outside: false, scroll: false })
+
+const openSubmenuId = ref<string | null>(null)
+const submenuAnchor = ref<HTMLElement | null>(null)
+const submenuRef = ref<{ menuEl: HTMLElement | null } | null>(null)
+let submenuTravel: SafeTriangle | null = null
+let submenuTravelTimer: ReturnType<typeof setTimeout> | null = null
+
+function hasChildren(item: ContextMenuItem): boolean {
+  return !!item.children && item.children.length > 0
+}
+
+const openSubmenuItem = computed<ContextMenuItem | null>(
+  () => props.items.find(item => item.id === openSubmenuId.value && hasChildren(item)) ?? null,
+)
+
+function cancelSubmenuTravel() {
+  if (submenuTravelTimer) clearTimeout(submenuTravelTimer)
+  submenuTravelTimer = null
+  submenuTravel = null
+}
+
+function closeSubmenu() {
+  cancelSubmenuTravel()
+  openSubmenuId.value = null
+  submenuAnchor.value = null
+}
+
+function openSubmenu(item: ContextMenuItem, event: Event) {
   if (item.disabled) return
+  cancelSubmenuTravel()
+  submenuAnchor.value = event.currentTarget as HTMLElement
+  openSubmenuId.value = item.id
+}
+
+function onRowEnter(item: ContextMenuItem, event: MouseEvent) {
+  if (hasChildren(item)) {
+    openSubmenu(item, event)
+    return
+  }
+  if (!openSubmenuId.value) return
+  // 正走向已开的子面板:楔形里(或已经贴到面板边上)就不打断。
+  const panel = submenuRef.value?.menuEl?.getBoundingClientRect()
+  const point = { x: event.clientX, y: event.clientY }
+  if (panel && isPointInRect(point, panel, 8)) return
+  if (submenuTravel && isPointInTriangle(point, submenuTravel)) {
+    if (panel) submenuTravel = buildSafeTriangle(point, panel, 'right')
+    if (submenuTravelTimer) clearTimeout(submenuTravelTimer)
+    submenuTravelTimer = setTimeout(closeSubmenu, SUBMENU_TRAVEL_GRACE_MS)
+    return
+  }
+  closeSubmenu()
+}
+
+function onRowLeave(item: ContextMenuItem, event: MouseEvent) {
+  if (!hasChildren(item) || openSubmenuId.value !== item.id) return
+  const panel = submenuRef.value?.menuEl?.getBoundingClientRect()
+  if (!panel) return
+  submenuTravel = buildSafeTriangle({ x: event.clientX, y: event.clientY }, panel, 'right')
+  if (submenuTravelTimer) clearTimeout(submenuTravelTimer)
+  submenuTravelTimer = setTimeout(closeSubmenu, SUBMENU_TRAVEL_GRACE_MS)
+}
+
+/** 叶子行才发 `select` —— 处理器因此永远不必知道这一行藏在第几层。 */
+function onSubmenuSelect(id: string) {
+  closeSubmenu()
+  emit('select', id)
+  isOpen.value = false
+  emit('close')
+}
+
+function onSelect(item: ContextMenuItem, event: MouseEvent) {
+  if (item.disabled) return
+  if (hasChildren(item)) {
+    // 有子项的行不是动作,是一道门:点击等于把门推开(键盘 → 同理)。
+    openSubmenu(item, event)
+    return
+  }
   emit('select', item.id)
   isOpen.value = false
   emit('close')
@@ -180,6 +309,16 @@ function moveFocus(delta: number | 'first' | 'last') {
  *  first ↓. One listener only — two would move the focus twice per press. */
 function handleMenuKey(event: KeyboardEvent) {
   if (!isOpen.value) return
+  // 子菜单开着时,方向键归它 —— 两层各自装一个 window 监听,不让位就每按一下
+  // 走两格。← 是回到父层的那一步,所以它由父层收。
+  if (openSubmenuId.value) {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      closeSubmenu()
+      ;(submenuAnchor.value as HTMLElement | null)?.focus()
+    }
+    return
+  }
   switch (event.key) {
     case 'ArrowDown':
       event.preventDefault()
@@ -204,10 +343,19 @@ function handleMenuKey(event: KeyboardEvent) {
 
 watch(isOpen, (open) => {
   if (open) window.addEventListener('keydown', handleMenuKey, true)
-  else window.removeEventListener('keydown', handleMenuKey, true)
+  else {
+    window.removeEventListener('keydown', handleMenuKey, true)
+    closeSubmenu()
+  }
 }, { immediate: true })
 
-onBeforeUnmount(() => window.removeEventListener('keydown', handleMenuKey, true))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleMenuKey, true)
+  cancelSubmenuTravel()
+})
+
+/** 二级浮层要量父面板的 rect(安全三角),所以父层把自己的面板元素露出来。 */
+defineExpose({ menuEl: menuRef })
 </script>
 
 <style scoped>
@@ -305,6 +453,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleMenuKey, true)
 
 .app-context-item svg {
   flex: 0 0 auto;
+}
+
+/* 有子项的行:右端一枚人字符号,和"这一行是道门"是同一件事(G3)。 */
+.app-context-item-chevron {
+  margin-left: auto;
+  opacity: 0.6;
+}
+
+.app-context-item.has-submenu[aria-expanded='true'] .app-context-item-chevron,
+.app-context-item.has-submenu:hover .app-context-item-chevron {
+  opacity: 1;
 }
 
 .app-context-divider {
