@@ -1570,7 +1570,14 @@ html[data-theme='dark'] .app-background-layer {
 
 .app-content.has-plugin-background,
 .app-content.has-plugin-background :deep(.app-main-region),
-.app-content.has-plugin-background :deep(.chat-container-wrapper) {
+.app-content.has-plugin-background :deep(.chat-container-wrapper),
+/* 两种形态外壳的包装树(workspace-view-stack / app-shell splitter):它们晚于
+   G 期出生,各自把 --ui-bg 画成不透明底,恰好整张盖住 z0 的背景层 —— 真机
+   排查实录 2026-08-10:图正常加载、图层正常挂载,肉眼却什么都没有。
+   透明化白名单是**枚举制**,新的不透明包装元素进树时必须来这里登记一行
+   (类不存在时选择器惰性,不伤任何布局)。 */
+.app-content.has-plugin-background :deep(.workspace-view-stack),
+.app-content.has-plugin-background :deep(.app-shell) {
   background: transparent;
 }
 
