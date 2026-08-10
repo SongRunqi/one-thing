@@ -10,6 +10,7 @@
  *  - 没有 pluginId → 按钮置灰,点了也不拉对话框。
  */
 import { mount } from '@vue/test-utils'
+import { reactive } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const pickPluginFile = vi.fn()
@@ -64,6 +65,18 @@ describe('file-pick node', () => {
       maxBytes: 5_000_000,
       label: 'Choose wallpaper',
     })
+  })
+
+  it('IPC 参数能过结构化克隆(真机回归:响应式树的 accept 是 Proxy,直递会炸 "An object can\'t be cloned")', async () => {
+    pickPluginFile.mockResolvedValue({ canceled: true })
+    // 生产里节点来自响应式描述树 —— 用 reactive 复现,mock 捕获实参后真跑一次
+    // structuredClone:边界铁律(plain-data.ts)被绕开时这条当场红。
+    const reactiveNode = reactive({ ...NODE, accept: ['png', 'webp'] })
+    const wrapper = mount(PluginPanelNode, { props: { node: reactiveNode as never, pluginId: 'ink' } })
+    await wrapper.find('button').trigger('click')
+    const arg = pickPluginFile.mock.calls[0][0]
+    expect(() => structuredClone(arg)).not.toThrow()
+    expect(arg.accept).toEqual(['png', 'webp'])
   })
 
   it('成功:发 action,payload 是地址而不是字节', async () => {
