@@ -57,13 +57,6 @@ const props = defineProps<{
 const AMBIENT_ANCHOR_ENTRIES = Object.entries(PLUGIN_AMBIENT_ANCHORS)
 
 /**
- * 进出场侦测的宿主容器:首批词表全在输入区包络内,盯它一个就够
- * (设计文档 §4.4)。找不到时退化为只靠 resize / ResizeObserver —— 氛围是
- * 装饰,少一路侦测只是慢半拍,不是错误。
- */
-const AMBIENT_MUTATION_ROOT = '[data-ambient-anchor="composer"]'
-
-/**
  * 握手预算。给得宽:iframe 要起 canvas、建粒子系统。超时不是"慢",是"这一页
  * 大概率没起来" —— 装饰层里这只意味着"这次没有氛围",静默即可。
  */
@@ -88,8 +81,6 @@ let resizeObserver: ResizeObserver | null = null
 /** 此刻被 ResizeObserver 盯着的地标元素集合(每次测量后 diff 重对准)。 */
 let observedAnchors = new Set<Element>()
 let mutationObserver: MutationObserver | null = null
-/** MutationObserver 当前挂着的宿主容器(会话切换会换一个元素)。 */
-let mutationRoot: Element | null = null
 /** 本代 iframe 是否已经收到过词表(静态表只发一次)。 */
 let vocabularySent = false
 
@@ -193,17 +184,11 @@ function scheduleMeasure(): void {
   })
 }
 
-/** 每次测量后把两路观察都对准当前在场的地标。 */
-function syncObservation(present: readonly Element[]): void {
-  syncResizeObservation(present)
-  syncMutationObservation()
-}
-
 /**
  * 地标元素会随会话切换 / chip 出没换人 —— 观察集合每轮 diff 重对准
  * (v1 "只盯一个 composer" 的泛化版)。
  */
-function syncResizeObservation(present: readonly Element[]): void {
+function syncObservation(present: readonly Element[]): void {
   if (!resizeObserver) return
   const next = new Set(present)
   for (const el of observedAnchors) {
@@ -217,16 +202,26 @@ function syncResizeObservation(present: readonly Element[]): void {
 
 /**
  * 进出场侦测:chip / 块 v-if 掉的那一刻,旧元素的 ResizeObserver 不会响
- * (它是被删掉,不是变尺寸)。所以在宿主容器上盯 childList+subtree,
- * 回调汇进同一条 rAF 合并的测量。
+ * (它是被删掉,不是变尺寸)。
+ *
+ * MO 必须常驻 `document.body`,不能挂在 composer 容器上 —— 那个方案有两个
+ * 对称的洞,真机双双踩中(2026-08-10):空态启动时容器不存在,MO 无处可挂,
+ * 之后新建会话、composer 挂载,**没有任何信号触发重测**,surfaces 永远停在
+ * 空态那帧(雪只认窗底);反向同理,容器卸载发生在它父节点的 childList 上,
+ * 挂在容器自己身上的 MO 看不见,surfaces 滞留成死矩形。body 上 childList+
+ * subtree 常驻,两个方向都看得见;回调过滤掉纯文本变更(流式输出的字符增量
+ * 不必触发),元素级变更才汇进 rAF 合并的测量 —— querySelectorAll 只返回
+ * 在文档里的元素,重测一次即归位。
  */
-function syncMutationObservation(): void {
-  if (!mutationObserver) return
-  const root = document.querySelector(AMBIENT_MUTATION_ROOT)
-  if (root === mutationRoot) return
-  mutationObserver.disconnect()
-  mutationRoot = root
-  if (root) mutationObserver.observe(root, { childList: true, subtree: true })
+function hasElementMutation(mutations: MutationRecord[]): boolean {
+  for (const mutation of mutations) {
+    for (const list of [mutation.addedNodes, mutation.removedNodes]) {
+      for (const node of list) {
+        if (node.nodeType === 1) return true
+      }
+    }
+  }
+  return false
 }
 
 function armHandshake(): void {
@@ -318,7 +313,10 @@ onMounted(() => {
     resizeObserver.observe(document.documentElement)
   }
   if (typeof MutationObserver !== 'undefined') {
-    mutationObserver = new MutationObserver(() => scheduleMeasure())
+    mutationObserver = new MutationObserver((mutations) => {
+      if (hasElementMutation(mutations)) scheduleMeasure()
+    })
+    mutationObserver.observe(document.body, { childList: true, subtree: true })
   }
   // 观察对象先对准此刻在场的地标(几何本身要等握手,measure 自己把关)。
   syncObservation(collectGeometry().present)
@@ -342,7 +340,6 @@ onBeforeUnmount(() => {
   observedAnchors = new Set()
   mutationObserver?.disconnect()
   mutationObserver = null
-  mutationRoot = null
 })
 
 // 赢家换人(entryUrl 变)→ 换一代 iframe。同一 URL 不重置(避免无谓重载)。

@@ -335,6 +335,22 @@ describe('氛围层:观察集合泛化(RO 重对准 + MO 进出场)', () => {
     await flushPromises()
     expect(geometries(posted).length).toBeGreaterThan(1)
   })
+
+  it('空态启动后 composer 才挂载 —— 不靠 resize 也能被看见(真机回归 2026-08-10)', async () => {
+    // 病根:MO 曾挂在 composer 容器上,空态启动时容器不存在、MO 无处可挂,
+    // 新建会话后没有任何信号触发重测,surfaces 永远停在空态那帧(雪只认窗底)。
+    // MO 常驻 body 后,进场本身就是触发。
+    const { posted } = await mountReady()
+    expect(lastGeometry(posted).surfaces).toEqual([])
+
+    installComposerAnchor()
+    await flushPromises()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const last = lastGeometry(posted)
+    expect(last.surfaces.some((s: any) => s.name === 'composer')).toBe(true)
+    expect(last.composerRect).not.toBeNull()
+  })
 })
 
 describe('氛围层:pause / resume(窗口失焦/隐藏即停)', () => {
