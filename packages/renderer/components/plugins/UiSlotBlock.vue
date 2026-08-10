@@ -42,6 +42,7 @@
     >
       <PluginPanelNode
         :node="tree.body"
+        :plugin-id="entry.pluginId"
         @action="invoke"
       />
     </div>

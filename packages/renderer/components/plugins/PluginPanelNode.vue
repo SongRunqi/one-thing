@@ -10,6 +10,7 @@
       v-for="(child, index) in node.children"
       :key="index"
       :node="child"
+      :plugin-id="pluginId"
       @action="emit('action', $event)"
     />
   </div>
@@ -22,6 +23,7 @@
       v-for="(child, index) in node.children"
       :key="index"
       :node="child"
+      :plugin-id="pluginId"
       @action="emit('action', $event)"
     />
   </div>
@@ -313,6 +315,7 @@
         v-if="activeTabBody"
         :key="activeTabId || ''"
         :node="activeTabBody"
+        :plugin-id="pluginId"
         @action="emit('action', $event)"
       />
     </Transition>
@@ -384,6 +387,19 @@
     class="panel-divider"
   >
 
+  <!-- file-pick(B 期,用户壁纸):宿主自己的按钮 + 宿主自己的原生对话框。
+       插件只声明"这里有个选文件的按钮",拿不到路径、更拿不到字节。
+       没有 pluginId 就置灰而不是隐藏 —— 一个消失的按钮说不清为什么消失。 -->
+  <Button
+    v-else-if="node.type === 'file-pick'"
+    unstyled
+    class="panel-button"
+    :disabled="picking || !pluginId"
+    @click="onFilePick(node)"
+  >
+    {{ picking ? 'Choosing…' : node.label }}
+  </Button>
+
   <SettingsEmptyState
     v-else-if="node.type === 'empty-state'"
     :title="node.title"
@@ -415,6 +431,8 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watchEffect } from 'vue'
+import { platformApi } from '@/platform'
+import { toast } from '@/composables/useToast'
 import Button from '@/components/common/Button.vue'
 import Input from '@/components/common/Input.vue'
 import InputNumber from '@/components/common/InputNumber.vue'
@@ -424,7 +442,17 @@ import MessageMarkdown from '@/components/chat/message/MessageMarkdown.vue'
 import { SettingsEmptyState, SettingsField, SettingsGroup } from '@/components/settings/settings-primitives'
 import type { PluginPanelNodeData } from '@/workspace/plugin-panel-types'
 
-const props = defineProps<{ node: PluginPanelNodeData }>()
+const props = defineProps<{
+  node: PluginPanelNodeData
+  /**
+   * 这棵树属于哪个插件(B 期,用户壁纸)。
+   *
+   * 只有 `file-pick` 用得上它:导入的落点是**那个插件的**数据目录,所以宿主
+   * 必须在发起对话框时说得出是谁。可选是为了不动既有调用方的形状 —— 缺了它,
+   * file-pick 按钮置灰(而不是弹一个查不出归属的对话框)。
+   */
+  pluginId?: string
+}>()
 
 const emit = defineEmits<{
   action: [payload: { actionId: string; payload?: unknown }]
@@ -502,9 +530,48 @@ function onLinkClick(node: { url?: string; actionId?: string; payload?: unknown 
     emit('action', { actionId: node.actionId, payload: node.payload })
     return
   }
-  if (node.url) {
-    void (window as unknown as { platformApi?: { openExternal?: (url: string) => Promise<unknown> } })
-      .platformApi?.openExternal?.(node.url)
+  // 走 platformApi 而不是 `window.platformApi` —— 后者从来没有被赋值过,
+  // 于是在此之前带 url 的 link 节点点下去**什么也不发生**(静默死路)。
+  if (node.url) void platformApi.openExternal?.(node.url)
+}
+
+/**
+ * file-pick 的一次点击(B 期,用户壁纸)。
+ *
+ * 三条出口,与宿主契约逐字对应:
+ *  - **取消** → 什么也不做(不发 action:插件不该因为用户按了 Esc 被叫醒);
+ *  - **闸不过**(超限 / 扩展名不符)→ toast 那句人话,仍然不发 action,
+ *    **不计熔断**(用户选错文件不是插件的失败);
+ *  - **成功** → 发 action,payload 是**地址**:{ path, name, size }。
+ *
+ * 字节与用户的原路径一步也不进这个组件 —— 主进程拷完只回一个 `storage:` 地址。
+ */
+const picking = ref(false)
+
+async function onFilePick(node: { label: string; accept?: string[]; maxBytes?: number; actionId: string }): Promise<void> {
+  if (picking.value || !props.pluginId) return
+  picking.value = true
+  try {
+    const result = await platformApi.pickPluginFile({
+      pluginId: props.pluginId,
+      accept: node.accept,
+      maxBytes: node.maxBytes,
+      label: node.label,
+    })
+    if (result?.canceled) return
+    if (result?.error) {
+      toast.error(result.error)
+      return
+    }
+    if (!result?.path) return
+    emit('action', {
+      actionId: node.actionId,
+      payload: { path: result.path, name: result.name, size: result.size },
+    })
+  } catch (e) {
+    toast.error((e as Error)?.message || 'That file could not be imported.')
+  } finally {
+    picking.value = false
   }
 }
 

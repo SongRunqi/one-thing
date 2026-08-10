@@ -81,6 +81,7 @@
     >
       <PluginPanelNode
         :node="tree.body"
+        :plugin-id="panel.pluginId"
         @action="invoke"
       />
     </div>

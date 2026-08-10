@@ -44,6 +44,10 @@ export type PluginPanelNodeData =
   | { type: 'link'; text: string; url?: string; actionId?: string; payload?: unknown }
   | { type: 'code'; text: string; language?: string }
   | { type: 'divider' }
+  // ── B 期(用户壁纸):宿主托管的文件导入 ──
+  // 插件只声明按钮;对话框、闸、拷贝全在主进程,onAction 收到的是一个
+  // `storage:` 地址而不是字节。
+  | { type: 'file-pick'; label: string; accept?: string[]; maxBytes?: number; actionId: string }
 
 export interface PluginPanelTreeData {
   version: number
