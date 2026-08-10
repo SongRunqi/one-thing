@@ -551,6 +551,64 @@ api.registerUiSlot({
 - 背景铺的是**主内容区**(聊天 + 工作台),左栏与右侧工作台保留自己的底色。
 - 装前确认页会写 `sets an app background image`。
 
+### 皮肤包:`contributes.theme.skin`(H3)
+
+`overrides` 管**色**,`skin` 管**形** —— 圆角、密度这类 token 表达不了、
+而主题系统又**故意不许主题定义**的东西(主题 JSON 里没有 radius 字段,
+将来也不会有)。
+
+两者的安全模型完全不同,这决定了你怎么写:
+
+| | `overrides` | `skin` |
+| --- | --- | --- |
+| 你写的是 | 颜色**字面量**(`#ff4d00`) | 档位**名**(`round`) |
+| 谁定 CSS 值 | 你 | **宿主**(查表) |
+| 因此需要 | 一整套颜色白名单挡注入 | 什么都不需要 —— 你的字符串永远不进 CSS |
+
+```jsonc
+{ "contributes": { "theme": { "skin": {
+  "bubbleRadius": "round"
+} } } }
+```
+
+#### 第一批旋钮
+
+| 旋钮 | 档位 | 作用面 |
+| --- | --- | --- |
+| `bubbleRadius` | `sharp` / `standard` / `soft` / `round` | 用户气泡 + 群聊里的 agent 框 |
+
+`standard` 是**缺省档**,它的语义是"保持应用现状" —— 宿主为它**不写任何变量**,
+让组件自己的值透出来。所以"不声明"和"声明 `standard`"产出逐字节相同;应用哪天
+调整了自己的默认圆角,选 `standard` 的插件自动跟着走,不会把旧值钉死。
+
+其余档位的具体像素值**故意不写在这里**:它们是宿主的实现细节,唯一事实源是
+`packages/onething-runtime/src/themes/skin.ts` 的 `SKIN_TIER_VALUES`。你选的是
+"锐利 / 柔和 / 圆润"这个**意图**,不是一个数字。
+
+#### 规矩(与 `overrides` 一字不差)
+
+- **只能拧既有旋钮,不能新增**。不认识的旋钮名被**丢掉**,插件照常加载,
+  设置页卡片写明 `skin "<旋钮>" dropped — not a skin option`。
+- **档位必须在枚举内**。写 `"bubbleRadius": "24px"` 不会变成 24px,而是被丢掉,
+  卡片写明 `skin "bubbleRadius" dropped — "24px" is not one of its presets`。
+  这不是限制你,而是让"应用改了默认值"这件事不会把你的插件变成祖传硬编码。
+- **一个插件最多 16 条**;超了是形状错,插件进 error 态。
+- **皮肤是全局的**。两个插件拧同一个旋钮时,按 pluginId 字典序**后者胜**;
+  被压的那条在卡片上标 `skin "<旋钮>" overridden by "<pluginId>"`。
+- 皮肤跟着**每次算主题**重新递进去,主题/明暗切换时保留;停用/卸载即刻撤除,
+  界面逐字回到应用自己的值。
+- 装前确认页会写 `changes UI shape (bubble corners: round)` —— 与"改配色"**分两句
+  说**,因为用户对这两件事的容忍度不是一回事。
+
+#### 为什么没有"代码高亮主题"这个旋钮
+
+它被**并回 L2** 了,不是被砍了:代码块的每一种颜色(`syntax.keyword`、
+`text.code.string` …)本来就是主题 token,按"颜色归 `overrides`、形归 `skin`"
+的分工,它属于前者。**注意**:截至 2026-08-10 这条路径上有一个已知缺陷 ——
+`syntax.*` / `text.code.*` 覆盖会被高亮层原样盖回去,声明得到 `active`
+却看不见变化。修复前不要用它,详见
+`docs/design/plugin-ui/plugin-ui-rollout-2026-08.md` §6.6。
+
 **让用户能调透明度** —— 走 R3 设置 schema + 运行期 `api.theme.updateBackground`:
 
 ```jsonc

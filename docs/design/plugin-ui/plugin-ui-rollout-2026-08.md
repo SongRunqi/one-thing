@@ -535,6 +535,78 @@ anchors §9.3.1 的抽屉 —— **不是新 kind,是 `block` 在 `composer.abov
 (`stream:*` / `step:updated`),插件里也登记了这条决定(plugin-entry 文件头)。
 待 todo-plan 重整落地后另立一期。
 
+### 6.6 H3 落地实录(2026-08-10)与规格差异
+
+**H3 = 插件皮肤包**:token 表达不了的"形",以枚举档位开放。设计与分工见
+表达力文档 §3.3.6。这里只记落地清单、与原规格的差异,以及一条挖出来的旧缺陷。
+
+#### 落地清单(五处代码 + 两处文档,与 L2 逐层对位)
+
+| 层 | L2(B 期) | H3 |
+| --- | --- | --- |
+| core 判据 | `theme-contribution.ts` 颜色白名单 | `theme-contribution.ts` 只加一个 `PLUGIN_SKIN_MAX_ENTRIES`(**不需要值白名单**) |
+| core 形状闸 | `loader.ts` overrides 形状 | `loader.ts` skin 形状(对象 / 值是字符串 / ≤16 条) |
+| 产品层裁决 | `plugins/theme-overrides.ts` | `plugins/skin.ts`(旋钮白名单 = `SKIN_TIER_VALUES` 本身) |
+| 值表 | `themes/css-mapper.ts` `CSS_VAR_MAP` | `themes/skin.ts` `SKIN_TIER_VALUES` / `SKIN_VAR_MAP` |
+| 装配接线 | `app/plugins/theme-overrides.ts` | `app/plugins/skin.ts` |
+| 宿主注入 | `ipc/themes.ts` → `applyTheme(…, tokenOverrides)` | 同一处 → `applyTheme(…, tokenOverrides, skinTiers)` |
+| 目录投影 | `plugin-list.ts` `contributes.theme` | `plugin-list.ts` `contributes.skin` |
+| 设置页 | `themeOverrideNote` | `skinNote`(卡片四态 + 装前确认页) |
+
+#### 第一批旋钮:只有一个
+
+| 旋钮 | 档位 → 值 | 作用面 |
+| --- | --- | --- |
+| `bubbleRadius` | `sharp`→`0` / `standard`→**`null`** / `soft`→`10px` / `round`→`18px` | `.bubble.user`(MessageBubble.vue)、`.message.is-room-agent :deep(.bubble.assistant)`(MessageItem.vue) |
+
+**与规格的差异 ①:作用面比预期窄一处。** 原定"用户气泡 + 助手消息容器"。现状盘点
+发现普通 `.bubble.assistant` **不是气泡** —— `padding: 0`、无边框、背景透明
+(源码注释:"AI messages: remove bubble styling"),圆角在它身上不圆任何东西。
+真正吃这个旋钮的第二处是**群聊里的 agent 框**(`.is-room-agent`),它的注释
+本来就写着"read straight off `.bubble.user`"。作用面因此是 2 处而不是 2 类,
+并由 `skin-bubble-radius.test.ts` 逐条钉死(含"assistant 不在作用面"这条反向断言)。
+
+**顺带发现**:`.bubble` 基类上的 `border-radius: 18px` 是**死值** —— role 只可能是
+`user` / `assistant`,两个变体都把它覆盖掉了。没有动它(不属于本期),但
+`round` 档取 `18px` 正是让这个"曾经的气泡形"重新可达。
+
+**差异 ②:缺省档不写变量。** `standard` 的值是 `null` 而不是 `4px`。现状值
+(`var(--radius-xs, 4px)`)只存在于组件 CSS 的兜底里那一份,`SKIN_TIER_VALUES`
+里禁止出现它的副本 —— 于是"现状不许出现第二份"从一条纪律变成一条**测试**
+(`standard tier is the app baseline`,含"任何一档都不许写 `--radius-xs`")。
+
+#### 差异 ③:`codeTheme` 旋钮**没有做**,并且不应该做
+
+原定第二组旋钮是"代码块高亮主题档位,枚举现有资产"。盘完之后这条路是断的:
+
+1. **没有资产可枚举。** 仓里 shiki 的用法是 `createCssVariablesTheme`
+   (`diff-theme.ts`),即**刻意删掉**了 bundled 主题 —— 文件头写得很清楚:
+   github-dark/light 是"a second source of colour truth",不跟着 base46 主题走。
+   开一个 `codeTheme` 档位 = 把刚被删掉的第二套真相请回来。
+2. **它是颜色,颜色不进 H3。** 三条渲染路(hljs → `--hljs-*` / StreamingCodeBlock
+   → `--syntax-*` / diff → `--hg-syntax-*`)的颜色**全都已经是主题 token**:
+   `CSS_VAR_MAP` 里有 `syntax.*` 11 条、`text.code.*` 12 条。按 §3.3.6 的分工,
+   它属于 `overrides`。
+
+**但是**——照着"确认两条渲染路都吃到"去验的时候,挖出一条既有缺陷:
+
+> **`syntax.*` / `text.code.*` 是 L2 的死键。** 实测(`applyTheme('flexoki','dark',
+> undefined, {'syntax.keyword':'#ff00ff'})`)产出与不给覆盖时**逐字节相同** ——
+> 一个变量都没变。`text.code.keyword` 同样。
+
+根因:代码色变量由 `generateCSSVariables` 从 **`resolvedHighlights`** 发出,而
+插件覆盖写进的是 **`resolvedColors`**;`resolveThemeHighlights` 不读这些键,随后
+高亮层把同名变量原样盖回去。后果是**静默说谎**:插件声明合法、设置页显示
+`active`、屏幕上什么都没变 —— 比报错难查得多。
+
+**本期没有修**,因为修它要先拍两个板,都不属于 H3:
+
+1. `syntax.*` 与 `text.code.*` 映射到同一批变量,**谁是正主**?
+2. 插件给的颜色要不要继续过 `ensureHighlightContrast`(它会为了对比度改写颜色,
+   也就是"插件说的不算")?
+
+在拍板前,作者指南已写明"修复前不要用 `syntax.*` / `text.code.*` 覆盖"。
+
 ---
 
 ## 7. 风险与对策
