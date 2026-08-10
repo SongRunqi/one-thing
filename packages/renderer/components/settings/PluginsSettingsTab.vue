@@ -1364,7 +1364,10 @@ function previewNotifySound(): void {
 }
 
 async function loadPlugins() {
-  loading.value = true
+  // 加载行只给"屏上还没有列表"的场合(首载、出错重试)。启停/装卸/熔断推送后的
+  // 重拉都是背景对账 —— 列表还在屏上,置 loading 会整屏换成加载行再换回来,
+  // 肉眼就是一次闪烁。
+  loading.value = plugins.value.length === 0
   error.value = ''
   try {
     const result = await platformApi.getPlugins()
@@ -1386,9 +1389,9 @@ async function togglePlugin(plugin: PluginInfo) {
     if (wasEnabled) {
       const result = await platformApi.disablePlugin(plugin.id)
       if (result?.success) {
-        // 手动停用的清账在后端(disableOnethingPluginForIpc 清 tracker)——
-        // 在 renderer 本地抹一遍只是让这一屏好看,重开设置页红条照样复现。
-        // 重新拉一次列表,拿后端的事实。
+        // 乐观置位让开关立刻落位(enable 分支同款);清账仍在后端
+        // (disableOnethingPluginForIpc 清 tracker),随后重拉拿后端的事实。
+        plugin.enabled = false
         await loadPlugins()
         emit('plugins-changed')
       } else {
