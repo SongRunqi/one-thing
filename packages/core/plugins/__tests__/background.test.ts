@@ -238,6 +238,54 @@ describe('resolvePluginBackgrounds', () => {
     expect(resolution.winner?.opacity).toBe(1)
     expect(resolution.winner?.blur).toBe(12)
   })
+
+  /*
+   * 恢复默认闭环(2026-08-10)。运行期图接管了 darkImage 的语义,撤回必须把
+   * 那一步**对称地**还回去 —— 只还浅色图、深色仍是空,等于把"恢复默认"做成半张。
+   */
+  it('image: null 撤回运行期图 —— 回落 manifest 缺省图,darkImage 一并恢复', () => {
+    const background = { image: 'bg.png', darkImage: 'bg-dark.png' }
+    const taken = resolvePluginBackgrounds([{
+      pluginId: 'ink-brand',
+      enabled: true,
+      background,
+      runtimeParams: { image: 'storage:imports/paper.png' },
+    }])
+    // 先钉住"接管"这一半:运行期图赢,深色被它一起接管。
+    expect(taken.winner?.imageUrl).toBe('onething-plugin://ink-brand/__storage__/imports/paper.png')
+    expect(taken.winner?.darkImageUrl).toBe('onething-plugin://ink-brand/__storage__/imports/paper.png')
+
+    const cleared = resolvePluginBackgrounds([{
+      pluginId: 'ink-brand',
+      enabled: true,
+      background,
+      // 内存态是合并存的:撤回以 null 的样子躺在这里,不是键被删掉。
+      runtimeParams: { image: null, opacity: 0.5 },
+    }])
+    expect(cleared.byPlugin.get('ink-brand')?.image).toBe('bg.png')
+    expect(cleared.byPlugin.get('ink-brand')?.darkImage).toBe('bg-dark.png')
+    expect(cleared.winner?.imageUrl).toBe('onething-plugin://ink-brand/bg.png')
+    expect(cleared.winner?.darkImageUrl).toBe('onething-plugin://ink-brand/bg-dark.png')
+    // 撤图不撤旋钮:null 只说了 image 这一格。
+    expect(cleared.winner?.opacity).toBe(0.5)
+  })
+
+  it('image: undefined 不动 image —— 半条补丁与 opacity 同规', () => {
+    const resolution = resolvePluginBackgrounds([{
+      pluginId: 'ink-brand',
+      enabled: true,
+      background: { image: 'bg.png', darkImage: 'bg-dark.png' },
+      runtimeParams: { image: undefined, blur: 4 },
+    }])
+    expect(resolution.winner?.imageUrl).toBe('onething-plugin://ink-brand/bg.png')
+    expect(resolution.winner?.darkImageUrl).toBe('onething-plugin://ink-brand/bg-dark.png')
+    expect(resolution.winner?.blur).toBe(4)
+  })
+
+  it('clamp 保得住 null —— 丢了这个键,合并时上一张图会继续赢', () => {
+    expect(clampPluginBackgroundParamsPatch({ image: null })).toEqual({ image: null })
+    expect(clampPluginBackgroundParamsPatch({ image: undefined, blur: 3 })).toEqual({ blur: 3 })
+  })
 })
 
 // ── 4. api.theme.updateBackground:门控与钳制 ─────
@@ -307,6 +355,30 @@ describe('api.theme.updateBackground', () => {
       image: 'storage:imports/paper.png',
       opacity: 0.5,
     })
+  })
+
+  /*
+   * 恢复默认闭环(2026-08-10):`null` 是**撤回**,不是一个坏图源。
+   * 它不进图源门 —— 那道门判的是"这张图能不能当背景",而这里根本没有图。
+   */
+  it('image: null 放行(不过图源校验、不记 error、照样广播)', () => {
+    const { api, updatePluginBackground, onPluginFailure, error } = createApi({ declaredBackground: true })
+    api.theme.updateBackground({ image: null } as never)
+    expect(updatePluginBackground).toHaveBeenCalledWith('demo', { image: null })
+    expect(error).not.toHaveBeenCalled()
+    expect(onPluginFailure).not.toHaveBeenCalled()
+  })
+
+  it('image: null 单独成一条补丁也算"说了话" —— 不被空补丁闸吞掉', () => {
+    const { api, updatePluginBackground } = createApi({ declaredBackground: true })
+    api.theme.updateBackground({ image: null, opacity: 'x' } as never)
+    expect(updatePluginBackground).toHaveBeenCalledWith('demo', { image: null })
+  })
+
+  it('image: undefined 仍然是"这次不动 image"(与 null 不能合流)', () => {
+    const { api, updatePluginBackground } = createApi({ declaredBackground: true })
+    api.theme.updateBackground({ image: undefined, opacity: 0.5 } as never)
+    expect(updatePluginBackground).toHaveBeenCalledWith('demo', { opacity: 0.5 })
   })
 
   it('全是非法值 = 什么也没说,不广播', () => {

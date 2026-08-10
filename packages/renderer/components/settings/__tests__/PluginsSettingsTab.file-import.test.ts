@@ -80,6 +80,10 @@ function pickButton(wrapper: ReturnType<typeof mount>) {
   return button
 }
 
+function clearButton(wrapper: ReturnType<typeof mount>) {
+  return wrapper.findAll('button').find(item => item.text().trim() === '×')
+}
+
 function saveButton(wrapper: ReturnType<typeof mount>) {
   const button = wrapper.findAll('button').find(item => item.text().trim() === 'Save')
   if (!button) throw new Error('the config area did not render a Save button')
@@ -170,5 +174,76 @@ describe('设置页 file-import 控件', () => {
     await pickButton(wrapper).trigger('click')
     await flushPromises()
     expect(platform.pickPluginFile).not.toHaveBeenCalled()
+  })
+})
+
+/*
+ * 清空钮(恢复默认闭环,2026-08-10)。
+ *
+ * 走查暴露的空格:Reset 只丢草稿,清不掉**已保存**的值 —— 一个存过的 file
+ * 字段在设置页里有进无出,用户想回内置缺省只能停用插件或再换一张图。
+ */
+describe('设置页 file-import 清空钮', () => {
+  it('没值时不画钮 —— 没有可清的东西', async () => {
+    const wrapper = await mountTab()
+    expect(clearButton(wrapper)).toBeUndefined()
+  })
+
+  it('已保存的值也画钮(不是只有本次刚选的才清得掉)', async () => {
+    platform.getPlugins.mockResolvedValue({
+      success: true,
+      plugins: plugins({ configValues: { wallpaper: 'storage:imports/paper.png' } }),
+    })
+    const wrapper = await mountTab()
+    expect(wrapper.find('.plugin-config-file-value').text()).toBe('paper.png')
+    expect(clearButton(wrapper)).toBeDefined()
+  })
+
+  it('点击 → 值置空串 → 走既有 Save 路径落盘,标签回 No file chosen', async () => {
+    platform.getPlugins.mockResolvedValue({
+      success: true,
+      plugins: plugins({ configValues: { wallpaper: 'storage:imports/paper.png' } }),
+    })
+    const wrapper = await mountTab()
+    await clearButton(wrapper)!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.plugin-config-file-value').text()).toBe('No file chosen')
+    // 钮跟着退场:清完就没有可清的了。
+    expect(clearButton(wrapper)).toBeUndefined()
+
+    await saveButton(wrapper).trigger('click')
+    await flushPromises()
+    // 空串而不是删键:用户表达的是"我把它清掉了",不是"这个字段没提过"。
+    expect(platform.setPluginConfig).toHaveBeenCalledWith('ink', { wallpaper: '' })
+  })
+
+  it('刚选完也清得掉,且不回头去删已拷进来的字节(孤儿归卸载归档)', async () => {
+    platform.pickPluginFile.mockResolvedValue({
+      path: 'storage:imports/paper.png', name: 'paper.png', size: 1234,
+    })
+    const wrapper = await mountTab()
+    await pickButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(clearButton(wrapper)).toBeDefined()
+
+    await clearButton(wrapper)!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.plugin-config-file-value').text()).toBe('No file chosen')
+    // 清空只撤引用:设置页不替插件做数据生命周期的决定。
+    expect(platform.pickPluginFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('只读宿主(web):钮置灰而不是消失,点了也不改草稿', async () => {
+    platform.getPlugins.mockResolvedValue({
+      success: true,
+      plugins: plugins({ configEditable: false, configValues: { wallpaper: 'storage:imports/paper.png' } }),
+    })
+    const wrapper = await mountTab()
+    const clear = clearButton(wrapper)
+    expect(clear?.attributes('disabled')).toBeDefined()
+    await clear!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.plugin-config-file-value').text()).toBe('paper.png')
   })
 })

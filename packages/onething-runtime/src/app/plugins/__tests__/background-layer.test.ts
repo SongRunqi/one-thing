@@ -137,6 +137,30 @@ describe('api.theme.updateBackground 的落点', () => {
     expect(getPluginBackgroundTable().winner?.opacity).toBe(0.35)
   })
 
+  /*
+   * 恢复默认闭环(2026-08-10):撤回穿过的是**合并存**的内存态。
+   * null 必须以 null 的样子躺在 map 里 —— 删键与"从来没设过"同形,而合并
+   * 语义里这两件事必须可分,否则撤回会静默变成一次空操作。
+   */
+  it('image: null 撤回运行期图:回落 manifest 缺省 + darkImage 恢复,旋钮不动', () => {
+    setPlugins(plugin('ink-brand', { image: 'bg.svg', darkImage: 'bg-dark.svg', opacity: 0.35 }))
+    setPluginBackgroundParams('ink-brand', { image: 'storage:imports/paper.png', opacity: 0.8 })
+    expect(getPluginBackgroundTable().winner).toMatchObject({
+      imageUrl: 'onething-plugin://ink-brand/__storage__/imports/paper.png',
+      darkImageUrl: 'onething-plugin://ink-brand/__storage__/imports/paper.png',
+      opacity: 0.8,
+    })
+
+    setPluginBackgroundParams('ink-brand', { image: null })
+    expect(getPluginBackgroundParams('ink-brand')).toMatchObject({ image: null, opacity: 0.8 })
+    expect(getPluginBackgroundTable().winner).toMatchObject({
+      imageUrl: 'onething-plugin://ink-brand/bg.svg',
+      darkImageUrl: 'onething-plugin://ink-brand/bg-dark.svg',
+      // 撤图不撤旋钮 —— 那是拆除面(clearPluginBackgroundParams)的活。
+      opacity: 0.8,
+    })
+  })
+
   it('插件系统没装配起来时是空表,而不是抛', () => {
     managedPlugins.length = 0
     expect(getPluginBackgroundTable()).toEqual({ byPlugin: new Map(), winner: null })

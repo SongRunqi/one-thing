@@ -265,13 +265,20 @@ api.storage.message(sessionId, messageId).exists()
 export default function (api) {
   const apply = () => {
     const { wallpaper } = api.settings.get()
-    if (wallpaper) api.theme.updateBackground({ image: wallpaper })
+    // 三态,不是两态:有值 = 换成这张;**空值 = 撤回**(回落 manifest 缺省图)。
+    // 写成 `if (wallpaper) …` 会让"清空"变成一次静默的空操作 —— 用户点了 ×、
+    // 存了盘,屏幕上还是那张旧图。
+    api.theme.updateBackground({ image: wallpaper || null })
   }
   apply()                       // ← 启动时读一次(运行期背景不持久,持久归你)
-  api.settings.onChange(apply)  // ← 用户换了图就跟着变(与别的字段同一条链)
+  api.settings.onChange(apply)  // ← 用户换了图/清空了就跟着变(同一条链)
 }
 ```
 
+- 值非空时控件旁边有一个 **×** 清空钮,点了把这个字段置成空串,和选文件走
+  **同一条** Save 路径。清空只撤引用,**不删**已经拷进你数据目录的那个文件 ——
+  那份字节的归宿是卸载时的归档语义,不是设置页的一次点击(你可能还把这个地址
+  存在自己的 `api.store` 里)。
 - 存进去的值是**地址**(`storage:imports/<name>`),不是用户磁盘上的路径。
   **字节不过你的手**:宿主拉原生对话框、宿主校验、宿主拷进**你的**数据目录,
   回给你的只有那个地址 —— 所以"让用户换张壁纸"不需要给插件开任何读文件权限。
@@ -753,6 +760,24 @@ export default function (api) {
 是必须的,不是可选的。没在 manifest 里声明 background 就调它,是一条 error
 日志 + 拒绝(不熔断)。
 
+**`image` 有三格值域,不是两格**(恢复默认闭环,2026-08-10):
+
+| 你传的 | 意思 |
+| --- | --- |
+| 不传(`undefined`) | 这次不动 image —— 半条补丁,与 `opacity` 同规 |
+| `'storage:<rel>'` | 换成用户导进来的那张 |
+| `null` | **撤回**:背景回落 manifest 声明的缺省图,`darkImage` 一并恢复 |
+
+`null` 不进图源校验(没有图可判)、不记 error、也不计熔断。它是"恢复默认"的
+唯一出口 —— 在此之前,把运行期图撤回缺省的办法只有重启宿主。
+
+两条容易写错的地方:
+
+- **`undefined` 与 `null` 不能合流。** 一个漏写的可选字段传成 `undefined` 只是
+  "这次不提",传成 `null` 就是把用户选的壁纸撤掉了。
+- **撤回撤的只是 image,不是三个旋钮。** `updateBackground({ image: null })` 之后
+  opacity / blur / fit 还是你上次调到的那个值。
+
 ### 让用户换成自己的图:`file-pick` 节点 + `storage:` 寻址
 
 > 先看一眼「设置 schema」那节的**该用哪一个**:壁纸这种"选一次、长期生效"的
@@ -821,6 +846,8 @@ api.registerWorkspacePanel({
   字段、只改透明度" —— 半条命令比不执行更难解释。
 - 运行期换的图会压过 manifest 缺省图,并且**同时接管深色**:用户挑的是
   "这一张",不是"浅色这一张",所以不会在切主题时换成包里的 `darkImage`。
+  撤回(`updateBackground({ image: null })`)把这一步**对称地**还回去:图回落
+  manifest 缺省,`darkImage` 一并恢复 —— 接管是成对的,撤销也成对。
 - 与别的运行期参数一样**不持久**:重启回 manifest 缺省。想记住用户选的那张,
   自己 `api.store.set` / `api.settings`,在 entry 启动时读一次再调一次。
 

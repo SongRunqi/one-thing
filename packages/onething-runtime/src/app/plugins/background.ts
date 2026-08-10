@@ -33,7 +33,16 @@ import {
  */
 const runtimeParams = new Map<string, PluginBackgroundParamsPatch>()
 
-/** 合进该插件的当前生效参数(manifest 缺省 ⊕ 最新 update)。 */
+/**
+ * 合进该插件的当前生效参数(manifest 缺省 ⊕ 最新 update)。
+ *
+ * 合并是**逐字段**的,所以 `image: null`(撤回)必须以 null 的样子存进来 ——
+ * 展开后它盖掉上一张图,裁决层再把 `null` 读成"回落 manifest 缺省"。
+ * 这里不为撤回删键:删键与"从来没设过"同形,而这两件事在合并语义里必须可分。
+ *
+ * 注意它与 `clearPluginBackgroundParams` 不是一回事:那个是**拆除面**(停用/
+ * 卸载时把这个插件的整份内存态抹掉,三个旋钮一起),这里的撤回只动 image。
+ */
 export function setPluginBackgroundParams(
   pluginId: string,
   patch: PluginBackgroundParamsPatch,

@@ -291,6 +291,19 @@
                         {{ pickingFields.has(fieldKey(plugin, field.key)) ? 'Choosing…' : 'Choose file…' }}
                       </Button>
                       <span class="plugin-config-file-value">{{ fileValueLabel(plugin, field.key) }}</span>
+                      <!-- 清空钮:值非空才在。Reset 只丢草稿,清不掉**已保存**
+                           的值 —— 没有这一钮,一个存过的 file 字段在设置页里
+                           就是有进无出(想回缺省只能停用插件或再换一张图)。 -->
+                      <Button
+                        v-if="hasFileValue(plugin, field.key)"
+                        unstyled
+                        class="btn-sm plugin-config-file-clear"
+                        :disabled="!isConfigEditable(plugin)"
+                        :aria-label="`Clear ${field.label}`"
+                        @click="clearConfigFile(plugin, field.key)"
+                      >
+                        ×
+                      </Button>
                     </div>
                     <Input
                       v-else
@@ -978,6 +991,30 @@ function commitStringList(plugin: PluginInfo, key: string): void {
  * 这一层,所以"选一张壁纸"不需要给插件开任何读文件的权限。
  */
 const pickingFields = ref<Set<string>>(new Set())
+
+/** 有值才有得清。空值照旧显示 `No file chosen`,那时钮不该在。 */
+function hasFileValue(plugin: PluginInfo, key: string): boolean {
+  const value = draftFor(plugin)[key]
+  return typeof value === 'string' && value.length > 0
+}
+
+/**
+ * 清空一个已选文件(恢复默认闭环,2026-08-10)。
+ *
+ * 置**空字符串**而不是删键:字段类型是 string、schema 缺省也是空串 ——
+ * 删键会让保存时的形状看起来像"这个字段没提过",而用户表达的是"我把它清掉了"。
+ * 空串走的是与选中完全相同的那条 Save 路径(setPluginConfig),不为清空发明
+ * 第二条保存语义。
+ *
+ * **孤儿文件不删**:字节在"选中"那一刻就已经拷进插件数据目录了,清空只撤引用。
+ * 数据的归宿是卸载时的归档语义(与 pickConfigFile 里那条判例逐字同规)——
+ * 一次清空就去删磁盘上的文件,等于让设置页替插件做数据生命周期的决定,而这个
+ * 地址插件可能还存在自己的 store 里。
+ */
+function clearConfigFile(plugin: PluginInfo, key: string): void {
+  if (!isConfigEditable(plugin)) return
+  setDraft(plugin, key, '')
+}
 
 /** 值是 `storage:imports/<name>` 这样的地址 —— 显示尾段(文件名)就够了。 */
 function fileValueLabel(plugin: PluginInfo, key: string): string {
@@ -2283,6 +2320,21 @@ onBeforeUnmount(() => {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   color: var(--settings-ink-3, var(--ui-text-muted-fg));
+}
+
+/* 清空钮:与 .btn-sm 同一族(画线风的方框),只把它压成一个方钮 ——
+   margin-top 归零是因为它与值同行,不是另起一行的动作钮。
+   悬停才转 danger 色:删掉一个已有的值是危险动作,但平时不该在那儿嚷。 */
+.plugin-config-file-clear {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 1px 6px;
+  line-height: 1.3;
+}
+
+.plugin-config-file-clear:hover {
+  border-color: var(--ui-status-danger-fg);
+  color: var(--ui-status-danger-fg);
 }
 
 .meta-tag.readonly {

@@ -595,6 +595,10 @@ export interface CorePluginAPI<
    * 包根的路径在这里会被拒。非法寻址或文件不存在 = **这一次调用整条被拒**
    * (背景保持原样),不计熔断。
    *
+   * **`image: null` = 撤回运行期图**(恢复默认闭环):背景回落 manifest 声明的
+   * 缺省图,`darkImage` 一并恢复(接管是成对的,撤销也成对)。`undefined` 仍然
+   * 是"这次不动 image" —— 用户把设置里的文件清空时,插件该递的是 `null`。
+   *
    * **不持久**:重启后回 manifest 缺省。要记住用户的选择,插件自己在 entry 启动时
    * 读一次 `api.settings.get()` 再调一次 —— 持久归插件,坐标系归宿主。
    */
@@ -603,8 +607,8 @@ export interface CorePluginAPI<
       opacity?: number
       blur?: number
       fit?: 'cover' | 'contain' | 'tile'
-      /** `storage:<相对 storage 根的路径>`;别的前缀一律拒。 */
-      image?: string
+      /** `storage:<相对 storage 根的路径>`;`null` = 撤回;别的前缀一律拒。 */
+      image?: string | null
     }): void
   }
   onDispose(callback: () => void): void

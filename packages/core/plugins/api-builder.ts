@@ -1543,7 +1543,11 @@ export function createCorePluginAPI<
           return
         }
         const requestedImage = (patch as { image?: unknown } | null | undefined)?.image
-        if (requestedImage !== undefined) {
+        // `null` 是**撤回**,不是一个坏图源:它绕过图源门(没有图可判),
+        // 背景回落 manifest 声明的缺省图(darkImage 一并恢复)。
+        // `undefined` 仍然是"这次不动 image" —— 两者不能合流,否则一个漏写的
+        // 可选字段会静默把用户选的壁纸撤掉。
+        if (requestedImage !== undefined && requestedImage !== null) {
           const problem = describePluginRuntimeBackgroundImageProblem(requestedImage)
           if (problem) {
             logger.error(`[Plugin:${pluginId}] theme.updateBackground rejected: ${problem}`, undefined)

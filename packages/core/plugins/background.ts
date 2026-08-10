@@ -78,13 +78,21 @@ export interface PluginBackgroundParams {
  * (经 `file-pick` 由宿主拷进 `plugins/<id>/storage/imports/`)。
  * 一条相对包根的路径(`bg/paper.png`)在这里会被拒 —— 想换包内那张图,
  * 改 manifest、发版本。
+ *
+ * **`image: null` = 撤回运行期图**(恢复默认闭环,2026-08-10)。三格值域,
+ * 缺一格就没有回头路:
+ *  - `undefined` —— 这次不动 image(半条补丁,与 opacity 同规);
+ *  - `'storage:<rel>'` —— 换成用户导进来的那张;
+ *  - `null` —— 撤回,背景回落 manifest 声明的缺省图(`darkImage` 一并恢复)。
+ * 没有第三格时,插件把运行期图撤回缺省的唯一办法是重启宿主 —— 那不是一条
+ * 出口,那是没有出口。
  */
 export interface PluginBackgroundParamsPatch {
   opacity?: number
   blur?: number
   fit?: PluginBackgroundFit
-  /** 仅 `storage:` 前缀;见上。 */
-  image?: string
+  /** 仅 `storage:` 前缀;`null` = 撤回运行期图。见上。 */
+  image?: string | null
 }
 
 /** manifest 里的声明形状(未校验)。 */
@@ -154,6 +162,10 @@ export function parsePluginStorageImageRef(value: unknown): string | null {
 /**
  * 运行期 `image` 的判据。返回错误字符串 = **拒掉这一次 updateBackground**
  * (不是丢一个字段:插件明说了"把背景换成这张",半条命令比不执行更难解释)。
+ *
+ * 判的是"这张图能不能当背景",所以它只接**一张图**:`null`(撤回)根本没有
+ * 图源可判,由调用方在进这道门之前分流(api-builder 与 clamp 各有一处)。
+ * 把"没有图"塞进图源判据里,等于让同一个函数同时回答两个问题。
  */
 export function describePluginRuntimeBackgroundImageProblem(value: unknown): string | null {
   if (typeof value !== 'string' || !value) {
@@ -242,6 +254,10 @@ function clamp(value: number, min: number, max: number): number {
  * (`describePluginRuntimeBackgroundImageProblem`)—— 这里这一道是兜底:
  * 任何绕开 api-builder 的登记路径(第二个宿主、直接写 runtimeParams 的测试
  * 替身)都不该能把一条包内路径塞进背景的图源。
+ *
+ * `image: null`(撤回)**原样留下**,不能当成"没提过"丢掉:内存态是**合并**
+ * 存的(`{...previous, ...patch}`),丢了这个键上一张图就会继续赢 —— 撤回会
+ * 变成一次静默的空操作。
  */
 export function clampPluginBackgroundParamsPatch(
   patch: unknown,
@@ -255,7 +271,9 @@ export function clampPluginBackgroundParamsPatch(
     result.blur = clamp(patch.blur, PLUGIN_BACKGROUND_MIN_BLUR, PLUGIN_BACKGROUND_MAX_BLUR)
   }
   if (isPluginBackgroundFit(patch.fit)) result.fit = patch.fit
-  if (patch.image !== undefined && !describePluginRuntimeBackgroundImageProblem(patch.image)) {
+  if (patch.image === null) {
+    result.image = null
+  } else if (patch.image !== undefined && !describePluginRuntimeBackgroundImageProblem(patch.image)) {
     result.image = patch.image as string
   }
   return result
@@ -387,6 +405,10 @@ export function resolvePluginBackgrounds(
     // 用户导入的壁纸压过 manifest 缺省图(声明是**缺省**,不是终值)。
     // darkImage 随之清空:用户挑的是"这一张",不是"浅色这一张" ——
     // 留着包里的深色图会让同一次选择在切主题时换成另一幅画。
+    //
+    // 撤回(`image: null`)走的就是这两行的**另一支**:图回落 manifest 缺省,
+    // darkImage 一并恢复。接管是成对的,撤销也必须成对 —— 只还回浅色图、
+    // 深色仍是空,等于把"恢复默认"做成了半张。
     const image = runtime.image ?? (declaration.image as string)
     const darkImage = runtime.image
       ? ''

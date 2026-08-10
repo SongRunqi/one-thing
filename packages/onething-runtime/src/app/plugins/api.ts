@@ -501,7 +501,11 @@ export function createPluginAPI(
         // 图源的最后一道闸(B 期):core 判得了 `storage:` 寻址的形状,判不了
         // 文件存不存在(它不吃 fs)。指向空气的一次换图**整条被拒**、背景保持
         // 原样 —— 记进内存态的话,设置页会说"生效中"而屏幕上什么也没有。
-        if (patch.image !== undefined && !pluginStorageImageExists(id, patch.image)) {
+        //
+        // 撤回(`image: null`)不进这道闸:没有图,就没有"存不存在"可问。
+        // 用 `typeof === 'string'` 而不是 `!== undefined`,是因为这里要分的是
+        // "有图 / 无图",不是"提没提这个字段"。
+        if (typeof patch.image === 'string' && !pluginStorageImageExists(id, patch.image)) {
           console.error(
             `[Plugin:${id}] theme.updateBackground rejected: "${patch.image}" is not in this plugin's storage`,
           )
