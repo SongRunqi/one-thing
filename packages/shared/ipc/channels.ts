@@ -390,6 +390,12 @@ export const IPC_CHANNELS = {
 	SEARCH_EXECUTE_ACTION: "search:execute-action",
 	SEARCH_ACTION: "search:action",
 
+	// onething:// 深链(H4)。三条,刚好对应确认门的三个时刻:
+	// 渲染层说"我能画卡了"(READY)、主进程推一张卡(REQUEST)、用户按了钮(RESPOND)。
+	DEEPLINK_READY: "deeplink:ready",
+	DEEPLINK_REQUEST: "deeplink:request",
+	DEEPLINK_RESPOND: "deeplink:respond",
+
 	// Todo / Plan
 	TODO_PLAN_GET: "todo-plan:get",
 	TODO_PLAN_CREATE: "todo-plan:create",

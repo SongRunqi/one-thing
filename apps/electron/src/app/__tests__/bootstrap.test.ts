@@ -54,6 +54,11 @@ describe('electron app bootstrap', () => {
     const powerMonitor = { on: vi.fn() }
     const handleProtocol = vi.fn()
     const handlePluginProtocol = vi.fn()
+    const deliveredDeepLinks: string[] = []
+    const deepLinkApp = {
+      setAsDefaultProtocolClient: vi.fn(() => true),
+      on: vi.fn(),
+    }
     const mainWindow = {
       webContents: {},
       on: vi.fn(),
@@ -90,6 +95,13 @@ describe('electron app bootstrap', () => {
         resolveStaticRoot: () => null,
         getSession: () => ({ protocol: { handle: handlePluginProtocol } }) as any,
         fetch: vi.fn(),
+      },
+      // 深链协议(H4)。假 app 只要有 setAsDefaultProtocolClient + on ——
+      // 真正的时序断言在 deeplink 自己的测试里,这里只保证接线不漏。
+      deepLinkProtocol: {
+        deliver: deliveredDeepLinks.push.bind(deliveredDeepLinks),
+        app: deepLinkApp,
+        logger: { log: vi.fn(), warn: vi.fn() },
       },
       powerResume: {
         powerMonitor,

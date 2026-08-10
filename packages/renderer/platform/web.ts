@@ -1131,6 +1131,17 @@ const webApi = {
 	// plugin:notification。这是有意降级,不是漏接。
 	onPluginNotification: () => () => {},
 
+	// onething:// 深链只有桌面宿主接得到 —— 注册 URL scheme 是操作系统级的事,
+	// 浏览器里没有"外面点一条链接回到这个标签页"这种东西。三条都是诚实的空实现:
+	// ready 说成功(队列本来就不存在),没有卡会推来,respond 说得清地失败
+	// (而不是回一个假的成功,让调用方以为投递过了)。
+	deepLinkReady: async () => ({ success: true }),
+	onDeepLinkRequest: () => () => {},
+	respondDeepLink: async () => ({
+		success: false,
+		error: "deep links are desktop-only",
+	}),
+
 	/**
 	 * 统一请求通道的 web 实现。
 	 *

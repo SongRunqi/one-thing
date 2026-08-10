@@ -44,6 +44,7 @@ import { registerUsageHandlers } from "./usage.js";
 import { registerPracticeHandlers } from "./practice.js";
 import { registerTerminalHandlers } from "./terminal.js";
 import { registerBrowserHandlers } from "./browser.js";
+import { registerDeepLinkHandlers } from "./deeplink.js";
 import { registerNotifyHandlers } from "./notify.js";
 import { getEventBus } from "@onething/app/events/index.js";
 import { sanitizeRendererOrigin } from "@onething/app/channel/index.js";
@@ -96,6 +97,8 @@ export function initializeIPC() {
 	registerTerminalHandlers();
 	registerBrowserHandlers();
 	registerNotifyHandlers();
+	// 深链确认门(H4)。协议注册在同步段(bootstrap),这里只接确认卡的两条 invoke。
+	registerDeepLinkHandlers();
 	registerCommandHandler();
 }
 

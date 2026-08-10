@@ -1,5 +1,6 @@
 import { clipboard, contextBridge, ipcRenderer, webUtils } from "electron";
 import { IPC_CHANNELS } from "@shared/ipc.js";
+import type { DeepLinkRespondRequest } from "@shared/ipc/deeplink.js";
 import type {
 	CreateSessionOptions,
 	AgentUpdateRequest,
@@ -621,6 +622,20 @@ const electronAPI = {
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.PLUGINS_NOTIFICATION, listener);
 	},
+
+	// onething:// 深链的确认门(H4)。三条,方向刚好一进两出:
+	// ready 是渲染层给冷启动队列的放行信号,request 是推来的卡,respond 是那一按。
+	deepLinkReady: () => ipcRenderer.invoke(IPC_CHANNELS.DEEPLINK_READY),
+
+	onDeepLinkRequest: (callback: (request: any) => void) => {
+		const listener = (_event: any, request: any) => callback(request);
+		ipcRenderer.on(IPC_CHANNELS.DEEPLINK_REQUEST, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.DEEPLINK_REQUEST, listener);
+	},
+
+	respondDeepLink: (request: DeepLinkRespondRequest) =>
+		ipcRenderer.invoke(IPC_CHANNELS.DEEPLINK_RESPOND, request),
 
 	// Project directories — independent module
 	projectDirsList: () => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_LIST),

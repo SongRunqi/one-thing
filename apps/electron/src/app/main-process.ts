@@ -54,6 +54,10 @@ import {
 	killAllBrowserTabs,
 } from "@onething/electron-host/browser/service";
 import { applyEmbeddedBrowserChromiumFlags } from "@onething/electron-host/browser/chromium-flags";
+import {
+	configureDeepLinkService,
+	handleIncomingDeepLink,
+} from "@onething/electron-host/deeplink/service";
 import { watchTerminalConsumer } from "@main/ipc/terminal.js";
 import { warmSearchWindow } from "@onething/electron-host/search/window";
 import { applyNetworkProxySettings } from "@main/ipc/network-proxy.js";
@@ -298,6 +302,14 @@ export function startOnethingElectronMain(): void {
 	// stays electron-free (boundary). Must run before the app becomes ready.
 	applyEmbeddedBrowserChromiumFlags();
 
+	// 深链确认门要的两样宿主能力:主窗句柄 + 把它拉到前面来。卡片必须落在用户
+	// 眼前的那扇窗上 —— 一张画在别的桌面上的确认卡等于没弹。
+	configureDeepLinkService({
+		getMainWindow: () => mainWindow,
+		activateMainWindow: (window) =>
+			activateMainWindow(window as Parameters<typeof activateMainWindow>[0]),
+	});
+
 	// Dev restarts kill the process group with SIGTERM→SIGKILL and before-quit
 	// never fires — reap user terminal shells so they don't orphan. The PTY
 	// master fd closing on exit HUPs foreground jobs; this also collects
@@ -386,6 +398,8 @@ export function startOnethingElectronMain(): void {
 			resolveStaticRoot: resolvePluginWebviewStaticRoot,
 			resolveStorageRoot: resolvePluginStorageRoot,
 		},
+		// 深链(H4)。协议口只把 URL 递给确认门 —— 它自己不知道 `ask` 是什么。
+		deepLinkProtocol: { deliver: handleIncomingDeepLink },
 		powerResume: {
 			getMainWindow: () => mainWindow,
 			recoverMainWindow: recoverMainWindowAfterSystemResume,

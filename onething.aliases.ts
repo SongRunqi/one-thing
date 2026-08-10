@@ -80,6 +80,8 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/electron-host/browser/service', replacement: resolve(projectRoot, 'apps/electron/src/browser/service.ts') },
   { find: '@onething/electron-host/browser/session', replacement: resolve(projectRoot, 'apps/electron/src/browser/session.ts') },
   { find: '@onething/electron-host/browser/tab-state', replacement: resolve(projectRoot, 'apps/electron/src/browser/tab-state.ts') },
+  { find: '@onething/electron-host/deeplink/protocol', replacement: resolve(projectRoot, 'apps/electron/src/deeplink/protocol.ts') },
+  { find: '@onething/electron-host/deeplink/service', replacement: resolve(projectRoot, 'apps/electron/src/deeplink/service.ts') },
   { find: '@onething/electron-host/gateway/lifecycle', replacement: resolve(projectRoot, 'apps/electron/src/gateway/lifecycle.ts') },
   { find: '@onething/electron-host/ipc/acp', replacement: resolve(projectRoot, 'apps/electron/src/ipc/acp.ts') },
   { find: '@onething/electron-host/ipc/agents', replacement: resolve(projectRoot, 'apps/electron/src/ipc/agents.ts') },

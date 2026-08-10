@@ -384,6 +384,11 @@ import type {
 	PracticeSummaryRequest,
 	PracticeSummaryResult,
 } from "@shared/ipc";
+import type {
+	DeepLinkConfirmRequest,
+	DeepLinkRespondRequest,
+	DeepLinkRespondResponse,
+} from "@shared/ipc/deeplink";
 
 export type {
 	ChatMessage,
@@ -1254,6 +1259,21 @@ export interface ElectronAPI {
 	onPluginNotification: (
 		callback: (payload: PluginNotificationPayload) => void,
 	) => () => void;
+
+	/**
+	 * onething:// 深链的确认门(H4)。仅 Electron 桌面宿主 —— 只有它注册了
+	 * URL scheme(web 端连"外面点一条链接"这件事都不存在)。
+	 *
+	 * `deepLinkReady` 是**冷启动队列的放行信号**:app 被一条深链拉起时,URL 可能
+	 * 在窗口建好之前就到,主进程先把它压在队列里,等渲染层说自己能画卡了才投递。
+	 */
+	deepLinkReady: () => Promise<{ success: boolean }>;
+	onDeepLinkRequest: (
+		callback: (request: DeepLinkConfirmRequest) => void,
+	) => () => void;
+	respondDeepLink: (
+		request: DeepLinkRespondRequest,
+	) => Promise<DeepLinkRespondResponse>;
 	// Project directories — independent module
 	projectDirsList: () => Promise<ProjectDirsListResponse>;
 	projectDirsGet: (path: string) => Promise<ProjectDirsGetResponse>;
