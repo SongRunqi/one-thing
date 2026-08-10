@@ -1586,21 +1586,128 @@ html[data-theme='dark'] .app-background-layer {
   --chat-surface: transparent;
 }
 
-/* 整窗铺放(2026-08-10):shell 让位给 z0 的壁纸层(body 仍有不透明底,
-   不漏桌面);侧栏不全透明 —— 它是读文字的面板,给一层同色系半透明纱,
-   头部让位给纱(否则它的不透明底把纱切成两截)。 */
+/* ══════════════════════════════════════════════════════════════════════════
+   壁纸模式表面通透化(2026-08-10)—— 分级制
+   ──────────────────────────────────────────────────────────────────────────
+   背景层铺满整窗之后,真正的问题不是"哪个元素忘了透明",而是**每张面上读不读
+   字、读多少**。按这个问出四档,新面进树时先定级再落规则,别逐个打地鼠:
+
+     A 级·让位   纯布局包装,面上一个字都不读   → background: transparent
+     B 级·纱     chrome 面板(侧栏 / 顶栏 / 状态带) → var(--wallpaper-veil)
+     C 级·可读卡 内容面(代码块 / 表头 / 引用 / 工具卡) → --wallpaper-card-alpha
+     D 级·不动   弹层 / 菜单 / 对话框 / 浮动卡     → 一个字不改
+
+   D 级是红线:浮层压在壁纸上必须完全不透,可读性优先于通透感,不参与调浓度。
+
+   **调法**:B 级全体只认 --wallpaper-veil-alpha 一个数,C 级全体只认
+   --wallpaper-card-alpha 一个数 —— 用户一处调、处处齐,"侧栏和主区观感不一致"
+   就是上一版各写各的浓度造出来的。
+
+   **实现层级优先 token**:能覆写 CSS 变量的绝不写 :deep 类名规则 —— 覆写
+   --ui-sidebar-surface-bg 一次,.sidebar / .sidebar-header / 会话分组 pill /
+   以及任何**尚未被枚举到**的后代面会一起跟随。类名规则只留给变量够不着的面。
+
+   **为什么要 *-ink 快照**:自定义属性是惰性求值的,
+   `--x: color-mix(..., var(--x) ...)` 在同一元素上构成自引用循环,按规范整条
+   作废(静默失效,真机才看得见)。所以**浓度旋钮与 ink 快照住在 .app-shell
+   这个祖先上,真正的 token 覆写住在后代选择器上** —— 快照在祖先处已被算成
+   实色并按计算值继承下来,后代再怎么覆写同名 token 都构不成环。
+   ════════════════════════════════════════════════════════════════════════ */
 .app-shell.has-plugin-background {
   position: relative;
   z-index: 1;
+  /* shell 让位给 z0 的壁纸层(body 仍有不透明底,mac 透明窗不漏桌面)。 */
   background: transparent;
+
+  /* ── 两个旋钮:改这两个数,全窗一起变 ── */
+  --wallpaper-veil-alpha: 35%;
+  --wallpaper-card-alpha: 88%;
+
+  /* ── ink 快照:后代覆写同名 token 之后,这里仍是主题的原始值 ── */
+  --wallpaper-veil-ink: var(--ui-surface-app-bg);
+  --wallpaper-code-ink: var(--ui-surface-code-block-bg);
+  --wallpaper-code-header-ink: var(--ui-surface-code-header-bg);
+  --wallpaper-table-head-ink: var(--ui-table-header-bg, var(--ui-state-hover-bg));
+
+  /* B 级唯一的纱。所有 chrome 面引它,不许各自再写 color-mix。 */
+  --wallpaper-veil: color-mix(
+    in srgb,
+    var(--wallpaper-veil-ink) var(--wallpaper-veil-alpha),
+    transparent
+  );
 }
 
+/* ── B 级·纱|侧栏(报障 1 / 3 / 4)────────────────────────────────────────
+   token 级收口:--sidebar-bg 的定义是
+   `var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg))`,覆写第一个 arm 之后
+   fallback 永不触发,于是 .sidebar 本体、.sidebar-header、会话分组 pill
+   (SessionList 的 `.session-group :deep(.app-sub-menu-title)`)、以及任何别的
+   引这枚 token 的后代面**一起**跟随 —— 报障 4 那道说不清出处的白也在其中。
+   注意不能顺手去动 --ui-surface-app-bg:它是 --wallpaper-veil-ink 的来源,
+   动了就成环,整条纱静默作废。 */
 .app-shell.has-plugin-background :deep(.sidebar) {
-  background: color-mix(in srgb, var(--sidebar-bg) 75%, transparent);
+  --ui-sidebar-surface-bg: var(--wallpaper-veil);
 }
 
+/* A 级·让位|侧栏头自己不再画底(否则与 .sidebar 的纱叠成两截深浅)。 */
 .app-shell.has-plugin-background :deep(.sidebar-header) {
   background: transparent;
+}
+
+/* A 级·让位|报障 4 的元凶:侧栏头下缘那条 12px 的"不透明底 → 透明"渐变。
+   上一刀把 .sidebar-header 本体改透明时漏了这枚伪元素,它就单独留在那里,
+   在纱上显成一道横白。滚动遮罩的职责交给分组 pill(sticky)承担。 */
+.app-shell.has-plugin-background :deep(.sidebar-header)::after {
+  background: transparent;
+}
+
+/* A 级·让位|rail 的底色是一层**相对**色阶(比侧栏底稍重一档),用来把这 46px
+   与列表区分开。壁纸之上"稍重一档"失去参照,只会显成一根实心竖条 —— 交出底色,
+   它的 hover / current 填充本来就是半透明叠加,分层照旧成立。 */
+.app-shell.has-plugin-background :deep(.sidebar-rail) {
+  --ui-sidebar-rail-bg: transparent;
+}
+
+/* D 级·不动|浮动侧栏是一张带投影的浮层卡,走浮层可读性红线:不透。
+   它引的是 --sidebar-bg(已被上面的纱改稀),所以这里显式把 ink 还回去。 */
+.app-shell.has-plugin-background :deep(.sidebar.floating .sidebar-content) {
+  background: var(--wallpaper-veil-ink);
+}
+
+/* ── B 级·纱|主区顶栏(报障 2)────────────────────────────────────────────
+   勘误:这条顶栏不是 Container.vue 的 `.layout-container-header` —— 那个组件
+   通篇没有任何 background 声明。真正画底的是 ChatHeader 之上的
+   `.session-header`(components/chat/SessionHeader.vue),它画
+   `var(--ui-tab-bar-surface-bg, var(--ui-surface-chat-bg))`。覆写第一个 arm,
+   fallback 不再触发,页签条一族(主区顶栏 / 工作台顶栏)一起跟随。
+   --ui-surface-chat-bg 保持原样:frame-label 一族靠它盖住边框缺口,那是功能不是底色。
+
+   ── C 级·可读卡|消息正文里的内容面(报障 5)────────────────────────────
+   内容压在插画上必须先可读,所以是高不透明度而不是全透。改的是**根 ink token**
+   而不是 markdown 的派生变量:--md-code-block-bg 一族定义在 .md-body 作用域里,
+   那里的定义会盖过从这里继承下去的值,只有改它们的上游才推得动。
+   代码块最终 alpha ≈ 0.62×0.88 + 0.38×1 ≈ 0.93(markdown.css 还会再兑 38% 的
+   chat 底),表头 0.88,斑马行 0.40×0.88 ≈ 0.35 —— 都落在"看得清、透一点气"的带里。
+   消息气泡(--ui-surface-elevated-bg)与输入框(--ui-surface-input-bg)不在此列:
+   它们各有透明链与皮肤管辖,这里一个字不动。 */
+.app-content.has-plugin-background {
+  --ui-tab-bar-surface-bg: var(--wallpaper-veil);
+
+  --ui-surface-code-block-bg: color-mix(
+    in srgb,
+    var(--wallpaper-code-ink) var(--wallpaper-card-alpha),
+    transparent
+  );
+  --ui-surface-code-header-bg: color-mix(
+    in srgb,
+    var(--wallpaper-code-header-ink) var(--wallpaper-card-alpha),
+    transparent
+  );
+  --ui-table-header-bg: color-mix(
+    in srgb,
+    var(--wallpaper-table-head-ink) var(--wallpaper-card-alpha),
+    transparent
+  );
 }
 
 .app-main-region {
