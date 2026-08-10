@@ -99,6 +99,10 @@ html.has-wallpaper body {
   --wallpaper-state-active-ink: var(--ui-state-active-bg);
   --wallpaper-state-selected-ink: var(--ui-state-selected-bg);
   --wallpaper-state-selected-hover-ink: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg));
+  /* G6 的「叠 accent 淡底」两档:与其它 state token 同级,同样先在 body 上快照
+     主题原值(后代覆写同名 token 之后这里仍读得到实色)。 */
+  --wallpaper-state-hover-accent-ink: var(--ui-state-hover-accent-bg);
+  --wallpaper-state-hover-accent-strong-ink: var(--ui-state-hover-accent-strong-bg);
   --wallpaper-tab-item-hover-ink: var(--ui-tab-bar-item-hover-bg);
   --wallpaper-tab-action-hover-ink: var(--ui-tab-bar-action-hover-bg);
 
@@ -139,6 +143,18 @@ html.has-wallpaper body {
   --wallpaper-state-selected-hover: color-mix(
     in srgb,
     var(--wallpaper-state-selected-hover-ink) var(--wallpaper-active-alpha),
+    transparent
+  );
+  /* 淡档随 hover、重档随 active —— 与它们在 token 层的语义一致(一个是瞬时
+     反馈,一个是要压住的强调底),不给这一族另立第七个旋钮。 */
+  --wallpaper-state-hover-accent: color-mix(
+    in srgb,
+    var(--wallpaper-state-hover-accent-ink) var(--wallpaper-hover-alpha),
+    transparent
+  );
+  --wallpaper-state-hover-accent-strong: color-mix(
+    in srgb,
+    var(--wallpaper-state-hover-accent-strong-ink) var(--wallpaper-active-alpha),
     transparent
   );
   --wallpaper-tab-item-hover: color-mix(
@@ -297,6 +313,8 @@ html.has-wallpaper .app-floating-sidebar-host {
   --ui-state-active-bg: var(--wallpaper-state-active);
   --ui-state-selected-bg: var(--wallpaper-state-selected);
   --ui-state-selected-hover-bg: var(--wallpaper-state-selected-hover);
+  --ui-state-hover-accent-bg: var(--wallpaper-state-hover-accent);
+  --ui-state-hover-accent-strong-bg: var(--wallpaper-state-hover-accent-strong);
   /* 派生 token,逐条列名(见上) */
   --ui-sidebar-action-hover-bg: var(--wallpaper-state-hover);
   --ui-tab-bar-item-hover-bg: var(--wallpaper-tab-item-hover);
@@ -391,6 +409,8 @@ html.has-wallpaper :is(
   --ui-state-active-bg: var(--wallpaper-state-active-ink);
   --ui-state-selected-bg: var(--wallpaper-state-selected-ink);
   --ui-state-selected-hover-bg: var(--wallpaper-state-selected-hover-ink);
+  --ui-state-hover-accent-bg: var(--wallpaper-state-hover-accent-ink);
+  --ui-state-hover-accent-strong-bg: var(--wallpaper-state-hover-accent-strong-ink);
   --ui-sidebar-item-hover-bg: var(--wallpaper-hover-ink);
   --ui-sidebar-item-active-bg: var(--wallpaper-active-ink);
 

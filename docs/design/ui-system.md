@@ -181,6 +181,7 @@ hover 看不见)。配方表在 `themes/role-mapping.ts` 的 `REGION_OVERLAY_STE
 | `--ui-sidebar-item-hover-bg` / `--ui-sidebar-item-active-bg` | 侧栏行 hover(8%)/ 选中(14%) |
 | `--ui-sidebar-rail-bg` / `-hover-bg` / `-active-bg` / `-muted-fg` | rail 与 ActiveWorkCard 这类嵌套面(2.5 / 4.5 / 7.5 / 47%,**叠在 rail 底上**) |
 | `--ui-settings-row-hover-bg` / `--ui-settings-row-active-bg` | 设置区行(accent 5% / 10%) |
+| `--ui-state-hover-accent-bg` / `--ui-state-hover-accent-strong-bg` | 通用「叠 accent 淡底」两档(accent 10% / 16%,画在 panel 面上)。**手写 `color-mix(in srgb, var(--accent) N%, transparent)` 一律换成它** —— 存量 99 处自绘 hover 底的根因就是缺这枚 token。淡档给瞬时 hover,重档给要压住的强调/当前项底。如实记:淡档与 `--ui-settings-row-active-bg` 百分比同为 10,解析出同一个实色,那是巧合不是别名 |
 
 **组件端只引用,不再自造 `color-mix`。** 要加新档位就改 `REGION_OVERLAY_STEPS`,
 改完跑 `themes/__tests__/state-overlay-audit.test.ts`(16 主题 × 声明模式,断言

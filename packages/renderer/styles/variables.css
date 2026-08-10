@@ -486,6 +486,12 @@
 	--ui-focus-ring-input-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-surface-input-focus-ring) 15%, transparent);
 	/* 无"底环"可依的浮面/侧栏:单环、半透明,不去咬邻行。 */
 	--ui-focus-ring-soft-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
+	/* 「叠 accent 淡底」的两档 hover(G6)。配方同样在 role-mapping.ts 的
+	   REGION_OVERLAY_STEPS(stateHoverAccent 10% / stateHoverAccentStrong 16%),
+	   运行时由 css-mapper 以 panel 面为基解析成实色;这里是未加载主题时的同值兜底。
+	   用它替代组件里手写的 `color-mix(in srgb, var(--accent) N%, transparent)`。 */
+	--ui-state-hover-accent-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+	--ui-state-hover-accent-strong-bg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 16%, transparent);
 	--ui-state-disabled-bg: var(--bg-input-disabled, var(--color-neutral-lighter-fill));
 	--ui-state-disabled-fg: var(--color-neutral-disabled-text, var(--text-input-disabled, var(--text-btn-disabled)));
 

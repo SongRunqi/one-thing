@@ -90,6 +90,9 @@ const STATE_PAIRS: StatePair[] = [
   { state: '--ui-tab-bar-item-active-bg', surface: '--ui-tab-bar-surface-bg' },
   { state: '--ui-settings-row-hover-bg', surface: '--ui-surface-panel-bg' },
   { state: '--ui-settings-row-active-bg', surface: '--ui-surface-panel-bg' },
+  // G6:通用「叠 accent 淡底」两档,与设置行同一张基面(panel)。
+  { state: '--ui-state-hover-accent-bg', surface: '--ui-surface-panel-bg' },
+  { state: '--ui-state-hover-accent-strong-bg', surface: '--ui-surface-panel-bg' },
 ]
 
 /** 同一区域内 hover → 选中 必须越走越远,否则两态读起来是一个。 */
@@ -101,6 +104,10 @@ const STATE_LADDERS: Array<{ surface: string; steps: string[] }> = [
     steps: ['--ui-sidebar-rail-bg', '--ui-sidebar-rail-hover-bg', '--ui-sidebar-rail-active-bg'],
   },
   { surface: '--ui-surface-panel-bg', steps: ['--ui-settings-row-hover-bg', '--ui-settings-row-active-bg'] },
+  {
+    surface: '--ui-surface-panel-bg',
+    steps: ['--ui-state-hover-accent-bg', '--ui-state-hover-accent-strong-bg'],
+  },
 ]
 
 const FOCUS_TOKENS = ['--ui-state-focus-ring', '--ui-state-focus-border', '--ui-surface-input-focus-ring']
@@ -132,6 +139,9 @@ describe('builtin theme state overlays', () => {
     expect(REGION_OVERLAY_STEPS.sidebarRailHover).toBeLessThan(REGION_OVERLAY_STEPS.sidebarRailActive)
     expect(REGION_OVERLAY_STEPS.sidebarRowHover).toBeLessThan(REGION_OVERLAY_STEPS.sidebarRowActive)
     expect(REGION_OVERLAY_STEPS.settingsRowHover).toBeLessThan(REGION_OVERLAY_STEPS.settingsRowActive)
+    expect(REGION_OVERLAY_STEPS.stateHoverAccent).toBeLessThan(REGION_OVERLAY_STEPS.stateHoverAccentStrong)
+    // 淡档要真的"淡":比设置行的选中底重不了,否则它就成了另一个选中态。
+    expect(REGION_OVERLAY_STEPS.stateHoverAccent).toBeLessThanOrEqual(REGION_OVERLAY_STEPS.settingsRowActive)
   })
 
   for (const fileName of builtinThemeFiles) {

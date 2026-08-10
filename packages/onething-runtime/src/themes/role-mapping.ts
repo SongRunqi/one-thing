@@ -87,6 +87,19 @@ export const REGION_OVERLAY_STEPS = {
   settingsRowHover: 5,
   /** 设置区行:选中底(accent 墨) */
   settingsRowActive: 10,
+  /**
+   * 通用「叠 accent 淡底」的 hover 档(accent 墨,画在 panel 面上)。
+   *
+   * 它不是 settings 分支的别名 —— 全窗那一大批手写
+   * `color-mix(in srgb, var(--accent) N%, transparent)` 的 hover/强调底走这一档:
+   * 存量实测 N 的众数就是 10(x20),次高 8(x9),所以档位取 10 而不是另立新数。
+   * 如实记:它与 `settingsRowActive` 的百分比恰好同为 10,于是两枚 token 在同一
+   * 张面上解析出**同一个实色** —— 那是阶梯撞在同一格的巧合,不是别名,两族各自
+   * 独立演进(设置行选中要变时不该被这条 hover 拽住)。
+   */
+  stateHoverAccent: 10,
+  /** 同一族的重档:强调行 / 当前项这类要压住的底(存量 15/16/18 三簇的中位)。 */
+  stateHoverAccentStrong: 16,
 } as const
 
 export type RegionOverlayStep = keyof typeof REGION_OVERLAY_STEPS

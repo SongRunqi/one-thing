@@ -649,6 +649,8 @@ export const REGION_OVERLAY_VAR_NAMES = [
   '--ui-sidebar-rail-muted-fg',
   '--ui-settings-row-hover-bg',
   '--ui-settings-row-active-bg',
+  '--ui-state-hover-accent-bg',
+  '--ui-state-hover-accent-strong-bg',
 ] as const
 
 function addRegionOverlayCSSVariables(result: Record<string, string>): void {
@@ -684,6 +686,14 @@ function addRegionOverlayCSSVariables(result: Record<string, string>): void {
   if (accent && settingsSurface) {
     assign('--ui-settings-row-hover-bg', deriveRegionOverlay(accent, settingsSurface, 'settingsRowHover'))
     assign('--ui-settings-row-active-bg', deriveRegionOverlay(accent, settingsSurface, 'settingsRowActive'))
+    // 通用 accent hover 族(G6)。同一条配方链、同一张基面(panel),只是这两档
+    // 不归设置区专有 —— 全窗任何"叠 accent 淡底"的 hover / 强调底都引它,
+    // 组件端不再各写一次 color-mix(存量 99 处的根因就是没有这枚 token)。
+    assign('--ui-state-hover-accent-bg', deriveRegionOverlay(accent, settingsSurface, 'stateHoverAccent'))
+    assign(
+      '--ui-state-hover-accent-strong-bg',
+      deriveRegionOverlay(accent, settingsSurface, 'stateHoverAccentStrong')
+    )
   }
 }
 
