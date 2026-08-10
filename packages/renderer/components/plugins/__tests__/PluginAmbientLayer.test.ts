@@ -12,6 +12,7 @@ import { dirname, resolve } from 'node:path'
 import { mount, flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PluginAmbientLayer from '../PluginAmbientLayer.vue'
+import { PLUGIN_AMBIENT_ANCHORS } from '@/workspace/plugin-panel-types'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -31,21 +32,48 @@ function fromFrame(contentWindow: unknown, data: unknown): void {
   window.dispatchEvent(event)
 }
 
-/** 造一个 composer 地标,并给它一个非零矩形(happy-dom 默认全 0)。 */
-function installComposerAnchor(rect: Partial<DOMRect>): HTMLElement {
+/** 造一块地标,并给它一个非零矩形(happy-dom 默认全 0)。 */
+function installAnchor(name: string, rect: Partial<DOMRect> = {}, parent: HTMLElement = document.body): HTMLElement {
   const el = document.createElement('div')
-  el.setAttribute('data-ambient-anchor', 'composer')
+  el.setAttribute('data-ambient-anchor', name)
   el.getBoundingClientRect = () => ({
     top: 500, left: 100, right: 700, bottom: 560, width: 600, height: 60,
     x: 100, y: 500, toJSON: () => ({}), ...rect,
   }) as DOMRect
-  document.body.appendChild(el)
+  parent.appendChild(el)
   return el
 }
 
+/** 造一个 composer 地标(v1 那一个包络)。 */
+function installComposerAnchor(rect: Partial<DOMRect> = {}): HTMLElement {
+  return installAnchor('composer', rect)
+}
+
+/** 跑到握手完成、拿到第一帧几何为止。 */
+async function mountReady() {
+  const wrapper = mount(PluginAmbientLayer, { props: { entryUrl: 'onething-plugin://snow-scene/ambient.html' } })
+  const { posted, contentWindow } = stubFrame(wrapper)
+  await wrapper.find('iframe').trigger('load')
+  fromFrame(contentWindow, { token: posted[0].token, type: 'ambient-ready' })
+  await flushPromises()
+  return { wrapper, posted, contentWindow, token: posted[0].token as string }
+}
+
+const geometries = (posted: any[]) => posted.filter(m => m.type === 'ambient-geometry')
+const lastGeometry = (posted: any[]) => geometries(posted)[geometries(posted).length - 1]
+
 beforeEach(() => {
-  // rAF 同步化 —— scheduleMeasure 走它,测试里要立刻拿到几何。
-  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { cb(0); return 1 })
+  // rAF → 微任务:`await flushPromises()` 之后几何就到了。
+  //
+  // **不能同步化**:真 rAF 永远在 `rafHandle = raf(cb)` 这一行赋值**之后**才回调,
+  // 同步替身会让句柄被回调后的返回值覆盖成非 0,scheduleMeasure 从此永久早退 ——
+  // 那是替身造的假象,不是被测代码的行为(第二次 resize 不再测量的判例)。
+  let handle = 0
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+    handle += 1
+    queueMicrotask(() => cb(0))
+    return handle
+  })
   vi.stubGlobal('cancelAnimationFrame', () => {})
 })
 
@@ -127,6 +155,182 @@ describe('氛围层:几何喂送', () => {
     window.dispatchEvent(new Event('resize'))
     await flushPromises()
     expect(posted.find(m => m.type === 'ambient-geometry')).toBeUndefined()
+  })
+})
+
+describe('氛围层:词表(L0 —— 名字 × kind × cardinality)', () => {
+  it('握手后恰好发一次 vocabulary,且排在首帧几何之前', async () => {
+    installComposerAnchor()
+    const { posted } = await mountReady()
+
+    const vocabIndex = posted.findIndex(m => m.type === 'ambient-vocabulary')
+    const geometryIndex = posted.findIndex(m => m.type === 'ambient-geometry')
+    expect(vocabIndex).toBeGreaterThan(-1)
+    expect(posted.filter(m => m.type === 'ambient-vocabulary')).toHaveLength(1)
+    // 词表先到:插件读第一批矩形时已经知道每个名字是什么种类。
+    expect(vocabIndex).toBeLessThan(geometryIndex)
+  })
+
+  it('词表就是宿主那张静态表(首批四个地标,全 surface)', async () => {
+    const { posted } = await mountReady()
+    const vocabulary = posted.find(m => m.type === 'ambient-vocabulary')
+    expect(vocabulary.anchors).toEqual(PLUGIN_AMBIENT_ANCHORS)
+    expect(Object.keys(vocabulary.anchors)).toEqual(['composer', 'composer.input', 'status.chip', 'composer.block'])
+    expect(vocabulary.anchors.composer.cardinality).toBe('singleton')
+    expect(vocabulary.anchors['status.chip'].cardinality).toBe('per-item')
+    expect(Object.values(vocabulary.anchors).every((spec: any) => spec.kind === 'surface')).toBe(true)
+  })
+
+  it('重复的 ready 不重发词表(静态表只发一次)', async () => {
+    const { posted, contentWindow, token } = await mountReady()
+    fromFrame(contentWindow, { token, type: 'ambient-ready' })
+    await flushPromises()
+    expect(posted.filter(m => m.type === 'ambient-vocabulary')).toHaveLength(1)
+  })
+
+  it('握手没回来就没有词表', async () => {
+    const wrapper = mount(PluginAmbientLayer, { props: { entryUrl: 'onething-plugin://snow-scene/ambient.html' } })
+    const { posted } = stubFrame(wrapper)
+    await wrapper.find('iframe').trigger('load')
+    expect(posted.find(m => m.type === 'ambient-vocabulary')).toBeUndefined()
+  })
+})
+
+describe('氛围层:surfaces(同名多实例 + 进出场)', () => {
+  it('同名多实例各占一行,index 按文档序递增', async () => {
+    installComposerAnchor()
+    installAnchor('status.chip', { top: 470, left: 100, right: 180, bottom: 494, width: 80, height: 24 })
+    installAnchor('status.chip', { top: 470, left: 190, right: 300, bottom: 494, width: 110, height: 24 })
+    const { posted } = await mountReady()
+
+    const chips = lastGeometry(posted).surfaces.filter((s: any) => s.name === 'status.chip')
+    expect(chips).toHaveLength(2)
+    expect(chips.map((s: any) => s.index)).toEqual([0, 1])
+    expect(chips[0].rect).toMatchObject({ left: 100, width: 80, top: 470 })
+    expect(chips[1].rect).toMatchObject({ left: 190, width: 110, top: 470 })
+    // singleton 也在列(composer 是物理兜底包络),index 恒为 0。
+    const composer = lastGeometry(posted).surfaces.filter((s: any) => s.name === 'composer')
+    expect(composer).toHaveLength(1)
+    expect(composer[0].index).toBe(0)
+  })
+
+  it('离场 = 从 surfaces 里缺席;singleton 在 anchors 里仍是 null', async () => {
+    const composer = installComposerAnchor()
+    const chip = installAnchor('status.chip', { top: 470, left: 100, right: 180, bottom: 494, width: 80, height: 24 })
+    const { posted } = await mountReady()
+    expect(lastGeometry(posted).surfaces.some((s: any) => s.name === 'status.chip')).toBe(true)
+
+    chip.remove()
+    composer.remove()
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+
+    const geometry = lastGeometry(posted)
+    // 数组天然表达进出场:不在列 = 不在场,没有 null 占位。
+    expect(geometry.surfaces.some((s: any) => s.name === 'status.chip')).toBe(false)
+    expect(geometry.surfaces.some((s: any) => s.name === 'composer')).toBe(false)
+    // v1 的 map 语义一字不改:singleton 离场仍是显式 null。
+    expect(geometry.anchors).toHaveProperty('composer')
+    expect(geometry.anchors.composer).toBeNull()
+  })
+
+  it('singleton 取第一个**在场的**(分屏时非活动那份矩形为零,不能报成离场)', async () => {
+    // 先挂一份关着的(v-show 关掉 = 零尺寸),再挂活着的那份。
+    installAnchor('composer', { top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 })
+    installComposerAnchor()
+    const { posted } = await mountReady()
+    expect(lastGeometry(posted).composerRect).toMatchObject({ top: 500, width: 600 })
+    expect(lastGeometry(posted).surfaces.filter((s: any) => s.name === 'composer')).toHaveLength(1)
+  })
+
+  it('零尺寸的地标(:empty / v-show 自隐)不算在场', async () => {
+    installComposerAnchor()
+    installAnchor('status.chip', { top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 })
+    const { posted } = await mountReady()
+    expect(lastGeometry(posted).surfaces.some((s: any) => s.name === 'status.chip')).toBe(false)
+  })
+
+  it('per-item 地标不进 anchors map(map 只承载 singleton)', async () => {
+    installComposerAnchor()
+    installAnchor('composer.input', { top: 520, left: 100, right: 700, bottom: 560, width: 600, height: 40 })
+    installAnchor('composer.block', { top: 440, left: 100, right: 700, bottom: 464, width: 600, height: 24 })
+    const { posted } = await mountReady()
+
+    const geometry = lastGeometry(posted)
+    expect(Object.keys(geometry.anchors).sort()).toEqual(['composer', 'composer.input'])
+    expect(geometry.surfaces.some((s: any) => s.name === 'composer.block')).toBe(true)
+  })
+
+  it('v1 字段照发:composerRect 与 anchors.composer 是同一块矩形', async () => {
+    installComposerAnchor()
+    const { posted } = await mountReady()
+    const geometry = lastGeometry(posted)
+    expect(geometry.composerRect).toMatchObject({ top: 500, left: 100, width: 600, height: 60 })
+    expect(geometry.composerRect).toEqual(geometry.anchors.composer)
+    expect(geometry.viewport).toEqual({ width: window.innerWidth, height: window.innerHeight })
+  })
+})
+
+describe('氛围层:观察集合泛化(RO 重对准 + MO 进出场)', () => {
+  class FakeResizeObserver {
+    static instances: FakeResizeObserver[] = []
+    observed: Element[] = []
+    unobserved: Element[] = []
+    constructor(public cb: () => void) { FakeResizeObserver.instances.push(this) }
+    observe(el: Element): void { this.observed.push(el) }
+    unobserve(el: Element): void { this.unobserved.push(el) }
+    disconnect(): void {}
+  }
+
+  beforeEach(() => {
+    FakeResizeObserver.instances = []
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+  })
+
+  it('观察集合随进出场重对准(新元素 observe、离场元素 unobserve)', async () => {
+    const composer = installComposerAnchor()
+    const chip = installAnchor('status.chip', { top: 470, left: 100, right: 180, bottom: 494, width: 80, height: 24 })
+    await mountReady()
+
+    const ro = FakeResizeObserver.instances[0]
+    expect(ro.observed).toContain(document.documentElement)
+    expect(ro.observed).toContain(composer)
+    expect(ro.observed).toContain(chip)
+
+    chip.remove()
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+    expect(ro.unobserved).toContain(chip)
+
+    const nextChip = installAnchor('status.chip', { top: 470, left: 190, right: 300, bottom: 494, width: 110, height: 24 })
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+    expect(ro.observed).toContain(nextChip)
+    // 没变过的那个不重复 observe(diff 是集合差,不是每轮全量重挂)。
+    expect(ro.observed.filter(el => el === composer)).toHaveLength(1)
+  })
+
+  it('MutationObserver:地标进场(chip 出现在输入区里)触发重测', async () => {
+    const composer = installComposerAnchor()
+    const { posted } = await mountReady()
+    const before = geometries(posted).length
+
+    // 不发 resize —— 只靠 childList 侦测(chip 是被插进来的,不是变尺寸)。
+    installAnchor('status.chip', { top: 470, left: 100, right: 180, bottom: 494, width: 80, height: 24 }, composer)
+    await flushPromises()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const after = geometries(posted)
+    expect(after.length).toBeGreaterThan(before)
+    expect(after[after.length - 1].surfaces.some((s: any) => s.name === 'status.chip')).toBe(true)
+  })
+
+  it('没有宿主容器时不抛(退化为只靠 resize / RO)', async () => {
+    const { posted } = await mountReady()
+    expect(lastGeometry(posted).surfaces).toEqual([])
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+    expect(geometries(posted).length).toBeGreaterThan(1)
   })
 })
 

@@ -29,7 +29,8 @@
  *  1. **挂载位置与 z 位**:全窗、`pointer-events:none`、`--z-ambient`(内容之上、
  *     每一层可交互浮层之下)。
  *  2. **消息集**:氛围层是纯视觉,没有 invoke/result(它永远不回调宿主),多了
- *     `geometry`(枚举地标矩形)与 `pause`/`resume`(窗口失焦/隐藏即停)。
+ *     `vocabulary`(地标词表,握手后一次)、`geometry`(枚举地标矩形)与
+ *     `pause`/`resume`(窗口失焦/隐藏即停)。
  *  3. **失败静默**:氛围是装饰,握手不回来就当它没有 —— 不弹错误页(那是内容
  *     面板才需要的),只在控制台留一句。
  *
@@ -39,7 +40,7 @@
  * (rAF 合并,不是每帧)。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { PLUGIN_AMBIENT_MESSAGE } from '@/workspace/plugin-panel-types'
+import { PLUGIN_AMBIENT_ANCHORS, PLUGIN_AMBIENT_MESSAGE } from '@/workspace/plugin-panel-types'
 
 const props = defineProps<{
   /** `onething-plugin://<id>/<entry>` —— 胜出氛围层的入口(裁决已在主进程做完)。 */
@@ -47,12 +48,20 @@ const props = defineProps<{
 }>()
 
 /**
- * 宿主枚举的几何地标(append-only —— 将来可加 sidebar 边、消息列表区)。
- * v1 两个:`composer`(输入框外框,雪落地堆积/雪人贴角的锚)。viewport 单独走
- * 字段。地标靠 `data-ambient-anchor` 显式标注,**不暴露任意 DOM** —— 插件拿到的
- * 只有这几块矩形。
+ * 宿主枚举的几何地标(词表在 `@/workspace/plugin-panel-types`,append-only)。
+ * 地标靠 `data-ambient-anchor` 显式标注,**不暴露任意 DOM** —— 插件拿到的只有
+ * 这几块矩形 + 词表里的 kind/cardinality。
+ *
+ * 键序即测量序,surfaces 数组按它出场。
  */
-const AMBIENT_ANCHORS = ['composer'] as const
+const AMBIENT_ANCHOR_ENTRIES = Object.entries(PLUGIN_AMBIENT_ANCHORS)
+
+/**
+ * 进出场侦测的宿主容器:首批词表全在输入区包络内,盯它一个就够
+ * (设计文档 §4.4)。找不到时退化为只靠 resize / ResizeObserver —— 氛围是
+ * 装饰,少一路侦测只是慢半拍,不是错误。
+ */
+const AMBIENT_MUTATION_ROOT = '[data-ambient-anchor="composer"]'
 
 /**
  * 握手预算。给得宽:iframe 要起 canvas、建粒子系统。超时不是"慢",是"这一页
@@ -76,7 +85,13 @@ let handshakeDone = false
 let running = true
 let rafHandle = 0
 let resizeObserver: ResizeObserver | null = null
-let observedAnchor: Element | null = null
+/** 此刻被 ResizeObserver 盯着的地标元素集合(每次测量后 diff 重对准)。 */
+let observedAnchors = new Set<Element>()
+let mutationObserver: MutationObserver | null = null
+/** MutationObserver 当前挂着的宿主容器(会话切换会换一个元素)。 */
+let mutationRoot: Element | null = null
+/** 本代 iframe 是否已经收到过词表(静态表只发一次)。 */
+let vocabularySent = false
 
 function newToken(): string {
   const cryptoApi = globalThis.crypto
@@ -89,30 +104,83 @@ function post(message: Record<string, unknown>): void {
   frameEl.value?.contentWindow?.postMessage({ ...message, token }, '*')
 }
 
-/** 读取一块地标的视口矩形。iframe 全窗定位,视口坐标即 canvas 坐标。 */
-function readAnchorRect(name: string): Record<string, number> | null {
-  const el = document.querySelector(`[data-ambient-anchor="${name}"]`)
-  if (!el) return null
+type AmbientRect = Record<string, number>
+
+interface AmbientSurface {
+  name: string
+  /** 同名多实例的序号(按文档序);singleton 恒为 0。 */
+  index: number
+  rect: AmbientRect
+}
+
+/** 读取一个元素的视口矩形。iframe 全窗定位,视口坐标即 canvas 坐标。 */
+function readRect(el: Element): AmbientRect | null {
   const r = el.getBoundingClientRect()
-  // 零尺寸(v-show 关掉时可能出现)= 不在场,当作没有。
+  // 零尺寸(v-show 关掉、`:empty` 自隐时可能出现)= 不在场,当作没有。
   if (r.width <= 0 || r.height <= 0) return null
   return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height }
+}
+
+/**
+ * 扫一遍词表,量出此刻在场的全部地标。
+ *
+ * - `anchors`:**只承载 singleton**(v1 的 map 语义一字不改,null = 离场);
+ * - `surfaces`:所有在场地标(含 singleton),**在列即在场,离场即缺席** ——
+ *   数组天然表达进出场,不需要 null 占位;
+ * - `present`:这一轮在场的元素,交给 ResizeObserver 重对准。
+ */
+function collectGeometry(): { anchors: Record<string, AmbientRect | null>; surfaces: AmbientSurface[]; present: Element[] } {
+  const anchors: Record<string, AmbientRect | null> = {}
+  const surfaces: AmbientSurface[] = []
+  const present: Element[] = []
+
+  for (const [name, spec] of AMBIENT_ANCHOR_ENTRIES) {
+    const selector = `[data-ambient-anchor="${name}"]`
+    if (spec.cardinality === 'singleton') {
+      // 取**第一个在场的**那一个,而不是第一个匹配的:分屏/多房面时 DOM 里
+      // 可能同时挂着几份(非活动的那份 v-show 关着、矩形为零),死取第一个会
+      // 把"有一个活着的输入框"报成离场。
+      let hit: { el: Element; rect: AmbientRect } | null = null
+      for (const el of Array.from(document.querySelectorAll(selector))) {
+        const rect = readRect(el)
+        if (!rect) continue
+        hit = { el, rect }
+        break
+      }
+      anchors[name] = hit?.rect ?? null
+      if (hit) {
+        present.push(hit.el)
+        surfaces.push({ name, index: 0, rect: hit.rect })
+      }
+      continue
+    }
+    let index = 0
+    for (const el of Array.from(document.querySelectorAll(selector))) {
+      const rect = readRect(el)
+      if (!rect) continue
+      present.push(el)
+      surfaces.push({ name, index, rect })
+      index += 1
+    }
+  }
+
+  return { anchors, surfaces, present }
 }
 
 /** 立刻测量并推一次几何(枚举地标 + viewport)。 */
 function measure(): void {
   if (!handshakeDone) return
-  const anchors: Record<string, Record<string, number> | null> = {}
-  for (const name of AMBIENT_ANCHORS) anchors[name] = readAnchorRect(name)
+  const { anchors, surfaces, present } = collectGeometry()
   post({
     type: PLUGIN_AMBIENT_MESSAGE.geometry,
     viewport: { width: window.innerWidth, height: window.innerHeight },
-    // v1 唯一地标提到顶层,方便插件直接读 composerRect;anchors 里也带一份,
-    // 为将来加地标留位(append-only)。
+    // v1 字段照发:snow 1.0 一行不改照跑(兼容责任在宿主,设计文档 §8)。
     composerRect: anchors.composer,
     anchors,
+    // v2:同名多实例装得下的那一份。
+    surfaces,
   })
-  syncAnchorObservation()
+  syncObservation(present)
 }
 
 /** rAF 合并的节流测量 —— resize/布局变化时调它,不是每帧。 */
@@ -125,14 +193,40 @@ function scheduleMeasure(): void {
   })
 }
 
-/** composer 锚点元素可能随会话切换换一个 —— 每次测量后把观察对象对准当前那个。 */
-function syncAnchorObservation(): void {
+/** 每次测量后把两路观察都对准当前在场的地标。 */
+function syncObservation(present: readonly Element[]): void {
+  syncResizeObservation(present)
+  syncMutationObservation()
+}
+
+/**
+ * 地标元素会随会话切换 / chip 出没换人 —— 观察集合每轮 diff 重对准
+ * (v1 "只盯一个 composer" 的泛化版)。
+ */
+function syncResizeObservation(present: readonly Element[]): void {
   if (!resizeObserver) return
-  const anchor = document.querySelector('[data-ambient-anchor="composer"]')
-  if (anchor === observedAnchor) return
-  if (observedAnchor) resizeObserver.unobserve(observedAnchor)
-  observedAnchor = anchor
-  if (anchor) resizeObserver.observe(anchor)
+  const next = new Set(present)
+  for (const el of observedAnchors) {
+    if (!next.has(el)) resizeObserver.unobserve(el)
+  }
+  for (const el of next) {
+    if (!observedAnchors.has(el)) resizeObserver.observe(el)
+  }
+  observedAnchors = next
+}
+
+/**
+ * 进出场侦测:chip / 块 v-if 掉的那一刻,旧元素的 ResizeObserver 不会响
+ * (它是被删掉,不是变尺寸)。所以在宿主容器上盯 childList+subtree,
+ * 回调汇进同一条 rAF 合并的测量。
+ */
+function syncMutationObservation(): void {
+  if (!mutationObserver) return
+  const root = document.querySelector(AMBIENT_MUTATION_ROOT)
+  if (root === mutationRoot) return
+  mutationObserver.disconnect()
+  mutationRoot = root
+  if (root) mutationObserver.observe(root, { childList: true, subtree: true })
 }
 
 function armHandshake(): void {
@@ -184,8 +278,15 @@ function onMessage(event: MessageEvent): void {
   if (!token || data.token !== token) return
 
   if (data.type === PLUGIN_AMBIENT_MESSAGE.ready) {
+    // 一代 iframe 只握一次手:重复的 ready 不再重发词表(静态表只发一次)。
+    if (handshakeDone) return
     handshakeDone = true
     clearTimeout(handshakeTimer)
+    // 词表在几何之前:插件读到第一批矩形时,已经知道每个名字是什么种类。
+    if (!vocabularySent) {
+      vocabularySent = true
+      post({ type: PLUGIN_AMBIENT_MESSAGE.vocabulary, anchors: PLUGIN_AMBIENT_ANCHORS })
+    }
     // 首帧几何 + 当前运行态一起过去,iframe 不必再往返一次要。
     measure()
     if (!running) post({ type: PLUGIN_AMBIENT_MESSAGE.pause })
@@ -196,6 +297,8 @@ function onMessage(event: MessageEvent): void {
 function reset(): void {
   token = newToken()
   handshakeDone = false
+  // 新一代 iframe 什么都不知道:词表要重发一次。
+  vocabularySent = false
   running = computeRunning()
   reloadNonce.value += 1
   armHandshake()
@@ -213,8 +316,12 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(() => scheduleMeasure())
     // document 根:窗口/侧栏一类的布局变化(composer 列尺寸随之改)在这里兜底。
     resizeObserver.observe(document.documentElement)
-    syncAnchorObservation()
   }
+  if (typeof MutationObserver !== 'undefined') {
+    mutationObserver = new MutationObserver(() => scheduleMeasure())
+  }
+  // 观察对象先对准此刻在场的地标(几何本身要等握手,measure 自己把关)。
+  syncObservation(collectGeometry().present)
   armHandshake()
 })
 
@@ -232,7 +339,10 @@ onBeforeUnmount(() => {
   }
   resizeObserver?.disconnect()
   resizeObserver = null
-  observedAnchor = null
+  observedAnchors = new Set()
+  mutationObserver?.disconnect()
+  mutationObserver = null
+  mutationRoot = null
 })
 
 // 赢家换人(entryUrl 变)→ 换一代 iframe。同一 URL 不重置(避免无谓重载)。

@@ -12,7 +12,10 @@
       v-for="slot in visibleSlots"
       :key="`${slot.pluginId}:${slot.slotId}`"
     >
-      <StatusChip v-if="chipShell">
+      <StatusChip
+        v-if="chipShell"
+        data-ambient-anchor="status.chip"
+      >
         <UiSlotBlock
           :entry="slot"
           :session-id="sessionId ?? null"
@@ -27,6 +30,7 @@
         v-else-if="isDrawerEntry(slot)"
         class="ui-slot-drawer"
         :data-drawer-state="drawerStateFor(slot)"
+        :data-ambient-anchor="blockAmbientAnchor"
       >
         <div class="ui-slot-drawer-body">
           <UiSlotBlock
@@ -79,6 +83,7 @@
         :session-id="sessionId ?? null"
         :message-id="messageId ?? null"
         :max-height="maxHeight"
+        :data-ambient-anchor="blockAmbientAnchor"
       />
     </template>
     <!-- 全收的抽屉退位到 S 状态带:一枚静态 chip(拼图图标 + manifest label)
@@ -88,6 +93,7 @@
       <StatusChip
         v-for="slot in chipCollapsedDrawers"
         :key="`drawer:${slot.pluginId}:${slot.slotId}`"
+        data-ambient-anchor="status.chip"
       >
         <button
           type="button"
@@ -166,7 +172,20 @@ const props = withDefaults(defineProps<{
   chipShell: false,
 })
 
+/**
+ * 氛围层地标(L0,ambient-landmarks-2026-08 §5):**只有 composer.above 的块**
+ * 是可落面。message.footer 的块住在气泡里 —— 气泡区在氛围语义里是"天空"
+ * (滚一格全错位),那是明确的否决项,所以这里按挂点查表而不是一律挂。
+ * chip 壳形态的块另有 `status.chip`,不走这一支。
+ */
+const AMBIENT_ANCHOR_BY_UI_ANCHOR: Record<string, string> = {
+  'composer.above': 'composer.block',
+}
+
 const visibleSlots = useVisibleAnchorUiSlots(props.anchor)
+const blockAmbientAnchor = computed(() =>
+  (props.chipShell ? undefined : AMBIENT_ANCHOR_BY_UI_ANCHOR[props.anchor]),
+)
 const maxHeight = UI_ANCHOR_CAPACITY_MIRROR[props.anchor]?.maxHeight ?? 32
 
 const overflow = computed(() => computeAnchorOverflow(props.anchor))

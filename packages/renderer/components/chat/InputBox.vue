@@ -182,8 +182,12 @@
           @close="handlePathPickerClose"
         />
 
+        <!-- 氛围层地标(L0):输入框**本体**的顶边 —— 包络 `composer` 之外
+             真正能落雪的那条线(ambient-landmarks-2026-08 §5)。惰性标记,
+             没有氛围插件在跑时一次测量都不发生。 -->
         <div
           class="composer"
+          data-ambient-anchor="composer.input"
           :class="{
             focused: isFocused,
             listening: isVoiceRecordingActive,

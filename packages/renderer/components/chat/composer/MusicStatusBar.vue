@@ -3,6 +3,7 @@
     <StatusChip
       v-if="chipVisible"
       class="music-chip"
+      data-ambient-anchor="status.chip"
       :class="{ 'is-playing': playing }"
       :open="visible"
       label="电台"

@@ -121,7 +121,14 @@ export const PLUGIN_WEBVIEW_MESSAGE = {
 export const PLUGIN_AMBIENT_MESSAGE = {
   /** host → iframe:首帧握手,带 token。 */
   init: 'ambient-init',
-  /** host → iframe:枚举地标的矩形(viewport + composerRect,…)。 */
+  /**
+   * host → iframe:地标词表(名字 × kind × cardinality),握手确认后**发一次**。
+   *
+   * 静态表单独一条消息,是为了让热路径的 geometry 不背语义字段(L0,
+   * `docs/design/plugin-ui/ambient-landmarks-2026-08.md` §4.1)。
+   */
+  vocabulary: 'ambient-vocabulary',
+  /** host → iframe:枚举地标的矩形(viewport + composerRect + surfaces,…)。 */
   geometry: 'ambient-geometry',
   /** host → iframe:窗口失焦/隐藏,停 rAF。 */
   pause: 'ambient-pause',
@@ -129,4 +136,47 @@ export const PLUGIN_AMBIENT_MESSAGE = {
   resume: 'ambient-resume',
   /** iframe → host:握手确认。 */
   ready: 'ambient-ready',
+} as const
+
+/**
+ * 地标的**种类**。v2 只有 `surface`(可落面:雪能堆在它顶边上);`region`
+ * (氛围区,如"避开正文区")是预留格,**本期不建** —— 表 append-only,将来
+ * 加一个种类不破老插件(设计文档 §3)。
+ */
+export type PluginAmbientAnchorKind = 'surface'
+
+/**
+ * 地标的**基数**。singleton 走 querySelector(至多一个,map 里一格);
+ * per-item 走 querySelectorAll(同名 N 个矩形,只进 surfaces 数组)。
+ */
+export type PluginAmbientAnchorCardinality = 'singleton' | 'per-item'
+
+export interface PluginAmbientAnchorSpec {
+  kind: PluginAmbientAnchorKind
+  cardinality: PluginAmbientAnchorCardinality
+}
+
+/**
+ * 氛围层地标词表(L0,设计文档 §5)。
+ *
+ * **宿主命名、append-only**:插件不能发明地标,组件挂表外的名字等于没挂
+ * (没人来量)。加一个地标 = 这里一行 + 组件一个 `data-ambient-anchor`。
+ *
+ * 这张表原样作为 `vocabulary` 消息的 `anchors` 字段过线 —— 插件对着 kind 写
+ * 通用物理,不对名字硬编码(换一个氛围插件读同一张表)。
+ *
+ * 键序 = 测量序 = surfaces 数组里的出场序。
+ *
+ * 只有视觉层级低于 `--z-ambient` 的**基础 chrome** 可挂标:浮层(菜单/对话框/
+ * popover)挂标必得"雪被对话框盖住"的穿帮,禁挂(设计文档 §2)。
+ */
+export const PLUGIN_AMBIENT_ANCHORS: Readonly<Record<string, PluginAmbientAnchorSpec>> = {
+  /** 输入区整摞的**包络**(ChatPanel `.composer-container`):v1 兼容 + 物理兜底。 */
+  composer: { kind: 'surface', cardinality: 'singleton' },
+  /** 输入框本体(InputBox `.composer`)—— 真正的"输入框顶边"。 */
+  'composer.input': { kind: 'surface', cardinality: 'singleton' },
+  /** S 状态带上的每一枚 chip(后台任务 / 目标 / 电台 / 插件块)。 */
+  'status.chip': { kind: 'surface', cardinality: 'per-item' },
+  /** composer.above 上的每一块(含抽屉壳)。 */
+  'composer.block': { kind: 'surface', cardinality: 'per-item' },
 } as const

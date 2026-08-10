@@ -3,6 +3,7 @@
     <StatusChip
       v-if="goal && goal.status !== 'complete' && goal.status !== 'abandoned'"
       class="goal-chip"
+      data-ambient-anchor="status.chip"
       :data-status="goal.status"
       :data-retrying="isRetrying || undefined"
       label="当前目标"

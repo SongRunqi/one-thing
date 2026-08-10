@@ -1,8 +1,11 @@
 <template>
   <Transition name="s-chip">
+    <!-- data-ambient-anchor:氛围层地标(L0)。chip 在场即可落雪,离场即缺席
+         —— 惰性 attribute,零逻辑。 -->
     <StatusChip
       v-if="runningJobs.length > 0"
       class="background-jobs-chip"
+      data-ambient-anchor="status.chip"
       label="后台任务"
       :flyout-width="280"
       aria-live="polite"
