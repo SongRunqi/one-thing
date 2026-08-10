@@ -95,6 +95,11 @@ function handleOverlayAction() {
 </script>
 
 <style scoped>
+/* 波 4 判定:**保留自绘,不迁 Popover**(审计把它归进"全屏遮罩"是记错了 ——
+   它不是遮罩,是右下角的一枚状态吐司)。理由是它**没有锚**:浮层内核的整套
+   价值(按锚点算坐标 / 翻转 / 钳制 / 跟随滚动)对一个钉在视口角上的东西一条也
+   不成立,迁过去只会把两行 `right/bottom` 换成一个假锚点。等仓里真有 Toast
+   组件的那天,它该并进去的是那个,不是浮层内核。 */
 .voice-overlay {
   position: fixed;
   right: 18px;

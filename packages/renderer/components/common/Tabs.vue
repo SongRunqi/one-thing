@@ -73,6 +73,7 @@
           text="Add tab"
         >
           <button
+            ref="addButtonRef"
             class="app-tabs-add"
             type="button"
             aria-label="Add tab"
@@ -194,6 +195,7 @@ const emit = defineEmits<{
 const rootRef = ref<HTMLElement | null>(null)
 const tabNavRef = ref<HTMLElement | null>(null)
 const tabListRef = ref<HTMLElement | null>(null)
+const addButtonRef = ref<HTMLElement | null>(null)
 const panes = shallowRef<TabPaneState[]>([])
 const currentName = ref<TabPaneName | undefined>(props.modelValue ?? props.defaultValue)
 const pendingLeaveToken = ref(0)
@@ -469,6 +471,10 @@ defineExpose({
   tabNavRef,
   tabListRef,
   tabBarRef: tabNavRef,
+  /** "+" 钮的实体:`tab-add` 的消费者常要把一张浮层挂在它上面(工作台的页签
+   *  选择器就是),而事件本身带不出元素。露出来总好过让消费者去 querySelector
+   *  一个别人组件的类名。 */
+  addButtonRef,
   scrollToActiveTab,
   removeFocus,
 })

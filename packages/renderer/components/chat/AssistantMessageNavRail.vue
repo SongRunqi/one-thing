@@ -411,6 +411,11 @@ onUnmounted(() => {
   transform: none;
 }
 
+/* 波 4 判定:**保留自绘,不迁 Popover**(审计把两条 nav-card 列进"完全自绘浮层",
+   口径偏了)。它不是浮层:它是**就地展开的卡** —— 从 collapsed 宽度过渡到
+   expanded 宽度、始终在 rail 的坐标系里、`placement-side` 那一支干脆是行内的
+   `position: relative` 常驻卡。Teleport 到 body 会同时废掉宽度过渡与 side 形态,
+   那是改观感不是收敛。波 3 对 NavRail 的 hover 保留判定同理,一并不动。 */
 .assistant-nav-card {
   position: absolute;
   top: 50%;

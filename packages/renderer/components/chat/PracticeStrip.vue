@@ -37,122 +37,150 @@
       </template>
     </div>
 
-    <!-- Menu popover (SessionContextMenu family). Pure overlay: chat layout never moves. -->
-    <div
-      v-if="menuOpen"
-      class="practice-menu"
-      role="menu"
+    <!-- Menu popover (SessionContextMenu family). Pure overlay: chat layout never moves.
+         波 4:Teleport / 翻转 / 视口钳制 / 滚动跟随由 Popover 内核给,面走 `menu` 档
+         (这两张面原本自绘的配方与菜单档同源,见删掉的那两块);**开合与键盘仍归
+         本组件**(它有一整套 ↑↓←→/Esc/数字键的漫游),所以内核的 esc/outside/scroll
+         三条一律关着 —— 两边都管就会关两次。 -->
+    <Popover
+      :open="menuOpen"
+      :anchor="rootRef"
+      placement="bottom"
+      :offset="menuOffset"
+      surface="menu"
+      transition="none"
+      :close-on="MENU_CLOSE_ON"
     >
-      <!-- Running: control menu -->
-      <template v-if="isRunning">
-        <div class="run-head">
-          <span class="run-phase">{{ runPhaseChar }}</span>{{ runHeadText }}
-          <span class="run-sub">{{ runSubText }}</span>
-        </div>
-        <div
-          v-for="(item, index) in runItems"
-          :key="item.id"
-          class="mi"
-          :class="{ focused: focusIdx === index }"
-          role="menuitem"
-          @mouseenter="focusIdx = index"
-          @click="item.run()"
-        >
-          <span class="glyph">{{ item.glyph }}</span>{{ item.label }}
-          <span
-            v-if="item.hint"
-            class="mi-hint"
-          >{{ item.hint }}</span>
-        </div>
-      </template>
-
-      <!-- Quick log: the menu body morphs into one input row -->
-      <template v-else-if="menuMode === 'log'">
-        <div class="log-row">
-          <span class="glyph">✎</span>
-          <input
-            ref="logInputRef"
-            v-model="logDraft"
-            class="log-input"
-            placeholder="俯卧撑 3×20 或 跑步 30分"
-            spellcheck="false"
-            @keydown.enter.prevent="submitLog"
-            @keydown.esc.stop.prevent="menuMode = 'start'"
-          >
-          <span
-            class="log-verb"
-            @click="submitLog"
-          >记上</span>
-        </div>
-        <div class="log-hint">
-          {{ logFeedback || '回车记上 · Esc 返回' }}
-        </div>
-      </template>
-
-      <!-- Idle: start menu -->
-      <template v-else>
-        <div
-          v-for="(item, index) in startItems"
-          :key="item.id"
-          class="mi"
-          :class="{ focused: focusIdx === index, quiet: item.quiet, 'has-sub': item.id === 'pomodoro' }"
-          role="menuitem"
-          @mouseenter="onItemEnter(index, item)"
-          @click="item.run()"
-        >
-          <span class="glyph">{{ item.glyph }}</span>{{ item.label }}
-          <span
-            v-if="item.hint"
-            class="mi-hint"
-          >{{ item.hint }}</span>
-
-          <!-- Category submenu, anchored to the pomodoro item -->
-          <div
-            v-if="item.id === 'pomodoro' && submenuOpen"
-            class="practice-submenu"
-            role="menu"
-          >
-            <div
-              v-for="(cat, catIndex) in categories"
-              :key="cat"
-              class="mi"
-              :class="{ focused: subFocusIdx === catIndex }"
-              role="menuitem"
-              @mouseenter="subFocusIdx = catIndex"
-              @click.stop="beginPomodoro(cat)"
-            >
-              {{ cat }}
-              <span
-                v-if="cat === defaultCategory"
-                class="mi-hint"
-              >上次</span>
-            </div>
+      <div
+        ref="menuPanelRef"
+        class="practice-menu"
+        role="menu"
+      >
+        <!-- Running: control menu -->
+        <template v-if="isRunning">
+          <div class="run-head">
+            <span class="run-phase">{{ runPhaseChar }}</span>{{ runHeadText }}
+            <span class="run-sub">{{ runSubText }}</span>
           </div>
-        </div>
-        <div class="mdiv" />
+          <div
+            v-for="(item, index) in runItems"
+            :key="item.id"
+            class="mi"
+            :class="{ focused: focusIdx === index }"
+            role="menuitem"
+            @mouseenter="focusIdx = index"
+            @click="item.run()"
+          >
+            <span class="glyph">{{ item.glyph }}</span>{{ item.label }}
+            <span
+              v-if="item.hint"
+              class="mi-hint"
+            >{{ item.hint }}</span>
+          </div>
+        </template>
+
+        <!-- Quick log: the menu body morphs into one input row -->
+        <template v-else-if="menuMode === 'log'">
+          <div class="log-row">
+            <span class="glyph">✎</span>
+            <input
+              ref="logInputRef"
+              v-model="logDraft"
+              class="log-input"
+              placeholder="俯卧撑 3×20 或 跑步 30分"
+              spellcheck="false"
+              @keydown.enter.prevent="submitLog"
+              @keydown.esc.stop.prevent="menuMode = 'start'"
+            >
+            <span
+              class="log-verb"
+              @click="submitLog"
+            >记上</span>
+          </div>
+          <div class="log-hint">
+            {{ logFeedback || '回车记上 · Esc 返回' }}
+          </div>
+        </template>
+
+        <!-- Idle: start menu -->
+        <template v-else>
+          <div
+            v-for="(item, index) in startItems"
+            :key="item.id"
+            :ref="el => item.id === 'pomodoro' && setPomodoroRowEl(el)"
+            class="mi"
+            :class="{ focused: focusIdx === index, quiet: item.quiet, 'has-sub': item.id === 'pomodoro' }"
+            role="menuitem"
+            @mouseenter="onItemEnter(index, item)"
+            @click="item.run()"
+          >
+            <span class="glyph">{{ item.glyph }}</span>{{ item.label }}
+            <span
+              v-if="item.hint"
+              class="mi-hint"
+            >{{ item.hint }}</span>
+          </div>
+          <div class="mdiv" />
+          <div
+            v-for="(item, index) in footItems"
+            :key="item.id"
+            class="mi quiet"
+            :class="{ focused: focusIdx === startItems.length + index }"
+            role="menuitem"
+            @mouseenter="onItemEnter(startItems.length + index, item)"
+            @click="item.run()"
+          >
+            <span class="glyph">{{ item.glyph }}</span>{{ item.label }}
+            <span
+              v-if="item.hint"
+              class="mi-hint"
+            >{{ item.hint }}</span>
+          </div>
+        </template>
+      </div>
+    </Popover>
+
+    <!-- 分类子菜单:第二层浮层,锚在番茄那一行上。原来它是画在行**里**的绝对
+         定位面 —— 菜单自己是 overflow 语境,画在原地迟早被切。 -->
+    <Popover
+      :open="menuOpen && !isRunning && menuMode !== 'log' && submenuOpen"
+      :anchor="pomodoroRowEl"
+      placement="right-start"
+      :offset="4"
+      :z-offset="1"
+      surface="menu"
+      transition="none"
+      :close-on="MENU_CLOSE_ON"
+    >
+      <div
+        ref="submenuPanelRef"
+        class="practice-submenu"
+        role="menu"
+      >
         <div
-          v-for="(item, index) in footItems"
-          :key="item.id"
-          class="mi quiet"
-          :class="{ focused: focusIdx === startItems.length + index }"
+          v-for="(cat, catIndex) in categories"
+          :key="cat"
+          class="mi"
+          :class="{ focused: subFocusIdx === catIndex }"
           role="menuitem"
-          @mouseenter="onItemEnter(startItems.length + index, item)"
-          @click="item.run()"
+          @mouseenter="subFocusIdx = catIndex"
+          @click.stop="beginPomodoro(cat)"
         >
-          <span class="glyph">{{ item.glyph }}</span>{{ item.label }}
+          {{ cat }}
           <span
-            v-if="item.hint"
+            v-if="cat === defaultCategory"
             class="mi-hint"
-          >{{ item.hint }}</span>
+          >上次</span>
         </div>
-      </template>
-    </div>
+      </div>
+    </Popover>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import Popover from '@/components/common/Popover.vue'
 import { usePracticeStore } from '@/stores/practice'
 import { ONETHING_PRACTICE_UI_DEFAULTS } from './practice-strip-defaults'
 
@@ -171,6 +199,11 @@ const { snapshot, config, soundEnabled } = storeToRefs(practiceStore)
 
 const rootRef = ref<HTMLElement | null>(null)
 const logInputRef = ref<HTMLInputElement | null>(null)
+/** 两张浮面的实体(teleport 之后它们不再是 rootRef 的后代,外点判定要问它们)。 */
+const menuPanelRef = ref<HTMLElement | null>(null)
+const submenuPanelRef = ref<HTMLElement | null>(null)
+/** 子菜单的锚:番茄那一行。 */
+const pomodoroRowEl = ref<HTMLElement | null>(null)
 const menuOpen = ref(false)
 const menuMode = ref<'start' | 'log'>('start')
 const submenuOpen = ref(false)
@@ -179,7 +212,21 @@ const subFocusIdx = ref(0)
 const logDraft = ref('')
 const logFeedback = ref('')
 
+function setPomodoroRowEl(instance: unknown): void {
+  pomodoroRowEl.value = instance instanceof HTMLElement ? instance : null
+}
+
+/** 开合与键盘全归本组件,内核三条门一律关着 —— 两边都管就会关两次。 */
+const MENU_CLOSE_ON = Object.freeze({ esc: false, outside: false, scroll: false })
+
 const isRunning = computed(() => snapshot.value.status !== 'idle')
+
+/**
+ * 菜单原来是画在 strip 上的绝对定位面(`top: 8px`,即压在这条 10px / 18px 的线
+ * 上而不是挂在它下面)。锚点式定位是"锚底 + offset",于是这里给一个**负 offset**
+ * 把它拉回原处 —— 数是同一个 8px,只是换了个参照系。
+ */
+const menuOffset = computed(() => 8 - (isRunning.value ? 18 : 10))
 const kegelConfig = computed(() => config.value?.kegel ?? ONETHING_PRACTICE_UI_DEFAULTS.kegel)
 const pomodoroConfig = computed(() => config.value?.pomodoro ?? ONETHING_PRACTICE_UI_DEFAULTS.pomodoro)
 const categories = computed(() => pomodoroConfig.value.categories)
@@ -448,9 +495,18 @@ function onItemEnter(index: number, item: MenuItem): void {
   }
 }
 
+/**
+ * 外点关闭仍归本组件(内核的 `closeOn.outside` 关着,两边都管会关两次),但
+ * 两张面已经 teleport 到 body —— 它们不再是 rootRef 的后代,只认 rootRef 会把
+ * "点进快速记录的输入框"当成外点。三个容器一起问。
+ */
 function onDocPointerDown(event: PointerEvent): void {
   if (!menuOpen.value) return
-  if (!rootRef.value?.contains(event.target as Node)) closeMenu()
+  const target = event.target as Node
+  if (rootRef.value?.contains(target)) return
+  if (menuPanelRef.value?.contains(target)) return
+  if (submenuPanelRef.value?.contains(target)) return
+  closeMenu()
 }
 
 function onDocKeydown(event: KeyboardEvent): void {
@@ -616,19 +672,13 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-/* ── Menu (SessionContextMenu family) ── */
+/* ── Menu (SessionContextMenu family) ──
+   面 / 坐标 / 层级全部由 Popover 的 `menu` 档给(波 4)。删掉的那六条里,面色
+   与圆角与档位**同源**(菜单面 + 10px),差的只有:边 subtle → strong、投影
+   `--ui-surface-tooltip-shadow` → `--shadow-floating` —— 与 ⋯ 菜单族对齐。
+   `z-index: var(--z-modal)` 那条同时消失:层级现在走 z 档梯(缺省 dropdown)。 */
 .practice-menu {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: var(--z-modal);
   min-width: 248px;
-  padding: 6px;
-  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
-  border: 1px solid var(--ui-border-subtle-border);
-  border-radius: 10px;
-  box-shadow: var(--ui-surface-tooltip-shadow, 0 4px 14px rgb(0 0 0 / 0.12));
 }
 
 .mi {
@@ -675,16 +725,9 @@ onBeforeUnmount(() => {
   background: var(--ps-hairline);
 }
 
+/* 同上:面归档位,这里只剩宽度。 */
 .practice-submenu {
-  position: absolute;
-  left: calc(100% + 4px);
-  top: -6px;
   min-width: 128px;
-  padding: 6px;
-  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
-  border: 1px solid var(--ui-border-subtle-border);
-  border-radius: 10px;
-  box-shadow: var(--ui-surface-tooltip-shadow, 0 4px 14px rgb(0 0 0 / 0.12));
 }
 
 /* ── Running head ── */

@@ -316,7 +316,9 @@ onUnmounted(() => {
 }
 
 /* Ledger (墨线): the trail is a vertical rule at the right edge; rows hang
-   off it via tick marks. No fills, no radii — state lives in the line. */
+   off it via tick marks. No fills, no radii — state lives in the line.
+   波 4 判定同 AssistantMessageNavRail:**保留自绘,不迁 Popover** —— 这是就地
+   展开的卡(宽度过渡 + `placement-side` 的行内常驻形态),不是浮层。 */
 .user-nav-card {
   position: absolute;
   top: 50%;

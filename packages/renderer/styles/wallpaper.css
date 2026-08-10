@@ -379,8 +379,18 @@ html.has-wallpaper .app-content {
    **故意不列**:它们都声明在浮层**自己**这个元素上,形如
    `--app-popover-bg: var(--ui-surface-menu-bg, …)` —— 覆写上游即可推动,而且这样
    才保得住 2026-08-09 拍板的族色区分(S 带/trigger/ctx 走菜单面,其余走 floating
-   面)。反过来 `--todo-popover-bg` / `--app-menu-bg` 声明在浮层的**祖先**上,上游
-   够不着,只能列名。 */
+   面)。反过来 `--app-menu-bg` 声明在浮层的**祖先**上,上游够不着,只能列名。
+
+   2026-08-11(自绘 UI 收敛波 4)名单缩了七行,两类原因:
+   · 面归位到组件档位之后被前两行吃掉:`.react-picker` / `.branch-menu` /
+     `.more-menu` / `.practice-menu` / `.practice-submenu` / `.workbench-tab-picker`
+     —— 它们要么就是 `.app-context-menu.is-surface` 这个元素本身(class 透传到
+     菜单盒上),要么住在 `.app-popover.is-surface` 里,面色都由那两行推动了。
+     反过来说:**只要浮层的面交给档位画,它就自动在册**,这正是枚举制的减负口。
+   · `--todo-popover-bg` 那一行:声明搬到了浮层自己身上(todo-popover.css),
+     上游 `--ui-surface-app-bg` 从此推得动它,不必再列名。
+   同一刀之后**新进**磨砂的三张面(此前自绘不透明面、这条选择器压根够不着):
+   划选工具条 / 事故记录卡 / 插件 trigger 弹层。 */
 html.has-wallpaper :is(
     .app-popover.is-surface,
     .app-context-menu.is-surface,
@@ -391,12 +401,6 @@ html.has-wallpaper :is(
     .composer-extension-panel,
     .session-preview,
     .prompt-ref-popover,
-    .react-picker,
-    .branch-menu,
-    .more-menu,
-    .practice-menu,
-    .practice-submenu,
-    .workbench-tab-picker,
     .todo-plan-panel .todo-popover,
     .todo-plan-panel .todo-popover-list,
     .media-panel .inspector-drawer,
@@ -408,8 +412,7 @@ html.has-wallpaper :is(
   --ui-surface-panel-bg: var(--wallpaper-frost-panel);
   --ui-surface-chat-bg: var(--wallpaper-frost-chat);
   --ui-surface-app-bg: var(--wallpaper-frost-app);
-  /* 声明在祖先上、上游够不着的两枚(见块首注) */
-  --todo-popover-bg: var(--wallpaper-frost-app);
+  /* 声明在祖先上、上游够不着的一枚(见块首注) */
   --app-menu-bg: var(--wallpaper-frost-menu);
 
   /* 可读性地板:磨砂底上 45% 的反馈读不出来 —— S 级在浮层内回满。

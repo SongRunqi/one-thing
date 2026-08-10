@@ -407,7 +407,10 @@ defineExpose({ menuEl: menuRef })
 /* 菜单族语言:10px 圆角、纸面、tooltip 影 —— 原 ContextMenu.vue 的样式原样搬来,
    合流后这里是唯一一份。 */
 .app-context-menu.is-surface {
-  padding: 6px;
+  /* 几何走实例变量,与 Popover 的 `--app-popover-padding` 同规:消费者要贴边的
+     滚动列表(branch-menu 那种)时不必和 `.is-surface` 的特异性打官司。
+     缺省 6px = 档位化之前的那个数,一个像素不动。 */
+  padding: var(--app-context-padding, 6px);
   background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
   border: 1px solid var(--ui-border-subtle-border);
   border-radius: 10px;

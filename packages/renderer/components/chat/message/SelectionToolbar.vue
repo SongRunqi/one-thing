@@ -6,7 +6,8 @@
     :offset="8"
     :z-layer="Z_LAYER"
     :close-on="CLOSE_ON"
-    :surface="false"
+    surface="menu"
+    class="selection-toolbar-surface"
     transition="none"
     @update:open="onOpenChange"
   >
@@ -177,40 +178,25 @@ function handleBranch() {
 </script>
 
 <style scoped>
-/* 坐标与层级由内核以内联样式给到 Popover 根上;这里只剩这张纸的样子。 */
+/* 坐标与层级由内核以内联样式给到 Popover 根上;面走 `menu` 档(波 4:面归位)。
+   删掉的那张自绘面里有两条是真错:一是 `html[data-theme='light']` 那整块 ——
+   本仓的主题不靠这个属性区分明暗(明暗由 `--ui-*` 的取值决定),那块硬编码白
+   在多数主题下**根本不触发**,触发时又是一张不跟主题的白纸;二是两条分隔线的
+   `rgba(255,255,255,.1)` / `rgba(0,0,0,.1)`,同理。
+   波 3 记的 `.toolbar-btn:hover`(Δ中位 21.1,当时因为"面还没归位"没迁)在这一刀
+   之后一并落回统一态 token 的重档。 */
 .selection-toolbar {
-  background: var(--ui-surface-floating-bg);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid var(--ui-border-strong-border);
-  border-radius: 12px;
-  padding: 4px;
-  box-shadow: var(--shadow-floating);
   display: flex;
   align-items: center;
   gap: 2px;
   animation: toolbarSlideIn 0.2s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-html[data-theme='light'] .selection-toolbar {
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.05),
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 12px 24px -4px rgba(0, 0, 0, 0.15),
-    0 0 40px color-mix(in srgb, var(--ui-accent-primary-fg) 6%, transparent);
-}
-
 .toolbar-divider {
   width: 1px;
   height: 20px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ui-border-subtle-border);
   margin: 0 2px;
-}
-
-html[data-theme='light'] .toolbar-divider {
-  background: rgba(0, 0, 0, 0.1);
 }
 
 .toolbar-btn {
@@ -230,7 +216,7 @@ html[data-theme='light'] .toolbar-divider {
 }
 
 .toolbar-btn:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 15%, transparent);
+  background: var(--ui-state-hover-accent-strong-bg);
   color: var(--ui-accent-primary-fg);
   transform: translateY(-1px);
 }
@@ -257,5 +243,14 @@ html[data-theme='light'] .toolbar-divider {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+</style>
+
+<!-- Popover 的根是 Teleport,拿不到本组件的 scoped 作用域(ui-system.md §1),
+     所以实例级的几何覆写只能落在全局块里。 -->
+<style>
+/* 工具条比菜单窄一圈:4px 内边距是形,不是皮肤。 */
+.selection-toolbar-surface {
+  --app-popover-padding: 4px;
 }
 </style>

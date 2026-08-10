@@ -1436,8 +1436,9 @@ onUnmounted(() => {
   /* Ink-line style: floating layers separate with a 1px rule, not a shadow
      (the panel's overflow:hidden clipped large shadows anyway). */
   --todo-popover-shadow: none;
-  --todo-popover-bg: var(--ui-surface-app-bg);
-  --todo-popover-search-bg: var(--todo-popover-bg);
+  /* `--todo-popover-bg` / `--todo-popover-search-bg` 搬到浮层自己身上了
+     (components/chat/todo-popover.css,G8 私有 token 收编)—— 声明在祖先上的
+     token,上游推不动。 */
   --todo-popover-search-height: 46px;
   --todo-popover-search-padding-x: 16px;
   --todo-popover-search-gap: 10px;

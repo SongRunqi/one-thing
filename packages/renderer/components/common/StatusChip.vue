@@ -33,6 +33,7 @@
       :anchor="triggerRef"
       placement="top-start"
       :offset="8"
+      surface="menu"
       class="status-chip-flyout"
       :style="flyoutStyle"
     >
@@ -166,14 +167,13 @@ const flyoutStyle = computed(() => ({ minWidth: `${props.flyoutWidth}px` }))
   font-variant-numeric: tabular-nums;
 }
 
-/* 浮层壳:面由 Popover 画(--shadow-floating / 发丝 / --radius-sm),
-   这里只调内边距与正文排版。
-   底色走**菜单面**而不是 Popover 缺省的 floating 面(真机夜间实锤:
-   floating 比 ⋯ 菜单/下拉的 menu 面亮一档,输入区一带两族面色打架 ——
-   S 带/trigger/ctx 三类浮层统一菜单面,2026-08-09 拍板)。 */
+/* 浮层壳:面由 Popover 的 `menu` 档画,这里只调内边距与正文排版。
+   2026-08-09 拍板的族色(S 带/trigger/ctx 三类浮层统一菜单面 —— floating 在夜间
+   比 ⋯ 菜单/下拉亮一档,输入区一带两族面色打架)从此由**档名**表达,而不是在
+   这里覆写一枚 `--app-popover-bg`:换族只换档名,边框与圆角也跟着一起走。
+   (波 4 的差:边 subtle → strong、角 --radius-sm → --radius-md,与菜单族对齐。) */
 .status-chip-flyout {
   --app-popover-padding: 12px 14px;
-  --app-popover-bg: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
 }
 
 .status-chip-flyout-body {

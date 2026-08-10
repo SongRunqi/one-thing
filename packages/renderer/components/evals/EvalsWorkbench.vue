@@ -653,6 +653,14 @@ function shorten(text: string, max: number): string {
 </script>
 
 <style scoped>
+/* 波 4 判定:**保留自绘,不迁 Dialog**。三条各自独立成立:
+   ① 它是一张占满窗口的工作台(左右分栏 + 自己的滚动区 + 自己的焦点秩序),
+      Dialog 是"任务面"—— 它的宽度档、内边距、标题栏、焦点陷阱在这里全是负担;
+   ② 它必须压过**设置弹层**(`calc(var(--z-modal) + 10)`),而 Dialog 就住在
+      modal 档,自己压不过自己;
+   ③ 顶部 48px 的让位是为了躲开设置窗标题栏的 `-webkit-app-region: drag`
+      (拖拽区会吞掉重叠 fixed 兄弟的点击),这是这一个窗口的形,不是对话框的形。
+   它也不参与壁纸磨砂(wallpaper.css 块尾已列:遮罩类面板的职责就是盖住一切)。 */
 .evals-workbench-overlay {
   position: fixed;
   inset: 0;

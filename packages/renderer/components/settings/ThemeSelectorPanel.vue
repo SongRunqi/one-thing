@@ -1,9 +1,5 @@
 <template>
-  <div
-    ref="rootRef"
-    class="theme-selector"
-    @keydown.esc="closeDropdown"
-  >
+  <div class="theme-selector">
     <div class="theme-select-grid">
       <div
         v-for="item in modeItems"
@@ -13,6 +9,7 @@
         <label class="theme-select-label">{{ item.label }}</label>
         <div class="theme-dropdown">
           <Button
+            :ref="el => setTriggerEl(item.mode, el)"
             unstyled
             class="theme-trigger"
             native-type="button"
@@ -42,9 +39,25 @@
             />
           </Button>
 
-          <Transition name="theme-menu">
+          <!-- 面与坐标分家(波 4):Teleport / 翻转 / 视口钳制 / 外点 / Esc /
+               滚动跟随全部由 Popover 内核给;这张**纸**仍是设置窗的画线风
+               (方角、settings-rule 的发丝、纸面投影),通过实例级
+               `--app-popover-*` 表达 —— 档位只是 fallback,实例赢过档位。
+               设置窗不铺壁纸("窗外不适用",wallpaper.css 块尾),所以这里
+               不进 E 级名单。 -->
+          <Popover
+            :open="openMode === item.mode"
+            :anchor="triggerEls[item.mode]"
+            placement="bottom-start"
+            :offset="6"
+            width="anchor"
+            surface="elevated"
+            class="theme-menu-surface"
+            transition="theme-menu"
+            :close-on="MENU_CLOSE_ON"
+            @update:open="value => value || closeDropdown()"
+          >
             <div
-              v-if="openMode === item.mode"
               :id="`theme-menu-${item.mode}`"
               class="theme-menu"
               role="listbox"
@@ -88,7 +101,7 @@
                 No {{ item.mode }} themes found
               </div>
             </div>
-          </Transition>
+          </Popover>
         </div>
       </div>
     </div>
@@ -128,7 +141,8 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import Popover from '@/components/common/Popover.vue'
+import { computed, onMounted, ref } from 'vue'
 import { Check, ChevronDown, FolderOpen, RefreshCw } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/themes'
 import type { ThemeMeta } from '@shared/ipc'
@@ -136,8 +150,20 @@ import type { ThemeMeta } from '@shared/ipc'
 type ThemeMode = 'light' | 'dark'
 
 const themeStore = useThemeStore()
-const rootRef = ref<HTMLElement | null>(null)
 const openMode = ref<ThemeMode | null>(null)
+
+/** 冻结:prop 身份每次渲染都换会让内核白跑一遍绑定。 */
+const MENU_CLOSE_ON = Object.freeze({ esc: true, outside: true, scroll: false })
+
+/** 两个触发钮各一枚锚点(内核按锚点算坐标,不再靠 `position: relative` 的祖先)。 */
+const triggerEls = ref<Record<ThemeMode, HTMLElement | null>>({ light: null, dark: null })
+
+function setTriggerEl(mode: ThemeMode, instance: unknown): void {
+  const el = instance instanceof HTMLElement
+    ? instance
+    : ((instance as { $el?: unknown } | null)?.$el as HTMLElement | undefined) ?? null
+  triggerEls.value[mode] = el
+}
 
 const emit = defineEmits<{
   (e: 'themeChange', darkThemeId: string, lightThemeId: string): void
@@ -166,11 +192,6 @@ onMounted(async () => {
   if (themeStore.availableThemes.length === 0) {
     await themeStore.initialize()
   }
-  document.addEventListener('mousedown', handleOutsideClick)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', handleOutsideClick)
 })
 
 function themesForMode(mode: ThemeMode): ThemeMeta[] {
@@ -208,12 +229,6 @@ function toggleDropdown(mode: ThemeMode) {
 
 function closeDropdown() {
   openMode.value = null
-}
-
-function handleOutsideClick(event: MouseEvent) {
-  const target = event.target as Node | null
-  if (!target || !rootRef.value || rootRef.value.contains(target)) return
-  closeDropdown()
 }
 
 async function selectTheme(themeId: string, mode: ThemeMode) {
@@ -257,8 +272,10 @@ async function refreshThemes() {
   line-height: 1.3;
 }
 
+/* `position: relative` 随浮层一起走了 —— 内核按锚点算视口坐标,不再需要一个
+   定位祖先(反过来说,定位祖先正是"菜单被 overflow 剪掉"那一类 bug 的温床)。 */
 .theme-dropdown {
-  position: relative;
+  min-width: 0;
 }
 
 /* Square drafting box, no fill; state moves to the line. */
@@ -344,18 +361,12 @@ async function refreshThemes() {
 }
 
 /* Dropdown sheet: paper base (covers content below) + hard-offset ink shadow. */
+/* 坐标 / 层级 / 外点 / Esc / 翻转 / 钳制全部由 Popover 内核给(波 4);这里只剩
+   列表本身的滚动上限。这张纸的画线风走全局块里的 `--app-popover-*`(Popover 根
+   拿不到本组件的 scoped 作用域,ui-system.md §1)。 */
 .theme-menu {
-  position: absolute;
-  z-index: var(--z-dropdown);
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
   max-height: 280px;
   overflow-y: auto;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
-  border-radius: 0;
-  background: var(--ui-surface-elevated-bg, var(--settings-paper));
-  box-shadow: var(--shadow-paper);
 }
 
 .theme-option {
@@ -442,6 +453,31 @@ async function refreshThemes() {
   animation: spin 0.9s linear infinite;
 }
 
+@media (max-width: 720px) {
+  .theme-select-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+</style>
+
+<!-- Popover 的根是 Teleport,拿不到本组件的 scoped 作用域(ui-system.md §1):
+     这张纸的皮肤与进场都只能落在全局块里。 -->
+<style>
+/* 设置窗的画线风:方角、settings-rule 的发丝、纸面投影(`--shadow-paper` 是画在
+   右下的实心偏移,不是弥散投影)。这三条是**设置窗的语言**,不是"忘了归位的
+   自绘面" —— 所以走实例级覆写而不是改档位:实例永远赢过档位。 */
+.theme-menu-surface {
+  --app-popover-padding: 0;
+  --app-popover-radius: 0;
+  --app-popover-border: var(--settings-rule, var(--ui-border-default-border));
+  --app-popover-bg: var(--ui-surface-elevated-bg, var(--settings-paper));
+  --app-popover-shadow: var(--shadow-paper);
+}
+
 .theme-menu-enter-active,
 .theme-menu-leave-active {
   transition: opacity var(--duration-fast) var(--ease-default), transform var(--duration-fast) var(--ease-default);
@@ -451,15 +487,5 @@ async function refreshThemes() {
 .theme-menu-leave-to {
   opacity: 0;
   transform: translateY(-4px);
-}
-
-@media (max-width: 720px) {
-  .theme-select-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 </style>

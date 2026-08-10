@@ -10,28 +10,42 @@
     main-overflow="hidden"
     @keydown.esc="pickerOpen = false"
   >
-    <div
-      v-if="pickerOpen && openTabs.length"
-      class="workbench-tab-picker"
-      @mousedown.stop
+    <!-- 页签选择器(波 4):锚在 Tabs 的 "+" 钮上,坐标 / 翻转 / 视口钳制 /
+         外点 / Esc 由 Popover 内核给。此前它是画在工作台里的绝对定位面
+         (`top: 38px; right: 8px`),而工作台是 `overflow: hidden` —— 面板窄时
+         这张 220px 的选择器会被自己的容器切掉。 -->
+    <Popover
+      :open="pickerOpen && openTabs.length > 0"
+      :anchor="tabAddEl"
+      placement="bottom-end"
+      :offset="6"
+      surface="elevated"
+      class="workbench-tab-picker-surface"
+      :close-on="PICKER_CLOSE_ON"
+      @update:open="value => (pickerOpen = value)"
     >
-      <Button
-        v-for="option in availableTabOptions"
-        :key="option.key"
-        unstyled
-        class="picker-option"
-        :style="workbenchToolStyle(option.categorySlot)"
-        @click="onPickOption(option)"
+      <div
+        class="workbench-tab-picker"
+        @mousedown.stop
       >
-        <component
-          :is="option.icon"
-          :size="15"
-          :stroke-width="2"
-          aria-hidden="true"
-        />
-        <span>{{ option.title }}</span>
-      </Button>
-    </div>
+        <Button
+          v-for="option in availableTabOptions"
+          :key="option.key"
+          unstyled
+          class="picker-option"
+          :style="workbenchToolStyle(option.categorySlot)"
+          @click="onPickOption(option)"
+        >
+          <component
+            :is="option.icon"
+            :size="15"
+            :stroke-width="2"
+            aria-hidden="true"
+          />
+          <span>{{ option.title }}</span>
+        </Button>
+      </div>
+    </Popover>
 
     <Button
       v-if="!openTabs.length"
@@ -49,6 +63,7 @@
 
     <Tabs
       v-if="openTabs.length"
+      ref="tabsRef"
       v-model="activeTabId"
       class="right-workbench-tabs"
       addable
@@ -291,6 +306,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component 
 import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Radar, Terminal, UserRound, Users, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
+import Popover from '@/components/common/Popover.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import TabPane from '@/components/common/TabPane.vue'
 import EditorWorkbench from '@/components/editor/EditorWorkbench.vue'
@@ -479,6 +495,11 @@ const tabOptions: Array<{
 ]
 
 const pickerOpen = ref(false)
+/** 选择器锚在 Tabs 的 "+" 钮上(Tabs 把它 expose 出来,见那里的注)。 */
+const tabsRef = ref<{ addButtonRef: HTMLElement | null } | null>(null)
+const tabAddEl = computed(() => tabsRef.value?.addButtonRef ?? null)
+/** 冻结:prop 身份每渲染一次就换会让内核白跑一遍绑定。 */
+const PICKER_CLOSE_ON = Object.freeze({ esc: true, outside: true, scroll: false })
 const openTabs = ref<WorkbenchTab[]>([])
 const activeTabId = ref('')
 const filesWorkspaceRoot = ref('')
@@ -1465,18 +1486,12 @@ defineExpose({
   white-space: nowrap;
 }
 
-/* Anchored under the header actions ("+" now lives at the right edge). */
+/* 坐标 / 层级 / 外点 / Esc 由 Popover 内核给(锚是 Tabs 的 "+" 钮);面走
+   `elevated` 档 + 工作台画线风的方角(实例覆写,见文件末的全局块)。
+   这里只剩宽度。删掉的字面投影 `0 14px 34px rgba(0,0,0,.18)` 不跟主题。 */
 .workbench-tab-picker {
-  position: absolute;
-  z-index: 5;
-  top: 38px;
-  right: 8px;
-  width: min(220px, calc(100% - 16px));
-  padding: 6px;
-  border: 1px solid var(--ui-border-default-border);
-  border-radius: 0;
-  background: var(--ui-surface-elevated-bg);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+  width: 220px;
+  max-width: min(220px, calc(100vw - 32px));
 }
 
 .right-workbench .picker-option {
@@ -1713,5 +1728,13 @@ defineExpose({
   width: 100%;
   border: 0;
   background: white;
+}
+</style>
+
+<!-- Popover 的根是 Teleport,拿不到本组件的 scoped 作用域(ui-system.md §1)。 -->
+<style>
+/* 工作台的画线风:方角。面色 / 边框 / 投影走 `elevated` 档。 */
+.workbench-tab-picker-surface {
+  --app-popover-radius: 0;
 }
 </style>

@@ -62,7 +62,7 @@
         </Button>
       </Tooltip>
       <!-- 表情面板:坐标/翻转/钳制/外点/Esc 全部由浮层内核给(P6 收口),
-           这里只剩一排字形。 -->
+           面走菜单档(波 4:面归位),这里只剩一排字形。 -->
       <Popover
         :open="showReactPicker"
         :anchor="reactBtnRef"
@@ -70,7 +70,8 @@
         :offset="6"
         :margin="6"
         :z-offset="25"
-        :surface="false"
+        surface="menu"
+        class="react-picker-surface"
         transition="none"
         :close-on="REACT_PICKER_CLOSE_ON"
         @update:open="setReactPicker"
@@ -181,7 +182,8 @@
       placement="bottom-start"
       :offset="6"
       :z-offset="25"
-      :surface="false"
+      surface="elevated"
+      class="downvote-note-surface"
       transition="none"
       :close-on="DOWNVOTE_NOTE_CLOSE_ON"
       @update:open="setDownvoteNote"
@@ -249,7 +251,6 @@
           :offset="8"
           :z-offset="25"
           :min-width="180"
-          :surface="false"
           transition="none"
           aria-label="Branches"
           @update:open="setBranchMenu"
@@ -334,7 +335,6 @@
         :offset="4"
         :z-offset="25"
         :min-width="180"
-        :surface="false"
         transition="none"
         aria-label="More"
         @update:open="setMoreMenu"
@@ -895,13 +895,12 @@ onUnmounted(disarmRegenerate)
 }
 
 /* Downvote button */
+/* 面归位(波 4):这是一张"读一段字 + 填一句话"的任务卡,走 Popover 的
+   `elevated` 档 —— 面色/边框/圆角/投影四项从这里搬进了组件,只剩排版。
+   (投影原是字面 `0 8px 24px rgba(0,0,0,.18)`,不跟主题;档位给的是
+   `--shadow-elevated`。) */
 .downvote-note-panel {
   width: 320px;
-  padding: 10px;
-  border-radius: 10px;
-  background: var(--ui-surface-elevated-bg);
-  border: 1px solid var(--ui-border-default-border);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1030,14 +1029,12 @@ onUnmounted(disarmRegenerate)
   transition: background var(--duration-fast) var(--ease-default);
 }
 
-/* 三个菜单项 hover(branch-menu-item / branch-menu-new / more-menu-item)与
-   react-picker-item 暂不归位 `--ui-state-hover-*`:这几张面是 `:surface="false"`
-   的自绘玻璃面(`--ui-surface-floating-bg` + backdrop-filter),而统一态 token 以
-   **panel** 面解析成实色,18 主题实测 ΔRGB 中位 21.6(tokyo-night 35.9)、
-   react-picker 中位 27.5。面本身属于波 4「浮面皮肤收口(G1)」的同一批,面先归位
-   再迁 hover;现在单迁会在玻璃面上落一块按 panel 算的实色补丁。 */
+/* 波 3 记的"面还没归位"四处,波 4 面归位后一并迁入统一态 token:三个菜单项走
+   G6 的「叠 accent 淡底」档(配方与原来手写的 10% 同源),react-picker-item 走
+   中性档。当时不迁的理由(面是 `:surface="false"` 的自绘玻璃面,统一 token 以
+   panel 面解析,Δ中位 21.6 / 27.5)随着面搬进 Dropdown/Popover 档位而消失。 */
 .branch-menu-item:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  background: var(--ui-state-hover-accent-bg);
 }
 
 .branch-name {
@@ -1068,20 +1065,16 @@ onUnmounted(disarmRegenerate)
 }
 
 .branch-menu-new:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  background: var(--ui-state-hover-accent-bg);
 }
 
 /* Reaction palette (§3.6): a hairline strip of glyphs. No fill, no shadow
    stack, no bounce — hover moves the ink behind the emoji, nothing else.
-   P6:面板成了 Popover 的插槽内容,插槽内容留在调用方的 scope 里,所以这几条
-   从全局块搬回了 scoped(全局块只剩画在 Dropdown 根上的两个菜单面)。 */
+   波 4:面色/边框搬到 Popover 的 `menu` 档(见全局块里的 `.react-picker-surface`
+   三条几何覆写),这里只剩排布与进场。 */
 .react-picker {
   display: flex;
   gap: 2px;
-  padding: 3px 4px;
-  border: 1px solid var(--ui-border-strong-border);
-  border-radius: 4px;
-  background: var(--ui-surface-floating-bg);
   animation: reactPickerIn 0.12s ease-out;
 }
 
@@ -1108,7 +1101,7 @@ onUnmounted(disarmRegenerate)
 }
 
 .react-picker-item:hover {
-  background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
+  background: var(--ui-state-hover-bg);
 }
 
 /* Reaction palette trigger (§3.5 B) */
@@ -1138,17 +1131,39 @@ onUnmounted(disarmRegenerate)
 
 <!-- Global styles for Teleported menu -->
 <style>
-/* Branch menu surface. Coordinates and stacking come from the Dropdown kernel
-   (zOffset 25 = 消息级浮层档,压过 Select/Mention +20 与表格筛选 +24). */
+/* 消息浮层族的三张面(波 4「浮面皮肤收口 G1」)。
+ *
+ * 面色 / 边框 / 圆角 / 投影四项全部搬进了组件档位 —— Dropdown 的缺省档就是菜单面
+ * (`.app-context-menu.is-surface`),表情条是 Popover 的 `menu` 档。这里只剩**几何
+ * 与进场**:窗宽、贴边、动画,以及一枚 `--app-context-padding: 0`(菜单里是自带
+ * padding 的滚动列表,不要档位再多包一圈)。
+ *
+ * 观感差异如实记(三张面原本各画各的):底 floating → menu(2026-08-09 拍板:
+ * 输入区一带的浮层统一菜单面,floating 在夜间亮一档);边 strong → subtle;
+ * branch 圆角 12 → 10;投影 `--shadow-floating` → `--ui-surface-tooltip-shadow`;
+ * `backdrop-filter: blur(20px)` 交给壁纸 E 级统一的磨砂(自绘那层在非壁纸模式下
+ * 什么也没糊到,底本来就是不透明的)。族色区分保持:菜单族 = 菜单面。
+ *
+ * 坐标与层级仍由内核给(zOffset 25 = 消息级浮层档,压过 Select/Mention +20 与
+ * 表格筛选 +24)。 */
 .branch-menu {
+  --app-context-padding: 0;
   max-width: 280px;
-  background: var(--ui-surface-floating-bg);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--ui-border-strong-border);
-  border-radius: 12px;
-  box-shadow: var(--shadow-floating);
   overflow: hidden;
   animation: menuSlideIn 0.15s ease-out;
+}
+
+/* 表情条:面走 `menu` 档,但它刻意是**一条发丝细带**而不是一张卡 —— 4px 直角、
+   零投影、3/4px 的紧内边距三条是形,不是皮肤,用实例变量原样留住。 */
+.react-picker-surface {
+  --app-popover-padding: 3px 4px;
+  --app-popover-radius: 4px;
+  --app-popover-shadow: none;
+}
+
+/* 事故记录卡:`elevated` 档 + 原来的 10px 内边距(档位只管面,不管几何)。 */
+.downvote-note-surface {
+  --app-popover-padding: 10px;
 }
 
 @keyframes menuSlideIn {
@@ -1163,12 +1178,8 @@ onUnmounted(disarmRegenerate)
 }
 
 .more-menu {
+  --app-context-padding: 0;
   min-width: 180px;
-  background: var(--ui-surface-floating-bg);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--ui-border-strong-border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-floating);
   overflow: hidden;
   animation: moreMenuSlideIn 0.15s ease-out;
 }
@@ -1205,7 +1216,7 @@ onUnmounted(disarmRegenerate)
 }
 
 .more-menu-item:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  background: var(--ui-state-hover-accent-bg);
 }
 
 .more-menu-item-badge {

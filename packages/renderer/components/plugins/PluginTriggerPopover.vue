@@ -8,7 +8,8 @@
     :placement="placement"
     :offset="6"
     :z-offset="26"
-    :surface="false"
+    surface="menu"
+    class="plugin-trigger-surface"
     transition="none"
     :close-on="TRIGGER_CLOSE_ON"
     :aria-label="entry?.label"
@@ -94,18 +95,12 @@ function onBlockState(state: { degraded: boolean; error: boolean }): void {
 </script>
 
 <style scoped>
-/* 弹层自带面(Popover 传了 :surface="false"),与 more-menu 同一套配方:
-   浮层底 + 强边 + 浮层投影 token。 */
+/* 面走 Popover 的 `menu` 档(波 4:面归位)。这四条声明原本就是 `menu` 档的定义
+   出处 —— 档位化(G1)时正是照着这里抄的,现在反过来引用它,重复的那份删掉。
+   宽度留在这里:它是内容的事,不是面的事。 */
 .plugin-trigger-panel {
   width: 280px;
   max-width: 320px;
-  padding: 8px 10px;
-  /* 菜单面而不是 floating 面:它常从 ⋯ 菜单点出来,与菜单同族才不打架
-     (真机夜间实锤 floating 亮一档;与 StatusChip 浮层同一拍板)。 */
-  background: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
-  border: 1px solid var(--ui-border-strong-border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-floating);
 }
 
 .plugin-trigger-head {
@@ -132,5 +127,12 @@ function onBlockState(state: { degraded: boolean; error: boolean }): void {
 
 .plugin-trigger-body {
   font-size: 12px;
+}
+</style>
+
+<!-- Popover 的根是 Teleport,拿不到本组件的 scoped 作用域(ui-system.md §1)。 -->
+<style>
+.plugin-trigger-surface {
+  --app-popover-padding: 8px 10px;
 }
 </style>

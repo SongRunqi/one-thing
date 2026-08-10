@@ -287,6 +287,7 @@
                   :anchor="contextMeterEl"
                   placement="top-start"
                   :offset="8"
+                  surface="menu"
                   :class="['context-detail', contextMeterTone]"
                 >
                   <div
@@ -2686,11 +2687,10 @@ defineExpose({
   background: var(--ui-state-hover-bg);
 }
 
-/* ctx 明细浮层:面由 Popover 画,这里只排内容(账页行式,右列数字对齐)。 */
+/* ctx 明细浮层:面由 Popover 的 `menu` 档画,这里只排内容(账页行式,右列数字
+   对齐)。族色改由**档名**表达,不再覆写 `--app-popover-bg`(波 4,同 StatusChip)。 */
 .context-detail {
   --app-popover-padding: 12px 14px;
-  /* 与 S 带/trigger 浮层同族:菜单面(见 StatusChip 同注,2026-08-09 拍板)。 */
-  --app-popover-bg: var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg));
 }
 
 .context-detail-body {

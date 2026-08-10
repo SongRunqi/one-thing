@@ -160,7 +160,12 @@ withDefaults(defineProps<{
   position: relative;
   inset: auto;
   width: auto;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  /* 波 4 判定:这张**面**保留自绘 —— 它不是"浮层皮肤",而是复合器自己的形
+     (缺口的框签 + 方角 + 零填充 + `--ui-surface-chat-bg`),文件/技能/路径/命令/
+     模型/Agent 六个选择器共用同一张;换成菜单档会把框签压在另一张纸上,是改
+     观感不是收敛。真正该收的只有投影:字面 `0 16px 40px rgba(0,0,0,.28)` 不跟
+     主题(浅色主题下它按深色投影画),归位到浮层族的那一枚 token。 */
+  box-shadow: var(--shadow-floating);
 }
 
 /* The header is not a row — it is the frame's notched tag, sitting on the top
