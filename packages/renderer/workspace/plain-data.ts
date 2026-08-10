@@ -2,7 +2,7 @@
  * 序列化边界的去响应式工具 —— 插件 UI 层的**边界铁律**。
  *
  * 宿主的插件 UI 层(描述树、webview、氛围层)拿 Vue 响应式数据干活,而它有
- * 多个**序列化边界**:postMessage(sandbox iframe)、ipcRenderer.invoke(主进程)。
+ * 多个**序列化边界**:postMessage(sandbox iframe)、主进程 invoke(主进程)。
  * 结构化克隆不认 Proxy —— 响应式对象一过边界就是 "An object can't be cloned"。
  *
  * 这个病已经犯过两次,两次都是宿主的锅、插件无辜:

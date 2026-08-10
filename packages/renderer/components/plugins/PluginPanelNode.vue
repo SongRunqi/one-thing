@@ -553,7 +553,7 @@ async function onFilePick(node: { label: string; accept?: string[]; maxBytes?: n
   if (picking.value || !props.pluginId) return
   picking.value = true
   try {
-    // accept 来自响应式树,是 Vue 的 Proxy —— 原样递进 ipcRenderer.invoke 会炸
+    // accept 来自响应式树,是 Vue 的 Proxy —— 原样递进 主进程 invoke 会炸
     // "An object can't be cloned"。边界铁律见 toPlainData 的文档(同病已犯两次)。
     const result = await platformApi.pickPluginFile(toPlainData({
       pluginId: props.pluginId,
