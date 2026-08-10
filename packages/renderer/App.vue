@@ -24,6 +24,15 @@
       :key="activeAmbient.pluginId"
       :entry-url="activeAmbient.entryUrl"
     />
+    <!-- 插件背景层(G 期,L2.5;2026-08-10 起铺**整窗**)。挂在窗口根、
+         position:fixed z0,主窗 body 自己画着不透明的 --ui-surface-app-bg,
+         图铺不满(contain/透明图)时露出的是应用底色,不是桌面。
+         纯静态绘制:不做 rAF、不做过渡(透明窗掉帧判例)。 -->
+    <div
+      v-if="pluginBackgroundActive"
+      class="app-background-layer"
+      :style="pluginBackgroundStyle"
+    />
     <div
       v-if="sidebarFloating || sidebarFloatingClosing"
       class="app-floating-sidebar-host"
@@ -57,7 +66,7 @@
 
     <Splitter
       class="app-shell"
-      :class="{ 'is-sidebar-resizing': sidebarResizing }"
+      :class="{ 'is-sidebar-resizing': sidebarResizing, 'has-plugin-background': pluginBackgroundActive }"
       :gap="0"
       :resizer-size="1"
       :resizer-hit-size="12"
@@ -109,16 +118,6 @@
           class="app-content"
           :class="{ 'has-plugin-background': pluginBackgroundActive }"
         >
-          <!-- 插件背景层(G 期,L2.5)。纯静态绘制:不做 rAF、不做过渡 ——
-               mac 上主窗是 transparent:true,任何逐帧动画都会把合成器拖进
-               掉帧(project_transparent_window_jank_2026_07 的判例)。
-               它铺的是**主内容区**(聊天 + 工作台),不是整窗:左栏有自己的
-               不透明底色语义,详见 <style> 里的取舍说明。 -->
-          <div
-            v-if="pluginBackgroundActive"
-            class="app-background-layer"
-            :style="pluginBackgroundStyle"
-          />
           <Splitter
             ref="contentSplitterRef"
             class="app-content-splitter"
@@ -1545,7 +1544,10 @@ onUnmounted(() => {
  * 把最外层弄透明就是让桌面直接透上来。
  */
 .app-background-layer {
-  position: absolute;
+  /* 2026-08-10 起铺整窗(fixed):用户预期壁纸盖住 header 与侧栏,不只主内容区。
+     挂在窗口根、z0;app-shell 激活时透明让位(body 的 --ui-surface-app-bg
+     仍是不透明兜底,mac 透明窗不会漏桌面)。 */
+  position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
@@ -1576,13 +1578,29 @@ html[data-theme='dark'] .app-background-layer {
    排查实录 2026-08-10:图正常加载、图层正常挂载,肉眼却什么都没有。
    透明化白名单是**枚举制**,新的不透明包装元素进树时必须来这里登记一行
    (类不存在时选择器惰性,不伤任何布局)。 */
-.app-content.has-plugin-background :deep(.workspace-view-stack),
-.app-content.has-plugin-background :deep(.app-shell) {
+.app-content.has-plugin-background :deep(.workspace-view-stack) {
   background: transparent;
 }
 
 .app-content.has-plugin-background :deep(.chat) {
   --chat-surface: transparent;
+}
+
+/* 整窗铺放(2026-08-10):shell 让位给 z0 的壁纸层(body 仍有不透明底,
+   不漏桌面);侧栏不全透明 —— 它是读文字的面板,给一层同色系半透明纱,
+   头部让位给纱(否则它的不透明底把纱切成两截)。 */
+.app-shell.has-plugin-background {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+.app-shell.has-plugin-background :deep(.sidebar) {
+  background: color-mix(in srgb, var(--sidebar-bg) 75%, transparent);
+}
+
+.app-shell.has-plugin-background :deep(.sidebar-header) {
+  background: transparent;
 }
 
 .app-main-region {
