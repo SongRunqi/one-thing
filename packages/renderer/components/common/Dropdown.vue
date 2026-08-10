@@ -18,7 +18,7 @@
     <div
       ref="menuRef"
       class="app-context-menu"
-      :class="{ 'is-surface': surface }"
+      :class="surfaceClass"
       role="menu"
       :aria-label="ariaLabel"
       :style="{ minWidth: `${minWidth}px` }"
@@ -78,6 +78,7 @@
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Popover from './Popover.vue'
+import { popoverSurfaceClasses, type PopoverSurface } from './popover-surface'
 import type { ContextMenuItem } from './context-menu'
 import type { FloatingAnchor, FloatingCloseOn, FloatingZLayer } from '@/composables/floating/useFloatingLayer'
 import type { FloatingPlacement } from '@/composables/floating/compute-position'
@@ -100,8 +101,12 @@ const props = withDefaults(defineProps<{
   transition?: string
   minWidth?: number
   ariaLabel?: string
-  /** Draw the shared menu surface; off when the caller's class already does. */
-  surface?: boolean
+  /**
+   * Draw the shared menu surface; off when the caller's class already does.
+   * Accepts a Popover surface tier too — Dropdown's default tier is `menu`
+   * (the face it has always drawn), so `true` / omitted is unchanged.
+   */
+  surface?: boolean | PopoverSurface
 }>(), {
   open: undefined,
   anchor: undefined,
@@ -128,6 +133,9 @@ const emit = defineEmits<{
 }>()
 
 const menuRef = ref<HTMLElement | null>(null)
+
+/** 缺省档(menu)不加修饰类,既有调用点的 DOM 与命中规则不变。 */
+const surfaceClass = computed(() => popoverSurfaceClasses(props.surface, 'menu'))
 
 /** Same derived-not-mirrored open state as Popover — see the note there. */
 const uncontrolled = ref(false)
@@ -211,6 +219,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleMenuKey, true)
   border: 1px solid var(--ui-border-subtle-border);
   border-radius: 10px;
   box-shadow: var(--ui-surface-tooltip-shadow);
+}
+
+/* 非缺省档:与 Popover 的档位表同一套配方(那里是唯一出处),这里只是把它
+   落到菜单自己的内框上 —— Dropdown 的面画在内元素而不是 Popover 根上,
+   理由见文件头注。 */
+.app-context-menu.is-surface.is-surface-floating {
+  background: var(--ui-surface-floating-bg);
+  box-shadow: var(--shadow-floating);
+}
+
+.app-context-menu.is-surface.is-surface-elevated {
+  background: var(--ui-surface-elevated-bg);
+  box-shadow: var(--shadow-elevated);
 }
 
 .app-context-item {

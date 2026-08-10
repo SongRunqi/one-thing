@@ -28,7 +28,7 @@
         v-if="layer.open.value"
         :ref="layer.setFloatingEl"
         class="app-popover"
-        :class="{ 'is-surface': surface }"
+        :class="surfaceClass"
         :data-placement="layer.placement.value ?? undefined"
         v-bind="$attrs"
         :style="[$attrs.style as StyleValue, layer.floatingStyle.value]"
@@ -52,6 +52,20 @@
  * panel keeps its own styling — see docs/design/ui-system-consolidation.md
  * §6.1); pass `:surface="false"` when the content already draws its own frame,
  * so the two do not stack.
+ *
+ * **Surface tiers (G6/G1, 2026-08-10).** The Popover ROOT cannot carry the
+ * caller's scoped-CSS scope — its root is a Teleport and Vue hands the scopeId
+ * to a single root element only (docs/design/ui-system.md §1). That is why every
+ * consumer that wanted a different face had to draw its own inner frame with
+ * `:surface="false"`. `surface` now also accepts a tier name so the face comes
+ * from HERE instead:
+ *
+ *   `'floating'` (= `true` = default) 锚定浮层的通用面 —— unchanged from before
+ *   `'menu'`      菜单族面(S 带 / trigger / ⋯ 菜单,2026-08-09 拍板的族色)
+ *   `'elevated'`  抬起的卡片面(内容卡 / 预览卡,更重的投影)
+ *
+ * Instance-level `--app-popover-{bg,border,radius,shadow,padding}` still win
+ * over every tier — the tiers only move the FALLBACK.
  */
 import { computed, ref, type StyleValue } from 'vue'
 import {
@@ -62,6 +76,7 @@ import {
   type FloatingZLayer,
 } from '@/composables/floating/useFloatingLayer'
 import type { ComputedPosition, FloatingPlacement } from '@/composables/floating/compute-position'
+import { popoverSurfaceClasses, type PopoverSurface } from './popover-surface'
 
 defineOptions({ inheritAttrs: false })
 
@@ -83,8 +98,11 @@ const props = withDefaults(defineProps<{
   closeOn?: FloatingCloseOn
   trapFocus?: boolean
   returnFocus?: boolean
-  /** Draw the shared floating surface. Off when the content brings its own. */
-  surface?: boolean
+  /**
+   * Draw the shared floating surface. `false` = off (content brings its own);
+   * `true` = the `floating` tier; a tier name picks the face explicitly.
+   */
+  surface?: boolean | PopoverSurface
   /** Full-viewport catcher under the layer that eats the dismissing click. */
   shield?: boolean
   /** `click` needs the trigger slot; `manual` is driven by `v-model:open`. */
@@ -119,6 +137,9 @@ const emit = defineEmits<{
 }>()
 
 const triggerRef = ref<HTMLElement | null>(null)
+
+/** 缺省档不加修饰类 —— 见 popover-surface.ts 的零破坏说明。 */
+const surfaceClass = computed(() => popoverSurfaceClasses(props.surface, 'floating'))
 
 /**
  * Controlled when `open` is passed, self-owned otherwise — *derived*, never a
@@ -191,6 +212,27 @@ defineExpose({
   border-radius: var(--app-popover-radius, var(--radius-sm));
   background: var(--app-popover-bg, var(--ui-surface-floating-bg));
   box-shadow: var(--app-popover-shadow, var(--shadow-floating));
+}
+
+/* 非缺省档:只改「面色 / 边框 / 圆角 / 阴影」四项,几何(padding)仍归上面那条
+   基规则,所以换档不会把内容挤位。四条声明照旧把 `--app-popover-*` 排在最前 ——
+   实例级覆写(StatusChip 的 `.status-chip-flyout` 那种)必须继续赢过档位。
+   基规则一个字未动,缺省档因此与改动前逐字节相同。 */
+.app-popover.is-surface.is-surface-menu {
+  /* 菜单族面:2026-08-09 拍板的"S 带 / trigger / ctx 统一菜单面"。边框比 floating
+     重一档、圆角 10px —— 与 more-menu / plugin-trigger-panel 现有配方对齐。 */
+  border-color: var(--app-popover-border, var(--ui-border-strong-border));
+  border-radius: var(--app-popover-radius, var(--radius-md));
+  background: var(--app-popover-bg, var(--ui-surface-menu-bg, var(--ui-surface-elevated-bg)));
+  box-shadow: var(--app-popover-shadow, var(--shadow-floating));
+}
+
+.app-popover.is-surface.is-surface-elevated {
+  /* 抬起的卡片面:内容卡 / 预览卡这类"读一段字"的浮层,投影走对话框那一档。 */
+  border-color: var(--app-popover-border, var(--ui-border-subtle-border));
+  border-radius: var(--app-popover-radius, var(--radius-md));
+  background: var(--app-popover-bg, var(--ui-surface-elevated-bg));
+  box-shadow: var(--app-popover-shadow, var(--shadow-elevated));
 }
 
 /* A floating layer is never part of the window's drag region — a menu you

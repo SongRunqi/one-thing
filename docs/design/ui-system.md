@@ -153,6 +153,24 @@ P2 新增 Dialog/ConfirmHost 后它当场翻边,全局实心 `background` 赢了
 `div`(插槽内容仍在调用方作用域内),要么写进调用方的**非 scoped** `<style>` 块。
 `SayMessageRow` 走前者,`MessageActions` 的 `.more-menu`/`.branch-menu` 走后者。
 
+**第三条路(2026-08-10 起的首选):`surface` 档位。** 上面那两条是"消费者自己画面"的
+变通;缺的是"组件按名字画面"的能力。`Popover.vue` 的 `surface` 现在同时收布尔与档位名,
+面色/边框/圆角/阴影由组件画,消费者一个 CSS 规则都不用写:
+
+| `surface` | 面 | 边框 | 圆角 | 阴影 |
+|---|---|---|---|---|
+| `false` | 不画(内容自带框) | —— | —— | —— |
+| `true` / 缺省 / `"floating"` | `--ui-surface-floating-bg` | `--ui-border-subtle-border` | `--radius-sm` | `--shadow-floating` |
+| `"menu"` | `--ui-surface-menu-bg` | `--ui-border-strong-border` | `--radius-md` | `--shadow-floating` |
+| `"elevated"` | `--ui-surface-elevated-bg` | `--ui-border-subtle-border` | `--radius-md` | `--shadow-elevated` |
+
+几何(`--app-popover-padding`)不随档位变 —— 换档不该把内容挤位。实例级
+`--app-popover-{bg,border,radius,shadow}` 仍然赢过档位(档位只挪 fallback)。
+**缺省档不加修饰类**,所以既有调用点的 DOM 与命中规则逐字节不变
+(`components/common/__tests__/Popover.surface.test.ts` 钉住这条)。
+`Dropdown.vue` 跟随同一张表,只是它的缺省档是 `menu`、面画在内框上;
+`ContextMenu.vue` 是 Dropdown 的预绑定,跟着拿缺省档。
+
 ---
 
 ## 2. 交互态配方(唯一出处)
