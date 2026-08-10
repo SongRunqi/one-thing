@@ -1631,6 +1631,10 @@ html[data-theme='dark'] .app-background-layer {
      --sidebar-row-hover-fill)都汇在这枚 token 上,一处覆写双杀。 */
   --wallpaper-hover-ink: var(--ui-sidebar-item-hover-bg);
   --wallpaper-hover: color-mix(in srgb, var(--wallpaper-hover-ink) 45%, transparent);
+  /* 选中态(真机三轮:hover 修了、active 漏了)。比 hover 深一档 —— 选中要
+     站得住,但同样让壁纸透气。 */
+  --wallpaper-active-ink: var(--ui-sidebar-item-active-bg);
+  --wallpaper-active: color-mix(in srgb, var(--wallpaper-active-ink) 60%, transparent);
   --wallpaper-code-ink: var(--ui-surface-code-block-bg);
   --wallpaper-code-header-ink: var(--ui-surface-code-header-bg);
   --wallpaper-table-head-ink: var(--ui-table-header-bg, var(--ui-state-hover-bg));
@@ -1654,6 +1658,7 @@ html[data-theme='dark'] .app-background-layer {
 .app-shell.has-plugin-background :deep(.sidebar) {
   --ui-sidebar-surface-bg: var(--wallpaper-veil);
   --ui-sidebar-item-hover-bg: var(--wallpaper-hover);
+  --ui-sidebar-item-active-bg: var(--wallpaper-active);
 }
 
 /* 分组 pill 静置时不再自己画底(真机二轮:与侧栏纱叠成 58% 复合浓度,用户判
