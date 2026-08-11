@@ -2047,8 +2047,14 @@ onUnmounted(() => {
 }
 
 .sidebar-pane .sidebar-room-item {
-  /* 选中底只定义一次,下面加深的那一档贴着它写,免得两处数值各自漂移。 */
-  --sidebar-pane-row-active-fill: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 7.5%, transparent);
+  /* 选中底只定义一次,下面加深的那一档贴着它写,免得两处数值各自漂移。
+     G8-b:这两档(hover 4.5% / 当前项 7.5%)手写的百分比与主题层 rail 族的配方
+     **逐字相同**,于是**成对**迁到 `--ui-sidebar-rail-{hover,active}-bg` —— 拆开迁
+     就是波 2 那个阶梯倒挂的做法。实测(18 主题 × 明暗双向,resolver + css-mapper
+     实跑):手写 vs token Δ中位 5.0 / 4.9(残差是 token 以 rail 底为基多带的那
+     2.4% 墨,css-mapper 注里写着);迁移后阶梯 36/36 单调,hover 离侧栏面 Δ中位
+     14.0 / 最小 12.0,下面「加深一档」那条 36/36 仍站在当前项之外。 */
+  --sidebar-pane-row-active-fill: var(--ui-sidebar-rail-active-bg);
 
   display: flex;
   align-items: center;
@@ -2062,7 +2068,7 @@ onUnmounted(() => {
 }
 
 .sidebar-pane .sidebar-room-item:hover {
-  background: color-mix(in srgb, var(--sidebar-row-ink, var(--ui-text-primary-fg)) 4.5%, transparent);
+  background: var(--ui-sidebar-rail-hover-bg);
   color: var(--sidebar-row-ink, var(--ui-text-primary-fg));
 }
 

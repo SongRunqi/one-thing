@@ -101,6 +101,11 @@ html.has-wallpaper body {
      --sidebar-row-hover-fill)都汇在这枚 token 上,一处覆写双杀。 */
   --wallpaper-hover-ink: var(--ui-sidebar-item-hover-bg);
   --wallpaper-active-ink: var(--ui-sidebar-item-active-bg);
+  /* rail 族的两档态(G8-b 补的既存窟窿):rail **底**早在 A 级就交出去了,可它上面
+     的 hover / 当前项是主题层解析的**实色** —— 壁纸下那两档一直是实心块。态反馈
+     半透明化不设例外(47beb035 判例),ink 快照同样先在 body 上取主题原值。 */
+  --wallpaper-rail-hover-ink: var(--ui-sidebar-rail-hover-bg);
+  --wallpaper-rail-active-ink: var(--ui-sidebar-rail-active-bg);
   --wallpaper-state-hover-ink: var(--ui-state-hover-bg);
   --wallpaper-state-active-ink: var(--ui-state-active-bg);
   --wallpaper-state-selected-ink: var(--ui-state-selected-bg);
@@ -136,6 +141,16 @@ html.has-wallpaper body {
   --wallpaper-active: color-mix(
     in srgb,
     var(--wallpaper-active-ink) var(--wallpaper-active-alpha),
+    transparent
+  );
+  --wallpaper-rail-hover: color-mix(
+    in srgb,
+    var(--wallpaper-rail-hover-ink) var(--wallpaper-hover-alpha),
+    transparent
+  );
+  --wallpaper-rail-active: color-mix(
+    in srgb,
+    var(--wallpaper-rail-active-ink) var(--wallpaper-active-alpha),
     transparent
   );
   --wallpaper-state-hover: color-mix(
@@ -315,8 +330,13 @@ html.has-wallpaper .app-surface[data-surface='elevated'] {
       `.sidebar-rail` / 分组 pill)—— 它画的不是四档区域面 token,是区域别名
       `--sidebar-bg: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg))`,而
       `--ui-sidebar-surface-bg` 由主题在 `:root` 处定义(`REGION_OVERLAY_STEPS`
-      墨阶族),fallback 永不触发。并档时机是 **G8**(私有 token 岛评估)把区域墨阶
-      收进档位表之后 —— 届时它拿到的是自己的档位名,而不是借来的 `app`。
+      墨阶族),fallback 永不触发。
+      **G8-b 判决:不并档,永久具名。** 判据是"具名条目能不能因此瘦身",答案是不能:
+      新立一档 `sidebar`(盖章不上色,`surface.ts` 里预留的那条路)只换掉本块的**一行**
+      (`--ui-sidebar-surface-bg`),代价是档位表 + 类型联合 + wallpaper 通用规则各加一处;
+      而本块另外四行(行 hover / 选中 + rail hover / 当前项)**永远换不掉** —— 档位表
+      一档只映射一枚**面**token,态 token 不在它的职责里。净结果是把一行改名、总行数
+      不减、档位表多一档:那是造分类,不是收敛。侧栏的区域别名族继续由这里具名覆写。
 
    2) `.right-workbench` 的台面专属补丁(C 级两枚 + S 级一枚 + 让位一行)——
       它们治的不是"台面自己的底色"(那已归通用 panel 规则),是台面**里**读别枚
@@ -345,6 +365,12 @@ html.has-wallpaper .sidebar {
   --ui-sidebar-surface-bg: var(--wallpaper-veil);
   --ui-sidebar-item-hover-bg: var(--wallpaper-hover);
   --ui-sidebar-item-active-bg: var(--wallpaper-active);
+  /* S 级·态|rail 族的两档。覆写落在 `.sidebar` 而不是下面那个 `.app-shell` 块,
+     与它上面两行同理:这两枚是**侧栏作用域**的 token(rail 页签、ActiveWorkCard、
+     以及 G8-b 迁进来的房间/联系人行都在这棵树里),而浮层侧栏那份 `.sidebar` 是
+     根级选择器一并命中的。E 级块里再回满,两处正交。 */
+  --ui-sidebar-rail-hover-bg: var(--wallpaper-rail-hover);
+  --ui-sidebar-rail-active-bg: var(--wallpaper-rail-active);
 }
 
 /* 分组 pill 静置时不再自己画底(真机二轮:与侧栏纱叠成 58% 复合浓度,用户判
@@ -563,6 +589,8 @@ html.has-wallpaper :is(
   --ui-action-danger-hover-bg: var(--wallpaper-state-danger-hover-ink);
   --ui-sidebar-item-hover-bg: var(--wallpaper-hover-ink);
   --ui-sidebar-item-active-bg: var(--wallpaper-active-ink);
+  --ui-sidebar-rail-hover-bg: var(--wallpaper-rail-hover-ink);
+  --ui-sidebar-rail-active-bg: var(--wallpaper-rail-active-ink);
 
   /* 静态模糊。**不加 transition** —— 逐帧重算模糊就是掉帧本身(透明窗判例)。 */
   backdrop-filter: blur(var(--wallpaper-frost-blur));

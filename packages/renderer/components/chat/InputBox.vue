@@ -3054,21 +3054,22 @@ defineExpose({
   background: var(--ui-state-hover-bg);
 }
 
+/* G8-b:波 3 记的"这一对要一起迁"在这里兑现 —— 静息(accent 10%)与 hover
+   (accent 16%)**成对**落到 G6 的两档 accent token,百分比逐字相同,变的只是基面
+   (原来掺在 hover 底上,token 以 panel 面解析成实色)。18 主题 × 明暗双向实跑:
+   静息 手写 vs 淡档 Δ中位 9.2、hover 手写 vs 重档 Δ中位 8.4;两态之间的距离
+   迁移前中位 10.8 / 迁移后 11.0,阶梯 36/36 单调(拆开迁才会出现波 3 记的那
+   7 个主题静息比 hover 还重)。边框那一档不动:面 token 族没有边框档。 */
 .voice-btn.needs-setup {
   color: var(--ui-accent-primary-fg);
   border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 38%, var(--ui-border-default-border));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, var(--ui-state-hover-bg));
+  background: var(--ui-state-hover-accent-bg);
 }
 
-/* 底**不**迁 `--ui-state-hover-accent-strong-bg`(百分比正好也是 16):静息态
-   (3060 行)是"accent 10% 掺进 hover 底"的同族手写式,只迁 hover 那一半会把阶梯
-   拧反 —— 18 主题里有 7 个(after-rain-night/-rainbow、catppuccin-latte、
-   gruvbox-dark、nord、one-light、paper-ink)静息离 hover 底比 token 还远,hover
-   反而更浅。这一对要一起迁,而本波只动 hover。 */
 .voice-btn.needs-setup:hover {
   color: var(--ui-accent-primary-fg);
   border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 56%, var(--ui-border-default-border));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 16%, var(--ui-state-hover-bg));
+  background: var(--ui-state-hover-accent-strong-bg);
 }
 
 .voice-btn.active {
@@ -3135,16 +3136,17 @@ defineExpose({
   white-space: nowrap;
 }
 
-/* 同样**不**迁淡档 token:下面的 `:active`(18%)是同族手写式且不在本波范围内,
-   只迁 hover 后 18 主题里有 3 个(after-rain-night / gruvbox-dark / nord)hover 会
-   压到与 :active 同一格(差 0.2–1.4 ΔRGB,阶梯失去单调 —— 按下去看着比悬停还浅)。
-   hover 与 active 成对迁。 */
+/* G8-b:hover(12%)与 :active(18%)**成对**迁到 G6 的两档 accent token(10% / 16%)
+   —— 波 3 记的"只迁 hover 会与 :active 挤到同一格"就是拆开迁的后果。18 主题 ×
+   明暗双向实跑:hover 手写 vs 淡档 Δ中位 3.5、:active 手写 vs 重档 Δ中位 3.3
+   (两处各降 2 个百分点、基面从输入面换成 panel 面,两边几乎抵消);两态之间的
+   距离迁移前中位 11.2 / 迁移后 11.0,阶梯保持单调。 */
 .send-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 12%, transparent);
+  background: var(--ui-state-hover-accent-bg);
 }
 
 .send-btn:active:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 18%, transparent);
+  background: var(--ui-state-hover-accent-strong-bg);
 }
 
 /* Keep border-color untouched: the cell divider between mic and send lives
