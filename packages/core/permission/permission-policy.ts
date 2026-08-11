@@ -129,7 +129,23 @@ export function decidePermission(input: PermissionPolicyInput): PermissionPolicy
   }
 
   if (input.mode === 'auto-accept-edits' && promptEffects.every(isAutoAcceptedEditEffect)) {
-    return { decision: 'allow' }
+    /**
+     * **越界写不吃 auto-accept**(2026-08-11 止血,
+     * `docs/audit/self-hosting-gap-audit-2026-08-11.md` 安全债第一条)。
+     *
+     * `auto-accept-edits` 是一句关于**这个项目**的授权:「我信任你在我打开的这棵
+     * 树里改文件,别每次都问我」。它从来不是「你可以往这台机器的任何绝对路径
+     * 写盘」—— 而在此之前它就是后者:write/edit 早就在 effect 上标了
+     * `external: !matchedRoot`(`tools/builtin/write.ts` / `edit.ts` 的 analyze),
+     * 但这条分支只看 kind 不看这一位,于是一次 `~/.ssh/config` 的覆写与一次
+     * 仓库内的改动在这里长得一模一样,连一张卡都不弹。
+     *
+     * 越界的那一条回落 `ask`,让用户看见路径再决定;界内的写仍然一路直通 ——
+     * 判据只有 `external` 这一位,所以正常工作目录内的写一步都没有变卡。
+     */
+    if (promptEffects.every(effect => effect.external !== true)) {
+      return { decision: 'allow' }
+    }
   }
 
   const askEffect = grantMatches.find(item => !item.grant)?.effect

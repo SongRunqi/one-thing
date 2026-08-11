@@ -82,6 +82,27 @@ describe('runtime write tool', () => {
     expect(analysis.preview?.diff).toContain('+after')
   })
 
+  /**
+   * 止血 3(2026-08-11)的工具侧半边:越界写必须在 effect 上把 `external` 立起来 ——
+   * `auto-accept-edits` 的回落判据只读这一位(`core/permission/permission-policy.ts`)。
+   */
+  it('marks a write outside the working-directory roots as external', async () => {
+    const dir = await tempDir('onething-runtime-write-inside')
+    const outside = await tempDir('onething-runtime-write-outside')
+    const { tool } = await createTool('onething-runtime-write-external-audit')
+
+    const analysis = await tool.analyze!(
+      { path: path.join(outside, 'stolen.txt'), content: 'x\n' },
+      createContext(dir),
+    )
+
+    expect(analysis.effects[0]).toMatchObject({
+      kind: 'file_write',
+      external: true,
+      metadata: expect.objectContaining({ isExternal: true }),
+    })
+  })
+
   it('refuses writes when target content changes after approval', async () => {
     const dir = await tempDir('onething-runtime-write-revalidate')
     const { tool } = await createTool('onething-runtime-write-revalidate-audit')

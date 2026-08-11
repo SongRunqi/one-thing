@@ -15,6 +15,7 @@ import { EditTool } from './edit.js'
 import { ReadTool } from './read.js'
 import { WriteTool } from './write.js'
 import { FindTool } from './find.js'
+import { GrepTool } from './grep.js'
 import { VariableTool } from './variable.js'
 import { GoalTool } from './goal.js'
 import { BoardTool } from '../../collab/board-tool.js'
@@ -39,6 +40,9 @@ const builtinTools = [
   ReadTool,
   WriteTool,
   FindTool,
+  // 找文件名归 Find,找文件内容归 Grep。Glob 有意不注册:它与 Find 是同一件事
+  // (都按 glob 找路径),2026-07 的工具裁减正是为此把它摘掉的。
+  GrepTool,
   VariableTool,
   GoalTool,
   BoardTool,
