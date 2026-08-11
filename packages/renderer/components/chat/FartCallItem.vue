@@ -335,7 +335,26 @@ function maybePlayAudio() {
 <style scoped>
 /* =========================================================================
    Arcade cabinet — dark bezel, neon CRT screen, scanlines, retro controls
-   ========================================================================= */
+   =========================================================================
+
+   ui-gate-allow: surface-literal
+
+   为什么放行(自绘 UI 收敛波 6·批 1,2026-08-11):本文件把
+   `--ui-surface-app-bg` 当**街机柜的画料**用,不是在画一张区域面 —— 它是柜体
+   渐变的暗端(.arcade-cabinet)、CRT 玻璃的底(.crt / .screen 的径向渐变外圈)、
+   投币计数牌的底(.credits)。四处消费里只有两处是 `background:` 的直接赋值
+   (.crt / .credits),另两处在渐变的色标位上,规则本来就够不着 —— 只豁免两处、
+   留两处不受管,反而更看不懂。
+
+   它永远不会是区域根:整块街机柜是一条消息里的一件美术道具,壁纸态下**应当**
+   保持不透明(纱化的 CRT 屏 = 透出壁纸的显像管,那是坏掉不是分级)。没有语义
+   更准的 token 可换 —— app 底是这套配色里唯一的中性最暗档,写死颜色会改踩
+   ui-hex-fallback。
+
+   代价如实记:`ui-gate-allow` 是**文件级**的(scripts/ui-style-check.mjs 的
+   `allowedRules(text)` 整份文本扫一遍),不是行级 —— 这份白名单会让整个
+   FartCallItem.vue 从此不受 surface-literal 管。此处判定成本可接受:646 行的
+   自包含彩蛋组件,不承载任何区域根。 */
 
 .arcade-cabinet {
   display: flex;

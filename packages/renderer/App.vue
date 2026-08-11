@@ -1471,6 +1471,26 @@ onUnmounted(() => {
 
   height: 100%;
   width: 100%;
+  /* 判过不接 `surface="app"` 档(自绘 UI 收敛波 6·批 1,2026-08-11)——
+     本文件四处区域根(.app-shell / .app-content / .app-main-region /
+     .workspace-view-stack)是同一条判决,理由与 G7-1 判 `.sidebar` 不接同型:
+
+     · 非壁纸态迁过来确实零变化(同一枚 token,只是改由档位画);
+     · 壁纸态下四处已由 A 级·让位整张透明化(wallpaper.css `html.has-wallpaper
+       .app-shell` / `.app-content, .app-main-region, .workspace-view-stack`),
+       档位画的底压根到不了眼前 —— 迁移买不到壁纸参与度;
+     · 而盖章的**副作用**是真的:B 级通用规则
+       `html.has-wallpaper .app-surface[data-surface='app']` 会把
+       `--ui-surface-app-bg` 就地稀释成 18% 的纱,并按继承落到整棵子树。
+       本波实测这枚 token 在 renderer 里有 **91 处**消费、约 45 个文件,其中
+       Link / BorderBox / BreadcrumbItem / Dialog 的
+       `box-shadow: 0 0 0 2px var(--ui-surface-app-bg)` 是**焦点环的实色垫底**,
+       Progress / RoomSurface 拿它当**反色文字**,todo-popover 拿它当浮层底 ——
+       稀释成纱等于焦点环透明、反色文字透明。
+
+     wallpaper.css 的 app 档预写注里那句"第一个住户进档前必须先量一遍它的子树"
+     就是这件事;这里是量完的结论。正确的并档时机同 `.sidebar`:**G8** 把区域
+     墨阶/通用页面底收进档位表、app 档不再是"整棵树都在读的那一枚"之后。 */
   background: var(--ui-surface-app-bg);
 }
 
