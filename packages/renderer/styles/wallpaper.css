@@ -83,7 +83,9 @@ html.has-wallpaper body {
   /* 76% → 68% → 58%:两轮真机反馈递降,76% 在近白主题(菜单面 #ffffff)上肉眼即实色,
      用户整场战役的诉求是壁纸可感 —— 降一档换感知,可读性下限用户自验后再调。 */
   --wallpaper-frost-alpha: 58%;
-  --wallpaper-frost-blur: 14px;
+  /* 14px → 6px:真机三轮定音 —— 重模糊把图案抹成色浆,透过去的不是壁纸是
+     色晕,肉眼即"没覆盖"。模糊降到图案可辨,可读性由 alpha 承担。 */
+  --wallpaper-frost-blur: 6px;
 
   /* ── ink 快照:后代覆写同名 token 之后,这里仍是主题的原始值 ── */
   --wallpaper-veil-ink: var(--ui-surface-app-bg);
