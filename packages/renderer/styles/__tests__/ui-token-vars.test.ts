@@ -488,8 +488,9 @@ describe('renderer UI semantic variables', () => {
     expect(sessionHeader).toContain('var(--ui-tab-bar-surface-bg')
     expect(sessionHeader).toContain('var(--ui-tab-bar-item-active-fg')
     expect(sessionHeader).toContain('var(--ot-active-text')
-    expect(tooltip).toContain('var(--ui-surface-tooltip-bg')
-    expect(tooltip).toContain('var(--ui-surface-tooltip-fg')
+    // 2026-08-11 用户拍板:tooltip 弃反色并入统一浮层面(菜单面族)。
+    expect(tooltip).toContain('var(--ui-surface-menu-bg')
+    expect(tooltip).toContain('var(--ui-text-primary-fg)')
     expect(editorExtensions).toContain('var(--ui-editor-caret-fg')
     expect(markdownStyles).toContain('--md-inline-code-bg')
     expect(markdownStyles).toContain('var(--ui-content-media-shadow')
