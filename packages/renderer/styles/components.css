@@ -34,6 +34,40 @@
 }
 
 /* =============================================================================
+   区域面档位(G7-1 —— 档位表的唯一出处是 components/common/surface.ts)
+   -----------------------------------------------------------------------------
+   四档 = 四枚区域面 token。区域根声明 `surface="<tier>"`(`Surface.vue` 原语,
+   或 `Container` 的同名 prop),组件给它加画笔类 `.app-surface` + 盖章
+   `data-surface="<tier>"`,底色由下面这四条画。
+
+   为什么住在全局层而不是 Surface.vue 的 scoped 块:`Container` 渲染的是**自己的**
+   根元素,拿不到 Surface.vue 的 scopeId —— 两个宿主要吃同一张表,表就只能在这里。
+
+   `data-surface` 是**章**,`.app-surface` 才是**画笔**:只盖章不加类 = 声明档位但
+   自己画底(见 surface.ts 末段)。所以这四条一律带类名前缀,不写裸 `[data-surface]`
+   —— 编辑器一族(`MarkdownDocumentEditor` / `ProseNoteEditor`)早就在用同名属性的
+   别的取值(`document` / `todo-notes`),裸属性选择器会把它们一并染上。
+   ============================================================================= */
+
+.app-surface[data-surface='app'] {
+  background: var(--ui-surface-app-bg);
+}
+
+.app-surface[data-surface='panel'] {
+  background: var(--ui-surface-panel-bg);
+}
+
+/* 退到 app 底与 wallpaper.css 的 `--wallpaper-chat-ink` 逐字同款 —— 主题若没定义
+   chat 面,纱与实底必须落在同一枚 ink 上,否则壁纸模式下两者会差出一档。 */
+.app-surface[data-surface='chat'] {
+  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg));
+}
+
+.app-surface[data-surface='elevated'] {
+  background: var(--ui-surface-elevated-bg);
+}
+
+/* =============================================================================
    BUTTONS
    ============================================================================= */
 

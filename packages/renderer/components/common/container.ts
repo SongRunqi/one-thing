@@ -1,4 +1,5 @@
 import type { Component, StyleValue } from 'vue'
+import type { SurfaceTier } from './surface'
 
 const containerBreakpoints = ['base', 'sm', 'md', 'lg', 'xl'] as const
 
@@ -71,6 +72,12 @@ export interface ContainerProps {
   mainFlex?: ContainerResponsiveProp<ContainerFlexValue>
   sidebarFlex?: ContainerResponsiveProp<ContainerFlexValue>
   fullHeight?: boolean
+  /**
+   * 区域面档位(G7-1)。声明即画对应的 `--ui-surface-*-bg` 并在根元素盖
+   * `data-surface` 章。**缺省不声明 = 不加类、不加属性、不画底** —— Container
+   * 本体通篇没有 background,这条缺省保证它继续没有。档位表见 `./surface.ts`。
+   */
+  surface?: SurfaceTier
 }
 
 type CssVarName = `--${string}`

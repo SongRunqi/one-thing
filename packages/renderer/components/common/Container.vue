@@ -4,6 +4,7 @@
     class="layout-container"
     :class="containerClasses"
     :style="containerStyle"
+    :data-surface="props.surface"
   >
     <component
       :is="props.headerAs"
@@ -65,6 +66,7 @@
 <script setup lang="ts">
 import { computed, useSlots, type StyleValue } from 'vue'
 import { createContainerStyle, type ContainerProps } from './container'
+import { SURFACE_CLASS } from './surface'
 
 defineOptions({
   name: 'Container',
@@ -110,6 +112,7 @@ const props = withDefaults(defineProps<ContainerProps>(), {
   mainFlex: '1 1 auto',
   sidebarFlex: undefined,
   fullHeight: false,
+  surface: undefined,
 })
 
 const slots = useSlots()
@@ -122,6 +125,8 @@ const containerClasses = computed(() => ({
   'has-footer': Boolean(slots.footer),
   'is-sidebar-right': isSidebarRight.value,
   'is-full-height': props.fullHeight,
+  // 区域面档位(G7-1):未声明 = 不加画笔类,DOM 与命中的规则与改动前逐字节相同。
+  [SURFACE_CLASS]: Boolean(props.surface),
 }))
 
 const containerStyle = computed<StyleValue>(() => createContainerStyle(props))
