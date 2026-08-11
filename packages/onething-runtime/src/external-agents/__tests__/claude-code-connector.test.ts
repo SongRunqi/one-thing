@@ -265,12 +265,16 @@ describe('ClaudeCodeConnector', () => {
       turn: 1,
     }))
 
-    expect(events.some(event => event.type === 'text-delta')).toBe(false)
+    // 嵌套在 Task 子 agent 下的那段正文一个字都不该冒出来。
+    expect(events.some(event => event.type === 'text-delta' && event.delta.includes('NESTED')))
+      .toBe(false)
     expect(events.map(event => event.type)).toEqual([
       'session-established',
       'tool-call-start',
       'tool-call-done',
       'tool-result',
+      // 失败 result 现在先补一条可见正文(止血 1),再收 finish。
+      'text-delta',
       'finish',
     ])
     const done = events.find(event => event.type === 'tool-call-done')
@@ -278,6 +282,73 @@ describe('ClaudeCodeConnector', () => {
       toolCall: { id: 'toolu_2', name: 'Read', arguments: '{"file_path":"a.ts"}', externallyExecuted: true },
     })
     expect(events.at(-1)).toMatchObject({ type: 'finish', finishReason: 'error' })
+  })
+
+  /**
+   * 止血 1(2026-08-11):失败要说人话。限流 / 额度用尽 / 登录过期 / resume 失效
+   * 在此之前一律表现为「回合突然结束什么都没说」,原文只进 console.warn。
+   */
+  it('surfaces the SDK failure text as visible content before finishing with error', async () => {
+    const warned: string[] = []
+    const connector = createClaudeCodeConnector({
+      logger: { log: () => {}, warn: (line: string) => warned.push(line) },
+      queryFn: () => replay([
+        initMessage,
+        {
+          type: 'result',
+          subtype: 'error_during_execution',
+          session_id: 'claude-session-1',
+          is_error: true,
+          result: 'Claude AI usage limit reached|1754899200',
+        },
+      ]),
+    })
+
+    const events = await collect(connector.streamTurn({
+      localSessionId: 'session-1',
+      prompt: 'go',
+      cwd: '/tmp',
+      turn: 1,
+    }))
+
+    const notice = events.find(event => event.type === 'text-delta')
+    expect(notice).toBeDefined()
+    // 原文一字不改地带出来,subtype 同屏 —— 排障时这两个是两个不同的结论。
+    expect((notice as { delta: string }).delta).toContain('Claude AI usage limit reached|1754899200')
+    expect((notice as { delta: string }).delta).toContain('error_during_execution')
+    // 正文在 finish 之前,否则回合已经收了才补文本,面上还是什么都不显示。
+    expect(events.map(event => event.type)).toEqual(['session-established', 'text-delta', 'finish'])
+    expect(events.at(-1)).toMatchObject({ type: 'finish', finishReason: 'error' })
+    // 日志那条保留(排障要全量 JSON),但它不再是唯一的出口。
+    expect(warned).toHaveLength(1)
+  })
+
+  it('still says something when the failed result carries no text at all', async () => {
+    const connector = createClaudeCodeConnector({
+      queryFn: () => replay([{ type: 'result', subtype: 'error_max_turns', session_id: 's' }]),
+    })
+    const events = await collect(connector.streamTurn({
+      localSessionId: 'session-1',
+      prompt: 'go',
+      cwd: '/tmp',
+      turn: 1,
+    }))
+    const notice = events.find(event => event.type === 'text-delta') as { delta: string } | undefined
+    expect(notice?.delta).toContain('error_max_turns')
+    expect(notice?.delta.length).toBeGreaterThan(10)
+  })
+
+  it('says nothing extra on a successful result', async () => {
+    const connector = createClaudeCodeConnector({
+      queryFn: () => replay([{ type: 'result', subtype: 'success', session_id: 's', result: 'Done.' }]),
+    })
+    const events = await collect(connector.streamTurn({
+      localSessionId: 'session-1',
+      prompt: 'go',
+      cwd: '/tmp',
+      turn: 1,
+    }))
+    expect(events.map(event => event.type)).toEqual(['session-established', 'finish'])
   })
 
   it('injects the host-resolved spawn env (proxy) into the SDK options', async () => {

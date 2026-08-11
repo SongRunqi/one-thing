@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createExternalAgentProvider } from '../provider.js'
+import {
+  UNBOUND_WORKING_DIRECTORY_NOTICE,
+  createExternalAgentProvider,
+} from '../provider.js'
 import type {
   ExternalAgentConnector,
   ExternalAgentTurnRequest,
@@ -97,6 +100,7 @@ describe('createExternalAgentProvider', () => {
       providerId: 'claude-code-agent',
       connector: captureConnector(captured),
       localSessionId: 'session-1',
+      workingDirectory: '/tmp/project',
     })
     for await (const _event of provider.streamTurn!({
       model: 'claude-code-agent',
@@ -106,19 +110,35 @@ describe('createExternalAgentProvider', () => {
     expect(captured.at(-1)).not.toHaveProperty('systemPrompt')
   })
 
-  it('falls back to process.cwd() when the working directory is an empty string', async () => {
-    const captured: ExternalAgentTurnRequest[] = []
-    const provider = createExternalAgentProvider({
-      providerId: 'claude-code-agent',
-      connector: captureConnector(captured),
-      localSessionId: 'session-1',
-      workingDirectory: '',
-    })
-    for await (const _event of provider.streamTurn!({
-      model: 'claude-code-agent',
-      messages: [{ role: 'user', content: 'hi' }],
-      turn: 1,
-    })) { /* drain */ }
-    expect(captured.at(-1)?.cwd).toBe(process.cwd())
-  })
+  /**
+   * 止血 2(2026-08-11):以前这里兜底 `process.cwd()` —— 开发时那恰好是仓库根,
+   * 打包后是 `/`,外部 agent 在空目录里摸索而界面上没有一个字。现在它**不开跑**,
+   * 并且把「该做什么」说出来。
+   */
+  it.each([undefined, '', '   '])(
+    'refuses to start and says why when the working directory is %p',
+    async workingDirectory => {
+      const captured: ExternalAgentTurnRequest[] = []
+      const provider = createExternalAgentProvider({
+        providerId: 'claude-code-agent',
+        connector: captureConnector(captured),
+        localSessionId: 'session-1',
+        ...(workingDirectory === undefined ? {} : { workingDirectory }),
+      })
+      const events = []
+      for await (const event of provider.streamTurn!({
+        model: 'claude-code-agent',
+        messages: [{ role: 'user', content: 'hi' }],
+        turn: 1,
+      })) events.push(event)
+
+      // 连接器一次都没被调用 —— 拒绝发生在开跑之前。
+      expect(captured).toHaveLength(0)
+      expect(events).toEqual([
+        { type: 'text-delta', turn: 1, delta: UNBOUND_WORKING_DIRECTORY_NOTICE },
+        { type: 'finish', turn: 1, finishReason: 'error' },
+      ])
+      expect(UNBOUND_WORKING_DIRECTORY_NOTICE).toContain('/cd')
+    },
+  )
 })

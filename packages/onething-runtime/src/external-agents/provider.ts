@@ -21,6 +21,11 @@ export interface CreateExternalAgentProviderOptions {
   onSessionLink?: (link: ExternalAgentSessionLink) => void
 }
 
+/** 未绑工作目录时回给用户的那句人话。导出是为了让测试与宿主复用同一份措辞。 */
+export const UNBOUND_WORKING_DIRECTORY_NOTICE =
+  '⚠️ 此会话未绑定工作目录,外部 agent 没有启动。\n\n'
+  + '请先用 `/cd <路径>` 指定一个目录,或在会话设置里绑定工作目录,然后重发这条消息。'
+
 function latestUserPrompt(request: AgentTurnRequest): string {
   for (let index = request.messages.length - 1; index >= 0; index--) {
     const message = request.messages[index]
@@ -91,6 +96,24 @@ export function createExternalAgentProvider(
       const prompt = latestUserPrompt(request)
       if (!prompt) throw new Error(`${options.providerId} prompt is empty`)
 
+      /**
+       * **未绑工作目录 = 不开跑**(2026-08-11 止血,审计「四堵墙」之二)。
+       *
+       * 这里以前兜底 `process.cwd()`:开发时那恰好是仓库根,于是看着像能用;
+       * 打包之后主进程的 cwd 是 `/`,外部 agent 于是在一个空目录里困惑地摸索,
+       * 而界面上一个字的提示都没有。兜底给的不是韧性,是一次静默的错误现场。
+       *
+       * 拒绝的形状与失败 result 同一套(`claude-code-connector.ts` 的
+       * `claudeCodeFailureNotice`):一条可见正文 + `finish(error)`。不 throw ——
+       * 抛出去只会在别处变成一条堆栈,用户要的是「我该做什么」。
+       */
+      const cwd = options.workingDirectory?.trim()
+      if (!cwd) {
+        yield { type: 'text-delta', turn: request.turn, delta: UNBOUND_WORKING_DIRECTORY_NOTICE }
+        yield { type: 'finish', turn: request.turn, finishReason: 'error' }
+        return
+      }
+
       const system = systemPrompt(request)
       const localSessionId = options.localSessionId ?? `${options.providerId}-${request.model}`
       const resume = options.connector.capabilities.resume
@@ -103,7 +126,7 @@ export function createExternalAgentProvider(
         prompt,
         ...(system ? { systemPrompt: system } : {}),
         // `||`: unbound sessions arrive with an empty-string working dir.
-        cwd: options.workingDirectory || process.cwd(),
+        cwd,
         // The provider id doubles as the picker's pseudo-model; only a real
         // model override is forwarded to the connector.
         model: request.model === options.providerId ? undefined : request.model,

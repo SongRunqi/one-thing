@@ -263,6 +263,21 @@ function usageFromResult(message: ClaudeCodeSdkMessage): AgentUsage | undefined 
   }
 }
 
+/**
+ * 一条失败 result 的**人话**。SDK 把「为什么失败」写在 `result` 字段里(限流提示、
+ * 额度用尽、登录过期、resume 的会话不存在……),这里原样带出来 —— 我们既不解读也不
+ * 改写它,只保证它上得了屏。`subtype` 一并写进去:`error_max_turns` 与
+ * `error_during_execution` 在排障时是两个完全不同的结论。
+ */
+export function claudeCodeFailureNotice(message: ClaudeCodeSdkMessage): string {
+  const subtype = (message.subtype || 'error').trim()
+  const detail = typeof message.result === 'string' ? message.result.trim() : ''
+  const head = `⚠️ Claude Code 回合失败(${subtype})`
+  return detail
+    ? `${head}:\n\n${detail}`
+    : `${head}。SDK 没有给出更多信息 —— 常见原因是限流、额度用尽或登录过期,请到设置里核对 Claude Code 的登录状态。`
+}
+
 function toolResultText(content: unknown): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
@@ -656,6 +671,24 @@ class ClaudeCodeTurnTranslator {
 
   private translateResult(message: ClaudeCodeSdkMessage): AgentTurnStreamEvent[] {
     const events: AgentTurnStreamEvent[] = [...this.settleRemaining()]
+    /**
+     * **失败要说人话**(2026-08-11 止血,`docs/audit/claude-code-sdk-audit-2026-08-11.md`
+     * 「四堵墙」之一)。
+     *
+     * 在此之前一条 `subtype !== 'success'` 的 result 只翻成 `finish(error)`,而
+     * `finish` 不带任何文本 —— 限流、额度用尽、登录过期、resume 失效在 UI 上
+     * 全长成同一副样子:「回合突然结束,什么都没说」。错误原文只进 console.warn,
+     * 用户看不到,自举开发时连「为什么停了」都判不出来。
+     *
+     * 所以在 finish 之前补一条**可见的正文**。走 `text-delta` 而不是别的形状,
+     * 因为 `AgentTurnStreamEvent` 词表里没有 error 事件:能上屏的只有正文。
+     * 经 `withRoundBoundary` 是为了让它落在工具卡之后而不是塌回上一轮里。
+     */
+    if (message.subtype !== 'success') {
+      events.push(...this.withRoundBoundary([
+        { type: 'text-delta', turn: this.turn, delta: claudeCodeFailureNotice(message) },
+      ]))
+    }
     if (typeof message.total_cost_usd === 'number') {
       events.push({
         type: 'provider-data',
