@@ -23,7 +23,9 @@
                                                      --ot-active-alpha
      C 级·可读卡 内容面(代码块 / 表头 / 引用 / 工具卡)→ 仍在本文件(无原语,见该块注)
      E 级·磨砂   浮层家族(菜单 / popover / 下拉 / 会话预览卡 / 抽屉)
-                                                   → 仍在本文件(枚举制,见性能红线)
+                                                   → **已键在浮面档位原语上**
+                                                     (`.is-surface`);12 条自绘壳
+                                                     仍具名,逐条记在该块注里
      ×  ·不适用  辅助窗口(设置 / 搜索 / todo / 图片预览)—— 那些窗不铺壁纸
 
    2026-08-10 的裁决把旧 D 级("弹层永不透")推翻了:**壁纸是全局行为,所有表面
@@ -42,15 +44,28 @@
    唯一安全形态是 `backdrop-filter: var(--ot-frost-filter, none)` —— 缺省真的是 none。
 
    ── 调法:六个旋钮,改这六个数,全窗一起变 ───────────────────────────────
-     --ot-surface-alpha        B 级纱的浓度(根上,区域面原语在读)
-     --wallpaper-card-alpha    C 级可读卡的浓度
-     --ot-state-alpha          S 级 hover 反馈的浓度(根上,态 token 在读)
-     --ot-active-alpha         S 级 active / selected 反馈的浓度(根上)
-     --wallpaper-frost-alpha   E 级磨砂底的浓度
-     --wallpaper-frost-blur    E 级磨砂的模糊半径
+     --ot-surface-alpha        B 级纱的浓度(区域面原语在读)
+     --ot-card-alpha           C 级可读卡的浓度
+     --ot-state-alpha          S 级 hover 反馈的浓度(态 token 在读)
+     --ot-active-alpha         S 级 active / selected 反馈的浓度
+     --ot-frost-alpha          E 级磨砂底的浓度
+     --ot-frost-blur           E 级磨砂的模糊半径
    同级全体只认同一个数 —— 用户一处调、处处齐,"侧栏和主区观感不一致"就是各写
    各的浓度造出来的。B 级的"材质"另有一枚 `--ot-region-ink`:四档区域面在壁纸下
    统一取页面底的墨,那是 B 级从一开始的裁决,不是第七个浓度旋钮。
+
+   ── 旋钮名字空间 = API(批 3b,2026-08-11)────────────────────────────────
+   **六枚旋钮全部声明在根(`html.has-wallpaper` = `:root` = `html`)上**,这不是
+   排版偏好,是一条**可寻址性不变量**:主题变量的唯一出口是
+   `documentElement.style.setProperty`(`stores/themes.ts`),行内样式只压得住
+   **同一个元素**上的规则声明。旋钮一旦躺在 `body`(它曾经的位置),根上的行内
+   覆写就被 body 自己那条声明挡在门外 —— 地址存在、拨不动,是比没有更坏的 API。
+   于是 C / E 两级那三枚旋钮(`card-alpha` / `frost-alpha` / `frost-blur`)
+   在批 3b 里从 `body` 上提到根,并统一收进 `--ot-` 前缀:
+   **`--ot-` 就是旋钮名字空间,插件按前缀寻址它,不需要宿主再手编一份 schema**
+   (`themes/knobs.ts` 定的是**类型**与钳制区间,不是条目清单)。
+   `--wallpaper-*` 从此只剩**派生内部件**(ink 快照 + 兑好的成品色),住在 `body`,
+   不是 API —— 一条按名字就能分辨的界线。
 
    ── 实现纪律 1:层级优先 token ───────────────────────────────────────────
    能覆写 CSS 变量的绝不写类名规则 —— 覆写 `--ui-sidebar-surface-bg` 一次,
@@ -113,26 +128,45 @@ html.has-wallpaper {
      浓度:veil 35% → 18%,真机二轮反馈,用户要侧栏与主区更接近的通透度。 */
   --ot-region-ink: var(--ot-ink-surface-app-bg);
   --ot-surface-alpha: 18%;
+
+  /* ── C / E 两级的旋钮(批 3b:从 `body` 提到根)──────────────────────────
+     提上来的只有**纯数字旋钮**,它们不读任何东西,所以搬家对计算值是恒等的
+     (自定义属性按计算值继承,body 子树读到的仍是同一个数)。留在 `body` 的是
+     那些**读 `--ui-*` 的 ink 快照**与兑好的成品色 —— 它们必须隔一层元素才躲得开
+     后代的同名覆写(实现纪律 3 的旧解法),提上来会当场成环。 */
+
+  /* C 级可读卡的浓度。 */
+  --ot-card-alpha: 88%;
+  /* 磨砂底:76% 是"字压在插画上仍是纯色底质感"的下沿(深浅两套主题都量过);
+     再稀就开始看见图案穿过字重。 */
+  /* 76% → 68% → 58%:两轮真机反馈递降,76% 在近白主题(菜单面 #ffffff)上肉眼即实色,
+     用户整场战役的诉求是壁纸可感 —— 降一档换感知,可读性下限用户自验后再调。 */
+  --ot-frost-alpha: 58%;
+  /* 14px → 6px:真机三轮定音 —— 重模糊把图案抹成色浆,透过去的不是壁纸是
+     色晕,肉眼即"没覆盖"。模糊降到图案可辨,可读性由 alpha 承担。 */
+  --ot-frost-blur: 6px;
+
+  /* 磨砂滤镜成品。**这一层不是多余的间接**:`backdrop-filter: blur(0px)` 不等于
+     `none`(会建层叠上下文 + 成为 fixed/absolute 后代的包含块,实测在案,见文件头
+     性能红线),所以消费侧唯一安全的写法是 `var(--ot-frost-filter, none)` —— 缺省
+     真的是 none。把成品收在这里,消费侧就没有第二种写法可写。
+     它不是第七个旋钮,也不在插件可寻址的类型表里(`-filter` 收的是一整条滤镜
+     函数串,那是注入面;插件要拨的是 `--ot-frost-blur` 那个数)。 */
+  --ot-frost-filter: blur(var(--ot-frost-blur));
 }
 
-/* ── C / E 两级的旋钮与派生值(它们还没有原语,见各自块首注)────────────────
+/* ── C / E 两级的**派生内部件**(旋钮已提到根上,见上一块)────────────────
    为什么这一层住在 `body` 而不是 `html`:下面几枚 `--wallpaper-*-ink` 读的是
    `--ui-surface-*`,而 C / E 级的规则又会在后代上**覆写同名** token —— 隔一层
    元素,读到的才是主题原值(实现纪律 3 的旧解法,在这两级仍然需要)。
-   S / B 两级已经不需要它了:它们的墨由 `--ot-ink-*` 异名承载。 */
+   S / B 两级已经不需要它了:它们的墨由 `--ot-ink-*` 异名承载。
+
+   **这里一枚旋钮都不许再出现**(批 3b 的不变量):住在 `body` 的名字,根上的
+   行内覆写压不动它,插件寻址会得到一个拨不动的地址。旋钮一律 `--ot-` + 根上。 */
 html.has-wallpaper body {
   /* B 级的浓度只是根上那枚的别名 —— `--wallpaper-veil` 还有一个消费者(侧栏例外
      块),留着这条别名比让它再抄一遍数字好。 */
   --wallpaper-veil-alpha: var(--ot-surface-alpha);
-  --wallpaper-card-alpha: 88%;
-  /* 磨砂底:76% 是"字压在插画上仍是纯色底质感"的下沿(深浅两套主题都量过);
-     再稀就开始看见图案穿过字重。blur 14px 落在 12–16px 带的中间。 */
-  /* 76% → 68% → 58%:两轮真机反馈递降,76% 在近白主题(菜单面 #ffffff)上肉眼即实色,
-     用户整场战役的诉求是壁纸可感 —— 降一档换感知,可读性下限用户自验后再调。 */
-  --wallpaper-frost-alpha: 58%;
-  /* 14px → 6px:真机三轮定音 —— 重模糊把图案抹成色浆,透过去的不是壁纸是
-     色晕,肉眼即"没覆盖"。模糊降到图案可辨,可读性由 alpha 承担。 */
-  --wallpaper-frost-blur: 6px;
 
   /* ── ink 快照:后代覆写同名 token 之后,这里仍是主题的原始值 ── */
   --wallpaper-veil-ink: var(--ui-surface-app-bg);
@@ -158,32 +192,32 @@ html.has-wallpaper body {
      2026-08-09 拍板的既有语言),只是统一稀释到同一个 alpha。 ── */
   --wallpaper-frost-app: color-mix(
     in srgb,
-    var(--wallpaper-veil-ink) var(--wallpaper-frost-alpha),
+    var(--wallpaper-veil-ink) var(--ot-frost-alpha),
     transparent
   );
   --wallpaper-frost-chat: color-mix(
     in srgb,
-    var(--wallpaper-chat-ink) var(--wallpaper-frost-alpha),
+    var(--wallpaper-chat-ink) var(--ot-frost-alpha),
     transparent
   );
   --wallpaper-frost-panel: color-mix(
     in srgb,
-    var(--wallpaper-panel-ink) var(--wallpaper-frost-alpha),
+    var(--wallpaper-panel-ink) var(--ot-frost-alpha),
     transparent
   );
   --wallpaper-frost-elevated: color-mix(
     in srgb,
-    var(--wallpaper-elevated-ink) var(--wallpaper-frost-alpha),
+    var(--wallpaper-elevated-ink) var(--ot-frost-alpha),
     transparent
   );
   --wallpaper-frost-floating: color-mix(
     in srgb,
-    var(--wallpaper-floating-ink) var(--wallpaper-frost-alpha),
+    var(--wallpaper-floating-ink) var(--ot-frost-alpha),
     transparent
   );
   --wallpaper-frost-menu: color-mix(
     in srgb,
-    var(--wallpaper-menu-ink) var(--wallpaper-frost-alpha),
+    var(--wallpaper-menu-ink) var(--ot-frost-alpha),
     transparent
   );
 }
@@ -341,12 +375,12 @@ html.has-wallpaper .right-workbench {
      可读卡的 88%,不是 18% 的纱。 */
   --ui-surface-elevated-bg: color-mix(
     in srgb,
-    var(--wallpaper-elevated-ink) var(--wallpaper-card-alpha),
+    var(--wallpaper-elevated-ink) var(--ot-card-alpha),
     transparent
   );
   --ui-surface-app-bg: color-mix(
     in srgb,
-    var(--wallpaper-veil-ink) var(--wallpaper-card-alpha),
+    var(--wallpaper-veil-ink) var(--ot-card-alpha),
     transparent
   );
 
@@ -438,24 +472,54 @@ html.has-wallpaper .app-content {
 
   --ui-surface-code-block-bg: color-mix(
     in srgb,
-    var(--wallpaper-code-ink) var(--wallpaper-card-alpha),
+    var(--wallpaper-code-ink) var(--ot-card-alpha),
     transparent
   );
   --ui-surface-code-header-bg: color-mix(
     in srgb,
-    var(--wallpaper-code-header-ink) var(--wallpaper-card-alpha),
+    var(--wallpaper-code-header-ink) var(--ot-card-alpha),
     transparent
   );
   --ui-table-header-bg: color-mix(
     in srgb,
-    var(--wallpaper-table-head-ink) var(--wallpaper-card-alpha),
+    var(--wallpaper-table-head-ink) var(--ot-card-alpha),
     transparent
   );
 }
 
 /* ══ E 级·磨砂 ═══════════════════════════════════════════════════════════
-   浮层家族。清单是**枚举制**(性能红线),新浮层进表加一行选择器即可 —— 底色
-   走 token,所以不必知道它引的是哪一枚。
+   **第一行键在原语上(批 3a,2026-08-11):`.is-surface` = 浮面档位章。**
+   这枚类只由一个函数产出 —— `components/common/popover-surface.ts` 的
+   `popoverSurfaceClasses`,今天的两个消费者是 `Popover.vue`(根 `.app-popover`)
+   与 `Dropdown.vue`(根 `.app-context-menu`)。旧写法把这两个根**点名**列进清单;
+   改成键在章上之后,任何**将来**接进浮面档位的组件(Menu / Dialog / 下一个)
+   一挂上章就在册,不必回这里加行 —— 这就是"用了原语就天生会"。
+   语义与特异性都不变:今天 `.is-surface` 与 `:is(.app-popover.is-surface,
+   .app-context-menu.is-surface)` 命中的是同一批元素(章只有这一个产出口);
+   `:is()` 的特异性取列表里最强的一支,而那一支是 `.sidebar.floating
+   .sidebar-content`(0,3,0),删掉两条 (0,2,0) 不动它。
+
+   **枚举没有消亡,余下 12 条是自绘壳(如实记名,别当遗留清扫)。** 批 3a 的原始
+   假设是"UI 收敛后所有浮层壳都过统一组件",逐条对过 DOM 之后**这条假设不成立**:
+   14 条里只有 2 条走浮面档位。余下 12 条各自 teleport、各自画面,压根不是
+   Popover/Dropdown 家族:
+     · `.tooltip:not(.tooltip-rich)`       Tooltip.vue 自带 Teleport 壳
+     · `.app-select-dropdown`              Select 自带下拉壳
+     · `.app-mention-dropdown`             Mention.vue 自带 Teleport 壳
+     · `.app-sub-menu-panel.is-popper`     SubMenu.vue 自带 popper 壳
+     · `.app-table-filter-menu`            Table.vue 自带筛选壳
+     · `.composer-extension-panel`         ComposerExtensionPanel.vue 自带飞出面
+     · `.session-preview`                  SessionPreviewCard.vue(住在 rich tooltip 里)
+     · `.prompt-ref-popover`               PromptReferenceCard.vue(纯 CSS hover 面)
+     · `.todo-plan-panel .todo-popover`    TodoPlanPanel.vue
+     · `.todo-plan-panel .todo-popover-list`  同上
+     · `.media-panel .inspector-drawer`    MediaPanel.vue 抽屉
+     · `.sidebar.floating .sidebar-content`   浮层侧栏壳
+   **为什么不给它们手工补一个 `is-surface` 了事**:那枚章的语义是"我的面由浮面
+   档位画",而这 12 张面是自己画的 —— 盖上去是一句假话,而且下一个人按章去
+   `popover-surface.ts` 找画笔会扑空。要收它们,得让它们**真的**接进 Popover /
+   Dropdown 的档位(自绘 UI 收敛的活),接一个,这里少一行。在那之前它们留在
+   枚举里是诚实的,不是没扫干净。
 
    为什么这里同时覆写六枚 surface token:浮层各自引不同的族色(菜单面 / floating
    面 / panel 面 / chat 面 / app 面),而一个选择器列表里的元素只会命中自己那一枚,
@@ -488,12 +552,12 @@ html.has-wallpaper .app-content {
      `.app-popover.is-surface.is-surface-menu`(ctx 明细)…… 76% + blur14
      `.app-select-dropdown.inputbox-select-dropdown`(think / 权限档)…… 76% + blur14
    同轮量到的 B 级两处也都是活的:`.media-panel` 与 `.right-workbench` 各 18% 纱。
-   结论:这一族"看不见壁纸"不是选择器死了,是 `--wallpaper-frost-alpha: 76%`
+   结论:这一族"看不见壁纸"不是选择器死了,是 `--ot-frost-alpha: 76%`
    在**近白主题**(本轮主题的 menu 面就是 `#ffffff`)上本来就读作实色。那是旋钮
    的事,不是名单的事 —— 旋钮归用户拍板,别在这里偷偷改一档。 */
 html.has-wallpaper :is(
-    .app-popover.is-surface,
-    .app-context-menu.is-surface,
+    /* 浮面档位章(唯一产出口 popover-surface.ts)—— 用了原语的壳天生在册。 */
+    .is-surface,
     /* 2026-08-11 tooltip 并入统一浮层面(反色豁免收回):非 rich 档的文字小卡
        也走 menu 面 token,进表随族磨砂;rich 档壳本就 transparent 不受影响。 */
     .tooltip:not(.tooltip-rich),
@@ -518,9 +582,13 @@ html.has-wallpaper :is(
   /* 声明在祖先上、上游够不着的一枚(见块首注) */
   --app-menu-bg: var(--wallpaper-frost-menu);
 
-  /* 静态模糊。**不加 transition** —— 逐帧重算模糊就是掉帧本身(透明窗判例)。 */
-  backdrop-filter: blur(var(--wallpaper-frost-blur));
-  -webkit-backdrop-filter: blur(var(--wallpaper-frost-blur));
+  /* 静态模糊。**不加 transition** —— 逐帧重算模糊就是掉帧本身(透明窗判例)。
+     值走 `var(--ot-frost-filter, none)` 而不是 `blur(…)`:缺省真的是 `none`
+     (`blur(0px)` 会建层叠上下文 + 成为 fixed 后代的包含块,实测在案)。今天这条
+     规则被 `html.has-wallpaper` 门着,两种写法计算值逐字节相同;写成安全形态是
+     为了将来把它挪进原语时不必再想一次。 */
+  backdrop-filter: var(--ot-frost-filter, none);
+  -webkit-backdrop-filter: var(--ot-frost-filter, none);
 }
 
 /* ── 浮层内「态反馈用满」(S 级的唯一例外区)────────────────────────────────
@@ -536,8 +604,8 @@ html.has-wallpaper :is(
    后两族在旧结构里天然满强度(S 级覆写只落在 `.app-shell` 上,它们是壳的兄弟);
    公式上移到 `:root` 之后稀释变成全局的,所以必须显式回满。 */
 html.has-wallpaper :is(
-    .app-popover.is-surface,
-    .app-context-menu.is-surface,
+    /* 同上:键在浮面档位章上,不点名两个组件根。 */
+    .is-surface,
     .tooltip,
     .app-select-dropdown,
     .app-mention-dropdown,

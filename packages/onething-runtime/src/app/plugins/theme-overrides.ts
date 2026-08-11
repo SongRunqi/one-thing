@@ -25,6 +25,8 @@ export interface PluginThemeOverrideTable {
   tokenValues: Record<string, string>
   /** token 展开成原始 CSS 变量名后的说明性投影(设置页明细用,别拿去叠产出)。 */
   cssVariables: Record<string, string>
+  /** 表面旋钮(`--ot-*`)→ 已钳制的值。这一份**可以**直接叠在主题产出上,见下。 */
+  knobVariables: Record<string, string>
   /** 逐插件裁决明细(设置页卡片用)。 */
   byPlugin: Map<string, PluginThemeOverrideEntry[]>
 }
@@ -32,6 +34,7 @@ export interface PluginThemeOverrideTable {
 const EMPTY_TABLE: PluginThemeOverrideTable = {
   tokenValues: {},
   cssVariables: {},
+  knobVariables: {},
   byPlugin: new Map(),
 }
 
@@ -73,4 +76,27 @@ export function getPluginThemeOverrideTable(): PluginThemeOverrideTable {
  */
 export function getPluginThemeOverrideTokenValues(): Record<string, string> {
   return getPluginThemeOverrideTable().tokenValues
+}
+
+/**
+ * 宿主要叠在主题产出**之上**的那张旋钮表(批 3b)。
+ *
+ * 为什么这一份反过来是"事后叠加"而不是"参数前移" —— 与颜色覆盖的判据是同一条,
+ * 只是结论相反:颜色必须前移,因为 `--ui-*` 语义层、`-rgb` 变体、primary 色阶全都
+ * **从**它派生,叠在成品之后只盖得住原始变量;旋钮**没有任何东西从它派生**,主题
+ * 计算里根本不读它,它是 CSS 绘制时才求值的一个数。所以它与 `--skin-*` 同构
+ * (那边也是叠加,理由逐字相同),而且这条路让整块能力落在**干净文件**里 ——
+ * `applyTheme` 的签名住在 `themes/index.ts`,那份文件在用户未提交名单里,不能碰。
+ *
+ * 覆盖强度:主题变量下发走 `documentElement.style.setProperty`(行内样式),压得住
+ * `wallpaper.css` 里 `html.has-wallpaper` 那几条同元素声明 —— 也就是说插件拨的数
+ * **压过宿主自己的壁纸缺省档**。这正是"旋转多少交由插件"的字面意思。
+ * 另注:旋钮不是壁纸专属的。壁纸只是宿主自己的一次拨动;插件拨了,壁纸没开时
+ * 同样生效(态 token 的公式一直在读 `var(--ot-state-alpha, 100%)`)。
+ *
+ * 停用/卸载后表里就没有这条了,下一次下发 `:root` 自动回到 CSS 里的缺省 —— 这就是
+ * 拆除语义。
+ */
+export function getPluginThemeKnobVariables(): Record<string, string> {
+  return getPluginThemeOverrideTable().knobVariables
 }

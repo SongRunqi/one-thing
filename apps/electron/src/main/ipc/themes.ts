@@ -9,7 +9,10 @@ import {
   type ElectronThemeMode,
 } from '@onething/electron-host/ipc/themes'
 import { defaultOnethingThemeRuntime } from '@onething/runtime/themes/theme-runtime'
-import { getPluginThemeOverrideTokenValues } from '@onething/app/plugins/theme-overrides.js'
+import {
+  getPluginThemeKnobVariables,
+  getPluginThemeOverrideTokenValues,
+} from '@onething/app/plugins/theme-overrides.js'
 import { getPluginSkinTiers } from '@onething/app/plugins/skin.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 
@@ -55,12 +58,24 @@ export function registerThemeHandlers() {
       // 进入主题计算。档位 → CSS 值的翻译在主题层查 `SKIN_TIER_VALUES` 完成 ——
       // 插件递进来的字符串永远不会出现在 CSS 里,所以皮肤没有、也不需要 L2 那套
       // 颜色字面量白名单。皮肤变量(`--skin-*`)与主题变量名不相交。
-      return defaultOnethingThemeRuntime.applyTheme(
+      //
+      // 合成点(批 3b,表面旋钮):`contributes.theme.overrides` 里以 `--ot-` 开头的
+      // 键是**旋钮地址**(浓度 / 模糊半径),它与上面两样反过来 —— 走**叠加**而不是
+      // 参数前移。判据与颜色那条是同一句话的两面:颜色必须前移,因为 `--ui-*`、
+      // `-rgb`、色阶都从它派生;旋钮**没有任何东西从它派生**,主题计算里根本不读它,
+      // 它是 CSS 绘制时才求值的一个数。所以它与 `--skin-*` 同构(名字空间也不相交),
+      // 叠在成品之上是正确的,不是那条被判过的降级路。
+      const response = await defaultOnethingThemeRuntime.applyTheme(
         themeId,
         mode,
         getPluginThemeOverrideTokenValues(),
         getPluginSkinTiers(),
       )
+      if (!response.success) return response
+      return {
+        ...response,
+        cssVariables: { ...response.cssVariables, ...getPluginThemeKnobVariables() },
+      }
     },
     refreshThemes: (projectPath?: string) => {
       return defaultOnethingThemeRuntime.refreshThemes(projectPath)

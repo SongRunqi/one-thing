@@ -57,7 +57,7 @@ const wallpaperCss = read('styles/wallpaper.css')
  */
 const behaviourCss = read('styles/state-alpha.css')
 /** 浮层/不透明任务面里的「态反馈用满」块 —— 稀释作用域的唯一例外区。 */
-const refillBlock = ruleBody(wallpaperCss, 'html.has-wallpaper :is(\n    .app-popover.is-surface,\n    .app-context-menu.is-surface,\n    .tooltip,')
+const refillBlock = ruleBody(wallpaperCss, 'html.has-wallpaper :is(\n    /* 同上:键在浮面档位章上,不点名两个组件根。 */\n    .is-surface,\n    .tooltip,')
 /** 区域别名 token 的稀释块(例外清单第 1 条,永久具名)。 */
 const sidebarBlock = ruleBody(wallpaperCss, 'html.has-wallpaper .sidebar {')
 

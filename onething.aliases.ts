@@ -213,6 +213,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/markdown', replacement: resolve(projectRoot, 'packages/onething-runtime/src/markdown/index.ts') },
   { find: '@onething/runtime/themes/base46-parser', replacement: resolve(projectRoot, 'packages/onething-runtime/src/themes/base46-parser.ts') },
   { find: '@onething/runtime/themes/css-mapper', replacement: resolve(projectRoot, 'packages/onething-runtime/src/themes/css-mapper.ts') },
+  { find: '@onething/runtime/themes/knobs', replacement: resolve(projectRoot, 'packages/onething-runtime/src/themes/knobs.ts') },
   { find: '@onething/runtime/themes/resolver', replacement: resolve(projectRoot, 'packages/onething-runtime/src/themes/resolver.ts') },
   { find: '@onething/runtime/themes/role-mapping', replacement: resolve(projectRoot, 'packages/onething-runtime/src/themes/role-mapping.ts') },
   { find: '@onething/runtime/themes/skin', replacement: resolve(projectRoot, 'packages/onething-runtime/src/themes/skin.ts') },
