@@ -1,6 +1,9 @@
 <template>
-  <div
+  <!-- 区域面档位(G7-1):底色由原语按 chat 档画,根上盖 data-surface 章 ——
+       `Surface` 渲染的就是原来那一个 div,不多一层 DOM。 -->
+  <Surface
     v-show="visible"
+    surface="chat"
     class="media-panel"
   >
     <div class="media-content">
@@ -437,11 +440,12 @@
         </template>
       </div>
     </div>
-  </div>
+  </Surface>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Surface from '@/components/common/Surface.vue'
 import SidebarActionGroup from '@/components/sidebar/SidebarActionGroup.vue'
 import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vue'
 import AgentsPanelContent from './AgentsPanelContent.vue'
@@ -815,7 +819,8 @@ onUnmounted(() => {
   min-height: 0;
   min-width: 0;
   display: flex;
-  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg));
+  /* 面板底色不在这里画了 —— 走 Surface 的 chat 档(G7-1)。同一枚
+     `var(--ui-surface-chat-bg, var(--ui-surface-app-bg))`,只是改由原语画。 */
   overflow: hidden;
   animation: ledger-fade 0.15s ease;
 }

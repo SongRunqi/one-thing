@@ -93,3 +93,43 @@ describe('档位画笔规则(styles/components.css)', () => {
     expect(bare).toBeNull()
   })
 })
+
+describe('区域根接入(逐处同一枚 token,只是改由原语画)', () => {
+  /** 取出某条选择器的规则体(只到第一个 `}`,够用:区域根规则里没有嵌套块)。 */
+  function ruleBody(css: string, selector: string): string {
+    const start = css.indexOf(`\n${selector} {`)
+    expect(start, `${selector} rule not found`).toBeGreaterThan(-1)
+    return css.slice(start, css.indexOf('\n}', start))
+  }
+
+  it('right workbench declares the panel tier instead of self-painting', () => {
+    const source = readRepoFile('packages/renderer/components/workbench/RightWorkbenchPanel.vue')
+
+    expect(source).toContain('surface="panel"')
+    // 只钉**区域根**那一条:台面里的 `.browser-toolbar` / 浏览器面各自还画自己的
+    // panel 面(壁纸体系里它们是 A 级让位,另有规则),不在本刀范围内。
+    expect(ruleBody(source, '.right-workbench')).not.toContain('background:')
+  })
+
+  it('media panel declares the chat tier instead of self-painting', () => {
+    const source = readRepoFile('packages/renderer/components/MediaPanel.vue')
+
+    expect(source).toContain('<Surface')
+    expect(source).toContain('surface="chat"')
+    expect(ruleBody(source, '.media-panel')).not.toContain('background:')
+  })
+
+  it('leaves the two declined region roots exactly as they were', () => {
+    // 判决记在 docs/design/ui-system.md §6.6:
+    // · `.session-header` 画的是页签条族的派生 token,不在四档表内(硬塞会改色);
+    // · `.sidebar` 画的是区域别名 `--ui-sidebar-surface-bg`(墨阶一族),借 `app`
+    //   档盖章会让 G7-2 的通用规则在 sidebar 子树里误伤后代面,而它自己纹丝不动。
+    const sessionHeader = readRepoFile('packages/renderer/components/chat/SessionHeader.vue')
+    const sidebar = readRepoFile('packages/renderer/components/sidebar/Sidebar.vue')
+
+    expect(sessionHeader).toContain('background: var(--ui-tab-bar-surface-bg, var(--ui-surface-chat-bg));')
+    expect(sessionHeader).not.toContain('data-surface')
+    expect(sidebar).toContain('--sidebar-bg: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg));')
+    expect(sidebar).not.toContain('data-surface')
+  })
+})

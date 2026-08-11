@@ -447,3 +447,50 @@ teleport 面都自然进入体系。
 
 背景层本身同样纯静态:不做 rAF、不加 `transition`,`blur` 只在插件真的要了它的
 时候才加(半径为 0 的 `filter` 仍然要付独立合成层那笔代价)。
+
+### 6.6 区域面档位(G7-1,2026-08-11)
+
+上面整套分级今天靠一张**类名白名单**认面 —— `.right-workbench` 是 panel 面、
+`.media-panel` 是 chat 面……新面进树忘了来 `wallpaper.css` 登记,就是一条
+"这块没被壁纸覆盖"的报障。根因是**区域底色没有组件端的声明位**:面色是各组件
+scoped CSS 里的一句 `background: var(--ui-surface-xxx-bg)`,外面既读不到也认不出。
+
+档位化把它变成一枚声明:
+
+| 档 | 画的 token | 住户(2026-08-11) |
+|---|---|---|
+| `app` | `var(--ui-surface-app-bg)` | (待迁) |
+| `panel` | `var(--ui-surface-panel-bg)` | `.right-workbench` |
+| `chat` | `var(--ui-surface-chat-bg, var(--ui-surface-app-bg))` | `.media-panel` |
+| `elevated` | `var(--ui-surface-elevated-bg)` | (待迁) |
+
+- **表的唯一出处**:`packages/renderer/components/common/surface.ts`。
+- **两个宿主**:`Surface.vue`(单根元素原语,给不是 Container 的区域根用)与
+  `Container` 的同名 `surface` prop(`layout-container` 族)。两者都只做两件事 ——
+  加画笔类 `.app-surface`、盖章 `data-surface="<tier>"`;**四条画底规则住在
+  `styles/components.css`**(全局层),因为 Container 渲染的是自己的根元素、拿不到
+  `Surface.vue` 的 scopeId,两个宿主要吃同一张表,表就只能在全局。
+- **零破坏判据**:未声明档位 = 不加类、不加属性、不画底。Container 通篇没有
+  `background`,这条缺省保证它继续没有。
+- **`data-surface` 是章,`.app-surface` 才是画笔**:只盖章不加类 = 声明档位但自己
+  画底(本期无住户,留给 sidebar 那一族并档时用)。画底规则一律带类名前缀,
+  **不写裸 `[data-surface]`** —— 编辑器一族(`MarkdownDocumentEditor` /
+  `ProseNoteEditor`)早就在用同名属性的别的取值(`document` / `todo-notes`)。
+- **给 G7-2 的钩子**:章一盖,`wallpaper.css` 就能从类名枚举退化成
+  `html.has-wallpaper .app-surface[data-surface='panel'] { … }` 这样的通用规则,
+  新面**用了原语就自动在册**。本期 `wallpaper.css` 一个字不动。
+
+**两处判了不接,理由记在这里**(不是漏网):
+
+- `.session-header` 画的是 `var(--ui-tab-bar-surface-bg, var(--ui-surface-chat-bg))`
+  —— 页签条族的**派生** token(`color-mix(panel 78%, elevated)`),不是四档区域面
+  token。塞进 `chat` 档会**改掉它的实际颜色**(违反逐处零视觉变化);为它新立第五档
+  则是给单一住户造一个分类。而且它在壁纸体系里已经由祖先 `.app-content` 的
+  `--ui-tab-bar-surface-bg: transparent` 统管(A 级让位),区域根盖章没有增量。
+- `.sidebar` 画的是区域别名 `--sidebar-bg: var(--ui-sidebar-surface-bg,
+  var(--ui-surface-app-bg))`,而 `--ui-sidebar-surface-bg` 由主题在 `:root` 处定义
+  (`REGION_OVERLAY_STEPS` 墨阶一族),fallback **永不触发**。借 `app` 档盖章的后果
+  是:G7-2 的通用规则会在 sidebar 子树里把 `--ui-surface-app-bg` 稀释成纱,**误伤**
+  所有读这枚 token 的后代面,而 sidebar 自己的底纹丝不动 —— 比不盖章更坏。正确的
+  并档时机是 G8(私有 token 岛评估)把区域墨阶收进档位表之后,届时它拿到的是自己的
+  档位名,而不是借来的 `app`。

@@ -3,6 +3,7 @@
     as="aside"
     main-as="div"
     class="right-workbench"
+    surface="panel"
     body-class="right-workbench-body"
     main-class="right-workbench-main"
     full-height
@@ -1336,7 +1337,8 @@ defineExpose({
     var(--workbench-tool-card-border) 68%,
     var(--workbench-tool-icon-color, var(--ui-accent-primary-fg)) 32%
   );
-  background: var(--ui-surface-panel-bg);
+  /* 台面底色不在这里画了 —— 走 Container 的 `surface="panel"` 档位(G7-1)。
+     同一枚 `--ui-surface-panel-bg`,只是改由原语画,并在根上盖 data-surface 章。 */
   color: var(--ui-text-primary-fg);
 }
 
