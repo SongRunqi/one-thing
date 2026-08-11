@@ -189,6 +189,108 @@ describe('ClaudeCodeConnector', () => {
     expect(captured[0].options.settingSources).not.toContain('local')
   })
 
+  /**
+   * **P1-3**(`docs/audit/claude-code-sdk-audit-2026-08-11.md`「两不管地带」)。
+   *
+   * `SDKPermissionDeniedMessage` 是 `type:'system'` 的子类,而翻译器此前只认四种
+   * 消息类型 —— 被 CLI 侧规则拒掉的工具在 UI 上凭空消失,用户只看到模型忽然改口。
+   */
+  it('CLI 侧 auto-deny 结算成那张卡自己的失败,理由写在卡上', async () => {
+    const connector = createClaudeCodeConnector({
+      queryFn: () => replay([
+        initMessage,
+        {
+          type: 'stream_event',
+          session_id: 'claude-session-1',
+          event: {
+            type: 'content_block_start',
+            index: 0,
+            content_block: { type: 'tool_use', id: 'toolu_denied', name: 'Bash' },
+          },
+        },
+        {
+          type: 'stream_event',
+          session_id: 'claude-session-1',
+          event: {
+            type: 'content_block_delta',
+            index: 0,
+            delta: { type: 'input_json_delta', partial_json: '{"command":"rm -rf ./build"}' },
+          },
+        },
+        { type: 'stream_event', session_id: 'claude-session-1', event: { type: 'content_block_stop', index: 0 } },
+        {
+          type: 'system',
+          subtype: 'permission_denied',
+          session_id: 'claude-session-1',
+          tool_name: 'Bash',
+          tool_use_id: 'toolu_denied',
+          decision_reason_type: 'rule',
+          decision_reason: 'Bash(rm:*) is denied by settings',
+        },
+        { type: 'result', subtype: 'success', session_id: 'claude-session-1' },
+      ]),
+    })
+
+    const events = await collect(connector.streamTurn({
+      localSessionId: 'session-1',
+      prompt: 'clean up',
+      cwd: '/tmp/project',
+      turn: 1,
+    }))
+    const result = events.find(event => event.type === 'tool-result') as
+      | { toolCall: { id: string }; result: { error?: string } }
+      | undefined
+    expect(result?.toolCall.id).toBe('toolu_denied')
+    expect(result?.result.error).toContain('被 Claude Code 侧配置拒绝')
+    expect(result?.result.error).toContain('rule')
+    expect(result?.result.error).toContain('Bash(rm:*) is denied by settings')
+    // 一次拒绝只结算一次 —— 后到的 is_error tool_result 会被 settled 挡掉。
+    expect(events.filter(event => event.type === 'tool-result')).toHaveLength(1)
+  })
+
+  it('拒得比工具卡还早时回落成一句可见的正文,而不是静默', async () => {
+    const connector = createClaudeCodeConnector({
+      queryFn: () => replay([
+        initMessage,
+        {
+          type: 'system',
+          subtype: 'permission_denied',
+          session_id: 'claude-session-1',
+          tool_name: 'Write',
+          tool_use_id: 'toolu_unknown',
+          // 理由缺席:两级回落都空的那一支也必须说得出话。
+        },
+        { type: 'result', subtype: 'success', session_id: 'claude-session-1' },
+      ]),
+    })
+
+    const events = await collect(connector.streamTurn({
+      localSessionId: 'session-1',
+      prompt: 'write it',
+      cwd: '/tmp/project',
+      turn: 1,
+    }))
+    const text = events.find(event => event.type === 'text-delta') as { delta: string } | undefined
+    expect(text?.delta).toContain('工具 Write 被 Claude Code 侧配置拒绝')
+    expect(events.some(event => event.type === 'tool-result')).toBe(false)
+  })
+
+  it('system 的其它 subtype 照旧沉默(init 不该变成正文)', async () => {
+    const connector = createClaudeCodeConnector({
+      queryFn: () => replay([
+        initMessage,
+        { type: 'result', subtype: 'success', session_id: 'claude-session-1' },
+      ]),
+    })
+    const events = await collect(connector.streamTurn({
+      localSessionId: 'session-1',
+      prompt: 'hi',
+      cwd: '/tmp/project',
+      turn: 1,
+    }))
+    expect(events.some(event => event.type === 'text-delta')).toBe(false)
+  })
+
   it('routes canUseTool through the permission handler and denies on deny/throw/missing', async () => {
     const asks: ExternalAgentPermissionAsk[] = []
     let verdict: ExternalAgentPermissionDecision | Error = { behavior: 'allow' }

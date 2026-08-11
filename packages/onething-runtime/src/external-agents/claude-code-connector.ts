@@ -69,6 +69,19 @@ export interface ClaudeCodeSdkMessage {
   }
   result?: string
   is_error?: boolean
+  /**
+   * `SDKPermissionDeniedMessage`(`sdk.d.ts:4113-4137`)独有的几位。它是
+   * `type:'system'` 的一个 subtype,与上面那些字段住在同一条消息类型上。
+   *
+   * 注意它的**拒绝原文写在 `message` 字段里,而那是一个 string** —— 与助手/用户
+   * 消息上的 `message: { role, content }` 同名不同型。两者不合并:合成一个联合类型
+   * 会把所有 `message.content` 的读点都变成带守卫的分支,而它们要读的从来只有对象
+   * 那一支。这一位在 `permissionDeniedNotice` 里就地取,只在那一处。
+   */
+  tool_name?: string
+  tool_use_id?: string
+  decision_reason?: string
+  decision_reason_type?: string
   num_turns?: number
   total_cost_usd?: number
   usage?: {
@@ -326,6 +339,35 @@ export function claudeCodeFailureNotice(message: ClaudeCodeSdkMessage): string {
     : `${head}。SDK 没有给出更多信息 —— 常见原因是限流、额度用尽或登录过期,请到设置里核对 Claude Code 的登录状态。`
 }
 
+/**
+ * 一次 **auto-deny 的人话**(P1-3,`docs/audit/claude-code-sdk-audit-2026-08-11.md`
+ * 「两不管地带」)。
+ *
+ * `SDKPermissionDeniedMessage` 覆盖的是 CLI 侧**没有走交互审批**就拒掉的那一支
+ * (deny 规则、dontAsk、classifier、headless auto-deny)。它不经 `canUseTool`,
+ * 所以 onething 的审批面从头到尾没见过这次调用 —— 翻译器又只认四种消息类型,
+ * 于是被拒的工具在 UI 上凭空消失:用户只看到模型忽然改口,不知道是谁拦的。
+ *
+ * `decision_reason` 是拒的那个组件写的人话,`message` 是回给模型的那句;两者都可能
+ * 缺席,所以逐级回落,并把 `decision_reason_type`(rule / mode / classifier …)带上
+ * —— 「被规则拦了」与「被模型分类器拦了」在排障时是两个完全不同的结论。
+ */
+export function claudeCodePermissionDeniedNotice(message: ClaudeCodeSdkMessage): string {
+  const toolName = normalizeToolName(message.tool_name)
+  // 拒绝原文住在 string 形态的 `message` 上(见 ClaudeCodeSdkMessage 的说明)。
+  const rejection = (message as { message?: unknown }).message
+  const detail = [
+    message.decision_reason,
+    typeof rejection === 'string' ? rejection : '',
+  ].map(text => (text ?? '').trim()).find(Boolean)
+  const reasonType = message.decision_reason_type?.trim()
+  const head = `⚠️ 工具 ${toolName} 被 Claude Code 侧配置拒绝`
+    + (reasonType ? `(${reasonType})` : '')
+  return detail
+    ? `${head}:${detail}`
+    : `${head}。CLI 没有给出理由 —— 常见来源是 settings 里的 deny 规则或权限模式。`
+}
+
 function toolResultText(content: unknown): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
@@ -578,9 +620,43 @@ class ClaudeCodeTurnTranslator {
         return this.translateUser(message)
       case 'result':
         return this.translateResult(message)
+      case 'system':
+        return this.translateSystem(message)
       default:
         return []
     }
+  }
+
+  /**
+   * `type:'system'` 下唯一需要上屏的一支:**auto-deny**(P1-3)。init / 其它
+   * subtype 照旧沉默。
+   *
+   * 优先翻成**那张工具卡自己的失败结局**:这次调用的 `tool_use_id` 在流上已经有
+   * 一张卡时,补一条 error 的 `tool-result` —— 卡就地结算成失败,理由写在卡上,
+   * 与本地工具被拒时长得一样。CLI 随后可能还会回一条 is_error 的 tool_result,
+   * `settled` 会把它挡掉,不会出现两次结算。
+   *
+   * 卡还没建(拒得比 `content_block_start` 还早)或已结算时才回落到一句正文 ——
+   * 与失败 result 那条(`claudeCodeFailureNotice`)同一个先例:`AgentTurnStreamEvent`
+   * 词表里没有 error 事件,能上屏的只有正文。
+   */
+  private translateSystem(message: ClaudeCodeSdkMessage): AgentTurnStreamEvent[] {
+    if (message.subtype !== 'permission_denied') return []
+    const notice = claudeCodePermissionDeniedNotice(message)
+    const toolUseId = message.tool_use_id
+    const toolCall = toolUseId ? this.toolCallsById.get(toolUseId) : undefined
+    if (toolCall && toolUseId && !this.settled.has(toolUseId)) {
+      this.settled.add(toolUseId)
+      // 与 translateUser 同款的收尾:本轮工具结果到齐,下一段正文属于新的一轮。
+      if (this.roundToolCalls > 0) this.roundClosePending = true
+      return [{
+        type: 'tool-result',
+        turn: this.turn,
+        toolCall,
+        result: { content: notice, error: notice },
+      }]
+    }
+    return this.withRoundBoundary([{ type: 'text-delta', turn: this.turn, delta: `\n\n${notice}\n` }])
   }
 
   /**
