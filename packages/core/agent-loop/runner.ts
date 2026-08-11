@@ -424,6 +424,30 @@ async function executeProviderTurn(options: ExecuteProviderTurnOptions): Promise
         if (event.type === 'finish') {
           finishReason = event.finishReason
           usage = event.usage
+          /**
+           * 回合中途的分界必须**当场**转发(2026-08-11)。
+           *
+           * 外部执行器(Claude Code 连接器)把一整段多轮会话装进一次 streamTurn:
+           * 每当「工具结果到齐、新一轮正文开始」,它就发一条 finish(tool_calls)
+           * 当作轮分界。这样的 finish 扣到流末再发,就排到了下一轮正文**之后**——
+           * 下游 executor 于是从不换锚点,整个 run 的工具卡塌在一处、正文合成一条
+           * 夹满静默的长消息。
+           *
+           * 判据:确有调用、且没有一个进过本地执行队列。外部执行的调用从不进
+           * `toolExecutions`(上面的 externallyExecuted break),本地路径的
+           * finish(tool_calls) 到达时执行项必然已入列 —— 本地维持原语义(等工具
+           * 收敛后再发,顺序不变)。零调用的 finish(tool_calls) 也维持原语义:
+           * 那是「provider 丢调用」的 nudge 补救路径,不是轮分界。
+           */
+          if (
+            event.finishReason === 'tool_calls'
+            && toolCalls.length > 0
+            && toolExecutions.length === 0
+          ) {
+            request.onEvent?.(event)
+            pendingFinishEvent = null
+            continue
+          }
           pendingFinishEvent = event
           continue
         }

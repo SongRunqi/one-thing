@@ -493,6 +493,52 @@ describe('runAgentLoop externally-executed tool calls', () => {
     expect(seen.filter(event => event.type === 'tool-result')).toHaveLength(1)
   })
 
+  it('forwards a mid-stream finish(tool_calls) in place when every call is externally executed', async () => {
+    // 外部执行器把多轮会话装进一次 streamTurn,用 finish(tool_calls) 当轮分界。
+    // 分界必须当场转发:扣到流末就排到了下一轮正文之后,下游从不换锚点。
+    const provider = baseProvider(async function* (request) {
+      const turn = request.turn
+      yield { type: 'text-delta', turn, delta: 'round one' }
+      yield { type: 'tool-call-start', turn, toolCallId: 'ext_1', toolName: 'bash' }
+      yield { type: 'tool-call-done', turn, toolCall: externalCall }
+      yield {
+        type: 'tool-result',
+        turn,
+        toolCall: externalCall,
+        result: { content: 'file-a' },
+      }
+      yield { type: 'finish', turn, finishReason: 'tool_calls' }
+      yield { type: 'text-delta', turn, delta: 'round two' }
+      yield { type: 'finish', turn, finishReason: 'stop' }
+    })
+    const seen: AgentStreamEvent[] = []
+    const result = await runAgentLoop({
+      provider,
+      model: 'external-agent',
+      messages: [{ role: 'user', content: 'go' }],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      onEvent(event) {
+        seen.push(event)
+      },
+    })
+
+    // 分界落在工具结果与下一轮正文之间,而不是流末。
+    const kinds = seen.map(event =>
+      event.type === 'finish' ? `finish:${event.finishReason}` : event.type,
+    )
+    const boundaryAt = kinds.indexOf('finish:tool_calls')
+    expect(boundaryAt).toBeGreaterThan(kinds.indexOf('tool-result'))
+    expect(boundaryAt).toBeLessThan(kinds.lastIndexOf('text-delta'))
+    // 终结 finish 仍然只有一条、仍在末轮正文之后(其后只剩 runner 的 turn-end)。
+    expect(kinds.indexOf('finish:stop')).toBeGreaterThan(kinds.lastIndexOf('text-delta'))
+    expect(kinds.filter(kind => kind === 'finish:stop')).toHaveLength(1)
+    // 中途分界不得让 runner 再起一轮(整段会话本来就在一个 streamTurn 里)。
+    expect(result.turns).toBe(1)
+    expect(result.finishReason).toBe('stop')
+    expect(result.text).toBe('round oneround two')
+  })
+
   it('drops provider-emitted tool observation events for calls it did not mark externally executed', async () => {
     const spoofedCall = { id: 'call_local', name: 'read', arguments: '{}' }
     const provider = baseProvider(async function* (request) {
