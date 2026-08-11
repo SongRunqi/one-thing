@@ -89,7 +89,11 @@ const fullTurnFixture: ClaudeCodeSdkMessage[] = [
 
 describe('ClaudeCodeConnector', () => {
   it('maps the SDK stream to normalized events with externally-executed tools', async () => {
-    const captured: { prompt: string; options: ClaudeCodeQueryOptions }[] = []
+    const captured: {
+      prompt: AsyncIterable<{ message: { content: { text: string }[] } }>
+      promptText: string
+      options: ClaudeCodeQueryOptions
+    }[] = []
     const connector = createClaudeCodeConnector({
       executablePath: '/usr/local/bin/claude',
       permissionHandler: async () => ({ behavior: 'allow' as const }),
@@ -108,7 +112,17 @@ describe('ClaudeCodeConnector', () => {
       turn: 1,
     }))
 
-    expect(captured[0].prompt).toBe('list files')
+    /**
+     * **prompt 必须是迭代器**(2026-08-11 后台子代理审批事故)。字符串形状会让 SDK
+     * 把这一轮标成 `isSingleUserTurn`,于是第一条 result 就关掉 CLI 的 stdin ——
+     * 而那正是 `canUseTool` 的控制通道。原文并列走 `promptText`。
+     */
+    expect(captured[0].promptText).toBe('list files')
+    expect(typeof (captured[0].prompt as AsyncIterable<unknown>)[Symbol.asyncIterator])
+      .toBe('function')
+    const firstInput = await captured[0].prompt[Symbol.asyncIterator]().next()
+    expect(firstInput.value?.message.content[0].text).toBe('list files')
+
     expect(captured[0].options).toMatchObject({
       cwd: '/tmp/project',
       pathToClaudeCodeExecutable: '/usr/local/bin/claude',
@@ -169,7 +183,7 @@ describe('ClaudeCodeConnector', () => {
    * 的读取又恰恰依赖 'project' 这一源。两件事咬在同一个字段上,所以它必须是显式的。
    */
   it('只声明 project 一层设置源:摘掉全局白名单的先行放行,同时保住仓库 CLAUDE.md', async () => {
-    const captured: { prompt: string; options: ClaudeCodeQueryOptions }[] = []
+    const captured: { options: ClaudeCodeQueryOptions }[] = []
     const connector = createClaudeCodeConnector({
       queryFn: params => {
         captured.push(params)
@@ -675,5 +689,293 @@ describe('ClaudeCodeConnector', () => {
     await slow.interrupt('session-2')
     await run
     expect(abortSeen).toHaveBeenCalled()
+  })
+})
+
+/**
+ * **后台子代理的审批通道**(2026-08-11 真机事故)。
+ *
+ * 症状:SDK 会话里后台子代理在主回合收工后调用需审批的工具,全部以
+ * `Tool permission request failed: AbortError: Stream closed` 被拒。
+ *
+ * 根因不在审批逻辑,在**输入形状**:prompt 传字符串时 SDK 把这一轮标成
+ * `isSingleUserTurn`,`Query.readMessages` 于是在第一条 `result` 到达时就
+ * `transport.endInput()` —— 而 stdin 正是 `canUseTool` 的控制通道。后台子代理
+ * (`Agent` 工具的 `run_in_background`,SDK 默认为 true)恰恰在主 result **之后**
+ * 才碰工具,所以它的每一次审批都必然撞上一条已经关掉的通道。
+ *
+ * 这一组用例锁的是**通道的寿命**,不是审批的判断:
+ *  - 有后台任务 → 主 result 之后输入仍开着,审批回调照样被调用;
+ *  - 零后台 → result 当场收口,一毫秒都不多等(普通回合零退化);
+ *  - 判据失灵 → 墙钟防呆兜底,如实说话再收口,绝不挂起。
+ */
+describe('ClaudeCodeConnector 后台子代理生命周期', () => {
+  const AGENT_CALL = 'toolu_agent_1'
+
+  /** 读输入迭代器,并记下它是在**第几条**下行消息之后被放开的。 */
+  function watchInput(
+    prompt: AsyncIterable<unknown>,
+    yieldedSoFar: () => number,
+    state: { closedAfter: number | null },
+  ): Promise<void> {
+    const iterator = prompt[Symbol.asyncIterator]()
+    return (async () => {
+      await iterator.next() // 唯一一条用户消息
+      await iterator.next() // 挂起,直到连接器 close()
+      state.closedAfter = yieldedSoFar()
+    })()
+  }
+
+  const tick = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  it('主 result 之后仍持有输入:后台子代理的审批照常打到宿主,归零后才收口', async () => {
+    const asks: ExternalAgentPermissionAsk[] = []
+    const state: { closedAfter: number | null } = { closedAfter: null }
+    let yielded = 0
+    let inputWatch: Promise<void> | undefined
+    /** 主 result 到达那一刻,输入是否已经被关掉。这就是事故的判据。 */
+    let inputClosedAtMainResult: boolean | null = null
+
+    const connector = createClaudeCodeConnector({
+      permissionHandler: async ask => {
+        asks.push(ask)
+        return { behavior: 'allow' as const }
+      },
+      queryFn: params => {
+        inputWatch = watchInput(params.prompt, () => yielded, state)
+        const emit = async function* (): AsyncGenerator<ClaudeCodeSdkMessage, void, void> {
+          const send = async function* (message: ClaudeCodeSdkMessage) {
+            yielded += 1
+            yield message
+            await tick()
+          }
+
+          yield* send(initMessage)
+          // 主回合:派一个后台子代理,拿到「已启动」的即时回执,然后收工。
+          yield* send({
+            type: 'assistant',
+            session_id: 's',
+            message: {
+              role: 'assistant',
+              content: [{
+                type: 'tool_use',
+                id: AGENT_CALL,
+                name: 'Agent',
+                input: { description: 'edit file', run_in_background: true },
+              }],
+            },
+          })
+          yield* send({
+            type: 'user',
+            session_id: 's',
+            message: {
+              role: 'user',
+              content: [{ type: 'tool_result', tool_use_id: AGENT_CALL, content: 'Async agent launched successfully.' }],
+            },
+          })
+          yield* send({
+            type: 'system',
+            subtype: 'background_tasks_changed',
+            session_id: 's',
+            tasks: [{ task_id: 'task-1', task_type: 'local_agent', description: 'edit file' }],
+          })
+          yield* send({
+            type: 'stream_event',
+            session_id: 's',
+            event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'DISPATCHED' } },
+          })
+          yield* send({ type: 'result', subtype: 'success', session_id: 's', result: 'DISPATCHED' })
+
+          // ——— 事故现场:此刻通道必须还活着 ———
+          await tick()
+          inputClosedAtMainResult = state.closedAfter !== null
+
+          // 后台子代理开始干活,需要审批。SDK 在流还活着时调 canUseTool。
+          const decision = await params.options.canUseTool?.(
+            'Edit',
+            { file_path: '/tmp/project/target.txt', old_string: 'a', new_string: 'b' },
+            { signal: new AbortController().signal, toolUseID: 'toolu_edit_1' },
+          )
+          yielded += 1
+          yield {
+            type: 'assistant',
+            session_id: 's',
+            parent_tool_use_id: AGENT_CALL,
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: `decision=${decision?.behavior}` }],
+            },
+          }
+          await tick()
+
+          // 后台归零 → 收尾轮 → 真正的 result。
+          yield* send({ type: 'system', subtype: 'background_tasks_changed', session_id: 's', tasks: [] })
+          yield* send({
+            type: 'stream_event',
+            session_id: 's',
+            event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '后台子代理已完成。' } },
+          })
+          yield* send({
+            type: 'result',
+            subtype: 'success',
+            session_id: 's',
+            result: '后台子代理已完成。',
+            total_cost_usd: 0.5,
+            usage: { input_tokens: 10, output_tokens: 5 },
+          })
+        }
+        return emit()
+      },
+    })
+
+    const events = await collect(connector.streamTurn({
+      localSessionId: 'session-bg',
+      messageId: 'msg-bg',
+      prompt: '派个后台的去改文件',
+      cwd: '/tmp/project',
+      turn: 1,
+    }))
+    await inputWatch
+
+    // 1) 主 result 时通道仍开着 —— 事故的直接反面。
+    expect(inputClosedAtMainResult).toBe(false)
+
+    // 2) 后台子代理的审批**真的**打到了宿主(此前它被 Stream closed 就地拒掉)。
+    expect(asks).toHaveLength(1)
+    expect(asks[0]).toMatchObject({
+      toolName: 'Edit',
+      toolCallId: 'toolu_edit_1',
+      localSessionId: 'session-bg',
+      messageId: 'msg-bg',
+    })
+
+    // 3) 后台归零之后才收口,而不是在主 result 就收。
+    expect(state.closedAfter).toBe(yielded)
+
+    // 4) 只有一条终点信号,且成本只记一次(每条 result 都记 = 重复计费)。
+    const finishes = events.filter(e => e.type === 'finish' && e.finishReason !== 'tool_calls')
+    expect(finishes).toHaveLength(1)
+    expect(finishes[0]).toMatchObject({ finishReason: 'stop' })
+    expect(events.filter(e => e.type === 'provider-data')).toHaveLength(1)
+
+    // 5) 主回合的工具卡照常产出;嵌在子代理下的消息仍然不另起一张卡(既有约定)。
+    const starts = events.filter(e => e.type === 'tool-call-start')
+    expect(starts).toHaveLength(1)
+    expect(starts[0]).toMatchObject({ toolCallId: AGENT_CALL, toolName: 'Agent' })
+
+    // 6) 收尾正文开在**新的一轮**,不黏在 DISPATCHED 尾巴上。
+    const texts = events.filter(e => e.type === 'text-delta')
+    expect(texts.map(e => (e as { delta: string }).delta)).toEqual(['DISPATCHED', '后台子代理已完成。'])
+    const boundaries = events.flatMap((event, index) => (
+      event.type === 'finish' && event.finishReason === 'tool_calls' ? [index] : []
+    ))
+    const lastBoundary = boundaries[boundaries.length - 1] ?? -1
+    expect(lastBoundary).toBeGreaterThan(events.indexOf(texts[0]))
+    expect(lastBoundary).toBeLessThan(events.indexOf(texts[1]))
+  })
+
+  it('零后台的普通回合:result 当场收口,不多等一毫秒', async () => {
+    const state: { closedAfter: number | null } = { closedAfter: null }
+    let yielded = 0
+    let inputWatch: Promise<void> | undefined
+
+    const connector = createClaudeCodeConnector({
+      queryFn: params => {
+        inputWatch = watchInput(params.prompt, () => yielded, state)
+        return (async function* () {
+          yielded += 1
+          yield initMessage
+          await tick()
+          yielded += 1
+          yield { type: 'result', subtype: 'success', session_id: 's', result: 'PONG' } as ClaudeCodeSdkMessage
+          await tick()
+        })()
+      },
+    })
+
+    await collect(connector.streamTurn({
+      localSessionId: 'session-plain', prompt: 'ping', cwd: '/tmp', turn: 1,
+    }))
+    await inputWatch
+
+    // result 是第 2 条消息,收口就发生在它身上 —— 没有任何额外等待。
+    expect(state.closedAfter).toBe(2)
+  })
+
+  it('判据失灵时墙钟兜底:如实说一句再收口,绝不把回合挂死', async () => {
+    const state: { closedAfter: number | null } = { closedAfter: null }
+    let inputWatch: Promise<void> | undefined
+
+    const connector = createClaudeCodeConnector({
+      backgroundTaskTimeoutMs: 10,
+      queryFn: params => {
+        inputWatch = watchInput(params.prompt, () => 0, state)
+        return (async function* () {
+          yield initMessage
+          yield {
+            type: 'system',
+            subtype: 'background_tasks_changed',
+            session_id: 's',
+            tasks: [{ task_id: 'stuck-1', task_type: 'local_agent', description: '永不收工' }],
+          } as ClaudeCodeSdkMessage
+          yield {
+            type: 'stream_event',
+            session_id: 's',
+            event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'DISPATCHED' } },
+          } as ClaudeCodeSdkMessage
+          yield { type: 'result', subtype: 'success', session_id: 's', result: 'DISPATCHED' } as ClaudeCodeSdkMessage
+          // 归零那条永远不来:CLI 只有在 stdin 关掉之后才退出。
+          await inputWatch
+        })()
+      },
+    })
+
+    const events = await collect(connector.streamTurn({
+      localSessionId: 'session-stuck', prompt: 'x', cwd: '/tmp', turn: 1,
+    }))
+
+    // 挂起被防呆解开了,而且用户看得到为什么。
+    expect(state.closedAfter).not.toBeNull()
+    const notice = events.find(
+      e => e.type === 'text-delta' && (e as { delta: string }).delta.includes('后台子代理已运行超过'),
+    )
+    expect(notice).toBeDefined()
+    expect((notice as { delta: string }).delta).toContain('还有 1 个未决任务')
+    // 终点信号照发 —— 静默停住的回合是比失败更坏的收场。
+    expect(events.at(-1)).toMatchObject({ type: 'finish', finishReason: 'stop' })
+  })
+
+  it('abort 放开输入迭代器:不留挂着的 promise,也不留不肯退出的 CLI', async () => {
+    const state: { closedAfter: number | null } = { closedAfter: null }
+    let inputWatch: Promise<void> | undefined
+    const abortController = new AbortController()
+
+    const connector = createClaudeCodeConnector({
+      queryFn: params => {
+        inputWatch = watchInput(params.prompt, () => 0, state)
+        return (async function* () {
+          yield initMessage
+          yield {
+            type: 'system',
+            subtype: 'background_tasks_changed',
+            session_id: 's',
+            tasks: [{ task_id: 'task-1' }],
+          } as ClaudeCodeSdkMessage
+          yield { type: 'result', subtype: 'success', session_id: 's' } as ClaudeCodeSdkMessage
+          abortController.abort()
+          await inputWatch
+        })()
+      },
+    })
+
+    await collect(connector.streamTurn({
+      localSessionId: 'session-abort',
+      prompt: 'x',
+      cwd: '/tmp',
+      turn: 1,
+      abortSignal: abortController.signal,
+    }))
+    await inputWatch
+    expect(state.closedAfter).not.toBeNull()
   })
 })

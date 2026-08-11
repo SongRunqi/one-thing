@@ -84,11 +84,86 @@ export interface ClaudeCodeSdkMessage {
   decision_reason_type?: string
   num_turns?: number
   total_cost_usd?: number
+  /**
+   * `SDKBackgroundTasksChangedMessage`(`sdk.d.ts:2880`)的载荷:变更之后**全部**
+   * 存活的后台任务。d.ts 原话是它「a level signal, unlike the task_started/
+   * task_notification edge bookends」,并明写只需要「is background work running」
+   * 的消费者应当**整表替换**而不是配对 edge —— 漏掉一只 bookend 不会卡住状态。
+   * 我们要的正是这一个判据,所以读的是它,不是 task_started/task_notification。
+   */
+  tasks?: { task_id?: string; task_type?: string; description?: string }[]
   usage?: {
     input_tokens?: number
     output_tokens?: number
     cache_creation_input_tokens?: number
     cache_read_input_tokens?: number
+  }
+}
+
+/**
+ * SDK 的 `SDKUserMessage`(`sdk.d.ts:4521`)里我们真正要写的那几位。保持结构化,
+ * 与 `ClaudeCodeSdkMessage` 同一条纪律:SDK 仍是这个模块的软依赖。
+ */
+export interface ClaudeCodeSdkUserMessage {
+  type: 'user'
+  session_id: string
+  parent_tool_use_id: null
+  message: { role: 'user'; content: { type: 'text'; text: string }[] }
+}
+
+/**
+ * **一轮的输入迭代器**(2026-08-11 后台子代理审批事故)。
+ *
+ * 把 prompt 交给 `sdk.query()` 有两种形状,而它们决定的不是「怎么传字符串」,是
+ * **控制通道的寿命**:
+ *
+ *  - **字符串** → SDK 记下 `isSingleUserTurn = typeof prompt === 'string'`
+ *    (`sdk.mjs`,`Xkt`),于是 `Query.readMessages` 在**第一条 `result` 到达时就
+ *    `transport.endInput()`** —— CLI 的 stdin 被关掉。stdin 不只是「输入」,它是
+ *    `canUseTool` 的控制通道:CLI 侧 `sendRequest` 在 `inputClosed` 时抛
+ *    `Stream closed`,审批请求被就地包成
+ *    `Tool permission request failed: AbortError: Stream closed` 并 **deny**。
+ *  - **AsyncIterable** → `isSingleUserTurn` 为假,那条 endInput 不发;改由
+ *    `Query.streamInput` 在**迭代器耗尽之后**收口(源码:遍历完 → 若有双向需求
+ *    则 `waitForFirstResult()` → `endInput()`)。
+ *
+ * 后台子代理(`Agent` 工具的 `run_in_background`,**SDK 默认就是 true**)恰恰在主
+ * `result` **之后**才去碰需要审批的工具。所以单轮形状下它的每一次审批都必然撞上
+ * 一条已经关掉的通道 —— 不是偶发,是必然。
+ *
+ * 于是输入迭代器在这里被**握在手里**:发出唯一一条用户消息后挂起,由连接器按
+ * 「未决后台任务归零」的判据决定何时 `close()`。零后台的普通回合在 result 当场
+ * 关闭,`waitForFirstResult()` 立即返回(result 已到),时序与字符串形状逐毫秒
+ * 相同 —— 这不是「多等一会儿换来的安全」,是**只在真有后台任务时才多等**。
+ */
+export class ClaudeCodePromptStream {
+  private release!: () => void
+  private readonly gate: Promise<void>
+  private closed = false
+
+  constructor(private readonly text: string) {
+    this.gate = new Promise<void>(resolve => { this.release = resolve })
+  }
+
+  /** 幂等。abort / 超时 / 正常收口三条路都可能调它,谁先到都算数。 */
+  close(): void {
+    if (this.closed) return
+    this.closed = true
+    this.release()
+  }
+
+  get isClosed(): boolean {
+    return this.closed
+  }
+
+  async *stream(): AsyncGenerator<ClaudeCodeSdkUserMessage, void, void> {
+    yield {
+      type: 'user',
+      session_id: '',
+      parent_tool_use_id: null,
+      message: { role: 'user', content: [{ type: 'text', text: this.text }] },
+    }
+    await this.gate
   }
 }
 
@@ -164,8 +239,14 @@ export interface ClaudeCodeQueryOptions {
   supportedDialogKinds?: string[]
 }
 
+/**
+ * `prompt` 是**迭代器**而不是字符串 —— 理由整段写在 `ClaudeCodePromptStream` 上
+ * (控制通道的寿命由它决定)。`promptText` 并列带上原文:诊断与 fixture 测试要断言
+ * 「这一轮问了什么」,而把迭代器抽干一次就没了,那是把断言变成副作用。
+ */
 export type ClaudeCodeQueryFn = (params: {
-  prompt: string
+  prompt: AsyncIterable<ClaudeCodeSdkUserMessage>
+  promptText: string
   options: ClaudeCodeQueryOptions
 }) => AsyncIterable<ClaudeCodeSdkMessage>
 
@@ -210,6 +291,30 @@ export interface ClaudeCodeConnectorOptions {
    * 那一片空白 —— 不影响这一轮跑不跑得成。
    */
   observer?: ExternalAgentObserver
+  /**
+   * 主 result 之后**为后台任务多等**的墙钟上限(默认 10 分钟)。
+   *
+   * 这是一道**防呆**,不是调度策略:判据(`background_tasks_changed` 的整表替换)
+   * 万一在某个 CLI 版本上不再发、或发漏了归零的那一条,回合就会永远挂着 —— 挂起
+   * 是这套系统里最坏的收场(用户看到的是一个永远转圈的会话,连「失败了」都不知道)。
+   * 超时到点时如实发一条可见正文再收口,与失败 result 同一个先例:能上屏的只有正文。
+   *
+   * abort 不受它管辖 —— 用户按停止永远即时生效。
+   */
+  backgroundTaskTimeoutMs?: number
+}
+
+/** 见 `backgroundTaskTimeoutMs`。 */
+export const DEFAULT_BACKGROUND_TASK_TIMEOUT_MS = 10 * 60 * 1000
+
+/**
+ * 后台任务等超时后的**人话**。用户看到的必须是「为什么这一轮就这么结束了」,
+ * 而不是一段无声的中断。
+ */
+export function claudeCodeBackgroundTimeoutNotice(taskCount: number, timeoutMs: number): string {
+  const minutes = Math.round(timeoutMs / 60000)
+  return `\n\n⚠️ 后台子代理已运行超过 ${minutes} 分钟仍未收工(还有 ${taskCount} 个未决任务),`
+    + '本回合先行收尾。后台任务已随本轮一并停止 —— 如果它的活还没干完,请重新发起一次。\n'
 }
 
 /**
@@ -299,11 +404,14 @@ function claudeCodeThinkingOptions(
 }
 
 async function defaultQueryFn(params: {
-  prompt: string
+  prompt: AsyncIterable<ClaudeCodeSdkUserMessage>
+  promptText: string
   options: ClaudeCodeQueryOptions
 }): Promise<AsyncIterable<ClaudeCodeSdkMessage>> {
   const sdk = await import('@anthropic-ai/claude-agent-sdk')
-  return sdk.query(params as never) as AsyncIterable<ClaudeCodeSdkMessage>
+  // `promptText` 不进 SDK:它只是同一条消息的原文备份(见 ClaudeCodeQueryFn)。
+  // 多传一个 SDK 不认识的键会被 `uO` 原样塞进 CLI 参数解析,所以在这里剥掉。
+  return sdk.query({ prompt: params.prompt, options: params.options } as never) as AsyncIterable<ClaudeCodeSdkMessage>
 }
 
 function usageFromResult(message: ClaudeCodeSdkMessage): AgentUsage | undefined {
@@ -608,7 +716,12 @@ class ClaudeCodeTurnTranslator {
 
   constructor(private turn: number) {}
 
-  translate(message: ClaudeCodeSdkMessage): AgentTurnStreamEvent[] {
+  /**
+   * `backgroundPending` = 这一刻还有活着的后台任务(连接器按
+   * `background_tasks_changed` 的整表替换算出来的)。它只改变 **result 的读法**:
+   * 带着未决后台任务的 result 不是这一轮的终点,只是一段的终点。
+   */
+  translate(message: ClaudeCodeSdkMessage, backgroundPending = false): AgentTurnStreamEvent[] {
     if (message.parent_tool_use_id) return []
 
     switch (message.type) {
@@ -619,7 +732,7 @@ class ClaudeCodeTurnTranslator {
       case 'user':
         return this.translateUser(message)
       case 'result':
-        return this.translateResult(message)
+        return this.translateResult(message, backgroundPending)
       case 'system':
         return this.translateSystem(message)
       default:
@@ -793,7 +906,36 @@ class ClaudeCodeTurnTranslator {
     return events
   }
 
-  private translateResult(message: ClaudeCodeSdkMessage): AgentTurnStreamEvent[] {
+  private translateResult(
+    message: ClaudeCodeSdkMessage,
+    backgroundPending: boolean,
+  ): AgentTurnStreamEvent[] {
+    /**
+     * **未决后台任务当前的 result 不是终点**(2026-08-11 后台子代理审批事故)。
+     *
+     * 后台子代理跑在主 result 之后:CLI 还活着、还会发工具调用、还会走审批,最后
+     * 再收一条真正的 result。所以这一条只翻成**一次轮分界**:
+     *
+     *  - 不发 `finish` —— 它是回合的终点信号,提前发等于对下游说谎;
+     *  - 不发成本 —— `total_cost_usd` 是会话累计值,每条 result 都记一次就是重复计费;
+     *  - 失败正文照发 —— 主段真的失败了,用户现在就该看见,不能等到后台收工;
+     *  - 置 `roundClosePending`,于是后台归零之后那段收尾正文会开在**新的一轮**,
+     *    而不是黏在「DISPATCHED」后面成为一句没头没尾的续写。
+     *
+     * `settleRemaining()` 同样留给终点:这里补空结果会把还在飞的调用提前结算成
+     * 一张空卡。
+     */
+    if (backgroundPending) {
+      const pending: AgentTurnStreamEvent[] = []
+      if (message.subtype !== 'success') {
+        pending.push(...this.withRoundBoundary([
+          { type: 'text-delta', turn: this.turn, delta: claudeCodeFailureNotice(message) },
+        ]))
+      }
+      this.roundClosePending = true
+      return pending
+    }
+
     const events: AgentTurnStreamEvent[] = [...this.settleRemaining()]
     /**
      * **失败要说人话**(2026-08-11 止血,`docs/audit/claude-code-sdk-audit-2026-08-11.md`
@@ -855,6 +997,15 @@ class ClaudeCodeTurnTranslator {
       })
     }
     return events
+  }
+
+  /**
+   * 一句连接器自己要说的正文,走与模型正文**同一条**轮分界(`withRoundBoundary`)。
+   * 直接 yield 一条 text-delta 会让它黏在上一轮尾巴上 —— 而它恰恰是在解释
+   * 「上一轮为什么没有下文」。
+   */
+  emitNotice(text: string): AgentTurnStreamEvent[] {
+    return this.withRoundBoundary([{ type: 'text-delta', turn: this.turn, delta: text }])
   }
 
   /** Stream ended without results for some calls — settle them so steps never hang. */
@@ -940,12 +1091,41 @@ export function createClaudeCodeConnector(
     async *streamTurn(request: ExternalAgentTurnRequest): AsyncIterable<ExternalAgentEvent> {
       const abortController = new AbortController()
       abortControllers.set(request.localSessionId, abortController)
-      const forwardAbort = () => abortController.abort()
+
+      /**
+       * 输入迭代器与 abort 绑在一起(见 `ClaudeCodePromptStream`)。
+       *
+       * abort 时**必须**同时放开它:SDK 的 `Query.streamInput` 正挂在这个迭代器上,
+       * 不放开就留下一个永不结算的 promise。放开之后 SDK 走 endInput、CLI 退出,
+       * 与今天 abort 的收场逐字相同(实测:abort 后 CLI 干净退出,后台任务一并终止)。
+       */
+      const promptStream = new ClaudeCodePromptStream(request.prompt)
+      const backgroundTimeoutMs = options.backgroundTaskTimeoutMs ?? DEFAULT_BACKGROUND_TASK_TIMEOUT_MS
+      let backgroundTimer: ReturnType<typeof setTimeout> | undefined
+      let backgroundTimedOutCount = 0
+
+      function disarmBackgroundTimer(): void {
+        if (backgroundTimer === undefined) return
+        clearTimeout(backgroundTimer)
+        backgroundTimer = undefined
+      }
+
+      const forwardAbort = () => {
+        abortController.abort()
+        disarmBackgroundTimer()
+        promptStream.close()
+      }
       request.abortSignal?.addEventListener('abort', forwardAbort, { once: true })
-      if (request.abortSignal?.aborted) abortController.abort()
+      if (request.abortSignal?.aborted) forwardAbort()
 
       const translator = new ClaudeCodeTurnTranslator(request.turn)
       let linkEmitted = false
+      /**
+       * 活着的后台任务(`background_tasks_changed` 的**整表替换**语义,见
+       * `ClaudeCodeSdkMessage.tasks`)。每轮起于空集 —— d.ts 明写这个电平是
+       * per-process 的、启动时不发,而一次 `streamTurn` 恰好就是一个 CLI 进程。
+       */
+      const liveBackgroundTasks = new Set<string>()
 
       /**
        * 宿主工具面的注入(E3 §2)。
@@ -1176,11 +1356,58 @@ export function createClaudeCodeConnector(
           }
         }
 
+        const queryParams = {
+          prompt: promptStream.stream(),
+          promptText: request.prompt,
+          options: queryOptions,
+        }
         const stream = options.queryFn
-          ? options.queryFn({ prompt: request.prompt, options: queryOptions })
-          : await defaultQueryFn({ prompt: request.prompt, options: queryOptions })
+          ? options.queryFn(queryParams)
+          : await defaultQueryFn(queryParams)
 
         for await (const message of stream) {
+          /**
+           * **回合生命周期**(2026-08-11 后台子代理审批事故)。整段判据只有两条:
+           *
+           *  1. 后台任务的电平从 `background_tasks_changed` 整表替换而来;
+           *  2. 一条 `result` 到达时电平为零 → 结束输入迭代器(SDK 随即 endInput,
+           *     CLI 退出,流自然收尾);电平非零 → 保持打开,继续消费后台轮的消息。
+           *
+           * 零后台的普通回合因此在 result 当场收口:`waitForFirstResult()` 立即返回
+           * (result 已到),时序与改动前逐毫秒相同。
+           */
+          if (message.type === 'system' && message.subtype === 'background_tasks_changed') {
+            liveBackgroundTasks.clear()
+            for (const task of message.tasks ?? []) {
+              if (task.task_id) liveBackgroundTasks.add(task.task_id)
+            }
+            // 后台清空了但 result 还没来(实测的正常次序):把防呆表停掉,
+            // 收口交给随后的那条 result。
+            if (liveBackgroundTasks.size === 0) disarmBackgroundTimer()
+          }
+
+          if (message.type === 'result') {
+            if (liveBackgroundTasks.size === 0) {
+              disarmBackgroundTimer()
+              promptStream.close()
+            } else if (backgroundTimer === undefined && !promptStream.isClosed) {
+              options.logger?.log?.(
+                `[ClaudeCodeConnector] holding input open for ${liveBackgroundTasks.size}`
+                  + ` background task(s): ${[...liveBackgroundTasks].join(', ')}`,
+              )
+              backgroundTimer = setTimeout(() => {
+                backgroundTimedOutCount = liveBackgroundTasks.size
+                options.logger?.warn?.(
+                  `[ClaudeCodeConnector] background tasks still pending after ${backgroundTimeoutMs}ms`
+                    + ` — closing input (tasks: ${[...liveBackgroundTasks].join(', ')})`,
+                )
+                promptStream.close()
+              }, backgroundTimeoutMs)
+              // 一个挂了十分钟的定时器不该把宿主进程钉在事件循环上。
+              backgroundTimer.unref?.()
+            }
+          }
+
           if (message.type === 'system' && message.subtype === 'init') {
             const init = message as ClaudeCodeSdkMessage & { apiKeySource?: string; model?: string; cwd?: string }
             options.logger?.log?.(
@@ -1208,7 +1435,21 @@ export function createClaudeCodeConnector(
             }
             yield { type: 'session-established', link }
           }
-          yield* translator.translate(message)
+          yield* translator.translate(message, liveBackgroundTasks.size > 0)
+        }
+
+        /**
+         * 防呆到点之后的收尾。走到这里说明我们**主动**掐了输入,那条真正的
+         * `result` 永远不会来了 —— 于是这一轮的终点由我们自己补:一句可见的正文
+         * (为什么结束的),把还挂着的工具卡结算掉,再发终点信号。少了任何一样,
+         * 用户拿到的都是一个静默停住的回合。
+         */
+        if (backgroundTimedOutCount > 0) {
+          yield* translator.emitNotice(
+            claudeCodeBackgroundTimeoutNotice(backgroundTimedOutCount, backgroundTimeoutMs),
+          )
+          yield* translator.settleRemaining()
+          yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
         }
       } catch (error) {
         // abort 先判:SDK 把一次中断也抛成异常,而「被人停掉」与「炸了」在回查时
@@ -1219,6 +1460,13 @@ export function createClaudeCodeConnector(
         // 生成器被下游提前丢弃(`return()`)时既不进 catch 也不抛,但流确实没跑完 ——
         // 靠信号补判,否则那一支会被记成 `complete`。
         if (turnOutcome === 'complete' && abortController.signal.aborted) turnOutcome = 'aborted'
+        /**
+         * 输入迭代器**一定**要放开。生成器被下游提前丢弃(`return()`)、抛错、被
+         * abort 掐断走的都是这里,而任何一条没放开的路都留下一个挂着的 promise 和
+         * 一个不肯退出的 CLI 进程 —— 那是「审批通道活着」的代价里最不该付的一种。
+         */
+        disarmBackgroundTimer()
+        promptStream.close()
         observeTurn('end')
         request.abortSignal?.removeEventListener('abort', forwardAbort)
         abortControllers.delete(request.localSessionId)
