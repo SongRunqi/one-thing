@@ -189,6 +189,69 @@ describe('Pi-style prompt builder', () => {
     expect(content!.indexOf('root instructions')).toBeLessThan(content!.indexOf('nested override instructions'))
   })
 
+  /**
+   * 止血 5(2026-08-11):`CLAUDE.md` 进候选名。在此之前一个只写了 CLAUDE.md 的
+   * 仓库(包括本仓)在 onething 里等于**没有项目纪律** —— 文件躺在那儿,没有任何
+   * 一条读取路径指向它。
+   */
+  it('loads CLAUDE.md as a project instruction file', () => {
+    const root = makeTempProject()
+    fs.mkdirSync(path.join(root, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'CLAUDE.md'), 'claude discipline')
+
+    const content = loadAgentsMdInstructions(root)
+
+    expect(content).toContain('<project_context>')
+    expect(content).toContain('claude discipline')
+  })
+
+  /**
+   * 候选次序:override > AGENTS > CLAUDE,同层只取先命中的一份。通用的那份
+   * (AGENTS.md,写给任何 agent)压过专用的那份(CLAUDE.md,写给某一个 agent);
+   * 不合并 —— 两份并存时它们几乎总是同一份内容的副本。
+   */
+  it('prefers AGENTS.override.md > AGENTS.md > CLAUDE.md within one directory', () => {
+    const root = makeTempProject()
+    fs.mkdirSync(path.join(root, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(root, 'CLAUDE.md'), 'claude copy')
+    expect(loadAgentsMdInstructions(root)).toContain('claude copy')
+
+    fs.writeFileSync(path.join(root, 'AGENTS.md'), 'agents copy')
+    const withAgents = loadAgentsMdInstructions(root)
+    expect(withAgents).toContain('agents copy')
+    expect(withAgents).not.toContain('claude copy')
+
+    fs.writeFileSync(path.join(root, 'AGENTS.override.md'), 'override copy')
+    const withOverride = loadAgentsMdInstructions(root)
+    expect(withOverride).toContain('override copy')
+    expect(withOverride).not.toContain('agents copy')
+    expect(withOverride).not.toContain('claude copy')
+  })
+
+  /**
+   * 上限 64KB(本仓 CLAUDE.md 41.7KB,旧的 32KB 口径下每一轮都被砍掉后 1/4)。
+   * 截断仍然发生,但从此在日志里说出来。
+   */
+  it('injects a 41.7KB discipline file whole and warns only past 64KB', () => {
+    const root = makeTempProject()
+    fs.mkdirSync(path.join(root, '.git'), { recursive: true })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const tail = 'TAIL-MARKER'
+    fs.writeFileSync(path.join(root, 'CLAUDE.md'), `${'x'.repeat(42 * 1024)}\n${tail}`)
+    expect(loadAgentsMdInstructions(root)).toContain(tail)
+    expect(loadAgentsMdInstructions(root)).not.toContain('truncated')
+    expect(warn).not.toHaveBeenCalled()
+
+    fs.writeFileSync(path.join(root, 'CLAUDE.md'), `${'x'.repeat(70 * 1024)}\n${tail}`)
+    const truncated = loadAgentsMdInstructions(root)
+    expect(truncated).not.toContain(tail)
+    expect(truncated).toContain('AGENTS instructions truncated')
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('project instructions truncated'))
+
+    warn.mockRestore()
+  })
+
   it('uses only the current directory when no project root is found', () => {
     const root = makeTempProject()
     const nested = path.join(root, 'packages', 'app')

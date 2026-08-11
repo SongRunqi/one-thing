@@ -32,7 +32,35 @@ const CONTEXT_UPDATE_CONVENTION = normalizeContent(contextUpdateConventionRaw);
 const CONTEXT_VARIABLES_INTRO = normalizeContent(contextVariablesIntroRaw);
 const TODO_RULES = normalizeContent(todoRulesRaw);
 
-const AGENTS_MAX_BYTES = 32 * 1024;
+/**
+ * 一份项目纪律文件最多带多少进 system prompt。
+ *
+ * 2026-08-11 由 32KB 提到 64KB:本仓自己的 `CLAUDE.md` 是 41.7KB,32KB 的口径下
+ * 它**每一轮都被截掉后 1/4**,而截掉的正是靠后的目录结构与关键系统两节 —— 用
+ * onething 开发 onething 时,模型看不见自己代码库的地图。截断本身保留(一份没有
+ * 上限的注入迟早会把上下文吃光),但从此在日志里说出来。
+ */
+export const AGENTS_MAX_BYTES = 64 * 1024;
+
+/**
+ * 项目纪律文件的候选名,**按优先级**,同一层目录里取先命中的一份。
+ *
+ * - `AGENTS.override.md` 最高:名字里就写着「覆盖」,它存在的唯一理由是压过同层
+ *   的默认那份;
+ * - `AGENTS.md` 次之:这是本产品自己的约定名,也是跨工具的通用名;
+ * - `CLAUDE.md` 垫底:它是 Claude Code 的约定名。放在最后不是因为它次要,而是
+ *   因为两份同时存在时,`AGENTS.md` 是「写给任何 agent 的」而 `CLAUDE.md` 是
+ *   「写给某一个 agent 的」——通用的那份该赢。绝大多数仓库只有其中一份,这条
+ *   次序在那里不产生任何差别;它只在两份并存时才被用到。
+ *
+ * 不做合并:两份并存的仓库里,它们几乎总是同一份内容的两个副本,合并等于把同样
+ * 的话对模型说两遍。
+ */
+const PROJECT_INSTRUCTION_FILENAMES = [
+	"AGENTS.override.md",
+	"AGENTS.md",
+	"CLAUDE.md",
+] as const;
 
 export interface OnethingPromptAgent {
 	name: string;
@@ -374,7 +402,7 @@ export function loadAgentsMdInstructions(
 	const dirs = dirsFromRootToTarget(root, target);
 	const parts: string[] = [];
 	for (const dir of dirs) {
-		const candidates = ["AGENTS.override.md", "AGENTS.md"].map((name) =>
+		const candidates = PROJECT_INSTRUCTION_FILENAMES.map((name) =>
 			path.join(dir, name),
 		);
 		const selected = candidates.find(
@@ -382,10 +410,17 @@ export function loadAgentsMdInstructions(
 		);
 		if (!selected) continue;
 		const data = fs.readFileSync(selected);
-		const text =
-			data.length > AGENTS_MAX_BYTES
-				? `${safeUtf8Truncate(data, AGENTS_MAX_BYTES)}\n\n<!-- AGENTS instructions truncated -->`
-				: data.toString("utf-8");
+		let text: string;
+		if (data.length > AGENTS_MAX_BYTES) {
+			// 截断以前是无声的:模型少看见几节,而没有任何一方知道少了什么。
+			console.warn(
+				`[prompts] project instructions truncated: ${selected} is ${data.length} bytes,`
+					+ ` only the first ${AGENTS_MAX_BYTES} were injected`,
+			);
+			text = `${safeUtf8Truncate(data, AGENTS_MAX_BYTES)}\n\n<!-- AGENTS instructions truncated -->`;
+		} else {
+			text = data.toString("utf-8");
+		}
 		parts.push(
 			`<project_instructions path="${selected}">\n${text}\n</project_instructions>`,
 		);
