@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // UI style checker — the enforcement half of docs/design/ui-system.md.
 //
-// 十条行级规则,扫 packages/renderer,输出 `[ui] failed: <相对路径>:<行号> <规则名>`。
+// 十一条行级规则,扫 packages/renderer,输出 `[ui] failed: <相对路径>:<行号> <规则名>`。
 // 刻意只做行级正则 + 极轻量的分区/选择器跟踪,不做 CSS/AST 解析:方案 §4 的判断是
 // 维护成本必须低到没人想绕开它。误报走文件级白名单注释 `/* ui-gate-allow: <rule> */`
 // (也认 `// ui-gate-allow:` 和 `<!-- ui-gate-allow: -->`;多条用逗号分隔,`all` 全放)。
@@ -69,6 +69,42 @@ const TITLE_PROP_COMPONENTS = new Set([
   'SubMenu',
   'ThreadChatDetail',
 ])
+
+/**
+ * `surface-literal`(G7-3,2026-08-11)的三个常量。
+ *
+ * 治的是**区域面自绘**:四枚区域面 token 有了组件端的声明位之后(`surface="<tier>"`
+ * → `Surface.vue` / `Container`,表在 `components/common/surface.ts`),业务组件再写
+ * 一句 `background: var(--ui-surface-panel-bg)` 就是绕开档位 —— 壁纸的通用规则认的是
+ * `.app-surface[data-surface]` 的章,自绘的面盖不到章,于是又变回"忘了登记就没被壁纸
+ * 覆盖"的老病(G7-2 刚把这条路堵上)。
+ *
+ * 判据刻意**克制**,只抓四枚区域面 token 的**直接消费**:
+ *  · 只认 `background` / `background-color` 的**值位**。`--x: var(--ui-surface-panel-bg)`
+ *    那种区域别名的定义不抓(它是 token 层的事,G8 才评估),`var(--x, var(--ui-…))`
+ *    的 fallback 臂也不抓(正则锚在 `background:` 后的第一个 `var(` 上)。
+ *  · 只认 `app` / `panel` / `chat` / `elevated` 四枚。`--ui-surface-menu-bg` /
+ *    `-floating-bg` 是**浮层**三档面(popover-surface.ts,G1 另有归属),
+ *    `-input-bg` / `-code-block-bg` 那些压根不是区域面。
+ *  · 态选择器整条放行:`:hover` / `:active` / `.is-active` 一族的底色是 S 级
+ *    态 token 的规则域(壁纸里另有一整块),不归这条管。
+ *
+ * 行级正则**分不出**"区域面"和"局部小件"(一张 badge 画 elevated 面和一整块面板画
+ * elevated 面在文本上一模一样)。这不是漏洞,是这条规则的成本上限:存量全部进基线,
+ * 棘轮只咬新增;新代码若确实是小件,加一行 `ui-gate-allow: surface-literal` 的白名单
+ * 注释放行,代价是**写的时候必须想一次"我画的是不是一张区域面"**——那正是它要的东西。
+ *
+ * 豁免域两处,都是"档位表本身住的地方":
+ *  · `styles/` —— 全局层。`components.css` 的四条画笔规则、`wallpaper.css` 的四条
+ *    通用覆写,正是这条规则希望所有面最终汇过去的出口。
+ *  · `components/common/` —— 原语层(`Surface.vue` / `Container.vue` / 浮层原语族)。
+ *    业务组件要区域面得走原语,原语自己当然要画得出来。
+ */
+const SURFACE_REGION_BACKGROUND =
+  /background(-color)?:\s*var\(\s*--ui-surface-(app|panel|chat|elevated)-bg\b/
+const SURFACE_LITERAL_EXEMPT_DIRS = ['components/common/', 'styles/']
+const SURFACE_STATE_SELECTOR =
+  /:(hover|active|focus|focus-visible|focus-within|checked|disabled)\b|\.(is-active|is-selected|is-current|active|selected)\b/
 
 /**
  * zones: 规则只在它讲得通的分区里跑。
@@ -182,6 +218,16 @@ const RULES = [
       // 少了这三个字符,editor/ 下写对了元素选择器的规则照样报红。
       !/(^|[\s,>+~('"`])(input|textarea|select)\b/i.test(line) &&
       !/(contenteditable|caret)/i.test(line),
+  },
+  {
+    name: 'surface-literal',
+    zones: ['style'],
+    // 区域面自绘 —— 四枚区域面 token 的直接消费,应当交给 `surface="<tier>"` 档位画。
+    // 判据与豁免的完整理由见上面 SURFACE_REGION_BACKGROUND 那段。
+    test: (line, ctx) =>
+      SURFACE_REGION_BACKGROUND.test(line) &&
+      !SURFACE_LITERAL_EXEMPT_DIRS.some(dir => ctx.rel.startsWith(dir)) &&
+      !SURFACE_STATE_SELECTOR.test(ctx.selector),
   },
 ]
 

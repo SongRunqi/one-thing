@@ -21,11 +21,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-// 2026-08-10 重录(自绘 UI 收敛波 0):title-attr 豁免名单扩到组件 prop 之后
-// 58 → 12。**基线只录 HEAD 的状态** —— 检查器读的是工作树,所以重录必须在
-// `git worktree add --detach <tmp> HEAD` 出来的干净树里跑,否则会把当时未提交的
-// 工作(healed 的、以及新引入的红)一起录进去,棘轮当场失去公信力。
-const baselinePath = path.join(root, 'docs/audit/ui-baseline-2026-08-10.txt')
+// 2026-08-11 重录(G7-3):新增第 11 条 `surface-literal`,12 → 97(旧五条计数
+// 一条没变,+85 全是新规则的存量 —— 那 85 条就是波 6 区域面迁移的自动待办清单)。
+// 2026-08-10 那轮是 58 → 12(title-attr 豁免名单扩到组件 prop)。
+// **基线只录 HEAD 的状态** —— 检查器读的是工作树,所以重录必须在
+// `git worktree add --detach <tmp> HEAD` 出来的干净树里跑(新规则的实现要 cp 进去),
+// 否则会把当时未提交的工作(healed 的、以及新引入的红)一起录进去,棘轮当场失去公信力。
+const baselinePath = path.join(root, 'docs/audit/ui-baseline-2026-08-11.txt')
 
 const ANSI_CSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g')
 const FAILURE_PREFIX = '[ui] failed:'

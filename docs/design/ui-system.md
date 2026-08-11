@@ -298,7 +298,7 @@ Select 还要额外传 `teleported`(它默认在流内);Mention **默认就是 t
 
 ---
 
-## 4. 禁令清单(= `ui:gate` 的 10 条检测项)
+## 4. 禁令清单(= `ui:gate` 的 11 条检测项)
 
 | 规则 | 禁什么 |
 |---|---|
@@ -312,6 +312,17 @@ Select 还要额外传 `teleported`(它默认在流内);Mention **默认就是 t
 | `transition-literal` | `transition: … 0.15s` —— 用 `var(--duration-*)`。豁免:注释行、**全零时长**(`transition-duration: 0s` 是"关掉过渡",没有档位可归) |
 | `shadow-literal-floating` | 浮层类选择器(popover/dropdown/menu/dialog/tooltip/flyout/popup/modal)里的字面 `box-shadow` |
 | `focus-bare` | 裸 `:focus`(输入框元素选择器除外)—— 用 `:focus-visible`。豁免:`:focus:not(:focus-visible)`(这**就是**关掉鼠标焦点环的标准写法)、行内出现 `caret`/`contenteditable` 的 caret 场景。元素选择器白名单认引号前导(CSS-in-JS 的 `'input.x:focus':` 也算) |
+| `surface-literal` | `background: var(--ui-surface-{app,panel,chat,elevated}-bg)` —— 区域面自绘,用 `surface="<tier>"` 档位(§6.6 / §6.7)。豁免域:`styles/`(全局层,档位表本身住这里)与 `components/common/`(原语层)。放行:态选择器(`:hover` / `.is-active` 一族,那是 S 级态 token 的规则域)、区域别名的**定义位**(`--x: var(--ui-surface-…)`)、`var()` 的 fallback 臂、浮层三档面(`--ui-surface-menu-bg` / `-floating-bg`,归 `popover-surface.ts`) |
+
+**第 11 条为什么值得立**(G7-3,2026-08-11):G7-2 把壁纸的区域面覆写改成认
+`.app-surface[data-surface]` 的章之后,"新面忘了登记 → 没被壁纸覆盖"这条老病的入口
+只剩一个 —— **组件绕开档位自绘区域面**(自绘的面盖不到章)。这条规则守的就是那个入口:
+不是新规矩,是把 G7-1/G7-2 已经建好的路变成默认路。
+
+判据刻意克制,代价也如实记:行级正则**分不出**"区域面"和"局部小件"(一张 badge 画
+elevated 面和一整块面板画 elevated 面,文本上一模一样)。所以存量 85 条全部进基线、
+棘轮只咬新增;新代码确实是小件时用 `ui-gate-allow: surface-literal` 放行 —— 代价是
+写的时候必须想一次"我画的是不是一张区域面",那正是这条规则要买的东西。
 
 误报出口:文件里加一行 `/* ui-gate-allow: <规则名> */`(也认 `// …` 和 `<!-- … -->`,
 多条逗号分隔,`all` 全放)。**用之前先确认它真是误报** —— 白名单是给语义场景留的,不是给赶工留的。
@@ -330,21 +341,29 @@ bun run ui:check   # 全量清单(存量 + 新增),按规则分类计数
 bun run ui:gate    # 棘轮:只对基线之外的新增 exit 1;治愈的行会打印出来
 ```
 
-基线:`docs/audit/ui-baseline-2026-08-07.txt`(**58 条**存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
+基线:`docs/audit/ui-baseline-2026-08-11.txt`(**97 条**存量,按 [分期表](./ui-system-consolidation.md#5-分期总览) 逐期消)。
 P0 首录 1144 条 → P2 实测 1044(`native-confirm` 归零、`raw-teleport` 12→4,未重录)
 → P4 收官 768(`ui-hex-fallback` 151→0、`focus-bare` 65→27,已重录)
-→ P5 第一波 376(`title-attr` 455→63)→ **P5 收官 70,此处已重录**
-(`transition-literal` 275→1、`shadow-literal-floating` 6→0、`focus-bare` 27→7、`title-attr` 63→57)。
+→ P5 第一波 376(`title-attr` 455→63)→ P5 收官 70(已重录)
+→ 波 0 的 `title-attr` 豁免扩表 **58 → 12**(2026-08-10 重录)
+→ G7-3 新增第 11 条 `surface-literal` **12 → 97**(2026-08-11 重录;旧五条计数一条没变)。
 
-剩下的 70 条构成(全部逐条查过,都是"确认无害"而不是"还没轮到"):
+**重录纪律**:检查器读的是**工作树**,所以重录必须在 `git worktree add --detach <tmp> HEAD`
+出来的干净树里跑(新规则的实现 `cp` 进去),否则当时未提交的工作会被一起录进基线 ——
+healed 的和新引入的红一起入账,棘轮当场失去公信力。
+
+剩下的 97 条构成:
 
 | 规则 | 条数 | 是什么 |
 |---|---|---|
-| `title-attr` | 57 | 绝大多数是 `MenuItem`/`SubMenu` 一族与设置页的截断兜底(理由见 §1 的保留表) |
+| `surface-literal` | 85 | **区域面迁移的待办清单**(不是"确认无害")—— 46 个文件绕开档位自绘四枚区域面 token,波 6 按这张表逐处改成 `surface="<tier>"`。分布头部:`components/chat` 21、`components/evals` 17、`components/workbench` 13、`components/editor` 7 |
+| `title-attr` | 2 | `MenuItem`/`SubMenu` **内部**那两行真·原生 title(截断兜底,§1 有独立裁决) |
 | `focus-bare` | 7 | `SettingsPage` 的 6 条 `:deep`(`.row-input`/`.row-select`/`.add-model-input` 骑在 `<Input>`/`<Select>` 组件外壳上,加元素前缀会打空)+ `ShortcutInput` 的录制态 |
-| `raw-teleport` | 3 | `MessageList` 的滚动锚点、`MessageActions` 的表情面板/降评面板 |
 | `native-select` | 2 | `ConnectionsSection` 两处 |
 | `transition-literal` | 1 | `PracticeStrip` 的倒计时进度条(`width 1s linear` 与每秒一跳的计时器同步,已就地注明) |
+
+前四条之外的那 12 条是"确认无害"的语义保留;`surface-literal` 那 85 条不是 ——
+它是**自动生成的待办**,清一条基线降一条。
 
 清掉一批之后重新生成基线把棘轮收紧:
 
