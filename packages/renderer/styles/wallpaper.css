@@ -515,6 +515,9 @@ html.has-wallpaper .app-content {
 html.has-wallpaper :is(
     .app-popover.is-surface,
     .app-context-menu.is-surface,
+    /* 2026-08-11 tooltip 并入统一浮层面(反色豁免收回):非 rich 档的文字小卡
+       也走 menu 面 token,进表随族磨砂;rich 档壳本就 transparent 不受影响。 */
+    .tooltip:not(.tooltip-rich),
     .app-select-dropdown,
     .app-mention-dropdown,
     .app-sub-menu-panel.is-popper,
@@ -559,8 +562,8 @@ html.has-wallpaper .sidebar.floating .sidebar-content {
 }
 
 /* ══ 不参与磨砂,理由逐条记在这里 ═════════════════════════════════════════
-   · `.tooltip`(common/Tooltip.vue):它是**反色**小卡(深色主题下反而是浅底),
-     且自带 `blur(8px)`。反色本身就是压任何底的手段,再兑透明只会让它两边都不像。
+   · Tooltip 已于 2026-08-11 并入统一浮层面并**进了 E 级名单**(反色豁免收回,
+     用户拍板);这里不再有它的豁免条目。
    · `.app-dialog` / `.app-dialog-overlay`:对话框是**任务面**(表单 / 长文 / 破坏性
      确认),而且它自带遮罩已经把壁纸压暗了 —— 在遮罩之上再磨砂,收益为零、
      可读性有损。保持不透。

@@ -560,10 +560,15 @@ watch(() => props.disabled, (d) => {
 }
 
 .tooltip {
-  --tooltip-bg: var(--ui-surface-tooltip-bg);
-  --tooltip-fg: var(--ui-surface-tooltip-fg, var(--ui-text-inverse-fg));
-  --tooltip-border: var(--ui-surface-tooltip-border, color-mix(in srgb, var(--tooltip-fg) 14%, transparent));
-  --tooltip-shadow: var(--ui-surface-tooltip-shadow, 0 2px 8px rgba(0, 0, 0, 0.25));
+  /* 2026-08-11 用户拍板:弃反色小卡,并入统一浮层面(与菜单/下拉同族)。
+     文字回正色、边框走 subtle、投影走 floating 配方 —— tooltip 从此就是
+     "最小号的浮层",壁纸模式下随浮层家族一起磨砂(反色豁免同步收回,
+     见 wallpaper.css E 级)。旧的 --ui-surface-tooltip-* 反色 token 族保留
+     不删:主题层仍在产出,想回反色改回这四行即可。 */
+  --tooltip-bg: var(--ui-surface-menu-bg, var(--ui-surface-floating-bg));
+  --tooltip-fg: var(--ui-text-primary-fg);
+  --tooltip-border: var(--ui-border-subtle-border);
+  --tooltip-shadow: var(--shadow-floating);
 
   position: fixed;
   z-index: var(--z-tooltip);
