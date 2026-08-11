@@ -6,6 +6,15 @@ export interface StreamingRevealOptions {
   maxNewlinesPerFrame?: number
   catchUpAfterMs?: number
   catchUpRemainingChars?: number
+  /**
+   * Smoothed gap between upstream content arrivals, in ms (see
+   * `createStreamingArrivalTracker`). Present = pace the reveal so the pending
+   * backlog is spread across the wait for the next batch instead of being
+   * dumped in one or two frames. Absent = no pacing clamp.
+   */
+  arrivalIntervalMs?: number
+  /** How much faster than the arrival rate to drain, so lag never accumulates. */
+  pacingCatchUpFactor?: number
   reducedMotion?: boolean
 }
 
@@ -25,6 +34,101 @@ const DEFAULT_MIN_UNITS_PER_FRAME = 2
 const DEFAULT_MAX_UNITS_PER_FRAME = 14
 const DEFAULT_MAX_CHARS_PER_FRAME = 180
 const DEFAULT_MAX_NEWLINES_PER_FRAME = 1
+
+// --- Adaptive pacing -------------------------------------------------------
+// Sources differ by two orders of magnitude in delivery cadence. A native
+// provider's SSE arrives every few tens of ms; a batching connector (the
+// Claude Code CLI) forwards roughly 1Hz, ~20 chars a shot. The budget rules
+// above are frame-based, so the slow source empties its backlog in one or two
+// frames and then shows nothing for the rest of the second — the "一顿一顿".
+// The pacing clamp below stretches the backlog over the measured gap instead.
+
+/** Weight of the newest gap in the arrival-interval EMA. */
+const ARRIVAL_INTERVAL_EMA_ALPHA = 0.3
+/**
+ * Ceiling on the smoothed interval. A tool call or a model pause produces a
+ * multi-second gap; without this cap that gap would be taken as the cadence
+ * and the next batch would trickle out over several seconds.
+ */
+const MAX_ARRIVAL_INTERVAL_MS = 1500
+/** Gaps below this are treated as one burst, not as a faster cadence. */
+const MIN_ARRIVAL_INTERVAL_MS = 8
+/**
+ * Drain slightly faster than the source fills, so the reveal finishes just
+ * before the next batch lands rather than lagging a batch behind forever.
+ */
+const DEFAULT_PACING_CATCH_UP_FACTOR = 1.35
+/**
+ * Floor on the paced rate. The backlog term alone is Zeno-slow at the tail —
+ * it re-divides an ever smaller remainder by the same interval, so the last
+ * unit of a batch would wait most of a second and every message would end on
+ * a crawl. This floor bounds the tail without touching the fast path (at a
+ * 16ms frame it contributes nothing).
+ */
+const PACING_MIN_UNITS_PER_SECOND = 8
+
+export interface StreamingArrivalTracker {
+  /** Record an upstream content arrival at `nowMs`. */
+  record(nowMs: number): void
+  /** Forget the measured cadence (stream ended, content replaced, …). */
+  reset(): void
+  /** Smoothed gap between arrivals, or undefined until two have been seen. */
+  readonly intervalMs: number | undefined
+}
+
+export function createStreamingArrivalTracker(): StreamingArrivalTracker {
+  // Undefined, not 0: a timestamp is a valid 0 and must still count as
+  // "seen", or the first gap is silently dropped.
+  let lastArrivalMs: number | undefined
+  let smoothed: number | undefined
+
+  return {
+    record(nowMs: number) {
+      if (lastArrivalMs !== undefined) {
+        const gap = Math.min(
+          MAX_ARRIVAL_INTERVAL_MS,
+          Math.max(MIN_ARRIVAL_INTERVAL_MS, nowMs - lastArrivalMs),
+        )
+        smoothed = smoothed === undefined
+          ? gap
+          : smoothed * (1 - ARRIVAL_INTERVAL_EMA_ALPHA) + gap * ARRIVAL_INTERVAL_EMA_ALPHA
+      }
+      lastArrivalMs = nowMs
+    },
+    reset() {
+      lastArrivalMs = undefined
+      smoothed = undefined
+    },
+    get intervalMs() {
+      return smoothed
+    },
+  }
+}
+
+/**
+ * Units this frame may reveal so that `pendingUnits` spreads evenly over
+ * `arrivalIntervalMs`. Returns 0 when the pace is slower than one unit per
+ * frame — the caller then reveals nothing and lets `elapsedMs` keep growing
+ * until a whole unit is due.
+ *
+ * Fast sources are untouched by construction: they arrive about once per
+ * frame, so `elapsedMs ≈ arrivalIntervalMs` and the budget lands at
+ * `pendingUnits * factor` — above the whole backlog, hence never binding.
+ */
+export function pacedRevealUnitBudget(input: {
+  pendingUnits: number
+  elapsedMs: number
+  arrivalIntervalMs: number
+  catchUpFactor?: number
+}): number {
+  const { pendingUnits, elapsedMs, arrivalIntervalMs } = input
+  if (arrivalIntervalMs <= 0 || pendingUnits <= 0) return pendingUnits
+  const factor = input.catchUpFactor ?? DEFAULT_PACING_CATCH_UP_FACTOR
+  const elapsed = Math.max(1, elapsedMs)
+  const fromBacklog = Math.floor(pendingUnits * elapsed * factor / arrivalIntervalMs)
+  const fromFloor = Math.floor(PACING_MIN_UNITS_PER_SECOND * elapsed / 1000)
+  return Math.max(fromBacklog, fromFloor)
+}
 
 interface RevealUnit {
   start: number
@@ -165,6 +269,27 @@ export function advanceStreamingReveal(
   unitBudget = Math.min(reducedMotion ? maxUnits * 4 : maxUnits, unitBudget)
 
   const currentUnitIndex = findCurrentUnitIndex(units, currentContent.length)
+
+  // Pace against the measured source cadence. Reduced motion opts out — it
+  // asks for less animation, not for a slower one.
+  if (options.arrivalIntervalMs !== undefined && !reducedMotion) {
+    const paced = pacedRevealUnitBudget({
+      pendingUnits: Math.max(1, units.length - currentUnitIndex),
+      elapsedMs,
+      arrivalIntervalMs: options.arrivalIntervalMs,
+      ...(options.pacingCatchUpFactor !== undefined
+        ? { catchUpFactor: options.pacingCatchUpFactor }
+        : {}),
+    })
+    // Below one unit per frame: hold this frame. The caller must keep the
+    // clock running (not reset it) so `elapsedMs` accumulates toward the
+    // next whole unit — that is what makes a 1Hz source come out evenly
+    // instead of in a burst.
+    if (paced < 1) {
+      return { content: currentContent, done: false, replaced: false, unitsRevealed: 0 }
+    }
+    unitBudget = Math.min(unitBudget, paced)
+  }
   let nextUnitIndex = Math.min(units.length - 1, currentUnitIndex + unitBudget - 1)
   let nextLength = Math.max(currentContent.length + 1, units[nextUnitIndex]?.end ?? target.length)
   let revealedUnits = Math.max(1, nextUnitIndex - currentUnitIndex + 1)

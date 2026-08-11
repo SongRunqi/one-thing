@@ -46,7 +46,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import { parseStreamingMarkdown, type MarkdownSegment } from '@/composables/parseStreamingMarkdown'
-import { advanceStreamingReveal } from '@/composables/streamingReveal'
+import { advanceStreamingReveal, createStreamingArrivalTracker } from '@/composables/streamingReveal'
 import StreamingCodeBlock from './StreamingCodeBlock.vue'
 import StreamingHtmlSegment from './StreamingHtmlSegment.vue'
 import StreamingTableBlock from './StreamingTableBlock.vue'
@@ -111,6 +111,10 @@ let settleTimer: ReturnType<typeof setTimeout> | null = null
 let lastRevealTs = 0
 let lastParseCommitTs = 0
 let windowBlurred = false
+// Measures how fast the upstream actually delivers, so the reveal can match
+// it. Sources range from a native provider's near-per-frame SSE to a batching
+// connector's ~1Hz bursts.
+const arrivalTracker = createStreamingArrivalTracker()
 
 function cancelPendingFrame() {
   if (pendingFrame === null) return
@@ -172,6 +176,7 @@ function commitDisplayedContent() {
   displayedContent.value = props.content
   commitParsedContent()
   lastRevealTs = 0
+  arrivalTracker.reset()
   scheduleDeferredMarkdownHydration()
 }
 
@@ -220,19 +225,38 @@ function beginSettling() {
 function revealDisplayedContent(ts: number) {
   pendingFrame = null
   const elapsed = lastRevealTs > 0 ? ts - lastRevealTs : 16
-  lastRevealTs = ts
 
-  const next = advanceStreamingReveal(displayedContent.value, props.content, elapsed, {
+  const advance = advanceStreamingReveal(displayedContent.value, props.content, elapsed, {
     catchUpAfterMs: STALE_REVEAL_PAUSE_MS,
     catchUpRemainingChars: STALE_REVEAL_BACKLOG_CHARS,
+    ...(arrivalTracker.intervalMs !== undefined
+      ? { arrivalIntervalMs: arrivalTracker.intervalMs }
+      : {}),
     reducedMotion: prefersReducedMotion.value,
-  }).content
+  })
+  const next = advance.content
+
+  // Paced hold: less than one unit was due this frame. Leave `lastRevealTs`
+  // alone so `elapsed` keeps accumulating — resetting it here would cap the
+  // reveal at one unit per frame and defeat the pacing entirely.
+  if (!advance.done && next === displayedContent.value) {
+    scheduleDisplayedContent()
+    return
+  }
+
+  lastRevealTs = ts
   displayedContent.value = next
   scheduleParsedContentUpdate()
 
   if (next !== props.content) {
     scheduleDisplayedContent()
   } else {
+    // Caught up — the rAF loop stops here until the next arrival. Reset the
+    // clock: otherwise the first frame after an 800ms upstream silence
+    // measures that silence as `elapsed`, trips `catchUpAfterMs`, and dumps
+    // the whole backlog at once. Catch-up must mean "the render thread
+    // stalled", never "the source went quiet".
+    lastRevealTs = 0
     commitParsedContent()
     scheduleDeferredMarkdownHydration()
     beginSettling()
@@ -297,6 +321,10 @@ function contentCacheKey(content: string): string {
 watch(
   () => props.content,
   () => {
+    // Every content change is one upstream arrival — this is where the source
+    // cadence is measured.
+    arrivalTracker.record(performance.now())
+
     if (!props.isUser && props.isStreaming) {
       hasBeenVisuallyLive.value = true
     }
@@ -312,6 +340,7 @@ watch(
         displayedContent.value = props.content
         scheduleParsedContentUpdate()
         lastRevealTs = 0
+        arrivalTracker.reset()
         return
       }
       cancelSettling()
@@ -327,6 +356,9 @@ watch(
   (isStreaming) => {
     if (isStreaming && !props.isUser) {
       hasBeenVisuallyLive.value = true
+      // A fresh run may be fed by a different provider — start measuring the
+      // cadence over rather than inheriting the last one's.
+      arrivalTracker.reset()
     }
 
     if (shouldBypassReveal()) {
