@@ -300,6 +300,43 @@ html.has-wallpaper .sidebar-rail {
    与侧栏同一个手法。 */
 html.has-wallpaper .right-workbench {
   --ui-surface-panel-bg: var(--wallpaper-veil);
+
+  /* C 级·可读卡(2026-08-11 回捞:用户报"台面整区没被壁纸覆盖")。
+     真机对齐的结论是**区域根一直是活的**(实测 18% 纱),看不见壁纸的是台面
+     **里**的内容面 —— 它们读的根本不是 panel 那一枚:
+       · 浏览器地址栏 `.browser-toolbar input` → --ui-surface-app-bg
+       · 终端退出条 / 工具卡族(--workbench-tool-card-bg)→ --ui-surface-elevated-bg
+     这正是实现纪律 2 的老坑:区域根只覆写一枚 token,别枚 token 上的面必须
+     **逐条列名**才推得动。内容是要读的(URL、退出码、工具名),所以走 C 级
+     可读卡的 88%,不是 18% 的纱。 */
+  --ui-surface-elevated-bg: color-mix(
+    in srgb,
+    var(--wallpaper-elevated-ink) var(--wallpaper-card-alpha),
+    transparent
+  );
+  --ui-surface-app-bg: color-mix(
+    in srgb,
+    var(--wallpaper-veil-ink) var(--wallpaper-card-alpha),
+    transparent
+  );
+
+  /* S 级·态|工具卡的 hover / active 底是 `color-mix(--workbench-tool-card-bg
+     90%, 图标色 10%)` 派生出来的,而基色声明在这个元素上、读的是 elevated 的
+     **实色** —— 于是空态动作卡与页签选择器的 hover 在壁纸上是一块实心。
+     "态反馈半透明化不设例外"(47beb035 的判例),把基色降到 hover 浓度,派生
+     的两档随之透气。 */
+  --workbench-tool-card-bg: color-mix(
+    in srgb,
+    var(--wallpaper-elevated-ink) var(--wallpaper-hover-alpha),
+    transparent
+  );
+}
+
+/* A 级·让位|台面里再画一次 panel 面就是"纱叠纱"(18% 叠 18% ≈ 33%,与侧栏
+   分组 pill 同一个判例)。`.browser-toolbar` 与 `.browser-panel` 都各自有分隔
+   线(border-top / border-bottom / .bp-bar 的下边线),交出底色不丢层次。 */
+html.has-wallpaper .right-workbench :is(.browser-toolbar, .browser-panel) {
+  background: transparent;
 }
 
 /* ── media / workspace 面板(报障 5)────────────────────────────────────── */
@@ -390,7 +427,21 @@ html.has-wallpaper .app-content {
    · `--todo-popover-bg` 那一行:声明搬到了浮层自己身上(todo-popover.css),
      上游 `--ui-surface-app-bg` 从此推得动它,不必再列名。
    同一刀之后**新进**磨砂的三张面(此前自绘不透明面、这条选择器压根够不着):
-   划选工具条 / 事故记录卡 / 插件 trigger 弹层。 */
+   划选工具条 / 事故记录卡 / 插件 trigger 弹层。
+
+   ── 2026-08-11 回捞轮:名单逐条对真实 DOM 验过,**没有死条目** ──────────────
+   验法不再是读 CSS:把生产包(单一 CSS,dev 的按需注入会漏掉未挂载组件的样式,
+   照那个量会得到假阴性)挂进真浏览器,挂上根类后按真实模板抄的 DOM 链量
+   `getComputedStyle`。十三行全部命中,实测(浅色主题下)——
+     `.session-preview`(SessionPreviewCard,壳是 `.tooltip.tooltip-rich`,
+        而 rich 档已经把壳本身改成 transparent,壳没有遮蔽)…… 76% + blur14
+     `.composer-extension-panel`(model / agent 选择器的飞出面)…… 76% + blur14
+     `.app-popover.is-surface.is-surface-menu`(ctx 明细)…… 76% + blur14
+     `.app-select-dropdown.inputbox-select-dropdown`(think / 权限档)…… 76% + blur14
+   同轮量到的 B 级两处也都是活的:`.media-panel` 与 `.right-workbench` 各 18% 纱。
+   结论:这一族"看不见壁纸"不是选择器死了,是 `--wallpaper-frost-alpha: 76%`
+   在**近白主题**(本轮主题的 menu 面就是 `#ffffff`)上本来就读作实色。那是旋钮
+   的事,不是名单的事 —— 旋钮归用户拍板,别在这里偷偷改一档。 */
 html.has-wallpaper :is(
     .app-popover.is-surface,
     .app-context-menu.is-surface,
@@ -445,6 +496,18 @@ html.has-wallpaper .sidebar.floating .sidebar-content {
      可读性有损。保持不透。
    · `.image-preview-overlay` / `.evals-workbench-overlay` / `.voice-overlay`:
      全屏遮罩类面板,职责本来就是"盖住一切"。
-   · `.browser-frame`(webview)/ 插件 webview:内容不归我们画。
+   · `.browser-frame`(webview)/ 插件 webview:内容不归我们画。那张 `#fff` 只是
+     webview 加载前的垫底,治它等于把网页自己的白底改成半透明 —— 越界。
+   · **终端**(`.terminal-view` 里的 xterm):面不是 CSS 画的,是 canvas。
+     `services/xterm-theme.ts` 的 `cssColor()` 从 **documentElement** 读
+     `--ui-surface-panel-bg` 的实色(读不出 hex/rgb 就退到常量),所以台面上那条
+     `--ui-surface-panel-bg → 纱` 的覆写够不着它 —— 这是**好事**:终端字压在
+     插画上必须清楚,按分级表它本来就该是 C 级的高不透明,现在是天然满档。
+     真要透,得动 xterm 的 `allowTransparency` 与 theme.background,那是可读性
+     红线上的另一次拍板,不在壁纸这一层做。
+   · `.session-permission-panel`(权限审批账页):它**本来就是零填充**(画线风,
+     实测 `background: transparent`),壁纸天然透过来 —— 不是漏网,是无面可治。
+     不给它补 C 级卡:整条消息流(气泡以外)都是让位的,单给审批卡画一张纸,
+     它会变成消息流里唯一的一块板。可读性靠墨重与分隔线,与消息流同一套。
    · 设置窗 / 搜索窗 / todo 窗 / 图片预览窗:各自的 BrowserWindow,不铺壁纸,
      `html.has-wallpaper` 不会挂上去 —— **窗外不适用**。 */

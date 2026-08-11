@@ -115,6 +115,12 @@ const tooltipElRef = ref<HTMLElement | null>(null)
 const visible = ref(false)
 const tooltipPosition = ref({ top: 0, left: 0 })
 const actualPosition = ref<'top' | 'bottom' | 'left' | 'right'>('top')
+/**
+ * How far the horizontal clamp had to push a top/bottom panel off the trigger's
+ * centre (px, positive = panel moved right). The panel travels; the arrow must
+ * not — it stays over the trigger by cancelling this shift.
+ */
+const horizontalClampShift = ref(0)
 
 let showTimer: ReturnType<typeof setTimeout> | null = null
 let travelTimer: ReturnType<typeof setTimeout> | null = null
@@ -316,6 +322,26 @@ function clampVerticalCenter(center: number, padding: number): number {
   return Math.min(Math.max(center, min), max)
 }
 
+/**
+ * The horizontal twin of `clampVerticalCenter`, for the top / bottom placements.
+ * Those are centred on the trigger and only ever *flipped* vertically — nothing
+ * held them inside the viewport sideways, so a long tooltip on a trigger near
+ * the window edge ran off and got cut. Same padding budget as the vertical one.
+ */
+function clampHorizontalCenter(center: number, padding: number): number {
+  // `|| 200` and not `?? 200`: on the first pass the element is not laid out
+  // yet and reports 0 — a zero half-width would silently disable the clamp.
+  // `handleMouseEnter` re-runs this on nextTick with the real number.
+  const width = tooltipElRef.value?.offsetWidth || 200
+  const half = width / 2
+  const min = padding + half
+  const max = window.innerWidth - padding - half
+  // Wider than the viewport: no clamp can satisfy both edges — leave it centred
+  // rather than pinning it to one side (identical bail-out to the vertical one).
+  if (max < min) return center
+  return Math.min(Math.max(center, min), max)
+}
+
 /** What the tooltip hovers on. Never the virtual anchor — see the prop's note. */
 function anchorEl(): HTMLElement | null {
   return props.triggerEl ?? wrapperRef.value
@@ -347,6 +373,7 @@ function updatePosition() {
   // a list — clamp the centre so the whole panel stays on screen.
   if (props.position === 'left' || props.position === 'right') {
     actualPosition.value = props.position
+    horizontalClampShift.value = 0
     tooltipPosition.value = {
       top: clampVerticalCenter(rect.top + rect.height / 2, padding),
       left: props.position === 'left' ? rect.left - padding : rect.right + padding
@@ -358,25 +385,23 @@ function updatePosition() {
   const tooltipHeight = 32 // approximate tooltip height
   const spaceAbove = rect.top
 
+  // Centred on the trigger, then clamped sideways: the vertical axis has flip,
+  // the horizontal axis has only this — without it a long tooltip on an edge
+  // trigger overflows the window and gets cut.
+  const anchorCenterX = rect.left + rect.width / 2
+  const left = clampHorizontalCenter(anchorCenterX, padding)
+  horizontalClampShift.value = left - anchorCenterX
+
   // Determine position based on available space
   if (props.position === 'top' && spaceAbove > tooltipHeight + padding) {
     actualPosition.value = 'top'
-    tooltipPosition.value = {
-      top: rect.top - padding,
-      left: rect.left + rect.width / 2
-    }
+    tooltipPosition.value = { top: rect.top - padding, left }
   } else if (props.position === 'bottom' || spaceAbove <= tooltipHeight + padding) {
     actualPosition.value = 'bottom'
-    tooltipPosition.value = {
-      top: rect.bottom + padding,
-      left: rect.left + rect.width / 2
-    }
+    tooltipPosition.value = { top: rect.bottom + padding, left }
   } else {
     actualPosition.value = 'top'
-    tooltipPosition.value = {
-      top: rect.top - padding,
-      left: rect.left + rect.width / 2
-    }
+    tooltipPosition.value = { top: rect.top - padding, left }
   }
 }
 
@@ -420,10 +445,17 @@ const arrowStyle = computed(() => {
       transform: 'translateY(-50%) rotate(-90deg)'
     }
   }
+  // The panel may have been pushed sideways by the viewport clamp; the arrow
+  // points at the trigger, not at the panel's own middle, so it walks back by
+  // exactly that shift.
+  const back = -horizontalClampShift.value
+  const left = back === 0
+    ? '50%'
+    : `calc(50% ${back < 0 ? '-' : '+'} ${Math.abs(back)}px)`
   return {
     top: pos === 'top' ? '100%' : 'auto',
     bottom: pos === 'bottom' ? '100%' : 'auto',
-    left: '50%',
+    left,
     transform: pos === 'top' ? 'translateX(-50%)' : 'translateX(-50%) rotate(180deg)'
   }
 })
