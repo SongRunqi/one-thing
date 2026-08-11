@@ -66,6 +66,13 @@ import {
 	DEFAULT_AGENT_MAX_TURNS,
 	type EffectiveAgentProfile,
 } from "../agents/profile.js";
+import {
+	sessionHiddenToolIds,
+	type TaskSessionLike,
+} from "../tasks/index.js";
+
+/** 会话级工具屏蔽读的那一小片会话形状(结构类型 —— 产品层不认 IPC 契约包)。 */
+type SessionHiddenToolInput = TaskSessionLike | null | undefined;
 
 export interface OnethingAgentLoopChatSettings {
 	maxTokens?: number;
@@ -674,8 +681,22 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	const toolLoadingEnabled = Boolean(
 		preparation.toolCallsEnabled && supportsTools,
 	);
+	/**
+	 * 会话级工具屏蔽(自举差距审计 P0-3)。
+	 *
+	 * 与 agent 的 allowlist 是**两件事**:allowlist 答「这个 agent 能用哪些」,
+	 * 而且只有配了 agent 的回合才有;这一条答「这条会话的形态决定了哪些工具在这里
+	 * 根本不成立」,与 agent 无关 —— 一条派工开出来的工作会话看不见 `task`
+	 * (禁止套娃),哪怕它没有 agent、没有 allowlist。
+	 *
+	 * 放在这里而不是在执行时拒绝:摆在工具表里的工具模型会去调,调了被拒是一次纯
+	 * 浪费的往返。执行时的拒绝仍然保留在派工那一侧作为兜底 —— 工具面是给模型看的,
+	 * 闸才是不能被绕过的。
+	 */
+	const hiddenToolIds = new Set(sessionHiddenToolIds(session as SessionHiddenToolInput));
 	const allEnabledTools = toolLoadingEnabled
-		? await adapters.getEnabledTools(effectiveToolSettings?.tools)
+		? (await adapters.getEnabledTools(effectiveToolSettings?.tools))
+			.filter(tool => !hiddenToolIds.has(tool.id))
 		: [];
 	const mcpToolDefinitions = toolLoadingEnabled
 		? (adapters.getMCPToolDefinitionsForModel?.()

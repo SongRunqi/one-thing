@@ -105,10 +105,26 @@ export function pluginMessageSource(pluginId: string): string {
   return `${PLUGIN_MESSAGE_SOURCE_PREFIX}${pluginId}`
 }
 
+/**
+ * 派工完成回投的 source 前缀:`task:<taskSessionId>`
+ * (`docs/audit/self-hosting-gap-audit-2026-08-11.md` P0-5)。
+ *
+ * 与插件同为**前缀族**、同为 SYSTEM_INTERNAL:报告背后没有渠道身份,让路由去给它
+ * 解析一个匿名身份的后果与 goal / radio / plugin 一模一样(命令被改派到身份会话、
+ * 会话的 memory-profile 元数据被覆写)。一条派工回来的报告必须落在**派它出去的那条
+ * 会话**上,这是它存在的全部理由。
+ */
+export const TASK_MESSAGE_SOURCE_PREFIX = 'task:'
+
+export function taskMessageSource(taskSessionId: string): string {
+  return `${TASK_MESSAGE_SOURCE_PREFIX}${taskSessionId}`
+}
+
 export function isSystemInternalSource(source: string | undefined): boolean {
   if (source === undefined) return false
   return SYSTEM_INTERNAL_MESSAGE_SOURCES.has(source)
     || source.startsWith(PLUGIN_MESSAGE_SOURCE_PREFIX)
+    || source.startsWith(TASK_MESSAGE_SOURCE_PREFIX)
 }
 
 /**

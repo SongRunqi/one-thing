@@ -369,6 +369,17 @@ export function updateSessionCollab(
 	return sessionRepository.updateSessionCollab(sessionId, fields);
 }
 
+/**
+ * 派工戳(`docs/audit/self-hosting-gap-audit-2026-08-11.md` P0-3)。
+ * `null` 删除;写完会话与元数据两处(仓库层保证)。
+ */
+export function updateSessionTask(
+	sessionId: string,
+	task: ChatSession["task"] | null,
+): boolean {
+	return sessionRepository.updateSessionTask(sessionId, task);
+}
+
 // Create a branch session
 export function createBranchSession(
 	sessionId: string,

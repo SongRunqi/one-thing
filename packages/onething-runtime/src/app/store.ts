@@ -48,6 +48,7 @@ export {
   updateSessionModel,
   updateSessionAgent,
   updateSessionCollab,
+  updateSessionTask,
   updateSessionPermissionMode,
   updateSessionWorkingDirectory,
   updateSessionWorkingDirectoryRoots,

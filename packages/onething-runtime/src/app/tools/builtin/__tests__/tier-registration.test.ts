@@ -36,6 +36,20 @@ describe('builtin tool tiers', () => {
   })
 
   /**
+   * 派工(2026-08-11 批 5,审计 P0-3)。它开真会话、真花 token、真在本机跑工具 ——
+   * 桌面全量档独有,另外两档都不该有它。
+   */
+  it('registers Task in the desktop full tier only', async () => {
+    const { registerBuiltinTools } = await import('../index.js')
+    const { registerHeadlessBuiltinTools } = await import('../headless.js')
+    const { registerReadonlyBuiltinTools } = await import('../readonly.js')
+
+    expect(await idsFrom(registerBuiltinTools)).toContain('task')
+    expect(await idsFrom(registerHeadlessBuiltinTools)).not.toContain('task')
+    expect(await idsFrom(registerReadonlyBuiltinTools)).not.toContain('task')
+  })
+
+  /**
    * Glob 有意缺席:它与 Find 是同一件事(都按 glob 找路径),2026-07 的工具裁减
    * 正是为此把它摘掉的。把它再加回来只会在提示词里多一份重复描述。
    */

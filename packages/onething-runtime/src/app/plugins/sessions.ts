@@ -152,13 +152,33 @@ function pluginOrigin(pluginId: string, hop: number, now: number): MessageOrigin
   }
 }
 
-export async function pluginSendMessage(
+/**
+ * 一次**系统内部投递**的请求(插件信使 N1 与后台派工回投共用)。
+ *
+ * 抽出这一层的理由不是省行数,是**闸只能有一本账**:链长与频率两道门存在的
+ * 理由是「宿主自己能驱动自己」,而派工回投与插件投递是同一类事 —— 两条链会互相
+ * 触发(一个插件叫醒的会话可以派工,派工回来又可以再触发插件)。让它们各记各的
+ * 账,合起来的那条链就没有人管了。所以账本、宽限期、三态矩阵、身份戳的写法全部
+ * 在这一个函数里,调用方只提供**自己是谁**(rate 账户名)与**怎么盖戳**。
+ */
+export interface InternalDeliveryRequest {
+  /**
+   * 频率闸的账户名:插件是 `pluginId`,派工是 `task:<taskSessionId>`。
+   * 也是日志前缀 —— 被闸挡住时要看得出是谁被挡的。
+   */
+  actorKey: string
+  sessionId: string
+  content: string
+  options: PluginSendMessageOptions
+  /** 身份戳工厂:拿到这次投递记的跳数,回一份 origin。 */
+  origin(hop: number, now: number): MessageOrigin
+}
+
+export async function deliverInternalMessage(
   deps: PluginSessionHostDeps,
-  pluginId: string,
-  sessionId: string,
-  content: string,
-  options: PluginSendMessageOptions,
+  request: InternalDeliveryRequest,
 ): Promise<PluginSendMessageResult> {
+  const { actorKey, sessionId, content, options } = request
   const now = deps.now?.() ?? Date.now()
   const engine = deps.streamEngine
 
@@ -170,19 +190,19 @@ export async function pluginSendMessage(
   const delivery = resolvePluginDelivery(options, busy)
 
   // 协作房 / agent 执行会话由协调者独占驱动:内部来源的命令在引擎里会被当场
-  // 拒绝(而那是一次插件观察不到的静默失败)。在这里就说清楚。
+  // 拒绝(而那是一次调用方观察不到的静默失败)。在这里就说清楚。
   if (isCollabCoordinatorDrivenSession(sessionId)) {
     return {
       ok: false,
       reason: 'unsupported',
-      detail: 'collab room / agent sessions are driven by the coordinator; plugins cannot post into them',
+      detail: 'collab room / agent sessions are driven by the coordinator; they do not accept internal deliveries',
     }
   }
 
   const hop = ambientHop(engine, now) + 1
   if (hop > PLUGIN_TRIGGER_MAX_HOP) {
     console.warn(
-      `[Plugin:${pluginId}] sendMessage refused — chain length ${hop} exceeds the limit of ${PLUGIN_TRIGGER_MAX_HOP}`,
+      `[${actorKey}] sendMessage refused — chain length ${hop} exceeds the limit of ${PLUGIN_TRIGGER_MAX_HOP}`,
     )
     return {
       ok: false,
@@ -192,9 +212,9 @@ export async function pluginSendMessage(
       detail: `chain length ${hop} > ${PLUGIN_TRIGGER_MAX_HOP}`,
     }
   }
-  if (rateLimited(pluginId, sessionId, now)) {
+  if (rateLimited(actorKey, sessionId, now)) {
     console.warn(
-      `[Plugin:${pluginId}] sendMessage refused — more than ${PLUGIN_TRIGGER_RATE_LIMIT} deliveries `
+      `[${actorKey}] sendMessage refused — more than ${PLUGIN_TRIGGER_RATE_LIMIT} deliveries `
       + `to ${sessionId.slice(0, 8)} within ${PLUGIN_TRIGGER_RATE_WINDOW_MS}ms`,
     )
     return {
@@ -202,11 +222,11 @@ export async function pluginSendMessage(
       reason: 'rate-limited',
       hop,
       targetWasBusy: busy,
-      detail: `${PLUGIN_TRIGGER_RATE_LIMIT} per ${PLUGIN_TRIGGER_RATE_WINDOW_MS}ms per (plugin, session)`,
+      detail: `${PLUGIN_TRIGGER_RATE_LIMIT} per ${PLUGIN_TRIGGER_RATE_WINDOW_MS}ms per (sender, session)`,
     }
   }
 
-  const origin = pluginOrigin(pluginId, hop, now)
+  const origin = request.origin(hop, now)
   const source = origin.source
 
   switch (delivery) {
@@ -238,6 +258,22 @@ export async function pluginSendMessage(
   // 而那条链根本不存在。
   if (delivery === 'triggered' || busy) recordTrigger(sessionId, hop, now)
   return { ok: true, delivered: delivery, targetWasBusy: busy, hop }
+}
+
+export async function pluginSendMessage(
+  deps: PluginSessionHostDeps,
+  pluginId: string,
+  sessionId: string,
+  content: string,
+  options: PluginSendMessageOptions,
+): Promise<PluginSendMessageResult> {
+  return deliverInternalMessage(deps, {
+    actorKey: pluginId,
+    sessionId,
+    content,
+    options,
+    origin: (hop, now) => pluginOrigin(pluginId, hop, now),
+  })
 }
 
 /**

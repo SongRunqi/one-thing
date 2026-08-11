@@ -31,6 +31,7 @@ export * from "./builtin/notebook.js";
 export * from "./builtin/say.js";
 export * from "./builtin/radio.js";
 export * from "./builtin/practice.js";
+export * from "./builtin/task.js";
 export * from "./builtin/find.js";
 export * from "./builtin/glob.js";
 export * from "./builtin/grep.js";

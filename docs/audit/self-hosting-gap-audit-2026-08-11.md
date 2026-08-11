@@ -60,9 +60,9 @@
 | --- | --- | --- |
 | 1 | Grep 进桌面全量档(实现现成,注册 + ripgrep adapter) | 小时级 |
 | 2 | 项目纪律文件对齐:builder 候选名加 CLAUDE.md;32KB 上限对齐(现 41.7KB 被截);根 AGENTS.md 是 2026-05 的过期描述 | 小时级 |
-| 3 | 派工工具(Task):scheduler/agent-task-runner + createSessionWithoutFocus 链已具备,暴露成 builtin 工具 | 2-3 天 |
+| 3 | ~~派工工具(Task)~~ **已交付**(2026-08-11 批 5):builtin `task`,只进桌面全量档。`app/tasks/dispatch.ts` = createSessionWithoutFocus + `command:send-message` + 终端事件订阅;**没接 scheduler/agent-task-runner** —— 侦查发现那条链是「定时触发 agent 跑一轮」,与派工无关(见下方勘误) | 2-3 天 |
 | 4 | worker cwd:任务自带 workingDirectory 时不覆盖 | 小时级 |
-| 5 | 完成回流唤醒 + 带 summary(走插件 sendMessage 唤醒路径,闸现成);放宽 200 字符 | 1-2 天 |
+| 5 | ~~完成回流唤醒 + 带 summary~~ **已交付**(同批):走 `deliverInternalMessage`(即插件 sendMessage 的三态矩阵 + 链长/频率闸,现在是一本账两个租户),`triggerTurn:true` = 空闲起轮 / 在忙降级 steer。**200 字符没有被放宽,是被绕开了** —— 派工回投不经过 collab 的回报链,collab 那条截断原样保留,一个字没动 | 1-2 天 |
 | 6 | 多代理写隔离:worktree-per-worker 或 file-mutation-queue 写前 stale 检查 | 2-3 天 |
 | 7 | 修 run 内压缩吞工具上下文(tail 锚点改 run 起点,方案已在 history-rebuild.md:449) | 1-2 天 |
 | 8 | auto-accept-edits 越界写盘洞(补发 effect 接断链) | 小时级 |
@@ -80,6 +80,21 @@
 19 git diff 视图(复用 GoalReviewWorkbench 换数据源) · 20 审计 UI+undo ·
 21 skill 子文件披露 · 22 plan 模式(PermissionMode 第四态) · 23 后台 bash
 结束推消息 · 24 context meter 构成分解 · 25 read 支持 PDF
+
+## 勘误(2026-08-11 批 5 实施时侦查出来的)
+
+- **P0-3 写的「scheduler/agent-task-runner 链已具备」是错的**。
+  `scheduler/agent-task-runner.ts` 干的是「到点了,把一条预设指令喂给某个 agent 跑
+  一轮」—— 触发源是时间,目标是既有会话,没有「开一条新会话、跑完回来找我」这层
+  语义。真正可复用的是另外四段:`createSessionWithoutFocus`(会话)、
+  `command:send-message`(驱动)、`eventBus.onAny` 上的 `stream:*` 终端事件(等)、
+  插件信使的投递矩阵(唤醒)。派工是把这四段接起来,不是给调度器加一个入口。
+- **「工作会话不注册 task 工具」在实现上是两层**。注册表是全局的,工具的可见性
+  不是 —— 但既有的可见性机制(`resolveAgentToolSurface`)是一份 **allowlist**,
+  只有配了 agent 的回合才有;一条没有 agent 的派工会话拿不到它。于是新增了一条
+  会话级**屏蔽**(`sessionHiddenToolIds`,agent-loop 组工具表时应用):它答的是
+  「这条会话的形态决定了哪些工具在这里根本不成立」,与 agent 无关。执行时的
+  `nested` 拒绝保留为兜底 —— 工具面是给模型看的,闸才是不能被绕过的。
 
 ## 与自举纪律的对账
 

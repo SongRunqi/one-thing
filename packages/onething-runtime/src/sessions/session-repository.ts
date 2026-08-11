@@ -473,6 +473,23 @@ export class OnethingSessionRepository<
     })
   }
 
+  /**
+   * 派工戳(`docs/audit/self-hosting-gap-audit-2026-08-11.md` P0-3)。与 collab
+   * 那三个字段同一条纪律:形状对仓库层是不透明的,写会话与写元数据一起做 ——
+   * 只写会话文件的话,列表与 details 会说这条会话不是派工来的,而工具面正是
+   * 按它决定看不看得见 `task`。`null` 删除。
+   */
+  updateSessionTask(sessionId: string, task: unknown | null): boolean {
+    const mutate = (target: { task?: unknown }) => {
+      if (task === null) delete target.task
+      else target.task = task
+    }
+    return this.applyMetadataMutation(sessionId, {
+      mutateSession: session => mutate(session as TSession & { task?: unknown }),
+      mutateMeta: meta => mutate(meta as TMeta & { task?: unknown }),
+    })
+  }
+
   getSessions(): TSession[] {
     const sessions: TSession[] = []
     for (const meta of this.loadSessionsIndex()) {

@@ -68,6 +68,20 @@ export interface InputTransformStamp {
   by: string[]
 }
 
+/**
+ * 派工回流的身份戳(`docs/audit/self-hosting-gap-audit-2026-08-11.md` P0-5)。
+ *
+ * 与插件戳同一族、同一条链长账:`origin.source` 是 `task:<taskSessionId>`
+ * (`isSystemInternalSource` 的前缀判据),这里的结构化字段是给读得懂它的消费方 ——
+ * 渲染归因(「这条是后台任务报回来的,不是用户打的」)与循环闸。
+ */
+export interface TaskMessageOriginStamp {
+  /** 报告是哪条工作会话发回来的。 */
+  sessionId: string
+  /** 第几跳(与插件戳同一本账,上限同为 8)。 */
+  hop: number
+}
+
 export interface MessageOrigin {
   transport: OriginTransport
   source: 'text' | 'voice' | 'api' | string
@@ -79,6 +93,8 @@ export interface MessageOrigin {
   resolvedIdentity?: ResolvedIdentity
   /** 插件注入(N1)。缺席 = 不是插件写的。 */
   plugin?: PluginMessageOriginStamp
+  /** 后台派工的完成回投。缺席 = 不是任务报回来的。 */
+  task?: TaskMessageOriginStamp
   /** 发送前被插件改写(N2)。缺席 = 这就是用户逐字打出来的。 */
   inputTransformed?: InputTransformStamp
 }

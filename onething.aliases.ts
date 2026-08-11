@@ -265,6 +265,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/tools/sensitive-files', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/sensitive-files.ts') },
   { find: '@onething/runtime/tools/text-truncation', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/text-truncation.ts') },
   { find: '@onething/runtime/tools', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tools/index.ts') },
+  { find: '@onething/runtime/tasks', replacement: resolve(projectRoot, 'packages/onething-runtime/src/tasks/index.ts') },
   { find: '@onething/runtime/perf', replacement: resolve(projectRoot, 'packages/onething-runtime/src/perf/index.ts') },
   { find: '@onething/runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/index.ts') },
 ]

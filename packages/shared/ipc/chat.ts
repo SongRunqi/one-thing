@@ -173,6 +173,26 @@ export interface MessageAttachment {
  */
 export type SessionKind = 'chat' | 'room' | 'work' | 'agent'
 
+/**
+ * 派工(`task` 工具)开出来的后台工作会话戳
+ * (`docs/audit/self-hosting-gap-audit-2026-08-11.md` P0-3)。
+ *
+ * **刻意不是一个新的 `SessionKind`**:一条派工会话在产品上就是一条普通会话 ——
+ * 它出现在会话列表里、人点得进去、能接管、提示词与工具面与普通对话同一份。
+ * 给它一个新 kind 会让 collab 的场子门、房面工具、渲染分支全部要多认一格,
+ * 而那些分支答的都不是「谁派它来的」这个问题。这里只回答那一个问题。
+ *
+ * 两个消费者:完成回流投给谁(`parentSessionId`),以及这条会话的回合看不看得见
+ * `task` 工具(带戳 = 看不见,禁止套娃)。
+ */
+export interface TaskSessionRef {
+  /** 派工的那条会话。 */
+  parentSessionId: string
+  createdAt: number
+  /** 建卡时给的短标签(会话列表与回投抬头共用)。 */
+  description?: string
+}
+
 /** Room configuration, present only on kind='room' sessions. */
 export interface RoomConfig {
   memberAgentIds: string[]
@@ -476,6 +496,8 @@ export interface SessionMeta {
   kind?: SessionKind
   room?: RoomConfig
   collab?: CollabWorkRef
+  /** 派工开出来的后台工作会话;缺席 = 不是派工来的。 */
+  task?: TaskSessionRef
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
@@ -543,6 +565,8 @@ export interface ChatSession {
   kind?: SessionKind
   room?: RoomConfig
   collab?: CollabWorkRef
+  /** 派工开出来的后台工作会话;缺席 = 不是派工来的。 */
+  task?: TaskSessionRef
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string

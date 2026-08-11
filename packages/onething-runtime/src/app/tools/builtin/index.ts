@@ -24,6 +24,7 @@ import { NotebookTool } from '../../collab/actors/notebook-tool.js'
 import { SayTool, registerCollabSendMessageLegacyAlias } from '../../collab/say-tool.js'
 import { RadioTool } from './radio.js'
 import { PracticeTool } from './practice.js'
+import { TaskTool } from './task.js'
 import { BashOutputTool, FartTool, KillBashTool, TimeTool } from '@onething/runtime/tools'
 
 // Web search
@@ -53,6 +54,9 @@ const builtinTools = [
   SayTool,
   RadioTool,
   PracticeTool,
+  // 派工(自举差距审计 P0-3)。只在桌面全量档:它开真会话、真花 token、
+  // 真在本机跑工具 —— headless 与 readonly 两档都不该有。
+  TaskTool,
   TimeTool,
   FartTool,
   // Web tools
