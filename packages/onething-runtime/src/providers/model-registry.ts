@@ -267,6 +267,8 @@ export function getOnethingModelsDevProviderId(
 ): string {
 	// grok-oauth shares the same xAI models as grok
 	if (providerId === "grok-oauth") return "xai";
+	// claude-code-agent drives the same Claude models the CLI ships with
+	if (providerId === "claude-code-agent") return "anthropic";
 	// 千问 splits its catalog four ways (国内/海外 x 按量/Token Plan).
 	if (providerId === ONETHING_QWEN_PROVIDER_ID) {
 		return resolveOnethingQwenModelsDevProviderId(config);
