@@ -65,8 +65,28 @@ export type ContentPart =
    * 寻址是 `(pluginId, id)` 的格子,不是追加:同一个 id 再来一次是改 label。
    * `cleared` 表示撤下 —— ContentPart 数组没有"删除某一项"的事件,而状态天然
    * 需要撤下;让同一个成员携带这一位,好过为 R6 新开一条投递轨。
+   *
+   * ## 计时(2026-08-11,SDK 外部会话的后台任务可见性)
+   *
+   * `startedAt` 是起始**墙钟**,不是耗时:渲染侧拿它自算 `now - startedAt`,
+   * 所以一条状态在屏幕上走秒,过线的事件却只有起、变、落三条。反过来做
+   * (宿主每秒发一次带 elapsed 的事件)会按秒冲 EventBus 的环形缓冲,而那个
+   * 缓冲正是 SSE 断线重连的 `?after=` 重放依据 —— 与 R6 压 label 抖动同一条理由。
+   *
+   * `durationMs` present ⇒ **这条状态已经结算**:渲染侧停止走秒并定格这个总数。
+   * 两个字段合起来是一个三态,不需要第三个布尔:无 startedAt = 不计时的老式状态,
+   * 有 startedAt 无 durationMs = 在跑,有 durationMs = 已收场。
    */
-  | { type: 'plugin-status'; pluginId: string; id: string; label: string; cleared?: boolean; turnIndex?: number }
+  | {
+      type: 'plugin-status'
+      pluginId: string
+      id: string
+      label: string
+      cleared?: boolean
+      turnIndex?: number
+      startedAt?: number
+      durationMs?: number
+    }
 
 /**
  * **占位型** transient:真内容一到就让位。
@@ -85,9 +105,15 @@ export function isPlaceholderTransientPart(part: ContentPart): boolean {
  * 状态就消失,而插件还在干活;插件下一次 show 同 id 又把它推回来,于是它按
  * delta 的频率闪烁。更糟的是弹掉之后宿主账本仍持有记录,后续 clear 在渲染侧
  * 成了 no-op。
+ *
+ * **已结算的那条不算 transient**(`durationMs` 已定格)。它说的不再是"某人正在
+ * 忙",而是"这件事跑了多久" —— 一个和工具卡上那个冻结时长同类的既成事实。
+ * 把它一起扫掉的话,"完成后定格总耗时"在屏幕上只存在到回合收尾那一瞬,用户
+ * 恰恰是在回合结束之后才回头问"它到底跑了多久"。插件走不到这一支:`api.status`
+ * 只收 `{id, label}`,`durationMs` 没有插件侧的入口。
  */
 export function isStreamScopedTransientPart(part: ContentPart): boolean {
-  return part.type === 'plugin-status'
+  return part.type === 'plugin-status' && part.durationMs === undefined
 }
 
 /**

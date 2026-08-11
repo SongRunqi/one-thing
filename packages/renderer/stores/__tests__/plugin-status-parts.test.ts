@@ -127,3 +127,82 @@ describe('plugin-status content part', () => {
     expect(parts).toEqual([{ type: 'text', content: 'hello', turnIndex: 0 }])
   })
 })
+
+/**
+ * 计时的两个可选位(2026-08-11,SDK 外部会话的后台任务可见性)。
+ *
+ * `startedAt` 是起始墙钟(渲染侧自算走秒),`durationMs` 一出现就表示已结算。
+ * 这一组钉的是它们**真的活着穿过归约层** —— 早先这里是原地重建字面量,新字段
+ * 会在"更新"那一支被静静吃掉,于是状态条只在第一次投递时会走秒。
+ */
+describe('plugin-status 的计时位', () => {
+  it('新建时带上 startedAt', () => {
+    const parts: ContentPart[] = []
+    applyPluginStatus(parts, { pluginId: 'cc', id: 'bg', label: '运行中', startedAt: 1_000 })
+    expect(parts).toEqual([
+      { type: 'plugin-status', pluginId: 'cc', id: 'bg', label: '运行中', startedAt: 1_000 },
+    ])
+  })
+
+  it('更新同一格时 startedAt 不被吃掉 —— 否则计时会跳回零', () => {
+    const parts: ContentPart[] = []
+    applyPluginStatus(parts, { pluginId: 'cc', id: 'bg', label: '运行中', startedAt: 1_000 })
+    applyPluginStatus(parts, { pluginId: 'cc', id: 'bg', label: '运行中 · 2 个任务', startedAt: 1_000 })
+
+    expect(parts).toHaveLength(1)
+    expect(parts[0]).toMatchObject({ label: '运行中 · 2 个任务', startedAt: 1_000 })
+  })
+
+  it('只改 durationMs 也算改动 —— 只比 label 会把定格那一条丢掉', () => {
+    const parts: ContentPart[] = []
+    applyPluginStatus(parts, { pluginId: 'cc', id: 'bg', label: '收尾', startedAt: 1_000 })
+    // 文案一个字没变,但这一条是收场:必须落到格子上。
+    expect(applyPluginStatus(parts, {
+      pluginId: 'cc', id: 'bg', label: '收尾', startedAt: 1_000, durationMs: 4_200,
+    })).toBe(true)
+    expect(parts[0]).toMatchObject({ durationMs: 4_200 })
+  })
+
+  it('完全相同的一条仍然不重复投递', () => {
+    const parts: ContentPart[] = []
+    applyPluginStatus(parts, { pluginId: 'cc', id: 'bg', label: '运行中', startedAt: 1_000 })
+    expect(applyPluginStatus(parts, {
+      pluginId: 'cc', id: 'bg', label: '运行中', startedAt: 1_000,
+    })).toBe(false)
+  })
+
+  it('没带计时位时不留下 undefined 键', () => {
+    const parts: ContentPart[] = []
+    applyPluginStatus(parts, status('p', 'x', 'l'))
+    expect('startedAt' in parts[0]).toBe(false)
+    expect('durationMs' in parts[0]).toBe(false)
+  })
+
+  it('已结算的那条不再是 transient —— 定格的总耗时活过回合收尾', () => {
+    const running: ContentPart = { type: 'plugin-status', pluginId: 'cc', id: 'bg', label: '运行中', startedAt: 1 }
+    const settled: ContentPart = { type: 'plugin-status', pluginId: 'cc', id: 'bg', label: '已完成', startedAt: 1, durationMs: 9 }
+
+    expect(isStreamScopedTransientPart(running)).toBe(true)
+    expect(isTransientPart(running)).toBe(true)
+    // 它说的不再是"某人正在忙",而是"这件事跑了多久" —— 和工具卡上那个冻结
+    // 时长同类的既成事实。用户恰恰是在回合结束之后才回头问这个。
+    expect(isStreamScopedTransientPart(settled)).toBe(false)
+    expect(isTransientPart(settled)).toBe(false)
+    // 占位型的判据一个字没动。
+    expect(isPlaceholderTransientPart(settled)).toBe(false)
+  })
+
+  it('回合收尾:在跑的被扫掉,已结算的留下', () => {
+    const parts: ContentPart[] = [
+      { type: 'text', content: 'hello', turnIndex: 0 },
+      { type: 'plugin-status', pluginId: 'cc', id: 'bg', label: '已完成', startedAt: 1, durationMs: 9 },
+      { type: 'plugin-status', pluginId: 'p', id: 'x', label: '还在跑' },
+      { type: 'waiting', turnIndex: 0 },
+    ]
+    removeTransientIndicators(parts)
+    expect(parts).toEqual([
+      { type: 'text', content: 'hello', turnIndex: 0 },
+      { type: 'plugin-status', pluginId: 'cc', id: 'bg', label: '已完成', startedAt: 1, durationMs: 9 },
+    ])
+  })
+})

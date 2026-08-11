@@ -26,6 +26,7 @@ import { getSession, getSettings } from '../store.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
 import { getStorePath } from '../stores/paths.js'
 import { enforcePermissionPolicy } from '../tools/core/permission-policy.js'
+import { publishExternalAgentBackgroundStatus } from './background-status.js'
 import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 
 export { resolveClaudeCodeHostToolSurface } from './host-tools.js'
@@ -301,6 +302,10 @@ export function getExternalAgentConnectors(): Record<string, ExternalAgentConnec
       observer: {
         turn: input => { recordExternalAgentTurn(input) },
         toolDecision: input => { recordExternalAgentTool(input) },
+        // 后台子代理的电平 → 气泡里的一行状态(可见性,2026-08-11)。与上面两条
+        // 不同,它的落点不是调度时间轴而是**用户看得见的会话流** —— 因为这一条
+        // 回答的问题("它还在跑吗、跑了多久")是用户在问,不是回查时才问。
+        backgroundTasks: input => { publishExternalAgentBackgroundStatus(input) },
       },
       logger: console,
     }),

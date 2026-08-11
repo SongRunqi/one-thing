@@ -171,10 +171,22 @@ export function pushWaiting(parts: ContentPart[], turnIndex?: number): void {
  * 堆出几百行。
  *
  * 返回是否真的改动了 —— 调用方据此决定要不要重新赋值 contentParts。
+ *
+ * `startedAt` / `durationMs` 是计时的两个可选位(2026-08-11):前者是起始墙钟,
+ * 渲染侧据此自算走秒;后者一出现就表示这一格已结算,定格该总数。它们**必须逐字
+ * 带过**这个格子 —— 早先这里是原地重建一个字面量对象,新字段会在更新那一支被
+ * 静静吃掉,于是状态条只在第一次投递时会走秒,之后再也不动。
  */
 export function applyPluginStatus(
   parts: ContentPart[],
-  status: { pluginId: string; id: string; label: string; cleared?: boolean },
+  status: {
+    pluginId: string
+    id: string
+    label: string
+    cleared?: boolean
+    startedAt?: number
+    durationMs?: number
+  },
 ): boolean {
   const index = parts.findIndex(part =>
     part.type === 'plugin-status' && part.pluginId === status.pluginId && part.id === status.id)
@@ -194,15 +206,45 @@ export function applyPluginStatus(
 
   if (index >= 0) {
     const existing = parts[index]
-    if (existing.type === 'plugin-status' && existing.label === status.label && !existing.cleared) return false
-    parts[index] = { type: 'plugin-status', pluginId: status.pluginId, id: status.id, label: status.label }
+    // 去重看的是**整条呈现**,不只是 label:一次 running → settled 的收场往往
+    // 只改 durationMs(文案也改,但不能指望它),只比 label 会把定格那一条丢掉。
+    if (
+      existing.type === 'plugin-status'
+      && existing.label === status.label
+      && existing.startedAt === status.startedAt
+      && existing.durationMs === status.durationMs
+      && !existing.cleared
+    ) return false
+    parts[index] = buildPluginStatusPart(status)
     return true
   }
 
   // 新状态挂在末尾。**不** popTrailingTransient:那会让一个插件状态顶掉正在显示的
   // waiting 指示器,而两者说的是不同的事(等模型 vs 插件在忙)。
-  parts.push({ type: 'plugin-status', pluginId: status.pluginId, id: status.id, label: status.label })
+  parts.push(buildPluginStatusPart(status))
   return true
+}
+
+/**
+ * 一处构造,两个调用点共用 —— 新增一个可选位只需要改这里。
+ * 可选位用条件展开而不是直接赋 `undefined`:后者会让 `'startedAt' in part` 为真,
+ * 而快照测试与结构相等比较都看得见那个多出来的键。
+ */
+function buildPluginStatusPart(status: {
+  pluginId: string
+  id: string
+  label: string
+  startedAt?: number
+  durationMs?: number
+}): ContentPart {
+  return {
+    type: 'plugin-status',
+    pluginId: status.pluginId,
+    id: status.id,
+    label: status.label,
+    ...(status.startedAt === undefined ? {} : { startedAt: status.startedAt }),
+    ...(status.durationMs === undefined ? {} : { durationMs: status.durationMs }),
+  }
 }
 
 /** Push an image-generation skeleton, avoiding duplicate adjacent skeletons. */

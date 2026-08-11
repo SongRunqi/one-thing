@@ -1128,6 +1128,73 @@ export function createClaudeCodeConnector(
       const liveBackgroundTasks = new Set<string>()
 
       /**
+       * 后台电平的**观测**(2026-08-11)。
+       *
+       * `liveBackgroundTasks` 早就把电平算准了,它只被用来决定要不要留着输入迭代器
+       * —— 也就是说这个信息一直存在,只是从没往界面走过。用户因此只能靠"终止按钮
+       * 还亮着"反推有东西在跑。这三个变量就是把同一个电平**再报一次**给观测口。
+       *
+       * `undefined` = 此刻没有在跑的后台任务;有值 = 电平第一次抬起的墙钟。
+       * 一次 streamTurn 里电平可能起落多次,每次重新抬起都是一段新的计时。
+       */
+      let backgroundStartedAt: number | undefined
+      let backgroundReportedCount = 0
+
+      /**
+       * 观测调用的唯一出口。**绝不抛** —— 与 `observeTurn` / `toolDecision` 同一条
+       * 纪律:观测失败让这一轮炸掉,是把「看不见」升级成「跑不动」。
+       */
+      function observeBackground(phase: 'running' | 'settled', count: number): void {
+        if (!options.observer?.backgroundTasks) return
+        if (backgroundStartedAt === undefined) return
+        try {
+          options.observer.backgroundTasks({
+            connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
+            localSessionId: request.localSessionId,
+            phase,
+            count,
+            startedAt: backgroundStartedAt,
+            ...(phase === 'settled'
+              ? { elapsedMs: Math.max(0, now() - backgroundStartedAt) }
+              : {}),
+          })
+        } catch {
+          // 观测绝不能变成第二个故障源。
+        }
+      }
+
+      /**
+       * 电平变化后调一次。**零后台的普通回合在这里一条都不发**:没抬起过就没有
+       * `backgroundStartedAt`,`settled` 那一支也进不去。
+       */
+      function noteBackgroundLevel(): void {
+        const count = liveBackgroundTasks.size
+        if (count > 0) {
+          if (backgroundStartedAt === undefined) backgroundStartedAt = now()
+          // 任务数没变就不重复投递 —— 同 R6 压 label 抖动那条理由。
+          if (count === backgroundReportedCount) return
+          backgroundReportedCount = count
+          observeBackground('running', count)
+          return
+        }
+        if (backgroundStartedAt === undefined) return
+        observeBackground('settled', 0)
+        backgroundStartedAt = undefined
+        backgroundReportedCount = 0
+      }
+
+      /**
+       * 收场兜底。防呆表超时或 abort 时电平可能仍然非零 —— 那就**如实报残留数**,
+       * 不谎称干净收尾:一条说"还有 2 个在跑"的定格,比一条假装归零的干净结论有用。
+       */
+      function settleBackgroundOnExit(): void {
+        if (backgroundStartedAt === undefined) return
+        observeBackground('settled', liveBackgroundTasks.size)
+        backgroundStartedAt = undefined
+        backgroundReportedCount = 0
+      }
+
+      /**
        * 宿主工具面的注入(E3 §2)。
        *
        * 两道门缺一不可:能力表说这个执行器接得住(`hostTools`),装配层装上了
@@ -1384,6 +1451,10 @@ export function createClaudeCodeConnector(
             // 后台清空了但 result 还没来(实测的正常次序):把防呆表停掉,
             // 收口交给随后的那条 result。
             if (liveBackgroundTasks.size === 0) disarmBackgroundTimer()
+            // 同一处电平变化,同时报给观测口(可见性,2026-08-11)。放在这里而不是
+            // result 那一支:后台任务在正文流完**之前**就可能起来,用户应当从它起来
+            // 的那一刻就看得见,而不是等到主回合收尾。
+            noteBackgroundLevel()
           }
 
           if (message.type === 'result') {
@@ -1467,6 +1538,10 @@ export function createClaudeCodeConnector(
          */
         disarmBackgroundTimer()
         promptStream.close()
+        // 后台状态**必须**在这里收场。它和输入迭代器同一个道理:这是生成器唯一的
+        // 收场出口,少了它,一次超时或 abort 会在气泡里留下一根永远走秒的状态条,
+        // 而用户没有任何办法让它停 —— 正是 R6 第 3 条列出的那种坏结局。
+        settleBackgroundOnExit()
         observeTurn('end')
         request.abortSignal?.removeEventListener('abort', forwardAbort)
         abortControllers.delete(request.localSessionId)

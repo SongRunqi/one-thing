@@ -170,6 +170,36 @@ export interface ExternalAgentObserver {
     hostTool: boolean
     toolCallId?: string
   }): void
+  /**
+   * 后台子代理的**电平**(2026-08-11)。
+   *
+   * 用户的原话是:「我发了之后,作为用户我认为它已经执行完了,但输入框还是可终止
+   * 状态。它到底在不在执行、执行了多长时间,除了终止按钮我一律不知。」正文流完而
+   * 输入仍开着的那段时间,连接器手上有全部信号(`background_tasks_changed` 的整表
+   * 替换),缺的只是一条通向界面的路 —— 这就是那条路。
+   *
+   * **可选**:装配层装上才有界面,不装(金重放、纯连接器测试)就是不报,与
+   * `turn` / `toolDecision` 同一档纪律。同样必须同步、绝不抛。
+   *
+   * 三相:
+   *  - `running` —— 电平从零抬起,或抬起后任务数变了。`startedAt` 是**第一次**
+   *    抬起的墙钟,整段期间不变:呈现侧据此自算耗时,不需要逐秒事件。
+   *  - `settled` —— 电平归零(`count` 为 0),或回合收场时仍未归零(防呆表超时 /
+   *    abort,此时 `count` 是残留数,如实报,不谎称干净收尾)。
+   *
+   * **零后台的普通回合一条都不发** —— 每次对话都挂一根状态条是噪音,不是可见性。
+   */
+  backgroundTasks?(input: {
+    connectorId: string
+    localSessionId: string
+    phase: 'running' | 'settled'
+    /** 这一刻活着的后台任务数。`settled` 时为 0,除非是超时 / abort 的残留。 */
+    count: number
+    /** 电平第一次抬起的墙钟。整段期间是同一个值。 */
+    startedAt: number
+    /** `settled` 才有:从抬起到收场的总时长。 */
+    elapsedMs?: number
+  }): void
 }
 
 export interface ExternalAgentConnector {

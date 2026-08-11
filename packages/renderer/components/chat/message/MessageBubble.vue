@@ -173,17 +173,13 @@
                     role="status"
                     :aria-label="part.label || 'Generating image'"
                   />
-                  <!-- 插件流状态(R6)。宿主认**一种**类型就够了 —— 新增插件状态
-                       不需要再改这里,label 与归属都由插件在描述里给。 -->
-                  <div
+                  <!-- 流内状态(R6)。宿主认**一种**类型就够了 —— 新增状态不需要
+                       再改这里,label、归属与计时都由投递方在描述里给。走秒的时钟
+                       在子组件里,所以没有状态条时它根本不存在。 -->
+                  <PluginStatusLine
                     v-else-if="part.type === 'plugin-status'"
-                    class="plugin-status-line"
-                    role="status"
-                  >
-                    <span class="plugin-status-dot" />
-                    <span class="plugin-status-label">{{ part.label }}</span>
-                    <span class="plugin-status-owner">{{ part.pluginId }}</span>
-                  </div>
+                    :part="part"
+                  />
                   <PromptReferenceCard
                     v-else-if="part.type === 'prompt-ref'"
                     :title="part.title"
@@ -266,6 +262,7 @@ import PromptReferenceCard from '@/components/common/PromptReferenceCard.vue'
 import MessageMarkdown from './MessageMarkdown.vue'
 import MessageInlineEdit from './MessageInlineEdit.vue'
 import ProcessRail from './ProcessRail.vue'
+import PluginStatusLine from './PluginStatusLine.vue'
 import type { ToolCall, Step, ContentPart } from '@/types'
 import type { AnchorRect } from '@/composables/floating/compute-position'
 import { stepFromToolCall } from '@/stores/helpers/tool-step-view'
@@ -766,48 +763,8 @@ html[data-theme='light'] .bubble.assistant ::selection {
   transition: none;
 }
 
-/* 插件流状态:一行低调的指示器,不抢正文。 */
-.plugin-status-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 2px 0;
-  font-size: 12px;
-  color: var(--ui-text-muted-fg);
-}
-
-.plugin-status-dot {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ui-accent-primary-fg);
-  animation: plugin-status-pulse 1.4s ease-in-out infinite;
-}
-
-.plugin-status-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plugin-status-owner {
-  flex-shrink: 0;
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  opacity: 0.7;
-}
-
-@keyframes plugin-status-pulse {
-  0%, 100% { opacity: 0.35; }
-  50% { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .plugin-status-dot { animation: none; }
-}
+/* 流内状态那一行的样式随组件搬到了 PluginStatusLine.vue —— scoped 样式跟着它走,
+   留在这里只会因为 scoped 属性对不上而静默失效。 */
 
 .image-generation-skeleton {
   position: relative;
