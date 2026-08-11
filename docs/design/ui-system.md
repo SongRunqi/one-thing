@@ -378,8 +378,18 @@ node scripts/ui-style-check.mjs > docs/audit/ui-baseline-<date>.txt   # 记得�
 
 插件可以给主窗铺一张整窗背景图(`.app-background-layer`,`position:fixed` z0,
 App.vue)。**壁纸是全局行为,不是主内容区的局部效果** —— 所有表面都要按各自方式
-支持它。规则全文在 **`packages/renderer/styles/wallpaper.css`**(文件头注是唯一
-出处),这里只留查表卡。
+支持它。**2026-08-11(Surface v2·行为内置)之后,规则不再全住在一份文件里。** 行为长在
+原语,壁纸那一侧只剩"拨旋钮 / 记例外 / 存豁免档案":
+
+| 层 | 文件 | 管什么 |
+|---|---|---|
+| 态 token 自带公式 | `packages/renderer/styles/state-alpha.ts` + `state-alpha.css` | S 级。`.ts` 是**唯一的归档表**(哪枚 token 跟哪个旋钮),接在 `applyThemeVariables` 上;`.css` 是未加载主题时的同值兜底 |
+| 区域面自带公式 | `packages/renderer/styles/components.css` 四条 `.app-surface[data-surface=…]` | B 级。区域根声明档位就自带行为 |
+| 旋钮 + 例外 + 豁免 | `packages/renderer/styles/wallpaper.css` | 拨数;C / E 两级(还没有原语);具名例外清单;不参与的理由档案 |
+
+新态 token 落地时**只在 `state-alpha.ts` 加一行**就进了壁纸体系(旧结构要在三处
+各登记一次,漏一处就是一条"这块没被壁纸覆盖"的报障 —— G8-b 的 rail 窟窿即此)。
+`wallpaper.css` 的文件头注仍是六级语义与判例的唯一出处,这里只留查表卡。
 
 ### 6.1 六级分级表
 
@@ -388,8 +398,8 @@ App.vue)。**壁纸是全局行为,不是主内容区的局部效果** —— �
 | 级 | 面 | 处理 |
 |---|---|---|
 | **A·让位** | 纯布局包装,面上一个字都不读(`.app-content` / `.app-main-region` / `.workspace-view-stack` / `.sidebar-header` / rail) | `background: transparent` |
-| **B·纱** | 区域 chrome:侧栏、右侧工作台(`.right-workbench`)、media / workspace 面板(`.media-panel`) | `var(--wallpaper-veil)`(18%) |
-| **S·态** | hover / active / selected 等交互反馈,**全窗所有 chrome 按钮**(侧栏折叠/搜索/设置钮、页签条、复合器工具条…) | 半透明 mix(hover 45% / active 60%) |
+| **B·纱** | 区域 chrome:侧栏、右侧工作台(`.right-workbench`)、media / workspace 面板(`.media-panel`) | **原语自带**:`color-mix(材质 × --ot-surface-alpha)`(18%) |
+| **S·态** | hover / active / selected 等交互反馈,**全窗所有 chrome 按钮**(侧栏折叠/搜索/设置钮、页签条、复合器工具条…) | **token 自带**:`color-mix(墨 × --ot-state-alpha / --ot-active-alpha)`(45% / 60%) |
 | **C·可读卡** | 内容面:代码块、代码头、表头 | `--wallpaper-card-alpha`(88%) |
 | **E·磨砂** | 浮层家族:菜单 / popover / 下拉 / @面板 / 会话预览卡 / 表情面板 / ⋯ 菜单 / media inspector 抽屉 / 浮层侧栏 | 半透明底(76%)+ `backdrop-filter: blur(14px)` |
 | **×·窗外不适用** | 设置窗 / 搜索窗 / todo 窗 / 图片预览窗 / 语音运行时窗 | 各自独立 BrowserWindow,根类不挂,整份文件对它们是死的 |
@@ -402,19 +412,27 @@ App.vue)。**壁纸是全局行为,不是主内容区的局部效果** —— �
 磨砂收益为零)、全屏遮罩类(`image-preview` / `evals-workbench` / `voice-overlay`,
 职责本来就是盖住一切)。
 
-### 6.2 六个旋钮(唯一出处:`html.has-wallpaper body`)
+### 6.2 六个旋钮
 
-| 旋钮 | 值 | 管谁 |
-|---|---|---|
-| `--wallpaper-veil-alpha` | `18%` | B 级纱 |
-| `--wallpaper-card-alpha` | `88%` | C 级可读卡 |
-| `--wallpaper-hover-alpha` | `45%` | S 级 hover |
-| `--wallpaper-active-alpha` | `60%` | S 级 active / selected |
-| `--wallpaper-frost-alpha` | `76%` | E 级磨砂底浓度 |
-| `--wallpaper-frost-blur` | `14px` | E 级磨砂半径 |
+| 旋钮 | 值 | 拨在哪 | 管谁 |
+|---|---|---|---|
+| `--ot-surface-alpha` | `18%` | `html.has-wallpaper` | B 级纱(区域面原语在读) |
+| `--wallpaper-card-alpha` | `88%` | `html.has-wallpaper body` | C 级可读卡 |
+| `--ot-state-alpha` | `45%` | `html.has-wallpaper` | S 级 hover(态 token 在读) |
+| `--ot-active-alpha` | `60%` | `html.has-wallpaper` | S 级 active / selected |
+| `--wallpaper-frost-alpha` | `58%` | `html.has-wallpaper body` | E 级磨砂底浓度 |
+| `--wallpaper-frost-blur` | `6px` | `html.has-wallpaper body` | E 级磨砂半径 |
 
 同级全体只认同一个数 —— 用户一处调、处处齐。"侧栏和主区观感不一致"就是各写各的
 浓度造出来的。
+
+**S / B 两级的旋钮拨在 `html` 而不是 `body`,是被公式的定义位决定的**:它们的公式
+写在 token / 原语自己的定义里,而自定义属性的 `var()` 在**定义元素**上解析 ——
+态 token 定义在 `:root`(= `html`),旋钮就必须在同一个元素上,类一挂才会重算。
+C / E 两级还没有原语,沿用旧的 body 快照层(见 6.4 纪律 3)。
+
+B 级另有一枚**材质**旋钮 `--ot-region-ink`:四档区域面在壁纸下统一取页面底的墨。
+那是 B 级从一开始的裁决("同级全体只认同一个数"),不是第七个浓度旋钮。
 
 ### 6.3 作用域根:`html.has-wallpaper`
 
@@ -437,10 +455,16 @@ teleport 面都自然进入体系。
    面,也是 `.session-preview` / `.app-select-dropdown` 的浮层面 —— 在 body 上改一次
    就把浮层一并稀释成 18% 的纱。
 
-2. **自定义属性按计算值继承,派生 token 不会自动跟随。**
+2. **自定义属性按计算值继承 —— 两个方向都要记。**
    `--ui-sidebar-action-hover-bg: var(--ui-state-hover-bg)` 定义在 `:root`,它在
    `:root` 处就被算成一个**实色**并按计算值继承下去;在 `.app-shell` 上改
    `--ui-state-hover-bg` **不会**让它重算。派生 token 必须逐条列名。
+
+   Surface v2 反过来**吃**这条法则:把公式写进定义本身
+   (`color-mix(墨 var(--旋钮, 100%), transparent)`),旋钮拨在**同一个元素**上,
+   于是类一挂即重算,一处拨、全窗齐。推论(实测,别照直觉写):**在后代上改旋钮
+   是没用的** —— 浮层里要"反馈用满",只能在浮层上把 token 本身重新声明成
+   `var(--ot-ink-*)`,不是拨一下 `--ot-state-alpha`。
    同理:一枚 token 若在 X 元素上声明为 `var(--Y)`,只有在 **X 自己或它的祖先**上
    改 `--Y` 才推得动它 —— 这就是 E 级块里 `--app-popover-bg` / `--composer-extension-surface`
    **不用列**(声明在浮层自己身上,改上游即可,还保得住族色区分)而
@@ -451,9 +475,16 @@ teleport 面都自然进入体系。
    (**静默失效,真机才看得见**)。主题 token(`--ui-*`)定义在 `:root` / `html` 上;
    所有 teleport 出去的浮层是 `body` 的子元素。于是 **`body` 是唯一同时满足两条的层**
    ——在 `:root` 之下(读得到主题原值),在每一张要治的面之上(含全部浮层)。
-   所以:旋钮 + `*-ink` 快照 + 派生值住在 `html.has-wallpaper body`,token 覆写一律
-   住在 body 的**后代**选择器上。**禁止**把任何 `--ui-*` 覆写写到
-   `html.has-wallpaper` 或 `html.has-wallpaper body` 上。
+   所以:C / E 两级的旋钮 + `*-ink` 快照 + 派生值住在 `html.has-wallpaper body`,
+   token 覆写一律住在 body 的**后代**选择器上。
+
+   **S / B 两级已经不需要这一层了**:主题产出的原值直接以 `--ot-ink-*` 这个**异名**
+   存在(`state-alpha.ts` / `state-alpha.css`),公式读墨、写成品,两个名字不同,
+   环从结构上不存在。`wallpaper-state-coverage.test.ts` 有一条棘轮盯着旧快照层
+   别借尸还魂。
+
+   仍然生效的禁令:**不要把 `--ui-*` 覆写写到 `html.has-wallpaper` 上** —— 那些
+   token 的定义就在同一个元素(`:root`),覆写即成环。放在那里的只能是 `--ot-*` 旋钮。
 
 ### 6.5 性能红线
 
@@ -467,6 +498,13 @@ teleport 面都自然进入体系。
 
 背景层本身同样纯静态:不做 rAF、不加 `transition`,`blur` 只在插件真的要了它的
 时候才加(半径为 0 的 `filter` 仍然要付独立合成层那笔代价)。
+
+**实测推论(2026-08-11,把 blur 内置进浮层壳的方案就是被这条否掉的)**:
+`backdrop-filter: blur(0px)` **不等于** `none`。任何非 `none` 的值都会建立层叠
+上下文,并让元素成为 fixed / absolute 后代的**包含块**(实测:壳内 fixed 子元素的
+视口坐标从 `(0,0)` 变成壳的位置)。所以"缺省 0 = 无成本"的写法是错的 —— 要把磨砂
+内置到浮层原语里,唯一安全形态是 `backdrop-filter: var(--ot-frost-filter, none)`,
+缺省真的解析成 `none`。
 
 ### 6.6 区域面档位(G7-1,2026-08-11)
 
@@ -499,6 +537,11 @@ scoped CSS 里的一句 `background: var(--ui-surface-xxx-bg)`,外面既读不�
 - **给 G7-2 的钩子**:章一盖,`wallpaper.css` 就能从类名枚举退化成
   `html.has-wallpaper .app-surface[data-surface='panel'] { … }` 这样的通用规则,
   新面**用了原语就自动在册**。本期 `wallpaper.css` 一个字不动。
+- **Surface v2(2026-08-11)再走一步**:连那四条通用规则也从 `wallpaper.css` 删了 ——
+  档位规则自己带公式(`color-mix(var(--ot-region-ink, 自己的墨) var(--ot-surface-alpha, 100%), transparent)`),
+  壁纸只在根上拨两个数。公式落在**自定义属性**上再拿它画 `background`,不是只画
+  `background`:区域根的整棵子树都在读同一枚面 token,只画底会让子树里的面留在
+  实色 —— 那正是壁纸报障的原型。
 
 **两处判了不接,理由记在这里**(不是漏网):
 
@@ -526,8 +569,9 @@ G8-c 同时否掉了"区域 ink 中介层"方案(再造一枚 `--ui-region-app-b
 四档各配一枚平行 token,再长期背一个"面 token 与中介 token 该引哪个"的新坑。
 
 一句话钉死这条边界:**能被档位表收的是面,不是根,也不是态。**根级大区归 A 级·让位,
-态 token 归 S 级逐条列名(并由 `styles/__tests__/wallpaper-state-coverage.test.ts`
-钉住"快照 / 覆写 / E 级回满"三处齐全),档位表只服务"有自己的面、且要被壁纸认出来"
+态 token 归 `styles/state-alpha.ts` 的归档表(Surface v2 之后只需登记一处;
+`styles/__tests__/wallpaper-state-coverage.test.ts` 钉住"在册 / 自带公式 / 浮层回满"),
+档位表只服务"有自己的面、且要被壁纸认出来"
 的区域根。
 
 ### 6.7 壁纸认章不认类名(G7-2,2026-08-11)

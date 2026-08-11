@@ -1,20 +1,29 @@
 /* ══════════════════════════════════════════════════════════════════════════
-   壁纸模式(wallpaper mode)—— 全窗表面覆盖体系
+   壁纸模式(wallpaper mode)—— 旋钮 + 例外清单 + 豁免档案
    ──────────────────────────────────────────────────────────────────────────
-   插件背景层(`.app-background-layer`,App.vue)铺满整窗之后,真正的问题不是
-   "哪个元素忘了透明",而是**每张面上读不读字、读多少**。按这个问出六档,新面
-   进树时**先定级再落规则**,别逐个打地鼠:
+   **2026-08-11(Surface v2·行为内置)之后,这份文件不再是"表面覆盖体系"本身。**
 
+   旧形态是一本 600 行的中央规则本:先在 `body` 上给每枚 token 拍 ink 快照,再兑出
+   一枚 `--wallpaper-*` 半透明值,最后逐条覆写 `--ui-*`。三层里漏任何一层就是一个
+   "这块没被壁纸覆盖"的报障,而每加一枚新 token 都得在三处各登记一次。
+
+   现在行为长在**原语**里(dogfooding 纪律二,`docs/design/plugin-dogfooding-2026-08.md`):
+     · 态 token 自带公式 —— `styles/state-alpha.ts`(产出层归档表)+
+       `styles/state-alpha.css`(静态兜底)。
+     · 区域面自带公式 —— `styles/components.css` 的四条 `.app-surface[data-surface=…]`。
+   壁纸这一侧只做三件事:**拨旋钮 / 记例外 / 存豁免档案**。用了原语的面不是"被规则
+   照顾到",是**天生会** —— 新面盖上章的同一刻就在册,不必回这里加行。
+
+   六档语义不变(新面进树时先定级):
      A 级·让位   纯布局包装,面上一个字都不读       → background: transparent
      B 级·纱     区域 chrome(侧栏 / 顶栏 / 工作台 / media 面板)
-                                                   → var(--wallpaper-veil)
-                 (区域面这一档**已不再枚举类名**:区域根声明 `surface="<tier>"`
-                  就自动在册,见下面 B 级块首的通用规则 + 例外清单)
+                                                   → 原语自带,拨 --ot-surface-alpha
      S 级·态     hover / active / selected 等交互反馈,全窗所有 chrome 按钮
-                                                   → 半透明 mix(45% / 60%)
-     C 级·可读卡 内容面(代码块 / 表头 / 引用 / 工具卡)→ --wallpaper-card-alpha
+                                                   → token 自带,拨 --ot-state-alpha /
+                                                     --ot-active-alpha
+     C 级·可读卡 内容面(代码块 / 表头 / 引用 / 工具卡)→ 仍在本文件(无原语,见该块注)
      E 级·磨砂   浮层家族(菜单 / popover / 下拉 / 会话预览卡 / 抽屉)
-                                                   → 半透明底 + backdrop blur
+                                                   → 仍在本文件(枚举制,见性能红线)
      ×  ·不适用  辅助窗口(设置 / 搜索 / todo / 图片预览)—— 那些窗不铺壁纸
 
    2026-08-10 的裁决把旧 D 级("弹层永不透")推翻了:**壁纸是全局行为,所有表面
@@ -26,41 +35,54 @@
    禁止 `transition` 它 —— 逐帧重算模糊就是掉帧本身。E 级清单是**枚举制**,
    新面进表要先问一句"它同时在屏的兄弟有几个"。
 
+   红线的一条实测推论(2026-08-11,曾计划把 blur 内置进浮层壳时验的):
+   **`backdrop-filter: blur(0px)` 不等于 `none`。** 任何非 `none` 的值都会建立层叠
+   上下文,并让元素成为 fixed/absolute 后代的**包含块**(实测:壳内 fixed 子元素的
+   视口坐标从 (0,0) 变成壳的位置)。所以"缺省 0 = 无成本"的写法是错的;要把它内置,
+   唯一安全形态是 `backdrop-filter: var(--ot-frost-filter, none)` —— 缺省真的是 none。
+
    ── 调法:六个旋钮,改这六个数,全窗一起变 ───────────────────────────────
-     --wallpaper-veil-alpha    B 级纱的浓度
+     --ot-surface-alpha        B 级纱的浓度(根上,区域面原语在读)
      --wallpaper-card-alpha    C 级可读卡的浓度
-     --wallpaper-hover-alpha   S 级 hover 反馈的浓度
-     --wallpaper-active-alpha  S 级 active / selected 反馈的浓度
+     --ot-state-alpha          S 级 hover 反馈的浓度(根上,态 token 在读)
+     --ot-active-alpha         S 级 active / selected 反馈的浓度(根上)
      --wallpaper-frost-alpha   E 级磨砂底的浓度
      --wallpaper-frost-blur    E 级磨砂的模糊半径
    同级全体只认同一个数 —— 用户一处调、处处齐,"侧栏和主区观感不一致"就是各写
-   各的浓度造出来的。
+   各的浓度造出来的。B 级的"材质"另有一枚 `--ot-region-ink`:四档区域面在壁纸下
+   统一取页面底的墨,那是 B 级从一开始的裁决,不是第七个浓度旋钮。
 
    ── 实现纪律 1:层级优先 token ───────────────────────────────────────────
    能覆写 CSS 变量的绝不写类名规则 —— 覆写 `--ui-sidebar-surface-bg` 一次,
    `.sidebar` 本体 / `.sidebar-header` / 会话分组 pill / 以及任何**尚未被枚举到**
    的后代面会一起跟随。类名规则只留给变量够不着的面。
 
-   ── 实现纪律 2:自定义属性按**计算值**继承,别指望派生 token 自动跟随 ──────
-   `--ui-sidebar-action-hover-bg: var(--ui-state-hover-bg)` 定义在 `:root`,它在
-   `:root` 处就被算成一个**实色**并按计算值继承下去。在 `.app-shell` 上改
-   `--ui-state-hover-bg` **不会**让它重算 —— 派生 token 必须逐条列出来(见 S 级)。
-   同理:一枚 token 若在 X 元素上被声明为 `var(--Y)`,那么只有在 **X 自己或它的
-   祖先**上改 `--Y` 才推得动它。E 级里 `--todo-popover-bg` / `--app-menu-bg` 要单
-   独列名,就是因为它们声明在浮层的**祖先**上,改浮层自己的上游 token 够不着。
+   ── 实现纪律 2:自定义属性按**计算值**继承 ───────────────────────────────
+   一枚 token 的 `var()` 在**定义元素**上解析,并按计算值往下继承。两个方向都要记:
+   · 旧坑:`--ui-sidebar-action-hover-bg: var(--ui-state-hover-bg)` 定义在 `:root`,
+     在 `.app-shell` 上改上游**不会**让它重算 —— 派生 token 必须逐条列名。
+   · 新用法(Surface v2 反过来吃这条法则):把公式写进定义本身
+     (`color-mix(墨 var(--旋钮, 100%), transparent)`),旋钮拨在**同一个元素**
+     (`:root` = `html.has-wallpaper`)上,类一挂即重算,一处拨、全窗齐。
+   · 推论(实测,别照直觉写):在**后代**上改旋钮是**没用**的。浮层里要"反馈用满",
+     只能在浮层上把 token 本身重新声明成 `var(--ot-ink-*)`(见下面的浮层回满块),
+     不是拨一下 `--ot-state-alpha`。
+   · `--todo-popover-bg` / `--app-menu-bg` 在 E 级里要单独列名,同样是这条:它们声明
+     在浮层的**祖先**上,改浮层自己的上游 token 够不着。
 
-   ── 实现纪律 3:CSS 环坑 —— 快照层必须夹在"主题定义层"和"覆写层"之间 ──────
+   ── 实现纪律 3:CSS 环坑 —— 墨与成品必须异名 ─────────────────────────────
    自定义属性是惰性求值的,`--x: color-mix(…, var(--x) …)` 在同一元素上构成自引用
-   循环,按规范整条作废(**静默失效,真机才看得见**)。主题 token(`--ui-*`)定义
-   在 `:root` / `html` 上;所有 teleport 出去的浮层都是 `body` 的**子元素**。于是
-   `body` 是唯一同时满足这两条的层:
-     · 它在 `:root` 之下 —— `var(--ui-x)` 在这里读到的是主题原值;
-     · 它在每一张要治的面之上 —— 包括 `Teleport to="body"` 的整个浮层家族。
-   所以:**旋钮 + ink 快照 + 派生值住在 `html.has-wallpaper body`,token 覆写一律
-   住在 body 的后代选择器上**。快照在 body 处已被算成实色并按计算值继承下来,后代
-   再怎么覆写同名 token 都构不成环。
-   **禁止**把任何 `--ui-*` 覆写写到 `html.has-wallpaper` 或 `html.has-wallpaper body`
-   上 —— 那一刻整条纱/磨砂链会静默作废。
+   循环,按规范整条作废(**静默失效,真机才看得见**)。
+
+   旧解法是"在 `body` 上拍一层 ink 快照,把主题定义层和覆写层隔开"。行为内置之后
+   那一层**没有了**:主题产出的原值直接以 `--ot-ink-*` 这个**异名**存在
+   (`state-alpha.ts` / `state-alpha.css`),公式读墨、写成品,两个名字不同,环从
+   结构上不存在。所以本文件里也**不该再出现** `--wallpaper-*-ink: var(--ui-*)`
+   这样的快照行(`wallpaper-state-coverage.test.ts` 有一条棘轮盯着它别借尸还魂)。
+
+   仍然生效的一条禁令:**不要把 `--ui-*` 覆写写到 `html.has-wallpaper` 上** ——
+   那些 token 的定义就在同一个元素(`:root`),覆写即成环。放在那里的只能是
+   `--ot-*` 旋钮。
 
    ── 作用域根 ────────────────────────────────────────────────────────────
    根类 `html.has-wallpaper` 由 App.vue 的 watch 挂/摘(卸载时清理)。之所以是
@@ -71,8 +93,8 @@
    ════════════════════════════════════════════════════════════════════════ */
 
 /* ── S 级的旋钮:拨在**根**上(Surface v2·行为内置,2026-08-11)──────────────
-   态 token 的公式住在 token 自己的定义里(`styles/state-alpha.ts` 产出 +
-   `variables.css` 静态兜底),形如
+   态 token 的公式住在 token 自己的定义里(`styles/state-alpha.ts` 产出层 +
+   `styles/state-alpha.css` 静态兜底),形如
      `--ui-state-hover-bg: color-mix(in srgb, var(--ot-ink-state-hover-bg) var(--ot-state-alpha, 100%), transparent)`。
    定义位是 `:root`(= `html`),所以旋钮也必须拨在 `html` 上 —— 同一个元素,类一挂
    即重算;两个名字不同,不构成自引用环。缺省 100% = 实色 = 壁纸关闭时零变化。
@@ -93,15 +115,16 @@ html.has-wallpaper {
   --ot-surface-alpha: 18%;
 }
 
-/* ── 旋钮 + ink 快照 + 派生值(唯一一处)───────────────────────────────── */
+/* ── C / E 两级的旋钮与派生值(它们还没有原语,见各自块首注)────────────────
+   为什么这一层住在 `body` 而不是 `html`:下面几枚 `--wallpaper-*-ink` 读的是
+   `--ui-surface-*`,而 C / E 级的规则又会在后代上**覆写同名** token —— 隔一层
+   元素,读到的才是主题原值(实现纪律 3 的旧解法,在这两级仍然需要)。
+   S / B 两级已经不需要它了:它们的墨由 `--ot-ink-*` 异名承载。 */
 html.has-wallpaper body {
-  /* 两个旋钮(S 级两个与 B 级两个都已上移到根,见上) */
-  /* B 级的浓度只是根上那枚的别名 —— 下面 `--wallpaper-veil` 还有一个消费者
-     (侧栏例外块),留着这条别名比让它再抄一遍数字好。 */
+  /* B 级的浓度只是根上那枚的别名 —— `--wallpaper-veil` 还有一个消费者(侧栏例外
+     块),留着这条别名比让它再抄一遍数字好。 */
   --wallpaper-veil-alpha: var(--ot-surface-alpha);
   --wallpaper-card-alpha: 88%;
-  --wallpaper-hover-alpha: var(--ot-state-alpha);
-  --wallpaper-active-alpha: var(--ot-active-alpha);
   /* 磨砂底:76% 是"字压在插画上仍是纯色底质感"的下沿(深浅两套主题都量过);
      再稀就开始看见图案穿过字重。blur 14px 落在 12–16px 带的中间。 */
   /* 76% → 68% → 58%:两轮真机反馈递降,76% 在近白主题(菜单面 #ffffff)上肉眼即实色,
@@ -130,10 +153,6 @@ html.has-wallpaper body {
     var(--wallpaper-veil-ink) var(--wallpaper-veil-alpha),
     transparent
   );
-
-  /* S 级的整块派生值(14 枚 `--wallpaper-state-*` / `--wallpaper-tab-*` /
-     `--wallpaper-hover|active`)已随行为内置删除 —— 那 14 条 color-mix 现在长在
-     token 自己的定义里,浓度由根上的两个旋钮拨。 */
 
   /* ── E 级:一族一枚磨砂底。族色各自保留(菜单面比 floating 面暗一档是
      2026-08-09 拍板的既有语言),只是统一稀释到同一个 alpha。 ── */
@@ -223,7 +242,7 @@ html.has-wallpaper .chat {
 
    `app` / `elevated` 两档当前零住户是 G8-c 的**判决**而不是"还没轮到"(App.vue 四
    根与 `.sidebar` 都判不接,理由在那份判决里)。原语的规则天然惰性:章不存在就不
-   命中,第一张面盖上章的同一刻它就生效。
+   命中,第一张面盖上章的同一刻它就生效。 */
 
 /* ── 区域面里**仍然具名**的条目:剩 3 条,每条为什么还具名 ──────────────────
    枚举白名单已经作废,下面这些不是"还没迁的枚举项",是**例外清单**:
@@ -270,26 +289,10 @@ html.has-wallpaper .sidebar {
      写法照旧是"墨 × 旋钮",只是墨改从 `--ot-ink-*` 取(主题层产出的原值,与被
      覆写的成品 token 不同名,所以这里读它天然不成环,body 快照层不再需要)。
      E 级块里再回满,两处正交。 */
-  --ui-sidebar-item-hover-bg: color-mix(
-    in srgb,
-    var(--ot-ink-sidebar-item-hover-bg) var(--ot-state-alpha),
-    transparent
-  );
-  --ui-sidebar-item-active-bg: color-mix(
-    in srgb,
-    var(--ot-ink-sidebar-item-active-bg) var(--ot-active-alpha),
-    transparent
-  );
-  --ui-sidebar-rail-hover-bg: color-mix(
-    in srgb,
-    var(--ot-ink-sidebar-rail-hover-bg) var(--ot-state-alpha),
-    transparent
-  );
-  --ui-sidebar-rail-active-bg: color-mix(
-    in srgb,
-    var(--ot-ink-sidebar-rail-active-bg) var(--ot-active-alpha),
-    transparent
-  );
+  --ui-sidebar-item-hover-bg: color-mix(in srgb, var(--ot-ink-sidebar-item-hover-bg) var(--ot-state-alpha), transparent);
+  --ui-sidebar-item-active-bg: color-mix(in srgb, var(--ot-ink-sidebar-item-active-bg) var(--ot-active-alpha), transparent);
+  --ui-sidebar-rail-hover-bg: color-mix(in srgb, var(--ot-ink-sidebar-rail-hover-bg) var(--ot-state-alpha), transparent);
+  --ui-sidebar-rail-active-bg: color-mix(in srgb, var(--ot-ink-sidebar-rail-active-bg) var(--ot-active-alpha), transparent);
 }
 
 /* 分组 pill 静置时不再自己画底(真机二轮:与侧栏纱叠成 58% 复合浓度,用户判
@@ -354,7 +357,7 @@ html.has-wallpaper .right-workbench {
      的两档随之透气。 */
   --workbench-tool-card-bg: color-mix(
     in srgb,
-    var(--wallpaper-elevated-ink) var(--wallpaper-hover-alpha),
+    var(--wallpaper-elevated-ink) var(--ot-state-alpha),
     transparent
   );
 }
@@ -402,16 +405,8 @@ html.has-wallpaper .right-workbench :is(.browser-toolbar, .browser-panel) {
    各自跟随自己的墨。 */
 html.has-wallpaper .app-shell,
 html.has-wallpaper .app-floating-sidebar-host {
-  --ui-sidebar-action-hover-bg: color-mix(
-    in srgb,
-    var(--ot-ink-state-hover-bg) var(--ot-state-alpha),
-    transparent
-  );
-  --ui-tab-bar-item-active-bg: color-mix(
-    in srgb,
-    var(--ot-ink-state-selected-bg) var(--ot-active-alpha),
-    transparent
-  );
+  --ui-sidebar-action-hover-bg: color-mix(in srgb, var(--ot-ink-state-hover-bg) var(--ot-state-alpha), transparent);
+  --ui-tab-bar-item-active-bg: color-mix(in srgb, var(--ot-ink-state-selected-bg) var(--ot-active-alpha), transparent);
 }
 
 /* ══ C 级·可读卡 ═════════════════════════════════════════════════════════
