@@ -230,6 +230,85 @@ describe('InteractionCard 挂载', () => {
     expect(wrapper.text()).toContain('已回答')
   })
 
+  /**
+   * 用户原话:「它像是一个 message,不是一个弹窗」—— 待答的卡与一段普通消息之间
+   * 只差一条细边,没有任何一处在说「这里等着你」。信号必须画在卡上(它在流里是
+   * 对的,不搬出去做浮层),而且收场之后要一起撤走。
+   */
+  it('待答时带「需要你操作」的记号,收场之后记号撤走', () => {
+    const open = mount(InteractionCard, { props: { request: makeRequest() }, ...GLOBAL })
+    expect(open.get('[data-testid="interaction-todo-badge"]').text()).toBe('待你回答')
+    expect(open.get('.interaction-card').attributes('data-state')).toBe('open')
+
+    const settled = mount(InteractionCard, {
+      props: {
+        request: makeRequest(),
+        answer: { id: 'ask-1', outcome: 'answered', answers: { q1: { selected: ['暖'] } } },
+      },
+      ...GLOBAL,
+    })
+    expect(settled.find('[data-testid="interaction-todo-badge"]').exists()).toBe(false)
+  })
+
+  it('到点未结算时记号改口说「已超时」,而不是继续喊你回答', () => {
+    const wrapper = mount(InteractionCard, {
+      props: { request: makeRequest({ deadlineAt: T0 - 1 }) },
+      ...GLOBAL,
+    })
+    expect(wrapper.get('[data-testid="interaction-todo-badge"]').text()).toBe('已超时')
+  })
+
+  /**
+   * 用户原话第二句:「你同意了之后,这个弹框还在那里放着」。答完之后这张卡要收成
+   * 一条紧凑的已办记录:操作带整条撤掉、题干原文收起、备选只报个数、状态与时刻留下。
+   */
+  it('答完收成已办记录:操作带没了,题干收起,备选只报数,时刻留下', () => {
+    const wrapper = mount(InteractionCard, {
+      props: {
+        request: makeRequest(),
+        settledAt: T0 + 42_000,
+        answer: {
+          id: 'ask-1',
+          outcome: 'answered',
+          answers: { q1: { selected: ['暖'] }, q2: { selected: ['首页'] } },
+        },
+      },
+      ...GLOBAL,
+    })
+
+    // 交互控件一个不剩(整条脚也撤了,不留一条写着「已收场」的空带)。
+    expect(wrapper.find('[data-testid="interaction-submit"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="interaction-decline"]').exists()).toBe(false)
+    expect(wrapper.find('.interaction-foot').exists()).toBe(false)
+    expect(wrapper.find('.option').exists()).toBe(false)
+    expect(wrapper.find('.freetext-input').exists()).toBe(false)
+    // 题干原文收起,只留标题那一行。
+    expect(wrapper.find('.question-body').exists()).toBe(false)
+    expect(wrapper.text()).toContain('配色')
+    // 所选项醒目(带记号),未选的整组收起、只报个数。
+    expect(wrapper.get('[data-testid="interaction-answer-q1"]').text()).toBe('暖')
+    expect(wrapper.find('.answer-mark').exists()).toBe(true)
+    expect(wrapper.text()).toContain('未选 1 项')
+    // 「已回答」+ 时刻。
+    expect(wrapper.text()).toContain('已回答')
+    expect(wrapper.get('[data-testid="interaction-settled-at"]').text()).toMatch(/^\d{2}:\d{2}$/)
+  })
+
+  it('重新挂载(等同重开会话)仍然是已办态 —— 已办不靠组件里那点内存', () => {
+    const props = {
+      request: makeRequest(),
+      settledAt: T0 + 42_000,
+      answer: { id: 'ask-1', outcome: 'answered' as const, answers: { q1: { selected: ['暖'] } } },
+    }
+    const first = mount(InteractionCard, { props, ...GLOBAL })
+    first.unmount()
+    const again = mount(InteractionCard, { props, ...GLOBAL })
+
+    expect(again.get('.interaction-card').attributes('data-state')).toBe('answered')
+    expect(again.find('[data-testid="interaction-submit"]').exists()).toBe(false)
+    expect(again.get('[data-testid="interaction-answer-q1"]').text()).toBe('暖')
+  })
+
   it('超时收场的历史态把内核给模型的那句理由摆出来', () => {
     const wrapper = mount(InteractionCard, {
       props: {

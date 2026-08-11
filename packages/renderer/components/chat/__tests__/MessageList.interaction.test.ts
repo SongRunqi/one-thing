@@ -143,11 +143,30 @@ function ask(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   }
 }
 
-function mountList() {
+function mountList(messages: unknown[] = MESSAGES) {
   return mount(MessageList, {
-    props: { messages: MESSAGES as never, sessionId: 'session-1' },
+    props: { messages: messages as never, sessionId: 'session-1' },
     global: { stubs: { Teleport: true, Transition: false } },
   })
+}
+
+/**
+ * 一次答完的提问在消息里长这样(真机 `messages.jsonl` 原样):题面在 `arguments`,
+ * 答案在 CLI 念回来的那句 `result` 里。已办卡跨重载存活靠的就是这一条。
+ */
+function answeredAskToolCall(id = 'call-hist'): Record<string, unknown> {
+  return {
+    id,
+    toolId: 'AskUserQuestion',
+    toolName: 'AskUserQuestion',
+    status: 'completed',
+    timestamp: T0,
+    endTime: T0 + 9_000,
+    arguments: {
+      questions: [{ question: '用哪一套配色?', header: '配色', options: [{ label: '暖' }, { label: '冷' }] }],
+    },
+    result: 'Your questions have been answered: "用哪一套配色?"="暖". You can now continue.',
+  }
 }
 
 beforeEach(() => {
@@ -221,6 +240,56 @@ describe('MessageList: 提问卡归位', () => {
     await wrapper.get('[data-testid="interaction-decline"]').trigger('click')
     expect(mocks.interactions.decline).toHaveBeenCalledTimes(1)
     expect(mocks.interactions.respond).not.toHaveBeenCalled()
+  })
+
+  /**
+   * 重开会话 = 两本内存账都是空的(pending 反查回来没有,settled 那本从来不跨窗口)。
+   * 此时已办卡只能从消息里的那次工具调用推出来 —— 它是答案唯一的持久落点。
+   */
+  it('两本内存账都空时(等同重开会话),已办卡仍从消息里推得出来', () => {
+    const wrapper = mountList([
+      MESSAGES[0],
+      { ...MESSAGES[1], toolCalls: [answeredAskToolCall()] },
+      MESSAGES[2],
+    ])
+
+    const cards = wrapper.findAll('.interaction-card')
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.attributes('data-state')).toBe('answered')
+    expect(cards[0]!.get('[data-testid="interaction-answer-call-hist:0"]').text()).toBe('暖')
+    // 已办卡不带操作(这正是「答完了框还杵着」的那一条)。
+    expect(wrapper.find('[data-testid="interaction-submit"]').exists()).toBe(false)
+    // 归位仍按 toolCallId:贴在发起它的那条消息之后。
+    const rows = wrapper.findAll('.mock-message-item, .interaction-card')
+    const order = rows.map(row => (row.classes().includes('interaction-card') ? 'card' : row.attributes('data-message-id')))
+    expect(order).toEqual(['msg-1', 'msg-2', 'card', 'msg-3'])
+  })
+
+  it('活的记录赢:同一次提问不会既画一张活的又画一张推出来的', () => {
+    mocks.interactions.settled = [{
+      request: ask({ id: 'call-hist', toolCallId: 'call-hist' }),
+      answer: { id: 'call-hist', answers: { q1: { selected: ['冷'] } }, outcome: 'answered' },
+      settledAt: T0 + 5,
+    }]
+    const wrapper = mountList([
+      MESSAGES[0],
+      { ...MESSAGES[1], toolCalls: [answeredAskToolCall()] },
+      MESSAGES[2],
+    ])
+
+    const cards = wrapper.findAll('.interaction-card')
+    expect(cards).toHaveLength(1)
+    // 画的是活账那一份(它的答案是「冷」,推出来的那份是「暖」)。
+    expect(cards[0]!.get('[data-testid="interaction-answer-q1"]').text()).toBe('冷')
+  })
+
+  it('还没答完的那次提问不会被推成一张已办卡', () => {
+    const wrapper = mountList([
+      MESSAGES[0],
+      { ...MESSAGES[1], toolCalls: [{ ...answeredAskToolCall(), status: 'executing', result: undefined }] },
+      MESSAGES[2],
+    ])
+    expect(wrapper.findAll('.interaction-card')).toHaveLength(0)
   })
 
   it('会话上屏时补一次水(事件不会为重载的窗口补发)', async () => {

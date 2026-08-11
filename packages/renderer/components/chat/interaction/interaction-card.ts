@@ -108,6 +108,19 @@ export function formatCountdown(remainingMs: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+/**
+ * 已办记录上的时刻,只到分。
+ *
+ * 已办态要回答的是「这事什么时候收的场」,不是「第几毫秒」—— 秒以下的精度在一张
+ * 回看用的记录上只是噪声。拿不到时刻就返回空串,由模板决定要不要留位。
+ */
+export function formatSettledAt(timestamp: number | undefined): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return ''
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
 export function interactionOutcomeLabel(outcome: InteractionOutcome): string {
   switch (outcome) {
     case 'answered': return '已回答'

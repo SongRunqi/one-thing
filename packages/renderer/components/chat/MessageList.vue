@@ -106,6 +106,7 @@
             :key="card.request.id"
             :request="card.request"
             :answer="card.answer"
+            :settled-at="card.settledAt"
             @submit="handleInteractionSubmit"
             @decline="handleInteractionDecline"
           />
@@ -118,6 +119,7 @@
           :key="card.request.id"
           :request="card.request"
           :answer="card.answer"
+          :settled-at="card.settledAt"
           @submit="handleInteractionSubmit"
           @decline="handleInteractionDecline"
         />
@@ -221,6 +223,7 @@ import type {
 import MessageItem from './MessageItem.vue'
 import GoalSummaryCard from './message/GoalSummaryCard.vue'
 import InteractionCard from './interaction/InteractionCard.vue'
+import { deriveInteractionHistory } from './interaction/interaction-history'
 import RoomTimeCapsule from './message/RoomTimeCapsule.vue'
 import {
   EMPTY_ROOM_LAYOUT,
@@ -989,25 +992,48 @@ interface InteractionCardEntry {
   request: InteractionRequest
   /** 有它就是历史态。 */
   answer?: InteractionAnswer
+  /** 收场时刻(已办记录上的那个时间)。 */
+  settledAt?: number
 }
 
 /**
- * 这个会话上要画的所有提问卡:还欠着的 + 本窗口见过的已结算的,按提问时间排。
+ * 这个会话上要画的所有提问卡,按提问时间排。三个来源,各回答一个不同的问题:
  *
- * 两份都从账本读(pending 来自反查,settled 来自结算事件的转达),这里不记账,
- * 只把它们排成一列。
+ *  1. `pendingFor` —— 「此刻还欠谁一个回答」,来自反查,唯一真值;
+ *  2. `settledFor` —— 「刚才这条是怎么收的场」,来自结算事件的转达,只活在本窗口;
+ *  3. `deriveInteractionHistory` —— 「上一次(哪怕是上个月)我答的是什么」,从消息里
+ *     那次 AskUserQuestion 工具调用推出来,**跨重载、跨重开会话存活**。
+ *
+ * 第三个来源补的正是第二个来源的短命:窗口一重载,`settled` 那本账就空了,卡片整张
+ * 消失,用户回看不到自己选过哪条路。它不是第四本账 —— 它读的是消息本身,答案本来就
+ * 存在那里(见 `interaction-history.ts` 开头)。
+ *
+ * 活的记录赢:同一次提问在 1/2 里出现过,就不再从消息里推一份重复的。
  */
 const interactionCards = computed<InteractionCardEntry[]>(() => {
   const sessionId = props.sessionId
   if (!sessionId) return []
-  const entries: InteractionCardEntry[] = [
+  const live: InteractionCardEntry[] = [
     ...interactionsStore.pendingFor(sessionId).map(request => ({ request })),
     ...interactionsStore.settledFor(sessionId).map(entry => ({
       request: entry.request,
       answer: entry.answer,
+      settledAt: entry.settledAt,
     })),
   ]
-  return entries.sort((a, b) => a.request.createdAt - b.request.createdAt)
+  const liveKeys = new Set<string>()
+  for (const entry of live) {
+    liveKeys.add(entry.request.id)
+    if (entry.request.toolCallId) liveKeys.add(entry.request.toolCallId)
+  }
+  const derived = deriveInteractionHistory(props.messages, sessionId)
+    .filter(entry => !liveKeys.has(entry.request.id))
+    .map(entry => ({
+      request: entry.request,
+      answer: entry.answer,
+      settledAt: entry.settledAt,
+    }))
+  return [...live, ...derived].sort((a, b) => a.request.createdAt - b.request.createdAt)
 })
 
 /**

@@ -9,7 +9,19 @@
     <div class="interaction-row is-head">
       <span class="interaction-key">ask</span>
       <span class="interaction-value">
+        <!-- 待答时先摆一枚「需要你」的记号:这张卡在流里与消息并排,没有位置可以
+             代它说话(审批卡贴着 composer,位置本身就是信号),只能自己带上。 -->
+        <span
+          v-if="!isSettled"
+          class="interaction-badge"
+          data-testid="interaction-todo-badge"
+        >{{ isExpired ? '已超时' : '待你回答' }}</span>
         <span class="interaction-origin">{{ originLabel }}</span>
+        <span
+          v-if="isSettled && settledTimeLabel"
+          class="interaction-time"
+          data-testid="interaction-settled-at"
+        >{{ settledTimeLabel }}</span>
         <span
           class="interaction-countdown"
           :data-expired="isExpired ? 'true' : 'false'"
@@ -30,8 +42,10 @@
           class="question-flag"
         >可多选</span>
       </div>
+      <!-- 已办之后题干原文收起:留下的那行「标题 + 你选的」才是回看要的东西,
+           把整段问题连同选项一起摊着,就是这张卡「答完了还占着一屏」的由来。 -->
       <p
-        v-if="question.header?.trim()"
+        v-if="!isSettled && question.header?.trim()"
         class="question-body"
       >
         {{ question.question }}
@@ -79,13 +93,25 @@
         </div>
       </template>
 
-      <!-- 历史态:答过什么留在原地,卡片不消失 -->
+      <!-- 已办态:一行结论。选中的那条醒目,没选的那些整组收起 —— 一张回看用的
+           记录不需要把当初的备选再摆一遍。 -->
       <div
         v-else
-        class="answer-line"
-        :data-testid="`interaction-answer-${question.id}`"
+        class="answer-row"
       >
-        {{ summarizeAnswer(answer?.answers?.[question.id]) || '—' }}
+        <span
+          v-if="answerText(question.id)"
+          class="answer-mark"
+          aria-hidden="true"
+        >✓</span>
+        <span
+          class="answer-line"
+          :data-testid="`interaction-answer-${question.id}`"
+        >{{ answerText(question.id) || '—' }}</span>
+        <span
+          v-if="skippedCount(question) > 0"
+          class="answer-skipped"
+        >未选 {{ skippedCount(question) }} 项</span>
       </div>
     </div>
 
@@ -97,30 +123,33 @@
       <span class="interaction-value is-dim">{{ answer.reason }}</span>
     </div>
 
-    <div class="interaction-foot">
+    <!-- 收场之后整条操作带撤掉:留一条只写着「已收场」的空脚,正是用户说的
+         「答完了这个框还杵在那儿」。已办的状态与时刻在头一行,那里够了。 -->
+    <div
+      v-if="!isSettled"
+      class="interaction-foot"
+    >
       <span class="interaction-hint">{{ footHint }}</span>
-      <template v-if="!isSettled">
-        <Button
-          unstyled
-          class="interaction-btn skip"
-          native-type="button"
-          :disabled="isExpired"
-          data-testid="interaction-decline"
-          @click="emit('decline', request)"
-        >
-          SKIP
-        </Button>
-        <Button
-          unstyled
-          class="interaction-btn submit"
-          native-type="button"
-          :disabled="isExpired || !isComplete"
-          data-testid="interaction-submit"
-          @click="submit"
-        >
-          SEND
-        </Button>
-      </template>
+      <Button
+        unstyled
+        class="interaction-btn skip"
+        native-type="button"
+        :disabled="isExpired"
+        data-testid="interaction-decline"
+        @click="emit('decline', request)"
+      >
+        SKIP
+      </Button>
+      <Button
+        unstyled
+        class="interaction-btn submit"
+        native-type="button"
+        :disabled="isExpired || !isComplete"
+        data-testid="interaction-submit"
+        @click="submit"
+      >
+        SEND
+      </Button>
     </div>
   </div>
 </template>
@@ -164,6 +193,7 @@ import {
   buildAnswers,
   emptyDraft,
   formatCountdown,
+  formatSettledAt,
   interactionOutcomeLabel,
   isDraftComplete,
   questionTitle,
@@ -176,6 +206,8 @@ const props = defineProps<{
   request: InteractionRequest
   /** 给了它就是历史态(这次提问已经收场了)。 */
   answer?: InteractionAnswer
+  /** 收场的时刻。已办记录上要有它 —— 一条没有时间的记录对不了账。 */
+  settledAt?: number
 }>()
 
 const emit = defineEmits<{
@@ -210,8 +242,25 @@ const statusLabel = computed(() => {
   return formatCountdown(remainingMs.value)
 })
 
+const settledTimeLabel = computed(() => formatSettledAt(props.settledAt))
+
+/** 已办那一行的正文。抽出来是为了让「有没有答案」这件事只判一次(记号跟着它走)。 */
+function answerText(questionId: string): string {
+  return summarizeAnswer(props.answer?.answers?.[questionId])
+}
+
+/**
+ * 这题当初还摆过几个没选的选项。
+ *
+ * 只报数不列出来:回看要的是「我选了哪个」,备选摊开只会把已办记录重新撑成一屏 ——
+ * 但完全不提又等于假装当初只有一个选择,数字是这两者之间那条便宜的中间道。
+ */
+function skippedCount(question: InteractionQuestion): number {
+  const selected = props.answer?.answers?.[question.id]?.selected ?? []
+  return Math.max(0, question.options.length - selected.length)
+}
+
 const footHint = computed(() => {
-  if (isSettled.value) return '已收场,记录留在这里'
   if (isExpired.value) return '已超时,等待后端结算'
   const answered = props.request.questions.filter(q => {
     const entry = draft.value[q.id]
@@ -291,9 +340,33 @@ function submit(): void {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--interaction-frame);
+  border-left: 1px solid var(--interaction-frame);
   border-radius: var(--radius-xs, 4px);
   background: transparent;
   overflow: hidden;
+}
+
+/* 收场之后最后一格不再拖一条分隔线 —— 那条线原本是给下一格用的,而已办卡没有下一格。 */
+.interaction-card > *:last-child {
+  border-bottom: 0;
+}
+
+/**
+ * 「还等你」的形态信号。
+ *
+ * 审批卡不需要这一层:它长在 composer 上方,位置本身就说明了「现在轮到你」。提问卡
+ * 在流里(那是对的 —— 上下文就在旁边),于是必须自己带信号,否则它与一段普通消息
+ * 之间只差一条细边。三样都从既有 token 取,不发明新语言:一道左缘、一层待办底、
+ * 一枚记号。收场之后三样一起撤走,已办记录该是安静的。
+ */
+.interaction-card[data-state='open'],
+.interaction-card[data-state='expired'] {
+  border-left: 2px solid var(--interaction-edge);
+}
+
+.interaction-card[data-state='open'] .interaction-row.is-head,
+.interaction-card[data-state='expired'] .interaction-row.is-head {
+  background: var(--interaction-tint);
 }
 
 .interaction-card[data-state='expired'],
@@ -345,12 +418,32 @@ function submit(): void {
   color: var(--ui-text-muted-fg);
 }
 
+.interaction-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--interaction-edge);
+  border-radius: var(--radius-xs, 4px);
+  background: var(--interaction-tint);
+  color: var(--interaction-ink);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
 .interaction-origin {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.interaction-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .interaction-countdown {
@@ -488,11 +581,44 @@ textarea.freetext-input:focus {
   background: var(--ui-state-hover-bg);
 }
 
+/* 已办的一行:记号 + 结论 + 一句「还有几项没选」。整行只有结论是亮的。 */
+.answer-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.answer-mark {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--interaction-ink);
+}
+
 .answer-line {
+  min-width: 0;
   font-family: var(--font-mono, monospace);
   font-size: 11.5px;
   line-height: 1.6;
   color: var(--interaction-ink);
+}
+
+.answer-skipped {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
+}
+
+/* 已办卡整体收紧一格:同一张卡,答完之后不该还占着待答时的高度。 */
+.interaction-card[data-state='answered'] .interaction-question,
+.interaction-card[data-state='declined'] .interaction-question,
+.interaction-card[data-state='timeout'] .interaction-question,
+.interaction-card[data-state='aborted'] .interaction-question,
+.interaction-card[data-state='settled'] .interaction-question {
+  gap: 3px;
+  padding: 6px 11px 7px;
 }
 
 .interaction-foot {
