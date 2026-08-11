@@ -238,10 +238,25 @@ export function createCollabEngineWorkerPort(
         })
         store.updateSessionAgent(workSessionId, request.agentId)
 
-        // collab-team-v2 §7:工作台的 cwd 是群 folder —— 「产出放哪儿」因此不需要
-        // 任何新工具或新约定。
-        const workdir = ensureCollabRoomFolder(request.roomSessionId)
-        if (workdir) store.updateSessionWorkingDirectory(workSessionId, workdir)
+        /**
+         * collab-team-v2 §7:工作台的 cwd **默认**是群 folder —— 「产出放哪儿」
+         * 因此不需要任何新工具或新约定。
+         *
+         * 2026-08-11 止血 6(`docs/audit/self-hosting-gap-audit-2026-08-11.md`
+         * P0-4):这句以前是无条件的,于是**任务自己带的工作目录会被每一轮重新
+         * 盖回群 folder**。代价在自举场景里是致命的:一张「去仓库里改这个 bug」
+         * 的卡,worker 一开工就被切进 `~/.onething/collab-rooms/<id>/`,它根本
+         * 看不见那个仓库,只能在一间空屋子里摸索。
+         *
+         * 现在的口径与紧邻的 permissionMode 同一条:**缺席才给默认值**。会话上
+         * 已经有工作目录(续做时用户改过的、建卡时指定的),就是它;一条什么都
+         * 没有的新工作会话,才落到群 folder 上 —— 交付物语义因此一个字没变。
+         */
+        const boundWorkdir = store.getSession(workSessionId)?.workingDirectory?.trim()
+        if (!boundWorkdir) {
+          const workdir = ensureCollabRoomFolder(request.roomSessionId)
+          if (workdir) store.updateSessionWorkingDirectory(workSessionId, workdir)
+        }
 
         // 权限模式继承房间,**只在建会话的那一次**(P1-4):每次续做都重盖的话,
         // 用户手改过的那条会话会在下一轮被房间的值悄悄覆盖回去。
