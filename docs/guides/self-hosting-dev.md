@@ -58,8 +58,10 @@ git worktree remove ../start-electron-dev             # 拆掉(提交不丢,历�
 
 - 开发会话的 `/cd` 绑到 `start-electron-dev`;在**那个目录**里跑 `bun run dev:self` 起 B。
 - agent 改多少码 A 都感受不到(不同目录,HMR 监听不到)。
-- 让 A 用上新代码 = 发版:开发树里提交 → 主树 `git merge dev-self`(或 cherry-pick)→ 重启 A。
-  节奏完全由人控制。
+- 让 A 用上新代码 = 收版:`bun run self:pull`(主树里跑,= 合并 dev-self + 守卫)。
+  **A 是 dev 模式时连重启都不用管** —— electron-vite 监听着主树,合并落盘即自动重建 +
+  自动重启,renderer 走 HMR。整个"升级正在用的 onething"仪式就这一条命令,节奏由人控制。
+  (A 是打包版时才需要真发版:build + 安装,那是另一条低频路。)
 - 两个注意点:①同一条分支不能同时检出在两个 worktree 里,所以开发树单独一条分支
   (上面的 `-b dev-self`);②新目录要单独 `bun install`(node_modules 不共享,
   Electron 二进制下载一次要几分钟)。
