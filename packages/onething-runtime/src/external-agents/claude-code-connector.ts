@@ -115,6 +115,14 @@ export interface ClaudeCodeQueryOptions {
     append?: string
     excludeDynamicSections?: boolean
   }
+  /**
+   * SDK 的 `settingSources`(`sdk.d.ts:1873-1883`,取值 `SettingSource =
+   * 'user' | 'project' | 'local'`,见 `sdk.d.ts:6541`)。三者是**三个并列的源**:
+   * `~/.claude/settings.json` / `<cwd>/.claude/settings.json` /
+   * `<cwd>/.claude/settings.local.json` —— 'project' 不含 local。
+   * 缺席 = 全加载(CLI 默认),`[]` = 一份文件系统设置都不读。
+   */
+  settingSources?: ('user' | 'project' | 'local')[]
   canUseTool?: (
     toolName: string,
     input: Record<string, unknown>,
@@ -926,6 +934,26 @@ export function createClaudeCodeConnector(
           pathToClaudeCodeExecutable: options.executablePath,
           includePartialMessages: true,
           permissionMode: 'default',
+          /**
+           * **显式只收项目层**(P1-2,`docs/audit/claude-code-sdk-audit-2026-08-11.md`
+           * 「两不管地带」)。
+           *
+           * 不传这个字段时 SDK 加载**全部**文件系统设置,于是用户全局
+           * `~/.claude/settings.json` 里的 allow 规则在 **CLI 侧先行放行**:
+           * `canUseTool` 根本不被调用,onething 的审批面一个字都看不到。开发者
+           * 机器上那份白名单几乎人人都有,自举场景下这是致命的。所以:
+           *
+           *  1. **不含 `'user'`** —— 全局 allow 规则会绕过 onething 的审批,信任面
+           *     必须收在 `canUseTool` 这一处;不含 `'local'` 同理:
+           *     `.claude/settings.local.json` 不进版本库,是另一份看不见的白名单。
+           *     留下的 `'project'`(`<cwd>/.claude/settings.json`)在仓库里看得见、
+           *     评审得到,那才是可以谈信任的一层。
+           *  2. **必须含 `'project'`** —— 仓库 CLAUDE.md 的读取依赖它
+           *     (d.ts 原话:「Must include 'project' to load CLAUDE.md files」)。
+           *     此前 CLAUDE.md 是靠「默认全加载」白捡来的:SDK 默认值一变即静默
+           *     丢失。写成显式取值之后,自举刚需从白捡变成明拿。
+           */
+          settingSources: ['project'],
           ...(spawnEnv ? { env: spawnEnv } : {}),
           ...(hostTools ? { mcpServers: hostTools.mcpServers } : {}),
           /**

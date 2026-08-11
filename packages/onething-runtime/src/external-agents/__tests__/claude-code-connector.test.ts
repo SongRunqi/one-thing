@@ -161,6 +161,34 @@ describe('ClaudeCodeConnector', () => {
     expect(cost).toMatchObject({ providerData: { type: 'cost', costUSD: 0.0123 } })
   })
 
+  /**
+   * **P1-2**(`docs/audit/claude-code-sdk-audit-2026-08-11.md`「两不管地带」)。
+   *
+   * 缺席 = SDK 加载全部文件系统设置,用户全局 `~/.claude/settings.json` 的 allow
+   * 规则在 CLI 侧先行放行,`canUseTool` 不被调用 —— 审批面就此失明。而 CLAUDE.md
+   * 的读取又恰恰依赖 'project' 这一源。两件事咬在同一个字段上,所以它必须是显式的。
+   */
+  it('只声明 project 一层设置源:摘掉全局白名单的先行放行,同时保住仓库 CLAUDE.md', async () => {
+    const captured: { prompt: string; options: ClaudeCodeQueryOptions }[] = []
+    const connector = createClaudeCodeConnector({
+      queryFn: params => {
+        captured.push(params)
+        return replay([initMessage, { type: 'result', subtype: 'success', session_id: 's' }])
+      },
+    })
+    await collect(connector.streamTurn({
+      localSessionId: 'session-1',
+      prompt: 'hi',
+      cwd: '/tmp/project',
+      turn: 1,
+    }))
+
+    expect(captured[0].options.settingSources).toEqual(['project'])
+    // 'user' 与 'local' 都是**看不见的**白名单,一个都不收。
+    expect(captured[0].options.settingSources).not.toContain('user')
+    expect(captured[0].options.settingSources).not.toContain('local')
+  })
+
   it('routes canUseTool through the permission handler and denies on deny/throw/missing', async () => {
     const asks: ExternalAgentPermissionAsk[] = []
     let verdict: ExternalAgentPermissionDecision | Error = { behavior: 'allow' }
