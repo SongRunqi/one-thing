@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { agentContentToText } from '@onething/core/agent-loop'
 import type {
   CoreHistoryChatMessage,
   CoreHistoryToolCall,
@@ -170,5 +171,62 @@ describe('onething history messages', () => {
         reasoningContent: 'The user asked for cleanup.',
       },
     ])
+  })
+})
+
+/**
+ * An uploaded file is only reachable if the model is told where it lives —
+ * and it has to stay told on every later turn, because history is rebuilt
+ * from the stored messages each time.
+ */
+describe('attachment paths in rebuilt history', () => {
+  function messageWithUpload(): TestMessage {
+    return {
+      id: 'user-1',
+      role: 'user',
+      content: '看看这个',
+      attachments: [
+        {
+          id: 'att-1',
+          fileName: 'shot.png',
+          filePath: '/Users/me/.onething/media/images/asset-1.png',
+          mimeType: 'image/png',
+          mediaType: 'image',
+          size: 4096,
+          base64Data: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'),
+        },
+      ],
+    } as unknown as TestMessage
+  }
+
+  it('carries the path line into every rebuild of the history', () => {
+    const [entry] = buildOnethingHistoryMessages([messageWithUpload()])
+
+    expect(entry.role).toBe('user')
+    const content = entry.content
+    if (typeof content === 'string') throw new Error('expected multimodal content')
+    expect(content).toContainEqual({
+      type: 'text',
+      text: '[附件] shot.png → /Users/me/.onething/media/images/asset-1.png (image/png, 4.0 KB)',
+    })
+    // Supplement, not replacement: the picture still goes to a vision model.
+    expect(content.some(part => part.type === 'image')).toBe(true)
+  })
+
+  it('reaches an external agent, which reads only the text parts', () => {
+    const [entry] = buildOnethingHistoryMessages([messageWithUpload()])
+
+    const text = agentContentToText(
+      entry.content as unknown as Parameters<typeof agentContentToText>[0],
+    )
+
+    expect(text).toContain('看看这个')
+    expect(text).toContain('[附件] shot.png → /Users/me/.onething/media/images/asset-1.png')
+  })
+
+  it('leaves a message without attachments exactly as it was', () => {
+    const [entry] = buildOnethingHistoryMessages([message(1, 'user')])
+
+    expect(entry).toEqual({ role: 'user', content: 'user 1' })
   })
 })

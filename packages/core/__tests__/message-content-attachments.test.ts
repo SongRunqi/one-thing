@@ -253,13 +253,14 @@ describe("buildMessageContent attachments", () => {
 			}),
 		);
 
-		const inline = content[0];
+		// content[0] is the path block (see the dedicated cases below).
+		const inline = content[1];
 		if (inline.type !== "text") throw new Error("expected text part");
 		expect(inline.text).toContain(
 			'<attachment filename="page.html" path="/Users/me/docs/page.html" media_type="text/html">',
 		);
 
-		const filePart = content[1];
+		const filePart = content[2];
 		if (filePart.type !== "file") throw new Error("expected file part");
 		expect(filePart.path).toBe("/Users/me/docs/report.pdf");
 		expect(filePart.filename).toBe("report.pdf");
@@ -282,5 +283,176 @@ describe("buildMessageContent attachments", () => {
 		const inline = content[0];
 		if (inline.type !== "text") throw new Error("expected text part");
 		expect(inline.text).toContain(">\nclean\n</attachment>");
+	});
+});
+
+/**
+ * The user's report: "我在上传图片、上传文件的时候,AI 竟然会不知道它的路径。"
+ * The bytes reached the model, the address never did — so it could not hand
+ * the file to read/bash. One fact line per attachment fixes exactly that.
+ */
+describe("buildMessageContent attachment path lines", () => {
+	function pathBlock(content: ReturnType<typeof buildMessageContent>): string {
+		const first = parts(content).find(
+			(part): part is { type: "text"; text: string } =>
+				part.type === "text" && part.text.startsWith("[附件]"),
+		);
+		if (!first) throw new Error("expected an attachment path block");
+		return first.text;
+	}
+
+	it("states name, path, type and size for an image, and keeps the image part", () => {
+		const content = parts(
+			buildMessageContent({
+				content: "看看这张图",
+				attachments: [
+					attachment({
+						fileName: "shot.png",
+						filePath: "/Users/me/.onething/media/images/asset-1.png",
+						mimeType: "image/png",
+						mediaType: "image",
+						size: 2048,
+						base64Data: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64"),
+					}),
+				],
+			}),
+		);
+
+		// text → path block → image: the address arrives with the picture.
+		expect(content.map((part) => part.type)).toEqual(["text", "text", "image"]);
+		expect(pathBlock(content)).toBe(
+			"[附件] shot.png → /Users/me/.onething/media/images/asset-1.png (image/png, 2.0 KB)",
+		);
+	});
+
+	it("lands right after the user's text, before the payload parts", () => {
+		const content = parts(
+			buildMessageContent({
+				content: "hello",
+				attachments: [
+					attachment({
+						fileName: "a.pdf",
+						filePath: "/tmp/a.pdf",
+						mimeType: "application/pdf",
+						size: 10,
+						base64Data: Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00]).toString(
+							"base64",
+						),
+					}),
+				],
+			}),
+		);
+		const firstPart = content[0];
+		if (firstPart.type !== "text") throw new Error("expected text part");
+		expect(firstPart.text).toBe("hello");
+		expect(content[1]).toEqual({
+			type: "text",
+			text: "[附件] a.pdf → /tmp/a.pdf (application/pdf, 10 B)",
+		});
+	});
+
+	it("gives every attachment its own line, in order", () => {
+		const content = parts(
+			buildMessageContent({
+				content: "",
+				attachments: [
+					attachment({
+						fileName: "one.png",
+						filePath: "/tmp/one.png",
+						mimeType: "image/png",
+						mediaType: "image",
+						size: 1024 * 1024 * 3,
+						base64Data: Buffer.from([0x89]).toString("base64"),
+					}),
+					attachment({
+						fileName: "two.pdf",
+						filePath: "/tmp/two.pdf",
+						mimeType: "application/pdf",
+						size: 512,
+						base64Data: Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00]).toString(
+							"base64",
+						),
+					}),
+				],
+			}),
+		);
+		expect(pathBlock(content)).toBe(
+			"[附件] one.png → /tmp/one.png (image/png, 3.0 MB)\n" +
+				"[附件] two.pdf → /tmp/two.pdf (application/pdf, 512 B)",
+		);
+	});
+
+	it("says nothing about an attachment with no file on disk", () => {
+		const content = parts(
+			buildMessageContent({
+				content: "hi",
+				attachments: [
+					attachment({
+						fileName: "shot.png",
+						mimeType: "image/png",
+						mediaType: "image",
+						base64Data: Buffer.from([0x89, 0x50]).toString("base64"),
+					}),
+				],
+			}),
+		);
+		expect(
+			content.some(
+				(part) => part.type === "text" && part.text.includes("[附件]"),
+			),
+		).toBe(false);
+	});
+
+	it("leaves a message without attachments byte-identical", () => {
+		expect(buildMessageContent({ content: "hi" })).toBe("hi");
+		expect(buildMessageContent({ content: "hi", attachments: [] })).toBe("hi");
+	});
+
+	it("skips web-element picks — their provenance is the source URL", () => {
+		const content = parts(
+			buildMessageContent({
+				content: "",
+				attachments: [
+					attachment({
+						fileName: "element.png",
+						filePath: "/tmp/element.png",
+						mimeType: "image/png",
+						mediaType: "image",
+						sourceUrl: "https://example.com/page",
+						sourceTitle: "Example",
+						excerpt: "picked text",
+						base64Data: Buffer.from([0x89, 0x50]).toString("base64"),
+					}),
+				],
+			}),
+		);
+		expect(
+			content.some(
+				(part) => part.type === "text" && part.text.includes("[附件]"),
+			),
+		).toBe(false);
+		const provenance = content[0];
+		if (provenance.type !== "text") throw new Error("expected text part");
+		expect(provenance.text).toContain('source_url="https://example.com/page"');
+	});
+
+	it("is byte-stable across rebuilds, so the prompt cache survives", () => {
+		const message = {
+			content: "again",
+			attachments: [
+				attachment({
+					fileName: "a.pdf",
+					filePath: "/tmp/a.pdf",
+					mimeType: "application/pdf",
+					size: 3333,
+					base64Data: Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00]).toString(
+						"base64",
+					),
+				}),
+			],
+		};
+		expect(JSON.stringify(buildMessageContent(message))).toBe(
+			JSON.stringify(buildMessageContent(message)),
+		);
 	});
 });

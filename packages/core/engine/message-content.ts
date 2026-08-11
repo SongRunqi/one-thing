@@ -23,7 +23,13 @@ export type CoreAIMessageContent =
 
 export interface CoreMessageAttachment {
 	fileName?: string;
-	/** Absolute on-disk path when known (dropped/picked files). */
+	/**
+	 * Absolute on-disk path of a real file holding these bytes. Dropped/picked
+	 * files arrive with the user's own path; pasted files get the media
+	 * library's stored copy backfilled at ingest time (see
+	 * MediaLibraryService.ingestMessageAttachments), so every attachment that
+	 * carried bytes ends up addressable by the model's file tools.
+	 */
 	filePath?: string;
 	mimeType: string;
 	size?: number;
@@ -141,6 +147,53 @@ function webElementAttachmentTag(attachment: CoreMessageAttachment): string | nu
 	);
 }
 
+/**
+ * Human-readable size, deterministic by construction: history rebuilds must
+ * produce byte-identical content or the prompt cache dies every turn.
+ */
+function formatAttachmentSize(size?: number): string | null {
+	if (typeof size !== "number" || !Number.isFinite(size) || size < 0)
+		return null;
+	if (size < 1024) return `${Math.round(size)} B`;
+	if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+	return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * One fact line per attachment that exists as a real file on disk:
+ *
+ *   [附件] report.pdf → /Users/me/docs/report.pdf (application/pdf, 1.2 MB)
+ *
+ * The user's complaint this answers is literal — the model was handed image
+ * and file bytes with no way to name where they live, so it could not reach
+ * them with read/bash. Original name and path are both given: the model quotes
+ * the name back to the user and operates on the path.
+ *
+ * This is a SUPPLEMENT, never a replacement — the image/file/inline-text parts
+ * below are untouched, so a vision model still sees the picture.
+ *
+ * Web-element picks (embedded-browser) are skipped: their provenance is the
+ * source URL, already emitted by webElementAttachmentTag, and the stored
+ * screenshot path answers no question the user asked.
+ */
+function attachmentPathLines(
+	attachments: CoreMessageAttachment[],
+): string | null {
+	const lines: string[] = [];
+	for (const attachment of attachments) {
+		if (!attachment.filePath) continue;
+		if (attachment.sourceUrl || attachment.excerpt) continue;
+		const name = attachment.fileName || "attachment";
+		const meta = [attachment.mimeType, formatAttachmentSize(attachment.size)]
+			.filter((value): value is string => Boolean(value))
+			.join(", ");
+		lines.push(
+			`[附件] ${name} → ${attachment.filePath}${meta ? ` (${meta})` : ""}`,
+		);
+	}
+	return lines.length > 0 ? lines.join("\n") : null;
+}
+
 interface InlineTextAttachment {
 	text: string;
 	consumedChars: number;
@@ -205,6 +258,13 @@ export function buildMessageContent(
 
 	if (message.content) {
 		contentParts.push({ type: "text", text: message.content });
+	}
+
+	// Immediately after the user's own text, before the payload parts: the
+	// model reads "here is what I attached and where it lives" as one thought.
+	const pathLines = attachmentPathLines(message.attachments);
+	if (pathLines) {
+		contentParts.push({ type: "text", text: pathLines });
 	}
 
 	let inlineBudgetChars = INLINE_TEXT_ATTACHMENT_TOTAL_CHARS;

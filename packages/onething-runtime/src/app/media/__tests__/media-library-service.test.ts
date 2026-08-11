@@ -131,4 +131,68 @@ describe('MediaLibraryService', () => {
     expect(service.listAssets({ kind: 'image' })).toHaveLength(1)
     expect(service.listAssets({ kind: 'document' })).toHaveLength(1)
   })
+
+  /**
+   * A pasted image has no path of its own, yet its bytes are written here on
+   * every send. Handing that path back to the attachment is the whole reason
+   * the model can now `read` a file the user just pasted.
+   */
+  describe('ingestMessageAttachments backfills the on-disk path', () => {
+    it('gives a pasted attachment the stored copy it now has', () => {
+      const pasted = attachment()
+      expect(pasted.filePath).toBeUndefined()
+
+      const added = service.ingestMessageAttachments('session-1', 'message-1', 'user', [pasted])
+
+      expect(added).toBe(1)
+      expect(pasted.filePath).toBeTruthy()
+      expect(path.dirname(pasted.filePath!)).toBe(imagesDir)
+      expect(fs.existsSync(pasted.filePath!)).toBe(true)
+      expect(fs.readFileSync(pasted.filePath!).toString()).toBe('same-image')
+    })
+
+    it('never overwrites the path the user already gave us', () => {
+      const dropped = attachment({ filePath: '/Users/me/Desktop/original.png' })
+
+      service.ingestMessageAttachments('session-1', 'message-1', 'user', [dropped])
+
+      expect(dropped.filePath).toBe('/Users/me/Desktop/original.png')
+    })
+
+    it('backfills each of several attachments, documents included', () => {
+      const image = attachment()
+      const doc = attachment({
+        id: 'pdf-1',
+        fileName: 'brief.pdf',
+        mimeType: 'application/pdf',
+        mediaType: 'document',
+        base64Data: Buffer.from('pdf-bytes').toString('base64'),
+      })
+
+      service.ingestMessageAttachments('session-1', 'message-1', 'user', [image, doc])
+
+      expect(path.dirname(image.filePath!)).toBe(imagesDir)
+      expect(path.dirname(doc.filePath!)).toBe(filesDir)
+      expect(fs.existsSync(doc.filePath!)).toBe(true)
+    })
+
+    it('still resolves a path when the bytes dedupe onto an existing asset', () => {
+      const first = attachment()
+      service.ingestMessageAttachments('session-1', 'message-1', 'user', [first])
+
+      const second = attachment({ id: 'att-2' })
+      service.ingestMessageAttachments('session-1', 'message-2', 'user', [second])
+
+      expect(second.filePath).toBe(first.filePath)
+      expect(fs.existsSync(second.filePath!)).toBe(true)
+    })
+
+    it('leaves an attachment with no bytes alone', () => {
+      const empty = attachment({ base64Data: undefined })
+
+      service.ingestMessageAttachments('session-1', 'message-1', 'user', [empty])
+
+      expect(empty.filePath).toBeUndefined()
+    })
+  })
 })

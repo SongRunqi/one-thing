@@ -166,7 +166,12 @@ export type AttachmentMediaType = 'image' | 'document' | 'audio' | 'video' | 'fi
 export interface MessageAttachment {
   id: string
   fileName: string
-  filePath?: string          // Absolute on-disk path (dropped/picked files; pasted files have none)
+  // Absolute on-disk path of a real file holding these bytes. Dropped/picked
+  // files carry the user's own path from the start; pasted files have none
+  // until the engine ingests them, where the media library's stored copy is
+  // backfilled (MediaLibraryService.ingestMessageAttachments). Either way the
+  // model is told the path (buildMessageContent) so read/bash can reach it.
+  filePath?: string
   mimeType: string           // e.g., 'image/jpeg', 'application/pdf'
   size: number               // File size in bytes
   mediaType: AttachmentMediaType

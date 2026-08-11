@@ -70,6 +70,11 @@ export interface OnethingMessageAttachment {
   width?: number
   height?: number
   mediaAssetId?: string
+  /**
+   * Absolute on-disk path. Present from the start for dropped/picked files;
+   * backfilled from the stored asset for pasted ones (ingestMessageAttachments).
+   */
+  filePath?: string
 }
 
 export interface OnethingMediaMessage {
@@ -411,6 +416,15 @@ export class OnethingMediaLibraryService {
         const asset = this.ingestAttachment({ sessionId, messageId, role, attachment })
         if (asset) {
           attachment.mediaAssetId = asset.id
+          // A pasted file has no path of its own — but its bytes were just
+          // written to the media library, so a stable one exists. Adopting it
+          // here (never overwriting the user's own path, which is the better
+          // answer when it exists) is what lets the model reach the file with
+          // read/bash: this runs before store.addMessage, so the path is in
+          // the persisted message and survives every history rebuild.
+          if (!attachment.filePath && asset.filePath) {
+            attachment.filePath = asset.filePath
+          }
           added += 1
         }
       } catch (error) {
