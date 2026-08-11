@@ -337,7 +337,7 @@ function getClaudeCodeAgentFallbackModels(): OpenRouterModel[] {
 			200000,
 		),
 		resolve("claude-fable-5", "Claude Fable 5", 1000000),
-		resolve("claude-opus-4-8", "Claude Opus 4.8", 500000),
+		resolve("claude-opus-5", "Claude Opus 5", 500000),
 		resolve("claude-sonnet-5", "Claude Sonnet 5", 500000),
 		resolve("claude-haiku-4-5", "Claude Haiku 4.5", 200000),
 	];
