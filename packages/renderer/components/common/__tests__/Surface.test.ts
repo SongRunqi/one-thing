@@ -133,3 +133,44 @@ describe('区域根接入(逐处同一枚 token,只是改由原语画)', () => {
     expect(sidebar).not.toContain('data-surface')
   })
 })
+
+describe('壁纸认章不认类名(G7-2)', () => {
+  const WALLPAPER_CSS = readRepoFile('packages/renderer/styles/wallpaper.css')
+
+  it('covers all four tiers with one generic rule each', () => {
+    // 四档都在册(`app` / `elevated` 当前零住户 —— 预写的规则惰性,第一张面盖上
+    // 章的同一刻生效,不必回 wallpaper.css 补一行)。
+    const TIER_TOKEN: Record<SurfaceTier, string> = {
+      app: '--ui-surface-app-bg',
+      panel: '--ui-surface-panel-bg',
+      chat: '--ui-surface-chat-bg',
+      elevated: '--ui-surface-elevated-bg',
+    }
+    for (const tier of SURFACE_TIERS) {
+      expect(WALLPAPER_CSS).toContain(
+        `html.has-wallpaper .${SURFACE_CLASS}[data-surface='${tier}'] {`,
+      )
+      expect(WALLPAPER_CSS).toContain(`  ${TIER_TOKEN[tier]}: var(--wallpaper-veil);`)
+    }
+  })
+
+  it('never uses a bare [data-surface] selector', () => {
+    // 与 components.css 同一条理由:编辑器一族用同名属性的别的取值,裸属性选择器
+    // 会把 `document` / `todo-notes` 的面一并稀释成纱。
+    expect(WALLPAPER_CSS.match(/(^|[\s,{}])\[data-surface/g)).toBeNull()
+  })
+
+  it('drops the two class-name entries the generic rules replaced', () => {
+    // 枚举制在区域面这一档终结:两条具名覆写不该再存在,否则就是一处两治。
+    expect(WALLPAPER_CSS).not.toContain('.right-workbench {\n  --ui-surface-panel-bg:')
+    expect(WALLPAPER_CSS).not.toMatch(/html\.has-wallpaper \.media-panel \{/)
+  })
+
+  it('keeps the bench-only patches named (they read other tokens)', () => {
+    // 例外清单第 2 条:台面**里**的内容面读的不是 panel 那一枚,档位推不动它们。
+    expect(WALLPAPER_CSS).toContain('html.has-wallpaper .right-workbench {')
+    for (const token of ['--ui-surface-elevated-bg', '--ui-surface-app-bg', '--workbench-tool-card-bg']) {
+      expect(WALLPAPER_CSS).toContain(`  ${token}: color-mix(`)
+    }
+  })
+})

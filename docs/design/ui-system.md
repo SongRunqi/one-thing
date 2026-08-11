@@ -494,3 +494,53 @@ scoped CSS 里的一句 `background: var(--ui-surface-xxx-bg)`,外面既读不�
   所有读这枚 token 的后代面,而 sidebar 自己的底纹丝不动 —— 比不盖章更坏。正确的
   并档时机是 G8(私有 token 岛评估)把区域墨阶收进档位表之后,届时它拿到的是自己的
   档位名,而不是借来的 `app`。
+
+### 6.7 壁纸认章不认类名(G7-2,2026-08-11)
+
+G7-1 盖的章在这一刀兑现:`wallpaper.css` 的区域面从**类名枚举**退成四条通用规则。
+
+```
+html.has-wallpaper .right-workbench { --ui-surface-panel-bg: var(--wallpaper-veil); … }
+html.has-wallpaper .media-panel     { --ui-surface-chat-bg:  var(--wallpaper-veil); }
+        ↓
+html.has-wallpaper .app-surface[data-surface='panel']    { --ui-surface-panel-bg:    var(--wallpaper-veil); }
+html.has-wallpaper .app-surface[data-surface='chat']     { --ui-surface-chat-bg:     var(--wallpaper-veil); }
+html.has-wallpaper .app-surface[data-surface='app']      { --ui-surface-app-bg:      var(--wallpaper-veil); }  ← 预写,零住户
+html.has-wallpaper .app-surface[data-surface='elevated'] { --ui-surface-elevated-bg: var(--wallpaper-veil); }  ← 预写,零住户
+```
+
+**区域面这一档的枚举制就此终结** —— 新面声明 `surface="<tier>"` 就自动在册,不必再去
+`wallpaper.css` 登记一行(那正是报障 3 / 5 的成因)。四条各覆写自己那一枚 token,一个
+元素只声明一档,其余三条对它惰性;`app` / `elevated` 现无住户,规则是**预写**的(章不
+存在时选择器不命中),这样"有章即在册"才是完整的,而不是留半张表。
+
+三条硬约束(逐字落地):
+
+- **必须带 `.app-surface` 前缀**,不写裸 `[data-surface]` —— 编辑器一族
+  (`MarkdownDocumentEditor` / `ProseNoteEditor`)在用同名属性的别的取值
+  (`document` / `todo-notes`),裸属性选择器会把它们一并稀释成纱。真机验过:
+  `data-surface="document"` 的对照元素在壁纸态下仍是 `rgba(0,0,0,0)`。
+- **`.right-workbench` 的台面专属补丁保持具名**:那三枚 token 覆写
+  (`--ui-surface-elevated-bg` / `--ui-surface-app-bg` / `--workbench-tool-card-bg`)
+  加一行 `:is(.browser-toolbar, .browser-panel)` 让位,治的不是台面自己的底色,是
+  台面**里**读别枚 token 的内容面 —— 档位只管区域根那一枚,推不动它们。
+- **`.sidebar` / `.session-header` 的具名条目原样保留**,理由在 §6.6(不是漏网)。
+
+`wallpaper.css` 的 B 级块首因此改写成一张**例外清单**(具名条目仅剩 3 条,每条写明
+为什么还具名),而不是原来的枚举白名单。A / S / C / E 各级的枚举制没被终结,它们各有
+各的理由(E 级是性能红线,S 级是派生 token 不重算),块首注里点明了边界。
+
+**验证(生产包对照法,G7-1 同款)**:`bun run web:build` 的单一 CSS 挂进真浏览器,按
+真实模板抄 DOM 链,对照元素逐字重写迁移**前**的表达式,量 `getComputedStyle`——
+
+| | 迁移后 | 对照(旧表达式) |
+|---|---|---|
+| panel(浅色,无壁纸)| `rgb(255, 252, 240)` | `rgb(255, 252, 240)` |
+| chat(浅色,无壁纸)| `rgb(255, 252, 240)` | `rgb(255, 252, 240)` |
+| panel / chat(壁纸态)| `color(srgb 1 0.988235 0.941177 / 0.18)` | 同 |
+
+另跑一轮把四枚 token 给成**互不相同**的值(app `#fffcf0` / panel `#f0e8d8` /
+chat `#e4f0ff` / elevated `#ffffff`),迁移后仍逐字读自己那一枚 —— 真主题下
+`app == panel` 会掩盖串档,这一轮才排除得掉。`app` / `elevated` 两档的预写规则同轮
+验过"盖章即 18% 纱";只盖章不加画笔类的元素在两态下都是 `rgba(0,0,0,0)`(声明档位
+但自己画底的用法没被这一刀改掉)。
