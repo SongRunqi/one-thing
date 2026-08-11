@@ -233,13 +233,37 @@ export interface ExternalAgentObserver {
   }): void
 }
 
+/**
+ * 一次中途追话**真的**落到了哪一档(2026-08-12)。
+ *
+ * 存在的理由只有一条:不许假装。追话有三种截然不同的下场,而它们在界面上必须
+ * 长得不一样 —— 把三者压成一个 `void` 就等于让宿主猜,而宿主猜错的方向永远是
+ * 「以为插进去了」。
+ *
+ *  - `'steered'` —— 就地插进了正在跑的那一轮(claude-code 走 SDK 的
+ *    `priority:'now'`:当前轮就地截断、已生成的正文保留,新的一轮马上回答追话)。
+ *  - `'queued'` —— 送到了,但要等当前这一轮跑完才轮到它。**这不是失败**,是
+ *    一个较弱的真相:通道收下了,只是排在后面。
+ *  - `'unavailable'` —— 没送到(这条会话上没有正在跑的外部回合,或输入通道已经
+ *    收口)。宿主该退回自己的 steering 队列,而不是当作已送达。
+ */
+export type ExternalAgentSteerOutcome = 'steered' | 'queued' | 'unavailable'
+
 export interface ExternalAgentConnector {
   readonly id: string
   readonly capabilities: ExternalAgentCapabilities
   streamTurn(request: ExternalAgentTurnRequest): AsyncIterable<ExternalAgentEvent>
   interrupt(localSessionId: string): Promise<void>
-  /** Mid-run user input; only when capabilities.steer is true. */
-  steer?(localSessionId: string, text: string): Promise<void>
+  /**
+   * 中途追话;**只有 `capabilities.steer` 为真的连接器才有它**。
+   *
+   * **同步**(此前是 `Promise<void>`,没有任何实现,所以改它不破坏谁)。理由不是
+   * 省一个 await,是宿主那一侧:`CoreStreamEngine.steerMessage` 返回 void,它必须
+   * 在**那一刻**就知道「这条要不要入队」。给它一个 promise,它只能先入队再说 ——
+   * 而那正好是同一句话进模型两遍的做法。投递本身也确实没有异步的东西:往一个
+   * 开着的输入迭代器里塞一条消息而已。
+   */
+  steer?(localSessionId: string, text: string): ExternalAgentSteerOutcome
   dispose(): Promise<void>
 }
 

@@ -54,8 +54,17 @@ const EXTERNAL_DESCRIPTORS: AgentExecutorDescriptor[] = [
        * 能力从此不会分家 —— 原则 5 的具体兑现。
        */
       hostTools: true,
-      // connector 的 CLAUDE_CODE_CAPABILITIES.steer = false。
-      steer: false,
+      /**
+       * **已真接**(2026-08-12):`connector.steer` 往整轮开着的输入迭代器里塞一条
+       * `priority:'now'` 的用户消息,当前轮就地收场、新的一轮回答追话
+       * (实测见 `ClaudeCodeSdkUserMessage.priority`)。
+       *
+       * 读者是 `app/external-agents/index.ts` 的 `takeExternalAgentSteering`:翻成
+       * false 就真的不再把 steering 交给连接器,外部会话退回「进宿主队列、等这一轮
+       * 整段跑完再说」的 2026-08-12 之前形状。与 connector 的
+       * `CLAUDE_CODE_CAPABILITIES.steer` 是同一个事实的两处声明。
+       */
+      steer: true,
       /**
        * **E4 已有读者**(2026-08-05):`app/external-agents/index.ts` 的
        * `interruptExternalAgentSessions` 每次喊停都读它,翻成 false 就真的不再对

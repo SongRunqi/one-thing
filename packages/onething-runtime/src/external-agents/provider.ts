@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs'
 import { agentContentToText } from '@onething/core/agent-loop'
 import type {
   AgentMessageContent,
@@ -27,6 +28,37 @@ export interface CreateExternalAgentProviderOptions {
 export const UNBOUND_WORKING_DIRECTORY_NOTICE =
   '⚠️ 此会话未绑定工作目录,外部 agent 没有启动。\n\n'
   + '请先用 `/cd <路径>` 指定一个目录,或在会话设置里绑定工作目录,然后重发这条消息。'
+
+/**
+ * 绑了、但那个目录已经没了(2026-08-12 真机)。
+ *
+ * 这一支在此之前是**误导**而不是缺失:目录不存在 → spawn 当场失败 → SDK 把任何一种
+ * 启动失败都翻成同一句「Claude Code binary failed to launch」,并附上一段关于
+ * musl / glibc 的排查建议。于是用户拆掉一个 worktree 之后,拿到的是一条让他去查
+ * C 运行时的提示,而真正的原因是「你绑的那个目录被你自己删了」。
+ *
+ * 拒绝的形状与 `UNBOUND_WORKING_DIRECTORY_NOTICE` 逐字同款:一条可见正文 +
+ * `finish(error)`,不 spawn、不 throw。理由也同一条 —— 用户要的是「我该做什么」。
+ */
+export function missingWorkingDirectoryNotice(cwd: string): string {
+  return `⚠️ 此会话绑定的工作目录已不存在(${cwd}),可能已被移动或删除。\n\n`
+    + '请用 `/cd <路径>` 重新绑定后重发这条消息。'
+}
+
+/**
+ * 这个路径现在能不能当工作目录用。
+ *
+ * `statSync` 抛(不存在 / 无权限)与「存在但不是目录」都算不能用 —— 两种都会让
+ * spawn 失败,而失败之后的文案是同一句误导。探测失败**不当成不可用**只在一种情况下
+ * 危险:权限问题下这里会拒绝一个理论上可用的目录,但那一轮本来也跑不起来。
+ */
+function isUsableDirectory(cwd: string): boolean {
+  try {
+    return statSync(cwd).isDirectory()
+  } catch {
+    return false
+  }
+}
 
 /** 连接器接不住图片时回给用户的那句人话。导出是为了让测试与宿主复用同一份措辞。 */
 export function externalAgentImagesUnsupportedNotice(count: number): string {
@@ -173,6 +205,19 @@ export function createExternalAgentProvider(
       const cwd = options.workingDirectory?.trim()
       if (!cwd) {
         yield { type: 'text-delta', turn: request.turn, delta: UNBOUND_WORKING_DIRECTORY_NOTICE }
+        yield { type: 'finish', turn: request.turn, finishReason: 'error' }
+        return
+      }
+
+      /**
+       * **绑了但没了**(2026-08-12 真机)。见 `missingWorkingDirectoryNotice`:
+       * 不拦的话这一支会以一条关于 musl / glibc 的排查建议收场。
+       *
+       * 判据是「是不是一个目录」而不是「存不存在」:绑到一个**文件**上 spawn 同样
+       * 失败,而 `existsSync` 对它是真 —— 只查存在会漏掉一半。
+       */
+      if (!isUsableDirectory(cwd)) {
+        yield { type: 'text-delta', turn: request.turn, delta: missingWorkingDirectoryNotice(cwd) }
         yield { type: 'finish', turn: request.turn, finishReason: 'error' }
         return
       }

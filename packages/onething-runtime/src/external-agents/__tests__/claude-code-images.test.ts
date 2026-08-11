@@ -6,6 +6,7 @@
  * 那句话的三个分支:**送到了**(内容块形状对不对)、**没全送到**(截了要说)、
  * **送不到**(引擎接不住时也要说)。一条都不许静默。
  */
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import {
   CLAUDE_CODE_MAX_IMAGES_PER_TURN,
@@ -25,6 +26,14 @@ import type {
   ExternalAgentEvent,
   ExternalAgentTurnRequest,
 } from '../types.js'
+
+/**
+ * 一个**真的存在**的工作目录。provider 在开跑前查它(见
+ * `missingWorkingDirectoryNotice`:绑了却已经没了的目录会被就地拒绝),
+ * 所以这些用例不能再用一个凭空写死的路径。
+ */
+const EXISTING_CWD = tmpdir()
+
 
 /** 一张 1×1 的真 PNG,base64 原样取自 `data:` URL 的负载。 */
 const TINY_PNG_BASE64 =
@@ -229,7 +238,7 @@ describe('createExternalAgentProvider 图片链路', () => {
       providerId: 'claude-code-agent',
       connector: stubConnector(captured),
       localSessionId: 'session-1',
-      workingDirectory: '/tmp/project',
+      workingDirectory: EXISTING_CWD,
     })
     for await (const _event of provider.streamTurn!({
       model: 'claude-code-agent',
@@ -280,7 +289,7 @@ describe('createExternalAgentProvider 图片链路', () => {
     const provider = createExternalAgentProvider({
       providerId: 'acp',
       connector: stubConnector(captured, { imagesIn: false }),
-      workingDirectory: '/tmp/project',
+      workingDirectory: EXISTING_CWD,
     })
     const events: AgentEventLike[] = []
     for await (const event of provider.streamTurn!({
@@ -306,7 +315,7 @@ describe('createExternalAgentProvider 图片链路', () => {
     const provider = createExternalAgentProvider({
       providerId: 'acp',
       connector: stubConnector(captured, { imagesIn: false }),
-      workingDirectory: '/tmp/project',
+      workingDirectory: EXISTING_CWD,
     })
     const events: AgentEventLike[] = []
     for await (const event of provider.streamTurn!({
@@ -326,7 +335,7 @@ describe('createExternalAgentProvider 图片链路', () => {
     const provider = createExternalAgentProvider({
       providerId: 'claude-code-agent',
       connector: stubConnector(captured),
-      workingDirectory: '/tmp/project',
+      workingDirectory: EXISTING_CWD,
     })
     for await (const _event of provider.streamTurn!({
       model: 'claude-code-agent',

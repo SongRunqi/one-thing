@@ -31,6 +31,7 @@ import { composeAgentPermissionMode } from "@onething/runtime/agents";
 import { defaultAgent, findAgent } from "../agents/store.js";
 import { resolveAgentProfileForSession } from "../agents/profile.js";
 import { getSession } from "../stores/sessions.js";
+import { takeExternalAgentSteering } from "../external-agents/index.js";
 
 export type StreamSenderPayload = OnethingStreamSenderPayload;
 export type StreamSender = OnethingStreamSender;
@@ -373,6 +374,17 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 			source || routed.origin.source,
 			routed.origin,
 		);
+	}
+
+	/**
+	 * 外部会话的中途追话**就地送进去**(2026-08-12)。
+	 *
+	 * core 的钩子默认返回 false(照旧入队);这里是它唯一的实现。判据全在
+	 * `takeExternalAgentSteering` 里:没有正在跑的外部回合就还是 false,于是原生
+	 * 会话与空闲的外部会话行为一字不变。
+	 */
+	protected override takeSteeringDelivery(sessionId: string, content: string): boolean {
+		return takeExternalAgentSteering(sessionId, content);
 	}
 
 	protected override onShutdown(): void {

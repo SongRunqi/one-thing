@@ -24,6 +24,7 @@ import type {
   ExternalAgentObserver,
   ExternalAgentPermissionHandler,
   ExternalAgentSessionLink,
+  ExternalAgentSteerOutcome,
   ExternalAgentTurnRequest,
 } from './types.js'
 import type { InteractionAnswer, InteractionQuestion } from '@onething/core/interaction'
@@ -131,6 +132,26 @@ export interface ClaudeCodeSdkUserMessage {
   session_id: string
   parent_tool_use_id: null
   message: { role: 'user'; content: ClaudeCodeSdkUserContentBlock[] }
+  /**
+   * 中途追话的**投递档位**(`SDKUserMessage.priority`,`sdk.d.ts:4530`)。
+   *
+   * d.ts 只给了三个字面量、一个字的说明都没有,所以下面这三行是**实测**结论
+   * (2026-08-12,真 CLI 2.1.227 + haiku,脚本与逐条时间线见交付报告):
+   *
+   *  - **缺席 / `'next'`** —— 排队。当前这一轮跑完(60 行数字整段发完、`result`
+   *    到达)之后才起新的一轮回答它。这是 CLI 交互 REPL 里「跑着的时候打字」
+   *    的同款语义。
+   *  - **`'now'`** —— **就地截断**。实测注入后 13ms 当前轮就以
+   *    `subtype:'success'` 收场(已生成的正文原样保留、不是错误收场、没有
+   *    `[Request interrupted by user]` 那条合成消息),1.2~1.4s 后新的一轮开口
+   *    回答追话。这才是「插得进话」。
+   *
+   * **一个真实的坑**:`'now'` 在当前轮**还没吐出第一个 token 时**注入,追话会被
+   * 吞掉 —— 实测那一次当前轮以 `error_during_execution` 收场,随后重跑的是**原来
+   * 那条 prompt**,追话一个字都没被回答。所以 `steer()` 要等这一轮真的开口了才用
+   * `'now'`,没开口就退回排队档(见 `ActiveClaudeCodeTurn.sawOutput`)。
+   */
+  priority?: 'now' | 'next' | 'later'
 }
 
 /* ── 图片(2026-08-12,审计「图片静默丢弃」) ─────────────────────────────── */
@@ -287,37 +308,76 @@ export function claudeCodePromptContent(
  * 相同 —— 这不是「多等一会儿换来的安全」,是**只在真有后台任务时才多等**。
  */
 export class ClaudeCodePromptStream {
-  private release!: () => void
-  private readonly gate: Promise<void>
+  private readonly queue: ClaudeCodeSdkUserMessage[] = []
+  private wake: (() => void) | undefined
   private closed = false
 
   /**
    * 收的是**内容块数组**而不是一段文本(2026-08-12):图片与文本是同一条消息里并列
    * 的两种块,由 `claudeCodePromptContent` 一次算好。这里只负责把它发出去再挂起。
    */
-  constructor(private readonly content: ClaudeCodeSdkUserContentBlock[]) {
-    this.gate = new Promise<void>(resolve => { this.release = resolve })
+  constructor(content: ClaudeCodeSdkUserContentBlock[]) {
+    this.queue.push(promptMessage(content))
+  }
+
+  /**
+   * **中途再塞一条用户消息**(2026-08-12 steering)。
+   *
+   * 通道一直是开着的 —— 这是 b8472769 为了后台子代理的审批留下的形状,追话只是
+   * 第二个用得上它的人,机械上一行新东西都不需要。返回值是**送没送出去**:
+   * 迭代器已经收口(回合正在收尾 / 被 abort)之后再塞就是塞进一个没人读的队列,
+   * 那种时候必须说"没送到",不能假装送到了。
+   */
+  push(content: ClaudeCodeSdkUserContentBlock[], priority?: 'now' | 'next' | 'later'): boolean {
+    if (this.closed) return false
+    this.queue.push(promptMessage(content, priority))
+    // `wake` 是"迭代器正挂着等下一条"的凭据;它没挂着说明队列还没被抽干,
+    // 下一次抽干时自然会带上这一条。
+    const wake = this.wake
+    this.wake = undefined
+    wake?.()
+    return true
   }
 
   /** 幂等。abort / 超时 / 正常收口三条路都可能调它,谁先到都算数。 */
   close(): void {
     if (this.closed) return
     this.closed = true
-    this.release()
+    const wake = this.wake
+    this.wake = undefined
+    wake?.()
   }
 
   get isClosed(): boolean {
     return this.closed
   }
 
+  /**
+   * 先把队列抽干,再挂起等下一条或等收口。
+   *
+   * 与改动前的「发一条然后 await 一个 gate」在**无追话的回合里逐字等价**:队列里
+   * 只有那一条,发完就挂在同一个位置,`close()` 放开。追话只是在那个挂起点上多
+   * 醒来一次。
+   */
   async *stream(): AsyncGenerator<ClaudeCodeSdkUserMessage, void, void> {
-    yield {
-      type: 'user',
-      session_id: '',
-      parent_tool_use_id: null,
-      message: { role: 'user', content: this.content },
+    for (;;) {
+      while (this.queue.length > 0) yield this.queue.shift()!
+      if (this.closed) return
+      await new Promise<void>(resolve => { this.wake = resolve })
     }
-    await this.gate
+  }
+}
+
+function promptMessage(
+  content: ClaudeCodeSdkUserContentBlock[],
+  priority?: 'now' | 'next' | 'later',
+): ClaudeCodeSdkUserMessage {
+  return {
+    type: 'user',
+    session_id: '',
+    parent_tool_use_id: null,
+    message: { role: 'user', content },
+    ...(priority ? { priority } : {}),
   }
 }
 
@@ -490,7 +550,15 @@ const CLAUDE_CODE_CAPABILITIES: ExternalAgentCapabilities = {
   permissionBridge: 'callback',
   resume: true,
   fork: true,
-  steer: false,
+  /**
+   * **插得进话**(2026-08-12)。实证见 `ClaudeCodeSdkUserMessage.priority`:输入
+   * 迭代器整轮开着(b8472769 为后台子代理的审批留下的形状),往里塞一条
+   * `priority:'now'` 的用户消息,当前轮 13ms 内就地收场、1.2s 后新的一轮回答追话。
+   *
+   * 这一位有**两个读者**,翻它真的会改变行为:装配层据它决定要不要把宿主的
+   * steering 交给连接器(`takeExternalAgentSteering`),E0 能力表据它对外声明。
+   */
+  steer: true,
   /**
    * **真的接得住**(2026-08-12)。图片作为 image block 随文本一起进流式输入的
    * `SDKUserMessage`,实测经真 CLI 到达模型(见 `ClaudeCodeSdkUserContentBlock`)。
@@ -1185,10 +1253,27 @@ class ClaudeCodeTurnTranslator {
   }
 }
 
+/**
+ * 一条会话上**正在跑**的那一轮,只留追话用得着的两样东西。
+ *
+ * `sawOutput` 不是装饰:它是 `priority:'now'` 那个坑的闸(见
+ * `ClaudeCodeSdkUserMessage.priority` —— 当前轮还没吐第一个 token 时用 `'now'`,
+ * 追话会被整条吞掉、重跑的是原来那条 prompt)。没开口就退回排队档,于是最坏情况
+ * 是「晚一轮」,而不是「说了等于没说」。
+ */
+interface ActiveClaudeCodeTurn {
+  promptStream: ClaudeCodePromptStream
+  /** 这一轮是否已经产出过内容(assistant 消息或任何一条 stream_event)。 */
+  sawOutput: boolean
+  /** 已经塞进去、但它那一轮的 `result` 还没回来的追话条数。 */
+  awaitingResult: number
+}
+
 export function createClaudeCodeConnector(
   options: ClaudeCodeConnectorOptions = {},
 ): ExternalAgentConnector {
   const abortControllers = new Map<string, AbortController>()
+  const activeTurns = new Map<string, ActiveClaudeCodeTurn>()
   const now = options.now ?? (() => Date.now())
   const dialogKinds = options.userDialogKinds ?? DEFAULT_USER_DIALOG_KINDS
 
@@ -1266,6 +1351,17 @@ export function createClaudeCodeConnector(
        */
       const promptContent = claudeCodePromptContent(request.prompt, request.images)
       const promptStream = new ClaudeCodePromptStream(promptContent.blocks)
+      /**
+       * 追话的落点(2026-08-12)。登记在**发第一条消息之前**:回合已经开跑而登记表
+       * 还是空的那一瞬间,追话会被判成 `unavailable` 并退回宿主队列 —— 不是错误,
+       * 但白白晚了一轮。
+       */
+      const activeTurn: ActiveClaudeCodeTurn = {
+        promptStream,
+        sawOutput: false,
+        awaitingResult: 0,
+      }
+      activeTurns.set(request.localSessionId, activeTurn)
       const backgroundTimeoutMs = options.backgroundTaskTimeoutMs ?? DEFAULT_BACKGROUND_TASK_TIMEOUT_MS
       let backgroundTimer: ReturnType<typeof setTimeout> | undefined
       let backgroundTimedOutCount = 0
@@ -1606,6 +1702,48 @@ export function createClaudeCodeConnector(
 
         for await (const message of stream) {
           /**
+           * 这一轮**吐出内容了没有** —— `priority:'now'` 那道闸的唯一数据源(见
+           * `ActiveClaudeCodeTurn.sawOutput`)。
+           *
+           * 判据是**真的内容块**,不是「有没有 stream_event」。第一版就写成了后者,
+           * 于是 `message_start` 一到就算开口了 —— 而 `message_start` 恰恰在第一个
+           * token **之前**,正好落在那个会把追话整条吞掉的窗口里。真机连着三次
+           * 只截断不转向,根因就是这一行:`steeredAt=0`(一个字都还没来)却报了
+           * `steered`。
+           *
+           * 现在只认两样:带 delta 的 `content_block_delta`(正文 / 思考 / 工具入参
+           * 真的在流),或一条完整的 `assistant` 消息(非流式回填)。
+           */
+          if (message.type === 'assistant') {
+            activeTurn.sawOutput = true
+          } else if (
+            message.type === 'stream_event'
+            && message.event?.type === 'content_block_delta'
+            && message.event.delta !== undefined
+          ) {
+            activeTurn.sawOutput = true
+          }
+
+          /**
+           * **追话在飞时,这条 result 不是终点**(2026-08-12)。
+           *
+           * 与后台子代理那一条(下面)是同一个判据、同一个理由:CLI 还会为这条追话
+           * 再跑一轮、再发一条 result。提前收口的代价是双份的 —— 输入迭代器关掉,
+           * 追话那一轮永远不会跑;`finish` 提前发出去,下游把回合结算掉。
+           *
+           * 计数的语义是「**还欠几条 result**」:一条追话 = CLI 还会多发一条
+           * result(被截断那一轮的 + 追话那一轮的,一共两条)。所以判据是
+           * `steerHoldsThisResult` 这个**减之前**的快照,不是减之后的计数 ——
+           * 读减之后的计数会在第一条 result 上就看到 0 并当场收口,追话那一轮
+           * 于是永远跑不成(这一条是被 `claude-code-steering.test.ts` 抓出来的)。
+           */
+          let steerHoldsThisResult = false
+          if (message.type === 'result' && activeTurn.awaitingResult > 0) {
+            steerHoldsThisResult = true
+            activeTurn.awaitingResult -= 1
+          }
+
+          /**
            * **回合生命周期**(2026-08-11 后台子代理审批事故)。整段判据只有两条:
            *
            *  1. 后台任务的电平从 `background_tasks_changed` 整表替换而来;
@@ -1630,9 +1768,18 @@ export function createClaudeCodeConnector(
           }
 
           if (message.type === 'result') {
-            if (liveBackgroundTasks.size === 0) {
+            if (liveBackgroundTasks.size === 0 && !steerHoldsThisResult) {
               disarmBackgroundTimer()
               promptStream.close()
+            } else if (steerHoldsThisResult) {
+              // 追话还在飞:输入通道原样留着,等它那一轮的 result。这里**不**武装
+              // 后台防呆表 —— 那张表的措辞讲的是「后台子代理没收工」,拿它给追话
+              // 兜底会在界面上说一句不相干的话。追话必然有一条 result 跟着回来
+              // (CLI 每一轮都发),流真断了 for-await 自己会结束。
+              options.logger?.log?.(
+                '[ClaudeCodeConnector] holding input open for a steered message'
+                  + ` (${activeTurn.awaitingResult} more after this one)`,
+              )
             } else if (backgroundTimer === undefined && !promptStream.isClosed) {
               options.logger?.log?.(
                 `[ClaudeCodeConnector] holding input open for ${liveBackgroundTasks.size}`
@@ -1678,7 +1825,10 @@ export function createClaudeCodeConnector(
             }
             yield { type: 'session-established', link }
           }
-          yield* translator.translate(message, liveBackgroundTasks.size > 0)
+          yield* translator.translate(
+            message,
+            liveBackgroundTasks.size > 0 || steerHoldsThisResult,
+          )
         }
 
         /**
@@ -1717,10 +1867,49 @@ export function createClaudeCodeConnector(
         observeTurn('end')
         request.abortSignal?.removeEventListener('abort', forwardAbort)
         abortControllers.delete(request.localSessionId)
+        // 登记表与 abortControllers 同生共死。漏删一条,下一次追话会打在一个已经
+        // 收口的输入迭代器上并被判成 `steered` —— 一句谎话,而且是最难查的那种
+        // (界面说插进去了,模型从没听见)。
+        if (activeTurns.get(request.localSessionId) === activeTurn) {
+          activeTurns.delete(request.localSessionId)
+        }
         // 语境解绑。漏解的条目会让下一轮之后的迟到调用打在一份过期语境上,而那
         // 是最难查的一类串房 —— 所以它在 `finally` 里,与 abort 清理并列。
         hostTools?.release?.()
       }
+    },
+
+    /**
+     * **中途追话**(2026-08-12)。
+     *
+     * 整段只有三条判据,每一条都对应一个实测结论(逐条时间线见
+     * `ClaudeCodeSdkUserMessage.priority`):
+     *
+     *  1. 这条会话上没有正在跑的外部回合 → `'unavailable'`,宿主退回自己的
+     *     steering 队列(= 改动前的行为,一字不差)。
+     *  2. 有,而且这一轮**已经开口**了 → `priority:'now'`,就地插进去 →
+     *     `'steered'`。
+     *  3. 有,但还没开口 → **不用** `'now'`(会被吞掉),按排队档送 →
+     *     `'queued'`。送到了,只是要等这一轮跑完。
+     *
+     * 同步返回,不 await 任何东西 —— 理由写在 `ExternalAgentConnector.steer` 上。
+     */
+    steer(localSessionId: string, text: string): ExternalAgentSteerOutcome {
+      const active = activeTurns.get(localSessionId)
+      if (!active || active.promptStream.isClosed) return 'unavailable'
+      const trimmed = text.trim()
+      if (!trimmed) return 'unavailable'
+      const priority = active.sawOutput ? 'now' : undefined
+      // 追话只有文本。图片走的是回合起点那条路(`claudeCodePromptContent`),
+      // 而中途追话在宿主那一侧本来就只带一段文字。
+      const sent = active.promptStream.push([{ type: 'text', text: trimmed }], priority)
+      if (!sent) return 'unavailable'
+      active.awaitingResult += 1
+      options.logger?.log?.(
+        `[ClaudeCodeConnector] steered ${localSessionId.slice(0, 8)}`
+          + ` priority=${priority ?? 'queued'} awaiting=${active.awaitingResult}`,
+      )
+      return priority === 'now' ? 'steered' : 'queued'
     },
 
     async interrupt(localSessionId: string): Promise<void> {
@@ -1730,6 +1919,7 @@ export function createClaudeCodeConnector(
     async dispose(): Promise<void> {
       for (const controller of abortControllers.values()) controller.abort()
       abortControllers.clear()
+      activeTurns.clear()
     },
   }
 }

@@ -325,6 +325,46 @@ export function getExternalAgentConnectors(): Record<string, ExternalAgentConnec
  *
  * 失败不冒泡:这是停止链上的一步加强,不是它的前提。
  */
+/**
+ * 把一条 steering **就地交给**外部连接器(2026-08-12)。
+ *
+ * 用户的原话是「实时性问题很大」,而不能插话是主因之一:外部会话上一条中途消息
+ * 此前必然进宿主的 steering 队列,要等**整个 CLI 回合**跑完才轮到它 —— 一次
+ * agentic 长跑就是几分钟。连接器手上有一条整轮开着的输入通道(b8472769 为后台
+ * 子代理的审批留下的),这里只是把话交到那条通道上。
+ *
+ * 返回 true = **接走了**,引擎因此不入队(否则同一句话进模型两遍)。三种收场:
+ *
+ *  - `'steered'` / `'queued'` → true。两者都是「送到了」,差别在于插进这一轮还是
+ *    等下一轮;两者都不该再入队。
+ *  - `'unavailable'` → false。这条会话上没有正在跑的外部回合(或通道已收口),
+ *    退回宿主队列,行为与改动前一字不差。
+ *
+ * **能力位说了算**(与 `interruptExternalAgentSessions` 同一条纪律,原则 5):
+ * E0 表里 `steer` 翻成 false,这里就真的不再交,外部会话退回排队形状。
+ *
+ * **绝不抛**:一次投递失败要降级成「没接走」——退回队列是一条完好的路,而把异常
+ * 冒到 `steerMessage` 里会让用户的一次插话炸掉整条 steering 通路。
+ */
+export function takeExternalAgentSteering(localSessionId: string, content: string): boolean {
+  if (!connectors) return false
+  for (const [connectorId, connector] of Object.entries(connectors)) {
+    if (!connector?.steer) continue
+    if (!connector.capabilities.steer) continue
+    if (findAgentExecutorDescriptor(connectorId)?.capabilities.steer !== true) continue
+    try {
+      const outcome = connector.steer(localSessionId, content)
+      if (outcome !== 'unavailable') return true
+    } catch (error) {
+      console.warn(
+        `[external-agents] steer failed on ${connectorId}:`,
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+  }
+  return false
+}
+
 export async function interruptExternalAgentSessions(localSessionId: string): Promise<void> {
   if (!connectors) return
   await Promise.allSettled(

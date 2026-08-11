@@ -60,5 +60,6 @@ export type {
   ExternalAgentPermissionDecision,
   ExternalAgentPermissionHandler,
   ExternalAgentSessionLink,
+  ExternalAgentSteerOutcome,
   ExternalAgentTurnRequest,
 } from './types.js'

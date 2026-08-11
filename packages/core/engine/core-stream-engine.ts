@@ -391,6 +391,20 @@ export class CoreStreamEngine<
 
     try {
       const pendingMessage = this.createPersistedSteeringMessage(sessionId, content, source, timestamp, origin)
+      /**
+       * 宿主可能**就地接走**这一条(2026-08-12)。默认没人接,下面两行照旧。
+       *
+       * 接走了就**不入队**:入了队它会在回合收尾后再进一次模型,同一句话说两遍。
+       * 也**不发** `steering:queued` —— 那条事件是「还在队列里、可以撤回」的凭据,
+       * 而一条已经送到模型手里的追话撤不回来;发了它,撤回按钮会点了没反应。
+       *
+       * 持久化与 `message:user-created` 照发(在 `createPersistedSteeringMessage`
+       * 里,上一行已经做完):无论走哪一支,用户都该在流里看见自己说过这句话。
+       */
+      if (this.takeSteeringDelivery(sessionId, content)) {
+        this.log(`Steering delivered live for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
+        return
+      }
       queue.enqueue(pendingMessage)
       if (pendingMessage.id) {
         this.eventBus?.emit(sessionId, {
@@ -409,6 +423,23 @@ export class CoreStreamEngine<
     }
 
     this.log(`Steering queued for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
+  }
+
+  /**
+   * 宿主的**就地投递**钩子(2026-08-12)。返回 true = 这条追话已经送到模型手里,
+   * 引擎因此不再入队。
+   *
+   * core 不认识「外部 agent」这个概念,也不该认识:它只知道「有人说他能当场送到」。
+   * 唯一的实现在装配层(`app/engine/stream-engine.ts` → Claude Code 连接器整轮开着
+   * 的输入迭代器);别的宿主什么都不装,这里返回 false,行为与 2026-08-12 之前
+   * 逐字相同。
+   *
+   * **必须同步**:引擎要在这一刻决定入不入队,给它一个 promise 就只能先入队,而
+   * 那正是同一句话进模型两遍的做法。**必须不抛**:投递失败要降级成「没接走」,
+   * 不是让用户的一次插话把整条 steering 路炸掉。
+   */
+  protected takeSteeringDelivery(_sessionId: string, _content: string): boolean {
+    return false
   }
 
   /**
