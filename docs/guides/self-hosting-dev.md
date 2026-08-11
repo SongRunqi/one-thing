@@ -29,7 +29,42 @@
 ```
 
 A 里的 agent 改的是**工作树文件**,不是 A 自己;B 才是"把这些文件跑起来"的那只。
-所以看效果永远看 B,永远不要指望 A 会变。
+所以看效果永远看 B。
+
+**但注意:上图的隔离是数据/运行时隔离,不是代码隔离。** 两只跑同一份工作树时,
+一处改动两个进程都吃到 —— 尤其当 A 也是 dev 模式(`bun run dev:electron`)起的:
+渲染层改动会把 A **当场 HMR 掉**,主进程改动 electron-vite 会**自动重启 A**。
+驾驶舱在飞行中被改中,是单工作树拓扑的固有风险。要么接受它(改的都是小面、
+A 挂了重启就是),要么按下一节把代码也隔离开。
+
+## 代码隔离:worktree 三件套(推荐)
+
+`git worktree` = 同一个仓库多开一个目录:`.git` 数据库共用(提交、分支、stash
+全通),只是多一个检出另一条分支的文件夹。三条命令:
+
+```bash
+git worktree add ../start-electron-dev -b dev-self   # 开第二目录 + 开发分支
+git worktree list                                     # 随时查有哪几个
+git worktree remove ../start-electron-dev             # 拆掉(提交不丢,历史在共用的 .git 里)
+```
+
+分工从"双实例"升级成"三件套":
+
+```
+~/data/code/start-electron        ← 主工作树:A 日常实例跑这里,代码稳定,agent 不碰
+~/data/code/start-electron-dev    ← 开发工作树:agent 在这里改码,dev:self 也从这里起
+~/.onething  /  ~/.onething-dev   ← 两只的数据,照旧分家
+```
+
+- 开发会话的 `/cd` 绑到 `start-electron-dev`;在**那个目录**里跑 `bun run dev:self` 起 B。
+- agent 改多少码 A 都感受不到(不同目录,HMR 监听不到)。
+- 让 A 用上新代码 = 发版:开发树里提交 → 主树 `git merge dev-self`(或 cherry-pick)→ 重启 A。
+  节奏完全由人控制。
+- 两个注意点:①同一条分支不能同时检出在两个 worktree 里,所以开发树单独一条分支
+  (上面的 `-b dev-self`);②新目录要单独 `bun install`(node_modules 不共享,
+  Electron 二进制下载一次要几分钟)。
+- 这也是审计里"多代理写隔离(worktree-per-worker)"同族方案的第一步:先做到
+  "agent 的树"与"人的树"分开,再谈"agent 与 agent 分开"。
 
 ## 起步四步
 
