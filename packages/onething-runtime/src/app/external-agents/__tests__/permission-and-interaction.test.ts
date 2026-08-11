@@ -39,6 +39,8 @@ const mocks = vi.hoisted(() => ({
   sessions: new Map<string, unknown>(),
   /** E0 能力表的答案。翻它就能验「能力位真的有读者」。 */
   interruptCapable: true,
+  /** 已发出的授权(type + pattern)。P0-4 的粒度断言全靠它。 */
+  grants: [] as { type: string; pattern: string }[],
 }))
 
 vi.mock('../../store.js', () => ({
@@ -54,9 +56,19 @@ vi.mock('../../logging/index.js', () => ({
   writeAppLog: vi.fn(),
 }))
 
-// 授权留存不参与本文件:每一次都必须真的问。
+/**
+ * 授权留存的**最小真身**:按 (type, pattern) 逐条比。默认一条都没有(每一次都必须
+ * 真的问),往 `mocks.grants` 里放一条就能验「记住的到底是哪一档」—— 而那正是 P0-4
+ * 的全部内容。
+ */
 vi.mock('../../permission/permission-grants.js', () => ({
-  matchGrant: () => undefined,
+  matchGrant: (input: { type: string; pattern: string | string[] }) => {
+    const patterns = Array.isArray(input.pattern) ? input.pattern : [input.pattern]
+    const hit = mocks.grants.find(
+      grant => grant.type === input.type && patterns.every(pattern => pattern === grant.pattern),
+    )
+    return hit ? { id: `${hit.type}:${hit.pattern}` } : undefined
+  },
 }))
 
 // 宿主工具面认识注册表与 v3 登记簿 —— 与本文件无关,别把它拖进来。
@@ -115,6 +127,7 @@ function seedSessions(): void {
 beforeEach(() => {
   seedSessions()
   mocks.interruptCapable = true
+  mocks.grants = []
   Permission.clearSession('chat-1')
   Interaction.clearSession('pair-exec')
   Interaction.clearSession('team-exec')
@@ -132,8 +145,8 @@ describe('外部审批走策略门(G1 + G2)', () => {
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       cwd: '/tmp/p',
-      toolName: 'Bash',
-      input: { command: 'ls' },
+      toolName: 'Glob',
+      input: { pattern: '**/*.ts' },
       toolCallId: 'toolu_01ABC',
     })
 
@@ -143,10 +156,10 @@ describe('外部审批走策略门(G1 + G2)', () => {
     const prompt = Permission.getPendingPrompts('chat-1')[0]
     expect(prompt.callId).toBe('toolu_01ABC')
     expect(prompt.messageId).toBe('msg-9')
-    // 卡片类型与标题与 E4 之前逐字相同 —— 渲染层一个字都不用改。
+    // 认不出的工具名维持 E4 的形状:卡片类型、标题、渲染层一个字都不用改。
     expect(prompt.type).toBe('external-agent')
-    expect(prompt.title).toBe('Claude Code: Bash')
-    expect(prompt.metadata).toMatchObject({ connectorId: 'claude-code-agent', toolName: 'Bash' })
+    expect(prompt.title).toBe('Claude Code: Glob')
+    expect(prompt.metadata).toMatchObject({ connectorId: 'claude-code-agent', toolName: 'Glob' })
 
     Permission.respond({ sessionId: 'chat-1', permissionId: prompt.id, response: 'once' })
     await expect(decision).resolves.toEqual({ behavior: 'allow' })
@@ -160,7 +173,9 @@ describe('外部审批走策略门(G1 + G2)', () => {
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       toolName: 'Bash',
-      input: { command: 'rm -rf /' },
+      // 注意不能用 `rm -rf /`:那是分类器的 hardDeny,策略门当场拒,根本等不到 120s。
+      input: { command: 'rm -rf ./dist' },
+      cwd: '/tmp/p',
       toolCallId: 'toolu_timeout',
     })
 
@@ -201,6 +216,132 @@ describe('外部审批走策略门(G1 + G2)', () => {
       behavior: 'deny',
       message: expect.stringContaining('这个目录不能动'),
     })
+  })
+})
+
+/**
+ * **P0-4:外部审批的粒度**(`docs/audit/claude-code-sdk-audit-2026-08-11.md`)。
+ *
+ * 判据只有一条:同一个动作,外部会话与本地会话在卡上、在 grant 上长一个样。所以
+ * 这里断言的不是「弹了一张卡」,而是**卡上写的是什么、记住的是哪一档**。
+ */
+describe('外部工具的审批粒度(P0-4)', () => {
+  it('Bash 走命令级:卡片标题是命令原文,grant 记的是命令模式而不是工具名', async () => {
+    const { askExternalAgentPermission } = await import('../index.js')
+    const decision = askExternalAgentPermission({
+      connectorId: 'claude-code-agent',
+      localSessionId: 'chat-1',
+      messageId: 'msg-9',
+      cwd: '/tmp/p',
+      toolName: 'Bash',
+      input: { command: 'rm -rf ./build' },
+      toolCallId: 'toolu_rm',
+    })
+    await vi.waitFor(() => {
+      expect(Permission.getPendingPrompts('chat-1')).toHaveLength(1)
+    })
+    const prompt = Permission.getPendingPrompts('chat-1')[0]
+    // 与本地 bash 工具逐字同款:type 是 bash,标题是命令,pattern 是命令模式。
+    expect(prompt.type).toBe('bash')
+    expect(prompt.title).toBe('rm -rf ./build')
+    expect(prompt.pattern).toEqual(['rm *'])
+    expect(prompt.metadata).toMatchObject({
+      command: 'rm -rf ./build',
+      effectKind: 'bash',
+      // 出处仍然写在卡上 —— 卡长得和本地一样之后,这是唯一的标记。
+      connectorId: 'claude-code-agent',
+      externalAgentTool: 'Bash',
+    })
+
+    Permission.respond({ sessionId: 'chat-1', permissionId: prompt.id, response: 'once' })
+    await expect(decision).resolves.toEqual({ behavior: 'allow' })
+  })
+
+  it('同一档命令二次来命中 grant;换一条命令仍然要问', async () => {
+    const { askExternalAgentPermission } = await import('../index.js')
+    // 用户上一次点了「总是允许」,记下的是 `rm *` 这一档。
+    mocks.grants = [{ type: 'bash', pattern: 'rm *' }]
+
+    await expect(askExternalAgentPermission({
+      connectorId: 'claude-code-agent',
+      localSessionId: 'chat-1',
+      messageId: 'msg-9',
+      cwd: '/tmp/p',
+      toolName: 'Bash',
+      input: { command: 'rm -rf ./build' },
+      toolCallId: 'toolu_rm_again',
+    })).resolves.toEqual({ behavior: 'allow' })
+    expect(Permission.getPendingPrompts('chat-1')).toHaveLength(0)
+
+    // 「总是允许 Bash」不再存在:另一条命令是另一档,照问不误。
+    void askExternalAgentPermission({
+      connectorId: 'claude-code-agent',
+      localSessionId: 'chat-1',
+      messageId: 'msg-9',
+      cwd: '/tmp/p',
+      toolName: 'Bash',
+      input: { command: 'curl https://example.com' },
+      toolCallId: 'toolu_curl',
+    })
+    await vi.waitFor(() => {
+      expect(Permission.getPendingPrompts('chat-1')).toHaveLength(1)
+    })
+    expect(Permission.getPendingPrompts('chat-1')[0].pattern).toEqual(['curl *'])
+  })
+
+  it('白名单命令与本地一样直接放行,不再逼用户去点「总是允许 Bash」', async () => {
+    const { askExternalAgentPermission } = await import('../index.js')
+    await expect(askExternalAgentPermission({
+      connectorId: 'claude-code-agent',
+      localSessionId: 'chat-1',
+      messageId: 'msg-9',
+      cwd: '/tmp/p',
+      toolName: 'Bash',
+      input: { command: 'ls -la' },
+      toolCallId: 'toolu_ls',
+    })).resolves.toEqual({ behavior: 'allow' })
+    expect(Permission.getPendingPrompts('chat-1')).toHaveLength(0)
+  })
+
+  it('文件工具按路径,越界写把 external 位立起来', async () => {
+    const { askExternalAgentPermission } = await import('../index.js')
+    void askExternalAgentPermission({
+      connectorId: 'claude-code-agent',
+      localSessionId: 'chat-1',
+      messageId: 'msg-9',
+      cwd: '/tmp/p',
+      toolName: 'Write',
+      input: { file_path: '/tmp/elsewhere/notes.md', content: 'x' },
+      toolCallId: 'toolu_write',
+    })
+    await vi.waitFor(() => {
+      expect(Permission.getPendingPrompts('chat-1')).toHaveLength(1)
+    })
+    const prompt = Permission.getPendingPrompts('chat-1')[0]
+    expect(prompt.type).toBe('file_write')
+    expect(prompt.pattern).toEqual(['/tmp/elsewhere/*'])
+    // 批 1 的 auto-accept 判据只看这一位;立不起来,越界写在 auto-accept-edits 下无声通过。
+    expect(prompt.metadata).toMatchObject({ external: true, path: '/tmp/elsewhere/notes.md' })
+  })
+
+  it('界内的写按目录记档,external 位不立', async () => {
+    const { askExternalAgentPermission } = await import('../index.js')
+    void askExternalAgentPermission({
+      connectorId: 'claude-code-agent',
+      localSessionId: 'chat-1',
+      messageId: 'msg-9',
+      cwd: '/tmp/p',
+      toolName: 'Edit',
+      input: { file_path: '/tmp/p/src/app.ts', old_string: 'a', new_string: 'b' },
+      toolCallId: 'toolu_edit',
+    })
+    await vi.waitFor(() => {
+      expect(Permission.getPendingPrompts('chat-1')).toHaveLength(1)
+    })
+    const prompt = Permission.getPendingPrompts('chat-1')[0]
+    expect(prompt.type).toBe('file_edit')
+    expect(prompt.pattern).toEqual(['/tmp/p/src/*'])
+    expect(prompt.metadata).toMatchObject({ external: false })
   })
 })
 

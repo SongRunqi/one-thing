@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
   createClaudeCodeConnector,
+  describeExternalToolPermission,
   CLAUDE_CODE_AGENT_CONNECTOR_ID,
 } from '@onething/runtime/external-agents'
 import type {
@@ -130,27 +131,41 @@ function resolveActiveAssistantMessageId(sessionId: string): string | undefined 
  * 直调 `Permission.ask` 拿不到这三条里的任何一条,一次没人点的审批就是一次
  * 永久挂起 —— 加上卡片压根没上屏(G1),那就是 F3 的 2 分 11 秒。
  *
- * ## 与本地工具语境的差异,以及最小适配
+ * ## 粒度:先按动作,认不出才按工具名(P0-4)
  *
  * `EnforcePermissionPolicyInput` 是照**本地工具执行**的形状长的,唯一强依赖是
- * `effects: PermissionEffect[]` —— 本地工具由 policy 层分析出「读了哪些文件、
- * 跑了什么命令」。SDK 自带工具跑在 CLI 进程里,我们对它的副作用**没有分析权**,
- * 所以这里合成**恰好一个** effect:
+ * `effects: PermissionEffect[]`。E4 时这里合成的是**恰好一个**以工具名为资源的
+ * `external-agent` effect —— 因为「SDK 自带工具跑在 CLI 进程里,我们对它的副作用
+ * 没有分析权」。**那句话是错的**:input 就在手上,`Bash` 的 `command`、文件工具的
+ * `file_path` 一个字都不缺,缺的只是把它接到本地那套分析上
+ * (`docs/audit/claude-code-sdk-audit-2026-08-11.md` P0-4)。代价是实打实的:一次
+ * 「总是允许 Bash」之后,外部会话里的任何命令都免审。
+ *
+ * 现在先问 `describeExternalToolPermission`(它调的是本地 bash 工具那一个
+ * `analyzeBashPermission`、本地文件工具那一套沙箱判据),认出来就用命令级 / 路径级
+ * 的 effect —— 卡片、grant 粒度、`external` 越界位与本地会话逐字同款。
+ *
+ * 认不出的工具名(Glob / Grep / WebFetch / Task …)**维持现状**,回落到下面这条
+ * 工具名粒度的 effect:
  *
  *  - `kind: 'external-agent'` —— 它同时是 `Permission.ask({ type })`,所以卡片
  *    类型与 E4 之前逐字相同,渲染层一个字都不用改;
- *  - `resources: [toolName]` —— 于是 grant 的 pattern 是工具名。以前 pattern 是
- *    `undefined`,一次「以后都允许」等于把**所有**外部工具都放行了;现在按工具名
- *    分档,这是变严不是变松;
+ *  - `resources: [toolName]` —— grant 的 pattern 是工具名;
  *  - `preview.title` 压过 `titleForEffect`,标题仍是 `Claude Code: <tool>`。
  *
- * `effects` 为空时策略门会直接静默放行(`permission-policy.ts:147`),所以这一条
- * 永远给满 —— 宁可显式适配,也不要在这里复制一份超时逻辑。
+ * 认出来那一支可能给出**空 effects**(白名单命令、界内的普通读),策略门于是直接
+ * 放行(`core/permission/permission-policy.ts:171`)—— 这与本地 `ls` 不弹卡是同一
+ * 件事,也正是不让用户被无谓的卡逼去点「总是允许 Bash」的前提。
  */
 export async function askExternalAgentPermission(
   ask: ExternalAgentPermissionAsk,
 ): Promise<ExternalAgentPermissionDecision> {
   const messageId = ask.messageId ?? resolveActiveAssistantMessageId(ask.localSessionId) ?? ''
+  const described = describeExternalToolPermission({
+    toolName: ask.toolName,
+    input: ask.input,
+    cwd: ask.cwd,
+  })
   try {
     await enforcePermissionPolicy({
       sessionId: ask.localSessionId,
@@ -158,7 +173,7 @@ export async function askExternalAgentPermission(
       // G1:卡片按它归位,120s 拒绝桥也按它 + messageId 找 pending。
       toolCallId: ask.toolCallId,
       toolName: ask.toolName,
-      effects: [{
+      effects: described?.effects ?? [{
         kind: 'external-agent',
         resources: [ask.toolName],
         external: true,
@@ -168,7 +183,15 @@ export async function askExternalAgentPermission(
           input: JSON.parse(JSON.stringify(ask.input ?? null)),
         },
       }],
-      preview: { title: `Claude Code: ${ask.toolName}` },
+      preview: {
+        ...(described ? described.preview : { title: `Claude Code: ${ask.toolName}` }),
+        metadata: {
+          // 谁在跑这一步:卡片长得和本地一样之后,这一条就是唯一的出处标记。
+          connectorId: ask.connectorId,
+          externalAgentTool: ask.toolName,
+          ...(described?.preview?.metadata ?? {}),
+        },
+      },
       workspaceRoot: ask.cwd,
     })
     return { behavior: 'allow' }

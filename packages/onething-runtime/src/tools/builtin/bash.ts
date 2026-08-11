@@ -11,24 +11,17 @@
 import { z } from 'zod'
 import { toJsonObject } from '@onething/core'
 import { createToolAbortError } from '@onething/core/tools'
-import {
-  isAbsolutePath,
-  joinPaths,
-  resolvePath,
-} from '@onething/core/storage'
 import { Tool } from '../tool.js'
 import type { BashOperations } from '../bash-executor.js'
 import {
-  expandCorePath,
   getCoreSandboxBoundary,
   getCoreSandboxRoots,
-  isCorePathContained,
 } from '../sandbox.js'
+import { analyzeBashPermission } from '../permission-effects.js'
 import {
   classifyBashCommand,
   classifyCommand,
   parseCommand,
-  splitShellWords,
 } from '../bash-classifier.js'
 import {
   DEFAULT_OUTPUT_MAX_BYTES,
@@ -88,34 +81,6 @@ export const BashParameters = z.object({
     .describe('Run the command as a managed background job and return immediately with a job id. Use for long-running services (dev servers, watchers). Read new output later with bash_output; stop it with kill_bash. Do NOT use for commands that finish on their own.'),
 })
 
-function findSandboxRoot(sandboxRoots: string[], targetPath: string): string | undefined {
-  return sandboxRoots.find(root => isCorePathContained(root, targetPath))
-}
-
-const COMMAND_SEPARATORS = new Set(['&&', '||', ';', '|', '&'])
-
-function resolveCommandDirectory(input: string, baseDir: string): string {
-  const expanded = expandCorePath(input)
-  return isAbsolutePath(expanded) ? resolvePath(expanded) : resolvePath(baseDir, expanded)
-}
-
-function extractCdDirectories(command: string, initialWorkingDir: string): string[] {
-  const words = splitShellWords(command)
-  const dirs: string[] = []
-  let cursor = initialWorkingDir
-
-  for (let i = 0; i < words.length; i++) {
-    if (words[i] !== 'cd') continue
-    const target = words[i + 1]
-    if (!target || target.startsWith('-') || COMMAND_SEPARATORS.has(target)) continue
-    const resolved = resolveCommandDirectory(target, cursor)
-    dirs.push(resolved)
-    cursor = resolved
-  }
-
-  return Array.from(new Set(dirs))
-}
-
 function formatTruncatedOutput(
   snapshot: ReturnType<OutputAccumulator['snapshot']>,
   emptyText = '(no output)',
@@ -148,98 +113,26 @@ To change the work directory for bash and file tools, use variable { action: "se
 
     parameters: BashParameters,
 
+    /**
+     * 副作用面在 `../permission-effects.js` —— 外部 agent 的审批桥调的是**同一个
+     * 函数**(`docs/audit/claude-code-sdk-audit-2026-08-11.md` P0-4)。两侧各写一份
+     * 命令分析就是两套判据,同一条 `rm -rf ./dist` 迟早在两种会话里长成两张不同
+     * 的卡。
+     */
     async analyze(args, ctx) {
-      const { command } = args
       const defaultWorkingDirectory = adapters.getDefaultWorkingDirectory?.()
-      const sandboxBoundary = getCoreSandboxBoundary({
-        workingDirectory: ctx.workingDirectory,
-        defaultWorkingDirectory,
+      return analyzeBashPermission({
+        command: args.command,
+        workingDirectory: getCoreSandboxBoundary({
+          workingDirectory: ctx.workingDirectory,
+          defaultWorkingDirectory,
+        }),
+        sandboxRoots: getCoreSandboxRoots({
+          workingDirectory: ctx.workingDirectory,
+          workingDirectoryRoots: ctx.workingDirectoryRoots,
+          defaultWorkingDirectory,
+        }),
       })
-      const sandboxRoots = getCoreSandboxRoots({
-        workingDirectory: ctx.workingDirectory,
-        workingDirectoryRoots: ctx.workingDirectoryRoots,
-        defaultWorkingDirectory,
-      })
-      const workingDir = sandboxBoundary
-      const matchedRoot = findSandboxRoot(sandboxRoots, workingDir)
-      const permissionRoot = matchedRoot ?? sandboxBoundary
-      const commandClassification = classifyBashCommand(command)
-      const cdDirectories = extractCdDirectories(command, workingDir)
-      const externalCdDirectories = cdDirectories.filter(dir => !findSandboxRoot(sandboxRoots, dir))
-      const effects = []
-
-      if (!matchedRoot) {
-        effects.push({
-          kind: 'external_directory' as const,
-          resources: [workingDir, joinPaths(workingDir, '*')],
-          barrier: true,
-          external: true,
-          metadata: {
-            command,
-            directory: workingDir,
-            boundary: sandboxBoundary,
-          },
-        })
-      }
-
-      if (externalCdDirectories.length > 0) {
-        effects.push({
-          kind: 'external_directory' as const,
-          resources: externalCdDirectories.flatMap(dir => [dir, joinPaths(dir, '*')]),
-          barrier: true,
-          external: true,
-          metadata: {
-            command,
-            directories: externalCdDirectories,
-            boundary: sandboxBoundary,
-            reason: 'Command changes directory outside the current work directory list',
-          },
-        })
-      }
-
-      if (commandClassification.decision === 'deny') {
-        effects.push({
-          kind: 'bash' as const,
-          resources: commandClassification.patterns.length > 0 ? commandClassification.patterns : ['*'],
-          barrier: true,
-          metadata: {
-            command,
-            patterns: commandClassification.patterns,
-            reason: commandClassification.reason,
-            commands: commandClassification.commands,
-            hardDeny: true,
-          },
-        })
-      } else if (commandClassification.decision === 'ask') {
-        const patterns = commandClassification.patterns.length > 0
-          ? commandClassification.patterns
-          : ['*']
-        effects.push({
-          kind: 'bash' as const,
-          resources: patterns,
-          barrier: true,
-          metadata: {
-            command,
-            patterns,
-            reason: commandClassification.reason,
-            commands: commandClassification.commands,
-            workingDirectory: permissionRoot,
-          },
-        })
-      }
-
-      return {
-        effects,
-        preview: {
-          title: command,
-          metadata: {
-            command,
-            workingDirectory: workingDir,
-            classification: commandClassification.decision,
-            reason: commandClassification.reason,
-          },
-        },
-      }
     },
 
     async execute(args, ctx) {

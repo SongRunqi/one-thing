@@ -12,13 +12,9 @@ import {
 	createToolAbortError,
 	type CoreDiffHunk,
 } from "@onething/core/tools";
-import {
-	basenamePath,
-	dirnamePath,
-	joinPaths,
-	writeTextFileAsync,
-} from "@onething/core/storage";
+import { basenamePath, writeTextFileAsync } from "@onething/core/storage";
 import { Tool } from "../tool.js";
+import { filePermissionPattern } from "../permission-effects.js";
 import { withFileMutationQueue } from "../file-mutation-queue.js";
 import {
 	computeDiffHunks,
@@ -101,10 +97,6 @@ export const EditParameters = z.object({
 			"One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.",
 		),
 });
-
-function filePermissionPattern(targetPath: string): string {
-	return joinPaths(dirnamePath(targetPath), "*");
-}
 
 function resolveEditPath(
 	filePath: string,

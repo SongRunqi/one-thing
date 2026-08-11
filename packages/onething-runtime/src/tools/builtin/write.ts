@@ -18,10 +18,10 @@ import {
 	basenamePath,
 	dirnamePath,
 	ensureDirAsync,
-	joinPaths,
 	writeTextFileAsync,
 } from "@onething/core/storage";
 import { Tool } from "../tool.js";
+import { filePermissionPattern } from "../permission-effects.js";
 import { withFileMutationQueue } from "../file-mutation-queue.js";
 import {
 	computeDiffHunks,
@@ -92,10 +92,6 @@ export const WriteParameters = z.object({
 	path: z.string().describe("Path to the file to write (relative or absolute)"),
 	content: z.string().describe("Content to write to the file"),
 });
-
-function filePermissionPattern(targetPath: string): string {
-	return joinPaths(dirnamePath(targetPath), "*");
-}
 
 function resolveWritePath(
 	filePath: string,
