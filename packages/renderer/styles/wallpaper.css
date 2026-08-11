@@ -78,7 +78,9 @@ html.has-wallpaper body {
   --wallpaper-active-alpha: 60%;
   /* 磨砂底:76% 是"字压在插画上仍是纯色底质感"的下沿(深浅两套主题都量过);
      再稀就开始看见图案穿过字重。blur 14px 落在 12–16px 带的中间。 */
-  --wallpaper-frost-alpha: 76%;
+  /* 76% → 68%:回捞轮实测,76% 在近白主题(菜单面 #ffffff)上肉眼即实色,
+     用户整场战役的诉求是壁纸可感 —— 降一档换感知,可读性下限用户自验后再调。 */
+  --wallpaper-frost-alpha: 68%;
   --wallpaper-frost-blur: 14px;
 
   /* ── ink 快照:后代覆写同名 token 之后,这里仍是主题的原始值 ── */
