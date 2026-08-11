@@ -3,6 +3,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
 
+import {
+  commandBelongsToDevSelf,
+  electronMainCommandPrefix,
+  isDevSelfLane,
+  lanePorts,
+  laneServerOutDir,
+} from './lib/dev-self.mjs'
+
 const children = new Map()
 let shuttingDown = false
 let forwardChildOutput = true
@@ -21,6 +29,13 @@ if (!['all', 'electron', 'web'].includes(mode)) {
 }
 const managesElectron = mode !== 'web'
 const managesWeb = mode !== 'electron'
+
+// 泳道身份:默认 = 日常那只(A);dev-self(B)由 scripts/dev-self.mjs 用 env 点亮,
+// argv 上的 --dev-self 只是给 ps 看的 marker。两条泳道的端口、产物目录、清扫
+// 范围全部按这个布尔分叉,定义在 scripts/lib/dev-self.mjs。
+const devSelf = isDevSelfLane()
+const ports = lanePorts(devSelf)
+const serverOutDir = laneServerOutDir(devSelf)
 
 function npmCommand() {
   return isWindows ? 'npm.cmd' : 'npm'
@@ -176,8 +191,16 @@ function normalizedCommand(command) {
   return command.replaceAll('\\', '/')
 }
 
+// 清扫只在本泳道内进行:A 的 `dev:electron` 不许碰 B 的进程,反之亦然。
+// 判据是命令行里的 dev-self marker(见 lib/dev-self.mjs),不是 env ——
+// ps 看不到别人的 env。
+function belongsToThisLane(command) {
+  return commandBelongsToDevSelf(command) === devSelf
+}
+
 function isProjectElectronDevCommand(command) {
   const normalized = normalizedCommand(command)
+  if (!belongsToThisLane(normalized)) return false
   return (
     normalized.includes(`${projectRoot}/scripts/dev-with-logging.mjs`) ||
     normalized.includes(`${projectRoot}/node_modules/.bin/electron-vite`) ||
@@ -188,11 +211,12 @@ function isProjectElectronDevCommand(command) {
 
 function isProjectElectronMainCommand(command) {
   const normalized = normalizedCommand(command)
-  return normalized.includes(`${projectRoot}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron .`)
+  return normalized.includes(electronMainCommandPrefix(projectRoot, devSelf))
 }
 
 function isProjectDevRunnerCommand(command) {
   const normalized = normalizedCommand(command)
+  if (!belongsToThisLane(normalized)) return false
   // 也匹配从项目根目录用相对路径起的 runner(如 `node scripts/dev-unified.mjs web`)。
   const isRunner = normalized.includes(`${projectRoot}/scripts/dev-unified.mjs`)
     || /(^|[\s/])scripts\/dev-unified\.mjs(\s|$)/.test(normalized)
@@ -229,12 +253,15 @@ async function cleanupPort(port) {
 
 function isProjectWebDevCommand(command) {
   const normalized = normalizedCommand(command)
+  if (!belongsToThisLane(normalized)) return false
   return normalized.includes('apps/web/vite.config.ts') && normalized.includes('node_modules/.bin/vite')
 }
 
 function isProjectServerCommand(command) {
-  return normalizedCommand(command).includes(`${projectRoot}/dist/server/main.js`)
-    || normalizedCommand(command).includes('dist/server/main.js')
+  const normalized = normalizedCommand(command)
+  if (!belongsToThisLane(normalized)) return false
+  return normalized.includes(`${projectRoot}/${serverOutDir}/main.js`)
+    || normalized.includes(`${serverOutDir}/main.js`)
 }
 
 async function cleanupStaleProjectProcesses(options = {}) {
@@ -291,8 +318,8 @@ async function stopExistingDevProcesses() {
   await cleanupStaleProjectRunners({ graceMs: 5000 })
   await cleanupStaleProjectProcesses({ graceMs: 3500 })
   if (managesWeb) {
-    await cleanupPort(5174)
-    await cleanupPort(8787)
+    await cleanupPort(ports.web)
+    await cleanupPort(ports.server)
   }
   await waitForNoStaleProjectProcesses()
   await wait(300)
@@ -416,24 +443,33 @@ function ensureBetterSqliteNodeAbi() {
 async function startBackendLane() {
   log('dev', 'preparing web backend')
   ensureBetterSqliteNodeAbi()
-  runBlocking('server', npmCommand(), ['run', 'server:build'], {
+  // dev-self 的 server bundle 走独立 outDir:两条泳道往同一个
+  // dist/server/main.js 里构建会互相截断,产物路径本身也是进程 marker。
+  runBlocking('server', npmCommand(), [
+    'run', 'server:build',
+    ...(devSelf ? ['--', '--outDir', serverOutDir] : []),
+  ], {
     title: 'building web backend',
   })
 
-  spawnManaged('server', 'node', ['dist/server/main.js'], {
+  spawnManaged('server', 'node', [`${serverOutDir}/main.js`], {
     env: {
       ONETHING_SERVER_HOST: process.env.ONETHING_SERVER_HOST ?? '127.0.0.1',
-      ONETHING_SERVER_PORT: process.env.ONETHING_SERVER_PORT ?? '8787',
-      ONETHING_CORS_ORIGIN: process.env.ONETHING_CORS_ORIGIN ?? 'http://127.0.0.1:5174',
+      ONETHING_SERVER_PORT: process.env.ONETHING_SERVER_PORT ?? String(ports.server),
+      ONETHING_CORS_ORIGIN: process.env.ONETHING_CORS_ORIGIN ?? `http://127.0.0.1:${ports.web}`,
     },
   })
-  await waitForHttp('http://127.0.0.1:8787/api/capabilities', 'web backend')
+  await waitForHttp(`http://127.0.0.1:${ports.server}/api/capabilities`, 'web backend')
 }
 
 async function startWebLane() {
   log('dev', 'starting web frontend')
-  spawnManaged('web', localBin('vite'), ['--config', 'apps/web/vite.config.ts', '--host', '127.0.0.1'])
-  await waitForHttp('http://127.0.0.1:5174', 'web frontend')
+  spawnManaged('web', localBin('vite'), [
+    '--config', 'apps/web/vite.config.ts',
+    '--host', '127.0.0.1',
+    '--port', String(ports.web),
+  ])
+  await waitForHttp(`http://127.0.0.1:${ports.web}`, 'web frontend')
 }
 
 async function startElectronLane() {
@@ -461,7 +497,9 @@ async function main() {
 
   const readyParts = []
   if (managesElectron && !skipElectron) readyParts.push('Electron dev')
-  if (managesWeb) readyParts.push('Web http://127.0.0.1:5174', 'API http://127.0.0.1:8787')
+  if (managesWeb) {
+    readyParts.push(`Web http://127.0.0.1:${ports.web}`, `API http://127.0.0.1:${ports.server}`)
+  }
   log('dev', `ready: ${readyParts.join(', ')}`)
 }
 

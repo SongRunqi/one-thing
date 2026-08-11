@@ -4,7 +4,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { gzipSync } from 'node:zlib'
 
-const LOG_DIR = path.join(os.homedir(), '.onething', 'log')
+import { commandBelongsToDevSelf, electronMainCommandPrefix, isDevSelfLane } from './lib/dev-self.mjs'
+
+// 日志跟着 store 走(store 隔离的应有之义):默认仍是 ~/.onething/log,
+// dev-self 泳道把 ONETHING_STORE_PATH 指到 ~/.onething-dev 后自动分家,
+// 两只实例不再往同一个 dev.log 里混写。
+const STORE_PATH = process.env.ONETHING_STORE_PATH || path.join(os.homedir(), '.onething')
+const LOG_DIR = path.join(STORE_PATH, 'log')
 const LOG_NAME = process.argv[2] === 'start' ? 'start' : 'dev'
 const ACTIVE_LOG = path.join(LOG_DIR, `${LOG_NAME}.log`)
 const MAX_LOG_BYTES = readNumberEnv('ONETHING_LOG_MAX_SIZE_MB', 8, 1, 512) * 1024 * 1024
@@ -25,6 +31,8 @@ const managedChildren = new Set()
 const isWindows = process.platform === 'win32'
 const verboseStartup = process.env.ONETHING_DEV_VERBOSE === '1'
 const projectRoot = process.cwd().replaceAll('\\', '/')
+// 泳道身份:日常那只 = false,dev-self(B 实例)= true。清扫只在本泳道内做。
+const devSelf = isDevSelfLane()
 
 function readNumberEnv(name, fallback, min, max) {
   const value = Number(process.env[name])
@@ -299,6 +307,7 @@ function killProcessGroup(child, signal = 'SIGTERM') {
 
 function isProjectElectronDevCommand(command) {
   const normalized = normalizedCommand(command)
+  if (commandBelongsToDevSelf(normalized) !== devSelf) return false
   return (
     normalized.includes(`${projectRoot}/node_modules/.bin/electron-vite`) ||
     normalized.includes(`${projectRoot}/node_modules/electron-vite/`) ||
@@ -308,7 +317,7 @@ function isProjectElectronDevCommand(command) {
 
 function isProjectElectronMainCommand(command) {
   const normalized = normalizedCommand(command)
-  return normalized.includes(`${projectRoot}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron .`)
+  return normalized.includes(electronMainCommandPrefix(projectRoot, devSelf))
 }
 
 async function waitForProcess(predicate, timeoutMs = 90000) {
@@ -318,6 +327,24 @@ async function waitForProcess(predicate, timeoutMs = 90000) {
     await wait(250)
   }
   throw new Error('process did not start')
+}
+
+// 透传给 Electron 二进制自己的参数(dev-self 用它换 --user-data-dir)。
+// 只能走 `electron-vite dev -- <args>`:electron-vite 的 cli 会拿
+// `options['--']`(空数组也是真值)无条件覆盖 ELECTRON_CLI_ARGS,
+// 所以 env 里预设那个变量必被清空。
+function electronPassthroughArgs() {
+  const raw = process.env.ONETHING_ELECTRON_ARGS
+  if (!raw) return []
+  let args
+  try {
+    args = JSON.parse(raw)
+  } catch {
+    writeLogLine('runner', `ignoring malformed ONETHING_ELECTRON_ARGS: ${raw}`)
+    return []
+  }
+  if (!Array.isArray(args) || args.length === 0) return []
+  return ['--', ...args.map(String)]
 }
 
 async function cleanupElectronDevProcesses(signal = 'SIGTERM') {
@@ -375,7 +402,7 @@ async function main() {
     forwardOutput: forwardPrepOutput,
   })
   await cleanupElectronDevProcesses()
-  await run(localBin('electron-vite'), [LOG_NAME === 'start' ? 'preview' : 'dev'], {
+  await run(localBin('electron-vite'), [LOG_NAME === 'start' ? 'preview' : 'dev', ...electronPassthroughArgs()], {
     title: 'launching Electron window',
     forwardOutput: verboseStartup,
     enableForwardOutputAfter: verboseStartup

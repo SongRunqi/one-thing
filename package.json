@@ -15,6 +15,7 @@
     "dev": "node scripts/dev-unified.mjs",
     "dev:electron": "node scripts/dev-unified.mjs electron",
     "dev:web": "node scripts/dev-unified.mjs web",
+    "dev:self": "node scripts/dev-self.mjs",
     "start": "npm run electron:start",
     "electron:dev": "node scripts/dev-with-logging.mjs dev",
     "electron:start": "node scripts/dev-with-logging.mjs start",

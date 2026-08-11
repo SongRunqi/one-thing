@@ -5,10 +5,19 @@ import vue from '@vitejs/plugin-vue'
 
 const onethingPackageAliases = createOnethingPackageAliases(__dirname)
 
+// 自举开发的第二条泳道(scripts/dev-self.mjs)要能和日常 dev 并行:
+// 渲染进程端口和 main/preload 产物目录都可用 env 错开,缺省与从前完全一致。
+// 端口变了主进程不用改 —— electron-vite 会把实际端口写进 ELECTRON_RENDERER_URL。
+const rendererPort = Number(process.env.ONETHING_RENDERER_PORT) || 5173
+const outDirRoot = process.env.ONETHING_ELECTRON_OUT_DIR
+const scopedOutDir = (scope: string) =>
+  outDirRoot ? { outDir: resolve(__dirname, outDirRoot, scope) } : {}
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     build: {
+      ...scopedOutDir('main'),
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'apps/electron/src/main.ts'),
@@ -27,6 +36,7 @@ export default defineConfig({
   preload: {
     plugins: [externalizeDepsPlugin()],
     build: {
+      ...scopedOutDir('preload'),
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'apps/electron/src/preload.ts')
@@ -47,6 +57,7 @@ export default defineConfig({
   renderer: {
     root: '.',
     build: {
+      ...scopedOutDir('renderer'),
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'index.html')
@@ -64,7 +75,7 @@ export default defineConfig({
     plugins: [vue()],
     server: {
       host: '127.0.0.1',
-      port: 5173
+      port: rendererPort
     }
   }
 })
