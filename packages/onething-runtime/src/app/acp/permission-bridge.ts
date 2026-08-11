@@ -1,22 +1,8 @@
 import { Permission } from '../permission/index.js'
-import { getSession } from '../store.js'
+import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
 import { ACPManager } from './index.js'
 import type { ACPPermissionBridge, ACPPermissionRequestContext } from '@onething/runtime/acp'
-import type { ChatMessage } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
-
-/**
- * The prompt context does not carry the assistant message id today; the
- * session's newest assistant message is the one the ACP stream writes into.
- */
-function resolveActiveAssistantMessageId(sessionId: string): string | undefined {
-  const messages = getSession(sessionId)?.messages as ChatMessage[] | undefined
-  if (!messages) return undefined
-  for (let index = messages.length - 1; index >= 0; index--) {
-    if (messages[index].role === 'assistant') return messages[index].id
-  }
-  return undefined
-}
 
 function toSafeJson(value: unknown): JsonObject | string | undefined {
   if (value === undefined || value === null) return undefined
@@ -45,7 +31,9 @@ export function registerACPPermissionBridge(): void {
       return { behavior: 'reject' }
     }
 
-    const messageId = context.messageId ?? resolveActiveAssistantMessageId(sessionId) ?? ''
+    // 提示上下文今天不带 assistant 消息号,而一个渲染侧找不到的锚 = 卡永远不上屏。
+    // 判据与 SDK 那条通路共用同一个所有者(`app/permission/message-anchor.ts`)。
+    const messageId = resolvePermissionMessageAnchor(sessionId, context.messageId)
     try {
       await Permission.ask({
         type: 'external-agent',

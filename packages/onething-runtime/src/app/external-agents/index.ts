@@ -23,10 +23,10 @@ import {
   recordExternalAgentTurn,
 } from '../collab/external-observability.js'
 import { getSession, getSettings } from '../store.js'
+import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
 import { getStorePath } from '../stores/paths.js'
 import { enforcePermissionPolicy } from '../tools/core/permission-policy.js'
 import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
-import type { ChatMessage } from '@shared/ipc.js'
 
 export { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 
@@ -105,15 +105,6 @@ export function persistExternalAgentSessionLink(link: ExternalAgentSessionLink):
 // Permission bridge
 // ---------------------------------------------------------------------------
 
-function resolveActiveAssistantMessageId(sessionId: string): string | undefined {
-  const messages = getSession(sessionId)?.messages as ChatMessage[] | undefined
-  if (!messages) return undefined
-  for (let index = messages.length - 1; index >= 0; index--) {
-    if (messages[index].role === 'assistant') return messages[index].id
-  }
-  return undefined
-}
-
 /**
  * 外部 agent 的审批桥(E4,G1+G2)。
  *
@@ -160,7 +151,10 @@ function resolveActiveAssistantMessageId(sessionId: string): string | undefined 
 export async function askExternalAgentPermission(
   ask: ExternalAgentPermissionAsk,
 ): Promise<ExternalAgentPermissionDecision> {
-  const messageId = ask.messageId ?? resolveActiveAssistantMessageId(ask.localSessionId) ?? ''
+  // 锚必须是渲染侧真的拿得到的那条消息,否则卡永远进缓存、永远不上屏
+  // (`app/permission/message-anchor.ts` 开头写了整条判据)。后台子代理的嵌套
+  // toolCallId 由渲染侧的领养兜底接住,而 messageId 这一截没有兜底,只能在源头保证。
+  const messageId = resolvePermissionMessageAnchor(ask.localSessionId, ask.messageId)
   const described = describeExternalToolPermission({
     toolName: ask.toolName,
     input: ask.input,

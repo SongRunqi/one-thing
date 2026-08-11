@@ -165,6 +165,59 @@ describe('外部审批走策略门(G1 + G2)', () => {
     await expect(decision).resolves.toEqual({ behavior: 'allow' })
   })
 
+  /**
+   * **G1 的另一半:messageId 那一截**(2026-08-11,SDK 线冻结前收口)。
+   *
+   * 渲染侧落卡要过两道闸,`callId` 那道已经有领养兜底
+   * (`renderer/stores/chat.ts:adoptToolCallForPermission`),而 `messageId` 这道
+   * **没有兜底也不自愈**:缓存只在"那条消息被创建"时唤醒,一个永远不会被创建的
+   * messageId(从前的 `?? ''`)就是永久静默 —— 后端挂着等审批,前端一张卡都不出。
+   *
+   * 而这一格是真会踩到的:`agent-loop/providers/factory.ts:497` **根本不传**
+   * `messageId`,所以每一次外部审批都落在会话自查上;首轮工具审批完全可能早于
+   * assistant 消息落库。
+   *
+   * 这条与
+   * `renderer/components/chat/__tests__/ChatPanel.external-permission.test.ts`
+   * 共用同一个接缝不变式(嵌套 callId + 会话里真的有的 messageId),那一条接着
+   * 往下验:同样的快照进 store,账页真的画进 DOM。
+   */
+  it('会话里还没有 assistant 消息 —— 锚落到真的有的那条消息上,而不是空串', async () => {
+    mocks.sessions.set('fresh-1', {
+      id: 'fresh-1',
+      kind: 'chat',
+      // 首轮:用户那条已经落库,assistant 消息还没有。
+      messages: [{ id: 'u-1', role: 'user', origin: GOAL_ORIGIN }],
+    } satisfies FakeSession)
+    Permission.clearSession('fresh-1')
+
+    const { askExternalAgentPermission } = await import('../index.js')
+    const decision = askExternalAgentPermission({
+      connectorId: 'claude-code-agent',
+      localSessionId: 'fresh-1',
+      // factory.ts:497 不传 messageId —— 这里逐字复现那个缺省。
+      cwd: '/tmp/p',
+      toolName: 'Bash',
+      input: { command: 'rm -rf ./build' },
+      // 后台子代理的嵌套 tool_use id:消息上没有这张工具卡。
+      toolCallId: 'toolu_nested_bg_01',
+    })
+
+    await vi.waitFor(() => {
+      expect(Permission.getPendingPrompts('fresh-1')).toHaveLength(1)
+    })
+    const prompt = Permission.getPendingPrompts('fresh-1')[0]
+
+    expect(prompt.callId).toBe('toolu_nested_bg_01')
+    expect(prompt.messageId).not.toBe('')
+    // 锚必须是渲染侧真的找得到的那条消息。
+    const messages = (mocks.sessions.get('fresh-1') as FakeSession).messages
+    expect(messages.some(message => message.id === prompt.messageId)).toBe(true)
+
+    Permission.respond({ sessionId: 'fresh-1', permissionId: prompt.id, response: 'once' })
+    await expect(decision).resolves.toEqual({ behavior: 'allow' })
+  })
+
   it('无人应答 120s 后自动拒绝,理由可读地回到 SDK', async () => {
     vi.useFakeTimers()
     const { askExternalAgentPermission } = await import('../index.js')
