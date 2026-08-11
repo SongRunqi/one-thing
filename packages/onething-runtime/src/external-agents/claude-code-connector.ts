@@ -19,6 +19,7 @@ import type {
   ExternalAgentCapabilities,
   ExternalAgentConnector,
   ExternalAgentEvent,
+  ExternalAgentImageInput,
   ExternalAgentInteractionHandler,
   ExternalAgentObserver,
   ExternalAgentPermissionHandler,
@@ -101,6 +102,27 @@ export interface ClaudeCodeSdkMessage {
 }
 
 /**
+ * 一条流式输入用户消息里的内容块。
+ *
+ * `SDKUserMessage.message` 的类型是 `@anthropic-ai/sdk` 的 `MessageParam`
+ * (`sdk.d.ts:8` 的 import),也就是 **Messages API 原封不动的那套 content block**
+ * —— text 与 image 的形状因此与直连 API 逐字相同,`agent-loop/providers/claude.ts`
+ * 的 `ClaudeImageBlock` 就是同一个东西。
+ *
+ * 实测(2026-08-12,真 CLI + 真 `sdk.query()`):流式输入里的 image block 确实进到
+ * 模型眼里 —— 一张画着字母 K 的 320×320 PNG,模型答 `LETTER=K`。所以这条路是通的,
+ * 不需要退到「诚实地说送不到」那一档。
+ */
+export type ClaudeCodeSdkUserContentBlock =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image'
+      source:
+        | { type: 'base64'; media_type: string; data: string }
+        | { type: 'url'; url: string }
+    }
+
+/**
  * SDK 的 `SDKUserMessage`(`sdk.d.ts:4521`)里我们真正要写的那几位。保持结构化,
  * 与 `ClaudeCodeSdkMessage` 同一条纪律:SDK 仍是这个模块的软依赖。
  */
@@ -108,7 +130,135 @@ export interface ClaudeCodeSdkUserMessage {
   type: 'user'
   session_id: string
   parent_tool_use_id: null
-  message: { role: 'user'; content: { type: 'text'; text: string }[] }
+  message: { role: 'user'; content: ClaudeCodeSdkUserContentBlock[] }
+}
+
+/* ── 图片(2026-08-12,审计「图片静默丢弃」) ─────────────────────────────── */
+
+/**
+ * 单轮张数上限。
+ *
+ * 取 20 而不是 API 文档那个更宽的上限:一条聊天消息挂二十张以上图片已经不是「发图」
+ * 而是「灌库」,而每一张都要经 stdin 的一行 JSON 进 CLI。超出的部分**如实截并说明**,
+ * 不静默丢 —— 这条上限存在的意义就是让「没送到」有一句话可说。
+ */
+export const CLAUDE_CODE_MAX_IMAGES_PER_TURN = 20
+
+/**
+ * 单张原始字节上限(5 MiB)。这是 Anthropic API 自己对单张图片的上限:再大是一个
+ * 400,而 400 会把**整轮**打掉,用户拿到的是一次不知所以的失败。宁可少送一张并写清
+ * 为什么,也不要用一张超限图换掉整个回合。
+ */
+export const CLAUDE_CODE_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+/**
+ * 单轮图片总量上限(20 MiB 原始字节 ≈ 26.7 MB base64)。API 的整请求上限是 32 MB,
+ * 而上游草稿允许 32 MB 附件 —— 不设这一道,一次合法的草稿就能把请求撑爆。
+ */
+export const CLAUDE_CODE_MAX_IMAGE_TOTAL_BYTES = 20 * 1024 * 1024
+
+/**
+ * API 认得的四种图片类型。别的类型(heic / bmp / tiff …)送上去是一个 400,
+ * 与超限同理:整轮打掉 vs 一句人话,选后者。
+ */
+const CLAUDE_CODE_IMAGE_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
+function parseImageDataUrl(value: string): { mediaType: string; data: string } | undefined {
+  const match = value.match(/^data:([^;,]+);base64,(.*)$/)
+  return match ? { mediaType: match[1], data: match[2] } : undefined
+}
+
+/** base64 长度 → 解码后字节数。不解码 —— 量一张图不值得在内存里再复制一份。 */
+function base64DecodedBytes(data: string): number {
+  const clean = data.replace(/\s/g, '')
+  if (!clean) return 0
+  const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((clean.length * 3) / 4) - padding)
+}
+
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * 没送出去的图片要说的**人话**。它同时走两条路:进用户消息的文本块(模型据此知道
+ * 自己没拿到全部图片,不会凭空描述一张不存在的图),和一条 `text-delta`(用户据此
+ * 知道自己发的图去哪了)。同一句话,两个收信人 —— 这正是「绝不静默」的具体形状。
+ */
+export function claudeCodeImageDropNotice(dropped: string[], accepted: number): string {
+  return `⚠️ 本轮有 ${dropped.length} 张图片未送达:${dropped.join('、')}。`
+    + (accepted > 0
+      ? `其余 ${accepted} 张已随这条消息送达。`
+      : '本轮仅文本生效。')
+}
+
+/**
+ * 一轮的用户消息内容:文本块 + 图片块。
+ *
+ * 纪律三条:
+ *
+ *  1. **无图的回合形状逐字不变** —— `[{ type:'text', text }]`,连空文本都保持原样,
+ *     否则这次改动会顺手动到每一个不发图的普通回合;
+ *  2. 文本在前、图片在后(实测这个次序模型读得到,见类型说明);
+ *  3. 任何一张没进去的图都进 `notice`,一张都不许悄悄消失。
+ */
+export function claudeCodePromptContent(
+  text: string,
+  images: ExternalAgentImageInput[] = [],
+): { blocks: ClaudeCodeSdkUserContentBlock[]; notice?: string } {
+  const blocks: ClaudeCodeSdkUserContentBlock[] = []
+  const dropped: string[] = []
+  let totalBytes = 0
+  let accepted = 0
+
+  images.forEach((entry, index) => {
+    const label = `第 ${index + 1} 张`
+    const raw = entry.image?.trim()
+    if (!raw) {
+      dropped.push(`${label}(数据为空)`)
+      return
+    }
+    if (accepted >= CLAUDE_CODE_MAX_IMAGES_PER_TURN) {
+      dropped.push(`${label}(超过单轮 ${CLAUDE_CODE_MAX_IMAGES_PER_TURN} 张上限)`)
+      return
+    }
+    // 远端 URL:交给 API 自己去取,与原生 claude provider 同款口径(它也不下载)。
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      blocks.push({ type: 'image', source: { type: 'url', url: raw } })
+      accepted += 1
+      return
+    }
+    const parsed = parseImageDataUrl(raw)
+    const mediaType = (parsed?.mediaType ?? entry.mediaType ?? 'image/png')
+      .split(';')[0].trim().toLowerCase()
+    const data = parsed?.data ?? raw
+    if (!CLAUDE_CODE_IMAGE_MEDIA_TYPES.includes(mediaType)) {
+      dropped.push(`${label}(格式 ${mediaType} 不受支持)`)
+      return
+    }
+    const bytes = base64DecodedBytes(data)
+    if (bytes > CLAUDE_CODE_MAX_IMAGE_BYTES) {
+      dropped.push(
+        `${label}(${formatMegabytes(bytes)},超过单张 ${formatMegabytes(CLAUDE_CODE_MAX_IMAGE_BYTES)} 上限)`,
+      )
+      return
+    }
+    if (totalBytes + bytes > CLAUDE_CODE_MAX_IMAGE_TOTAL_BYTES) {
+      dropped.push(
+        `${label}(本轮图片总量超过 ${formatMegabytes(CLAUDE_CODE_MAX_IMAGE_TOTAL_BYTES)} 上限)`,
+      )
+      return
+    }
+    totalBytes += bytes
+    accepted += 1
+    blocks.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data } })
+  })
+
+  const notice = dropped.length > 0 ? claudeCodeImageDropNotice(dropped, accepted) : undefined
+  const body = notice ? (text ? `${text}\n\n${notice}` : notice) : text
+  // `blocks.length === 0` 那一支就是「无图回合」:文本块照发,空文本也照发。
+  if (body || blocks.length === 0) blocks.unshift({ type: 'text', text: body })
+  return { blocks, ...(notice ? { notice } : {}) }
 }
 
 /**
@@ -141,7 +291,11 @@ export class ClaudeCodePromptStream {
   private readonly gate: Promise<void>
   private closed = false
 
-  constructor(private readonly text: string) {
+  /**
+   * 收的是**内容块数组**而不是一段文本(2026-08-12):图片与文本是同一条消息里并列
+   * 的两种块,由 `claudeCodePromptContent` 一次算好。这里只负责把它发出去再挂起。
+   */
+  constructor(private readonly content: ClaudeCodeSdkUserContentBlock[]) {
     this.gate = new Promise<void>(resolve => { this.release = resolve })
   }
 
@@ -161,7 +315,7 @@ export class ClaudeCodePromptStream {
       type: 'user',
       session_id: '',
       parent_tool_use_id: null,
-      message: { role: 'user', content: [{ type: 'text', text: this.text }] },
+      message: { role: 'user', content: this.content },
     }
     await this.gate
   }
@@ -337,7 +491,13 @@ const CLAUDE_CODE_CAPABILITIES: ExternalAgentCapabilities = {
   resume: true,
   fork: true,
   steer: false,
-  imagesIn: false,
+  /**
+   * **真的接得住**(2026-08-12)。图片作为 image block 随文本一起进流式输入的
+   * `SDKUserMessage`,实测经真 CLI 到达模型(见 `ClaudeCodeSdkUserContentBlock`)。
+   * 翻回 false 不是改一行文档:`provider.ts` 会据此改声明**并**改行为,发图的回合
+   * 转而收到一句「此引擎暂不支持图片」。
+   */
+  imagesIn: true,
   mcpInjection: 'in-process',
   concurrentSessions: 'per-process',
 }
@@ -1099,7 +1259,13 @@ export function createClaudeCodeConnector(
        * 不放开就留下一个永不结算的 promise。放开之后 SDK 走 endInput、CLI 退出,
        * 与今天 abort 的收场逐字相同(实测:abort 后 CLI 干净退出,后台任务一并终止)。
        */
-      const promptStream = new ClaudeCodePromptStream(request.prompt)
+      /**
+       * 图片与文本在这里合成一条用户消息(2026-08-12)。`promptContent.notice` 非空
+       * 就说明有图没进去 —— 它已经写进了给模型的文本块,下面还要再发一条给用户看的
+       * 正文。两个收信人都必须收到,这是这次修复的全部要点。
+       */
+      const promptContent = claudeCodePromptContent(request.prompt, request.images)
+      const promptStream = new ClaudeCodePromptStream(promptContent.blocks)
       const backgroundTimeoutMs = options.backgroundTaskTimeoutMs ?? DEFAULT_BACKGROUND_TASK_TIMEOUT_MS
       let backgroundTimer: ReturnType<typeof setTimeout> | undefined
       let backgroundTimedOutCount = 0
@@ -1431,6 +1597,12 @@ export function createClaudeCodeConnector(
         const stream = options.queryFn
           ? options.queryFn(queryParams)
           : await defaultQueryFn(queryParams)
+
+        // 截图的那句话在**模型开口之前**上屏:用户先知道「你那张图没进去」,再看到
+        // 一段没有提到那张图的回答,而不是反过来自己猜。
+        if (promptContent.notice) {
+          yield* translator.emitNotice(`${promptContent.notice}\n\n`)
+        }
 
         for await (const message of stream) {
           /**

@@ -3,7 +3,11 @@ import {
   CLAUDE_CODE_AGENT_CONNECTOR_ID,
   createClaudeCodeConnector,
 } from '../claude-code-connector.js'
-import type { ClaudeCodeQueryOptions, ClaudeCodeSdkMessage } from '../claude-code-connector.js'
+import type {
+  ClaudeCodeQueryOptions,
+  ClaudeCodeSdkMessage,
+  ClaudeCodeSdkUserMessage,
+} from '../claude-code-connector.js'
 import type {
   ExternalAgentEvent,
   ExternalAgentPermissionAsk,
@@ -90,7 +94,7 @@ const fullTurnFixture: ClaudeCodeSdkMessage[] = [
 describe('ClaudeCodeConnector', () => {
   it('maps the SDK stream to normalized events with externally-executed tools', async () => {
     const captured: {
-      prompt: AsyncIterable<{ message: { content: { text: string }[] } }>
+      prompt: AsyncIterable<ClaudeCodeSdkUserMessage>
       promptText: string
       options: ClaudeCodeQueryOptions
     }[] = []
@@ -121,7 +125,9 @@ describe('ClaudeCodeConnector', () => {
     expect(typeof (captured[0].prompt as AsyncIterable<unknown>)[Symbol.asyncIterator])
       .toBe('function')
     const firstInput = await captured[0].prompt[Symbol.asyncIterator]().next()
-    expect(firstInput.value?.message.content[0].text).toBe('list files')
+    // 无图的普通回合形状**逐字不变**(2026-08-12 加图片块之后的回归线):
+    // 一条消息一个文本块,没有多出来的任何东西。
+    expect(firstInput.value?.message.content).toEqual([{ type: 'text', text: 'list files' }])
 
     expect(captured[0].options).toMatchObject({
       cwd: '/tmp/project',

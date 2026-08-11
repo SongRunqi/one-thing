@@ -18,6 +18,15 @@ export interface ExternalAgentCapabilities {
   resume: boolean
   fork: boolean
   steer: boolean
+  /**
+   * 这个连接器接不接图片。**这一位有两个读者**(2026-08-12,审计「能力表要有读者」):
+   *
+   *  1. `provider.ts` 据它决定 `inputModalities` / `vision-input` 怎么声明;
+   *  2. 同一处据它决定图片是**送进去**还是**当场说没送到** —— 翻成 false,
+   *     发图的回合就会收到一句可见的「此引擎暂不支持图片」,而不是悄悄只发文本。
+   *
+   * 也就是说翻这一位真的会改变行为,它不是一行文档。
+   */
   imagesIn: boolean
   mcpInjection: 'in-process' | 'config' | 'none'
   /**
@@ -43,11 +52,33 @@ export interface ExternalAgentSessionLink {
   lastUsedAt: number
 }
 
+/**
+ * 一张随本轮用户消息进去的图片(2026-08-12,审计「图片静默丢弃」)。
+ *
+ * 形状与 `AgentImageContentPart.image` **逐字相同**(data URL / 裸 base64 /
+ * http(s) URL),理由是这一位就是从那里抄过来的:多一层自造的格式,就多一处
+ * 「哪一头忘了转换」的静默丢弃 —— 而那正是这次要修的那个 bug。
+ */
+export interface ExternalAgentImageInput {
+  /** data URL(`data:image/png;base64,…`)、裸 base64,或 http(s) URL。 */
+  image: string
+  /** 裸 base64 时的兜底类型;data URL 自带的那个优先。 */
+  mediaType?: string
+}
+
 export interface ExternalAgentTurnRequest {
   localSessionId: string
   /** Assistant message the turn streams into; threads into permission asks. */
   messageId?: string
   prompt: string
+  /**
+   * 本轮最后一条用户消息里的图片(2026-08-12)。
+   *
+   * **只有 `capabilities.imagesIn` 为真的连接器才会收到它** —— `provider.ts` 在那一位
+   * 上分岔:接得住就送进来,接不住就当场发一句可见的正文说「图片没送到」。两条路都不
+   * 静默,这是这一位存在的全部理由。
+   */
+  images?: ExternalAgentImageInput[]
   /**
    * 这一轮的 system prompt(E4/G9)。**persona 走这里进去** —— 在此之前整份
    * system prompt 在 `provider.ts` 被丢掉,群里的 Iris 于是不是 Iris,只是一台

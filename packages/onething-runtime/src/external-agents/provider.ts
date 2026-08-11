@@ -1,11 +1,13 @@
 import { agentContentToText } from '@onething/core/agent-loop'
 import type {
+  AgentMessageContent,
   AgentProvider,
   AgentTurnRequest,
   AgentTurnStreamEvent,
 } from '@onething/core/agent-loop'
 import type {
   ExternalAgentConnector,
+  ExternalAgentImageInput,
   ExternalAgentSessionLink,
 } from './types.js'
 
@@ -26,14 +28,55 @@ export const UNBOUND_WORKING_DIRECTORY_NOTICE =
   '⚠️ 此会话未绑定工作目录,外部 agent 没有启动。\n\n'
   + '请先用 `/cd <路径>` 指定一个目录,或在会话设置里绑定工作目录,然后重发这条消息。'
 
-function latestUserPrompt(request: AgentTurnRequest): string {
+/** 连接器接不住图片时回给用户的那句人话。导出是为了让测试与宿主复用同一份措辞。 */
+export function externalAgentImagesUnsupportedNotice(count: number): string {
+  return `⚠️ 本轮的 ${count} 张图片未送达(此执行引擎暂不支持图片输入),仅文本生效。\n\n`
+}
+
+/**
+ * 最后一条用户消息里的图片(2026-08-12,审计「图片静默丢弃」)。
+ *
+ * 与原生 claude provider 的 `userContentBlocks` 同款口径:`image` 部件直接取,
+ * `file` 部件里 mediaType 是 `image/*` 的也算 —— 上游把附件按 mediaType 分流,
+ * 两条路都可能落到这里,只认一条就是一次静默丢弃。
+ */
+function imagesFromContent(content: AgentMessageContent): ExternalAgentImageInput[] {
+  if (!Array.isArray(content)) return []
+  const images: ExternalAgentImageInput[] = []
+  for (const part of content) {
+    if (part.type === 'image' && part.image) {
+      images.push({
+        image: part.image,
+        ...(part.mediaType ? { mediaType: part.mediaType } : {}),
+      })
+      continue
+    }
+    if (part.type === 'file' && part.mediaType?.startsWith('image/') && part.data) {
+      images.push({ image: part.data, mediaType: part.mediaType })
+    }
+  }
+  return images
+}
+
+/**
+ * 这一轮真正要发出去的东西:最后一条用户消息的文本 **与它的图片**。
+ *
+ * 在此之前这里只取文本(`agentContentToText`),图片部件被静默丢在原地 —— 用户发了
+ * 图,外部 agent 一个像素都没收到,而界面上没有任何迹象。文本与图片必须从**同一条
+ * 消息**上取:图片属于它旁边那句话,拆开取就会把上一轮的图配到这一轮的问题上。
+ *
+ * 收敛条件也随之放宽:一条只有图、没有文字的消息(用户直接拖一张图进来)从前会被
+ * 当成「空 prompt」抛错,现在是一条合法的回合。
+ */
+function latestUserTurn(request: AgentTurnRequest): { text: string; images: ExternalAgentImageInput[] } {
   for (let index = request.messages.length - 1; index >= 0; index--) {
     const message = request.messages[index]
     if (message.role !== 'user') continue
     const text = agentContentToText(message.content).trim()
-    if (text) return text
+    const images = imagesFromContent(message.content)
+    if (text || images.length > 0) return { text, images }
   }
-  return ''
+  return { text: '', images: [] }
 }
 
 /**
@@ -69,8 +112,15 @@ export function createExternalAgentProvider(
     // Capabilities come from the connected agent, not the model ledger.
     capabilitiesAreSelfDeclared: true,
     capabilities: {
-      capabilities: ['text-input', 'text-output', 'streaming', 'reasoning'],
-      inputModalities: ['text'],
+      /**
+       * 图像那一位**从连接器的能力表读**(2026-08-12),不在这里硬编码 —— 与
+       * `executorAcceptsHostTools` 同一条纪律(原则 5):翻 `imagesIn` 会真的改变
+       * 声明,而不是改一行没人看的文档。
+       */
+      capabilities: options.connector.capabilities.imagesIn
+        ? ['text-input', 'text-output', 'streaming', 'reasoning', 'vision-input']
+        : ['text-input', 'text-output', 'streaming', 'reasoning'],
+      inputModalities: options.connector.capabilities.imagesIn ? ['text', 'image'] : ['text'],
       outputModalities: ['text'],
       supportsStreaming: true,
       supportsReasoning: options.connector.capabilities.thinking,
@@ -93,8 +143,21 @@ export function createExternalAgentProvider(
     },
 
     async *streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
-      const prompt = latestUserPrompt(request)
-      if (!prompt) throw new Error(`${options.providerId} prompt is empty`)
+      const { text: prompt, images } = latestUserTurn(request)
+      if (!prompt && images.length === 0) throw new Error(`${options.providerId} prompt is empty`)
+
+      /**
+       * **接不住图也要说话**(2026-08-12)。`imagesIn` 为假的连接器(今天是 ACP)
+       * 从前拿到的是一份被悄悄剥掉图片的文本 —— 用户发的图去哪了,界面上一个字都没有。
+       * 现在它拿到的仍然是文本,但用户先看到一句「图片没送到、为什么」。
+       *
+       * 这一位就是 `imagesIn` 的第二个读者:翻它会改行为,不只是改声明。
+       */
+      const deliverableImages = options.connector.capabilities.imagesIn ? images : []
+      const undeliverableImageNotice =
+        !options.connector.capabilities.imagesIn && images.length > 0
+          ? externalAgentImagesUnsupportedNotice(images.length)
+          : undefined
 
       /**
        * **未绑工作目录 = 不开跑**(2026-08-11 止血,审计「四堵墙」之二)。
@@ -114,6 +177,18 @@ export function createExternalAgentProvider(
         return
       }
 
+      // 图片送不出去的那句话排在工作目录之后:没绑目录时这一轮压根不会跑,
+      // 用户该看到的是「去绑个目录」,而不是先被告知一件不相干的事。
+      if (undeliverableImageNotice) {
+        yield { type: 'text-delta', turn: request.turn, delta: undeliverableImageNotice }
+        // 只有图、没有文字,而这个引擎又接不住图 —— 这一轮没有任何可送的东西。
+        // 与未绑工作目录同一套收场:一条可见正文 + finish(error),不 throw。
+        if (!prompt) {
+          yield { type: 'finish', turn: request.turn, finishReason: 'error' }
+          return
+        }
+      }
+
       const system = systemPrompt(request)
       const localSessionId = options.localSessionId ?? `${options.providerId}-${request.model}`
       const resume = options.connector.capabilities.resume
@@ -124,6 +199,7 @@ export function createExternalAgentProvider(
         localSessionId,
         messageId: options.messageId,
         prompt,
+        ...(deliverableImages.length > 0 ? { images: deliverableImages } : {}),
         ...(system ? { systemPrompt: system } : {}),
         // `||`: unbound sessions arrive with an empty-string working dir.
         cwd,
