@@ -81,4 +81,13 @@
 	--ot-ink-sidebar-item-active-bg: var(--ui-sidebar-item-active-bg);
 	--ot-ink-sidebar-rail-hover-bg: var(--ui-sidebar-rail-hover-bg);
 	--ot-ink-sidebar-rail-active-bg: var(--ui-sidebar-rail-active-bg);
+
+	/* ── 区域面档位的四枚墨:同理只出墨 ──
+	   区域面的浓度不是全局行为(同一枚 token 既画区域台面、也画浮层面),公式住在
+	   原语里 —— `components.css` 的四条 `.app-surface[data-surface=…]`。原语在
+	   **区域根**上重定义同名 token,所以它读的源必须异名,就是下面这四枚。 */
+	--ot-ink-surface-app-bg: var(--ui-surface-app-bg);
+	--ot-ink-surface-panel-bg: var(--ui-surface-panel-bg);
+	--ot-ink-surface-chat-bg: var(--ui-surface-chat-bg);
+	--ot-ink-surface-elevated-bg: var(--ui-surface-elevated-bg);
 }

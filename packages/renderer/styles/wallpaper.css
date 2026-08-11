@@ -83,13 +83,22 @@
 html.has-wallpaper {
   --ot-state-alpha: 45%;
   --ot-active-alpha: 60%;
+
+  /* ── B 级·纱的两个旋钮(区域面档位原语在读它们)──────────────────────────
+     材质:四档区域面在壁纸下**统一**取页面底的墨。这不是本轮新定的 —— 旧实现里
+     四档一律赋 `--wallpaper-veil`,而那枚的 ink 就是 `--ui-surface-app-bg`;
+     "同级全体只认同一个数"是 B 级从一开始的裁决(见文件头"调法"一节)。
+     浓度:veil 35% → 18%,真机二轮反馈,用户要侧栏与主区更接近的通透度。 */
+  --ot-region-ink: var(--ot-ink-surface-app-bg);
+  --ot-surface-alpha: 18%;
 }
 
 /* ── 旋钮 + ink 快照 + 派生值(唯一一处)───────────────────────────────── */
 html.has-wallpaper body {
-  /* 四个旋钮(S 级那两个已上移到根,见上) */
-  /* veil 35% → 18%:真机二轮反馈,用户要侧栏与主区更接近的通透度。 */
-  --wallpaper-veil-alpha: 18%;
+  /* 两个旋钮(S 级两个与 B 级两个都已上移到根,见上) */
+  /* B 级的浓度只是根上那枚的别名 —— 下面 `--wallpaper-veil` 还有一个消费者
+     (侧栏例外块),留着这条别名比让它再抄一遍数字好。 */
+  --wallpaper-veil-alpha: var(--ot-surface-alpha);
   --wallpaper-card-alpha: 88%;
   --wallpaper-hover-alpha: var(--ot-state-alpha);
   --wallpaper-active-alpha: var(--ot-active-alpha);
@@ -195,67 +204,26 @@ html.has-wallpaper .chat {
   --chat-surface: transparent;
 }
 
-/* ══ B 级·纱 ═════════════════════════════════════════════════════════════ */
+/* ══ B 级·纱 ═════════════════════════════════════════════════════════════
 
-/* ── 区域面档位:通用规则(G7-2,2026-08-11)────────────────────────────────
-   **区域面这一档的枚举制到此终结。** 区域根声明 `surface="<tier>"`(`Surface.vue`
-   原语 / `Container` 的同名 prop,档位表在 `components/common/surface.ts`),组件
-   给它加画笔类 `.app-surface` + 盖章 `data-surface="<tier>"`;壁纸这一侧从此认章
-   不认类名 —— **用了原语就自动在册**,新面进树不必再来这里登记一行。这正是
-   G7-1 盖章时留的钩子。
+   **区域面档位的四条通用规则已从这里删除(Surface v2·行为内置,2026-08-11)。**
 
-   为什么带 `.app-surface` 前缀而不是裸 `[data-surface]`:编辑器一族
-   (`MarkdownDocumentEditor` / `ProseNoteEditor`)早就在用同名属性的**别的取值**
-   (`document` / `todo-notes`),裸属性选择器会把它们一并稀释成纱。`.app-surface`
-   是画笔类 —— 只有"底色确实由档位画"的面才带它,那正好是该被壁纸接管的那一批。
+   G7-2 曾把这一档从"类名白名单"收成四条 `html.has-wallpaper
+   .app-surface[data-surface='<tier>']` 的通用规则 —— 认章不认类名,新面盖了章就
+   在册。本轮再走一步:连那四条也不必在壁纸这一侧存在了。区域面的底现在由**原语
+   自己**画(`styles/components.css` 的四条档位规则),公式是
+     「材质 × 浓度」,两个旋钮各自缺省到这一档自己的实色。
+   壁纸只在下面的旋钮块里拨 `--ot-region-ink` 与 `--ot-surface-alpha` 两个数。
 
-   四条各覆写**自己那一枚** token:一个元素只声明一档,其余三条对它惰性。区域根
-   上的覆写会连带子树里读同一枚 token 的后代面(实现纪律 1 的收益);台面里读
-   别枚 token 的内容面推不动,那是下面 `.right-workbench` 逐条列名的原因。
+   保留在旧注里的两条判据仍然成立,搬到 `components.css` 的块首注里了:
+   · 为什么带 `.app-surface` 前缀而不是裸 `[data-surface]`(编辑器一族在用同名属性
+     的别的取值);
+   · 为什么公式落在自定义属性上、再拿它画 background(区域根的整棵子树都在读同一
+     枚 token,只画 background 会让子树里的面留在实色 —— 那正是壁纸报障的原型)。
 
-   边界:通用规则只认**区域根**。浮层里不该出现区域面 —— 真出现了,E 级的磨砂会
-   被这条按回 18% 的纱,那时该问的是"它为什么是区域面",不是在这里加例外。 */
-html.has-wallpaper .app-surface[data-surface='panel'] {
-  /* 住户:`.right-workbench`(RightWorkbenchPanel 的 Container)。同一枚 token 还被
-     它整棵子树消费(browser 工具条 / 编辑器工作台 / 成员台 / 排程台 / 房间线程台)。
-     **不在 body 上改这枚 token**:`--ui-surface-panel-bg` 不是"区域面"专用 token,
-     `.session-preview`、`.prompt-ref-popover`、`.app-select-dropdown` 也在引它 ——
-     全局改一次就把浮层一并稀释成 18% 的纱,那是不可读。覆写只落在**区域根**上。 */
-  --ui-surface-panel-bg: var(--wallpaper-veil);
-}
-
-html.has-wallpaper .app-surface[data-surface='chat'] {
-  /* 住户:`.media-panel`(MediaPanel 的 Surface 根,报障 5 的那张面)。 */
-  --ui-surface-chat-bg: var(--wallpaper-veil);
-}
-
-/* 下面两档**预写、当前零住户**(2026-08-11:`app` / `elevated` 各没有区域根声明)。
-   规则惰性 —— 章不存在时选择器不命中,不伤任何布局;第一张面盖上章的同一刻它就
-   生效,不必回这里补一行。这才是"有章即在册"的完整形态,而不是留半张表。
-
-   预写的代价如实记:`app` 档覆写的是 `--ui-surface-app-bg` —— 那是整棵子树都在读
-   的**通用**页面底,不是区域面专用 token。第一个住户进档前必须先量一遍它的子树
-   (G7-1 判 `.sidebar` 不接正是这条:借档会把后代面一起稀释成纱,而它自己那层由
-   `--ui-sidebar-surface-bg` 墨阶画的底纹丝不动 —— 比不盖章更坏)。
-
-   ── G8-c:那一遍已经量完,`app` 档的零住户是**判决**不是"还没轮到" ────────────
-   两个仅有的候选都判不接:App.vue 四根(`.app-shell` / `.app-content` /
-   `.app-main-region` / `.workspace-view-stack`)与 `.sidebar`。前者的数据在 App.vue
-   那段注里(这枚 token 在 renderer 有 91 处消费 / 约 45 文件,含 Link / BorderBox /
-   BreadcrumbItem / Dialog 的**焦点环实色垫底**与 Progress / RoomSurface 的**反色
-   文字**,稀释成纱等于焦点环与反色字一起透明),后者在下面例外清单第 1 条。
-   同时否掉的还有"区域 ink 中介层"方案(再造一枚 `--ui-region-app-bg`,B 级只稀释
-   中介):四根在壁纸下本来就是 A 级·让位,中介稀释了也画不到眼前 —— 买不到壁纸
-   参与度,却要为四档各配一枚平行 token。
-   一句话钉死:**能被档位表收的是面,不是根,也不是态。**根级大区归 A 级·让位,
-   态 token 归 S 级逐条列名,档位表只服务"有自己的面、且要被壁纸认出来"的区域根。 */
-html.has-wallpaper .app-surface[data-surface='app'] {
-  --ui-surface-app-bg: var(--wallpaper-veil);
-}
-
-html.has-wallpaper .app-surface[data-surface='elevated'] {
-  --ui-surface-elevated-bg: var(--wallpaper-veil);
-}
+   `app` / `elevated` 两档当前零住户是 G8-c 的**判决**而不是"还没轮到"(App.vue 四
+   根与 `.sidebar` 都判不接,理由在那份判决里)。原语的规则天然惰性:章不存在就不
+   命中,第一张面盖上章的同一刻它就生效。
 
 /* ── 区域面里**仍然具名**的条目:剩 3 条,每条为什么还具名 ──────────────────
    枚举白名单已经作废,下面这些不是"还没迁的枚举项",是**例外清单**:
@@ -447,6 +415,14 @@ html.has-wallpaper .app-floating-sidebar-host {
 }
 
 /* ══ C 级·可读卡 ═════════════════════════════════════════════════════════
+   **这一块留在例外区,不随 B 级内置 —— 判据如实记(2026-08-11)。**
+   B 级能内置是因为它有原语:`Surface` / `Container` 的档位规则是"底色确实由档位
+   画"的那一批面的唯一画笔,把公式放进去,行为就长在了面上。C 级这三枚没有对应的
+   原语:代码块底由 `markdown.css` 在 `.md-body` 作用域里派生,表头底由表格组件各自
+   画。把 88% 的公式塞到那些画笔上,浓度就会变成**全局**的 —— 浮层里的表格、对话框
+   里的代码块都会跟着透,而它们今天是实色(本块的作用域是 `.app-content`)。
+   那是观感变更,不是实现重构。要收这一块,先给"内容卡"造一个原语。
+
    主区顶栏与消息正文里的内容面。
    顶栏勘误:画底的不是 Container.vue 的 `.layout-container-header`(那个组件通篇
    没有任何 background 声明),是 ChatHeader 之上的 `.session-header`,它画

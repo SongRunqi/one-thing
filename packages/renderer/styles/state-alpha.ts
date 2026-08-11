@@ -79,6 +79,25 @@ export const REGION_SCOPED_STATE_TOKENS = [
   '--ui-sidebar-rail-active-bg',
 ] as const
 
+/**
+ * 区域面档位的四枚面 token —— **只出墨,不在 `:root` 上穿公式**。
+ *
+ * 区域面的浓度不是全局行为:同一枚 `--ui-surface-panel-bg` 既画区域台面(壁纸下要
+ * 变纱),也画浮层面(壁纸下要磨砂),还被消费者当"页面底"读。在 `:root` 上稀释
+ * 就等于把三种用法一起拽走。所以公式住在**原语**里(`styles/components.css` 的四条
+ * 区域面档位规则),那是"底色确实由档位画"的那一批面 —— 用了原语就自带行为。
+ *
+ * 墨在这里出,是因为原语的公式必须读一个**与被重定义的 token 异名**的源,否则
+ * `--ui-surface-panel-bg: color-mix(…var(--ui-surface-panel-bg)…)` 在同一元素上
+ * 构成自引用环,整条声明静默作废。
+ */
+export const SURFACE_INK_TOKENS = [
+  '--ui-surface-app-bg',
+  '--ui-surface-panel-bg',
+  '--ui-surface-chat-bg',
+  '--ui-surface-elevated-bg',
+] as const
+
 /** hover 档旋钮名。缺省 100% = 实色。 */
 export const STATE_ALPHA_VAR = '--ot-state-alpha'
 /** active 档旋钮名。缺省 100% = 实色。 */
@@ -93,6 +112,8 @@ export const STATE_ALPHA_TIERS: Readonly<Record<string, string>> = Object.freeze
   ...Object.fromEntries(ACTIVE_TIER_TOKENS.map(token => [token, ACTIVE_ALPHA_VAR])),
   // 区域作用域的四枚同样要有墨(侧栏例外块引它们),只是不在 :root 上穿公式。
   ...Object.fromEntries(REGION_SCOPED_STATE_TOKENS.map(token => [token, ''])),
+  // 区域面档位的四枚面 token:同样只出墨(公式住在原语里,见 SURFACE_INK_TOKENS)。
+  ...Object.fromEntries(SURFACE_INK_TOKENS.map(token => [token, ''])),
 })
 
 /** `--ui-state-hover-bg` → `--ot-ink-state-hover-bg`(机械改名,别手写)。 */
