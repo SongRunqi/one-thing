@@ -1,6 +1,7 @@
 # Claude Code 接入 v2：把外部 agent 变成一等同事
 
-日期：2026-08-05。状态：**设计定稿，未实施**。
+日期：2026-08-05。状态：**已全部实施**（写作时是「设计定稿，未实施」；落地实况与偏离见 §10）。
+**2026-08-11 审计对账：七期全活**（`docs/audit/claude-code-sdk-audit-2026-08-11.md`）——E2 已于 `9cf725f2`（2026-08-06）交付，§10.1/§10.3 曾说它「未做」，现已按实况改写。
 起因：真机走查 F3——Iris（`providerId: 'claude-code-agent'`）在群聊回合里调用 SDK 的 `AskUserQuestion`，挂 2 分 11 秒无人应答、UI 渲染成 `[object Object]`、界面上没有任何停止按钮可以停掉它。
 基线：外部 agent 通路 P0/P1 已实施（`external-agents-integration.md`），Actor v3 是唯一协作运行时，D8 观测体系已落地。
 
@@ -209,15 +210,18 @@ interface InteractionAnswer {
 | --- | --- | --- |
 | E0 契约与骨架 | `a7d66eea` | 已落地 |
 | E1 交互协议内核 | `32a64a40` | 已落地 |
-| **E2 交互 UI** | — | **未做**(唯一未完成期,见 §10.3) |
+| **E2 交互 UI** | `9cf725f2`(2026-08-06) | **已落地**(见 §10.3) |
 | E3 宿主工具面 | `6a71aa23` | 已落地 |
 | E4 外部通路重接 | `fe578380` | 已落地 |
 | E5 停止三级 | `a11f312c` | 已落地 |
 | E6 观测与验收 | 本次 | 已落地 |
 
-依赖链上 E2 被跳过了一环:方案写的是 `E1→E2→E4` 串行(协议→UI→映射)。真跑下来
-**E4 不依赖 E2** —— 映射依赖的是 E1 的协议,不是它的呈现。E2 缺席的代价因此不是
-「E4 做不了」,而是「提问没有可点的卡」(§10.3)。
+**七期全活,无断线。**
+
+依赖链上 E2 被**推迟**了一环(不是跳过):方案写的是 `E1→E2→E4` 串行(协议→UI→
+映射),真跑下来 **E4 不依赖 E2** —— 映射依赖的是 E1 的协议,不是它的呈现。所以 E2
+让位给了当时正在并行施工的 renderer 外壳拆除,在 E6 之后单独补上。这条依赖判断本身
+是对的:E2 迟到的那几天里,E4/E5/E6 一天都没被挡住。
 
 ### 10.2 与方案的偏离
 
@@ -272,23 +276,31 @@ typecheck 里红(选项对象是结构化的、可选的),只会在真机上静�
 身上根本没有这两格,补一个猜出来的值就是往诊断账里写假话。后四相靠 `triggeredBy`
 指回 `open` 那一行,这正是因果引用存在的理由。
 
-### 10.3 唯一未完成的一期:E2(交互 UI)
+### 10.3 最后补上的一期:E2(交互 UI)
 
-**没做什么**:一等提问卡片、renderer 的 reconcile 账、倒计时、协作房里的提问系统行、
-pair 房的 `declined` 呈现。
+**为什么迟到**:E2 该做的时候,renderer 外壳拆除(shellMode / workspace 树 /
+TabBar 退役)正在并行施工,它动的恰好是卡片要落脚的那一片。在一棵正在被拆的树上
+接新枝,冲突的代价高于收益。于是 E2 让到 E6 之后,**在 `9cf725f2`(2026-08-06)
+交付**。
 
-**为什么**:renderer 外壳拆除(shellMode / workspace 树 / TabBar 退役)正在并行施工,
-它动的恰好是卡片要落脚的那一片。在一棵正在被拆的树上接新枝,冲突的代价高于收益。
+**做了什么**(该提交的文件即证据):
 
-**此刻的实际行为**(复验时会看到的):提问**发得出去**(后端起 interaction、卡片
-事件上了总线),但**没有面在画它**。于是每一次提问都走到 deadline:内核到点自结算成
-`timeout`,理由(「无人应答,提问已超时结算。请按你自己的判断选一条最稳妥的路继续,
-并在回答里说明你替用户做了哪个假设」)作为工具结果回到模型,模型继续往下走。
+- 一等提问卡片 `components/chat/interaction/InteractionCard.vue` + 它的纯逻辑件
+  `interaction-card.ts`(倒计时、四种收场的呈现);
+- renderer 的 reconcile 账 `stores/interactions.ts`(pending 拉取 + 事件增量 +
+  应答回投),接线在 `services/ipc-hub.ts`;
+- 消息流里的落点:`components/chat/MessageList.vue` 认 interaction 锚点;
+- 协作侧:`app/collab/actors/runtime.ts` 与 `external-observability.ts` 把房间里的
+  提问接进同一条呈现链;
+- 测试四份:`interaction-card.test.ts`、`MessageList.interaction.test.ts`、
+  `ipc-hub-interaction.test.ts`、`stores/__tests__/interactions.test.ts`。
 
-**这不是 F3 那个 bug 的复发**,区别是结构性的:F3 是**无限**挂起(没有落点、没有
-deadline、没有卡片);现在是**有界**等待(有落点、有 deadline、理由回得到模型),
-只是那一界目前是 120 秒而不是用户点一下。E2 补上之后这条路才算走完。
+**因此这一节此前描述的「此刻的实际行为」已经过期**:提问不再是「发得出去、没有面
+在画它、一律走到 120 秒 deadline」。今天它有可点的卡,120 秒超时退回成**兜底**而
+不是常态 —— 那条兜底链(内核自结算成 `timeout`,理由作为工具结果回到模型)仍然在
+位,它现在的职责是「人不在场时不挂死」,而不是「人在场也只能等」。
 
-**E2 的前置全部就绪**:协议(`core/interaction`)、事件(`interaction:requested` /
-`interaction:settled`)、IPC 面(`getPendingInteractionsForIpc` /
-`respondInteractionForIpc`)、通道亲和、补水口都在位。E2 只剩呈现。
+**前置**(协议 `core/interaction`、事件 `interaction:requested` /
+`interaction:settled`、IPC 面 `getPendingInteractionsForIpc` /
+`respondInteractionForIpc`、通道亲和、补水口)在 E1 就已全部到位,E2 落的正是那层
+呈现。
