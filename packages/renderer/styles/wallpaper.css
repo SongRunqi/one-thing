@@ -109,6 +109,10 @@ html.has-wallpaper body {
      主题原值(后代覆写同名 token 之后这里仍读得到实色)。 */
   --wallpaper-state-hover-accent-ink: var(--ui-state-hover-accent-bg);
   --wallpaper-state-hover-accent-strong-ink: var(--ui-state-hover-accent-strong-bg);
+  /* G8 的「hover 底上再进一档」:同样是一枚实色 state token,同样先在 body 上快照。
+     注意它的主题层基面是 `--ui-state-hover-bg` —— 那枚在 S 级被改成半透明,而快照
+     这一层读的是主题原值,所以两者不会互相拽动。 */
+  --wallpaper-state-hover-raised-ink: var(--ui-state-hover-raised-bg);
   /* danger hover(波 3 迁入 ChatHeader 关闭钮后点名的缺口):色相由 ink 保住,
      浓度随 hover 旋钮 —— S 级"所有态反馈半透明化"不设例外。 */
   --wallpaper-state-danger-hover-ink: var(--ui-action-danger-hover-bg);
@@ -169,6 +173,13 @@ html.has-wallpaper body {
   --wallpaper-state-danger-hover: color-mix(
     in srgb,
     var(--wallpaper-state-danger-hover-ink) var(--wallpaper-hover-alpha),
+    transparent
+  );
+  /* 「再进一档」跟 active 旋钮:它在 token 层就是"比 hover 更站得住的那一档",
+     浓度上与 selected / 强调底同级,而不是又一个瞬时 hover。 */
+  --wallpaper-state-hover-raised: color-mix(
+    in srgb,
+    var(--wallpaper-state-hover-raised-ink) var(--wallpaper-active-alpha),
     transparent
   );
   --wallpaper-tab-item-hover: color-mix(
@@ -430,6 +441,7 @@ html.has-wallpaper .app-floating-sidebar-host {
   --ui-state-selected-hover-bg: var(--wallpaper-state-selected-hover);
   --ui-state-hover-accent-bg: var(--wallpaper-state-hover-accent);
   --ui-state-hover-accent-strong-bg: var(--wallpaper-state-hover-accent-strong);
+  --ui-state-hover-raised-bg: var(--wallpaper-state-hover-raised);
   --ui-action-danger-hover-bg: var(--wallpaper-state-danger-hover);
   /* 派生 token,逐条列名(见上) */
   --ui-sidebar-action-hover-bg: var(--wallpaper-state-hover);
@@ -547,6 +559,7 @@ html.has-wallpaper :is(
   --ui-state-selected-hover-bg: var(--wallpaper-state-selected-hover-ink);
   --ui-state-hover-accent-bg: var(--wallpaper-state-hover-accent-ink);
   --ui-state-hover-accent-strong-bg: var(--wallpaper-state-hover-accent-strong-ink);
+  --ui-state-hover-raised-bg: var(--wallpaper-state-hover-raised-ink);
   --ui-action-danger-hover-bg: var(--wallpaper-state-danger-hover-ink);
   --ui-sidebar-item-hover-bg: var(--wallpaper-hover-ink);
   --ui-sidebar-item-active-bg: var(--wallpaper-active-ink);

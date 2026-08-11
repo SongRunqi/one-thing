@@ -174,6 +174,10 @@ function rejectWithInstruction() {
 /* Permission ledger — the composer's blueprint frame, one row per field:
    zero fill, one outline, hairline cell dividers, mono annotations. The
    only colour is carried by the two decisions themselves. */
+/* G8 私有 token 岛判决:这四枚**保留**。前两枚是边框浓度(主题层的档位表只管
+   "面"与"态",没有边框档 —— 波 1 判 Select 的 hover border 时立的规矩);后两枚是
+   纯区域别名(照 sidebar 的 `--sidebar-row-*` 先例:别名给区域留改名点,零派生逻辑)。
+   真正吃到主题层的是它们的**态**(见文件末两条 hover)。 */
 .session-permission-panel {
   --permission-frame: color-mix(in srgb, var(--ui-border-strong-border) 52%, transparent);
   --permission-divider: color-mix(in srgb, var(--ui-border-strong-border) 30%, transparent);
@@ -329,12 +333,18 @@ textarea.permission-instruction-input:focus {
   color: var(--permission-reject-fg);
 }
 
+/* 两条 hover 底走主题层的状态面 token(G8):`--ui-status-*-bg` 的配方就是
+   "同色 fg 压 10% 透明",与这里原来手写的 12% 是**同一条配方**,只差两个百分点。
+   18 主题 × 明暗双向实跑:手写 vs token Δ中位 7.2(允许)/ 7.7(警示),迁移后
+   离消息面 Δ中位 21.3 / 25.5(最小 15.5 / 17.5,远在门槛之上,不会把 hover 迁没)。
+   换来的是"状态色浓度全窗一个出处"。字色仍走 `--permission-*-fg` 区域别名,
+   两个通道各自独立。 */
 .permission-btn.allow:hover {
-  background: color-mix(in srgb, var(--permission-allow-fg) 12%, transparent);
+  background: var(--ui-status-success-bg);
 }
 
 .permission-btn.reject:hover,
 .permission-btn.instruct:hover {
-  background: color-mix(in srgb, var(--permission-reject-fg) 12%, transparent);
+  background: var(--ui-status-warning-bg);
 }
 </style>

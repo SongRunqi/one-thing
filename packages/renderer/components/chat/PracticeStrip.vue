@@ -577,6 +577,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* G8 私有 token 岛判决:`--ps-*` 三枚**全部保留** —— 两枚纯区域别名(sidebar 的
+   `--sidebar-row-*` 先例)、一枚边框浓度(主题层无边框档)。这座岛上没有一处
+   "态类私有混色":唯一的态是 702 行 `.mi.focused`,它**已经**是 token 优先
+   (`var(--ui-surface-menu-hover-bg, …)`),兜底臂只在主题没发这枚 token 时才生效。
+   收编无处可收,如实记为零改动。 */
 .practice-strip {
   --ps-ink: var(--ui-text-primary-fg);
   --ps-muted: var(--ui-text-muted-fg);

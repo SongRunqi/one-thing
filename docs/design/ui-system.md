@@ -200,6 +200,7 @@ hover 看不见)。配方表在 `themes/role-mapping.ts` 的 `REGION_OVERLAY_STE
 | `--ui-sidebar-rail-bg` / `-hover-bg` / `-active-bg` / `-muted-fg` | rail 与 ActiveWorkCard 这类嵌套面(2.5 / 4.5 / 7.5 / 47%,**叠在 rail 底上**) |
 | `--ui-settings-row-hover-bg` / `--ui-settings-row-active-bg` | 设置区行(accent 5% / 10%) |
 | `--ui-state-hover-accent-bg` / `--ui-state-hover-accent-strong-bg` | 通用「叠 accent 淡底」两档(accent 10% / 16%,画在 panel 面上)。**手写 `color-mix(in srgb, var(--accent) N%, transparent)` 一律换成它** —— 存量 99 处自绘 hover 底的根因就是缺这枚 token。淡档给瞬时 hover,重档给要压住的强调/当前项底。如实记:淡档与 `--ui-settings-row-active-bg` 百分比同为 10,解析出同一个实色,那是巧合不是别名 |
+| `--ui-state-hover-raised-bg` | 「hover 底上再进一档」(墨 8%,**画在 `--ui-state-hover-bg` 上**,不是区域面)。给**静息底本身就是 hover 底**的那批控件(collab-tag 是原型):它们迁中性档会两态同色、hover 归零,换 `--ui-state-active-bg` 又变成按下态。定值取全仓「加深一档」的存量常数 8(`color-mix(<静息底> 92%, <墨>)` 四处 + collab-tag 自己的墨 8%)。它是 hover 族的续档,不是新的选中态 —— 构造断言钉住"不得重过侧栏行选中档 14%" |
 
 **组件端只引用,不再自造 `color-mix`。** 要加新档位就改 `REGION_OVERLAY_STEPS`,
 改完跑 `themes/__tests__/state-overlay-audit.test.ts`(16 主题 × 声明模式,断言

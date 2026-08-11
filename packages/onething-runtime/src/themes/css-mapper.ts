@@ -651,6 +651,7 @@ export const REGION_OVERLAY_VAR_NAMES = [
   '--ui-settings-row-active-bg',
   '--ui-state-hover-accent-bg',
   '--ui-state-hover-accent-strong-bg',
+  '--ui-state-hover-raised-bg',
 ] as const
 
 function addRegionOverlayCSSVariables(result: Record<string, string>): void {
@@ -694,6 +695,14 @@ function addRegionOverlayCSSVariables(result: Record<string, string>): void {
       '--ui-state-hover-accent-strong-bg',
       deriveRegionOverlay(accent, settingsSurface, 'stateHoverAccentStrong')
     )
+  }
+
+  // G8:「hover 底上再进一档」。基面是 **hover 底本身**(不是区域底色)——
+  // 给的是"静息已经在 hover 底上"的那一批控件。hover 底由 resolver 的 state ramp
+  // 解析,这里读它的实色再压一层墨,所以必须排在 `deriveStateOverlays` 之后。
+  const hoverSurface = result['--ui-state-hover-bg']
+  if (ink && hoverSurface) {
+    assign('--ui-state-hover-raised-bg', deriveRegionOverlay(ink, hoverSurface, 'stateHoverRaised'))
   }
 }
 

@@ -93,6 +93,9 @@ const STATE_PAIRS: StatePair[] = [
   // G6:通用「叠 accent 淡底」两档,与设置行同一张基面(panel)。
   { state: '--ui-state-hover-accent-bg', surface: '--ui-surface-panel-bg' },
   { state: '--ui-state-hover-accent-strong-bg', surface: '--ui-surface-panel-bg' },
+  // G8:「hover 底上再进一档」。它依附的底**就是 hover 底**(不是区域面)——
+  // 这一档专给"静息已经是 hover 底"的控件,对照面写别的都没有意义。
+  { state: '--ui-state-hover-raised-bg', surface: '--ui-state-hover-bg' },
 ]
 
 /** 同一区域内 hover → 选中 必须越走越远,否则两态读起来是一个。 */
@@ -142,6 +145,9 @@ describe('builtin theme state overlays', () => {
     expect(REGION_OVERLAY_STEPS.stateHoverAccent).toBeLessThan(REGION_OVERLAY_STEPS.stateHoverAccentStrong)
     // 淡档要真的"淡":比设置行的选中底重不了,否则它就成了另一个选中态。
     expect(REGION_OVERLAY_STEPS.stateHoverAccent).toBeLessThanOrEqual(REGION_OVERLAY_STEPS.settingsRowActive)
+    // 「再进一档」是 hover 族的续档,不是新的选中态:压在 hover 底上的这一层墨
+    // 不许重过侧栏行的选中档(14%),否则它读起来就是"选中"而不是"手指着"。
+    expect(REGION_OVERLAY_STEPS.stateHoverRaised).toBeLessThan(REGION_OVERLAY_STEPS.sidebarRowActive)
   })
 
   for (const fileName of builtinThemeFiles) {

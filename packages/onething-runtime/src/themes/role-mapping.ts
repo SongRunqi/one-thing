@@ -100,6 +100,22 @@ export const REGION_OVERLAY_STEPS = {
   stateHoverAccent: 10,
   /** 同一族的重档:强调行 / 当前项这类要压住的底(存量 15/16/18 三簇的中位)。 */
   stateHoverAccentStrong: 16,
+  /**
+   * 「hover 底上再进一档」(中性墨,**画在 `--ui-state-hover-bg` 上**)。
+   *
+   * 补的是波 3 点名的那个缺口:有一批控件的**静息**底本身就已经是
+   * `--ui-state-hover-bg`(markdown 的 collab-tag 是原型),它们的 hover 无处可去 ——
+   * 迁中性档两态同色、hover 归零,换 `--ui-state-active-bg` 又是按下态(换档不是归位)。
+   *
+   * 定值 8:全仓「加深一档」的存量常数就是 8(`color-mix(<静息底> 92%, <墨>)` 四处:
+   * ActiveWorkCard / Sidebar 房间行 / SessionItem / ModelSelector),collab-tag 自己
+   * 手写的也正是墨 8%,只有 Select 的 selected:hover 取 94/6。取众数 8 而不是另立新数。
+   *
+   * 与前面几档的**基面不同**:这一档压在 hover 底上而不是区域底色上 —— 语义就是
+   * "已经在 hover 底上了,再进一档",所以 state-overlay-audit 里它的对照面是
+   * `--ui-state-hover-bg`(实测 ΔRGB 中位 15.2 / 最小 12.3,36 组合无一低于门槛)。
+   */
+  stateHoverRaised: 8,
 } as const
 
 export type RegionOverlayStep = keyof typeof REGION_OVERLAY_STEPS

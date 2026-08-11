@@ -102,13 +102,17 @@
 	cursor: pointer;
 }
 
-/* 这条**不能**迁 `--ui-state-hover-bg`:标签的**静息**底(99 行)已经就是那枚 token,
-   hover 迁过去两态会变成同一个实色,hover 直接归零(现状相对静息 ΔRGB 中位 8.1)。
-   真正的归位要一枚"在 hover 底上再进一档"的通用档,`--ui-state-*` 族目前没有
-   (`--ui-state-active-bg` 是按下态,换档不是归位)。记为 token 族缺口。 */
+/* 波 3 记的那条缺口(静息底 99 行已经就是 `--ui-state-hover-bg`,hover 无档可去)
+   由 G8 的 `--ui-state-hover-raised-bg` 补上:配方就是墨 8%,与这里原来手写的百分比
+   逐字相同,变的只是**基面** —— 从"压在身后那张面上"变成"压在 hover 底上",于是
+   hover 与静息的距离不再随宿主面漂移。18 主题 × 明暗双向实跑:
+     现状(墨 8% 压 chat 面)离静息  Δ中位 13.6 / **最小 3.8**
+       —— catppuccin/dark、rose-pine/dark 两组低于 5 的门槛,hover 实际读不出来;
+     新档离静息                    Δ中位 15.2 / 最小 12.3(36/36 过门槛)。
+   顺带进壁纸体系:新档在 wallpaper.css 的 S 级 / E 级覆写名单里,手写 color-mix 拿不到。 */
 .collab-tag.is-live:hover {
 	border-color: var(--ui-text-muted-fg);
-	background: color-mix(in srgb, var(--ui-text-primary-fg) 8%, transparent);
+	background: var(--ui-state-hover-raised-bg);
 }
 
 .collab-tag.is-live:focus-visible {

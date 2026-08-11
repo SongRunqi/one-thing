@@ -1416,6 +1416,17 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ── G8 私有 token 岛判决:`--todo-*` **整族保留**,理由是量出来的 ─────────────
+   这张面不是 panel 面,是一张**纸色卡**(elevated 92% 掺 8% 便签色)。而
+   `--ui-state-*` 全族"一窗一值、以 panel 面解析成实色",两者在 18 主题 × 明暗双向
+   实跑下差 Δ中位 20~24;更要命的是中性 hover 档相对这张卡面只有 Δ中位 5.0、
+   **最小 1.0** —— 迁过去等于把 hover 迁没(波 3 立的"会把 hover 迁没就不迁"判例)。
+   要真正并进 REGION_OVERLAY_STEPS,得先把这张卡面本身搬进主题层(给单一住户新立
+   一个"纸色卡"区域档),那正是 G7-1 判 `.session-header` 不接时否掉的造分类。
+   记为:等主题层出现第二张纸色卡面时再收。
+   下面各枚的分类:几何/尺寸(nav-gutter / plan-width / popover-* / row-min-height)
+   纯布局,永远保留;`--todo-rule*` 是边框浓度(主题层无边框档);`--todo-text/-muted/
+   -accent` 是区域别名(sidebar 先例);`--todo-card-bg*` 是这张卡自己的纸色语言。 */
 .todo-plan-panel {
   --todo-plan-nav-gutter: 52px;
   --todo-card-bg: color-mix(in srgb, var(--ui-surface-elevated-bg) 92%, var(--ui-surface-note-bg, var(--color-warning-bg)) 8%);
@@ -1426,7 +1437,8 @@ onUnmounted(() => {
   --todo-text: var(--ui-text-primary-fg);
   --todo-muted: var(--ui-text-muted-fg);
   --todo-accent: var(--ui-accent-primary-fg);
-  --todo-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg) 14%, transparent);
+  /* `--todo-accent-soft`(accent 14%)于 G8 删除:全仓零消费者 —— 岛上唯一一枚
+     真·死 token,删它零观感变化。同族的强调底今后引 `--ui-state-hover-accent-bg`。 */
   --todo-accent-border: color-mix(in srgb, var(--ui-accent-primary-fg) 36%, transparent);
   --todo-plan-width: 280px;
   --todo-popover-inline-inset: 12px;
