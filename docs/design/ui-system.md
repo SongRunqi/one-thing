@@ -511,9 +511,24 @@ scoped CSS 里的一句 `background: var(--ui-surface-xxx-bg)`,外面既读不�
   var(--ui-surface-app-bg))`,而 `--ui-sidebar-surface-bg` 由主题在 `:root` 处定义
   (`REGION_OVERLAY_STEPS` 墨阶一族),fallback **永不触发**。借 `app` 档盖章的后果
   是:G7-2 的通用规则会在 sidebar 子树里把 `--ui-surface-app-bg` 稀释成纱,**误伤**
-  所有读这枚 token 的后代面,而 sidebar 自己的底纹丝不动 —— 比不盖章更坏。正确的
-  并档时机是 G8(私有 token 岛评估)把区域墨阶收进档位表之后,届时它拿到的是自己的
-  档位名,而不是借来的 `app`。
+  所有读这枚 token 的后代面,而 sidebar 自己的底纹丝不动 —— 比不盖章更坏。
+
+**G8 终稿:上面两处 + App.vue 四根,全部转正为"永远具名",档位表不再等它们。**
+
+| 面 | 判决 | 一句话理由 |
+|---|---|---|
+| `.session-header` | 永不进档 | 画的是页签条族的派生 token,塞进 `chat` 档会改掉实际颜色;新立第五档是给单一住户造分类 |
+| `.sidebar` | 永不进档(G8-b) | 新立 `sidebar` 档只换掉 wallpaper.css 侧栏块的**一行**(面 token),块里另外四行是**态** token(行 hover/选中、rail hover/当前项)—— 一档只映射一枚面 token,态换不掉。净结果是一行改名 + 档位表多一档,总行数不减 |
+| App.vue 四根(`.app-shell` / `.app-content` / `.app-main-region` / `.workspace-view-stack`) | 永不进档(G8-c) | 壁纸下它们是 **A 级·让位**(整张透明),档位画的底到不了眼前;而盖章会把 `--ui-surface-app-bg`(renderer 里 **91 处**消费 / 约 45 文件,含焦点环的实色垫底与反色文字)就地稀释成纱 |
+
+G8-c 同时否掉了"区域 ink 中介层"方案(再造一枚 `--ui-region-app-bg`,B 级只稀释中介、
+不动原 token):四根本来就让位,中介稀释了也画不到眼前 —— 买不到壁纸参与度,却要为
+四档各配一枚平行 token,再长期背一个"面 token 与中介 token 该引哪个"的新坑。
+
+一句话钉死这条边界:**能被档位表收的是面,不是根,也不是态。**根级大区归 A 级·让位,
+态 token 归 S 级逐条列名(并由 `styles/__tests__/wallpaper-state-coverage.test.ts`
+钉住"快照 / 覆写 / E 级回满"三处齐全),档位表只服务"有自己的面、且要被壁纸认出来"
+的区域根。
 
 ### 6.7 壁纸认章不认类名(G7-2,2026-08-11)
 

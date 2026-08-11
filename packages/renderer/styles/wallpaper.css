@@ -247,7 +247,11 @@ html.has-wallpaper body {
    各自把 --ui-bg 画成不透明底,恰好整张盖住 z0 的背景层 —— 真机排查实录
    2026-08-10:图正常加载、图层正常挂载,肉眼却什么都没有。
    透明化白名单是**枚举制**,新的不透明包装元素进树时必须来这里登记一行
-   (类不存在时选择器惰性,不伤任何布局)。 */
+   (类不存在时选择器惰性,不伤任何布局)。
+
+   G8-c 判决:这四根**永远住在 A 级**,不进区域面档位表(理由见上面 B 级 `app` 档
+   预写块与 App.vue 的注)。根级大区没有"自己的底色"要保,它们的活就是让路 ——
+   让位不是"档位化之前的临时办法",是它们的终态。 */
 html.has-wallpaper .app-shell {
   /* shell 让位给 z0 的壁纸层(body 仍有不透明底,mac 透明窗不漏桌面)。 */
   position: relative;
@@ -314,7 +318,19 @@ html.has-wallpaper .app-surface[data-surface='chat'] {
    预写的代价如实记:`app` 档覆写的是 `--ui-surface-app-bg` —— 那是整棵子树都在读
    的**通用**页面底,不是区域面专用 token。第一个住户进档前必须先量一遍它的子树
    (G7-1 判 `.sidebar` 不接正是这条:借档会把后代面一起稀释成纱,而它自己那层由
-   `--ui-sidebar-surface-bg` 墨阶画的底纹丝不动 —— 比不盖章更坏)。 */
+   `--ui-sidebar-surface-bg` 墨阶画的底纹丝不动 —— 比不盖章更坏)。
+
+   ── G8-c:那一遍已经量完,`app` 档的零住户是**判决**不是"还没轮到" ────────────
+   两个仅有的候选都判不接:App.vue 四根(`.app-shell` / `.app-content` /
+   `.app-main-region` / `.workspace-view-stack`)与 `.sidebar`。前者的数据在 App.vue
+   那段注里(这枚 token 在 renderer 有 91 处消费 / 约 45 文件,含 Link / BorderBox /
+   BreadcrumbItem / Dialog 的**焦点环实色垫底**与 Progress / RoomSurface 的**反色
+   文字**,稀释成纱等于焦点环与反色字一起透明),后者在下面例外清单第 1 条。
+   同时否掉的还有"区域 ink 中介层"方案(再造一枚 `--ui-region-app-bg`,B 级只稀释
+   中介):四根在壁纸下本来就是 A 级·让位,中介稀释了也画不到眼前 —— 买不到壁纸
+   参与度,却要为四档各配一枚平行 token。
+   一句话钉死:**能被档位表收的是面,不是根,也不是态。**根级大区归 A 级·让位,
+   态 token 归 S 级逐条列名,档位表只服务"有自己的面、且要被壁纸认出来"的区域根。 */
 html.has-wallpaper .app-surface[data-surface='app'] {
   --ui-surface-app-bg: var(--wallpaper-veil);
 }
