@@ -7,6 +7,7 @@ import { platformApi } from '@/platform'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ThemeMeta, Theme, GetThemesResponse, ApplyThemeResponse, GeneralSettings } from '@shared/ipc'
+import { withStateAlpha } from '../styles/state-alpha'
 import { useSettingsStore } from './settings'
 
 function isThemeDebugEnabled(): boolean {
@@ -245,8 +246,11 @@ export const useThemeStore = defineStore('themes', () => {
   /**
    * Apply CSS variables to document
    */
-  function applyThemeVariables(variables: Record<string, string>): void {
+  function applyThemeVariables(rawVariables: Record<string, string>): void {
     const root = document.documentElement
+    // 主题层产出的是**实色**;态 token 在落到 documentElement 之前先穿上 alpha 公式
+    // (Surface v2·行为内置,见 styles/state-alpha.ts)。这是全仓唯一的落地口。
+    const variables = withStateAlpha(rawVariables)
 
     for (const [key, value] of Object.entries(variables)) {
       root.style.setProperty(key, value)

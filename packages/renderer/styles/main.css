@@ -10,6 +10,10 @@
 @import './variables.css';
 @import './themes/light.css';
 @import './themes/dark.css';
+/* 态 token 的**行为层**(自带 alpha 公式)。必须排在语义字典之后:它重定义同一批
+   `--ui-*`,靠后来居上盖过字典里的裸值。字典那份是契约(有棘轮逐条钉表达式),
+   浓度公式不塞进去 —— 两层职责不同,详见 state-alpha.css 文件头注。 */
+@import './state-alpha.css';
 @import './components.css';
 @import '../components/chat/todo-popover.css';
 @import './hljs-theme.css';
