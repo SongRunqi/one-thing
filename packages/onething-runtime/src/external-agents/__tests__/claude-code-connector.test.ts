@@ -468,10 +468,39 @@ describe('ClaudeCodeConnector', () => {
     await run({ thinking: 'disabled', model: 'claude-fable-5' })
     expect(captured.at(-1)?.thinking).toBeUndefined()
 
-    // Unknown model (CLI default): never override.
+    // Unknown model = the CLI default (adaptive family), NOT "skip the
+    // override": the pseudo-model path erases the model, so bailing out here
+    // would make the Off setting unswitchable.
     await run({ thinking: 'disabled' })
-    expect(captured.at(-1)?.thinking).toBeUndefined()
+    expect(captured.at(-1)?.thinking).toEqual({ type: 'disabled' })
     expect(captured.at(-1)?.effort).toBeUndefined()
+  })
+
+  it('asks for summarized thinking so the panel gets prose instead of redacted deltas', async () => {
+    const captured: ClaudeCodeQueryOptions[] = []
+    const connector = createClaudeCodeConnector({
+      queryFn: params => {
+        captured.push(params.options)
+        return replay([{ type: 'result', subtype: 'success', session_id: 's' }])
+      },
+    })
+    const run = (input: { model?: string; thinking?: 'enabled' | 'disabled'; reasoningEffort?: 'low' | 'high' }) =>
+      collect(connector.streamTurn({
+        localSessionId: 's', prompt: 'x', cwd: '/tmp', turn: 1, ...input,
+      }))
+
+    // Adaptive family: display carries the thinking text, effort rides along.
+    await run({ thinking: 'enabled', reasoningEffort: 'high', model: 'claude-sonnet-5' })
+    expect(captured.at(-1)?.thinking).toEqual({ type: 'adaptive', display: 'summarized' })
+    expect(captured.at(-1)?.effort).toBe('high')
+
+    // Unknown model (CLI default) is adaptive too — the common path.
+    await run({ thinking: 'enabled' })
+    expect(captured.at(-1)?.thinking).toEqual({ type: 'adaptive', display: 'summarized' })
+
+    // Pre-4.6 family has no adaptive dialect: no thinking param at all.
+    await run({ thinking: 'enabled', model: 'claude-opus-4-1' })
+    expect(captured.at(-1)?.thinking).toBeUndefined()
   })
 
   it('resumes with the persisted external session id and aborts via interrupt', async () => {

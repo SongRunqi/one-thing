@@ -87,7 +87,15 @@ export interface ClaudeCodeQueryOptions {
   includePartialMessages?: boolean
   permissionMode?: string
   env?: Record<string, string | undefined>
-  thinking?: { type: 'adaptive' } | { type: 'enabled'; budgetTokens: number } | { type: 'disabled' }
+  /**
+   * SDK 的 `ThinkingConfig`(`sdk.d.ts` 的 `ThinkingAdaptive`/`ThinkingEnabled`/
+   * `ThinkingDisabled`)。`display` 不是装饰:缺省时 SDK 走 redacted,
+   * `thinking_delta` 只有事件没有正文,思考面板因此永远是空的。
+   */
+  thinking?:
+    | { type: 'adaptive'; display?: 'summarized' | 'omitted' }
+    | { type: 'enabled'; budgetTokens: number; display?: 'summarized' | 'omitted' }
+    | { type: 'disabled' }
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   abortController?: AbortController
   /**
@@ -215,25 +223,57 @@ function claudeCodeEffort(
 }
 
 /**
+ * The CLI's default model when no override is sent. `provider.ts` erases the
+ * picker's pseudo-model to `undefined` (the pseudo-model is not a real model
+ * id), so "no model" is the **common** case here, not an edge one — and the
+ * family semantics below must therefore have an answer for it rather than
+ * bailing out. Whatever the CLI ships as default is an adaptive-family,
+ * non-alwaysThinking model; that is the assumption encoded here.
+ */
+const CLAUDE_CODE_DEFAULT_MODEL_FAMILY = { adaptive: true, alwaysThinking: false } as const
+
+/**
  * Thinking/effort knobs for the CLI, mirroring the claude API provider's
- * family semantics: effort guides adaptive thinking; an explicit `disabled`
- * is only sent to families that accept it (Fable rejects the param, and an
- * unknown model — CLI default — gets no override at all).
+ * family semantics (`agent-loop/providers/claude.ts` streamTurn): Fable/Mythos
+ * reject the `thinking` param outright and take only the effort knob; the 4.6+
+ * adaptive family takes `{type:'adaptive'}` + effort; older families take
+ * neither (their fixed-budget dialect is not wired through the CLI).
+ *
+ * Two deliberate departures from the raw API body:
+ *
+ * - `display: 'summarized'` is attached to the adaptive config. Without it the
+ *   SDK streams **redacted** thinking — `thinking_delta` events arrive with no
+ *   text — so the thinking panel stays empty however hard the model thinks.
+ *   It is the only switch that puts prose on the wire.
+ * - An unknown model is treated as the CLI default (see the constant above)
+ *   instead of skipping the override. Otherwise `thinking: 'disabled'` is
+ *   never sent on the pseudo-model path, and the Off setting is unswitchable.
  */
 function claudeCodeThinkingOptions(
   request: Pick<ExternalAgentTurnRequest, 'model' | 'thinking' | 'reasoningEffort'>,
 ): Pick<ClaudeCodeQueryOptions, 'thinking' | 'effort'> {
+  const family = request.model
+    ? onethingClaudeModelFamily(request.model)
+    : CLAUDE_CODE_DEFAULT_MODEL_FAMILY
+
   if (request.thinking === 'disabled') {
-    if (!request.model) return {}
-    const family = onethingClaudeModelFamily(request.model)
     if (family.adaptive && !family.alwaysThinking) {
       return { thinking: { type: 'disabled' } }
     }
     return {}
   }
-  if (request.thinking === 'enabled' && request.reasoningEffort) {
-    return { effort: claudeCodeEffort(request.reasoningEffort) }
+
+  if (request.thinking === 'enabled') {
+    const effort = request.reasoningEffort
+      ? { effort: claudeCodeEffort(request.reasoningEffort) }
+      : {}
+    // Fable/Mythos think unconditionally and reject the param — sending it
+    // would fail the turn outright, so the summarized display is not
+    // available there.
+    if (family.alwaysThinking || !family.adaptive) return effort
+    return { thinking: { type: 'adaptive', display: 'summarized' }, ...effort }
   }
+
   return {}
 }
 
