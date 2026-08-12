@@ -102,17 +102,29 @@ export function isSessionStreamTerminalEvent(type: string): type is SessionStrea
 
 // ── Tool lifecycle ──────────────────────────────
 
-export interface ToolCallEvent {
+/**
+ * 工具与步骤事件所属的 assistant 消息号。
+ *
+ * 发射器一律盖号(`core/engine/event-only-emitter.ts`)。消费者**必须**优先认它,
+ * 不要退回「当前活跃流是谁」去猜:那个绑定是本窗口的短暂事实,窗口中途重载、开第
+ * 二个窗口、或跑起来之后才切进会话,它就不在了,而事件照发不误。可选只为兼容旧的
+ * 重放数据。
+ */
+interface MessageScopedEvent {
+  messageId?: string
+}
+
+export interface ToolCallEvent extends MessageScopedEvent {
   type: 'tool:call'
   toolCall: ToolCall
 }
 
-export interface ToolResultEvent {
+export interface ToolResultEvent extends MessageScopedEvent {
   type: 'tool:result'
   toolCall: ToolCall
 }
 
-export interface ToolInputStartEvent {
+export interface ToolInputStartEvent extends MessageScopedEvent {
   type: 'tool:input-start'
   toolCallId: string
   toolName: string
@@ -124,7 +136,7 @@ export interface ToolInputStartEvent {
  * receive-complete moment: the card's RECEIVING state must flip on this event,
  * never on a frontend guess about argument completeness.
  */
-export interface ToolInputEndEvent {
+export interface ToolInputEndEvent extends MessageScopedEvent {
   type: 'tool:input-end'
   toolCallId: string
   stepId?: string
@@ -135,7 +147,7 @@ export interface ToolInputEndEvent {
   finalizedBy: 'parse' | 'provider-done'
 }
 
-export interface ToolExecutionStartEvent {
+export interface ToolExecutionStartEvent extends MessageScopedEvent {
   type: 'tool:execution-start'
   toolCallId: string
   stepId: string
@@ -145,14 +157,14 @@ export interface ToolExecutionStartEvent {
   startTime?: number
 }
 
-export interface ToolExecutionUpdateEvent {
+export interface ToolExecutionUpdateEvent extends MessageScopedEvent {
   type: 'tool:execution-update'
   toolCallId: string
   stepId: string
   partialResult: ToolPartialResult
 }
 
-export interface ToolExecutionEndEvent {
+export interface ToolExecutionEndEvent extends MessageScopedEvent {
   type: 'tool:execution-end'
   toolCallId: string
   stepId: string
@@ -165,12 +177,12 @@ export interface ToolExecutionEndEvent {
 
 // ── Step events ─────────────────────────────────
 
-export interface StepAddedEvent {
+export interface StepAddedEvent extends MessageScopedEvent {
   type: 'step:added'
   step: Step
 }
 
-export interface StepUpdatedEvent {
+export interface StepUpdatedEvent extends MessageScopedEvent {
   type: 'step:updated'
   stepId: string
   updates: Partial<Step>

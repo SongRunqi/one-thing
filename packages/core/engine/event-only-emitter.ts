@@ -22,7 +22,7 @@ export type CoreEventOnlyStreamChunk =
       argsTextDelta: string
     }
 
-export type CoreEventOnlySessionEvent<
+type CoreEventOnlySessionEventBody<
   TStep = unknown,
   TToolCall = unknown,
   TToolPartialResult = unknown,
@@ -47,6 +47,37 @@ export type CoreEventOnlySessionEvent<
   | { type: 'stream:aborted'; reason?: string }
   | { type: 'context:size-updated'; contextSize: number }
   | { type: 'skill:activated'; skillName: string }
+
+/**
+ * 每条事件都盖上它所属的 assistant 消息号。
+ *
+ * 从前只有 `stream:start` 一条带号,工具与步骤事件一律不带 —— 于是渲染侧只能靠
+ * 「当前这条流是谁」去兜(`chat.ts` 的 `activeStreams` + `resolveMessageId`),而那
+ * 个绑定是**本窗口本次会话**的短暂事实:窗口在一轮跑到一半时重载、开第二个窗口、
+ * 或者跑起来之后才切进这个会话,绑定就不在了,后续 tool/step 事件被整批丢弃或泊死。
+ * 卡片因此长不出来,而带着真号来的 `permission:request` 找得到消息、找不到调用,
+ * 只能进缓存空等 —— 后端一直挂着等审批,前端一张卡都不出。
+ *
+ * 号由发射器自己盖(`assistantMessageId` 本就在闭包里,写 store 时一直在用),
+ * 消费者不必再猜。可选是为了兼容旧的重放数据,新发出的事件一律带号。
+ */
+export type CoreEventOnlySessionEvent<
+  TStep = unknown,
+  TToolCall = unknown,
+  TToolPartialResult = unknown,
+  TToolResult = unknown,
+  TContentPart = unknown,
+  TStreamCompleteData = unknown,
+  TStreamErrorData = unknown,
+> = CoreEventOnlySessionEventBody<
+  TStep,
+  TToolCall,
+  TToolPartialResult,
+  TToolResult,
+  TContentPart,
+  TStreamCompleteData,
+  TStreamErrorData
+> & { messageId?: string }
 
 export interface CoreEventOnlyEventBusLike<TEvent extends EventBase = EventBase> {
   emit(sessionId: string, event: TEvent): Promise<unknown>
@@ -202,7 +233,9 @@ export function createCoreEventOnlyEmitter<
     const eventBus = bus()
     if (!eventBus) return
 
-    eventBus.emit(sessionId, event).catch(err => {
+    // 盖号(见 CoreEventOnlySessionEvent 的注释):事件自己说得清属于哪条消息,
+    // 消费者就不必靠「当前活跃流」去猜 —— 那个绑定丢了,整批事件就没了下落。
+    eventBus.emit(sessionId, { ...event, messageId: assistantMessageId }).catch(err => {
       logger.error('[EventOnlyEmitter] EventBus emit error:', err)
     })
   }

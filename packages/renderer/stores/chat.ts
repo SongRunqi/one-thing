@@ -960,6 +960,50 @@ export const useChatStore = defineStore("chat", () => {
 		pendingPermissionRequests.set(data.sessionId, requests);
 	}
 
+	/**
+	 * 兜底:审批来了,而这条消息上还没有那个工具调用。
+	 *
+	 * 正常情况下 `tool:call` 事件早就把调用挂上去了。挂不上只有一种可能 —— 那批
+	 * 事件在路上丢了(历史病根是它们不带消息号,渲染侧只能靠「当前活跃流」去猜,
+	 * 一旦窗口中途重载/换窗口/后进会话,绑定不在,事件就没了下落)。号已经补上
+	 * (core/engine/event-only-emitter.ts),但**丢事件不该等于丢审批**:后端此刻
+	 * 正挂着等人回答,前端一张卡都不给,就是死锁。
+	 *
+	 * 所以按 ask 自己带的事实原地补一张**可应答**的卡:应答走的是 permissionId +
+	 * toolCallId,与工具调用本身的完整度无关。真的 `tool:call` 后到时会按同一个 id
+	 * 合并进来(`upsertMessageToolCall` 就地并,不换对象),不会留下第二张。
+	 */
+	function adoptToolCallForPermission(
+		message: ChatMessage,
+		data: PermissionRequestData,
+	): ToolCall | undefined {
+		if (!data.callId) return undefined;
+
+		const metadata = (data.metadata ?? {}) as Record<string, unknown>;
+		const toolName = String(metadata.toolName || data.permissionType || "tool");
+		const args: Record<string, unknown> = {};
+		if (typeof metadata.command === "string") args.command = metadata.command;
+		if (typeof metadata.path === "string") args.path = metadata.path;
+
+		const adopted = upsertMessageToolCall(message, {
+			id: data.callId,
+			toolId: toolName,
+			toolName,
+			arguments: args,
+			status: "pending",
+			timestamp: Date.now(),
+		} as ToolCall);
+		// 已经有一条 step 认领了这个 id 的话,让它指向同一个对象,徽标才跟着走。
+		linkStepsToToolCalls(message);
+		console.warn(
+			"[Chat Store] Permission arrived for an unknown tool call — adopting it so the ask stays answerable:",
+			data.callId,
+			"tool:",
+			toolName,
+		);
+		return adopted;
+	}
+
 	function findToolCallForPermission(
 		message: ChatMessage,
 		data: PermissionRequestData,
@@ -990,7 +1034,9 @@ export const useChatStore = defineStore("chat", () => {
 			return false;
 		}
 
-		const toolCall = findToolCallForPermission(message, data);
+		const toolCall =
+			findToolCallForPermission(message, data) ??
+			adoptToolCallForPermission(message, data);
 		if (!toolCall) {
 			if (cacheIfMissing) {
 				cachePendingPermissionRequest(data);
@@ -1019,7 +1065,15 @@ export const useChatStore = defineStore("chat", () => {
 			}
 		}
 
-		triggerRef(sessionMessages);
+		// 必须换掉数组身份,不能只 triggerRef。
+		//
+		// 卡片读的是 `panelMessages → messages → sessionMessages.get(sid)` 这条
+		// computed 链。就地改字段 + `triggerRef` 只能叫醒**第一环**:它重算后拿到的
+		// 还是同一个数组对象,而 Vue 的 computed 在自身值没变(===)时**不会向下游
+		// 传播**,链子就在这里断了 —— 审批卡因此是唯一"数据写进去了、界面不动"的
+		// 那一格(别的事件都走 `setSessionMessages`,换了新数组,自然一路通到底)。
+		// 真机上它表现为:要等下一次消息重建(翻页/补水)才突然冒出来。
+		setSessionMessages(data.sessionId, [...messages]);
 		console.log(
 			"[Chat Store] Updated tool call with permission request:",
 			toolCall.id,
@@ -1383,6 +1437,10 @@ export const useChatStore = defineStore("chat", () => {
 				// Merge into the canonical entry in place so any step.toolCall
 				// referencing the same id sees the update without manual mirror writes.
 				const canonical = upsertMessageToolCall(message, chunk.toolCall);
+				// 认领它的 step 要指向同一个对象。从前只在 step 侧的入口重连,于是
+				// 「step 先到、且载荷没带内嵌 toolCall」这一路永远绑不上:调用上的
+				// `requiresConfirmation` 步骤行看不见,徽标(Needs approval)就哑了。
+				linkStepsToToolCalls(message);
 				if (chunk.type === "tool_input_end") {
 					// The argument stream is settled; a lingering partial-args buffer
 					// would let the draft view outlive the real receive-complete moment.
@@ -2655,7 +2713,8 @@ export const useChatStore = defineStore("chat", () => {
 				message.steps = [...message.steps];
 			}
 		}
-		triggerRef(sessionMessages);
+		// 同 applyPermissionRequest:换数组身份,否则等待态传不到卡片那一层。
+		setSessionMessages(data.sessionId, [...messages]);
 	}
 
 	/**
@@ -2706,7 +2765,8 @@ export const useChatStore = defineStore("chat", () => {
 				message.steps = [...message.steps];
 			}
 		}
-		if (changed) triggerRef(sessionMessages);
+		// 同 applyPermissionRequest:换数组身份,否则卡片撤不掉(会一直举着手)。
+		if (changed) setSessionMessages(data.sessionId, [...messages]);
 	}
 
 	/**
