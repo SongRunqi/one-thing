@@ -47,7 +47,8 @@ describe('执行器解析单点(§3)', () => {
     expect(executor.kind).toBe('external')
     expect(executor.capabilities).toEqual({
       hostTools: true,
-      steer: false,
+      // e610b0dc:steering 接通(priority:'now' 就地截断),能力表随连接器现状。
+      steer: true,
       interrupt: true,
       contextWindow: 'theirs',
       persona: 'system',
