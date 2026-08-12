@@ -5,7 +5,10 @@
  * 每一组钉的都是一条**会静默坏掉**的性质:
  *  - 追加吃行(candidates 断流,零告警);
  *  - 原子写留半个文件(wiki 页损坏,下次读回来是残文);
- *  - 遍历/软链逃逸(受管口比裸 fs 还宽,H 线换成 RPC 时服务端照单全收);
+ *  - 遍历/软链逃逸(受管口比裸 fs 还宽,H 线换成 RPC 时服务端照单全收) ——
+ *    含**悬空**链:目标不存在的链曾被判成"这一段不存在"而跳过复核,
+ *    而 append 的 open 是跟链 + O_CREAT 的,于是在根外面把目标创建了出来;
+ *  - 追加与读取的上限不对称(只校验单块 → 文件一路长过上限 → 可写不可读);
  *  - 配额只在写满时才说话(记忆断流时才通知,已经晚了);
  *  - 外部根未声明/未配置时假装成功(插件以为写进了用户的笔记本)。
  */
@@ -15,6 +18,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   PLUGIN_FILES_DEFAULT_QUOTA_BYTES,
+  PLUGIN_FILES_MAX_FILE_BYTES,
   PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT,
   PLUGIN_STORAGE_EXTERNAL_ROOT_PERMISSION_NOTE,
   PluginStorageError,
@@ -217,6 +221,49 @@ describe('F1 files — path judgement is the two existing ones, and it holds', (
     expect(() => files.writeText('wiki/planted.md', 'x')).toThrow(/symlink/)
   })
 
+  it('refuses a dangling symlink instead of creating its target outside the root', () => {
+    const { files, scratch } = makeFiles()
+    const outside = tempRoot('onething-plugin-outside-')
+    // 目标**不存在**,但它的父目录存在 —— 这正是 O_CREAT 会替我们把它创建出来的形状
+    // (真实世界的样子:一条指向 `~/.zshenv` 的失效链)。
+    const planted = path.join(outside, 'zshenv')
+    fs.mkdirSync(scratch, { recursive: true })
+    fs.symlinkSync(planted, path.join(scratch, 'ledger.jsonl'))
+    expect(fs.existsSync(planted)).toBe(false)
+
+    // 旧实现:`existsSync` 跟链 → 悬空链被判"不存在" → 跳过 realpath 复核 →
+    // `appendFileSync` 在 open 时跟链 + O_CREAT,于是在根外面创建并写入了 planted。
+    expect(() => files.appendText('ledger.jsonl', 'pwned\n')).toThrow(/symlink/)
+    expect(fs.existsSync(planted)).toBe(false)
+
+    expect(() => files.writeText('ledger.jsonl', 'x')).toThrow(/symlink/)
+    expect(() => files.readText('ledger.jsonl')).toThrow(/symlink/)
+    expect(fs.existsSync(planted)).toBe(false)
+  })
+
+  it('refuses a dangling symlink that is a path component, not the leaf', () => {
+    const { files, scratch } = makeFiles()
+    const outside = tempRoot('onething-plugin-outside-')
+    fs.mkdirSync(scratch, { recursive: true })
+    fs.symlinkSync(path.join(outside, 'gone'), path.join(scratch, 'wiki'))
+
+    expect(() => files.appendText('wiki/notes.md', 'x')).toThrow(/symlink/)
+    expect(() => files.writeText('wiki/notes.md', 'x')).toThrow(/symlink/)
+    expect(fs.existsSync(path.join(outside, 'gone'))).toBe(false)
+  })
+
+  it('refuses appending through a symlink whose target exists outside the root', () => {
+    const { files, scratch } = makeFiles()
+    const outside = tempRoot('onething-plugin-outside-')
+    const victim = path.join(outside, 'zshenv')
+    fs.writeFileSync(victim, '# mine\n')
+    fs.mkdirSync(scratch, { recursive: true })
+    fs.symlinkSync(victim, path.join(scratch, 'ledger.jsonl'))
+
+    expect(() => files.appendText('ledger.jsonl', 'pwned\n')).toThrow(/symlink/)
+    expect(fs.readFileSync(victim, 'utf-8')).toBe('# mine\n')
+  })
+
   it('does not list symlinked entries (listing one invites reading it)', () => {
     const { files, scratch } = makeFiles()
     const outside = tempRoot('onething-plugin-outside-')
@@ -285,6 +332,72 @@ describe('F1 files — quota: warn at 90%, structured refusal at 100%', () => {
 
     const { files } = makeFiles({ homeRoot })
     expect(files.usage().bytes).toBe(777)
+  })
+})
+
+describe('F1 files — the per-file limit is guarded on the write side, not discovered on the read side', () => {
+  it('refuses the append that would cross the per-file limit, and keeps the file readable', () => {
+    const { files, scratch } = makeFiles()
+    fs.mkdirSync(scratch, { recursive: true })
+    const ledger = path.join(scratch, 'candidates.jsonl')
+    fs.writeFileSync(ledger, 'x'.repeat(PLUGIN_FILES_MAX_FILE_BYTES - 10))
+
+    // 线内的一笔照写。
+    files.appendText('candidates.jsonl', 'x'.repeat(5))
+    expect(fs.statSync(ledger).size).toBe(PLUGIN_FILES_MAX_FILE_BYTES - 5)
+
+    let error: unknown
+    try {
+      files.appendText('candidates.jsonl', 'x'.repeat(20))
+    } catch (caught) {
+      error = caught
+    }
+    // 旧实现只校验这一块的大小(20 字节,远小于 8MB)→ 放行 → 文件越限 →
+    // 此后 readText 永远抛 quota:可写不可读。
+    expect(error).toBeInstanceOf(PluginStorageError)
+    expect((error as PluginStorageError).code).toBe('quota')
+    expect((error as Error).message).toMatch(/archive this file or roll over/)
+    expect(fs.statSync(ledger).size).toBe(PLUGIN_FILES_MAX_FILE_BYTES - 5)
+    expect(files.readText('candidates.jsonl')?.length).toBe(PLUGIN_FILES_MAX_FILE_BYTES - 5)
+  })
+
+  it('reads the tail of an already-oversized file (nothing is permanently unreadable)', () => {
+    const { files, scratch } = makeFiles()
+    fs.mkdirSync(scratch, { recursive: true })
+    // 上限之外的历史文件:用户手编的,或旧版本一路追加出来的。
+    fs.writeFileSync(
+      path.join(scratch, 'big.jsonl'),
+      'x'.repeat(PLUGIN_FILES_MAX_FILE_BYTES + 100) + 'TAIL',
+    )
+
+    // 整份读仍然拒绝(8MB 是"一次读进内存"的上限),但错误里写明了出路。
+    expect(() => files.readText('big.jsonl')).toThrow(/tailBytes/)
+    expect(files.readText('big.jsonl', { tailBytes: 4 })).toBe('TAIL')
+  })
+
+  it('never returns a half character when the cut lands mid-character', () => {
+    const { files } = makeFiles()
+    files.writeText('u.txt', 'a好') // 1 + 3 字节
+
+    expect(files.readText('u.txt', { tailBytes: 3 })).toBe('好')
+    // 切在"好"的中间:开头的续字节被丢掉,而不是回一个 U+FFFD。
+    expect(files.readText('u.txt', { tailBytes: 2 })).toBe('')
+    // 比文件还大的 tailBytes = 整份。
+    expect(files.readText('u.txt', { tailBytes: 999 })).toBe('a好')
+  })
+
+  it('refuses a nonsense tailBytes instead of silently reading everything', () => {
+    const { files } = makeFiles()
+    files.writeText('u.txt', 'abc')
+    for (const bad of [0, -1, 1.5, Number.NaN, '10']) {
+      let error: unknown
+      try {
+        files.readText('u.txt', { tailBytes: bad as number })
+      } catch (caught) {
+        error = caught
+      }
+      expect((error as PluginStorageError | undefined)?.code).toBe('invalid-name')
+    }
   })
 })
 

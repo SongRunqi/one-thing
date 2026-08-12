@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   CorePluginManager,
   PLUGIN_DATA_LEGACY_BACKUP_DIR,
+  PLUGIN_FILES_MAX_FILE_BYTES,
   PLUGIN_KV_FILE_NAME,
   PLUGIN_LEGACY_KV_FILE_NAME,
   PluginStorageError,
@@ -250,6 +251,114 @@ describe('R4 api.storage wiring — latch and breaker ledger', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  /**
+   * 外部根 = **用户的目录**。那里的文件状态由用户决定,不是插件的行为 ——
+   * 而注入面每 30s 读一次,90 秒就能攒满三次把整个插件熔断。
+   * `not-configured` 只是这一类里最先被抓到的一个,这里补齐其余三种。
+   */
+  describe('user-side file state on the external root is refused, never booked', () => {
+    function buildExternal(root: string, external: string) {
+      return buildApi(root, 'notes', {
+        files: createCorePluginFiles({
+          pluginId: 'notes',
+          homeRoot: path.join(root, 'storage'),
+          externalRootDeclared: true,
+          resolveExternalRoot: () => external,
+        }),
+      })
+    }
+    function filesOf(api: unknown) {
+      return (api as { storage: { files: ReturnType<typeof createCorePluginFiles> } }).storage.files
+    }
+
+    it('io: the user put a file where the plugin expects a folder', () => {
+      const root = tempRoot()
+      const external = tempRoot()
+      try {
+        const { api, failures } = buildExternal(root, external)
+        fs.writeFileSync(path.join(external, 'wiki'), 'a file, not a folder', 'utf-8')
+
+        let error: unknown
+        try {
+          filesOf(api).writeText('wiki/page.md', '# x', { root: 'external' })
+        } catch (caught) {
+          error = caught
+        }
+        expect((error as PluginStorageError).code).toBe('io')
+        expect(failures).toHaveLength(0)
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true })
+        fs.rmSync(external, { recursive: true, force: true })
+      }
+    })
+
+    it('quota: the user hand-edited a file past the per-file read limit', () => {
+      const root = tempRoot()
+      const external = tempRoot()
+      try {
+        const { api, failures } = buildExternal(root, external)
+        fs.writeFileSync(path.join(external, 'big.md'), 'x'.repeat(PLUGIN_FILES_MAX_FILE_BYTES + 1))
+
+        let error: unknown
+        try {
+          filesOf(api).readText('big.md', { root: 'external' })
+        } catch (caught) {
+          error = caught
+        }
+        expect((error as PluginStorageError).code).toBe('quota')
+        expect(failures).toHaveLength(0)
+        // 出路照样在:尾读不是失败,更不该记账。
+        expect(filesOf(api).readText('big.md', { root: 'external', tailBytes: 3 })).toBe('xxx')
+        expect(failures).toHaveLength(0)
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true })
+        fs.rmSync(external, { recursive: true, force: true })
+      }
+    })
+
+    it('invalid-name: the user replaced index.md with a directory', () => {
+      const root = tempRoot()
+      const external = tempRoot()
+      try {
+        const { api, failures } = buildExternal(root, external)
+        fs.mkdirSync(path.join(external, 'index.md'))
+
+        let error: unknown
+        try {
+          filesOf(api).readText('index.md', { root: 'external' })
+        } catch (caught) {
+          error = caught
+        }
+        expect((error as PluginStorageError).code).toBe('invalid-name')
+        expect(failures).toHaveLength(0)
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true })
+        fs.rmSync(external, { recursive: true, force: true })
+      }
+    })
+
+    it('but the plugin\'s own behaviour still books, on either root', () => {
+      const root = tempRoot()
+      const external = tempRoot()
+      try {
+        const { api, failures } = buildExternal(root, external)
+
+        // 家目录的路径穿越:既有判例,原样成立。
+        expect(() => filesOf(api).writeText('../escape.md', 'x')).toThrow()
+        expect(failures).toHaveLength(1)
+        expect(failures[0].scope).toBe('storage.files.writeText')
+
+        // 用户的目录里穿越**同样**是插件的行为 —— 车道按归属判,不是按根一刀切,
+        // 否则 { root: 'external' } 就成了绕过熔断账的写法。
+        expect(() => filesOf(api).writeText('../escape.md', 'x', { root: 'external' })).toThrow()
+        expect(failures).toHaveLength(2)
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true })
+        fs.rmSync(external, { recursive: true, force: true })
+      }
+    })
   })
 
   it('no-ops every storage entry point after dispose', () => {

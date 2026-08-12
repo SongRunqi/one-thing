@@ -112,6 +112,23 @@ export interface CorePluginFilesOptions {
   root?: CorePluginFilesRoot
 }
 
+/**
+ * 读面的选项 —— 多一条 `tailBytes`。
+ *
+ * 单独一个类型而不是往 `CorePluginFilesOptions` 上加字段:写面/删面收下一个
+ * 只对读有意义的参数,只会让"传了没生效"变成一个合法的写法。
+ */
+export interface CorePluginFilesReadOptions extends CorePluginFilesOptions {
+  /**
+   * 只读**末尾这么多字节**(截断点落在多字节字符中间时,开头的半个字符会被丢掉)。
+   *
+   * 给的是超限文件的出路:超过 `PLUGIN_FILES_MAX_FILE_BYTES` 的文件整份读会抛
+   * `quota`,带上 `tailBytes` 则照读不误 —— 追加型账本要的本来也只是尾巴。
+   * 上限自身封顶(给再大也不会读超过 8MB)。
+   */
+  tailBytes?: number
+}
+
 export interface CorePluginFileEntry {
   /** 相对**根**的路径(不是绝对路径 —— 插件永远拿不到用户的目录结构)。 */
   path: string
@@ -130,8 +147,11 @@ export interface CorePluginFilesUsage {
 }
 
 export interface CorePluginFiles {
-  /** 不存在 → undefined(与 `readJson` 的 fallback 语义同规:缺席不是错误)。 */
-  readText(relPath: string, options?: CorePluginFilesOptions): string | undefined
+  /**
+   * 不存在 → undefined(与 `readJson` 的 fallback 语义同规:缺席不是错误)。
+   * 超过单文件上限 → `quota`,除非带 `tailBytes` 只取尾巴。
+   */
+  readText(relPath: string, options?: CorePluginFilesReadOptions): string | undefined
   /** 原子替换(tmp + rename):中断留下的要么是旧内容要么是新内容,不会是半个。 */
   writeText(relPath: string, content: string, options?: CorePluginFilesOptions): void
   /** O_APPEND 追加。**不读、不改、不重写**,并发追加不互相吞行。 */
@@ -211,6 +231,55 @@ function ioError(message: string, cause: unknown): PluginStorageError {
   return new PluginStorageError('io', nativeCode ? `${message} (${nativeCode})` : message, { cause })
 }
 
+/* ── 归因车道 ─────────────────────────────────────────────────────────────── */
+
+/**
+ * 一个存储错误是**谁的问题**。
+ *
+ * 同一个 code 在两个根上说的不是同一件事:家目录(`plugins/<id>/storage/`)是宿主
+ * 发给插件的沙盒,那里的 `quota` / `invalid-name` / `io` 只可能是插件自己写出来的;
+ * 而外部根是**用户亲手选的目录** —— 那里的 `io`(用户把文件 chmod 掉了)、
+ * `quota`(用户手编到 9MB)、`invalid-name`(用户把 `index.md` 换成了一个目录)
+ * 描述的是**用户文件此刻的状态**,不是插件的过错。
+ *
+ * 为什么非分不可(2026-08-12):注入面每 30s 读一次外部根,约 90 秒就能攒满三次
+ * 失败把整个插件熔断 —— 用户动了自己的一个文件,插件就被宿主杀掉,而插件什么都
+ * 没做错。按 code 一刀切豁免则会连"路径穿越"一起放走,那是必须记账的插件行为。
+ *
+ * 判定放在**抛错的这一侧**(只有这里知道寻址的是哪个根),`api-builder` 只读结论:
+ * `user` 车道照抛不误(调用方必须知道),只是不进熔断账。
+ */
+export type CorePluginFilesFaultLane = 'plugin' | 'user'
+
+/**
+ * 挂在错误对象上的标记。`Symbol.for` 而不是普通字段:它不会被 `JSON.stringify` /
+ * 日志序列化带出去,也不会和插件自己往 error 上挂的东西撞名。
+ */
+const FILES_FAULT_LANE = Symbol.for('onething.plugin.files.fault-lane')
+
+/** 打标。**先到先得** —— 内层已经判过归属的错误,不该被外层的默认值盖掉。 */
+function markFilesFault<E>(error: E, lane: CorePluginFilesFaultLane): E {
+  if (!error || typeof error !== 'object') return error
+  if (FILES_FAULT_LANE in (error as object)) return error
+  Object.defineProperty(error, FILES_FAULT_LANE, { value: lane, configurable: true })
+  return error
+}
+
+/** 读标。未标记 → `undefined`(调用方按既有规则处理,不猜)。 */
+export function getPluginFilesFaultLane(error: unknown): CorePluginFilesFaultLane | undefined {
+  if (!error || typeof error !== 'object') return undefined
+  const lane = (error as Record<symbol, unknown>)[FILES_FAULT_LANE]
+  return lane === 'plugin' || lane === 'user' ? lane : undefined
+}
+
+/**
+ * 插件侧过错的快捷抛法。**与根无关**:路径穿越、软链逃逸、未声明权限、参数写错 ——
+ * 这些在用户的目录里也一样是插件的行为,不能借"外根 = 用户地盘"混过熔断账。
+ */
+function pluginFault<E>(error: E): E {
+  return markFilesFault(error, 'plugin')
+}
+
 /**
  * 软链逃逸的复核 —— 字符串判据挡不住的那一半。
  *
@@ -218,6 +287,13 @@ function ioError(message: string, cause: unknown): PluginStorageError {
  * 声明,realpath 看的是磁盘上的事实。所以每次落地前都从**最深的已存在祖先**取
  * realpath 复核前缀 —— 只取已存在的那一段,是因为写新文件时目标本身还不存在,
  * 而 `realpathSync` 对不存在的路径直接抛。
+ *
+ * **"存在"必须用 `lstat` 判,不能用 `existsSync`**(2026-08-12 修):`existsSync`
+ * 跟链,于是一条**悬空**软链(链在、目标不在)被读成"这一段还不存在",整段
+ * realpath 复核就此跳过。而 `appendText` 的 `fs.appendFileSync` 在 open 的那一刻
+ * 是**跟链**的,还带 O_CREAT —— 链指向 `~/.zshenv` 这种"今天不存在、父目录存在"
+ * 的路径时,宿主就替插件在根**外面**创建并写入了那个文件。`lstat` 不跟链,悬空链
+ * 因此会被当成"这一段存在"而进入复核。
  */
 function assertResolvedInsideRoot(root: string, target: string): void {
   let realRoot: string
@@ -229,8 +305,18 @@ function assertResolvedInsideRoot(root: string, target: string): void {
   }
 
   let probe = target
+  let probeIsLink = false
   for (;;) {
-    if (fs.existsSync(probe)) break
+    let stat: fs.Stats | undefined
+    try {
+      stat = fs.lstatSync(probe)
+    } catch {
+      stat = undefined
+    }
+    if (stat) {
+      probeIsLink = stat.isSymbolicLink()
+      break
+    }
     const parent = path.dirname(probe)
     if (parent === probe) return
     probe = parent
@@ -240,14 +326,62 @@ function assertResolvedInsideRoot(root: string, target: string): void {
   try {
     realProbe = fs.realpathSync.native(probe)
   } catch (error) {
+    if (probeIsLink) {
+      // 悬空链:目标今天不存在,所以"它在不在根内"这个问题现在没有答案 —— 而
+      // 明天别人(用户、另一个程序、乃至这次写本身)就可能把它创建出来。判不了就拒。
+      throw pluginFault(invalidName(
+        'path goes through a dangling symlink whose target cannot be resolved '
+        + '(a link that resolves to nothing today can resolve outside the root tomorrow)',
+      ))
+    }
     throw ioError(`Cannot resolve "${probe}"`, error)
   }
   if (realProbe !== realRoot && !realProbe.startsWith(realRoot + path.sep)) {
-    throw invalidName(
+    throw pluginFault(invalidName(
       'path escapes the plugin storage root through a symlink '
       + '(the name is legal, the link is not)',
-    )
+    ))
   }
+}
+
+/**
+ * `tailBytes` 的判据 —— 超限文件的**唯一出路**。
+ *
+ * 8MB 是"一次读进内存"的上限,不该是"这个文件从此不可读"的判决:追加型账本迟早
+ * 会长过它,用户手编的 wiki 页也可能长过它,而那一刻插件连自己写的东西都读不回来
+ * (2026-08-12 修:写侧守门 + 读侧留出路,两条一起才消灭"可写不可读")。
+ */
+function normalizeTailBytes(value: unknown): number | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    throw pluginFault(invalidName('tailBytes must be a positive integer number of bytes'))
+  }
+  return Math.min(value, PLUGIN_FILES_MAX_FILE_BYTES)
+}
+
+/**
+ * 读文件末尾 N 字节。截断点可能落在一个多字节字符中间,所以丢掉开头的续字节
+ * (`10xxxxxx`)—— 否则返回值的第一个字符是 U+FFFD,而插件多半会把它当成正文。
+ */
+function readTailText(file: string, size: number, tailBytes: number): string {
+  const start = Math.max(0, size - tailBytes)
+  const length = size - start
+  if (length <= 0) return ''
+  const buffer = Buffer.allocUnsafe(length)
+  const fd = fs.openSync(file, 'r')
+  let read: number
+  try {
+    read = fs.readSync(fd, buffer, 0, length, start)
+  } finally {
+    fs.closeSync(fd)
+  }
+  let slice = buffer.subarray(0, read)
+  if (start > 0) {
+    let offset = 0
+    while (offset < slice.length && (slice[offset]! & 0xc0) === 0x80) offset += 1
+    slice = slice.subarray(offset)
+  }
+  return slice.toString('utf-8')
 }
 
 /* ── 实现 ─────────────────────────────────────────────────────────────────── */
@@ -332,11 +466,12 @@ export function createCorePluginFiles(options: CreateCorePluginFilesOptions): Co
   /** 外部根:声明门 → 配置门 → 目录门。三道都给结构化错误,不假装成功。 */
   const externalRoot = (): string => {
     if (!options.externalRootDeclared) {
-      throw new PluginStorageError(
+      // manifest 少写了一行 = 作者的问题,照记熔断账(与路径穿越同规)。
+      throw pluginFault(new PluginStorageError(
         'not-declared',
         `Plugin "${pluginId}" must declare "${PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT}" in `
         + 'contributes.permissions to address the external root',
-      )
+      ))
     }
     const configured = options.resolveExternalRoot?.()
     if (typeof configured !== 'string' || !configured.trim()) {
@@ -373,7 +508,7 @@ export function createCorePluginFiles(options: CreateCorePluginFilesOptions): Co
       // 在用户的笔记本上记一本"你还能写多少"是越权的。
       return { dir: externalRoot(), metered: false }
     }
-    throw invalidName(`Unknown storage root "${String(root)}" (use "home" or "external")`)
+    throw pluginFault(invalidName(`Unknown storage root "${String(root)}" (use "home" or "external")`))
   }
 
   /** 相对路径 → 绝对路径。判据 + 软链复核都在这一道,别处不许再 join。 */
@@ -384,10 +519,31 @@ export function createCorePluginFiles(options: CreateCorePluginFilesOptions): Co
   ): { full: string; root: string; metered: boolean } => {
     const { dir, metered } = rootOf(input)
     const problem = describePluginFilesPathProblem(relPath, label)
-    if (problem) throw invalidName(problem)
+    // 路径判据的失败是插件写错了地址,在用户的目录里也一样 —— 显式打 plugin 标,
+    // 免得被"外根 = 用户地盘"的默认车道放走。
+    if (problem) throw pluginFault(invalidName(problem))
     const full = path.join(dir, relPath as string)
     assertResolvedInsideRoot(dir, full)
     return { full, root: dir, metered }
+  }
+
+  /**
+   * 这次调用寻址的是**谁的地盘**:家目录 = 宿主发的沙盒(出事算插件的),
+   * 外部根 = 用户亲手选的目录(那里的文件状态不是插件能决定的)。
+   *
+   * 只作**默认值**:已经在里层判过归属的错误(路径穿越、未声明权限、参数写错)
+   * 带着自己的标走完全程,`markFilesFault` 先到先得。
+   */
+  const laneOf = (input?: CorePluginFilesOptions): CorePluginFilesFaultLane =>
+    (input?.root === 'external' ? 'user' : 'plugin')
+
+  /** 每个动词的唯一归因落点。写在这里,六个动词就不必各自记得打标。 */
+  const inLane = <T>(input: CorePluginFilesOptions | undefined, run: () => T): T => {
+    try {
+      return run()
+    } catch (error) {
+      throw markFilesFault(error, laneOf(input))
+    }
   }
 
   const sizeOf = (file: string): number => {
@@ -430,132 +586,161 @@ export function createCorePluginFiles(options: CreateCorePluginFilesOptions): Co
   }
 
   return {
-    readText(relPath: string, input?: CorePluginFilesOptions): string | undefined {
-      const { full } = resolveIn(relPath, input, 'path')
-      if (!fs.existsSync(full)) return undefined
-      try {
-        const stat = fs.statSync(full)
-        if (!stat.isFile()) {
-          throw invalidName(`"${relPath}" is a directory, not a file`)
+    readText(relPath: string, input?: CorePluginFilesReadOptions): string | undefined {
+      return inLane(input, () => {
+        const { full } = resolveIn(relPath, input, 'path')
+        const tailBytes = normalizeTailBytes(input?.tailBytes)
+        if (!fs.existsSync(full)) return undefined
+        try {
+          const stat = fs.statSync(full)
+          if (!stat.isFile()) {
+            throw invalidName(`"${relPath}" is a directory, not a file`)
+          }
+          // 尾读优先于上限:上限管的是"一次读进内存多少",而 tailBytes 已经把
+          // 这件事封顶了 —— 再拿整份大小去拒,就又回到"可写不可读"。
+          if (tailBytes !== undefined) return readTailText(full, stat.size, tailBytes)
+          if (stat.size > PLUGIN_FILES_MAX_FILE_BYTES) {
+            throw new PluginStorageError(
+              'quota',
+              `"${relPath}" is ${stat.size} bytes, over the ${PLUGIN_FILES_MAX_FILE_BYTES}-byte read limit`
+              + ' — pass { tailBytes } to read the tail of an oversized file',
+            )
+          }
+          return fs.readFileSync(full, 'utf-8')
+        } catch (error) {
+          if (error instanceof PluginStorageError) throw error
+          throw ioError(`Cannot read "${relPath}" for "${pluginId}"`, error)
         }
-        if (stat.size > PLUGIN_FILES_MAX_FILE_BYTES) {
-          throw new PluginStorageError(
-            'quota',
-            `"${relPath}" is ${stat.size} bytes, over the ${PLUGIN_FILES_MAX_FILE_BYTES}-byte read limit`,
-          )
-        }
-        return fs.readFileSync(full, 'utf-8')
-      } catch (error) {
-        if (error instanceof PluginStorageError) throw error
-        throw ioError(`Cannot read "${relPath}" for "${pluginId}"`, error)
-      }
+      })
     },
 
     writeText(relPath: string, content: string, input?: CorePluginFilesOptions): void {
       if (demolished()) return
-      const { full, metered } = resolveIn(relPath, input, 'path')
-      const nextBytes = assertTextSize(content, `"${relPath}"`)
-      if (metered) assertQuota(totalBytes() - sizeOf(full) + nextBytes)
-      ensureParent(full)
+      inLane(input, () => {
+        const { full, metered } = resolveIn(relPath, input, 'path')
+        const nextBytes = assertTextSize(content, `"${relPath}"`)
+        if (metered) assertQuota(totalBytes() - sizeOf(full) + nextBytes)
+        ensureParent(full)
 
-      // 原子替换:同目录 tmp + rename。跨目录 tmp 会撞 EXDEV,而 rename 之所以
-      // 值得,正是因为它在同一个文件系统里是原子的。
-      const tmp = `${full}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 10)}`
-      const previous = metered ? sizeOf(full) : 0
-      try {
-        fs.writeFileSync(tmp, content, 'utf-8')
-        fs.renameSync(tmp, full)
-      } catch (error) {
+        // 原子替换:同目录 tmp + rename。跨目录 tmp 会撞 EXDEV,而 rename 之所以
+        // 值得,正是因为它在同一个文件系统里是原子的。
+        const tmp = `${full}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 10)}`
+        const previous = metered ? sizeOf(full) : 0
         try {
-          fs.rmSync(tmp, { force: true })
-        } catch {
-          // 清不掉临时文件不该盖住真正的失败原因。
+          fs.writeFileSync(tmp, content, 'utf-8')
+          fs.renameSync(tmp, full)
+        } catch (error) {
+          try {
+            fs.rmSync(tmp, { force: true })
+          } catch {
+            // 清不掉临时文件不该盖住真正的失败原因。
+          }
+          throw ioError(`Cannot write "${relPath}" for "${pluginId}"`, error)
         }
-        throw ioError(`Cannot write "${relPath}" for "${pluginId}"`, error)
-      }
-      if (metered) noteBytesDelta(nextBytes - previous)
+        if (metered) noteBytesDelta(nextBytes - previous)
+      })
     },
 
     appendText(relPath: string, content: string, input?: CorePluginFilesOptions): void {
       if (demolished()) return
-      const { full, metered } = resolveIn(relPath, input, 'path')
-      const nextBytes = assertTextSize(content, `"${relPath}" append`)
-      if (metered) assertQuota(totalBytes() + nextBytes)
-      ensureParent(full)
-      try {
-        // `appendFileSync` = open(O_APPEND) + write + close。偏移量在**写的那一刻**
-        // 由内核取,所以两个写者交替追加时谁也吃不掉谁的行。绝不能改成
-        // readFileSync + writeFileSync —— 那正是"吞行"的写法。
-        fs.appendFileSync(full, content, { encoding: 'utf-8' })
-      } catch (error) {
-        throw ioError(`Cannot append to "${relPath}" for "${pluginId}"`, error)
-      }
-      if (metered) noteBytesDelta(nextBytes)
+      inLane(input, () => {
+        const { full, metered } = resolveIn(relPath, input, 'path')
+        const nextBytes = assertTextSize(content, `"${relPath}" append`)
+        // **累计**校验,不只是这一块(2026-08-12 修)。只看单块的话,一个只追加的
+        // 账本会一路长过单文件上限,此后 readText 一律抛 quota —— 文件从此**可写
+        // 不可读**,而写的那一侧毫无察觉。守门放在写侧:越线的那一笔当场被拒,
+        // 插件还来得及归档/滚动到新文件。
+        const existing = sizeOf(full)
+        if (existing + nextBytes > PLUGIN_FILES_MAX_FILE_BYTES) {
+          throw new PluginStorageError(
+            'quota',
+            `"${relPath}" is ${existing} bytes; appending ${nextBytes} more would cross the `
+            + `${PLUGIN_FILES_MAX_FILE_BYTES}-byte per-file limit — archive this file or roll over to a new one`,
+          )
+        }
+        if (metered) assertQuota(totalBytes() + nextBytes)
+        ensureParent(full)
+        try {
+          // `appendFileSync` = open(O_APPEND) + write + close。偏移量在**写的那一刻**
+          // 由内核取,所以两个写者交替追加时谁也吃不掉谁的行。绝不能改成
+          // readFileSync + writeFileSync —— 那正是"吞行"的写法。
+          fs.appendFileSync(full, content, { encoding: 'utf-8' })
+        } catch (error) {
+          throw ioError(`Cannot append to "${relPath}" for "${pluginId}"`, error)
+        }
+        if (metered) noteBytesDelta(nextBytes)
+      })
     },
 
     list(relDir?: string, input?: CorePluginFilesOptions): CorePluginFileEntry[] {
-      const { dir } = rootOf(input)
-      let base = dir
-      let prefix = ''
-      if (relDir !== undefined && relDir !== '' && relDir !== '.') {
-        const resolved = resolveIn(relDir, input, 'dir')
-        base = resolved.full
-        prefix = `${relDir}/`
-      } else {
-        assertResolvedInsideRoot(dir, dir)
-      }
-
-      let entries: fs.Dirent[]
-      try {
-        entries = fs.readdirSync(base, { withFileTypes: true })
-      } catch {
-        // 目录不存在 = 空,不是错误:插件第一次跑时 candidates/ 本来就还没有。
-        return []
-      }
-
-      const result: CorePluginFileEntry[] = []
-      for (const entry of entries) {
-        // 软链一律不列:列出来插件就会去读它,而它可能指向根外面。
-        if (entry.isSymbolicLink()) continue
-        const kind = entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : null
-        if (!kind) continue
-        let size = 0
-        let modifiedAt = 0
-        try {
-          const stat = fs.statSync(path.join(base, entry.name))
-          size = kind === 'file' ? stat.size : 0
-          modifiedAt = stat.mtimeMs
-        } catch {
-          continue
+      return inLane(input, () => {
+        const { dir } = rootOf(input)
+        let base = dir
+        let prefix = ''
+        if (relDir !== undefined && relDir !== '' && relDir !== '.') {
+          const resolved = resolveIn(relDir, input, 'dir')
+          base = resolved.full
+          prefix = `${relDir}/`
+        } else {
+          assertResolvedInsideRoot(dir, dir)
         }
-        result.push({ path: `${prefix}${entry.name}`, name: entry.name, kind, size, modifiedAt })
-      }
-      return result.sort((a, b) => a.path.localeCompare(b.path))
+
+        let entries: fs.Dirent[]
+        try {
+          entries = fs.readdirSync(base, { withFileTypes: true })
+        } catch {
+          // 目录不存在 = 空,不是错误:插件第一次跑时 candidates/ 本来就还没有。
+          return []
+        }
+
+        const result: CorePluginFileEntry[] = []
+        for (const entry of entries) {
+          // 软链一律不列:列出来插件就会去读它,而它可能指向根外面。
+          if (entry.isSymbolicLink()) continue
+          const kind = entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : null
+          if (!kind) continue
+          let size = 0
+          let modifiedAt = 0
+          try {
+            const stat = fs.statSync(path.join(base, entry.name))
+            size = kind === 'file' ? stat.size : 0
+            modifiedAt = stat.mtimeMs
+          } catch {
+            continue
+          }
+          result.push({ path: `${prefix}${entry.name}`, name: entry.name, kind, size, modifiedAt })
+        }
+        return result.sort((a, b) => a.path.localeCompare(b.path))
+      })
     },
 
     exists(relPath: string, input?: CorePluginFilesOptions): boolean {
-      const { full } = resolveIn(relPath, input, 'path')
-      return fs.existsSync(full)
+      return inLane(input, () => {
+        const { full } = resolveIn(relPath, input, 'path')
+        return fs.existsSync(full)
+      })
     },
 
     remove(relPath: string, input?: CorePluginFilesOptions): void {
       if (demolished()) return
-      const { full, metered } = resolveIn(relPath, input, 'path')
-      if (!fs.existsSync(full)) return
-      const freed = metered ? sizeOf(full) : 0
-      try {
-        const stat = fs.statSync(full)
-        if (stat.isDirectory()) {
-          // 只删**空**目录。递归删除是"一个路径错误 = 整棵 wiki 消失"的形状,
-          // 而插件的删除动作没有任何撤销面。要清空,一层层来。
-          fs.rmdirSync(full)
-        } else {
-          fs.rmSync(full, { force: true })
+      inLane(input, () => {
+        const { full, metered } = resolveIn(relPath, input, 'path')
+        if (!fs.existsSync(full)) return
+        const freed = metered ? sizeOf(full) : 0
+        try {
+          const stat = fs.statSync(full)
+          if (stat.isDirectory()) {
+            // 只删**空**目录。递归删除是"一个路径错误 = 整棵 wiki 消失"的形状,
+            // 而插件的删除动作没有任何撤销面。要清空,一层层来。
+            fs.rmdirSync(full)
+          } else {
+            fs.rmSync(full, { force: true })
+          }
+        } catch (error) {
+          throw ioError(`Cannot remove "${relPath}" for "${pluginId}"`, error)
         }
-      } catch (error) {
-        throw ioError(`Cannot remove "${relPath}" for "${pluginId}"`, error)
-      }
-      if (metered && freed) noteBytesDelta(-freed)
+        if (metered && freed) noteBytesDelta(-freed)
+      })
     },
 
     usage,

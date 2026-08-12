@@ -12,10 +12,12 @@ import {
   type PluginNotifySound,
 } from './notify-sound.js'
 import { PluginStorageError, type CorePluginMessageStateStore, type CorePluginStorage } from './storage.js'
+import { getPluginFilesFaultLane } from './storage-files.js'
 import type {
   CorePluginFileEntry,
   CorePluginFiles,
   CorePluginFilesOptions,
+  CorePluginFilesReadOptions,
   CorePluginFilesUsage,
 } from './storage-files.js'
 import {
@@ -478,6 +480,18 @@ export function createCorePluginAPI<
    * 未声明权限(not-declared)、超配额(quota)都是**插件侧的行为**,照记 ——
    * 与既有判例一致("books a traversal attempt into the breaker ledger")。
    * 状态性拒绝照样**抛**(调用方必须知道),照样打日志(warn 不是 error),只是不计数。
+   *
+   * **豁免面按车道判,不按 code 一刀切**(2026-08-12 补全):`not-configured` 只是
+   * 状态性拒绝里最先被抓到的那一个,同一批还有 —— 用户把外部根里的文件 chmod 成
+   * 不可读(`io`)、手编到 9MB(`quota`)、把 `index.md` 换成一个目录
+   * (`invalid-name`)。这三条同样每 30s 复现一次,90 秒就能把插件熔断,而插件
+   * 什么都没做错。
+   *
+   * 但同一个 code 在**家目录**里说的是另一件事(那是宿主发给插件的沙盒,里面的
+   * 状态只可能是插件自己造的),按 code 豁免会连"路径穿越"一起放走。所以归属
+   * 判定留在 `storage-files.ts` 抛错的那一侧(只有它知道寻址的是哪个根,也只有它
+   * 知道这一条是路径判据还是文件状态),这里只读结论:`user` 车道 = 用户地盘的
+   * 状态,抛而不记账。
    */
   const STORAGE_STATE_REFUSALS = new Set(['not-configured'])
   const withStorageFailureReport = <T>(what: string, run: () => T): T => {
@@ -488,8 +502,11 @@ export function createCorePluginAPI<
       return result
     } catch (error) {
       const code = (error as { code?: unknown } | null | undefined)?.code
-      if (typeof code === 'string' && STORAGE_STATE_REFUSALS.has(code)) {
-        logger.log(`[Plugin:${pluginId}] storage.${what} refused (${code}) — state refusal, not counted`)
+      const stateRefusal = (typeof code === 'string' && STORAGE_STATE_REFUSALS.has(code))
+        || getPluginFilesFaultLane(error) === 'user'
+      if (stateRefusal) {
+        const label = typeof code === 'string' ? code : 'state'
+        logger.log(`[Plugin:${pluginId}] storage.${what} refused (${label}) — state refusal, not counted`)
         throw error
       }
       logger.error(`[Plugin:${pluginId}] storage.${what} failed:`, error)
@@ -1316,7 +1333,7 @@ export function createCorePluginAPI<
        * 这一层不重复任何一条。
        */
       files: {
-        readText(relPath: string, fileOptions?: CorePluginFilesOptions): string | undefined {
+        readText(relPath: string, fileOptions?: CorePluginFilesReadOptions): string | undefined {
           if (state.disposed && !state.disposing) {
             rejectLateCall('storage.files.readText')
             return undefined
