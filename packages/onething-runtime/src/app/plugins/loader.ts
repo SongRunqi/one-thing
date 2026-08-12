@@ -45,7 +45,6 @@ import { getPluginAppVersion } from './app-version.js'
 import { clearPluginRuntimeHealth } from './health.js'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
-import memoryPlugin, { memoryManifest } from './builtin/memory-wiki.js'
 import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
 
 export function getPluginsDir(): string {
@@ -258,6 +257,18 @@ export function setPluginEnabled(pluginId: string, enabled: boolean): void {
   if (enabled) clearPluginRuntimeHealth(pluginId)
 }
 
+/**
+ * 内置插件清单。
+ *
+ * **进这张表的判据是"离了宿主活不了"**,不是"我们写的"。2026-08-12 memory-wiki
+ * 按这条判据退出:它只用注入 api 上的四样东西(storage.files / registerTool /
+ * registerPromptContextProvider / settings.onChange),住在这里唯一换来的是
+ * "不能单独发版"。它现在是市场包 `@onething-plugins/memory-wiki` —— 同 id、同
+ * 家目录(`plugins/memory-wiki/`),用户的 config.json 与 wiki 数据零迁移。
+ *
+ * 退役之后这张表就不再占着 `memory-wiki` 这个 id,同 id 的 npm 包才装得进
+ * (防撞闸见 `CorePluginManager.installPlugin`:内置先占位,装了也永远不显示)。
+ */
 function getBuiltinPlugins(): PluginDefinition[] {
   return createBuiltinPluginDefinitions<PluginEntry>([
     {
@@ -271,12 +282,6 @@ function getBuiltinPlugins(): PluginDefinition[] {
       manifest: noteSkillsManifest,
       entry: noteSkillsPlugin,
       enabled: getPluginEnabled('note-skills'),
-    },
-    {
-      id: 'memory-wiki',
-      manifest: memoryManifest,
-      entry: memoryPlugin,
-      enabled: getPluginEnabled('memory-wiki'),
     },
   ]) as PluginDefinition[]
 }

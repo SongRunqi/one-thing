@@ -157,6 +157,25 @@ server 的 `dist/dev-self-server/main.js`;web 前端没有产物路径,用它独
   `electron-vite dev -- <args>`。dev-self 用 `ONETHING_ELECTRON_ARGS`(JSON 数组)喂给
   `dev-with-logging`,由它拼成 `--` 之后的参数。
 
+## 落地记:memory-wiki 退出内置(2026-08-12)
+
+长期记忆插件 `memory-wiki` 从宿主内置改为市场包 `@onething-plugins/memory-wiki`
+(市场仓 `packages/memory-wiki`),成为 **`storage:external-root` / files 面在市场
+形态里的第一个住户** —— 此前这条权限只有内置插件用过,它是不是真的够一个完整
+产品用,现在有答案了。判据是"离了宿主活不了才留在内置":memory-wiki 只用注入 api
+上的四样东西(`storage.files` / `registerTool` / `registerPromptContextProvider` /
+`settings.onChange`),住在内置唯一换来的是"不能单独发版"。
+
+自举时要知道的两条:
+
+- **同 id 同家目录,数据零迁移**。npm 包的 id 仍是 `memory-wiki`,家目录仍是
+  `<store>/plugins/memory-wiki/` —— 用户已选的记忆目录(`config.json` 的 `wikiRoot`)
+  与整棵 wiki 原样继续用,退役与安装之间不需要任何搬运动作。
+- **顺序不能反**:必须先装 npm 包、再落内置退役。防撞闸(`CorePluginManager.installPlugin`)
+  拦的是"用户插件遮蔽内置",内置还在时同 id 的包装得进账本但永远不会被显示;
+  而反过来先退役再安装,中间会有一段"记忆工具整个消失"的真空。CLI 的
+  `onething plugin install <tarball>` 直接走安装机器、不过防撞闸,所以这个顺序做得到。
+
 ## 已知缺口(别把没有的能力写成有)
 
 - **派工已经有了(`task` 工具,2026-08-11 批 5,审计 P0-3/P0-5),但它有边界。**
