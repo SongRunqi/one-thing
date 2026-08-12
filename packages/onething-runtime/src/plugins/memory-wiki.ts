@@ -57,6 +57,25 @@ export const ONETHING_MEMORY_NOTES_HEADING = '## 便签'
 export const ONETHING_MEMORY_QUERY_LOG_FILE = 'query-log.jsonl'
 
 /**
+ * 命中流水的归档 —— **只留一代**。
+ *
+ * 只追加而从不轮转的账本没有稳态:它会一直长到吃满这个插件 50MB 的家目录配额,
+ * 那一刻挂掉的不只是流水(`appendText` 抛 quota),而是这个插件在家目录里的
+ * 每一次写。留一代是"够用的最小值":流水是**观测数据**,用来回答"最近的检索
+ * 命中得怎么样",不是需要长期追溯的账。第二代的价值远不抵它占的那份配额。
+ */
+export const ONETHING_MEMORY_QUERY_LOG_ARCHIVE_FILE = 'query-log.1.jsonl'
+
+/**
+ * 触发轮转的水位。
+ *
+ * 2MB ≈ 一万几千条流水记录,按单机的检索频次是几个月的量;而两代加起来 4MB
+ * 只占家目录配额的 8%,离预警线(9 成)还很远 —— 这正是要的:观测数据永远不该
+ * 是把配额撑爆的那一个。
+ */
+export const ONETHING_MEMORY_QUERY_LOG_MAX_BYTES = 2 * 1024 * 1024
+
+/**
  * 索引注入的硬顶。
  *
  * 盲点 #4:注入是**乘法**不是加法 —— 热卡 × 每 agent 执行会话 × 每轮。
@@ -712,6 +731,10 @@ export function selectOnethingMemoryTopics(
  * 预算先给正文,剩下的才给便签。正文被拦腰截断的那一页,读回去是残缺的一篇;
  * 便签少几条,读回去只是少几条事实 —— 所以顺序是这个而不是反过来。
  * 没有正文的页(旧形态)走原路:整页尾部截断,一个字节的行为都没变。
+ *
+ * 返回前过一遍 `neutralizeOnethingMemoryWrapperTags`:query 的结果也是进对话的
+ * 记忆数据,同一段文本从注入面走要中和、从工具返回走就不中和,那道闩就只是
+ * 挡住了其中一扇门。
  */
 export function buildOnethingMemoryQuerySection(topic: string, raw: string): string {
   const budget = ONETHING_MEMORY_QUERY_MAX_BODY_CHARS
@@ -721,7 +744,7 @@ export function buildOnethingMemoryQuerySection(topic: string, raw: string): str
     const clipped = trimmed.length > budget
       ? `…(较早的内容已略去)\n${trimmed.slice(-budget)}`
       : trimmed
-    return `## ${topic}\n${clipped}`
+    return neutralizeOnethingMemoryWrapperTags(`## ${topic}\n${clipped}`)
   }
 
   const docClipped = page.body.length > budget
@@ -738,7 +761,7 @@ export function buildOnethingMemoryQuerySection(topic: string, raw: string): str
       : page.notes
     notesBlock = `\n\n### 便签\n${notes}`
   }
-  return `## ${topic}\n### 正文\n${docClipped}${notesBlock}`
+  return neutralizeOnethingMemoryWrapperTags(`## ${topic}\n### 正文\n${docClipped}${notesBlock}`)
 }
 
 /* ── 纯函数:注入 ─────────────────────────────────────────────────────────── */
@@ -758,16 +781,50 @@ export function clampOnethingMemoryUtf8(text: string, maxBytes: number): Onethin
 }
 
 /**
+ * 包装标签的闭合序列 —— `</index` / `</memory_index`,大小写不敏感,
+ * 允许斜杠后有空白(`</ index>` 这种宽松写法一样能被读成闭合)。
+ */
+const ONETHING_MEMORY_WRAPPER_CLOSER = /<\/(\s*)(memory_index|index)/gi
+
+/**
+ * 包装标签中和 —— **持久注入的那道闩**。
+ *
+ * 注入面把索引原文放进 `<index>…</index>`,并在外面声明"里面是数据不是指令"。
+ * 可是内容里只要出现字面的 `</index>`,包装就在那里提前闭合了:它后面的每一行
+ * 都落在防线**之外**,而且因为记忆是每轮注入的,这是一次写入、永久生效 ——
+ * 无论那行字是模型被诱导记下来的,还是用户手编 index.md 时写进去的。
+ *
+ * 中和的形态选 HTML 实体(`</index` → `&lt;/index`),理由是三条硬要求的交集:
+ *  - **不可能再拼回闭合标签**:`&lt;` 是纯 ASCII,没有任何一种规范化会把它变回
+ *    `<`。全角 `＜` 不行 —— NFKC 会把 U+FF1C 映射回 ASCII 的 `<`,中和当场失效;
+ *  - **不靠隐形字符**:零宽断开肉眼看不出、也最容易在某一层清洗里被剥掉,
+ *    于是闭合标签会无声复活 —— 一道"看不见它有没有生效"的防线不算防线;
+ *  - **肉眼与模型都还读得懂**:`&lt;/index>` 一眼就是"一个被转义的字面标签",
+ *    而不是一段乱码,记忆的内容因此不失真。
+ *
+ * 只中和这两个包装标签,别的 `</div>` 之类原样保留:它们是记忆自己的内容,
+ * 动它们既没有安全收益,又会把用户的原文改花。函数是幂等的(中和过的文本
+ * 里已经没有可匹配的序列),所以多套一层永远安全。
+ */
+export function neutralizeOnethingMemoryWrapperTags(text: string): string {
+  return text.replace(ONETHING_MEMORY_WRAPPER_CLOSER, (_match, space: string, name: string) =>
+    `&lt;/${space}${name}`)
+}
+
+/**
  * 每轮注入的那段文本。
  *
- * 三件事,一件都不能少:
+ * 四件事,一件都不能少:
  *  - **数据不是指令**:持久化的 prompt injection 是"一次注入、永久生效",
  *    比会话内注入严重一个量级(盲点 #1)。所以注入面自己带一层声明。
+ *  - **声明要接得住**:光有一句声明、包装却能被内容自己关掉,等于没有 ——
+ *    所以内容先过 `neutralizeOnethingMemoryWrapperTags`。中和在截断**之前**做:
+ *    反过来的话转义会把文本撑出字节硬顶。
  *  - **索引硬顶**:超了截断并写明完整索引怎么取,不静默少给。
  *  - **采集纪律**:直写形态唯一的死法是模型矜持。工具在、没人调 = 记忆恒空。
  */
 export function buildOnethingMemoryIndexFragment(indexText: string | undefined | null): string {
-  const raw = typeof indexText === 'string' ? indexText.trim() : ''
+  const raw = neutralizeOnethingMemoryWrapperTags(typeof indexText === 'string' ? indexText.trim() : '')
   const clamped = clampOnethingMemoryUtf8(raw, ONETHING_MEMORY_INDEX_INJECTION_MAX_BYTES)
   const body = clamped.text || '(还没有任何记忆)'
   const truncatedNote = clamped.truncated
@@ -793,6 +850,21 @@ export function buildOnethingMemoryIndexFragment(indexText: string | undefined |
     '- 发现某条旧事实已被推翻时,memory_write 带上 replaces:矛盾会留痕,而不是被抹掉。',
     '</memory_index>',
   ].join('\n')
+}
+
+/* ── 纯函数:流水轮转 ─────────────────────────────────────────────────────── */
+
+/**
+ * 这一条流水该不该先轮转再写。
+ *
+ * 判据是"**写完会不会超**"而不是"现在超没超":后者会让水位线之后的第一条记录
+ * 还是写进旧文件,归档因此永远比阈值大一点点 —— 差别微小,但一个说得清的规则
+ * 比一个差不多的规则便宜。空文件恒不轮转(否则第一条记录就会把空文件归档,
+ * 归档里一行都没有)。
+ */
+export function shouldRotateOnethingMemoryQueryLog(currentBytes: number, appendBytes: number): boolean {
+  if (!(currentBytes > 0)) return false
+  return currentBytes + appendBytes > ONETHING_MEMORY_QUERY_LOG_MAX_BYTES
 }
 
 /* ── 宿主面 ───────────────────────────────────────────────────────────────── */
@@ -942,10 +1014,59 @@ export function registerOnethingMemoryPlugin(
     throw error
   }
 
-  /** 命中流水(盲点 #10:效果不可知就无法调参)。写在插件家目录,失败不影响检索。 */
+  /**
+   * 流水的当前字节数。`undefined` = 这个进程还没量过。
+   *
+   * 量一次之后就在内存里累加,而不是每条流水都去 `list()` 一次:这个文件**只有
+   * 这一个写者**(插件自己),累加得出的数与盘上的一致。进程重启后重新量一次,
+   * 于是即便某次累加漂了,下次启动也会自己校回来。
+   */
+  let queryLogBytes: number | undefined
+
+  const measureQueryLog = (): number => {
+    const entry = files.list().find(
+      item => item.kind === 'file' && item.name === ONETHING_MEMORY_QUERY_LOG_FILE,
+    )
+    return entry?.size ?? 0
+  }
+
+  /**
+   * 轮转:现文件整份搬进归档(覆盖上一代),再从零开一份新的。
+   *
+   * 想要的是 rename —— 零读取、原子、与文件多大无关。但受管文件面
+   * (`CorePluginFiles`)没有 rename 这个动词,而那个面属于 core,不在这次改动的
+   * 范围里。于是退一步用"读一次 + 原子写归档 + 删现文件":代价是一次 2MB 的读,
+   * **每 2MB 流水才发生一次**,而流水本身是每次检索才写一行的观测数据。
+   * 崩溃形态也是安全的 —— 停在写完归档、还没删现文件那一刻,数据是多一份而不是
+   * 少一份,下一次轮转会把归档整个盖掉。
+   */
+  const rotateQueryLog = (): void => {
+    const current = files.readText(ONETHING_MEMORY_QUERY_LOG_FILE) ?? ''
+    files.writeText(ONETHING_MEMORY_QUERY_LOG_ARCHIVE_FILE, current)
+    files.remove(ONETHING_MEMORY_QUERY_LOG_FILE)
+  }
+
+  /**
+   * 命中流水(盲点 #10:效果不可知就无法调参)。写在插件家目录,失败不影响检索。
+   *
+   * 轮转失败也不连坐:记一条警告、照写不误(流水只是长了一点),下一条记录会
+   * 再试一次。让"归档搬不动"变成"检索报错",是拿主流程去赔观测数据的账。
+   */
   const appendQueryLog = (record: { query: string; hits: string[]; date: string }): void => {
+    const line = `${JSON.stringify(record)}\n`
+    const bytes = Buffer.byteLength(line, 'utf-8')
     try {
-      files.appendText(ONETHING_MEMORY_QUERY_LOG_FILE, `${JSON.stringify(record)}\n`)
+      if (queryLogBytes === undefined) queryLogBytes = measureQueryLog()
+      if (shouldRotateOnethingMemoryQueryLog(queryLogBytes, bytes)) {
+        try {
+          rotateQueryLog()
+          queryLogBytes = 0
+        } catch (error) {
+          logger.warn?.(`[Plugin:${api.id}] query log rotate failed:`, error)
+        }
+      }
+      files.appendText(ONETHING_MEMORY_QUERY_LOG_FILE, line)
+      queryLogBytes += bytes
     } catch (error) {
       logger.warn?.(`[Plugin:${api.id}] query log append failed:`, error)
     }
@@ -989,13 +1110,36 @@ export function registerOnethingMemoryPlugin(
         // 追加而不是读-改-写:并发追加不吞行(批 A 的 O_APPEND 语义)。
         files.appendText(relPath, `${line}\n`, EXTERNAL)
 
-        // 索引同步:读索引(小)→ 内存合并 → 原子重写。不读主题正文。
-        const index = parseOnethingMemoryIndex(files.readText(ONETHING_MEMORY_INDEX_FILE, EXTERNAL))
-        const nextIndex = upsertOnethingMemoryIndexEntry(index, topic, content)
-        files.writeText(ONETHING_MEMORY_INDEX_FILE, renderOnethingMemoryIndex(nextIndex), EXTERNAL)
+        /*
+         * 索引同步:读索引(小)→ 内存合并 → 原子重写。不读主题正文。
+         *
+         * **顺序不动,失败语义改**。事实已经追加进主题页了 —— 这一步再失败,把
+         * 整次调用报成失败是最坏的一种诚实:模型看到失败会重试,于是同一条事实
+         * 在主题页里出现两遍,而索引仍然没写上。事实重复是**不可逆**的(没人回头
+         * 去删那一行),索引滞后是可逆的(索引是派生物,下一次写入就重建)。
+         * 所以这里返回成功,并把滞后如实写进 output —— 不是把失败藏起来,
+         * 是把它报给唯一能据此改变行为的人:别重记这条。
+         *
+         * 自愈的落点在下一次 `memory_write` 的成功路径:它读回索引、
+         * `upsertOnethingMemoryIndexEntry` 重建这个主题整行、再整份重写索引文件。
+         */
+        let indexNote = ''
+        try {
+          const index = parseOnethingMemoryIndex(files.readText(ONETHING_MEMORY_INDEX_FILE, EXTERNAL))
+          const nextIndex = upsertOnethingMemoryIndexEntry(index, topic, content)
+          files.writeText(ONETHING_MEMORY_INDEX_FILE, renderOnethingMemoryIndex(nextIndex), EXTERNAL)
+        } catch (error) {
+          logger.warn?.(`[Plugin:${api.id}] index update failed:`, error)
+          const reason = describeOnethingMemoryStorageRefusal(error)
+            ?? (error instanceof Error ? error.message : String(error))
+          indexNote = `\n\n注意:索引更新失败(${reason})。`
+            + `事实本身已经写进 ${relPath},**不要重记** —— 重记只会让它在页面里出现两遍。`
+            + '这个主题的索引摘要暂时滞后(在那之前 memory_query 可能找不到它),'
+            + '下一次对该主题的 memory_write 成功时会重建它的索引行。'
+        }
         invalidate()
 
-        return { title, output: `已记入 ${relPath}:\n${line}`, metadata: {} }
+        return { title, output: `已记入 ${relPath}:\n${line}${indexNote}`, metadata: {} }
       } catch (error) {
         return refuseFromStorage(title, error)
       }
@@ -1085,7 +1229,10 @@ export function registerOnethingMemoryPlugin(
           return refuse(title, '记忆库还是空的 —— 还没有任何主题。遇到值得记的事实就用 memory_write 记下来。')
         }
         if (!hits.length) {
-          const clamped = clampOnethingMemoryUtf8(indexText.trim(), ONETHING_MEMORY_INDEX_INJECTION_MAX_BYTES * 2)
+          const clamped = clampOnethingMemoryUtf8(
+            neutralizeOnethingMemoryWrapperTags(indexText.trim()),
+            ONETHING_MEMORY_INDEX_INJECTION_MAX_BYTES * 2,
+          )
           return {
             title,
             output: `没有主题命中「${query}」。当前索引:\n${clamped.text}${clamped.truncated ? '\n…(索引已截断)' : ''}`,
@@ -1098,7 +1245,9 @@ export function registerOnethingMemoryPlugin(
           try {
             page = files.readText(`${topic}.md`, EXTERNAL) ?? ''
           } catch (error) {
-            return `## ${topic}\n(读不到这一页:${error instanceof Error ? error.message : String(error)})`
+            return neutralizeOnethingMemoryWrapperTags(
+              `## ${topic}\n(读不到这一页:${error instanceof Error ? error.message : String(error)})`,
+            )
           }
           // 正文优先保全,便签取尾部;没有正文的旧页面走原来那条路。
           return buildOnethingMemoryQuerySection(topic, page)
