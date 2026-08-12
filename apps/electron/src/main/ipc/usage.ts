@@ -6,7 +6,6 @@
  * docs/design/token-billing.md.
  */
 import { ipcMain } from "electron";
-import { getOnethingUsageSummary } from "@onething/runtime/usage";
 import {
 	IPC_CHANNELS,
 	type GetSessionUsageRequest,
@@ -14,13 +13,13 @@ import {
 	type GetUsageSummaryRequest,
 	type GetUsageSummaryResponse,
 } from "@shared/ipc.js";
-import { getSessionUsageTotal, getUsageLedger } from "@onething/app/usage/index.js";
+import { getSessionUsageTotal, getUsageLedger, getUsageSummaryWithProjects } from "@onething/app/usage/index.js";
 
 export function registerUsageHandlers(): void {
 	ipcMain.handle(
 		IPC_CHANNELS.GET_USAGE_SUMMARY,
 		async (_event, request: GetUsageSummaryRequest): Promise<GetUsageSummaryResponse> => {
-			return getOnethingUsageSummary(getUsageLedger(), {
+			return getUsageSummaryWithProjects(getUsageLedger(), {
 				granularity: request.granularity,
 				count: request.count,
 			});

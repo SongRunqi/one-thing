@@ -41,6 +41,42 @@ export interface OnethingUsageSummaryRequest {
   /** Number of trailing buckets to return. Defaults: 30 day / 12 week / 12 month. */
   count?: number
   now?: number
+  /** Maps a session to its project directory; enables the byProject totals. */
+  resolveProjectPath?: (sessionId: string) => string | undefined
+}
+
+/**
+ * How much of the ranged usage we could actually put a dollar figure on, plus
+ * the cache-read discount. The dashboard's "cost quality" block reads this:
+ * every cost we show is computed locally from the pricing table (never
+ * provider-reported), so the interesting split is priced vs unpriced tokens.
+ */
+export interface OnethingUsagePricingQuality {
+  /** usage.total tokens from records with a known price (costUSD != null). */
+  pricedTokens: number
+  /** usage.total tokens from records with no known price (costUSD == null). */
+  unpricedTokens: number
+  /** Estimated savings from cache reads vs paying the full input rate. */
+  cacheSavingsUSD: number
+}
+
+/**
+ * Range totals for one project directory. Sessions without a resolvable
+ * workingDirectory (quick chats, deleted sessions) group under projectPath ''.
+ */
+export interface OnethingUsageProjectTotals {
+  projectPath: string
+  /** Basename of projectPath; '' for the unbound group. */
+  projectName: string
+  usage: OnethingUsageTokens
+  apiCostUSD: number
+  subscriptionCostUSD: number
+  records: number
+  /** Distinct sessions that contributed usage. */
+  sessionCount: number
+  lastActiveTs: number
+  byProvider: OnethingUsageBreakdownEntry[]
+  byModel: OnethingUsageBreakdownEntry[]
 }
 
 export interface OnethingUsageSummaryResult {
@@ -48,6 +84,8 @@ export interface OnethingUsageSummaryResult {
   buckets: OnethingUsageBucket[]
   totalApiCostUSD: number
   totalSubscriptionCostUSD: number
+  pricingQuality: OnethingUsagePricingQuality
+  byProject: OnethingUsageProjectTotals[]
 }
 
 function zeroUsage(): OnethingUsageTokens {
@@ -160,6 +198,74 @@ function costForBilling(record: OnethingUsageLedgerRecord, billing: OnethingUsag
   return record.costUSD != null && record.billing === billing ? record.costUSD : 0
 }
 
+function pathBasename(p: string): string {
+  return p.split(/[\\/]/).filter(Boolean).pop() ?? ''
+}
+
+interface ProjectAccumulator {
+  usage: OnethingUsageTokens
+  apiCostUSD: number
+  subscriptionCostUSD: number
+  records: number
+  sessionIds: Set<string>
+  lastActiveTs: number
+  byProvider: Map<string, OnethingUsageBreakdownEntry>
+  byModel: Map<string, OnethingUsageBreakdownEntry>
+}
+
+/** Range-total per project directory, sorted by cost desc. The byProject block in settings reads this. */
+function computeProjectTotals(
+  records: OnethingUsageLedgerRecord[],
+  range: { start: number; end: number },
+  resolveProjectPath: (sessionId: string) => string | undefined,
+): OnethingUsageProjectTotals[] {
+  const projects = new Map<string, ProjectAccumulator>()
+  for (const record of records) {
+    if (record.ts < range.start || record.ts >= range.end) continue
+    const projectPath = record.sessionId ? resolveProjectPath(record.sessionId) ?? '' : ''
+    let acc = projects.get(projectPath)
+    if (!acc) {
+      acc = {
+        usage: zeroUsage(),
+        apiCostUSD: 0,
+        subscriptionCostUSD: 0,
+        records: 0,
+        sessionIds: new Set(),
+        lastActiveTs: 0,
+        byProvider: emptyBreakdownMap(),
+        byModel: emptyBreakdownMap(),
+      }
+      projects.set(projectPath, acc)
+    }
+    acc.usage = addUsage(acc.usage, record.usage)
+    acc.records += 1
+    acc.apiCostUSD += costForBilling(record, 'api')
+    acc.subscriptionCostUSD += costForBilling(record, 'subscription')
+    if (record.sessionId) acc.sessionIds.add(record.sessionId)
+    acc.lastActiveTs = Math.max(acc.lastActiveTs, record.ts)
+    accumulateBreakdown(acc.byProvider, record.providerId, record)
+    accumulateBreakdown(acc.byModel, record.modelId, record)
+  }
+  return Array.from(projects.entries())
+    .map(([projectPath, acc]) => ({
+      projectPath,
+      projectName: pathBasename(projectPath),
+      usage: acc.usage,
+      apiCostUSD: acc.apiCostUSD,
+      subscriptionCostUSD: acc.subscriptionCostUSD,
+      records: acc.records,
+      sessionCount: acc.sessionIds.size,
+      lastActiveTs: acc.lastActiveTs,
+      byProvider: Array.from(acc.byProvider.values()).sort(
+        (a, b) => b.apiCostUSD + b.subscriptionCostUSD - (a.apiCostUSD + a.subscriptionCostUSD),
+      ),
+      byModel: Array.from(acc.byModel.values()).sort(
+        (a, b) => b.apiCostUSD + b.subscriptionCostUSD - (a.apiCostUSD + a.subscriptionCostUSD),
+      ),
+    }))
+    .sort((a, b) => b.apiCostUSD + b.subscriptionCostUSD - (a.apiCostUSD + a.subscriptionCostUSD))
+}
+
 /** Buckets already-loaded records into day/week/month totals plus per-provider/model/platform breakdowns. */
 export function computeOnethingUsageSummary(
   records: OnethingUsageLedgerRecord[],
@@ -199,11 +305,22 @@ export function computeOnethingUsageSummary(
 
   let totalApiCostUSD = 0
   let totalSubscriptionCostUSD = 0
+  let pricedTokens = 0
+  let unpricedTokens = 0
+  let cacheSavingsUSD = 0
 
   for (const record of records) {
     if (record.ts < overallStart || record.ts >= overallEnd) continue
     const index = ranges.findIndex(range => record.ts >= range.start && record.ts < range.end)
     if (index === -1) continue
+    if (record.costUSD != null) pricedTokens += record.usage.total
+    else unpricedTokens += record.usage.total
+    // A cache read would have been billed at the full input rate without
+    // caching; the discount vs the cache-read rate is the saving.
+    if (record.unitPrice) {
+      const saving = record.usage.cacheRead * (record.unitPrice.input - record.unitPrice.cacheRead) / 1_000_000
+      if (saving > 0) cacheSavingsUSD += saving
+    }
     const bucket = buckets[index]
     bucket.usage = addUsage(bucket.usage, record.usage)
     bucket.records += 1
@@ -226,11 +343,17 @@ export function computeOnethingUsageSummary(
     bucket.bySource = Array.from(sourceMaps[index].values())
   })
 
+  const byProject = request.resolveProjectPath
+    ? computeProjectTotals(records, { start: overallStart, end: overallEnd }, request.resolveProjectPath)
+    : []
+
   return {
     granularity: request.granularity,
     buckets,
     totalApiCostUSD,
     totalSubscriptionCostUSD,
+    pricingQuality: { pricedTokens, unpricedTokens, cacheSavingsUSD },
+    byProject,
   }
 }
 

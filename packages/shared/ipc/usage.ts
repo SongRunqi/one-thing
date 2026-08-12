@@ -1,9 +1,11 @@
 import type {
   OnethingUsageBucket,
+  OnethingUsagePricingQuality,
+  OnethingUsageProjectTotals,
   OnethingUsageSummaryGranularity,
 } from "@onething/runtime/usage";
 
-export type { OnethingUsageBreakdownEntry, OnethingUsageBucket, OnethingUsageSummaryGranularity } from "@onething/runtime/usage";
+export type { OnethingUsageBreakdownEntry, OnethingUsageBucket, OnethingUsagePricingQuality, OnethingUsageProjectTotals, OnethingUsageSummaryGranularity } from "@onething/runtime/usage";
 
 export interface GetUsageSummaryRequest {
   granularity: OnethingUsageSummaryGranularity;
@@ -15,6 +17,8 @@ export interface GetUsageSummaryResponse {
   buckets: OnethingUsageBucket[];
   totalApiCostUSD: number;
   totalSubscriptionCostUSD: number;
+  pricingQuality: OnethingUsagePricingQuality;
+  byProject: OnethingUsageProjectTotals[];
 }
 
 export interface GetSessionUsageRequest {

@@ -13,9 +13,12 @@ import path from "node:path";
 import {
 	OnethingUsageLedger,
 	getOnethingSessionUsageTotal,
+	getOnethingUsageSummary,
 	resolveOnethingUsageBillingMode,
 	type OnethingUsageBillingMode,
 	type OnethingUsageLedgerRecord,
+	type OnethingUsageSummaryRequest,
+	type OnethingUsageSummaryResult,
 } from "@onething/runtime/usage";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
 import { getStorePath } from "../stores/paths.js";
@@ -28,7 +31,13 @@ import * as store from "../store.js";
  * *estimate*, tagged billing: 'subscription' so it is never summed into
  * real spend.
  */
-const SUBSCRIPTION_PROVIDER_IDS = ["codex", "claude-code", "github-copilot"] as const;
+const SUBSCRIPTION_PROVIDER_IDS = [
+	"codex",
+	"claude-code",
+	"github-copilot",
+	// Kimi 编程套餐:月费买的额度,按 token 记进真实开销会凭空多出一笔账。
+	"kimi-code",
+] as const;
 
 export interface RecordUsageInput {
 	sessionId?: string;
@@ -83,6 +92,21 @@ export function getUsageLedger(): OnethingUsageLedger {
 
 export function resolveUsageBillingMode(providerId: string): OnethingUsageBillingMode {
 	return resolveOnethingUsageBillingMode(providerId, SUBSCRIPTION_PROVIDER_IDS);
+}
+
+/**
+ * Day/week/month summary with per-project totals. The project for a record is
+ * its session's workingDirectory; quick chats and deleted sessions fall into
+ * the unbound '' group.
+ */
+export async function getUsageSummaryWithProjects(
+	ledger: OnethingUsageLedger,
+	request: OnethingUsageSummaryRequest,
+): Promise<OnethingUsageSummaryResult> {
+	return getOnethingUsageSummary(ledger, {
+		...request,
+		resolveProjectPath: (sessionId) => store.getSession(sessionId)?.workingDirectory,
+	});
 }
 
 export interface SessionUsageTotal {

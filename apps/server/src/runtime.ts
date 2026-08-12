@@ -214,8 +214,8 @@ import {
 import {
 	OnethingUsageLedger,
 	getOnethingSessionUsageTotal,
-	getOnethingUsageSummary,
 } from "@onething/runtime/usage";
+import { getUsageSummaryWithProjects } from "@onething/app/usage/index.js";
 import {
 	OnethingPromptStore,
 	createOnethingPromptForIpc,
@@ -5167,7 +5167,7 @@ export async function createDevelopmentOnethingServerRuntime(
 		},
 		usage: {
 			async getSummary(request: { granularity: "day" | "week" | "month"; count?: number }) {
-				return getOnethingUsageSummary(usageLedger, request);
+				return getUsageSummaryWithProjects(usageLedger, request);
 			},
 			async getSessionUsage(sessionId: string) {
 				return getOnethingSessionUsageTotal(usageLedger, sessionId);

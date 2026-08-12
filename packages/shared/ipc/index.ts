@@ -834,6 +834,8 @@ export type {
 	GetUsageSummaryResponse,
 	OnethingUsageBreakdownEntry,
 	OnethingUsageBucket,
+	OnethingUsagePricingQuality,
+	OnethingUsageProjectTotals,
 	OnethingUsageSummaryGranularity,
 } from "./usage.js";
 

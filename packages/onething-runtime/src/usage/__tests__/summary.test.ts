@@ -117,4 +117,91 @@ describe('computeOnethingUsageSummary', () => {
     expect(chat.records).toBe(2)
     expect(bySource.find(entry => entry.key === 'memory')!.apiCostUSD).toBeCloseTo(0.004)
   })
+
+  it('reports pricing quality: priced vs unpriced tokens and cache savings', () => {
+    const day = new Date(2026, 6, 13, 10, 0, 0).getTime()
+    const unitPrice = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 }
+    const records = [
+      // priced: 1200 tokens, 800 cache reads at 3 - 0.3 = 2.7 USD/M discount
+      record({
+        ts: day,
+        usage: { input: 1000, output: 200, cacheRead: 800, cacheWrite: 0, reasoning: 0, total: 1200 },
+        costUSD: 0.003,
+        unitPrice,
+      }),
+      // unpriced: costUSD null (no pricing known for the model)
+      record({ ts: day, costUSD: undefined, usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: 150 } }),
+    ]
+
+    const summary = computeOnethingUsageSummary(records, { granularity: 'day', count: 1, now: day })
+
+    expect(summary.pricingQuality.pricedTokens).toBe(1200)
+    expect(summary.pricingQuality.unpricedTokens).toBe(150)
+    expect(summary.pricingQuality.cacheSavingsUSD).toBeCloseTo((800 * 2.7) / 1_000_000, 10)
+  })
+
+  it('never counts negative cache savings when cache read costs as much as input', () => {
+    const day = new Date(2026, 6, 13, 10, 0, 0).getTime()
+    const records = [
+      record({
+        ts: day,
+        usage: { input: 100, output: 0, cacheRead: 100, cacheWrite: 0, reasoning: 0, total: 100 },
+        unitPrice: { input: 0.3, output: 15, cacheRead: 0.3, cacheWrite: 0 },
+      }),
+    ]
+
+    const summary = computeOnethingUsageSummary(records, { granularity: 'day', count: 1, now: day })
+    expect(summary.pricingQuality.cacheSavingsUSD).toBe(0)
+  })
+
+  it('aggregates range totals per project directory when a resolver is given', () => {
+    const day1 = new Date(2026, 6, 13, 10, 0, 0).getTime()
+    const day2 = new Date(2026, 6, 14, 10, 0, 0).getTime()
+    const projects: Record<string, string | undefined> = {
+      'session-a': '/dev/kero',
+      'session-b': '/dev/kero',
+      'session-c': '/dev/waku',
+      'session-deleted': undefined,
+    }
+    const records = [
+      record({ ts: day1, sessionId: 'session-a', costUSD: 0.01, providerId: 'anthropic' }),
+      record({ ts: day2, sessionId: 'session-b', costUSD: 0.02, providerId: 'codex', billing: 'subscription', modelId: 'gpt-5' }),
+      record({ ts: day2, sessionId: 'session-c', costUSD: 0.005, modelId: 'claude-sonnet-5' }),
+      record({ ts: day2, sessionId: 'session-deleted', costUSD: 0.001 }),
+    ]
+
+    const summary = computeOnethingUsageSummary(records, {
+      granularity: 'day',
+      count: 2,
+      now: day2,
+      resolveProjectPath: sessionId => projects[sessionId],
+    })
+
+    const [kero, waku, unbound] = summary.byProject
+    expect(summary.byProject).toHaveLength(3)
+
+    // Sorted by total cost desc.
+    expect(kero.projectPath).toBe('/dev/kero')
+    expect(kero.projectName).toBe('kero')
+    expect(kero.apiCostUSD).toBeCloseTo(0.01, 10)
+    expect(kero.subscriptionCostUSD).toBeCloseTo(0.02, 10)
+    expect(kero.sessionCount).toBe(2)
+    expect(kero.lastActiveTs).toBe(day2)
+    expect(kero.byProvider.map(e => e.key).sort()).toEqual(['anthropic', 'codex'])
+    expect(kero.byModel.map(e => e.key).sort()).toEqual(['claude-fable-5', 'gpt-5'])
+
+    expect(waku.projectName).toBe('waku')
+    expect(waku.sessionCount).toBe(1)
+
+    // Unresolvable sessions group under the unbound '' project.
+    expect(unbound.projectPath).toBe('')
+    expect(unbound.projectName).toBe('')
+    expect(unbound.apiCostUSD).toBeCloseTo(0.001, 10)
+  })
+
+  it('returns no project totals without a resolver', () => {
+    const day = new Date(2026, 6, 13, 10, 0, 0).getTime()
+    const summary = computeOnethingUsageSummary([record({ ts: day })], { granularity: 'day', count: 1, now: day })
+    expect(summary.byProject).toEqual([])
+  })
 })
