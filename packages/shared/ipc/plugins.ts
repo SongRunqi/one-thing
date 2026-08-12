@@ -122,7 +122,12 @@ export interface PluginConfigFieldDescriptor {
 		| "number"
 		| "select"
 		| "string-list"
-		| "file-import";
+		| "file-import"
+		/**
+		 * F1 第二根:选一个用户磁盘上的目录。宿主拉原生目录对话框,存绝对路径。
+		 * 值语义标记见 `directoryPick` —— control 只管长相,管不着值。
+		 */
+		| "directory-pick";
 	label: string;
 	hint?: string;
 	required: boolean;
@@ -136,6 +141,12 @@ export interface PluginConfigFieldDescriptor {
 	 */
 	accept?: string[];
 	maxBytes?: number;
+	/**
+	 * `format: 'directory-pick'` 的**值语义**标记(F1 第二根):这条 string 只接受
+	 * 绝对路径或空串。设置页拿它决定"画一个选目录的按钮而不是文本框",宿主拿它
+	 * 定位插件的外部根 —— 两边读的是同一个字段,不各猜各的。
+	 */
+	directoryPick?: boolean;
 	defaultValue: unknown;
 }
 

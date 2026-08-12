@@ -47,7 +47,7 @@ node scripts/build-plugin.mjs packages/my-plugin
 | `uiSlots` | `[{anchor,id,label,lifetime?,drawer?}]` | UI 锚点(常显块或触发式,**由锚点决定**,见下);未知锚点按"此版本不支持"呈现。`lifetime: "persistent"` 是**消息态落盘的闸门**(见下),缺省 `"ephemeral"`;`drawer: true` 开抽屉三态(**仅 `composer.above`**,别处声明被忽略,见下) |
 | `theme` | `{overrides?:{token:color}, background?:{image,darkImage?,opacity?,blur?,fit?}}` | 主题 token 覆盖 + 背景图(见下);装前确认页列出被改的 token 与"会铺背景图" |
 | `settings` | `{schema}` | JSON Schema 子集,宿主渲染并校验设置表单 |
-| `permissions` | `string[]` | 装前确认页如实列出(已登记的枚举翻成人话)。**被消费的三个**:`sessions:peek` / `sessions:post` / `sessions:trigger`,见「跨会话信使」;未登记的名字原样显示、不参与判定 |
+| `permissions` | `string[]` | 装前确认页如实列出(已登记的枚举翻成人话)。**被消费的**:`sessions:peek` / `sessions:post` / `sessions:trigger`(见「跨会话信使」)、`input:intercept` / `toolcall:intercept` / `toolresult:intercept`、`llm:complete`、`deeplink:handle`、`search:provide`、`storage:external-root`(见「受管文件树」);未登记的名字原样显示、不参与判定 |
 | `activationEvents` | `string[]` | 激活事件声明 |
 
 ## 打包铁规(每条都有宿主侧硬闸)
@@ -112,6 +112,21 @@ api.registerTool({
 `permissionGuard` **不由你决定** —— 插件工具一律 `permission-gated`
 (填别的值只会收到一条警告,判定不变)。
 
+`ctx` 携带 `sessionId` / `messageId` / `toolCallId` / `workingDirectory` /
+`abortSignal` / `agentId`。
+
+### `ctx.agentId`:这一回合是谁的
+
+`agentId` 是**回合入口一次解析出来的身份归属**,三个地方给你的是同一个值:
+工具 `ctx`、promptContext provider 的 `context.agentId`、
+`afterAssistantResponse` 钩子的 `ctx.agentId`。缺省 `undefined` = 这条会话没绑
+agent(要按 agent 分作用域时就只剩 global,那是正确的降级)。
+
+- **别自己去反查会话的 agentId**:群聊房里那个字段由协调器逐次翻面,现查等于
+  每处各算各的,而你会安静地读到另一个 agent 的数据。
+- **它不是权限凭据**。权限的主体是宿主内部的 principal(有被证明过的来路),
+  `agentId` 只用来分作用域。
+
 ### `executionMode`:这个工具能不能和兄弟并发
 
 模型可以在**同一条回复里**一次开出多个 tool_use。宿主的调度器按每个工具的
@@ -173,6 +188,64 @@ api.on('stream:start', (env) => {
   (可恢复;目录名是纯归档名,与已退役的"legacy 目录插件"无关),
   代码从账与 node_modules 拆除。
 
+### 受管文件树(`api.storage.files`)
+
+`api.storage` 的 KV 是平面 JSON:整份读出来、整份写回去。要**追加写的日志**
+(`candidates/*.jsonl`)或**目录树**(`wiki/**/*.md`)就用 files 面 ——
+它读写的就是家目录里那个 `storage/`(与 `storage:` 寻址、`api.storage.dir()`
+同一个目录,不是第二个地盘)。
+
+```js
+api.storage.files.writeText('wiki/topics/cls.md', '# CLS\n')  // 原子替换(tmp+rename)
+api.storage.files.appendText('candidates/2026-08.jsonl', line) // O_APPEND,追加一行
+api.storage.files.readText('wiki/topics/cls.md')               // 不存在 → undefined
+api.storage.files.list('candidates')                           // 列一层:{path,name,kind,size,modifiedAt}[]
+api.storage.files.exists('candidates/2026-08.jsonl')
+api.storage.files.remove('wiki/old.md')                        // 幂等;目录只删空的
+api.storage.files.usage()                                      // { bytes, quotaBytes }
+```
+
+要点与坑:
+
+- **`appendText` 是真追加**(内核 O_APPEND),不是读-改-写:别人在两次追加之间
+  写进去的行不会被你吃掉。**你自己也别**用 `readText` + `writeText` 去模拟追加 ——
+  那正是丢行的写法。
+- 路径是**相对根的相对路径**,逐段校验:`..`、绝对路径、反斜杠、`%2e%2e`、
+  Windows 保留设备名、指向根外的软链一律抛 `PluginStorageError('invalid-name')`。
+- 配额:整棵 `storage/` 树默认 **50MB**,单文件 8MB。到 **9 成**宿主发一条
+  `plugin:<你的 id>:storage:quota-warning` 事件(payload `{bytes, quotaBytes}`)——
+  **订上它并自己 GC**(老 candidates 归档压缩),别等写满:写满是抛 `quota`,
+  而一条采集写失败 = 记忆断流且无感。
+- **宿主刻意不给 watch / 锁 / 多写者协调**。单一写者是你的架构纪律:同一棵树
+  只该有一个写者,否则追加语义与配额记账同时失去定义。
+- 值语义、无句柄:所有方法收字符串回字符串/结构体(为将来的进程隔离留的路)。
+
+#### 第二根:用户指定的目录(`storage:external-root`)
+
+要把产物放进**用户自己的目录**(比如他的笔记库,他会亲手编辑、git 提交),
+走第二根:
+
+```jsonc
+{ "contributes": {
+  "permissions": ["storage:external-root"],
+  "settings": { "schema": { "type": "object", "properties": {
+    "wikiRoot": { "type": "string", "format": "directory-pick", "title": "Wiki 目录" }
+  } } }
+} }
+```
+
+```js
+api.storage.files.writeText('topics/cls.md', md, { root: 'external' })
+api.storage.files.list('topics', { root: 'external' })
+```
+
+- 目录**由用户在插件设置里选**;你不能声明 default,也拿不到"当前是哪个目录"
+  以外的任何磁盘信息。没声明权限 → `PluginStorageError('not-declared')`;
+  声明了但用户还没选 → `'not-configured'`。两个都是结构化拒绝,**不会假装成功**。
+- 外部根**不吃配额**(那是用户的目录),但路径判据一模一样。
+- **卸载绝不动外部根里的内容** —— 那是用户的文件,只清你对它的授权。
+- 家目录与外部根互不串门:缺省 `root` 永远是家目录。
+
 ### 消息作用域状态(`api.storage.message`)
 
 要给**某一条消息**记东西(徽标、注解、评分),不要在自己的 KV 里按
@@ -233,6 +306,7 @@ api.storage.message(sessionId, messageId).exists()
 | `{"enum":["a","b"]}`(仅字符串枚举) | 下拉 | string |
 | `{"type":"array","items":{"type":"string"}}` | 逗号分隔文本 | string[] |
 | `{"type":"string","format":"file-import","accept"?,"maxBytes"?}` | **选择文件**按钮 + 当前值 | string(`storage:` 地址) |
+| `{"type":"string","format":"directory-pick"}` | **选择目录**按钮 + 当前值 | string(绝对路径;空串 = 还没选) |
 
 `title` / `description` 变标签与说明;`required` 只是**呈现**上的星号(每个字段
 都有默认值,"缺失"这个状态不存在);`contributes.settings.ui[key]` 可以覆盖

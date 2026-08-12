@@ -270,6 +270,7 @@
                          当场被自己吃掉,根本打不出第二项。blur 时才 parse。 -->
                     <Input
                       v-else-if="field.control === 'string-list'"
+                      variant="ledger"
                       :model-value="stringListDraft(plugin, field.key)"
                       :disabled="!isConfigEditable(plugin)"
                       :aria-label="field.label"
@@ -308,8 +309,39 @@
                         ×
                       </Button>
                     </div>
+                    <!-- 选目录(schema `format: 'directory-pick'`,F1 外部根):
+                         原生目录对话框 + 当前路径回显。值就是绝对路径本身
+                         (与 file-import 的 storage: 地址语义不同,见
+                         shared/ipc/plugins.ts 的 directoryPick 注释),走普通
+                         draft→Save 保存路径,不为它发明第二条提交语义。 -->
+                    <div
+                      v-else-if="field.control === 'directory-pick'"
+                      class="plugin-config-file"
+                    >
+                      <Button
+                        unstyled
+                        class="btn-sm"
+                        :disabled="!isConfigEditable(plugin)"
+                        :aria-label="field.label"
+                        @click="pickConfigDirectory(plugin, field)"
+                      >
+                        Choose folder…
+                      </Button>
+                      <span class="plugin-config-file-value">{{ String(draftFor(plugin)[field.key] ?? '') || 'No folder chosen' }}</span>
+                      <Button
+                        v-if="hasFileValue(plugin, field.key)"
+                        unstyled
+                        class="btn-sm plugin-config-file-clear"
+                        :disabled="!isConfigEditable(plugin)"
+                        :aria-label="`Clear ${field.label}`"
+                        @click="setDraft(plugin, field.key, '')"
+                      >
+                        ×
+                      </Button>
+                    </div>
                     <Input
                       v-else
+                      variant="ledger"
                       :model-value="String(draftFor(plugin)[field.key] ?? '')"
                       :disabled="!isConfigEditable(plugin)"
                       :aria-label="field.label"
@@ -469,6 +501,7 @@
         <div class="market-toolbar">
           <Input
             v-model="marketQuery"
+            variant="ledger"
             placeholder="Search by name, description, or author"
             aria-label="Search the plugin market"
           />
@@ -661,6 +694,7 @@
           >
             <Input
               v-model="installPath"
+              variant="ledger"
               placeholder="Local .tgz — or drop one here (file: dev channel)"
               :disabled="npmAvailable === false || installing"
               aria-label="Local plugin tarball path"
@@ -1036,6 +1070,27 @@ function fileValueLabel(plugin: PluginInfo, key: string): string {
   if (typeof value !== 'string' || !value) return 'No file chosen'
   const tail = value.split('/').pop()
   return tail || value
+}
+
+/**
+ * 选目录字段(schema `format: 'directory-pick'`,F1 外部根)。
+ *
+ * 与 pickConfigFile 的关键差别:file-import 走托管导入(字节拷进插件数据目录,
+ * 值是 storage: 地址);这里的值**就是用户目录的绝对路径**——插件经
+ * `storage:external-root` 权限读写它,卸载不动它。所以这条路没有导入、没有
+ * 校验裁决,只有一次原生对话框 + 写 draft,保存走普通 Save。
+ */
+async function pickConfigDirectory(plugin: PluginInfo, field: PluginConfigFieldDescriptor): Promise<void> {
+  try {
+    const result = await platformApi.showOpenDialog({
+      title: field.label,
+      properties: ['openDirectory'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return
+    setDraft(plugin, field.key, result.filePaths[0])
+  } catch {
+    // 对话框打不开(如 web 宿主):保持现状,文本框兜底路径仍可用。
+  }
 }
 
 async function pickConfigFile(plugin: PluginInfo, field: PluginConfigFieldDescriptor): Promise<void> {
