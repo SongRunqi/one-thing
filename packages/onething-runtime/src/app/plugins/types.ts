@@ -14,7 +14,7 @@ import type {
   CorePluginRequestHandler,
   CorePluginStatusAPI,
   CorePluginStorage,
-  CorePluginStorageWithMessageState,
+  CorePluginStorageWithFiles,
   CorePluginAPI,
   CorePluginCommandContext,
   CorePluginCommandDefinition,
@@ -125,7 +125,8 @@ export interface PluginAPI
     PluginSchedulerAPI,
     MinimalPluginUI,
     CorePluginRequestHandler,
-    CorePluginStorageWithMessageState,
+    // KV + message-state + F1 受管文件树(`api.storage.files`)。
+    CorePluginStorageWithFiles,
     CorePluginPanelRegistration,
     CorePluginStatusAPI,
     IMConnector

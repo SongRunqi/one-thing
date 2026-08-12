@@ -596,6 +596,7 @@ export type {
   CorePluginFilesOptions,
   CorePluginFilesRoot,
   CorePluginFilesUsage,
+  CorePluginStorageWithFiles,
   CreateCorePluginFilesOptions,
 } from './storage-files.js'
 export {

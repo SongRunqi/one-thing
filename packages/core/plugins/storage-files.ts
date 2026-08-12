@@ -42,6 +42,7 @@ import {
   assertSafePluginFileName,
   getCorePluginScratchDir,
   PluginStorageError,
+  type CorePluginStorageWithMessageState,
 } from './storage.js'
 import { PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT } from './sessions.js'
 
@@ -142,6 +143,18 @@ export interface CorePluginFiles {
   remove(relPath: string, options?: CorePluginFilesOptions): void
   /** 配额观测面(插件可自查,测试也用它)。 */
   usage(): CorePluginFilesUsage
+}
+
+/**
+ * 插件侧 `api.storage` 的完整面 = KV + 消息作用域状态 + **受管文件树**。
+ *
+ * 批 A 把 `files` 挂进了 api 对象却没挂进类型:于是插件作者写
+ * `api.storage.files.appendText(...)` 时,运行期是对的、类型上却不存在 ——
+ * 一个"实现已经有、契约还没承认"的缺口。合成的类型放在这里而不是 storage.ts,
+ * 是因为依赖方向:storage-files 认识 storage,反过来不认识。
+ */
+export interface CorePluginStorageWithFiles extends CorePluginStorageWithMessageState {
+  files: CorePluginFiles
 }
 
 export interface CreateCorePluginFilesOptions {

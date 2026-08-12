@@ -45,6 +45,7 @@ import { getPluginAppVersion } from './app-version.js'
 import { clearPluginRuntimeHealth } from './health.js'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
+import memoryPlugin, { memoryManifest } from './builtin/memory-wiki.js'
 import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
 
 export function getPluginsDir(): string {
@@ -270,6 +271,12 @@ function getBuiltinPlugins(): PluginDefinition[] {
       manifest: noteSkillsManifest,
       entry: noteSkillsPlugin,
       enabled: getPluginEnabled('note-skills'),
+    },
+    {
+      id: 'memory-wiki',
+      manifest: memoryManifest,
+      entry: memoryPlugin,
+      enabled: getPluginEnabled('memory-wiki'),
     },
   ]) as PluginDefinition[]
 }
