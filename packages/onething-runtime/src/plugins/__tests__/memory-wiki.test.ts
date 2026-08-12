@@ -478,10 +478,15 @@ describe('正文判据', () => {
     expect(describeOnethingMemoryDocumentProblem('')).toMatch(/memory_write/)
   })
 
+  it('上限是 32000 字符 —— 一份完整的设计文档写得下,不必为迁就上限拆结构', () => {
+    expect(ONETHING_MEMORY_MAX_DOCUMENT_CHARS).toBe(32000)
+  })
+
   it(`超 ${ONETHING_MEMORY_MAX_DOCUMENT_CHARS} 字符被拒,提示精炼或拆主题`, () => {
     const problem = describeOnethingMemoryDocumentProblem('x'.repeat(ONETHING_MEMORY_MAX_DOCUMENT_CHARS + 1))
     expect(problem).toMatch(/太长/)
     expect(problem).toMatch(/精炼或拆主题/)
+    expect(problem).toContain(String(ONETHING_MEMORY_MAX_DOCUMENT_CHARS))
     // 边界值本身放行。
     expect(describeOnethingMemoryDocumentProblem('x'.repeat(ONETHING_MEMORY_MAX_DOCUMENT_CHARS))).toBeNull()
   })
@@ -820,6 +825,17 @@ describe('memory_document —— 正文整块替换', () => {
     expect(result.output).toContain('太长')
     expect(result.output).toContain('精炼或拆主题')
     expect(fs.existsSync(path.join(external, 'p.md'))).toBe(false)
+  })
+
+  it('正好 32000 字符的一篇真能落盘 —— 判据放行了,存储层也没在别处挡下', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    // 中文正文:32000 字符 ≈ 96KB,离受管文件面的单文件上限还很远。
+    const long = '一'.repeat(ONETHING_MEMORY_MAX_DOCUMENT_CHARS)
+    const result = await document(harness, { topic: 'p', content: long })
+
+    expect(result.output).toContain(`${ONETHING_MEMORY_MAX_DOCUMENT_CHARS} 字符`)
+    expect(parseOnethingMemoryPage(readExternal(external, 'p.md')).body).toBe(long)
   })
 
   it('拒绝时既有正文与便签毫发无损', async () => {
