@@ -183,6 +183,22 @@ describe('ask_user 发起提问', () => {
     h.settle(answered(h.asks[0].questions, [['暖色']]))
     await pending
   })
+
+  /**
+   * 归位的**第二档**必须从这里出发。渲染侧只认 `toolCallId` 的话,流式期间那次调用
+   * 还没落进消息的卡就只剩尾泊 —— 而末尾是新消息出现的位置,用户读成「我答完之后
+   * 冒出一条消息」。`ctx.messageId` 在这里断掉,后面每一档都接不住。
+   */
+  it('消息锚原样带给渲染侧 —— 哪怕 toolCallId 已经有了(两个键各管一档)', async () => {
+    const h = harness()
+    const pending = h.tool.execute(AskUserParameters.parse(ONE_QUESTION), context())
+
+    expect(h.asks[0].toolCallId).toBe(TOOL_CALL)
+    expect(h.asks[0].messageId).toBe(MESSAGE)
+
+    h.settle(answered(h.asks[0].questions, [['暖色']]))
+    await pending
+  })
 })
 
 describe('ask_user 收场翻译', () => {

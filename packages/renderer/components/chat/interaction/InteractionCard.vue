@@ -3,6 +3,7 @@
        但它是**流内**的一张卡而不是 composer 上方的栏位 —— 理由见 script 段。 -->
   <div
     class="interaction-card"
+    :class="{ 'is-settled': isSettled }"
     :data-state="cardState"
     :data-testid="`interaction-card-${request.id}`"
   >
@@ -341,9 +342,13 @@ function submit(): void {
   flex-direction: column;
   border: 1px solid var(--interaction-frame);
   border-left: 1px solid var(--interaction-frame);
+  /* `--radius-xs` 是**账页族**的圆角(权限账页用的就是它),不是气泡族的
+     `--skin-bubble-radius` / `--ui-message-user-*`。底色同理:这里 transparent,
+     气泡取的是 `--user-bubble-surface`。这两条是「不许长得像消息」的 token 判据。 */
   border-radius: var(--radius-xs, 4px);
   background: transparent;
   overflow: hidden;
+  transition: border-color var(--duration-normal) var(--ease-default), background var(--duration-normal) var(--ease-default);
 }
 
 /* 收场之后最后一格不再拖一条分隔线 —— 那条线原本是给下一格用的,而已办卡没有下一格。 */
@@ -611,12 +616,57 @@ textarea.freetext-input:focus {
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
+/**
+ * 已办态 = **一行账目**,不是一个块。
+ *
+ * 上一版把已办卡收成了一个「中性小块」:框还在四条边上,分隔线还在,底色一撤,
+ * 于是它在流里读起来正是「一个装着我答案的气泡」——用户以为自己作答之后凭空多了
+ * 一条 user message。真正的病根是**形态**:块 = 消息,记录 = 一道边 + 一行字。
+ *
+ * 所以收场之后三件事一起做,与权限账页的记录形态对齐:
+ *  1. 四边的框收成**一道细左缘**(1px,中性 `--interaction-frame`,与待答那道 2px
+ *     状态色左缘区分开:一个是「轮到你」,一个是「这里有过一次问答」);
+ *  2. **无底**:头行的待办底撤走,圆角一并归零 —— 圆角+底色正是气泡的两件衣服;
+ *  3. **次要字色**:正文降到 `--ui-text-secondary-fg`,只留 ✓ 记号与收场标签吃
+ *     状态色(`--interaction-ink`)—— 那一枚图标就是这条记录的全部音量。
+ *
+ * 高度不做突变补偿:内部横向 padding 与外边距原样保留(内容本身少了选项与操作带,
+ * 那一段收缩是这张卡该有的),边框与底色走 `--duration-normal` 过渡。
+ */
+.interaction-card.is-settled {
+  border: 0;
+  border-left: 1px solid var(--interaction-frame);
+  border-radius: 0;
+  background: transparent;
+}
+
+.interaction-card.is-settled .interaction-row,
+.interaction-card.is-settled .interaction-question {
+  border-bottom: 0;
+}
+
+/* 单元格的竖墙也撤掉:记录是一行字,不是一张表。 */
+.interaction-card.is-settled .interaction-key {
+  border-right: 0;
+}
+
+.interaction-card.is-settled .interaction-row {
+  min-height: 26px;
+}
+
+/* `.is-dim`(reason 行)不动 —— 它本来就更靠后一层,拉到 secondary 反而变亮。 */
+.interaction-card.is-settled .interaction-value:not(.is-dim),
+.interaction-card.is-settled .question-title,
+.interaction-card.is-settled .answer-line {
+  color: var(--ui-text-secondary-fg);
+}
+
+.interaction-card.is-settled .question-title {
+  font-weight: 500;
+}
+
 /* 已办卡整体收紧一格:同一张卡,答完之后不该还占着待答时的高度。 */
-.interaction-card[data-state='answered'] .interaction-question,
-.interaction-card[data-state='declined'] .interaction-question,
-.interaction-card[data-state='timeout'] .interaction-question,
-.interaction-card[data-state='aborted'] .interaction-question,
-.interaction-card[data-state='settled'] .interaction-question {
+.interaction-card.is-settled .interaction-question {
   gap: 3px;
   padding: 6px 11px 7px;
 }

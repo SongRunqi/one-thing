@@ -33,6 +33,9 @@ const REQUEST_FIELDS = [
   'id',
   'sessionId',
   'toolCallId',
+  // 归位的第二档消息锚(与审批卡同一条纪律)。它必须过线:渲染侧只认 toolCallId
+  // 的话,那次调用没落进消息的卡就只剩尾泊 —— 而末尾是新消息出现的位置。
+  'messageId',
   'origin',
   'questions',
   'deadlineAt',

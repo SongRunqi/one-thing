@@ -256,6 +256,7 @@ export namespace Interaction {
       id: randomUUID(),
       sessionId: input.sessionId,
       toolCallId: input.toolCallId,
+      messageId: input.messageId,
       origin: input.origin,
       questions: input.questions,
       deadlineAt,

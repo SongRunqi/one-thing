@@ -1,10 +1,15 @@
 // @vitest-environment happy-dom
 /**
- * E2 — 提问卡在消息流里的**归位**。
+ * E2 — 提问卡在消息流里的**归位**,三档,按精度降序:
  *
- * 带 `toolCallId` 的贴在发起它的那次工具调用所属的消息之后(与审批卡认同一个
- * 耐久相关键);找不到落点的落到会话末尾而**不是被丢掉** —— 一张位置不完美的卡
- * 仍然答得了,一张不画的卡答不了(而不答的代价是那次提问走到 deadline)。
+ *  1. `toolCallId` 命中某条消息的 `toolCalls` → 原位(与审批卡同一个耐久相关键);
+ *  2. 否则 `messageId` 命中某条消息 → 贴那条消息之后;
+ *  3. 都不行才尾泊 —— 而**不是**被丢掉:一张位置不完美的卡仍然答得了,一张不画的
+ *     卡答不了(不答的代价是那次提问走到 deadline)。
+ *
+ * 中间这一档是这组用例的重点。尾泊的位置正是「下一条新消息出现的地方」,一张挂在
+ * 那里的卡读起来就是一条冒出来的消息(用户原话),而且流式期间那次 toolCall 迟落进
+ * 消息时,卡片会先尾泊、落地后再跳回原位。第 2 档把这两件事一起消掉。
  */
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -194,8 +199,60 @@ describe('MessageList: 提问卡归位', () => {
     expect(classes).toEqual(['msg-1', 'msg-2', 'card', 'msg-3'])
   })
 
-  it('没有落点的卡挂在会话末尾,而不是被丢掉', () => {
-    mocks.interactions.pending = [ask({ id: 'ask-2', toolCallId: undefined })]
+  /**
+   * 第 2 档。后台子代理的嵌套 `toolCallId` 在消息上根本不存在(连接器按既有约定
+   * 不为它另起工具卡),只认第 1 档的话这张卡就会尾泊 —— 而末尾是新消息出现的
+   * 位置。带上源头解析出来的消息锚,它贴回那条消息之后。
+   */
+  it('toolCallId 在消息上找不到时,退到 messageId 那条消息之后,而不是尾泊', () => {
+    mocks.interactions.pending = [ask({ id: 'ask-nested', toolCallId: 'call-nested', messageId: 'msg-2' })]
+    const wrapper = mountList()
+
+    const rows = wrapper.findAll('.mock-message-item, .interaction-card')
+    const classes = rows.map(row => (row.classes().includes('interaction-card') ? 'card' : row.attributes('data-message-id')))
+    expect(classes).toEqual(['msg-1', 'msg-2', 'card', 'msg-3'])
+  })
+
+  /**
+   * 流式期间的那一格:提问先到,发起它的 toolCall 还没落进消息。此刻只有 messageId
+   * 接得住 —— 接住了卡片从出现起就在最终位置上,不会「先尾泊、落地后跳回原位」。
+   */
+  it('流式期 toolCall 还没落进消息,messageId 接住,卡片不尾泊也不跳位', async () => {
+    mocks.interactions.pending = [ask({ id: 'ask-live', toolCallId: 'call-late', messageId: 'msg-2' })]
+    // msg-3 在后面:尾泊与「贴 msg-2 之后」因此是**两个不同的位置**,这条用例才有反证力。
+    const pending = { id: 'msg-2', role: 'assistant', content: '我先问一句', timestamp: T0 + 1 }
+    const wrapper = mountList([MESSAGES[0], pending, MESSAGES[2]])
+
+    const before = wrapper.findAll('.mock-message-item, .interaction-card')
+      .map(row => (row.classes().includes('interaction-card') ? 'card' : row.attributes('data-message-id')))
+    expect(before).toEqual(['msg-1', 'msg-2', 'card', 'msg-3'])
+
+    // 那次 toolCall 现在落库了(第 1 档接管)。位置必须**原样不变**。
+    await wrapper.setProps({
+      messages: [
+        MESSAGES[0],
+        { ...pending, toolCalls: [{ id: 'call-late', name: 'AskUserQuestion' }] },
+        MESSAGES[2],
+      ] as never,
+    })
+    const after = wrapper.findAll('.mock-message-item, .interaction-card')
+      .map(row => (row.classes().includes('interaction-card') ? 'card' : row.attributes('data-message-id')))
+    expect(after).toEqual(before)
+  })
+
+  /** 第 3 档。两个键都接不住才尾泊 —— 兜底还在,只是不再是第二档。 */
+  it('三档全落空的卡才挂会话末尾,而不是被丢掉', () => {
+    mocks.interactions.pending = [ask({ id: 'ask-2', toolCallId: undefined, messageId: undefined })]
+    const wrapper = mountList()
+
+    const rows = wrapper.findAll('.mock-message-item, .interaction-card')
+    const classes = rows.map(row => (row.classes().includes('interaction-card') ? 'card' : row.attributes('data-message-id')))
+    expect(classes).toEqual(['msg-1', 'msg-2', 'msg-3', 'card'])
+  })
+
+  /** messageId 指向的那条消息还没进这一页(翻页上文)时,同样退到尾泊。 */
+  it('messageId 不在这一页时退到尾泊', () => {
+    mocks.interactions.pending = [ask({ id: 'ask-3', toolCallId: undefined, messageId: 'msg-elsewhere' })]
     const wrapper = mountList()
 
     const rows = wrapper.findAll('.mock-message-item, .interaction-card')

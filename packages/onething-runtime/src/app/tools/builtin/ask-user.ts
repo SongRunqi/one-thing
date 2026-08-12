@@ -30,6 +30,7 @@ export const AskUserTool = createAskUserTool({
       origin: 'host-tool',
       questions: input.questions,
       ...(input.toolCallId ? { toolCallId: input.toolCallId } : {}),
+      ...(input.messageId ? { messageId: input.messageId } : {}),
       timeoutMs: input.timeoutMs,
     })
   },

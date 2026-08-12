@@ -303,6 +303,9 @@ describe('Interaction registry', () => {
       'createdAt',
       'deadlineAt',
       'id',
+      // 归位的第二档消息锚。这里**没给**,所以键在但值是 undefined —— UI 补水拿到
+      // 整份 request 的形状,少一个键就是少一档归位。
+      'messageId',
       'origin',
       'questions',
       'sessionId',

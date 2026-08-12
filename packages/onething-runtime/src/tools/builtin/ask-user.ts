@@ -101,6 +101,8 @@ export interface AskUserMetadata extends JsonObject {
 export interface AskUserAskInput {
   sessionId: string
   toolCallId?: string
+  /** 归位的第二档消息锚。原生链路直接就是 `ctx.messageId` —— 这一轮写在哪它最清楚。 */
+  messageId?: string
   questions: InteractionQuestion[]
   timeoutMs: number
 }
@@ -238,6 +240,10 @@ Use it only when you genuinely need the user to decide: an ambiguous requirement
       // (MessageList 的 `interactionAnchorIndex` 按 toolCallId 在 `message.toolCalls`
       // 里找)。原生链路的 toolCallId 就是 ctx 里这一个,不需要另一条 message-anchor
       // 反查 —— 那条是外部 / ACP 通路才需要的,因为它们的提问不长在工具执行上下文里。
+      //
+      // `ctx.messageId` 另外**原样带给渲染侧**当第二档锚:流式期间这次调用可能还没
+      // 落进消息,只认 toolCallId 的话那一格就只剩尾泊(= 新消息出现的位置),而卡片
+      // 会在调用落地后从末尾跳回原位。带上消息锚,两件事一起没有。
       const anchor = ctx.toolCallId || ctx.messageId
       const questions = toInteractionQuestions(args, anchor)
 
@@ -265,6 +271,7 @@ Use it only when you genuinely need the user to decide: an ambiguous requirement
         const answer = await adapters.ask({
           sessionId: ctx.sessionId,
           ...(ctx.toolCallId ? { toolCallId: ctx.toolCallId } : {}),
+          ...(ctx.messageId ? { messageId: ctx.messageId } : {}),
           questions,
           timeoutMs: ASK_USER_TIMEOUT_MS,
         })

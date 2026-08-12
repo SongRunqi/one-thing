@@ -54,6 +54,18 @@ export interface InteractionRequest {
   sessionId: string
   /** 发起这次提问的工具调用。卡片按它归位(与 permission 的 callId 同一条纪律)。 */
   toolCallId?: string
+  /**
+   * 提问发生在**哪条消息**上。归位的第二档 —— 与审批卡的 `messageId` 同一条纪律
+   * (`app/permission/message-anchor.ts`)。
+   *
+   * 为什么两个键都要:`toolCallId` 是精确落点,但它**未必存在于渲染侧的消息上** ——
+   * 后台子代理的调用带 `parent_tool_use_id`,连接器按既有约定不为它另起工具卡;
+   * 流式期间那次调用也可能还没落进消息。只认 `toolCallId` 的渲染侧于是只剩会话
+   * 末尾一条路,而末尾正是「新消息出现的地方」——用户读到的就是「我答完之后冒出
+   * 一条消息」。带上消息锚,那一格退化成「贴在那条消息之后」,位置略偏,但**不再
+   * 长得像一条新消息**,也不会在那次调用迟落地时从末尾跳回原位。
+   */
+  messageId?: string
   origin: InteractionOrigin
   questions: InteractionQuestion[]
   /**
@@ -99,6 +111,8 @@ export interface InteractionAskInput {
   origin: InteractionOrigin
   questions: InteractionQuestion[]
   toolCallId?: string
+  /** 归位的第二档消息锚(见 `InteractionRequest.messageId`)。 */
+  messageId?: string
   /** 绝对 deadline。与 timeoutMs 二选一,给了它就以它为准。 */
   deadlineAt?: number
   /** 相对超时。都不给则落到 `DEFAULT_INTERACTION_TIMEOUT_MS`。 */

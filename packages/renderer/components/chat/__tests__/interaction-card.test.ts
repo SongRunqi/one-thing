@@ -6,6 +6,8 @@
  * `timeout` 的是内核自己挂的表;UI 抢着补一发,就造出一次用户没点过的应答,
  * 而且两边都自认为是结算方。
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -307,6 +309,62 @@ describe('InteractionCard 挂载', () => {
     expect(again.get('.interaction-card').attributes('data-state')).toBe('answered')
     expect(again.find('[data-testid="interaction-submit"]').exists()).toBe(false)
     expect(again.get('[data-testid="interaction-answer-q1"]').text()).toBe('暖')
+  })
+
+  /**
+   * 用户原话第三句(形态终修的由来):作答之后「像是冒出来一条 user message」。
+   * 三路取证的结论之一是**结算态收成了一个中性小块** —— 框还在四条边上、分隔线还在,
+   * 于是它在流里读作「一个装着我答案的气泡」。已办态必须是**一行账目**:一道细左缘、
+   * 无底、次要字色,与权限账页那一族对齐。
+   *
+   * 这里只断言形态的**开关**(类名)与配方的 **token 引用**,不断任何像素 ——
+   * 具体数值是设计可以改的,「记录不是气泡」这条判据不是。
+   */
+  it('结算态挂上记录形态的开关(is-settled),待答态没有', () => {
+    const open = mount(InteractionCard, { props: { request: makeRequest() }, ...GLOBAL })
+    expect(open.get('.interaction-card').classes()).not.toContain('is-settled')
+
+    for (const outcome of ['answered', 'declined', 'timeout', 'aborted'] as const) {
+      const settled = mount(InteractionCard, {
+        props: {
+          request: makeRequest(),
+          answer: { id: 'ask-1', outcome, answers: { q1: { selected: ['暖'] } } },
+        },
+        ...GLOBAL,
+      })
+      expect(settled.get('.interaction-card').classes()).toContain('is-settled')
+    }
+  })
+
+  it('已办形态的配方是「记录」不是「气泡」:细左缘 + 无底 + 次要字色,且不碰气泡 token', () => {
+    // happy-dom 下的 `import.meta.url` 不是 file: —— 从 vitest 的仓库根取路径。
+    const source = readFileSync(
+      resolve(process.cwd(), 'packages/renderer/components/chat/interaction/InteractionCard.vue'),
+      'utf-8',
+    )
+
+    // 气泡族的衣服(`MessageBubble.vue` 用的就是它们)一件都不许被**引用**
+    // ——「提到」不算,这张卡的注释里正写着为什么不用它们。
+    for (const bubbleToken of ['--skin-bubble-radius', '--ui-message-user', '--user-bubble-surface']) {
+      expect(source).not.toContain(`var(${bubbleToken}`)
+    }
+
+    const settledStart = source.indexOf('.interaction-card.is-settled {')
+    expect(settledStart).toBeGreaterThan(-1)
+    const settledBlock = source.slice(settledStart, source.indexOf('}', settledStart))
+    expect(settledBlock).toContain('border: 0;')
+    // 细左缘:一道 1px 的中性边(待答那道是 2px 状态色,两者必须分得开)。
+    expect(settledBlock).toMatch(/border-left:\s*1px solid var\(--interaction-frame\)/)
+    // 无底、无圆角 —— 圆角 + 底色正是气泡的形。
+    expect(settledBlock).toContain('border-radius: 0;')
+    expect(settledBlock).toContain('background: transparent;')
+
+    // 次要字色走 token,不走字面量。
+    expect(source).toMatch(
+      /\.interaction-card\.is-settled \.interaction-value:not\(\.is-dim\)[\s\S]{0,200}color: var\(--ui-text-secondary-fg\);/,
+    )
+    // 两态之间的过渡有据可依(时长/缓动都走 token,不写字面量)。
+    expect(source).toMatch(/transition: border-color var\(--duration-normal\) var\(--ease-default\)/)
   })
 
   it('超时收场的历史态把内核给模型的那句理由摆出来', () => {

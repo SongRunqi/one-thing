@@ -436,6 +436,52 @@ describe('提问的落点(§4)', () => {
       answers: { q0: { selected: ['B'] } },
     })
   })
+
+  /**
+   * 归位的**第二档**,外部这一侧。审批那一格 2026-08-11 已经收口(`message-anchor.ts`),
+   * 提问那一格当时漏了:`ExternalAgentInteractionAsk` 一直带着 `messageId`,而
+   * `Interaction.ask` 那一行没接 —— 于是提问卡在渲染侧只剩 `toolCallId` 一档。
+   * 后台子代理的嵌套 callId 在消息上不存在,那一档必然落空,卡片于是尾泊到会话末尾
+   * (= 新消息出现的位置),被读成「我答完之后冒出一条消息」。
+   *
+   * 判据与审批共用同一个所有者:锚必须是**会话里真的有的那条消息**。
+   */
+  it('连接器没给 messageId 时,提问的消息锚落到真的有的那条消息上', async () => {
+    mocks.sessions.set('team-exec', {
+      id: 'team-exec',
+      kind: 'agent',
+      collab: { roomSessionId: 'team-room' },
+      messages: [
+        { id: 'u-1', role: 'user', origin: GOAL_ORIGIN },
+        { id: 'a-1', role: 'assistant', origin: GOAL_ORIGIN },
+      ],
+    } as never)
+
+    const { askExternalAgentInteraction } = await import('../index.js')
+    const answer = askExternalAgentInteraction({
+      connectorId: 'claude-code-agent',
+      localSessionId: 'team-exec',
+      // 后台子代理的嵌套 tool_use id:消息上没有这张工具卡,第 1 档必然落空。
+      toolCallId: 'toolu_nested_ask',
+      questions: [{ id: 'q0', question: 'A 还是 B?', options: [{ label: 'A' }, { label: 'B' }] }],
+    })
+    await vi.waitFor(() => {
+      expect(Interaction.getPending('team-exec')).toHaveLength(1)
+    })
+
+    const request = Interaction.getPending('team-exec')[0]
+    expect(request.toolCallId).toBe('toolu_nested_ask')
+    expect(request.messageId).toBeTruthy()
+    const messages = (mocks.sessions.get('team-exec') as FakeSession).messages
+    expect(messages.some(message => message.id === request.messageId)).toBe(true)
+
+    Interaction.respond({
+      sessionId: 'team-exec',
+      toolCallId: 'toolu_nested_ask',
+      answers: { q0: { selected: ['A'] } },
+    })
+    await expect(answer).resolves.toMatchObject({ outcome: 'answered' })
+  })
 })
 
 describe('停止链上的外部中断(G10)', () => {

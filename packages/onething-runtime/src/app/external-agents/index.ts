@@ -221,11 +221,17 @@ export async function askExternalAgentInteraction(
       reason: NO_HUMAN_DECLINE_REASON,
     }
   }
+  // 消息锚:与审批走同一个所有者(`app/permission/message-anchor.ts`)。外部通路的
+  // `toolCallId` 未必存在于渲染侧的消息上(后台子代理的嵌套调用不另起工具卡),只认
+  // 它的话卡片就只剩尾泊 —— 而末尾正是新消息出现的位置,用户读成「答完冒出一条消息」。
+  // 这里落一个渲染侧真的拿得到的消息 id,让归位的第二档接得住。
+  const messageId = resolvePermissionMessageAnchor(ask.localSessionId, ask.messageId)
   return Interaction.ask({
     sessionId: ask.localSessionId,
     origin: 'external-agent',
     questions: ask.questions,
     ...(ask.toolCallId ? { toolCallId: ask.toolCallId } : {}),
+    ...(messageId ? { messageId } : {}),
   })
 }
 

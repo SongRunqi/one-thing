@@ -99,8 +99,9 @@
             @review="emit('reviewGoal', props.sessionId || '')"
           />
 
-          <!-- 提问卡:带 toolCallId 的贴在发起它的那次工具调用所属的消息之后
-               (与审批卡同一条归位键)。答完不消失,进历史态留在原地。 -->
+          <!-- 提问卡:先按 toolCallId 贴在发起它的那次工具调用所属的消息之后
+               (与审批卡同一条归位键),那次调用还没落进消息就退到 messageId 那条
+               消息之后。答完不消失,进历史态留在原地。 -->
           <InteractionCard
             v-for="card in interactionCardsByIndex.get(index)"
             :key="card.request.id"
@@ -112,8 +113,9 @@
           />
         </template>
 
-        <!-- 无主的提问(没有 toolCallId,或那次调用还没进这一页)挂在会话末尾:
-             一张答不了的卡不如一张位置不完美的卡。 -->
+        <!-- 三档锚全落空(两个键都没有,或那两条消息都还没进这一页)才挂会话末尾:
+             一张答不了的卡不如一张位置不完美的卡。这一格现在是**兜底**,不是常态 ——
+             常态走 messageId 那一档,理由见 `interactionAnchorIndex` 上面那段。 -->
         <InteractionCard
           v-for="card in tailInteractionCards"
           :key="card.request.id"
@@ -1038,14 +1040,28 @@ const interactionCards = computed<InteractionCardEntry[]>(() => {
 })
 
 /**
- * 归位:提问带 `toolCallId` 时贴在**那次工具调用所属的消息**之后 —— 与审批卡
- * 认的是同一个耐久相关键。找不到落点(没带 id,或那条消息还没进这一页)的走
- * 尾部,而不是被丢掉:一张位置不完美的卡仍然答得了,一张不画的卡答不了。
+ * 归位,**三档,按精度降序**。会话末尾是最后一档,不是第二档 —— 这条次序本身
+ * 就是这次修的东西。
+ *
+ *  1. `toolCallId` 在这一页的某条消息的 `toolCalls` 里 → **原位**(与审批卡同一个
+ *     耐久相关键,最精确);
+ *  2. 否则 `messageId` 命中这一页的某条消息 → 贴**那条消息**之后。源头(原生取
+ *     `ctx.messageId`,外部经 `app/permission/message-anchor.ts` 解析)保证它是
+ *     一条渲染侧真的拿得到的消息;
+ *  3. 都不行才**尾泊**。
+ *
+ * 为什么中间这一档非有不可:尾泊的位置正是「下一条新消息出现的地方」,一张挂在
+ * 那里的卡在视觉上就是一条冒出来的消息 —— 用户的原话。而且它还会**跳**:流式期间
+ * 那次 toolCall 迟落进消息,卡片先尾泊、落地后再跳回原位。第 2 档同时消掉这两件事:
+ * messageId 在 ask 那一刻就定死,不随流式推进变化,所以卡片从出现起就不动。
+ *
+ * 三档都落空(两个键都没有,或那条消息还没进这一页)仍然画,只是画在尾部:一张
+ * 位置不完美的卡仍然答得了,一张不画的卡答不了(而不答的代价是走到 deadline)。
  */
 const interactionCardsByIndex = computed<Map<number, InteractionCardEntry[]>>(() => {
   const byIndex = new Map<number, InteractionCardEntry[]>()
   for (const entry of interactionCards.value) {
-    const index = interactionAnchorIndex(entry.request.toolCallId)
+    const index = interactionAnchorIndex(entry.request)
     if (index === -1) continue
     const bucket = byIndex.get(index)
     if (bucket) bucket.push(entry)
@@ -1055,14 +1071,20 @@ const interactionCardsByIndex = computed<Map<number, InteractionCardEntry[]>>(()
 })
 
 const tailInteractionCards = computed<InteractionCardEntry[]>(() =>
-  interactionCards.value.filter(entry => interactionAnchorIndex(entry.request.toolCallId) === -1),
+  interactionCards.value.filter(entry => interactionAnchorIndex(entry.request) === -1),
 )
 
-function interactionAnchorIndex(toolCallId: string | undefined): number {
-  if (!toolCallId) return -1
-  return props.messages.findIndex(message =>
-    message.toolCalls?.some(toolCall => toolCall.id === toolCallId),
-  )
+function interactionAnchorIndex(request: InteractionRequest): number {
+  if (request.toolCallId) {
+    const byToolCall = props.messages.findIndex(message =>
+      message.toolCalls?.some(toolCall => toolCall.id === request.toolCallId),
+    )
+    if (byToolCall !== -1) return byToolCall
+  }
+  if (request.messageId) {
+    return props.messages.findIndex(message => message.id === request.messageId)
+  }
+  return -1
 }
 
 async function handleInteractionSubmit(
