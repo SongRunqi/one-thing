@@ -167,7 +167,11 @@ describe('R4 storage surface — the api is a mediated channel, not raw fs', () 
 })
 
 describe('R4 api.storage wiring — latch and breaker ledger', () => {
-  function buildApi(root: string, pluginId = 'notes') {
+  function buildApi(
+    root: string,
+    pluginId = 'notes',
+    extra: { files?: ReturnType<typeof createCorePluginFiles> } = {},
+  ) {
     const failures: Array<{ scope: string; error: unknown }> = []
     const result = createCorePluginAPI<
       {
@@ -192,6 +196,7 @@ describe('R4 api.storage wiring — latch and breaker ledger', () => {
       pluginId,
       store: {},
       storage: createCorePluginStorage({ pluginId, dataRoot: root }),
+      ...(extra.files ? { files: extra.files } : {}),
       scheduler: {},
       logger: silentLogger(),
       onPluginFailure: ({ scope, error }) => failures.push({ scope, error }),
@@ -220,6 +225,28 @@ describe('R4 api.storage wiring — latch and breaker ledger', () => {
       expect(failures).toHaveLength(1)
       // 按操作分车道:单车道下 exists 的成功会不断清掉 writeJson 的连败。
       expect(failures[0].scope).toBe('storage.writeJson')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('not-configured is a state refusal: thrown to the plugin, never booked into the breaker', () => {
+    const root = tempRoot()
+    try {
+      const { api, failures } = buildApi(root, 'notes', {
+        files: createCorePluginFiles({
+          pluginId: 'notes',
+          homeRoot: path.join(root, 'storage'),
+          externalRootDeclared: true,
+        }),
+      })
+      // 未配置外部根:全新安装的正常状态。抛(调用方要知道),但不计数 ——
+      // 否则"装了还没配置"攒几轮就把插件熔断了(2026-08-12 memory-wiki 真机事故)。
+      const filesApi = (api.storage as unknown as {
+        files: ReturnType<typeof createCorePluginFiles>
+      }).files
+      expect(() => filesApi.readText('index.md', { root: 'external' })).toThrow(/external folder/)
+      expect(failures).toHaveLength(0)
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }

@@ -468,6 +468,18 @@ export function createCorePluginAPI<
    * 与 `request:<action>` 同一个先例:单车道会让 exists 的成功不断清掉
    * writeJson 的连败,插件级混计的假阴性会在 scope 内原样复现。
    */
+  /**
+   * **状态性拒绝不进熔断账**(2026-08-12,真机事故:memory-wiki 未配置外部根,
+   * 注入面每轮 readText 一次 `not-configured` —— 插件自己接得干干净净,熔断账
+   * 却已先记一笔,「全新安装还没配置」这个正常状态攒几轮就把插件熔断了)。
+   *
+   * 界线画在**谁的问题**上:`not-configured` 说的是「用户还没选目录」——不是
+   * 插件的过错,把它记成失败等于"装了还没配置就该被杀"。而路径穿越(invalid-name)、
+   * 未声明权限(not-declared)、超配额(quota)都是**插件侧的行为**,照记 ——
+   * 与既有判例一致("books a traversal attempt into the breaker ledger")。
+   * 状态性拒绝照样**抛**(调用方必须知道),照样打日志(warn 不是 error),只是不计数。
+   */
+  const STORAGE_STATE_REFUSALS = new Set(['not-configured'])
   const withStorageFailureReport = <T>(what: string, run: () => T): T => {
     const scope = pluginScope.storage(what)
     try {
@@ -475,6 +487,11 @@ export function createCorePluginAPI<
       options.onPluginSuccess?.({ pluginId, scope })
       return result
     } catch (error) {
+      const code = (error as { code?: unknown } | null | undefined)?.code
+      if (typeof code === 'string' && STORAGE_STATE_REFUSALS.has(code)) {
+        logger.log(`[Plugin:${pluginId}] storage.${what} refused (${code}) — state refusal, not counted`)
+        throw error
+      }
       logger.error(`[Plugin:${pluginId}] storage.${what} failed:`, error)
       reportFailure(scope, error)
       throw error
