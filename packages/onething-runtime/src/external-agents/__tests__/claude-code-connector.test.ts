@@ -985,3 +985,209 @@ describe('ClaudeCodeConnector 后台子代理生命周期', () => {
     expect(state.closedAfter).not.toBeNull()
   })
 })
+
+/**
+ * **提问期间的通道寿命**(2026-08-12 真机事故)。
+ *
+ * 症状:SDK 会话里模型调 `AskUserQuestion`,卡片弹出、用户十几秒后作答,答案送回
+ * 时工具以 `Tool permission request failed: AbortError: Stream closed` 收场。
+ *
+ * CLI 那一侧的判据只有一条(2.1.228 反编译原文):
+ *
+ * ```js
+ * async sendRequest(e, t, r, n = randomUUID(), o) {
+ *   let i = { type: 'control_request', request_id: n, request: e }
+ *   if (jEo(n), this.inputClosed) throw new dT('Stream closed')
+ * ```
+ *
+ * 所以这句话**只**说明:CLI 要发这条 `can_use_tool` 的时候 stdin 已经 EOF 了。
+ * stdin 只由我们关(SDK 的 `Query.streamInput` 在输入迭代器结束后 `endInput()`)。
+ * 下面三条钉的就是「什么时候不许关、以及关的时候必须一起做什么」。
+ */
+describe('ClaudeCodeConnector 提问/审批期间的通道寿命', () => {
+  const tick = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  function watchInput(
+    prompt: AsyncIterable<unknown>,
+    state: { closed: boolean },
+  ): Promise<void> {
+    const iterator = prompt[Symbol.asyncIterator]()
+    return (async () => {
+      await iterator.next()
+      await iterator.next()
+      state.closed = true
+    })()
+  }
+
+  it('还欠 CLI 一条答复时,result 不是终点:等答案落地才收口', async () => {
+    const state = { closed: false }
+    let inputWatch: Promise<void> | undefined
+    /** 卡片挂在人眼前的那段时间。 */
+    let releaseAnswer: (() => void) | undefined
+    const answered = new Promise<void>(resolve => { releaseAnswer = resolve })
+    /** result 到达、且我们还欠答复的那一刻,输入关了没有 —— 事故的判据。 */
+    let closedWhileAsking: boolean | null = null
+    let decisionBehavior: string | undefined
+
+    const connector = createClaudeCodeConnector({
+      interactionHandler: async ({ questions }) => {
+        await answered
+        return {
+          id: 'ask-1',
+          outcome: 'answered',
+          answers: { [questions[0]!.id]: { selected: ['火锅'] } },
+        }
+      },
+      queryFn: params => {
+        inputWatch = watchInput(params.prompt, state)
+        return (async function* () {
+          yield initMessage
+          await tick()
+          // 模型问了一句,CLI 把 can_use_tool 发过来 —— 我们**先不答**。
+          const pending = params.options.canUseTool?.(
+            'AskUserQuestion',
+            { questions: [{ question: '今晚吃什么?', header: '晚餐', options: [{ label: '火锅' }] }] },
+            { signal: new AbortController().signal, toolUseID: 'toolu_ask_1' },
+          )
+          await tick()
+          // 卡片还挂着,CLI 却把这一轮收了(park:问题留着,回合先落地)。
+          yield { type: 'result', subtype: 'success', session_id: 's', result: '' } as ClaudeCodeSdkMessage
+          await tick()
+          await tick()
+          closedWhileAsking = state.closed
+
+          releaseAnswer?.()
+          decisionBehavior = (await pending)?.behavior
+          await tick()
+          yield {
+            type: 'assistant',
+            session_id: 's',
+            message: { role: 'assistant', content: [{ type: 'text', text: '好的。' }] },
+          } as ClaudeCodeSdkMessage
+          await tick()
+        })()
+      },
+    })
+
+    await collect(connector.streamTurn({
+      localSessionId: 'session-ask', messageId: 'msg-ask', prompt: '问我一个问题', cwd: '/tmp', turn: 1,
+    }))
+    await inputWatch
+
+    // 1) 事故的直接反面:答案还没回来,通道必须还开着。
+    expect(closedWhileAsking).toBe(false)
+    // 2) 答案真的送回去了(收口早一步的话这里是 Stream closed,不是 allow)。
+    expect(decisionBehavior).toBe('allow')
+  })
+
+  it('审批同理:未决的 canUseTool 一样按住那条 result', async () => {
+    const state = { closed: false }
+    let inputWatch: Promise<void> | undefined
+    let release: (() => void) | undefined
+    const held = new Promise<void>(resolve => { release = resolve })
+    let closedWhileAsking: boolean | null = null
+
+    const connector = createClaudeCodeConnector({
+      permissionHandler: async () => {
+        await held
+        return { behavior: 'allow' as const }
+      },
+      queryFn: params => {
+        inputWatch = watchInput(params.prompt, state)
+        return (async function* () {
+          yield initMessage
+          await tick()
+          const pending = params.options.canUseTool?.(
+            'Edit',
+            { file_path: '/tmp/a.txt', old_string: 'a', new_string: 'b' },
+            { signal: new AbortController().signal, toolUseID: 'toolu_edit_1' },
+          )
+          await tick()
+          yield { type: 'result', subtype: 'success', session_id: 's', result: '' } as ClaudeCodeSdkMessage
+          await tick()
+          await tick()
+          closedWhileAsking = state.closed
+          release?.()
+          await pending
+          await tick()
+        })()
+      },
+    })
+
+    await collect(connector.streamTurn({
+      localSessionId: 'session-perm', messageId: 'msg-perm', prompt: '改个文件', cwd: '/tmp', turn: 1,
+    }))
+    await inputWatch
+    expect(closedWhileAsking).toBe(false)
+  })
+
+  it('下游把生成器丢了:收口的同时必须掐掉 CLI,不留一个 stdin 已断却还活着的进程', async () => {
+    let sdkAbort: AbortSignal | undefined
+    const connector = createClaudeCodeConnector({
+      queryFn: params => {
+        sdkAbort = (params.options as { abortController?: AbortController }).abortController?.signal
+        return (async function* () {
+          yield initMessage
+          await tick()
+          yield {
+            type: 'assistant',
+            session_id: 's',
+            message: { role: 'assistant', content: [{ type: 'text', text: '一' }] },
+          } as ClaudeCodeSdkMessage
+          // 这里之后永远不再产出 —— 模拟一个还在跑的 CLI。
+          await new Promise(() => {})
+        })()
+      },
+    })
+
+    const stream = connector.streamTurn({
+      localSessionId: 'session-drop', messageId: 'msg-drop', prompt: 'hi', cwd: '/tmp', turn: 1,
+    })
+    const iterator = stream[Symbol.asyncIterator]()
+    await iterator.next()
+    // 下游不要了(engine 换流 / 窗口关掉 / for-await 里 break)。
+    await iterator.return?.()
+
+    expect(sdkAbort?.aborted, '丢下生成器却不掐进程 = 一个关了输入还在跑的 CLI').toBe(true)
+  })
+
+  it('同一会话上再起一轮:先掐掉上一轮,且上一轮的清理不许缴掉新一轮的械', async () => {
+    const aborts: string[] = []
+    const firstBlocks = { release: undefined as (() => void) | undefined }
+    const connector = createClaudeCodeConnector({
+      queryFn: params => {
+        const signal = (params.options as { abortController?: AbortController }).abortController?.signal
+        const tag = params.promptText
+        signal?.addEventListener('abort', () => aborts.push(tag), { once: true })
+        return (async function* () {
+          yield initMessage
+          await new Promise<void>(resolve => {
+            if (tag === 'first') firstBlocks.release = resolve
+            else resolve()
+          })
+          yield { type: 'result', subtype: 'success', session_id: 's', result: '' } as ClaudeCodeSdkMessage
+        })()
+      },
+    })
+
+    const first = collect(connector.streamTurn({
+      localSessionId: 'session-race', messageId: 'm1', prompt: 'first', cwd: '/tmp', turn: 1,
+    })).catch(() => [])
+    await tick()
+    await tick()
+
+    const second = collect(connector.streamTurn({
+      localSessionId: 'session-race', messageId: 'm2', prompt: 'second', cwd: '/tmp', turn: 2,
+    }))
+    await tick()
+    firstBlocks.release?.()
+    await first
+    await second
+
+    // 1) 新一轮开跑前,旧的那一轮被掐了 —— 两个 CLI 不再同时挂在一条会话上。
+    expect(aborts).toContain('first')
+    // 2) 旧一轮的清理没有把新一轮的登记一起抹掉:新一轮结束后表才是空的,
+    //    在它结束**之前**它必须仍然是可寻址的(否则 abort/steer 全变空操作)。
+    expect(connector.steer?.('session-race', 'anything')).toBe('unavailable')
+  })
+})

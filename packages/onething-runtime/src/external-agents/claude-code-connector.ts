@@ -1267,6 +1267,12 @@ interface ActiveClaudeCodeTurn {
   sawOutput: boolean
   /** 已经塞进去、但它那一轮的 `result` 还没回来的追话条数。 */
   awaitingResult: number
+  /**
+   * 这一轮的完整拆解(abort + 停表 + 收口)。登记在这里而不是只留一个
+   * `AbortController`:半套拆解会留下一个关了输入却还活着的 CLI —— 那正是
+   * 「审批打不出去」的另一种病根。
+   */
+  abort: () => void
 }
 
 export function createClaudeCodeConnector(
@@ -1351,17 +1357,55 @@ export function createClaudeCodeConnector(
        */
       const promptContent = claudeCodePromptContent(request.prompt, request.images)
       const promptStream = new ClaudeCodePromptStream(promptContent.blocks)
+
       /**
-       * 追话的落点(2026-08-12)。登记在**发第一条消息之前**:回合已经开跑而登记表
-       * 还是空的那一瞬间,追话会被判成 `unavailable` 并退回宿主队列 —— 不是错误,
-       * 但白白晚了一轮。
+       * **收口只有这一个出口**(2026-08-12 提问事故)。
+       *
+       * 关 stdin 不是一件小事:CLI 那一侧的判据只有一条(2.1.228 原文)——
+       *
+       * ```js
+       * async sendRequest(e, t, r, n = randomUUID(), o) {
+       *   let i = { type: 'control_request', request_id: n, request: e }
+       *   if (jEo(n), this.inputClosed) throw new dT('Stream closed')
+       * ```
+       *
+       * 也就是说 `Tool permission request failed: AbortError: Stream closed` 这句话
+       * **只**说明一件事:CLI 要发这条 `can_use_tool` 的时候,它的 stdin 已经 EOF 了。
+       * 而 stdin 只由我们关(SDK 的 `Query.streamInput` 在输入迭代器结束后调
+       * `transport.endInput()`)。所以「谁在何时关的」必须当场记在账上,否则下一次
+       * 事故还是只能靠翻会话文件反推。
        */
-      const activeTurn: ActiveClaudeCodeTurn = {
-        promptStream,
-        sawOutput: false,
-        awaitingResult: 0,
+      function closeInput(reason: string): void {
+        if (promptStream.isClosed) return
+        options.logger?.log?.(
+          `[ClaudeCodeConnector] closing input for ${request.localSessionId.slice(0, 8)} — ${reason}`,
+        )
+        promptStream.close()
       }
-      activeTurns.set(request.localSessionId, activeTurn)
+
+      /**
+       * **还欠 CLI 几条控制答复**(2026-08-12 提问事故)。
+       *
+       * 这是继「后台子代理」(b8472769)与「追话」(e610b0dc)之后,输入通道的
+       * **第三个**持有者,也是漏掉的那一个:`canUseTool` / `onUserDialog` 是 CLI
+       * 发过来、等我们回话的控制请求,它的答复走的正是 stdin。`AskUserQuestion`
+       * 尤其如此 —— 卡片挂在人眼前,可以是几分钟。这段时间里任何一次收口都等于
+       * 把答案扔进一根断掉的管子,而且 CLI 之后每一次审批都会当场 `Stream closed`。
+       *
+       * 判据是「欠不欠答复」,不是「问的是哪个工具」:审批与提问同一条通道,
+       * 只认工具名就会漏掉另一半。
+       */
+      let pendingControlRequests = 0
+      /** result 已经到了,但还欠答复 —— 等最后一条答复落地再收口。 */
+      let resultAwaitingControlRequests = false
+      let settleCloseTimer: ReturnType<typeof setTimeout> | undefined
+
+      function disarmSettleCloseTimer(): void {
+        if (settleCloseTimer === undefined) return
+        clearTimeout(settleCloseTimer)
+        settleCloseTimer = undefined
+      }
+
       const backgroundTimeoutMs = options.backgroundTaskTimeoutMs ?? DEFAULT_BACKGROUND_TASK_TIMEOUT_MS
       let backgroundTimer: ReturnType<typeof setTimeout> | undefined
       let backgroundTimedOutCount = 0
@@ -1375,9 +1419,86 @@ export function createClaudeCodeConnector(
       const forwardAbort = () => {
         abortController.abort()
         disarmBackgroundTimer()
-        promptStream.close()
+        disarmSettleCloseTimer()
+        closeInput('abort')
       }
       request.abortSignal?.addEventListener('abort', forwardAbort, { once: true })
+
+      /**
+       * 追话的落点(2026-08-12)。登记在**发第一条消息之前**:回合已经开跑而登记表
+       * 还是空的那一瞬间,追话会被判成 `unavailable` 并退回宿主队列 —— 不是错误,
+       * 但白白晚了一轮。
+       *
+       * `abort` 一并登记:`abort()` / 新一轮抢占都必须走**同一套**拆解
+       * (abort + 停表 + 收口),不能各拆一半。
+       */
+      const activeTurn: ActiveClaudeCodeTurn = {
+        promptStream,
+        sawOutput: false,
+        awaitingResult: 0,
+        abort: forwardAbort,
+      }
+      /**
+       * **一条会话上只许有一轮**(2026-08-12 真机)。
+       *
+       * 事故日志里同一个本地会话上两条 `[ClaudeCodeConnector] init` 只隔 5ms ——
+       * 两个 CLI 进程同时 `--resume` 同一条外部会话。这不只是浪费:连接器的
+       * `activeTurns` / `abortControllers` 都以 localSessionId 为键,两轮共存时
+       * 登记表只剩一份,于是 `steer()` / `abort()` 打在谁身上全凭先后,而先结束
+       * 的那一轮的清理还会把后一轮的句柄一起抹掉。抢占是唯一诚实的形状。
+       */
+      const superseded = activeTurns.get(request.localSessionId)
+      if (superseded) {
+        options.logger?.warn?.(
+          `[ClaudeCodeConnector] a turn is already live on ${request.localSessionId.slice(0, 8)}`
+            + ' — aborting it before starting the new one',
+        )
+        superseded.abort()
+      }
+      activeTurns.set(request.localSessionId, activeTurn)
+
+      /**
+       * 一次控制往返(`canUseTool` / `onUserDialog`)。**只**做两件事:
+       * 把「欠答复」的电平抬起来 / 落下去,以及在电平落到零、而 result 早就到了
+       * 的时候把收口补上。
+       *
+       * 补收口刻意走一个宏任务:SDK 是在我们这个 promise **决议之后**才把控制
+       * 答复写进 stdin 的(`await this.canUseTool(...)` 之后才 `transport.write`),
+       * 而那段续跑是微任务。宏任务排在所有微任务之后,于是「先把答案写出去,
+       * 再关管子」是有序的,不是碰运气。
+       */
+      async function withControlRequest<T>(label: string, run: () => Promise<T>): Promise<T> {
+        if (promptStream.isClosed) {
+          // 走到这里就说明收口早了一步:CLI 已经拿不到我们的答复了(它那一侧会
+          // 当场抛 `Stream closed`)。这一行是下一次排障的起点,不能省。
+          options.logger?.warn?.(
+            `[ClaudeCodeConnector] ${label} arrived after the input was closed`
+              + ` on ${request.localSessionId.slice(0, 8)} — the answer cannot reach the CLI`,
+          )
+        }
+        pendingControlRequests += 1
+        disarmSettleCloseTimer()
+        try {
+          return await run()
+        } finally {
+          pendingControlRequests -= 1
+          if (
+            pendingControlRequests === 0
+            && resultAwaitingControlRequests
+            && liveBackgroundTasks.size === 0
+            && activeTurn.awaitingResult === 0
+          ) {
+            resultAwaitingControlRequests = false
+            settleCloseTimer = setTimeout(() => {
+              settleCloseTimer = undefined
+              disarmBackgroundTimer()
+              closeInput('last pending control request settled after result')
+            }, 0)
+            settleCloseTimer.unref?.()
+          }
+        }
+      }
+
       if (request.abortSignal?.aborted) forwardAbort()
 
       const translator = new ClaudeCodeTurnTranslator(request.turn)
@@ -1492,6 +1613,8 @@ export function createClaudeCodeConnector(
        */
       const turnStartedAt = now()
       let turnOutcome: 'complete' | 'error' | 'aborted' = 'complete'
+      /** SDK 的消息流是不是自己跑到了尽头(见 `finally` 里那一刀 abort 的判据)。 */
+      let streamCompleted = false
       observeTurn('start')
 
       function observeTurn(phase: 'start' | 'end'): void {
@@ -1568,38 +1691,42 @@ export function createClaudeCodeConnector(
           ...(dialogKinds.length > 0
             ? {
                 supportedDialogKinds: dialogKinds,
-                onUserDialog: async (dialogRequest, { signal }) => {
-                  if (signal.aborted) return { behavior: 'cancelled' as const }
-                  if (!options.interactionHandler) return { behavior: 'cancelled' as const }
-                  const questions = userDialogToInteraction(
-                    dialogRequest.dialogKind,
-                    dialogRequest.payload ?? {},
-                  )
-                  // 认不出这个 payload。`cancelled` 是 SDK 规定的「答不上来」答法,
-                  // CLI 转而执行该 dialog 的默认行为(= E4 之前的形状)。
-                  if (questions.length === 0) return { behavior: 'cancelled' as const }
-                  try {
-                    const answer = await options.interactionHandler({
-                      connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
-                      localSessionId: request.localSessionId,
-                      ...(request.messageId ? { messageId: request.messageId } : {}),
-                      ...(dialogRequest.toolUseID ? { toolCallId: dialogRequest.toolUseID } : {}),
-                      questions,
-                    })
-                    if (answer.outcome !== 'answered') return { behavior: 'cancelled' as const }
-                    return {
-                      behavior: 'completed' as const,
-                      result: askUserQuestionOutput(questions, answer),
-                    }
-                  } catch (error) {
-                    options.logger?.warn?.(
-                      `[ClaudeCodeConnector] user dialog bridge failed: ${
-                        error instanceof Error ? error.message : String(error)
-                      }`,
+                // `withControlRequest`:这条问答也走 stdin,寿命跟审批同一条规矩。
+                onUserDialog: async (dialogRequest, { signal }) => withControlRequest(
+                  `onUserDialog(${dialogRequest.dialogKind})`,
+                  async () => {
+                    if (signal.aborted) return { behavior: 'cancelled' as const }
+                    if (!options.interactionHandler) return { behavior: 'cancelled' as const }
+                    const questions = userDialogToInteraction(
+                      dialogRequest.dialogKind,
+                      dialogRequest.payload ?? {},
                     )
-                    return { behavior: 'cancelled' as const }
-                  }
-                },
+                    // 认不出这个 payload。`cancelled` 是 SDK 规定的「答不上来」答法,
+                    // CLI 转而执行该 dialog 的默认行为(= E4 之前的形状)。
+                    if (questions.length === 0) return { behavior: 'cancelled' as const }
+                    try {
+                      const answer = await options.interactionHandler({
+                        connectorId: CLAUDE_CODE_AGENT_CONNECTOR_ID,
+                        localSessionId: request.localSessionId,
+                        ...(request.messageId ? { messageId: request.messageId } : {}),
+                        ...(dialogRequest.toolUseID ? { toolCallId: dialogRequest.toolUseID } : {}),
+                        questions,
+                      })
+                      if (answer.outcome !== 'answered') return { behavior: 'cancelled' as const }
+                      return {
+                        behavior: 'completed' as const,
+                        result: askUserQuestionOutput(questions, answer),
+                      }
+                    } catch (error) {
+                      options.logger?.warn?.(
+                        `[ClaudeCodeConnector] user dialog bridge failed: ${
+                          error instanceof Error ? error.message : String(error)
+                        }`,
+                      )
+                      return { behavior: 'cancelled' as const }
+                    }
+                  },
+                ),
               }
             : {}),
           /**
@@ -1621,7 +1748,10 @@ export function createClaudeCodeConnector(
            * 最想看见的。所以决定与记账在这里分层:内层只管答,外层只管记。
            */
           canUseTool: async (toolName, input, context) => {
-            const decision = await decideToolUse(toolName, input, context)
+            const decision = await withControlRequest(
+              `canUseTool(${normalizeToolName(toolName)})`,
+              () => decideToolUse(toolName, input, context),
+            )
             if (options.observer) {
               try {
                 options.observer.toolDecision({
@@ -1769,8 +1899,24 @@ export function createClaudeCodeConnector(
 
           if (message.type === 'result') {
             if (liveBackgroundTasks.size === 0 && !steerHoldsThisResult) {
-              disarmBackgroundTimer()
-              promptStream.close()
+              if (pendingControlRequests > 0) {
+                /**
+                 * **还欠 CLI 一条答复,这条 result 就不是终点**(2026-08-12)。
+                 *
+                 * 与后台子代理、追话是同一个形状的第三条:`AskUserQuestion` 的卡片
+                 * 可能在人眼前挂几分钟,而答复走的就是这条 stdin。在这里收口,
+                 * 答案会被扔进一根断掉的管子,CLI 之后每一次审批都当场
+                 * `Stream closed` —— 事故原文。
+                 */
+                resultAwaitingControlRequests = true
+                options.logger?.log?.(
+                  `[ClaudeCodeConnector] holding input open for ${pendingControlRequests}`
+                    + ' pending control request(s) (the CLI is still owed an answer)',
+                )
+              } else {
+                disarmBackgroundTimer()
+                closeInput('result with no background task, no steering, nothing owed')
+              }
             } else if (steerHoldsThisResult) {
               // 追话还在飞:输入通道原样留着,等它那一轮的 result。这里**不**武装
               // 后台防呆表 —— 那张表的措辞讲的是「后台子代理没收工」,拿它给追话
@@ -1791,7 +1937,7 @@ export function createClaudeCodeConnector(
                   `[ClaudeCodeConnector] background tasks still pending after ${backgroundTimeoutMs}ms`
                     + ` — closing input (tasks: ${[...liveBackgroundTasks].join(', ')})`,
                 )
-                promptStream.close()
+                closeInput('background fail-safe timed out')
               }, backgroundTimeoutMs)
               // 一个挂了十分钟的定时器不该把宿主进程钉在事件循环上。
               backgroundTimer.unref?.()
@@ -1830,6 +1976,9 @@ export function createClaudeCodeConnector(
             liveBackgroundTasks.size > 0 || steerHoldsThisResult,
           )
         }
+        // 流自己跑完了 —— 与「下游把生成器丢了」是两回事,`finally` 据此决定要不要
+        // 补一刀 abort。
+        streamCompleted = true
 
         /**
          * 防呆到点之后的收尾。走到这里说明我们**主动**掐了输入,那条真正的
@@ -1859,17 +2008,36 @@ export function createClaudeCodeConnector(
          * 一个不肯退出的 CLI 进程 —— 那是「审批通道活着」的代价里最不该付的一种。
          */
         disarmBackgroundTimer()
-        promptStream.close()
+        disarmSettleCloseTimer()
+        /**
+         * **拆解要拆全**(2026-08-12)。此前这里只关输入,不 abort ——
+         * 于是「下游把生成器丢了」(`return()`)那一支会留下一个 **stdin 已经
+         * EOF、进程却还活着**的 CLI:它照样往下跑,而它每一次 `canUseTool` 都会
+         * 当场 `Stream closed`。关管子和掐进程必须是同一个动作。
+         *
+         * 只在流**没跑完**时掐:正常收场的那一轮流已经自己结束了,再 abort 一次
+         * 只会在账上留下一个假的「被中断」。
+         */
+        if (!streamCompleted) abortController.abort()
+        closeInput('turn teardown')
         // 后台状态**必须**在这里收场。它和输入迭代器同一个道理:这是生成器唯一的
         // 收场出口,少了它,一次超时或 abort 会在气泡里留下一根永远走秒的状态条,
         // 而用户没有任何办法让它停 —— 正是 R6 第 3 条列出的那种坏结局。
         settleBackgroundOnExit()
         observeTurn('end')
         request.abortSignal?.removeEventListener('abort', forwardAbort)
-        abortControllers.delete(request.localSessionId)
-        // 登记表与 abortControllers 同生共死。漏删一条,下一次追话会打在一个已经
-        // 收口的输入迭代器上并被判成 `steered` —— 一句谎话,而且是最难查的那种
-        // (界面说插进去了,模型从没听见)。
+        /**
+         * 两张登记表同生共死,而且**都要认人**(2026-08-12)。
+         *
+         * `abortControllers.delete` 此前是无条件的:两轮短暂共存时(真机日志里
+         * 那两条只隔 5ms 的 `init`),先结束的那一轮会把**后一轮**的 abort 句柄
+         * 一起抹掉 —— 之后 `abort()` 变成一次静默的空操作,回合停不下来。
+         * 漏删同样有代价:下一次追话会打在一个已经收口的输入迭代器上并被判成
+         * `steered`,一句谎话(界面说插进去了,模型从没听见)。所以是「认人删」。
+         */
+        if (abortControllers.get(request.localSessionId) === abortController) {
+          abortControllers.delete(request.localSessionId)
+        }
         if (activeTurns.get(request.localSessionId) === activeTurn) {
           activeTurns.delete(request.localSessionId)
         }
@@ -1912,11 +2080,25 @@ export function createClaudeCodeConnector(
       return priority === 'now' ? 'steered' : 'queued'
     },
 
+    /**
+     * 走**整套**拆解(abort + 停表 + 收口),而不是只 abort 那个 controller。
+     *
+     * 只 abort 的形状是有代价的:SDK 的 `Query.streamInput` 会因为
+     * `signal.aborted` 跳出 for-await,随后无条件 `transport.endInput()` ——
+     * stdin 于是被**别人**关掉,连接器自己的账上一个字都没有。收口的理由必须
+     * 永远出自 `closeInput`,否则下一次 `Stream closed` 又只能靠猜。
+     */
     async interrupt(localSessionId: string): Promise<void> {
+      const active = activeTurns.get(localSessionId)
+      if (active) {
+        active.abort()
+        return
+      }
       abortControllers.get(localSessionId)?.abort()
     },
 
     async dispose(): Promise<void> {
+      for (const active of activeTurns.values()) active.abort()
       for (const controller of abortControllers.values()) controller.abort()
       abortControllers.clear()
       activeTurns.clear()
