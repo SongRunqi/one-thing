@@ -74,6 +74,7 @@
         <div class="config-id-row">
           <Input
             class="config-id-input"
+            variant="underline"
             type="text"
             size="small"
             :model-value="idDraft"

@@ -56,6 +56,7 @@
         <Input
           class="model-search-field"
           input-class="search-input"
+          variant="ledger"
           type="text"
           size="small"
           :model-value="searchQuery"
@@ -88,6 +89,7 @@
             ref="addModelInputRef"
             class="add-model-input"
             input-class="add-model-input-native"
+            variant="ledger"
             type="text"
             size="small"
             :model-value="newModelInput"

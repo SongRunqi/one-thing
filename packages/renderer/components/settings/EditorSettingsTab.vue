@@ -103,26 +103,26 @@
           label="Note Attachment Folder"
           description="Required for non-Obsidian note roots."
         >
-          <input
-            class="form-input"
-            :value="currentEditor.markdownNoteAttachmentDirectory"
+          <Input
+            variant="ledger"
+            :model-value="currentEditor.markdownNoteAttachmentDirectory"
             placeholder="Required for non-Obsidian note roots"
             spellcheck="false"
-            @input="updateEditor({ markdownNoteAttachmentDirectory: ($event.target as HTMLInputElement).value })"
-          >
+            @update:model-value="updateEditor({ markdownNoteAttachmentDirectory: $event })"
+          />
         </SettingRow>
 
         <SettingRow
           label="Project Attachment Folder"
           description="Where project note attachments are written."
         >
-          <input
-            class="form-input"
-            :value="currentEditor.markdownProjectAttachmentDirectory"
+          <Input
+            variant="ledger"
+            :model-value="currentEditor.markdownProjectAttachmentDirectory"
             placeholder="Default: project root"
             spellcheck="false"
-            @input="updateEditor({ markdownProjectAttachmentDirectory: ($event.target as HTMLInputElement).value })"
-          >
+            @update:model-value="updateEditor({ markdownProjectAttachmentDirectory: $event })"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -149,6 +149,7 @@
 
 <script setup lang="ts">
 import Switch from '@/components/common/Switch.vue'
+import Input from '@/components/common/Input.vue'
 import { computed } from 'vue'
 import type { AppSettings, EditorSettings } from '@/types'
 import {
@@ -235,16 +236,6 @@ function updateEditor(patch: EditorSettings) {
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-/* Path inputs: full-width, shrinkable, single-line with ellipsis. */
-.form-input {
-  width: 100%;
-  min-width: 0;
-  padding: 6px 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .app-input-number {

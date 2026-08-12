@@ -112,13 +112,13 @@
               label="FunASR WebSocket URL"
               hint="Required for streaming ASR. Example: ws://127.0.0.1:10095"
             >
-              <input
-                class="form-input"
-                :value="voice.asr.funasr.url"
+              <Input
+                variant="ledger"
+                :model-value="voice.asr.funasr.url"
                 placeholder="ws://127.0.0.1:10095"
                 spellcheck="false"
-                @input="updateFunASR({ url: value($event) })"
-              >
+                @update:model-value="updateFunASR({ url: $event })"
+              />
             </SettingsField>
           </div>
           <div
@@ -129,15 +129,15 @@
               label="Doubao API key"
               hint="One key covers both speech recognition and Doubao voices. Create it in the Volcano Engine speech console."
             >
-              <input
-                class="form-input"
+              <Input
+                variant="ledger"
                 type="password"
                 autocomplete="off"
-                :value="voice.doubao.apiKey"
+                :model-value="voice.doubao.apiKey"
                 placeholder="Volcano Engine API key"
                 spellcheck="false"
-                @input="updateDoubao({ apiKey: value($event) })"
-              >
+                @update:model-value="updateDoubao({ apiKey: $event })"
+              />
             </SettingsField>
           </div>
           <div
@@ -148,15 +148,15 @@
               label="OpenRouter API key"
               :hint="hasOpenRouterProviderKey ? 'Global key found. Fill this only to override it.' : 'Required for voice input.'"
             >
-              <input
-                class="form-input"
+              <Input
+                variant="ledger"
                 type="password"
                 autocomplete="off"
-                :value="voice.asr.openrouter.apiKey"
+                :model-value="voice.asr.openrouter.apiKey"
                 :placeholder="hasOpenRouterProviderKey ? 'Using global key' : 'sk-or-...'"
                 spellcheck="false"
-                @input="updateOpenRouterASR({ apiKey: value($event) })"
-              >
+                @update:model-value="updateOpenRouterASR({ apiKey: $event })"
+              />
             </SettingsField>
           </div>
         </SettingRow>
@@ -199,15 +199,15 @@
                 label="OpenRouter API key"
                 :hint="hasOpenRouterTTSKey ? 'Using the voice OpenRouter key, speech-to-text key, or global OpenRouter key.' : 'Required for OpenRouter TTS. Without it, replies fall back to System voice.'"
               >
-                <input
-                  class="form-input"
+                <Input
+                  variant="ledger"
                   type="password"
                   autocomplete="off"
-                  :value="voice.tts.openrouter.apiKey"
+                  :model-value="voice.tts.openrouter.apiKey"
                   :placeholder="openRouterTTSPlaceholder"
                   spellcheck="false"
-                  @input="updateOpenRouterTTS({ apiKey: value($event) })"
-                >
+                  @update:model-value="updateOpenRouterTTS({ apiKey: $event })"
+                />
               </SettingsField>
 
               <SettingsField
@@ -215,15 +215,15 @@
                 label="OpenAI API key"
                 :hint="hasOpenAIProviderKey ? 'Global OpenAI key found. Fill this only to override it.' : 'Required for OpenAI TTS. Without it, replies fall back to System voice.'"
               >
-                <input
-                  class="form-input"
+                <Input
+                  variant="ledger"
                   type="password"
                   autocomplete="off"
-                  :value="voice.tts.openai.apiKey"
+                  :model-value="voice.tts.openai.apiKey"
                   :placeholder="hasOpenAIProviderKey ? 'Using global key' : 'sk-...'"
                   spellcheck="false"
-                  @input="updateOpenAITTS({ apiKey: value($event) })"
-                >
+                  @update:model-value="updateOpenAITTS({ apiKey: $event })"
+                />
               </SettingsField>
 
               <SettingsField
@@ -231,15 +231,15 @@
                 label="Doubao API key"
                 hint="Shared with Doubao speech recognition; fill it once in either place."
               >
-                <input
-                  class="form-input"
+                <Input
+                  variant="ledger"
                   type="password"
                   autocomplete="off"
-                  :value="voice.doubao.apiKey"
+                  :model-value="voice.doubao.apiKey"
                   placeholder="Volcano Engine API key"
                   spellcheck="false"
-                  @input="updateDoubao({ apiKey: value($event) })"
-                >
+                  @update:model-value="updateDoubao({ apiKey: $event })"
+                />
               </SettingsField>
 
               <SettingsField
@@ -247,13 +247,13 @@
                 label="Qwen / CosyVoice URL"
                 hint="OpenAI-compatible /audio/speech base URL."
               >
-                <input
-                  class="form-input"
-                  :value="voice.tts.qwen.baseUrl"
+                <Input
+                  variant="ledger"
+                  :model-value="voice.tts.qwen.baseUrl"
                   placeholder="https://..."
                   spellcheck="false"
-                  @input="updateQwenTTS({ baseUrl: value($event) })"
-                >
+                  @update:model-value="updateQwenTTS({ baseUrl: $event })"
+                />
               </SettingsField>
 
               <SettingsField
@@ -284,13 +284,13 @@
                   aria-label="OpenRouter TTS model"
                   @update:model-value="selectOpenRouterTTSModel(String($event))"
                 />
-                <input
+                <Input
                   v-else
-                  class="form-input"
-                  :value="voice.tts.openrouter.model"
+                  variant="ledger"
+                  :model-value="voice.tts.openrouter.model"
                   spellcheck="false"
-                  @input="updateOpenRouterTTS({ model: value($event) })"
-                >
+                  @update:model-value="updateOpenRouterTTS({ model: $event })"
+                />
               </SettingsField>
               <SettingsField
                 label="Voice"
@@ -304,13 +304,13 @@
                   aria-label="OpenRouter TTS voice"
                   @update:model-value="updateOpenRouterTTS({ voice: String($event) })"
                 />
-                <input
+                <Input
                   v-else
-                  class="form-input"
-                  :value="voice.tts.openrouter.voice"
+                  variant="ledger"
+                  :model-value="voice.tts.openrouter.voice"
                   spellcheck="false"
-                  @input="updateOpenRouterTTS({ voice: value($event) })"
-                >
+                  @update:model-value="updateOpenRouterTTS({ voice: $event })"
+                />
               </SettingsField>
             </div>
 
@@ -353,22 +353,22 @@
                 label="Qwen / CosyVoice API key"
                 hint="Required for Qwen / CosyVoice. Without it, replies fall back to System voice."
               >
-                <input
-                  class="form-input"
+                <Input
+                  variant="ledger"
                   type="password"
                   autocomplete="off"
-                  :value="voice.tts.qwen.apiKey"
+                  :model-value="voice.tts.qwen.apiKey"
                   spellcheck="false"
-                  @input="updateQwenTTS({ apiKey: value($event) })"
-                >
+                  @update:model-value="updateQwenTTS({ apiKey: $event })"
+                />
               </SettingsField>
               <SettingsField label="Voice">
-                <input
-                  class="form-input"
-                  :value="voice.tts.qwen.voice"
+                <Input
+                  variant="ledger"
+                  :model-value="voice.tts.qwen.voice"
                   spellcheck="false"
-                  @input="updateQwenTTS({ voice: value($event) })"
-                >
+                  @update:model-value="updateQwenTTS({ voice: $event })"
+                />
               </SettingsField>
             </div>
 
@@ -392,20 +392,20 @@
               class="settings-grid settings-grid-compact provider-config-grid"
             >
               <SettingsField label="OpenAI TTS model">
-                <input
-                  class="form-input"
-                  :value="voice.tts.openai.model"
+                <Input
+                  variant="ledger"
+                  :model-value="voice.tts.openai.model"
                   spellcheck="false"
-                  @input="updateOpenAITTS({ model: value($event) })"
-                >
+                  @update:model-value="updateOpenAITTS({ model: $event })"
+                />
               </SettingsField>
               <SettingsField label="OpenAI voice">
-                <input
-                  class="form-input"
-                  :value="voice.tts.openai.voice"
+                <Input
+                  variant="ledger"
+                  :model-value="voice.tts.openai.voice"
                   spellcheck="false"
-                  @input="updateOpenAITTS({ voice: value($event) })"
-                >
+                  @update:model-value="updateOpenAITTS({ voice: $event })"
+                />
               </SettingsField>
             </div>
 
@@ -445,13 +445,13 @@
                 label="Wake phrase"
                 hint="Chinese characters, 4+ recommended (e.g. 你好小一)."
               >
-                <input
-                  class="form-input"
-                  :value="voice.wake.phrase"
+                <Input
+                  variant="ledger"
+                  :model-value="voice.wake.phrase"
                   placeholder="你好小一"
                   spellcheck="false"
-                  @input="updateWake({ phrase: value($event) })"
-                >
+                  @update:model-value="updateWake({ phrase: $event })"
+                />
               </SettingsField>
               <SettingsField
                 label="Sensitivity"
@@ -559,38 +559,38 @@
             />
           </SettingsField>
           <SettingsField label="Silence ms">
-            <input
-              class="form-input"
+            <Input
+              variant="ledger"
               type="number"
               min="300"
               max="10000"
-              :value="voice.vad.silenceMs"
-              @input="updateCustomSilenceMs(numberValue($event))"
-            >
+              :model-value="voice.vad.silenceMs"
+              @update:model-value="updateCustomSilenceMs(Number($event))"
+            />
           </SettingsField>
         </div>
 
         <div class="settings-grid">
           <SettingsField label="Energy threshold">
-            <input
-              class="form-input"
+            <Input
+              variant="ledger"
               type="number"
               min="0.001"
               max="0.25"
               step="0.001"
-              :value="voice.vad.energyThreshold"
-              @input="updateVAD({ energyThreshold: numberValue($event) })"
-            >
+              :model-value="voice.vad.energyThreshold"
+              @update:model-value="updateVAD({ energyThreshold: Number($event) })"
+            />
           </SettingsField>
           <SettingsField label="Max recording ms">
-            <input
-              class="form-input"
+            <Input
+              variant="ledger"
               type="number"
               min="3000"
               max="120000"
-              :value="voice.vad.maxRecordingMs"
-              @input="updateVAD({ maxRecordingMs: numberValue($event) })"
-            >
+              :model-value="voice.vad.maxRecordingMs"
+              @update:model-value="updateVAD({ maxRecordingMs: Number($event) })"
+            />
           </SettingsField>
         </div>
       </SettingsGroup>
@@ -613,12 +613,12 @@
             />
           </SettingsField>
           <SettingsField label="OpenAI ASR model">
-            <input
-              class="form-input"
-              :value="voice.asr.openai.model"
+            <Input
+              variant="ledger"
+              :model-value="voice.asr.openai.model"
               spellcheck="false"
-              @input="updateOpenAIASR({ model: value($event) })"
-            >
+              @update:model-value="updateOpenAIASR({ model: $event })"
+            />
           </SettingsField>
         </div>
 
@@ -627,12 +627,12 @@
             label="OpenRouter ASR model"
             hint="Use openai/whisper-1 if you want OpenRouter's OpenAI Whisper route. API keys and server URLs live under Voice input above."
           >
-            <input
-              class="form-input"
-              :value="voice.asr.openrouter.model"
+            <Input
+              variant="ledger"
+              :model-value="voice.asr.openrouter.model"
               spellcheck="false"
-              @input="updateOpenRouterASR({ model: value($event) })"
-            >
+              @update:model-value="updateOpenRouterASR({ model: $event })"
+            />
           </SettingsField>
         </div>
       </SettingsGroup>
@@ -642,6 +642,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -939,14 +940,6 @@ watch(() => voice.value.tts.provider, (provider) => {
     void loadOpenRouterTTSModels()
   }
 })
-
-function value(event: Event) {
-  return (event.target as HTMLInputElement | HTMLSelectElement).value
-}
-
-function numberValue(event: Event) {
-  return Number(value(event))
-}
 
 function updateVoice(updates: Partial<VoiceSettings>) {
   emit('update:settings', {
@@ -1654,11 +1647,6 @@ function normalizeASRTestError(error: any) {
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg));
-}
-
-/* .form-input visuals come from SettingsPage's global ledger styles. */
-.form-input {
-  width: 100%;
 }
 
 @media (max-width: 720px) {

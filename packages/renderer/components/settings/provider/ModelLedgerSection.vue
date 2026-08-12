@@ -8,30 +8,16 @@
     </div>
 
     <div class="ledger-toolbar">
-      <div class="ledger-search">
-        <Search
-          class="search-icon"
-          :size="13"
-        />
-        <input
-          v-model="ledger.searchQuery.value"
-          class="search-input"
-          type="text"
-          placeholder="Search models"
-          :spellcheck="false"
-          aria-label="Search models"
-        >
-        <Button
-          v-if="ledger.searchQuery.value"
-          unstyled
-          class="search-clear"
-          native-type="button"
-          aria-label="Clear search"
-          @click="ledger.searchQuery.value = ''"
-        >
-          <X :size="12" />
-        </Button>
-      </div>
+      <Input
+        v-model="ledger.searchQuery.value"
+        variant="ledger"
+        class="ledger-search"
+        type="search"
+        :prefix-icon="Search"
+        clearable
+        :spellcheck="false"
+        aria-label="Search models"
+      />
       <div
         class="ledger-chips"
         role="group"
@@ -260,16 +246,17 @@
 
           <div class="tune-line tune-foot">
             <template v-if="renamingRowKey === row.key">
-              <input
+              <Input
                 ref="renameInputRef"
                 v-model="renameValue"
+                variant="ledger"
+                size="small"
                 class="rename-input"
-                type="text"
                 :spellcheck="false"
                 aria-label="New model ID"
                 @keydown.enter.prevent="commitRename(row)"
                 @keydown.esc.prevent="cancelRename"
-              >
+              />
               <Button
                 unstyled
                 class="tune-action"
@@ -342,8 +329,9 @@
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
-import { Brain, ChevronDown, Eye, Image, Search, Star, Wrench, X } from 'lucide-vue-next'
+import { Brain, ChevronDown, Eye, Image, Search, Star, Wrench } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
+import Input from '@/components/common/Input.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import ProviderIcon from '../ProviderIcon.vue'
@@ -410,7 +398,7 @@ const TRISTATE_OPTIONS: Array<{
 const renamingRowKey = ref<string | null>(null)
 const renameValue = ref('')
 const renameError = ref('')
-const renameInputRef = ref<HTMLInputElement[] | HTMLInputElement | null>(null)
+const renameInputRef = ref<Array<InstanceType<typeof Input>> | InstanceType<typeof Input> | null>(null)
 const removeError = ref<string | null>(null)
 
 function startRename(row: LedgerRow) {
@@ -492,49 +480,12 @@ function removeTitle(row: LedgerRow): string {
   padding-bottom: 10px;
 }
 
+/* Toolbar search: `<Input variant="ledger">` with prefix icon + built-in
+   clear; only the width budget lives here. */
 .ledger-search {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   min-width: 180px;
   max-width: 260px;
   flex: 1;
-  padding: 4px 8px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
-}
-
-.ledger-search:focus-within {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
-}
-
-.search-icon {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg));
-  flex: none;
-}
-
-.search-input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg));
-  font-size: 12.5px;
-  outline: none;
-}
-
-.search-input::placeholder {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg));
-}
-
-.search-clear {
-  display: inline-flex;
-  padding: 2px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg));
-  cursor: pointer;
-}
-
-.search-clear:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg));
 }
 
 .ledger-chips {
@@ -864,19 +815,15 @@ function removeTitle(row: LedgerRow): string {
   text-decoration-color: var(--ui-status-danger-fg, var(--color-danger));
 }
 
+/* Inline rename: `<Input variant="ledger">` owns the frame; the mono face
+   and width floor stay local. */
 .rename-input {
   min-width: 220px;
-  padding: 3px 8px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
-  background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg));
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  outline: none;
 }
 
-input.rename-input:focus {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
+.rename-input :deep(.app-input-inner) {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
 }
 
 .ledger-empty {

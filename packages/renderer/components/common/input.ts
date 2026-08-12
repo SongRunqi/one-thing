@@ -12,6 +12,18 @@ export type InputNativeType =
   | 'url'
   | 'tel'
   | 'number'
+  | 'date'
+
+/**
+ * The registers form controls are drawn in (mirrors Select's variant):
+ *  - `box`    the rounded input surface (chat, panels) — the default.
+ *  - `ledger` the settings-area drafting box: square hairline frame, no fill.
+ *             Reproduces what `SettingsPage`'s `:deep(.form-input)` rules drew,
+ *             so a migrated tab is visually unchanged.
+ *  - `underline` the line IS the control (paper dialogs, room sheets): no
+ *             frame, one hairline underneath that inks up on focus.
+ */
+export type InputVariant = 'box' | 'ledger' | 'underline'
 
 export interface InputAutosizeConfig {
   minRows?: number

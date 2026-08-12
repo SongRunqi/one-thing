@@ -21,26 +21,26 @@
           label="Proxy URL"
           description="Supports http, https, and socks5 proxies. Authentication can be included in the URL."
         >
-          <input
-            class="form-input"
-            :value="proxy.url"
+          <Input
+            variant="ledger"
+            :model-value="proxy.url"
             placeholder="http://127.0.0.1:7890 or socks5://127.0.0.1:7890"
             spellcheck="false"
-            @input="updateProxy({ url: ($event.target as HTMLInputElement).value })"
-          >
+            @update:model-value="updateProxy({ url: $event })"
+          />
         </SettingRow>
 
         <SettingRow
           label="Bypass Rules"
           description="Separate hosts with semicolons or commas. Add a host here when that service should use direct connection."
         >
-          <input
-            class="form-input"
-            :value="proxy.bypassRules || ''"
+          <Input
+            variant="ledger"
+            :model-value="proxy.bypassRules || ''"
             placeholder="localhost;127.0.0.1;::1;*.local"
             spellcheck="false"
-            @input="updateProxy({ bypassRules: ($event.target as HTMLInputElement).value })"
-          >
+            @update:model-value="updateProxy({ bypassRules: $event })"
+          />
         </SettingRow>
 
         <SettingRow>
@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Input from '@/components/common/Input.vue'
 import Switch from '@/components/common/Switch.vue'
 import { computed, ref, toRaw } from 'vue'
 import type { AppSettings, ProxySettings } from '@/types'
@@ -145,16 +146,6 @@ async function testProxy() {
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-/* Proxy URL / bypass rules: full-width, shrinkable, single line + ellipsis. */
-.form-input {
-  width: 100%;
-  min-width: 0;
-  padding: 6px 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .test-btn {

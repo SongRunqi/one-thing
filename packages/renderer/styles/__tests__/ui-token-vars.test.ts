@@ -12,6 +12,9 @@ const componentStyleRoots = ['components', 'editor']
 const componentStyleFiles = ['styles/components.css']
 const directColorAllowedFiles = new Set([
   'components/settings/ProviderIcon.vue',
+  // Provider identity palette for the usage chart (brand-adjacent series colors
+  // that must stay theme-independent) — same category as ProviderIcon above.
+  'components/settings/UsageSettingsPanel.vue',
 ])
 const styleFileExtensions = new Set(['.vue', '.ts', '.css'])
 const legacyColorVars = new Set([
@@ -400,6 +403,7 @@ describe('renderer UI semantic variables', () => {
     const toolContentPreview = readRendererFile('components/chat/ToolContentPreview.vue')
     const messageBubble = readRendererFile('components/chat/message/MessageBubble.vue')
     const messageThinking = readRendererFile('components/chat/message/MessageThinking.vue')
+    const thoughtHeader = readRendererFile('components/chat/message/ThoughtHeader.vue')
     const thinkToggle = readRendererFile('components/chat/ThinkToggle.vue')
     const inputBox = readRendererFile('components/chat/InputBox.vue')
     const chatWindow = readRendererFile('components/chat/ChatWindow.vue')
@@ -435,7 +439,11 @@ describe('renderer UI semantic variables', () => {
     )
     expect(messageBubble).toContain('var(--ui-message-user-solid-bg')
     expect(messageBubble).toContain('var(--ui-message-user-shadow')
-    expect(messageBubble).toContain('--waiting-fg: var(--ui-message-thinking-fg')
+    // 等待行的墨色跟着 ThoughtHeader 走(rail 内的 `.generation-waiting` 和
+    // 消息顶部的等待行现在是同一个组件),所以断言落在它身上,而不再落在
+    // MessageBubble 里那份已经拆掉的本地 `--waiting-fg`。
+    expect(thoughtHeader).toContain('--thought-fg: var(--ui-message-thinking-fg')
+    expect(thoughtHeader).not.toContain('var(--ui-message-thinking-fg,')
     expect(messageBubble).toContain('--reasoning-fg: var(--ui-message-thinking-fg')
     expect(messageThinking).toContain('--thinking-fg: var(--ui-message-thinking-fg')
     expect(thinkToggle).toContain('--think-accent: var(--ui-message-thinking-fg);')

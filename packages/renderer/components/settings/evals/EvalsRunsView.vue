@@ -77,23 +77,24 @@
 
           <label class="evals-form-label">
             Model
-            <input
+            <Input
               v-model="runForm.model"
-              type="text"
-              class="evals-form-input"
+              variant="ledger"
               placeholder="deepseek-v4-pro"
-            >
+            />
           </label>
 
           <label class="evals-form-label">
             Runs (k)
-            <input
-              v-model.number="runForm.runs"
+            <Input
+              :model-value="runForm.runs"
+              variant="ledger"
               type="number"
               min="1"
               max="10"
-              class="evals-form-input evals-form-input-narrow"
-            >
+              class="evals-form-input-narrow"
+              @update:model-value="runForm.runs = Number($event)"
+            />
           </label>
 
           <button
@@ -336,6 +337,7 @@
 import { ref, computed, onMounted } from "vue";
 import Checkbox from "@/components/common/Checkbox.vue";
 import ErrorNote from "@/components/common/ErrorNote.vue";
+import Input from "@/components/common/Input.vue";
 import Select from "@/components/common/Select.vue";
 import Tooltip from "@/components/common/Tooltip.vue";
 import type { SelectOptionLike } from "@/components/common/select";
@@ -923,12 +925,6 @@ function handleCancelRun() {
   font-size: 12px;
   color: var(--settings-ink-3);
   font-weight: 520;
-}
-
-.evals-form-input,
-input.evals-form-input:focus {
-  outline: none;
-  border-color: var(--settings-accent);
 }
 
 .evals-form-input-narrow {

@@ -11,13 +11,13 @@
       <label class="field">
         <span class="field-label">Directory</span>
         <span class="field-row">
-          <input
+          <Input
             v-model="path"
+            variant="underline"
             class="field-input is-mono"
-            type="text"
             placeholder="/absolute/path/to/skills"
             spellcheck="false"
-          >
+          />
           <button
             v-if="canBrowse"
             class="text-action"
@@ -32,12 +32,12 @@
 
       <label class="field">
         <span class="field-label">Label <em>optional</em></span>
-        <input
+        <Input
           v-model="label"
+          variant="underline"
           class="field-input"
-          type="text"
           placeholder="e.g. Team skills"
-        >
+        />
       </label>
 
       <div class="field">
@@ -83,6 +83,7 @@ import { computed, ref, watch } from 'vue'
 import type { AgentDefinition } from '@/types'
 import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
 import type { SelectOptionLike } from '@/components/common/select'
 
@@ -205,31 +206,11 @@ async function submit() {
   min-width: 0;
 }
 
-/* Underline inputs: the line is the control. */
-.field-input {
-  appearance: none;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--ui-border-default-border);
-  border-radius: 0;
-  padding: 4px 0 5px;
-  font-size: 13px;
-  color: var(--ui-text-primary-fg);
-  transition: border-color var(--duration-fast) var(--ease-default);
-}
-
-.field-input.is-mono {
+/* Underline inputs: the line is the control, drawn by `<Input variant="underline">`;
+   the mono face is the one local accent. */
+.field-input.is-mono :deep(.app-input-inner) {
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-}
-
-input.field-input:focus {
-  outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg);
-}
-
-.field-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 

@@ -30,22 +30,20 @@
     <div class="dialog-body">
       <div class="form-group">
         <label class="form-label">Provider Name <span class="required">*</span></label>
-        <input
+        <Input
           v-model="form.name"
-          type="text"
-          class="form-input"
+          variant="underline"
           placeholder="e.g., My Ollama, Together AI..."
-        >
+        />
       </div>
 
       <div class="form-group">
         <label class="form-label">Description</label>
-        <input
+        <Input
           v-model="form.description"
-          type="text"
-          class="form-input"
+          variant="underline"
           placeholder="Optional description..."
-        >
+        />
       </div>
 
       <div class="form-group">
@@ -91,12 +89,11 @@
 
       <div class="form-group">
         <label class="form-label">Base URL <span class="required">*</span></label>
-        <input
+        <Input
           v-model="form.baseUrl"
-          type="text"
-          class="form-input"
+          variant="underline"
           placeholder="e.g., http://localhost:11434/v1"
-        >
+        />
         <p class="form-hint">
           The API endpoint URL (without /chat/completions)
         </p>
@@ -104,12 +101,12 @@
 
       <div class="form-group">
         <label class="form-label">API Key</label>
-        <input
+        <Input
           v-model="form.apiKey"
+          variant="underline"
           type="password"
-          class="form-input"
           placeholder="Leave empty if not required..."
-        >
+        />
         <p class="form-hint">
           Some local servers don't require an API key
         </p>
@@ -117,12 +114,11 @@
 
       <div class="form-group">
         <label class="form-label">Default Model</label>
-        <input
+        <Input
           v-model="form.model"
-          type="text"
-          class="form-input"
+          variant="underline"
           placeholder="e.g., llama3, mistral..."
-        >
+        />
       </div>
 
       <ErrorNote
@@ -165,6 +161,7 @@
 import Button from '@/components/common/Button.vue'
 import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Input from '@/components/common/Input.vue'
 import { computed, ref, watch, type CSSProperties } from 'vue'
 
 export interface CustomProviderForm {
@@ -280,31 +277,7 @@ function handleSave() {
   color: var(--ui-status-danger-fg, var(--danger));
 }
 
-/* Underline inputs: the line is the control. */
-.form-input {
-  width: 100%;
-  min-width: 0;
-  appearance: none;
-  padding: 4px 0 5px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--ui-border-default-border);
-  border-radius: 0;
-  color: var(--ui-text-primary-fg);
-  font-size: 13px;
-  outline: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: border-color var(--duration-normal) var(--ease-default);
-}
-
-input.form-input:focus {
-  border-bottom-color: var(--ui-accent-primary-fg);
-}
-
-.form-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-}
+/* Underline inputs: the line is the control, drawn by `<Input variant="underline">`. */
 
 .form-hint {
   font-size: 11px;

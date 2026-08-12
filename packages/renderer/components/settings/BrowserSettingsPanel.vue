@@ -7,6 +7,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { Check } from 'lucide-vue-next'
+import Input from '@/components/common/Input.vue'
 import { BROWSER_SEARCH_ENGINES, DEFAULT_BROWSER_SEARCH_ENGINE_ID } from '@shared/ipc'
 import { platformApi } from '@/platform'
 import { useBrowserProfilesStore } from '@/stores/browserProfiles'
@@ -168,14 +169,14 @@ function onRemoveClick(id: string): void {
       </button>
 
       <div class="bs-add">
-        <input
+        <Input
           v-model="newName"
+          variant="ledger"
           class="bs-add-input"
-          type="text"
           spellcheck="false"
           placeholder="新配置名称（如：工作、个人）"
           @keydown.enter="addProfile"
-        >
+        />
         <button
           class="bs-add-btn"
           type="button"
@@ -284,20 +285,11 @@ function onRemoveClick(id: string): void {
   width: 10px; height: 1px;
   background: color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border)) 45%, transparent);
 }
+/* Add-profile field: `<Input variant="ledger">` owns the paint; only the
+   flex layout lives here. */
 .bs-add-input {
   flex: 1;
   min-width: 0;
-  padding: 6px 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border)) 52%, transparent);
-  border-radius: var(--radius-xs, 4px);
-  background: transparent;
-  font-size: 12.5px;
-  color: var(--ui-text-primary-fg);
-  outline: none;
-}
-input.bs-add-input:focus {
-  border-color: var(--ui-accent-primary-fg);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg) 28%, transparent);
 }
 .bs-add-btn {
   font-family: var(--font-mono, monospace);

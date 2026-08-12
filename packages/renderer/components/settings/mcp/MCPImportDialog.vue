@@ -133,9 +133,11 @@
         <p class="import-description">
           Paste a JSON configuration or command line to add a server.
         </p>
-        <textarea
+        <Input
           v-model="pasteContent"
-          class="form-textarea"
+          type="textarea"
+          variant="ledger"
+          class="paste-textarea"
           placeholder="Paste JSON config or command line:
 
 {&quot;command&quot;: &quot;npx&quot;, &quot;args&quot;: [&quot;-y&quot;, &quot;@modelcontextprotocol/server-filesystem&quot;, &quot;/path&quot;]}
@@ -143,7 +145,7 @@
 or:
 
 npx -y @modelcontextprotocol/server-filesystem /path"
-          rows="6"
+          :rows="6"
           @input="parsePasteContent"
         />
         <div
@@ -275,13 +277,12 @@ npx -y @modelcontextprotocol/server-filesystem /path"
               v-if="param.type === 'path'"
               class="path-input-group"
             >
-              <input
+              <Input
                 v-model="presetParams[param.key]"
-                type="text"
-                class="form-input"
+                variant="underline"
                 :placeholder="param.placeholder"
                 @input="updatePresetServer"
-              >
+              />
               <Button
                 unstyled
                 class="browse-btn"
@@ -290,14 +291,14 @@ npx -y @modelcontextprotocol/server-filesystem /path"
                 Browse
               </Button>
             </div>
-            <input
+            <Input
               v-else
               v-model="presetParams[param.key]"
+              variant="underline"
               :type="param.isEnvVar ? 'password' : 'text'"
-              class="form-input"
               :placeholder="param.placeholder"
               @input="updatePresetServer"
-            >
+            />
           </div>
         </div>
       </div>
@@ -362,6 +363,7 @@ import Button from '@/components/common/Button.vue'
 import Checkbox from '@/components/common/Checkbox.vue'
 import Dialog from '@/components/common/Dialog.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
+import Input from '@/components/common/Input.vue'
 import { ref, computed, watch, h, type CSSProperties } from 'vue'
 import type { MCPServerConfig } from '@/types'
 import { MCP_PRESETS, PRESET_CATEGORIES, type MCPPreset, type PresetCategory } from '@/data/mcpPresets'
@@ -786,32 +788,12 @@ defineExpose({
   flex-shrink: 0;
 }
 
-/* JSON paste area: mono behind a square hairline, no filled block */
-.form-textarea {
-  width: 100%;
-  min-width: 0;
-  appearance: none;
-  padding: 8px 10px;
-  border: 1px solid var(--ui-border-default-border);
-  border-radius: 0;
+/* JSON paste area: mono behind a square hairline — the box is
+   `<Input type="textarea" variant="ledger">`, the mono face lives here. */
+.paste-textarea :deep(.app-input-textarea) {
+  font-family: var(--font-mono, monospace);
   font-size: 12px;
-  font-family: var(--font-mono, monospace);
-  background: transparent;
-  color: var(--ui-text-primary-fg);
-  resize: vertical;
   line-height: 1.5;
-  transition: border-color var(--duration-fast) var(--ease-default);
-}
-
-textarea.form-textarea:focus {
-  outline: none;
-  border-color: var(--ui-accent-primary-fg);
-  box-shadow: none;
-}
-
-.form-textarea::placeholder {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-  font-family: var(--font-mono, monospace);
 }
 
 .parse-result {
@@ -995,38 +977,14 @@ textarea.form-textarea:focus {
   margin-bottom: 5px;
 }
 
-/* Underline inputs: the line is the control */
-.form-input {
-  width: 100%;
-  min-width: 0;
-  appearance: none;
-  padding: 4px 0 5px;
-  border: none;
-  border-bottom: 1px solid var(--ui-border-default-border);
-  border-radius: 0;
-  font-size: 13px;
-  background: transparent;
-  color: var(--ui-text-primary-fg);
-  transition: border-color var(--duration-fast) var(--ease-default);
-}
-
-input.form-input:focus {
-  outline: none;
-  border-bottom-color: var(--ui-accent-primary-fg);
-  box-shadow: none;
-}
-
-.form-input::placeholder {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
-}
-
+/* Underline inputs: the line is the control, drawn by `<Input variant="underline">`. */
 .path-input-group {
   display: flex;
   align-items: baseline;
   gap: 10px;
 }
 
-.path-input-group .form-input {
+.path-input-group :deep(.app-input) {
   flex: 1;
   min-width: 0;
 }

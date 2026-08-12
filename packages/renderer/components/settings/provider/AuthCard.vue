@@ -62,14 +62,13 @@
     >
       <span class="panel-hint">{{ codeEntryInfo.instructions }}</span>
       <div class="code-entry-form">
-        <input
-          :value="manualCode"
-          type="text"
-          class="code-input"
+        <Input
+          variant="ledger"
+          :model-value="manualCode"
           placeholder="Paste authorization code here..."
-          @input="$emit('update:manualCode', ($event.target as HTMLInputElement).value)"
+          @update:model-value="$emit('update:manualCode', $event)"
           @keydown.enter="$emit('submit-code')"
-        >
+        />
         <Button
           unstyled
           class="auth-button"
@@ -95,6 +94,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Input from '@/components/common/Input.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import { computed } from 'vue'
 import ProviderIcon from '../ProviderIcon.vue'
@@ -304,27 +304,6 @@ const subtitle = computed(() => {
   gap: 8px;
 }
 
-.code-input {
-  min-width: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
-  border-radius: 0;
-  background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg));
-  font: inherit;
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: border-color var(--duration-fast) var(--ease-default);
-}
-
-input.code-input:focus {
-  outline: none;
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
-}
-
-.code-input::placeholder {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg));
-}
+/* Code entry: `<Input variant="ledger">` owns the square frame + accent focus. */
 </style>
 

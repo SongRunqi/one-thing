@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // UI style checker — the enforcement half of docs/design/ui-system.md.
 //
-// 十一条行级规则,扫 packages/renderer,输出 `[ui] failed: <相对路径>:<行号> <规则名>`。
+// 十二条行级规则,扫 packages/renderer,输出 `[ui] failed: <相对路径>:<行号> <规则名>`。
 // 刻意只做行级正则 + 极轻量的分区/选择器跟踪,不做 CSS/AST 解析:方案 §4 的判断是
 // 维护成本必须低到没人想绕开它。误报走文件级白名单注释 `/* ui-gate-allow: <rule> */`
 // (也认 `// ui-gate-allow:` 和 `<!-- ui-gate-allow: -->`;多条用逗号分隔,`all` 全放)。
@@ -105,6 +105,31 @@ const SURFACE_REGION_BACKGROUND =
 const SURFACE_LITERAL_EXEMPT_DIRS = ['components/common/', 'styles/']
 const SURFACE_STATE_SELECTOR =
   /:(hover|active|focus|focus-visible|focus-within|checked|disabled)\b|\.(is-active|is-selected|is-current|active|selected)\b/
+
+/**
+ * `overscroll-contain-chat` 的两个常量。
+ *
+ * 治的是**滚轮死区**:内容不满 max-height 的盒子,Chrome 照样把它当 scroll container
+ * (声明了 `overflow: auto` 就算),`overscroll-behavior: contain` 于是把滚轮**吞掉**
+ * 而不是链给祖先 —— 鼠标停在工具面板上一动不动(2026-08-06 真机反馈,CollapsePanel.vue
+ * 里另有同源判例注释)。`utils/scroll-chain.ts` 的 `chainWheelToScrollableAncestor`
+ * 对滚不动的盒子直接放行、不接管,所以它救不了这一格。
+ *
+ * 判据不是"chat 目录里禁用 contain" —— 侧栏面板、复合器抽屉、导航 rail 那些**真**
+ * 有独立滚动区的面,contain 是正当的边界声明。判据是**边界已经交给了 JS**:
+ *  · 文件自己引了 `utils/scroll-chain`(根上挂了 @wheel handler),或
+ *  · 文件渲染在某个这样的根**之内**(下面这张小表,逐个核对过挂载点)。
+ * 这两类文件的滚轮边界由 handler owns —— 它只在真能滚且到边时才 preventDefault,
+ * CSS 再写一次 contain 就只剩死区这一个效果。
+ *
+ * 新的工具面板一接 `chainWheelToScrollableAncestor` 就自动进入这条规则的射程,
+ * 不必回来登记;表里只放"自己不引 helper、但活在 helper 根之内"的子组件。
+ */
+const WHEEL_CHAIN_SUBTREE_FILES = new Set([
+  // 都渲染在 ToolStepDetails / ToolResultRenderer 的根之内(那两个根挂着 @wheel)。
+  'components/chat/ToolArgsDraft.vue',
+  'components/chat/WebSearchResultRenderer.vue',
+])
 
 /**
  * zones: 规则只在它讲得通的分区里跑。
@@ -220,6 +245,20 @@ const RULES = [
       !/(contenteditable|caret)/i.test(line),
   },
   {
+    name: 'overscroll-contain-chat',
+    zones: ['style'],
+    // 滚轮边界已由 @wheel → chainWheelToScrollableAncestor 接管的 chat 面板里,
+    // 再写 contain 只剩"死区"这一个效果。完整理由见上面那段。
+    test: (line, ctx) => {
+      // 注释里说明"这里为什么不写 contain"不是违规(与 transition-literal 同一条豁免)。
+      const trimmed = line.trimStart()
+      if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return false
+      return /overscroll-behavior(-[xy]|-inline|-block)?:\s*contain/.test(line) &&
+        ctx.rel.startsWith('components/chat/') &&
+        (ctx.usesWheelChain || WHEEL_CHAIN_SUBTREE_FILES.has(ctx.rel))
+    },
+  },
+  {
     name: 'surface-literal',
     zones: ['style'],
     // 区域面自绘 —— 四枚区域面 token 的直接消费,应当交给 `surface="<tier>"` 档位画。
@@ -297,6 +336,8 @@ for (const file of collectFiles(scanRoot).sort()) {
   // 服务本体与它的宿主也算"用服务的文件"。
   const usesConfirmService = /composables\/useConfirm/.test(text)
     || rel === 'composables/useConfirm.ts'
+  // 边界交给了 JS 的面(overscroll-contain-chat 的判据之一)。
+  const usesWheelChain = /utils\/scroll-chain/.test(text)
   let selector = ''
   // 最近一个开标签名,只为 title-attr 分辨"prop 还是原生属性"服务。
   let tag = ''
@@ -318,7 +359,7 @@ for (const file of collectFiles(scanRoot).sort()) {
       if (openTag) tag = openTag[1]
     }
 
-    const ctx = { rel, selector, line: i + 1, usesConfirmService, tag }
+    const ctx = { rel, selector, line: i + 1, usesConfirmService, usesWheelChain, tag }
     for (const rule of RULES) {
       if (allowed.has(rule.name)) continue
       if (!zoneMatches(rule.zones, zone)) continue

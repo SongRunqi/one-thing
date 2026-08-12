@@ -100,6 +100,9 @@
           :name="name"
           :maxlength="maxlength"
           :minlength="minlength"
+          :min="min"
+          :max="max"
+          :step="step"
           :placeholder="placeholder"
           :disabled="disabled"
           :readonly="readonly"
@@ -221,6 +224,7 @@ import type {
   InputResize,
   InputSize,
   InputStyle,
+  InputVariant,
 } from './input'
 
 defineOptions({
@@ -230,7 +234,11 @@ defineOptions({
 const props = withDefaults(defineProps<{
   modelValue?: InputModelValue
   type?: InputNativeType | 'textarea'
+  variant?: InputVariant
   size?: InputSize
+  min?: string | number
+  max?: string | number
+  step?: string | number
   disabled?: boolean
   readonly?: boolean
   clearable?: boolean
@@ -266,7 +274,11 @@ const props = withDefaults(defineProps<{
 }>(), {
   modelValue: '',
   type: 'text',
+  variant: 'box',
   size: 'default',
+  min: undefined,
+  max: undefined,
+  step: undefined,
   disabled: false,
   readonly: false,
   clearable: false,
@@ -379,6 +391,7 @@ const affixIconSize = computed(() => {
 })
 
 const inputClasses = computed(() => [
+  `app-input--${props.variant}`,
   `app-input--${props.size}`,
   {
     'is-disabled': props.disabled,
@@ -621,17 +634,91 @@ defineExpose({
   padding: 0 11px;
 }
 
-.app-input-control:hover,
-.app-input-textarea-wrap:hover,
-.app-input.is-focused .app-input-control,
-.app-input.is-focused .app-input-textarea-wrap {
+/* box variant (default): rounded surface, accent border + glow on focus. */
+.app-input--box .app-input-control:hover,
+.app-input--box .app-input-textarea-wrap:hover,
+.app-input--box.is-focused .app-input-control,
+.app-input--box.is-focused .app-input-textarea-wrap {
   border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg));
   background: var(--ui-surface-elevated-bg);
 }
 
-.app-input.is-focused .app-input-control,
-.app-input.is-focused .app-input-textarea-wrap {
+.app-input--box.is-focused .app-input-control,
+.app-input--box.is-focused .app-input-textarea-wrap {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg) 24%, transparent);
+}
+
+/* ————— ledger variant (设置区制图盒) —————
+   The settings page draws every field as a square hairline box with no fill;
+   this is that box, owned by the component instead of by SettingsPage's
+   `:deep(.form-input)` rules the migrated markup no longer matches. Mirrors
+   Select's ledger variant — the `--settings-*` reads are deliberate: inside
+   SettingsPage they pick up the page's ink scale, outside it they fall
+   through to the app tokens. */
+.app-input--ledger .app-input-control {
+  min-height: 32px;
+  border-color: var(--settings-rule, var(--ui-border-default-border));
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-ink, var(--ui-text-primary-fg));
+}
+
+.app-input--ledger .app-input-textarea-wrap {
+  border-color: var(--settings-rule, var(--ui-border-default-border));
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-ink, var(--ui-text-primary-fg));
+}
+
+.app-input--ledger .app-input-control:hover,
+.app-input--ledger .app-input-textarea-wrap:hover {
+  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 40%, transparent);
+  background: transparent;
+}
+
+.app-input--ledger.is-focused .app-input-control,
+.app-input--ledger.is-focused .app-input-textarea-wrap {
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-input--ledger .app-input-inner::placeholder,
+.app-input--ledger .app-input-textarea::placeholder {
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
+}
+
+.app-input--ledger .app-input-prefix,
+.app-input--ledger .app-input-suffix {
+  color: var(--settings-ink-4, var(--ui-text-muted-fg));
+}
+
+/* ————— underline variant (纸面对话框) —————
+   The line IS the control (paper dialogs, room sheets): no frame, one
+   hairline underneath that inks up on focus. Mirrors Select's underline
+   variant; replaces the per-dialog `border-bottom` input rules. */
+.app-input--underline .app-input-control {
+  min-height: 0;
+  padding: 4px 0 5px;
+  border: none;
+  border-bottom: 1px solid var(--ui-border-default-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.app-input--underline .app-input-inner {
+  min-height: 0;
+}
+
+.app-input--underline .app-input-control:hover,
+.app-input--underline.is-focused .app-input-control {
+  border-bottom-color: var(--ui-accent-primary-fg);
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-input--underline .app-input-inner::placeholder {
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
 }
 
 .app-input.is-disabled {
@@ -652,6 +739,15 @@ defineExpose({
   background: transparent;
   color: inherit;
   font: inherit;
+}
+
+/* The wrapper draws the focus ring (border + box-shadow via .is-focused), so
+   the native control must never show its own outline. Bare `outline: 0` above
+   loses to the settings page's catch-all `:deep(input:focus-visible)` outline
+   (specificity 0-2-1) — keep an explicit focus-visible rule here (0-3-0). */
+.app-input-inner:focus-visible,
+.app-input-textarea:focus-visible {
+  outline: none;
 }
 
 .app-input-inner {

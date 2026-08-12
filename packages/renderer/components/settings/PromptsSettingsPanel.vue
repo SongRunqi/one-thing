@@ -5,14 +5,14 @@
       description="Create reusable prompts that can be inserted from Search Everywhere or the composer."
     >
       <div class="prompt-toolbar">
-        <label class="prompt-search">
-          <Search :size="14" />
-          <input
-            v-model="query"
-            type="search"
-            placeholder="Search prompts"
-          >
-        </label>
+        <Input
+          v-model="query"
+          variant="ledger"
+          class="prompt-search"
+          type="search"
+          :prefix-icon="Search"
+          placeholder="Search prompts"
+        />
         <Button
           unstyled
           class="prompt-primary-btn"
@@ -111,23 +111,21 @@
         <SettingsGroup class="prompt-form-group">
           <SettingRow layout="stack">
             <SettingsField label="Name">
-              <input
+              <Input
                 v-model="form.title"
-                class="prompt-input"
-                type="text"
+                variant="ledger"
                 placeholder="Code review checklist"
-              >
+              />
             </SettingsField>
           </SettingRow>
 
           <SettingRow layout="stack">
             <SettingsField label="Description">
-              <input
+              <Input
                 v-model="form.description"
-                class="prompt-input"
-                type="text"
+                variant="ledger"
                 placeholder="Optional short preview"
-              >
+              />
             </SettingsField>
           </SettingRow>
 
@@ -136,21 +134,21 @@
               label="Tags"
               hint="Separate tags with commas."
             >
-              <input
+              <Input
                 v-model="tagsInput"
-                class="prompt-input"
-                type="text"
+                variant="ledger"
                 placeholder="writing, code, planning"
-              >
+              />
             </SettingsField>
           </SettingRow>
 
           <SettingRow layout="stack">
             <SettingsField label="Prompt">
-              <textarea
+              <Input
                 v-model="form.body"
-                class="prompt-textarea"
-                rows="14"
+                type="textarea"
+                variant="ledger"
+                :rows="14"
                 placeholder="Write the reusable prompt text..."
               />
             </SettingsField>
@@ -205,6 +203,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Input from '@/components/common/Input.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { NotebookPen, Plus, Save, Search, Trash2 } from 'lucide-vue-next'
 import { usePromptsStore } from '@/stores/prompts'
@@ -388,34 +387,11 @@ onMounted(async () => {
   gap: 10px;
 }
 
+/* The search field is `<Input variant="ledger">` with a prefix icon;
+   only layout lives here. */
 .prompt-search {
   flex: 1;
   min-width: 0;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
-  border-radius: 0;
-  background: transparent;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg));
-  transition: border-color var(--duration-fast) var(--ease-default);
-}
-
-.prompt-search:focus-within {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
-}
-
-.prompt-search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg));
-  font: inherit;
-  font-size: 13px;
 }
 
 .prompt-workspace {
@@ -599,33 +575,8 @@ onMounted(async () => {
   flex-direction: column;
 }
 
-/* Drafting-box fields: square, transparent, focus moves the line to accent. */
-.prompt-input,
-.prompt-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
-  border-radius: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg));
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.45;
-  padding: 8px 9px;
-  transition: border-color var(--duration-fast) var(--ease-default);
-}
-
-.prompt-textarea {
-  min-height: 190px;
-  resize: vertical;
-}
-
-input.prompt-input:focus,
-textarea.prompt-textarea:focus {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
-  box-shadow: none;
-}
+/* Drafting-box fields are `<Input variant="ledger">` — square, transparent,
+   focus moves the line to accent; the variant owns the paint. */
 
 /* Visuals (square corners, line borders, accent primary) come from the
    SettingsPage :deep() layer; only layout lives here. */

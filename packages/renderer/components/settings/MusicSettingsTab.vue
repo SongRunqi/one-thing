@@ -204,21 +204,22 @@
           class="field"
         >
           <span class="field-label">{{ field.label }}</span>
-          <textarea
+          <Input
             v-if="field.secret"
             v-model="credentialValues[field.key]"
-            class="field-input field-textarea"
+            type="textarea"
+            variant="ledger"
+            class="field-textarea"
             spellcheck="false"
             :placeholder="field.placeholder"
           />
-          <input
+          <Input
             v-else
             v-model="credentialValues[field.key]"
-            class="field-input"
-            type="text"
+            variant="ledger"
             spellcheck="false"
             :placeholder="field.placeholder"
-          >
+          />
         </label>
         <button
           class="primary-btn"
@@ -350,6 +351,7 @@ import ErrorNote from '@/components/common/ErrorNote.vue'
 import Radio from '@/components/common/Radio.vue'
 import RadioGroup from '@/components/common/RadioGroup.vue'
 import Select from '@/components/common/Select.vue'
+import Input from '@/components/common/Input.vue'
 import Switch from '@/components/common/Switch.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsGroup from './SettingsGroup.vue'
@@ -806,20 +808,12 @@ onBeforeUnmount(() => {
   color: var(--ui-text-secondary-fg);
 }
 
-.field-input {
-  padding: 6px 8px;
-  border: 1px solid var(--ui-border-default-border);
-  border-radius: var(--radius-sm, 4px);
-  background: var(--ui-surface-input-bg);
-  color: var(--ui-text-primary-fg);
-  font-size: 13px;
-}
-
-.field-textarea {
+/* Credential fields: `<Input variant="ledger">` owns the paint; the secret
+   textarea keeps its mono face locally. */
+.field-textarea :deep(.app-input-textarea) {
   min-height: 96px;
   font-family: var(--font-mono);
   font-size: 11px;
-  resize: vertical;
 }
 
 .qr,

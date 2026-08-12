@@ -299,7 +299,7 @@ Select 还要额外传 `teleported`(它默认在流内);Mention **默认就是 t
 
 ---
 
-## 4. 禁令清单(= `ui:gate` 的 11 条检测项)
+## 4. 禁令清单(= `ui:gate` 的 12 条检测项)
 
 | 规则 | 禁什么 |
 |---|---|
@@ -313,7 +313,10 @@ Select 还要额外传 `teleported`(它默认在流内);Mention **默认就是 t
 | `transition-literal` | `transition: … 0.15s` —— 用 `var(--duration-*)`。豁免:注释行、**全零时长**(`transition-duration: 0s` 是"关掉过渡",没有档位可归) |
 | `shadow-literal-floating` | 浮层类选择器(popover/dropdown/menu/dialog/tooltip/flyout/popup/modal)里的字面 `box-shadow` |
 | `focus-bare` | 裸 `:focus`(输入框元素选择器除外)—— 用 `:focus-visible`。豁免:`:focus:not(:focus-visible)`(这**就是**关掉鼠标焦点环的标准写法)、行内出现 `caret`/`contenteditable` 的 caret 场景。元素选择器白名单认引号前导(CSS-in-JS 的 `'input.x:focus':` 也算) |
+| `overscroll-contain-chat` | `components/chat/` 下**滚轮边界已交给 JS** 的面里的 `overscroll-behavior: contain`(判据:文件引了 `utils/scroll-chain`,或在 `WHEEL_CHAIN_SUBTREE_FILES` 那张小表里)—— 内容不满 max-height 的盒子仍被 Chrome 当 scroll container,contain 于是**吞掉**滚轮而不是链给祖先,而 `chainWheelToScrollableAncestor` 对滚不动的盒子直接放行、救不了这一格。边界由根上的 `@wheel` handler 独占(它只在真能滚且到边时才 preventDefault)。**不禁**侧栏/复合器/nav rail 那些真有独立滚动区、没接 handler 的面 |
 | `surface-literal` | `background: var(--ui-surface-{app,panel,chat,elevated}-bg)` —— 区域面自绘,用 `surface="<tier>"` 档位(§6.6 / §6.7)。豁免域:`styles/`(全局层,档位表本身住这里)与 `components/common/`(原语层)。放行:态选择器(`:hover` / `.is-active` 一族,那是 S 级态 token 的规则域)、区域别名的**定义位**(`--x: var(--ui-surface-…)`)、`var()` 的 fallback 臂、浮层三档面(`--ui-surface-menu-bg` / `-floating-bg`,归 `popover-surface.ts`) |
+
+**第 12 条(`overscroll-contain-chat`,2026-08-12)落地即 0 违例**:过程区的 contain 在同一轮里全部撤掉了,所以它不进基线 —— 棘轮从第一天起就只咬新增。
 
 **第 11 条为什么值得立**(G7-3,2026-08-11):G7-2 把壁纸的区域面覆写改成认
 `.app-surface[data-surface]` 的章之后,"新面忘了登记 → 没被壁纸覆盖"这条老病的入口

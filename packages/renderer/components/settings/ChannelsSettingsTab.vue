@@ -179,11 +179,12 @@
                     />
                   </div>
                   <div class="qr-url-row">
-                    <input
-                      class="form-input qr-url-input"
+                    <Input
+                      variant="ledger"
+                      class="qr-url-input"
                       readonly
-                      :value="account.qrUrl"
-                    >
+                      :model-value="account.qrUrl"
+                    />
                     <Tooltip text="Copy login URL">
                       <Button
                         unstyled
@@ -227,13 +228,14 @@
         >
           <div class="profile-settings-content">
             <div class="profile-toolbar">
-              <input
+              <Input
                 v-model="newProfileName"
-                class="form-input profile-name-input"
+                variant="ledger"
+                class="profile-name-input"
                 placeholder="New profile name"
                 spellcheck="false"
                 @keydown.enter.prevent="createProfile"
-              >
+              />
               <Button
                 unstyled
                 class="channel-action"
@@ -410,6 +412,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
@@ -1452,16 +1455,12 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   max-width: 100%;
 }
 
-.binding-form :is(.form-input, .channel-action) {
+.binding-form .channel-action {
   box-sizing: border-box;
   height: 40px;
   min-height: 40px;
   padding-block: 0;
   line-height: 40px;
-}
-
-.binding-form .form-input {
-  padding-inline: 12px;
 }
 
 /* The four dropdowns are `<Select variant="ledger">`. Height on the component

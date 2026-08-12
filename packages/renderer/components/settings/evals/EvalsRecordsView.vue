@@ -20,13 +20,14 @@
           @update:model-value="localFilter.category = String($event ?? ''); applyFilters()"
         />
 
-        <input
+        <Input
           v-model="localFilter.sinceDate"
+          variant="ledger"
           type="date"
-          class="evals-form-input evals-date-input"
+          class="evals-date-input"
           aria-label="Show records since this date"
           @change="applyFilters"
-        >
+        />
 
         <Select
           v-bind="LEDGER_SELECT"
@@ -197,6 +198,7 @@
 import { ref, computed } from "vue";
 import Checkbox from "@/components/common/Checkbox.vue";
 import ErrorNote from "@/components/common/ErrorNote.vue";
+import Input from "@/components/common/Input.vue";
 import Select from "@/components/common/Select.vue";
 import Tooltip from "@/components/common/Tooltip.vue";
 import type { SelectOptionLike } from "@/components/common/select";
@@ -358,23 +360,8 @@ async function handleGenerateTriage() {
   font-variant-numeric: tabular-nums;
 }
 
-.evals-form-input {
-  padding: 5px 8px;
-  border: 1px solid var(--settings-rule);
-  border-radius: 0;
-  background: transparent;
-  color: var(--settings-ink);
-  font-size: 12px;
-  font-family: inherit;
-  min-width: 0;
-}
-
-input.evals-form-input:focus {
-  outline: none;
-  border-color: var(--settings-accent);
-}
-
-/* Outlined button: state lives in the edge line, never a fill */
+/* Fields are `<Input variant="ledger">`; the variant owns the square
+   hairline frame and accent focus. */
 .evals-action-btn {
   padding: 5px 12px;
   border: 1px solid var(--settings-rule);

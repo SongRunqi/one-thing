@@ -148,13 +148,13 @@
           label="Brave Search API Key"
           description="Get your free API key at brave.com/search/api (2,000 queries/month free)."
         >
-          <input
+          <Input
+            variant="ledger"
             type="password"
-            class="form-input"
-            :value="settings.tools.webSearch?.braveApiKey || ''"
+            :model-value="settings.tools.webSearch?.braveApiKey || ''"
             placeholder="Enter your Brave Search API key"
-            @input="updateBraveApiKey(($event.target as HTMLInputElement).value)"
-          >
+            @update:model-value="updateBraveApiKey($event)"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -172,6 +172,7 @@
 
 <script setup lang="ts">
 import Select from '@/components/common/Select.vue'
+import Input from '@/components/common/Input.vue'
 import Switch from '@/components/common/Switch.vue'
 import { computed } from 'vue'
 import type { SelectOptionLike } from '@/components/common/select'
@@ -478,24 +479,7 @@ function updateBraveApiKey(apiKey: string) {
   flex-shrink: 0;
 }
 
-/* Inputs and selects: visuals come from the global layer; keep them
-   shrinkable and single-line so long values never break the row. */
-.form-input {
-  width: 100%;
-  min-width: 0;
-  padding: 6px 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Disabled = dashed line + faint ink, not an opacity veil. */
-.form-input:disabled {
-  border-style: dashed;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg));
-  cursor: not-allowed;
-}
-
+/* Inputs are `<Input variant="ledger">` — the variant owns the paint. */
 /* Layout-only classes on the Select roots — the paint is the variant's. */
 .mode-select {
   max-width: 220px;

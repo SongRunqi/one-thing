@@ -156,7 +156,7 @@
       <div class="content-body">
         <div
           class="content-inner"
-          :class="{ 'content-inner-wide': activeTab === 'providers' || activeTab === 'prompts' }"
+          :class="{ 'content-inner-wide': activeTab === 'providers' || activeTab === 'prompts' || activeTab === 'usage' }"
         >
           <template v-if="localSettings">
             <GeneralSettingsTab
@@ -1084,21 +1084,6 @@ onUnmounted(() => {
   color: var(--settings-ink-2);
 }
 
-:deep(.form-slider),
-:deep(.row-input),
-:deep(.form-input),
-:deep(.form-textarea),
-:deep(.form-select),
-:deep(.row-select) {
-  border-color: var(--settings-rule);
-  background-color: var(--settings-paper);
-  color: var(--settings-ink);
-}
-
-:deep(.form-slider::-webkit-slider-thumb) {
-  background: var(--settings-accent);
-}
-
 :deep(.theme-card.active),
 :deep(.theme-item.active),
 :deep(.font-option.active) {
@@ -1106,36 +1091,12 @@ onUnmounted(() => {
   box-shadow: 0 0 0 3px var(--settings-accent-soft);
 }
 
-:deep(button:focus-visible),
-:deep(input:focus-visible),
-:deep(select:focus-visible),
-:deep(textarea:focus-visible) {
+/* Text-like controls (input/select/textarea) are all self-built components
+   now — Input/Select draw their own focus state via the ledger variant.
+   Only buttons keep this page-level baseline. */
+:deep(button:focus-visible) {
   outline: 2px solid color-mix(in srgb, var(--settings-ink) 24%, transparent);
   outline-offset: 2px;
-}
-
-/* Native selects join the ledger controls: no OS chrome, hairline frame,
-   drawn chevron. One rule here covers every settings tab — swap to the
-   custom flyout select tab-by-tab later without visual regressions. */
-:deep(select) {
-  appearance: none;
-  -webkit-appearance: none;
-  min-height: 26px;
-  padding: 4px 26px 4px 10px;
-  border: 1px solid color-mix(in srgb, var(--settings-rule, var(--ui-border-default-border)) 90%, transparent);
-  border-radius: 3px;
-  background-color: transparent;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237d7561' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  background-size: 10px;
-  color: var(--settings-ink, var(--ui-text-primary-fg));
-  font-size: 12.5px;
-  cursor: pointer;
-}
-
-:deep(select:hover) {
-  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg)) 40%, transparent);
 }
 
 @keyframes settingsFade {
@@ -1152,16 +1113,6 @@ onUnmounted(() => {
 :deep(.settings-row),
 :deep(.shortcut-row) {
   padding: 12px 14px;
-}
-
-:deep(.form-input),
-:deep(.form-textarea),
-:deep(.form-select),
-:deep(.row-input),
-:deep(.row-select) {
-  min-height: 32px;
-  border-radius: 7px;
-  font-size: 13px;
 }
 
 :deep(.primary-action),
@@ -1782,35 +1733,10 @@ onUnmounted(() => {
   justify-content: flex-start;
 }
 
-/* Boxed fields: square drafting boxes, no fills. */
-:deep(.form-input),
-:deep(.form-textarea),
-:deep(.form-select),
-:deep(.row-input),
-:deep(.row-select) {
-  min-height: 32px;
-  border: 1px solid var(--settings-rule);
-  border-radius: 0;
-  background-color: transparent;
-  color: var(--settings-ink);
-  font-size: 13px;
-}
-
-/* 元素前缀不是装饰:这几个类名各自骑在什么标签上,决定了裸 :focus 是"caret 场景"
-   还是"该用 :focus-visible"。已核对(全库模板扫描):
-     .form-input → <input>×45   .form-textarea → <textarea>   .form-select → 原生 select 写法
-     .row-input / .add-model-input → <Input> 组件的**外壳 div**(不可聚焦,这条本就是死规则,
-       但删它不属于本期射程,保留原样)
-     .row-select → 原生 <select>×2 与 <Select> 组件×2 混用,加元素前缀会打掉组件那半边,保留原样 */
-:deep(input.form-input:focus),
-:deep(textarea.form-textarea:focus),
-:deep(select.form-select:focus),
-:deep(.row-input:focus),
-:deep(.row-select:focus) {
-  border-color: var(--settings-accent);
-  background-color: transparent;
-  box-shadow: none;
-}
+/* Boxed fields are no longer drawn here: every text/select control in the
+   tabs is a self-built <Input variant="ledger"> / <Select variant="ledger">,
+   and the ledger variant owns the square hairline frame + accent focus
+   (components/common/Input.vue, Select.vue). */
 
 /* Segmented controls drawn once here so tabs without local styles
    still get a visible active state. */
@@ -1899,21 +1825,6 @@ onUnmounted(() => {
   color: var(--ui-status-danger-fg);
 }
 
-:deep(.form-slider) {
-  height: 1px;
-  border-radius: 0;
-  background: var(--settings-rule);
-}
-
-:deep(.form-slider::-webkit-slider-thumb) {
-  width: 13px;
-  height: 13px;
-  border: 1px solid var(--settings-accent);
-  border-radius: 50%;
-  background: var(--settings-paper);
-  box-shadow: none;
-}
-
 /*
  * ── 墓碑:settings 墨线 toggle 共享皮肤(P3 收敛,已删)────────────────
  *
@@ -1979,41 +1890,18 @@ onUnmounted(() => {
   width: 100%;
 }
 
-/* 同上的核对结论(逐类查过真实标签)。补元素前缀的都是原生输入控件 —— 裸 :focus
-   是 caret 场景;剩下三类保留裸写法并各自说明:
-     .row-input / .add-model-input → <Input> 组件外壳 div,不可聚焦,死规则
-     .shortcut-input → 带 tabindex 的 div,录快捷键必须在鼠标点击时也亮起
-       (理由写在 components/settings/ShortcutInput.vue) */
-.settings-page :deep(input.form-input:focus),
-.settings-page :deep(input.form-input:focus-visible),
-.settings-page :deep(textarea.form-textarea:focus),
-.settings-page :deep(textarea.form-textarea:focus-visible),
-.settings-page :deep(select.form-select:focus),
-.settings-page :deep(select.form-select:focus-visible),
-.settings-page :deep(.row-input:focus),
-.settings-page :deep(.row-input:focus-visible),
-.settings-page :deep(.row-select:focus),
-.settings-page :deep(.row-select:focus-visible),
-.settings-page :deep(input.prompt-input:focus),
-.settings-page :deep(input.prompt-input:focus-visible),
-.settings-page :deep(textarea.prompt-textarea:focus),
-.settings-page :deep(textarea.prompt-textarea:focus-visible),
-.settings-page :deep(input.text-input:focus),
-.settings-page :deep(input.text-input:focus-visible),
+/* .shortcut-input 是唯一剩下的裸控件:带 tabindex 的 div,录快捷键必须在鼠标
+   点击时也亮起(理由写在 components/settings/ShortcutInput.vue)。文本类控件
+   已全部迁到 <Input variant="ledger"> / <Select variant="ledger">,聚焦态由
+   组件自绘。 */
 .settings-page :deep(.shortcut-input:focus),
-.settings-page :deep(.shortcut-input:focus-visible),
-.settings-page :deep(.add-model-input:focus),
-.settings-page :deep(.add-model-input:focus-visible),
-.settings-page :deep(input.model-caps-id-input:focus),
-.settings-page :deep(input.model-caps-id-input:focus-visible) {
+.settings-page :deep(.shortcut-input:focus-visible) {
   outline: none;
   border-color: var(--settings-accent);
   box-shadow: none;
 }
 
 .settings-page :deep(.settings-search:focus-within),
-.settings-page :deep(.prompt-search:focus-within),
-.settings-page :deep(.model-search-field:focus-within),
 .settings-page :deep(.app-input-number:focus-within),
 .settings-page :deep(.model-out-wrap:focus-within) {
   border-color: var(--settings-accent);

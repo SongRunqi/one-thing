@@ -27,13 +27,13 @@
     >
       <label class="form-label">Default Working Directory</label>
       <div class="input-with-button">
-        <input
-          type="text"
+        <Input
+          variant="ledger"
           class="text-input"
-          :value="bashSettings.defaultWorkingDirectory"
+          :model-value="bashSettings.defaultWorkingDirectory"
           placeholder="Leave empty to use current project directory"
-          @input="updateSetting('defaultWorkingDirectory', ($event.target as HTMLInputElement).value)"
-        >
+          @update:model-value="updateSetting('defaultWorkingDirectory', $event)"
+        />
         <Button
           unstyled
           class="browse-btn"
@@ -156,13 +156,13 @@
       class="form-group"
     >
       <label class="form-label">Command Whitelist</label>
-      <input
-        type="text"
+      <Input
+        variant="ledger"
         class="text-input"
-        :value="bashSettings.dangerousCommandWhitelist.join(', ')"
+        :model-value="bashSettings.dangerousCommandWhitelist.join(', ')"
         placeholder="npm install, git push (comma separated)"
-        @input="updateWhitelist(($event.target as HTMLInputElement).value)"
-      >
+        @update:model-value="updateWhitelist"
+      />
       <p class="form-hint">
         Commands starting with these prefixes will skip confirmation
       </p>
@@ -172,6 +172,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Input from '@/components/common/Input.vue'
 import Switch from '@/components/common/Switch.vue'
 import { computed } from 'vue'
 import type { AppSettings, BashToolSettings } from '@/types'
@@ -290,27 +291,11 @@ function removeDirectory(index: number) {
   gap: 12px;
 }
 
-/* Text input: square drafting box, transparent, mono for paths/commands. */
-.text-input {
-  width: 100%;
-  min-width: 0;
-  padding: 9px 11px;
+/* Text input: square drafting box drawn by `<Input variant="ledger">`;
+   the mono face for paths/commands stays local. */
+.text-input :deep(.app-input-inner) {
   font-family: var(--font-mono, monospace);
   font-size: 12.5px;
-  color: var(--settings-ink, var(--ui-text-primary-fg));
-  background: transparent;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
-  border-radius: 0;
-  outline: none;
-  transition: border-color var(--duration-normal);
-}
-
-input.text-input:focus {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
-}
-
-.text-input::placeholder {
-  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--ui-text-muted-fg)));
 }
 
 /* Input with button */

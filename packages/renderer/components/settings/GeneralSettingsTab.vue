@@ -9,29 +9,29 @@
           label="名字"
           description="群聊署名、agent 对你的称呼。留空就是「用户」。"
         >
-          <input
-            class="form-input"
-            :value="userProfile.name || ''"
+          <Input
+            variant="ledger"
+            :model-value="userProfile.name || ''"
             maxlength="24"
             placeholder="用户"
             spellcheck="false"
-            @input="updateUserProfile({ name: ($event.target as HTMLInputElement).value })"
-          >
+            @update:model-value="updateUserProfile({ name: $event })"
+          />
         </SettingRow>
 
         <SettingRow
           label="句柄"
           description="agent 用 @句柄 点你、用 dm 找你。小写字母/数字/-/_,留空就是 user。"
         >
-          <input
-            class="form-input"
-            :value="userProfile.handle || ''"
+          <Input
+            variant="ledger"
+            :model-value="userProfile.handle || ''"
             maxlength="24"
             placeholder="user"
             spellcheck="false"
-            @input="updateUserProfile({ handle: ($event.target as HTMLInputElement).value })"
+            @update:model-value="updateUserProfile({ handle: $event })"
             @blur="normalizeHandleOnBlur"
-          >
+          />
         </SettingRow>
 
         <SettingRow
@@ -45,14 +45,15 @@
               :avatar-image="userProfile.avatarImage"
               :size="28"
             />
-            <input
-              class="form-input user-avatar-input"
-              :value="userProfile.avatar || ''"
+            <Input
+              variant="ledger"
+              class="user-avatar-input"
+              :model-value="userProfile.avatar || ''"
               maxlength="16"
               placeholder="🙂"
               spellcheck="false"
-              @input="updateUserProfile({ avatar: ($event.target as HTMLInputElement).value })"
-            >
+              @update:model-value="updateUserProfile({ avatar: $event })"
+            />
             <Button
               unstyled
               class="secondary-btn"
@@ -349,13 +350,13 @@
           <div
             class="directory-field"
           >
-            <input
-              class="form-input"
-              :value="dailyNotes.customDirectory || ''"
+            <Input
+              variant="ledger"
+              :model-value="dailyNotes.customDirectory || ''"
               placeholder="/path/to/daily-notes"
               spellcheck="false"
-              @input="updateDailyNotes({ customDirectory: ($event.target as HTMLInputElement).value })"
-            >
+              @update:model-value="updateDailyNotes({ customDirectory: $event })"
+            />
             <Button
               unstyled
               class="secondary-btn"
@@ -384,13 +385,13 @@
           label="Fallback Date Format"
           description="Used when Obsidian daily note config is unavailable."
         >
-          <input
-            class="form-input"
-            :value="dailyNotes.format || 'YYYY-MM-DD'"
+          <Input
+            variant="ledger"
+            :model-value="dailyNotes.format || 'YYYY-MM-DD'"
             placeholder="YYYY-MM-DD"
             spellcheck="false"
-            @input="updateDailyNotes({ format: ($event.target as HTMLInputElement).value })"
-          >
+            @update:model-value="updateDailyNotes({ format: $event })"
+          />
         </SettingRow>
       </SettingsGroup>
     </SettingsSection>
@@ -414,13 +415,13 @@
           description="Folder where todo and plan markdown files are stored."
         >
           <div class="directory-field">
-            <input
-              class="form-input"
-              :value="todoPlan.directory || ''"
+            <Input
+              variant="ledger"
+              :model-value="todoPlan.directory || ''"
               placeholder="Default: ~/.onething/todo-plan"
               spellcheck="false"
-              @input="updateTodoPlan({ directory: ($event.target as HTMLInputElement).value })"
-            >
+              @update:model-value="updateTodoPlan({ directory: $event })"
+            />
             <Button
               unstyled
               class="secondary-btn"
@@ -439,6 +440,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Input from '@/components/common/Input.vue'
 import Select from '@/components/common/Select.vue'
 import Switch from '@/components/common/Switch.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
@@ -898,18 +900,9 @@ async function chooseTodoPlanDirectory() {
   min-width: 0;
 }
 
-.directory-field .form-input {
+.directory-field :deep(.app-input) {
   flex: 1;
   min-width: 0;
-}
-
-.form-input {
-  width: 100%;
-  min-width: 0;
-  padding: 6px 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .secondary-btn {

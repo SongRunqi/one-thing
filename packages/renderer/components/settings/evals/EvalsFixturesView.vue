@@ -92,19 +92,19 @@
         <!-- Basic info -->
         <label class="evals-form-label">
           Case ID
-          <input
+          <Input
             v-model="promoteForm.caseId"
-            type="text"
-            class="evals-form-input"
+            variant="ledger"
             placeholder="e.g. linux-unix-syntax"
-          >
+          />
         </label>
         <label class="evals-form-label">
           Description
-          <textarea
+          <Input
             v-model="promoteForm.description"
-            class="evals-form-textarea"
-            rows="2"
+            type="textarea"
+            variant="ledger"
+            :rows="2"
             placeholder="What does this case verify?"
           />
         </label>
@@ -215,20 +215,18 @@
               📝 Output
             </div>
             <label class="evals-form-label-sm">Must contain:
-              <input
+              <Input
                 v-model="promoteForm.contains"
-                type="text"
-                class="evals-form-input"
+                variant="ledger"
                 placeholder="e.g. comparison complete"
-              >
+              />
             </label>
             <label class="evals-form-label-sm">Must NOT contain:
-              <input
+              <Input
                 v-model="promoteForm.notContains"
-                type="text"
-                class="evals-form-input"
+                variant="ledger"
                 placeholder="e.g. sorry, I cannot"
-              >
+              />
             </label>
             <!-- Row, not a label: the number input is a second control and must
                  not sit inside the checkbox's own <label>. -->
@@ -240,12 +238,15 @@
               >
                 Min output length:
               </Checkbox>
-              <input
-                v-model.number="promoteForm.minOutputLength"
+              <Input
+                :model-value="promoteForm.minOutputLength"
+                variant="ledger"
                 type="number"
+                size="small"
                 class="evals-num-input"
                 aria-label="Minimum output length in characters"
-              >
+                @update:model-value="promoteForm.minOutputLength = Number($event)"
+              />
               <span>chars</span>
               <span
                 v-if="autoSuggest.useMinLength"
@@ -256,10 +257,11 @@
 
           <!-- Notes -->
           <label class="evals-form-label-sm">Notes:
-            <textarea
+            <Input
               v-model="promoteForm.notes"
-              class="evals-form-textarea"
-              rows="2"
+              type="textarea"
+              variant="ledger"
+              :rows="2"
               placeholder="Why this case exists, what to watch for..."
             />
           </label>
@@ -306,6 +308,7 @@ import { ref, computed, type CSSProperties } from "vue";
 import Checkbox from "@/components/common/Checkbox.vue";
 import Dialog from "@/components/common/Dialog.vue";
 import ErrorNote from "@/components/common/ErrorNote.vue";
+import Input from "@/components/common/Input.vue";
 import { useConfirm } from "@/composables/useConfirm";
 import { SETTINGS_DIALOG_VARS } from "@/components/settings/settings-dialog-vars";
 import { useEvalsStore } from "@/stores/evals";
@@ -729,29 +732,8 @@ async function handlePromote() {
   font-weight: 520;
 }
 
-.evals-form-input,
-.evals-form-select,
-.evals-form-textarea {
-  padding: 6px 8px;
-  border: 1px solid var(--settings-rule);
-  border-radius: 0;
-  background: transparent;
-  color: var(--settings-ink);
-  font-size: 13px;
-  font-family: inherit;
-  min-width: 0;
-}
-
-input.evals-form-input:focus,
-.evals-form-select:focus-visible,
-textarea.evals-form-textarea:focus {
-  outline: none;
-  border-color: var(--settings-accent);
-}
-
-.evals-form-textarea {
-  resize: vertical;
-}
+/* Fields are `<Input variant="ledger">`; the variant owns the square
+   hairline frame and accent focus. */
 
 /* Outlined buttons: state lives in the edge line, never a fill */
 .evals-action-btn {
@@ -897,22 +879,10 @@ textarea.evals-form-textarea:focus {
   color: var(--settings-ink-3);
 }
 
+/* Small number field: layout only — the paint is the ledger variant's. */
 .evals-num-input {
   max-width: 64px;
-  min-width: 0;
-  padding: 3px 6px;
-  border: 1px solid var(--settings-rule);
-  border-radius: 0;
-  background: transparent;
-  color: var(--settings-ink);
-  font-size: 12px;
-  font-family: inherit;
   font-variant-numeric: tabular-nums;
-}
-
-input.evals-num-input:focus {
-  outline: none;
-  border-color: var(--settings-accent);
 }
 
 .evals-snapshot-links {
