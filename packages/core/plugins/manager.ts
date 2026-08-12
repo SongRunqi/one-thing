@@ -971,7 +971,12 @@ export class CorePluginManager<
         commands: Array.from(state.commands.keys()),
       })
 
-      this.logger.log(`[PluginManager] Plugin "${def.id}" loaded successfully (${state.commands.size} commands)`)
+      // 版本进这一行:排障时"装没装上"和"装的是哪一版"是同一个问题,
+      // 少了版本号就得回去翻账本才能判断新包到底生效没有。
+      const version = def.manifest.version ? `@${def.manifest.version}` : ''
+      this.logger.log(
+        `[PluginManager] Plugin "${def.id}${version}" loaded successfully (${state.commands.size} commands)`,
+      )
     } catch (error) {
       this.logger.error(`[PluginManager] Plugin "${def.id}" failed:`, error)
       // 装到一半的注册要收掉,否则失败的插件仍在工具表/事件总线上留着半截足迹。

@@ -20,7 +20,7 @@ export interface NotesGateway {
 const NAMES: NoteVarName[] = ['ai_note_dir', 'user_note_dir', 'work_note_dir']
 
 const DESC: Record<NoteVarName, string> = {
-  ai_note_dir: 'Directory where the assistant stores its own scratch notes. Writable by the AI via the variable tool.',
+  ai_note_dir: '临时草稿目录。**长期应记住的事实/知识请勿写这里** —— 用 memory_write(便签)/ memory_document(成篇),用户说「记住 / 记到 wiki / 长期记忆」时一律优先 memory 工具。',
   user_note_dir: 'Directory where the user keeps their personal notes. The AI may read it; only modify with explicit user permission.',
   work_note_dir: 'Directory where work or project notes are kept. The AI may read it; only modify with explicit user permission.',
 }
