@@ -6,6 +6,7 @@
       :class="{ 'has-reasoning': !!reasoning }"
       :name="reasoning ? 'message-thinking-reasoning' : 'message-thinking-status'"
       :auto-expanded="reasoning ? isStreaming : undefined"
+      :model-value="controlledExpanded"
       default-collapsed
       :collapsible="!!reasoning"
       :eager="!!reasoning"
@@ -14,6 +15,7 @@
       variant="plain"
       expand-icon-position="inline-end"
       expand-icon-display="hover"
+      @update:model-value="handleExpandedChange"
     >
       <template #title>
         <div class="thinking-status-overlay">
@@ -27,12 +29,11 @@
                 key="waiting"
                 class="thinking-status-row status-live"
               >
-                <span
-                  class="thinking-dot"
-                  aria-hidden="true"
+                <ThoughtHeader
+                  label="Waiting"
+                  :detail="formatThinkingTime(waitingElapsed)"
+                  live
                 />
-                <span class="thinking-text flowing">Waiting</span>
-                <span class="thinking-time">{{ formatThinkingTime(waitingElapsed) }}</span>
               </div>
 
               <div
@@ -41,31 +42,23 @@
                 class="thinking-status-row clickable"
                 :class="{ 'status-live': isStreaming && !hasContent }"
               >
-                <span
-                  v-if="isStreaming && !hasContent"
-                  class="thinking-dot"
-                  aria-hidden="true"
-                />
                 <Transition
                   name="status-text-fade"
                   mode="out-in"
                 >
-                  <span
+                  <ThoughtHeader
                     v-if="isStreaming && !hasContent"
                     key="thinking"
-                    class="thinking-text flowing"
-                  >Thinking</span>
-                  <span
+                    label="Thinking"
+                    :detail="formatThinkingTime(thinkingElapsed)"
+                    live
+                  />
+                  <ThoughtHeader
                     v-else
                     key="thought"
-                    class="thinking-text thought"
-                  >Thought for {{ formatThinkingTime(displayTime) }}</span>
-                </Transition>
-                <Transition name="time-fade">
-                  <span
-                    v-if="isStreaming && !hasContent"
-                    class="thinking-time"
-                  >{{ formatThinkingTime(thinkingElapsed) }}</span>
+                    label="Thought"
+                    :detail="formatThinkingTime(displayTime)"
+                  />
                 </Transition>
               </div>
             </Transition>
@@ -80,7 +73,9 @@
           :class="{ expanded }"
         >
           <div class="thinking-reasoning-inner">
-            <div class="thinking-content md-body">
+            <!-- `thought-body` is the shared skin (published by ThoughtHeader);
+                 the inline reasoning parts in MessageBubble wear the same one. -->
+            <div class="thinking-content thought-body md-body">
               <MessageMarkdown
                 :content="cleanedReasoning"
                 :is-user="false"
@@ -99,7 +94,9 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import CollapsePanel from '@/components/common/CollapsePanel.vue'
 import MessageMarkdown from './MessageMarkdown.vue'
+import ThoughtHeader from './ThoughtHeader.vue'
 import { cleanReasoningContent } from '@/composables/useMarkdownRenderer'
+import { resolveExpansion, setExpansionIntent } from '@/stores/helpers/expansion-intent'
 
 interface Props {
   isStreaming: boolean
@@ -107,9 +104,28 @@ interface Props {
   reasoning?: string
   thinkingStartTime?: number
   thinkingTime?: number
+  /**
+   * Stable address for the user's expansion intent. The panel's `name` flips
+   * from `…-status` to `…-reasoning` the moment reasoning arrives, and that
+   * flip resets CollapsePanel's `userControlledExpansion` — so a click made
+   * during the waiting phase used to be forgotten. Omit the prop and the
+   * panel keeps its own local state (unchanged behaviour).
+   */
+  intentKey?: string
 }
 
 const props = defineProps<Props>()
+
+// User record > auto-open while thinking > collapsed.
+// `undefined` leaves CollapsePanel uncontrolled.
+const controlledExpanded = computed<boolean | undefined>(() => {
+  if (!props.intentKey) return undefined
+  return resolveExpansion(props.intentKey, props.reasoning ? props.isStreaming : false, false)
+})
+
+function handleExpandedChange(expanded: boolean): void {
+  setExpansionIntent(props.intentKey, expanded)
+}
 
 const emit = defineEmits<{
   updateThinkingTime: [time: number]
@@ -271,9 +287,16 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+/* 恒定一行(22px = ThoughtHeader 的行盒高度,与 rail 内的 `.generation-waiting`
+   同一个数)。锁高有两个理由:
+   1. 外层 Transition 是 `mode="out-in"` —— 旧行离场和新行入场之间有一帧空容器,
+      不锁高那一帧整块塌成 0,周围元素跟着上下抖一次;
+   2. Waiting → Thinking → Thought 三态换行时行高必须一致,状态变化不能是块级
+      变化。真内容到来时这一行整体让位,高度差正好是一行。 */
 .thinking-status-overlay-inner {
   display: flex;
   align-items: center;
+  min-height: 22px;
 }
 
 .thinking-status-row {
@@ -281,7 +304,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   width: 100%;
-  min-height: 18px;
+  min-height: 22px;
   color: var(--thinking-fg);
 }
 
@@ -289,59 +312,8 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.thinking-text {
-  color: currentColor;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  font-weight: 520;
-  letter-spacing: 0.5px;
-}
-
-.thinking-text.flowing {
-  animation: thinkingTextPulse 1.6s ease-in-out infinite;
-}
-
-.thinking-text.thought {
-  color: var(--thinking-fg);
-}
-
-.thinking-dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: var(--ui-accent-primary-fg);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent-primary-fg) 28%, transparent);
-  animation: thinkingDotPulse 1.35s ease-in-out infinite;
-}
-
-@keyframes thinkingDotPulse {
-  0%, 100% {
-    opacity: 0.58;
-    transform: scale(0.86);
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes thinkingTextPulse {
-  0%, 100% {
-    opacity: 0.76;
-  }
-
-  50% {
-    opacity: 1;
-  }
-}
-
-.thinking-time {
-  color: color-mix(in srgb, var(--thinking-fg) 76%, transparent);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
+/* The row's own paint (label, detail, live dot, hover) lives in ThoughtHeader
+   — this component only places it. */
 
 .thinking-fade-enter-active,
 .status-text-fade-enter-active {
@@ -361,16 +333,6 @@ onUnmounted(() => {
   transform: translateY(-2px);
 }
 
-.time-fade-enter-active,
-.time-fade-leave-active {
-  transition: opacity var(--duration-fast) var(--ease-default);
-}
-
-.time-fade-enter-from,
-.time-fade-leave-to {
-  opacity: 0;
-}
-
 .thinking-reasoning-wrapper {
   margin-bottom: 0;
   padding-bottom: 8px;
@@ -384,42 +346,14 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-.thinking-content {
-  padding: 0;
-  color: var(--thinking-fg);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.thinking-content :deep(p) {
-  margin: 0 0 0.5em 0;
-}
-
-.thinking-content :deep(p:last-child) {
-  margin-bottom: 0;
-}
-
-.thinking-content :deep(ul) {
-  padding-left: 1.5em;
-}
-
-/* 小字号下 1.5em 装不下两位数 marker，溢出会被 CollapsePanel 的 overflow: hidden 裁掉 */
-.thinking-content :deep(ol) {
-  padding-left: 2.4em;
-}
+/* Typography and the blueprint outline come from `.thought-body`; the
+   markdown child rules live there too, so nothing is written twice. */
 
 @media (prefers-reduced-motion: reduce) {
-  .thinking-dot,
-  .thinking-text.flowing {
-    animation: none;
-  }
-
   .thinking-fade-enter-active,
   .thinking-fade-leave-active,
   .status-text-fade-enter-active,
-  .status-text-fade-leave-active,
-  .time-fade-enter-active,
-  .time-fade-leave-active {
+  .status-text-fade-leave-active {
     transition: none;
   }
 }

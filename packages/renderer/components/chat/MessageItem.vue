@@ -193,6 +193,7 @@
           :reasoning="topReasoning"
           :thinking-start-time="message.thinkingStartTime"
           :thinking-time="message.thinkingTime"
+          :intent-key="`thinking-${message.id}`"
           @update-thinking-time="handleUpdateThinkingTime"
         />
 
@@ -275,6 +276,7 @@
           :is-editing="isEditing"
           :edit-content="editContent"
           :session-id="message.sessionId"
+          :message-id="message.id"
           @submit-edit="handleSubmitEdit"
           @cancel-edit="handleCancelEdit"
           @open-media="handleOpenMedia"
@@ -393,6 +395,7 @@
           v-if="showLegacyStepsPanel"
           :steps="message.steps ?? []"
           :session-id="message.sessionId"
+          :intent-scope="legacyStepsIntentScope"
           @open-file="(filePath) => emit('openFile', filePath)"
         />
 
@@ -596,6 +599,13 @@ const showLegacyStepsPanel = computed(() =>
   props.message.role === 'assistant' &&
   (props.message.steps?.length ?? 0) > 0 &&
   !props.message.contentParts?.some(p => p.type === 'data-steps')
+)
+
+// Same address space as the in-bubble panel (`steps-<messageId>`): a message
+// renders through exactly one of the two, and expansion must behave the same
+// in both — user record > live auto-expand > collapsed.
+const legacyStepsIntentScope = computed(() =>
+  props.message.id ? `steps-${props.message.id}` : '',
 )
 
 // Engine-injected goal continuation prompts persist as user messages so

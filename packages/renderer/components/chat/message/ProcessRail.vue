@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rootRef"
     class="process-rail"
     :class="{ 'is-open': expanded, 'is-solo': solo }"
   >
@@ -59,7 +60,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { getExpansionIntent, setExpansionIntent } from '@/stores/helpers/expansion-intent'
+import { beginCollapseCompensation } from '@/utils/collapse-compensation'
 
 /**
  * Groups a run of "process" parts (reasoning + tool steps) behind a single
@@ -79,6 +82,13 @@ interface Props {
   streaming?: boolean
   solo?: boolean
   failedCount?: number
+  /**
+   * Stable address for the user's expansion intent. The local ref alone was
+   * not enough: the rail remounts whenever its key changes, and a remount
+   * silently reinstated "auto-open while streaming" over a user's collapse.
+   * Omit it and the rail behaves exactly as before (local state only).
+   */
+  intentKey?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -86,15 +96,44 @@ const props = withDefaults(defineProps<Props>(), {
   streaming: false,
   solo: false,
   failedCount: 0,
+  intentKey: '',
 })
 
+const rootRef = ref<HTMLElement | null>(null)
 const userToggled = ref<boolean | null>(null)
+let manualToggle = false
 
-const expanded = computed(() => userToggled.value ?? Boolean(props.streaming))
+// User record > live auto-open > collapsed.
+const expanded = computed(() => {
+  const recorded = getExpansionIntent(props.intentKey)
+  if (recorded !== undefined) return recorded
+  return userToggled.value ?? Boolean(props.streaming)
+})
 
 function toggle() {
-  userToggled.value = !expanded.value
+  const next = !expanded.value
+  manualToggle = true
+  userToggled.value = next
+  setExpansionIntent(props.intentKey, next)
 }
+
+/**
+ * 流结束时整条 rail(可能几百 px)塌成一行 summary —— 用户正在读的是 rail
+ * **下方**流出的结果文本,内容会猛地上移。这是最典型的"自动塌缩"。
+ *
+ * pre-flush watcher 在 DOM 还是旧高度时量一次,nextTick 后把差值还给 scrollTop。
+ * 手动点收起(`toggle`)置旗跳过:那是用户自己要的。
+ */
+watch(expanded, (next, prev) => {
+  const wasManual = manualToggle
+  manualToggle = false
+  if (wasManual || !prev || next) return
+  const apply = beginCollapseCompensation(rootRef.value)
+  if (!apply) return
+  void nextTick(() => {
+    apply()
+  })
+})
 
 // The body mounts lazily (a collapsed historical rail costs nothing) but is
 // never unmounted once opened: everything inside — tool panels, thought
@@ -136,7 +175,7 @@ watch(() => expanded.value || props.solo, (open) => {
   color: var(--ui-text-muted-fg);
   /* Process summary is chrome: UI sans, not the reading font. */
   font-family: var(--font-sans, inherit);
-  font-size: 12.5px;
+  font-size: var(--type-meta-size);
   line-height: 1.5;
   text-align: left;
   cursor: pointer;
@@ -197,7 +236,7 @@ watch(() => expanded.value || props.solo, (open) => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--type-meta-size);
   color: var(--ui-status-danger-fg);
 }
 
@@ -273,17 +312,11 @@ watch(() => expanded.value || props.solo, (open) => {
   margin: 0;
 }
 
-/* Thought full text: outlined blueprint block — no fills, no quote line.
-   Sans — process content is chrome, not reading matter. */
+/* Thought full text paints itself (`.thought-body`, published by
+   ThoughtHeader.vue — the same skin the top-of-message thought wears);
+   the rail only indents it onto the rail column. */
 .process-rail-body :deep(.inline-reasoning-content) {
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--ui-border-default-border)) 60%, transparent);
   margin: 2px 0 6px 22px;
-  padding: 8px 10px;
-  background: transparent;
-  border-radius: 0;
-  font-family: var(--font-sans, inherit);
-  font-size: 12.5px;
-  line-height: 1.65;
 }
 
 /* Tool detail pane: the figure frame styles itself (ToolStepDetails);

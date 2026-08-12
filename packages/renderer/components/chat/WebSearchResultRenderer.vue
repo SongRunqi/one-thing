@@ -541,7 +541,10 @@ function onFaviconError(e: Event) {
   display: flex;
   flex-direction: column;
   gap: 0;
-  max-height: min(260px, 34vh);
+  /* Same ceiling as every other tool pane. The fallback matters here: this
+     renderer is also mounted outside .tool-step-details (which declares the
+     token), so a bare var() would resolve to nothing and drop the cap. */
+  max-height: var(--tool-pane-max, clamp(148px, 28vh, 240px));
   overflow: auto;
   padding: 0;
 }

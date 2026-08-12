@@ -200,3 +200,56 @@ describe('useFollowScroll geometry helpers', () => {
     expect(scroller.scrollTop).toBe(700)
   })
 })
+
+// `wheel` 看不见自定义滚动条拖拽 / PageUp / Home / 键盘滚动。这些路径下
+// isFollowing 过去一直是 true,下一个 chunk 就把用户拽回底部 —— 也就是
+// "来 chunk 就 scrollToBottom 不管用户在哪"。
+describe('useFollowScroll external (non-wheel) user scroll', () => {
+  function setup(scroller: { scrollTop: number; scrollHeight: number; clientHeight: number }) {
+    const follow = useFollowScroll({
+      scroller: ref(scroller as HTMLElement),
+      content: ref(null),
+      count: computed(() => 1),
+    })
+    // 先钉一次底,让 composable 记住"这个位置是我写的"。
+    follow.snapToBottom('test:setup')
+    return follow
+  }
+
+  it('detaches when a scroll it did not write leaves the bottom', () => {
+    const scroller = { scrollTop: 700, scrollHeight: 1200, clientHeight: 500 }
+    const follow = setup(scroller)
+    expect(follow.isFollowing.value).toBe(true)
+
+    // 用户拖动自定义滚动条把视口拉上去(没有 wheel 事件)。
+    scroller.scrollTop = 200
+    follow.checkReattach()
+
+    expect(follow.isFollowing.value).toBe(false)
+    // 不再有任何"钉回底部"的写入。
+    expect(scroller.scrollTop).toBe(200)
+  })
+
+  it('keeps following when only the content grows below the viewport', () => {
+    const scroller = { scrollTop: 700, scrollHeight: 1200, clientHeight: 500 }
+    const follow = setup(scroller)
+
+    // 新 chunk 落地:scrollHeight 变大,scrollTop 没动过。
+    scroller.scrollHeight = 2000
+    follow.checkReattach()
+
+    expect(follow.isFollowing.value).toBe(true)
+  })
+
+  it('does not mistake the browser clamping a shrink for a user scroll', () => {
+    const scroller = { scrollTop: 700, scrollHeight: 1200, clientHeight: 500 }
+    const follow = setup(scroller)
+
+    // 内容变矮 → 浏览器自己把 scrollTop 夹到新的最大值,夹完仍然贴底。
+    scroller.scrollHeight = 900
+    scroller.scrollTop = 400
+    follow.checkReattach()
+
+    expect(follow.isFollowing.value).toBe(true)
+  })
+})

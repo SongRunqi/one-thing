@@ -201,11 +201,38 @@ describe('tool activity view', () => {
         status: 'completed',
         startTime: 1_000,
         endTime: 2_000,
-        durationMs: 843.267,
+        durationMs: 1_843.267,
       }),
     }), 3_000)
 
-    expect(completed.duration).toBe('0.8s')
+    expect(completed.duration).toBe('1.8s')
+  })
+
+  // 降噪:结束了的调用只在"慢到值得一说"时才报时间。走秒的实时读数不受影响
+  // (LiveToolDuration 从 0 开始跳,首秒空白会读成表坏了)。
+  it('stays silent about sub-second settled durations', () => {
+    const byDurationMs = buildToolActivityView(step({
+      status: 'completed',
+      toolCall: tc({ status: 'completed', durationMs: 843.267 }),
+    }), 3_000)
+    const byTimestamps = buildToolActivityView(step({
+      status: 'completed',
+      toolCall: tc({ status: 'completed', startTime: 1_000, endTime: 1_400 }),
+    }), 3_000)
+    const justOverASecond = buildToolActivityView(step({
+      status: 'completed',
+      toolCall: tc({ status: 'completed', startTime: 1_000, endTime: 2_100 }),
+    }), 3_000)
+    // The live phase keeps its clock even below a second.
+    const stillRunning = buildToolActivityView(step({
+      status: 'running',
+      toolCall: tc({ status: 'executing', startTime: 1_000 }),
+    }), 1_400)
+
+    expect(byDurationMs.duration).toBe('')
+    expect(byTimestamps.duration).toBe('')
+    expect(justOverASecond.duration).toBe('1.1s')
+    expect(stillRunning.duration).toBe('0.4s')
   })
 
   it('exposes numeric additions/deletions for group aggregation', () => {

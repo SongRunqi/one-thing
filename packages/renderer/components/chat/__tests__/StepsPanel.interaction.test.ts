@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 import { createPinia } from 'pinia'
 import StepsPanel from '../StepsPanel.vue'
+import { clearExpansionIntents } from '@/stores/helpers/expansion-intent'
 import type { Step, ToolCall } from '@/types'
 
 function fileStep(id: string, status: Step['status'] = 'completed', turnIndex?: number): Step {
@@ -72,6 +74,28 @@ function commandStep(id: string, command: string): Step {
     title: `run ${command}`,
     status: 'completed',
     timestamp: 1,
+    toolCallId: id,
+    toolCall,
+  }
+}
+
+function runningBashStep(id: string, command: string, turnIndex?: number): Step {
+  const toolCall: ToolCall = {
+    id,
+    toolId: 'bash',
+    toolName: 'bash',
+    status: 'executing',
+    arguments: { command },
+    timestamp: 1,
+  }
+
+  return {
+    id,
+    type: 'command',
+    title: `run ${command}`,
+    status: 'running',
+    timestamp: 1,
+    turnIndex,
     toolCallId: id,
     toolCall,
   }
@@ -406,5 +430,171 @@ describe('StepsPanel interaction contract', () => {
     const wrapper = mountPanel([fileStep('a')])
 
     expect(wrapper.find('.operation-inspector-btn').exists()).toBe(false)
+  })
+})
+
+// 并行批次不自动展开(T1)。10 个并行 bash 同时弹开 10 个图纸框、跑完再逐个
+// 合上,是流式期间最大的一个布局抖动源;而 RUNNING 阶段框里只有一行 `$ 命令`,
+// 与行标题完全重复。所以"executing 自动展开"只对单发生效。
+describe('StepsPanel parallel-batch auto expansion', () => {
+  it('does not auto-expand running bash rows inside a parallel batch', () => {
+    const wrapper = mountPanel([
+      runningBashStep('a', 'sleep 1', 7),
+      runningBashStep('b', 'sleep 2', 7),
+    ])
+
+    expect(wrapper.find('.workflow-group').exists()).toBe(true)
+    expect(wrapper.findAll('.operation-row')).toHaveLength(2)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
+  })
+
+  it('still auto-expands a lone running bash', () => {
+    const wrapper = mountPanel([runningBashStep('solo', 'sleep 1', 7)])
+
+    expect(wrapper.find('.workflow-group').exists()).toBe(false)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
+  })
+
+  it('suppresses batch auto-expansion in flat rail mode as well', () => {
+    const wrapper = mount(StepsPanel, {
+      props: {
+        steps: [runningBashStep('a', 'sleep 1', 7), runningBashStep('b', 'sleep 2', 7)],
+        flat: true,
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: {
+          FartCallItem: { template: '<div class="fart-stub" />' },
+          ToolActivityDetails: { template: '<div class="detail-stub" />' },
+        },
+      },
+    })
+
+    expect(wrapper.find('.workflow-group').exists()).toBe(false)
+    expect(wrapper.findAll('.operation-row')).toHaveLength(2)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
+  })
+
+  it('keeps a failed edit expanded even inside a parallel batch', () => {
+    const failed = fileStep('c', 'failed', 7)
+    failed.error = 'No match found'
+    failed.toolCall!.status = 'failed'
+
+    const wrapper = mountPanel([runningBashStep('a', 'sleep 1', 7), failed])
+
+    // Exactly one open pane, and it belongs to the failure — not to the bash.
+    expect(wrapper.findAll('.activity-inline-details')).toHaveLength(1)
+    expect(wrapper.findAll('.operation-block.is-expanded')).toHaveLength(1)
+    expect(wrapper.find('.operation-block.is-expanded').classes()).toContain('status-failed')
+  })
+
+  it('keeps an awaiting-confirmation edit expanded inside a parallel batch', () => {    const awaiting = fileStep('needs-approval', 'awaiting-confirmation', 7)
+    awaiting.toolCall!.requiresConfirmation = true
+
+    const wrapper = mountPanel([runningBashStep('a', 'sleep 1', 7), awaiting])
+
+    expect(wrapper.findAll('.operation-block.is-expanded')).toHaveLength(1)
+    expect(wrapper.find('.operation-block.is-expanded').classes())
+      .toContain('status-awaiting-confirmation')
+  })
+})
+
+// 详情面板自己合上(bash 跑完)也是"自动"塌缩:发生在视口顶之上时必须把塌掉
+// 的高度还给 scrollTop。用户自己点收起不补偿。
+describe('StepsPanel auto-collapse scroll compensation', () => {
+  const ROW_TOP = -300
+  const ROW_OPEN_BOTTOM = -20
+  const ROW_FOLDED_BOTTOM = -180
+
+  function domRect(top: number, bottom: number): DOMRect {
+    return {
+      top,
+      bottom,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: bottom - top,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    } as DOMRect
+  }
+
+  function setupPanel(steps: Step[], startScrollTop = 900) {
+    let scrollTop = startScrollTop
+
+    const scroller = document.createElement('div')
+    scroller.style.overflowY = 'auto'
+    Object.defineProperty(scroller, 'scrollHeight', { value: 4000, configurable: true })
+    Object.defineProperty(scroller, 'clientHeight', { value: 800, configurable: true })
+    Object.defineProperty(scroller, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (next: number) => {
+        scrollTop = next
+      },
+    })
+    scroller.getBoundingClientRect = () => domRect(0, 800)
+
+    const host = document.createElement('div')
+    scroller.appendChild(host)
+    document.body.appendChild(scroller)
+
+    const wrapper = mount(StepsPanel, {
+      props: { steps, intentScope: 'steps-m1' },
+      attachTo: host,
+      global: {
+        plugins: [createPinia()],
+        stubs: {
+          FartCallItem: { template: '<div class="fart-stub" />' },
+          ToolActivityDetails: { template: '<div class="detail-stub" />' },
+        },
+      },
+    })
+
+    // 行高跟着真实 DOM 状态走:详情面板在 = 280px,合上 = 120px。
+    const row = wrapper.find('[data-activity-panel-key]').element as HTMLElement
+    row.getBoundingClientRect = () =>
+      domRect(ROW_TOP, row.querySelector('.activity-inline-details') ? ROW_OPEN_BOTTOM : ROW_FOLDED_BOTTOM)
+
+    return {
+      wrapper,
+      getScrollTop: () => scrollTop,
+      cleanup: () => {
+        wrapper.unmount()
+        scroller.remove()
+      },
+    }
+  }
+
+  afterEach(() => {
+    clearExpansionIntents()
+    document.body.innerHTML = ''
+  })
+
+  it('gives back the folded height when a running bash settles above the viewport', async () => {
+    const panel = setupPanel([runningBashStep('a', 'sleep 1', 7)])
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
+
+    await panel.wrapper.setProps({ steps: [commandStep('a', 'sleep 1')] })
+    await nextTick()
+    await nextTick()
+
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(false)
+    expect(panel.getScrollTop()).toBe(900 - 160)
+    panel.cleanup()
+  })
+
+  it('does not compensate when the user folds the row themselves', async () => {
+    const panel = setupPanel([runningBashStep('a', 'sleep 1', 7)])
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(true)
+
+    await panel.wrapper.find('.operation-row').trigger('click')
+    await nextTick()
+    await nextTick()
+
+    expect(panel.wrapper.find('.activity-inline-details').exists()).toBe(false)
+    expect(panel.getScrollTop()).toBe(900)
+    panel.cleanup()
   })
 })

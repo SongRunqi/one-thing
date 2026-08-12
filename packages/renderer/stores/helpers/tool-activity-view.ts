@@ -208,6 +208,20 @@ export function formatToolDuration(ms: number): string {
   return `${minutes}m${seconds < 10 ? '0' : ''}${seconds.toFixed(1)}s`
 }
 
+/**
+ * Settled durations only speak when they have something to say: under a second
+ * is "instant", and a column of `0.1s / 0.2s / 0.1s` is noise that makes the
+ * one slow call harder to spot. The LIVE readout (LiveToolDuration, the args
+ * draft meter) keeps ticking from zero — a running clock that shows nothing
+ * for its first second reads as broken, which is the opposite problem.
+ */
+const SETTLED_DURATION_FLOOR_MS = 1000
+
+function formatSettledToolDuration(ms: number): string {
+  if (ms < SETTLED_DURATION_FLOOR_MS) return ''
+  return formatToolDuration(ms)
+}
+
 function buildDuration(toolCall: ToolCall, nowMs = Date.now()): string {
   const running = toolCall.status === 'executing' || toolCall.status === 'input-streaming'
   if (running) {
@@ -217,10 +231,10 @@ function buildDuration(toolCall: ToolCall, nowMs = Date.now()): string {
   // Frozen final duration stays on the row so runs can be compared.
   if (toolCall.status === 'completed' || toolCall.status === 'failed' || toolCall.status === 'cancelled') {
     if (typeof toolCall.durationMs === 'number') {
-      return formatToolDuration(Math.max(0, toolCall.durationMs))
+      return formatSettledToolDuration(Math.max(0, toolCall.durationMs))
     }
     if (toolCall.startTime && toolCall.endTime) {
-      return formatToolDuration(Math.max(0, toolCall.endTime - toolCall.startTime))
+      return formatSettledToolDuration(Math.max(0, toolCall.endTime - toolCall.startTime))
     }
   }
   return ''

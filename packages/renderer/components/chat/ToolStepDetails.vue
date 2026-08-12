@@ -4,17 +4,15 @@
     class="tool-step-details"
     @wheel="handleWheel"
   >
-    <!-- Blueprint spec tags riding the frame border: tool · status on the
-         left, +N / −N takeoff on the right. -->
+    <!-- Blueprint spec tag riding the frame border: tool · status. Success is
+         silent (no OK badge), and the +N/−N takeoff is NOT repeated here — the
+         ledger row already carries it, and a number said twice reads as two
+         different numbers. -->
     <span class="fig-tag">{{ figLabel }}<span
       v-if="figStatus"
       class="fig-status"
       :class="figStatus.tone"
     >&nbsp;·&nbsp;{{ figStatus.text }}</span></span>
-    <span
-      v-if="figGain"
-      class="fig-tag fig-tag-right"
-    >{{ figGain }}</span>
 
     <div
       v-if="bashCommand"
@@ -58,7 +56,7 @@
       :show-file-header="false"
       :show-toolbar="false"
       :expand-unchanged="false"
-      max-height="220px"
+      max-height="var(--tool-pane-max)"
       class="tool-step-diff"
     />
     <ToolContentPreview
@@ -137,19 +135,11 @@
       <div class="detail-label">
         {{ view.status === 'rejected' ? 'Rejected' : 'Error' }}
       </div>
-      <!-- A failed edit has no diff or result to render — the error text is
-           the whole story, so it is shown plainly, not behind a disclosure. -->
-      <pre
-        v-if="showInlineError"
-        :class="view.status === 'rejected' ? 'rejection-text' : 'error-text'"
-      >{{ compactError }}</pre>
-      <details
-        v-else-if="showErrorDetails"
-        class="error-details"
-      >
-        <summary>Details</summary>
-        <pre :class="view.status === 'rejected' ? 'rejection-text' : 'error-text'">{{ compactError }}</pre>
-      </details>
+      <!-- The error text is the whole story of a failed call — it is shown
+           plainly, never behind a disclosure. A pane that is already open is
+           the answer to "what went wrong"; making the answer cost one more
+           click was the last fold in this area. -->
+      <pre :class="view.status === 'rejected' ? 'rejection-text' : 'error-text'">{{ compactError }}</pre>
     </div>
   </div>
 </template>
@@ -187,22 +177,10 @@ const figStatus = computed(() => {
     case 'streaming-input': return { text: 'RECEIVING', tone: 'live' }
     case 'received':
     case 'executing': return { text: 'RUNNING', tone: 'live' }
-    case 'completed': return { text: 'OK', tone: 'ok' }
+    // Success is silent: a pane that rendered at all already succeeded, and an
+    // OK badge on every finished call is noise that hides the real states.
     default: return null
   }
-})
-
-/**
- * Takeoff counts. Measured from the real patch once the tool has run —
- * there is deliberately no predicted fallback: +N/−N only exists as fact.
- */
-const figGain = computed(() => {
-  const source = props.view.diff
-  if (!source) return ''
-  const parts: string[] = []
-  if (source.additions) parts.push(`+${source.additions}`)
-  if (source.deletions) parts.push(`−${source.deletions}`)
-  return parts.join(' / ')
 })
 
 const streamingDraft = computed(() =>
@@ -278,7 +256,12 @@ const argEntries = computed<ArgEntry[]>(() => {
 
 const compactError = computed(() => compactErrorText(props.view.step.error || ''))
 const compactErrorReason = computed(() => compactToolFailureReason(compactError.value))
-const showErrorDetails = computed(() => {
+/**
+ * Whether the stored error says more than the row summary already does. A
+ * single line identical to the row title is not worth a second box — this is
+ * the ONLY gate now; once the section renders, the text renders in full.
+ */
+const errorAddsInformation = computed(() => {
   const error = compactError.value.trim()
   if (!error) return false
   const reason = compactErrorReason.value
@@ -286,8 +269,9 @@ const showErrorDetails = computed(() => {
   if (normalizeErrorText(error) === normalizeErrorText(reason)) return false
   return error.split('\n').filter(line => line.trim()).length > 1
 })
-const showInlineError = computed(() => isFailedEdit.value && !!props.view.step.error)
-const showErrorSection = computed(() => !!props.view.step.error && (showInlineError.value || showErrorDetails.value))
+/** A failed edit has no diff and no result: the error IS its content. */
+const isFailedEditError = computed(() => isFailedEdit.value && !!props.view.step.error)
+const showErrorSection = computed(() => !!props.view.step.error && (isFailedEditError.value || errorAddsInformation.value))
 
 function formatParamValue(value: unknown): string {
   if (typeof value === 'string') return value
@@ -378,12 +362,12 @@ watch(
   top: -8px;
   left: 10px;
   z-index: 1;
-  max-width: calc(100% - 90px);
+  max-width: calc(100% - 24px);
   padding: 0 7px;
   background: var(--fig-knockout);
   color: var(--ui-tool-text-fg);
   font-family: var(--tool-font-mono);
-  font-size: 9.5px;
+  font-size: var(--tool-font-size-meta);
   font-weight: 650;
   letter-spacing: 1.8px;
   line-height: 16px;
@@ -393,21 +377,17 @@ watch(
   text-transform: uppercase;
 }
 
-.fig-tag-right {
-  left: auto;
-  right: 10px;
-  max-width: 40%;
-  color: var(--ui-tool-text-faint-fg);
-}
-
 .fig-status { font-weight: 600; }
-.fig-status.ok { color: var(--ui-tool-success-text-fg); }
 .fig-status.bad { color: var(--ui-tool-danger-text-fg); }
 .fig-status.live { color: var(--ui-tool-accent-fg); }
 .fig-status.warn { color: var(--ui-status-warning-fg, var(--ui-tool-accent-fg)); }
 .fig-status.dim { color: var(--ui-tool-text-faint-fg); }
 
 .fig-cmd {
+  /* A 300-line heredoc is still one bash command: it scrolls inside the pane
+     instead of stretching the whole figure. */
+  max-height: var(--tool-pane-max);
+  overflow: auto;
   color: var(--ui-tool-text-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
@@ -450,17 +430,21 @@ watch(
   margin-bottom: 8px;
   color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
-  font-size: 9.5px;
+  font-size: var(--tool-font-size-meta);
   font-weight: 600;
   letter-spacing: 1.8px;
   text-transform: uppercase;
 }
 
+/* No `overscroll-behavior: contain` anywhere in this pane: a box that does not
+   actually overflow is still treated as a scroll container by Chrome, and the
+   contain then swallows the wheel instead of chaining it — a dead zone. The
+   boundary is owned by the root @wheel → chainWheelToScrollableAncestor, which
+   only preventDefault()s when the box really can scroll and is at its edge. */
 pre {
   margin: 0;
   max-height: var(--tool-pane-max);
   overflow: auto;
-  overscroll-behavior: contain;
   padding: 2px 0;
   color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
@@ -486,6 +470,10 @@ pre {
 
 .error-text {
   max-width: 72ch;
+  /* Shown in full and un-folded; a stack trace scrolls in place rather than
+     pushing the rest of the pane off screen. */
+  max-height: calc(var(--tool-pane-max) * 0.6);
+  overflow: auto;
   padding: 9px 12px;
   border: 1px solid color-mix(in srgb, var(--ui-tool-danger-text-fg) 40%, transparent);
   background: transparent;
@@ -508,25 +496,6 @@ pre {
   padding-bottom: 12px;
 }
 
-.error-details {
-  max-width: 72ch;
-  margin-top: 8px;
-}
-
-.error-details summary {
-  cursor: pointer;
-  color: var(--ui-tool-text-faint-fg);
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-meta);
-  font-weight: 400;
-}
-
-.error-details pre {
-  margin-top: 6px;
-  max-height: calc(var(--tool-pane-max) * 0.6);
-  padding: 7px 9px;
-}
-
 /* Structured arguments (console/search/mcp/unknown tools). */
 .detail-args {
   display: grid;
@@ -546,10 +515,9 @@ pre {
 
 .detail-arg-value {
   min-width: 0;
-  max-height: clamp(48px, 12vh, 96px);
+  max-height: calc(var(--tool-pane-max) * 0.4);
   margin: 0;
   overflow: auto;
-  overscroll-behavior: contain;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   color: var(--ui-tool-text-muted-fg);

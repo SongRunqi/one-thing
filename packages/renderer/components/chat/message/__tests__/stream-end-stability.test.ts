@@ -63,6 +63,15 @@ const markdownStubs = {
   TextEditor: { template: '<textarea />' },
 }
 
+// Same stubs, but with the REAL StepsPanel: the key-stability assertions are
+// about which DOM node survives inside it.
+const { StepsPanel: _stubbedStepsPanel, ...markdownStubsBase } = markdownStubs
+const toolTimelineStubs = {
+  ...markdownStubsBase,
+  FartCallItem: { template: '<div />' },
+  ToolActivityDetails: { template: '<div class="detail-stub" />' },
+}
+
 const messageItemStubs = {
   ...markdownStubs,
   ImagePreview: { template: '<div />' },
@@ -754,8 +763,123 @@ describe('stream end visual stability', () => {
     expect(panels[0].classes()).toContain('collapse-panel')
     expect(headers).toHaveLength(2)
     expect(headers[0].text()).toContain('Thought')
-    expect(headers[0].find('.inline-reasoning-summary-text').text()).toBe('Validate syntax and inspect the final diff.')
-    expect(headers[1].find('.inline-reasoning-summary-text').text()).toBe('Run the Lua parser to catch any syntax errors before finishing.')
+    // `.thought-detail-text` is ThoughtHeader's slot — the same one the
+    // top-of-message thought renders (see ThoughtHeader.shared.test.ts).
+    expect(headers[0].find('.thought-detail-text').text()).toBe('Validate syntax and inspect the final diff.')
+    expect(headers[1].find('.thought-detail-text').text()).toBe('Run the Lua parser to catch any syntax errors before finishing.')
+  })
+
+  // ===== Render-key stability (messagelist 整改 · 第一步/第二步) =====
+
+  it('keeps the tool row DOM node when its real step lands (no moving house)', async () => {
+    const live = toolCall({
+      id: 'tc-live',
+      toolName: 'read',
+      status: 'input-streaming',
+      changes: undefined,
+      arguments: { path: '/tmp/a.ts' },
+    })
+    const wrapper = mount(MessageBubble, {
+      props: {
+        role: 'assistant',
+        content: '',
+        contentParts: [{ type: 'tool-call', toolCalls: [live] }],
+        steps: [],
+        isStreaming: true,
+      },
+      global: { stubs: toolTimelineStubs },
+    })
+    await nextTick()
+
+    // One panel, one row — the synthesized streaming-input step.
+    expect(wrapper.findAll('.tool-activity-timeline')).toHaveLength(1)
+    const rows = wrapper.findAll('.operation-row')
+    expect(rows).toHaveLength(1)
+    const rowEl = rows[0].element
+
+    // The engine's real step arrives and a data-steps placeholder is appended.
+    await wrapper.setProps({
+      contentParts: [
+        { type: 'tool-call', toolCalls: [live] },
+        { type: 'data-steps', turnIndex: 1 },
+      ],
+      steps: [step({
+        id: 'step-real',
+        status: 'running',
+        turnIndex: 1,
+        toolCallId: 'tc-live',
+        toolCall: toolCall({
+          id: 'tc-live',
+          toolName: 'read',
+          status: 'executing',
+          changes: undefined,
+          arguments: { path: '/tmp/a.ts' },
+        }),
+      })],
+    })
+    await nextTick()
+
+    // Still ONE panel and ONE row, and it is the very same element: the row
+    // evolved in place instead of being re-created in a second StepsPanel.
+    expect(wrapper.findAll('.tool-activity-timeline')).toHaveLength(1)
+    const after = wrapper.findAll('.operation-row')
+    expect(after).toHaveLength(1)
+    expect(after[0].element).toBe(rowEl)
+  })
+
+  it('does not remount trailing parts when stream end splices transient indicators', async () => {
+    const wrapper = mount(MessageBubble, {
+      props: {
+        role: 'assistant',
+        content: 'first',
+        contentParts: [
+          { type: 'text', content: 'first', turnIndex: 1 },
+          { type: 'waiting', turnIndex: 1 },
+          { type: 'text', content: 'second', turnIndex: 2 },
+        ],
+        isStreaming: true,
+      },
+      global: { stubs: markdownStubs },
+    })
+    await nextTick()
+
+    expect(wrapper.find('.generation-waiting').exists()).toBe(true)
+    const trailing = wrapper.findAll('.other-parts-container > .content')
+    expect(trailing).toHaveLength(1)
+    const trailingEl = trailing[0].element
+
+    // removeTransientIndicators splices the waiting part out at stream end.
+    await wrapper.setProps({
+      contentParts: [
+        { type: 'text', content: 'first', turnIndex: 1 },
+        { type: 'text', content: 'second', turnIndex: 2 },
+      ],
+      isStreaming: false,
+    })
+    await nextTick()
+
+    expect(wrapper.find('.generation-waiting').exists()).toBe(false)
+    const after = wrapper.findAll('.other-parts-container > .content')
+    expect(after).toHaveLength(1)
+    // A positional key would have shifted 2 → 1 here and remounted the block.
+    expect(after[0].element).toBe(trailingEl)
+  })
+
+  it('draws no rail frame for a process group that renders nothing yet', async () => {
+    const wrapper = mount(MessageBubble, {
+      props: {
+        role: 'assistant',
+        content: '',
+        // data-steps placeholder arrived before any step did.
+        contentParts: [{ type: 'data-steps', turnIndex: 1 }],
+        steps: [],
+        isStreaming: true,
+      },
+      global: { stubs: toolTimelineStubs },
+    })
+    await nextTick()
+
+    expect(wrapper.find('.process-rail').exists()).toBe(false)
   })
 
   it('hides opening waiting because MessageThinking owns that status', async () => {
@@ -867,7 +991,9 @@ describe('stream end visual stability', () => {
       },
     })
 
-    expect(wrapper.find('.thinking-text').exists()).toBe(false)
+    // The waiting/thinking line is MessageThinking's `.thinking-status-row`
+    // (its label now comes from the shared ThoughtHeader).
+    expect(wrapper.find('.thinking-status-row').exists()).toBe(false)
     expect(wrapper.text()).toContain('answer from content parts')
   })
 

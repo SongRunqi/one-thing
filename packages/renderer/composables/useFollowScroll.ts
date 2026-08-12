@@ -13,6 +13,8 @@ export const FOLLOW_BOTTOM_GAP = 64
 
 const BOTTOM_EPSILON_PX = 0.75
 const USER_DETACH_REATTACH_LOCK_MS = 700
+/** 认定"这个 scrollTop 就是我自己刚写的"的容差。 */
+const SELF_WRITE_EPSILON_PX = 2
 export const SHOW_SCROLL_TO_BOTTOM_DISTANCE_PX = 160
 
 const raf =
@@ -59,6 +61,9 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
   let contentResizeObserver: ResizeObserver | null = null
   let contentMutationObserver: MutationObserver | null = null
   let lastObservedScrollHeight = 0
+  // 自己写过的 scrollTop。用来把"用户自己滚的"和"我把它钉回底部"分开 ——
+  // wheel 事件看不见自定义滚动条拖拽 / PageUp / Home / 键盘滚动。
+  let lastSelfWriteTop: number | null = null
 
   function getMaxScrollTop(el: HTMLElement): number {
     return Math.max(0, el.scrollHeight - el.clientHeight)
@@ -93,6 +98,7 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
   function writeScrollTop(el: HTMLElement, target: number, source: string, action: string) {
     const before = el.scrollTop
     el.scrollTop = target
+    lastSelfWriteTop = el.scrollTop
     traceScroll(source, {
       action,
       beforeScrollTop: before,
@@ -106,7 +112,12 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
     const el = opts.scroller.value
     if (!el) return
     const target = getMaxScrollTop(el)
-    if (Math.abs(target - el.scrollTop) <= BOTTOM_EPSILON_PX) return
+    if (Math.abs(target - el.scrollTop) <= BOTTOM_EPSILON_PX) {
+      // 已经在底了就不用写,但"我认得这个位置"的标记要跟上 —— 否则一个陈旧的
+      // 标记会让下一次滚动被误判成用户接管。
+      lastSelfWriteTop = el.scrollTop
+      return
+    }
     writeScrollTop(el, target, source, 'write:natural-bottom')
   }
 
@@ -179,6 +190,24 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
     const distance = getNaturalBottomDistance(el)
     if (isFollowing.value) {
       if (!shouldMaintainOnLayout()) return
+      // 一次**不是我写的**、并且把视口带离底部一大截的滚动 = 用户接管了。
+      // wheel 分支看不到自定义滚动条拖拽 / PageUp / Home / 键盘滚动,过去这些
+      // 路径下 isFollowing 一直是 true,下一个 chunk 就把用户拽回底部。
+      // `distance > FOLLOW_BOTTOM_GAP` 是安全阀:内容变矮时浏览器会自己夹一次
+      // scrollTop(同样不是我写的),但那种夹完仍然贴底,不会误判成用户操作。
+      if (
+        !suppressed &&
+        lastSelfWriteTop !== null &&
+        Math.abs(el.scrollTop - lastSelfWriteTop) > SELF_WRITE_EPSILON_PX &&
+        distance > FOLLOW_BOTTOM_GAP
+      ) {
+        isFollowing.value = false
+        lastUserScrollDirection = 'up'
+        reattachLockedUntil = performance.now() + USER_DETACH_REATTACH_LOCK_MS
+        cancelScheduledPin()
+        traceScroll('scroll:external-detach', { action: 'state:following-false' })
+        return
+      }
       if (distance > BOTTOM_EPSILON_PX && !suppressed) {
         schedulePinToBottom('scroll:follow-drift', true)
       }

@@ -118,12 +118,15 @@ defineExpose({
   border-radius: 0;
 }
 
+/* One pane ceiling for the whole tool area: `--tool-pane-max` is declared on
+   .tool-step-details and inherits down here; the fallback keeps this component
+   honest if it is ever mounted outside that frame.
+   No `overscroll-behavior` — the wheel boundary is the root @wheel handler. */
 .preview-content {
   background: transparent;
   border: 0;
-  max-height: 220px;
+  max-height: var(--tool-pane-max, clamp(148px, 28vh, 240px));
   overflow: auto;
-  overscroll-behavior: contain;
   color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
@@ -135,9 +138,11 @@ defineExpose({
   overflow-x: hidden;
 }
 
+/* Live/awaiting: the pane holds a fixed height so streamed lines do not make
+   the message jump — same ceiling, pinned instead of grown into. */
 .preview-content.fixed {
-  height: clamp(148px, 24vh, 220px);
-  max-height: clamp(148px, 24vh, 220px);
+  height: var(--tool-pane-max, clamp(148px, 28vh, 240px));
+  max-height: var(--tool-pane-max, clamp(148px, 28vh, 240px));
 }
 
 /* Inner track sized to the widest line so every row can fill the full scroll

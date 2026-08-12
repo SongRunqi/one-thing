@@ -1,12 +1,15 @@
 <template>
   <NestedCollapseGroup
     v-if="timelineItems.length > 0"
+    ref="timelineRef"
     class="tool-activity-timeline"
     :items="timelineItems"
+    :model-value="controlledExpandedKeys"
     variant="plain"
     expand-icon-position="inline-end"
     spacing="3px"
     :data-depth="depth"
+    @panel-change="handleIntentPanelChange"
   >
     <template #title="{ item, expanded, toggle }">
       <template v-if="isFartTimelineItem(item)">
@@ -139,13 +142,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import type { Step } from '@/types'
+import { beginCollapseCompensation } from '@/utils/collapse-compensation'
 import NestedCollapseGroup from '@/components/common/NestedCollapseGroup.vue'
 import type {
+  CollapsePanelKey,
   CollapsePanelStatus,
   NestedCollapseItem,
+  NestedCollapsePanelChange,
 } from '@/components/common/collapse'
+import { getExpansionIntent, setExpansionIntent } from '@/stores/helpers/expansion-intent'
 import {
   buildToolActivityViews,
   type ToolActivityView,
@@ -167,11 +174,32 @@ const props = withDefaults(defineProps<{
    * already carries the aggregate counts.
    */
   flat?: boolean
+  /**
+   * Address prefix for expansion-intent records. When set, this panel becomes
+   * CONTROLLED: expansion is `user record > per-row auto-expand > collapsed`
+   * instead of "whatever CollapseGroup happened to register at mount time".
+   * That registration was the bug — a row remounting while, say, a bash call
+   * was executing re-added its key to the group's expanded set and re-opened
+   * something the user had just closed. Omit the prop and the panel stays
+   * uncontrolled, exactly as before.
+   */
+  intentScope?: string
+  /**
+   * Intent addresses of host-owned containers wrapping this panel (today: the
+   * ProcessRail shell). Expanding a row inside writes `true` to each of them —
+   * the same "expanding a child pins its ancestors" rule that applies to the
+   * groups inside this panel, extended across the component boundary because
+   * the rail's own auto-collapse (streaming ends → fold) would otherwise take
+   * the row the user just opened away with it.
+   */
+  parentIntentIds?: string[]
 }>(), {
   depth: 0,
   parentCollapsed: false,
   sessionId: '',
   flat: false,
+  intentScope: '',
+  parentIntentIds: () => [],
 })
 
 const emit = defineEmits<{
@@ -200,6 +228,18 @@ type ToolTimelineItemData =
 type ToolTimelineItem = NestedCollapseItem<ToolTimelineItemData>
 
 /**
+ * The row's identity across its whole life. A tool call is first rendered from
+ * a synthesized step (id = toolCallId) and later from the engine's real step
+ * (id = step id, a different string). Keying on `activity.id` therefore threw
+ * the row away and rebuilt it at the exact moment it stopped streaming —
+ * losing its expansion, restarting its shimmer and re-numbering the ledger.
+ * The toolCallId is the one identifier both forms agree on.
+ */
+function activityRowId(activity: ToolActivityView): string {
+  return activity.step.toolCallId || activity.id
+}
+
+/**
  * Grouping: only tool calls issued together in ONE model turn (a parallel
  * tool_calls array) form a group. Sequential calls — even of the same tool —
  * always render as independent rows. Steps without a turnIndex never group.
@@ -215,7 +255,7 @@ const stepGroups = computed<StepGroup[]>(() => {
         currentGroup = null
       }
       groups.push({
-        id: activity.id,
+        id: activityRowId(activity),
         turnIndex: undefined,
         isFart: true,
         activities: [activity],
@@ -237,7 +277,7 @@ const stepGroups = computed<StepGroup[]>(() => {
     } else {
       if (currentGroup) groups.push(currentGroup)
       currentGroup = {
-        id: activity.id,
+        id: activityRowId(activity),
         turnIndex,
         isFart: false,
         activities: [activity],
@@ -253,6 +293,151 @@ const stepGroups = computed<StepGroup[]>(() => {
 const timelineItems = computed<ToolTimelineItem[]>(() =>
   stepGroups.value.map(group => createGroupTimelineItem(group)),
 )
+
+// ============ Controlled expansion (intent > auto > default) ============
+
+function intentIdFor(key: CollapsePanelKey): string {
+  return `${props.intentScope}:${String(key)}`
+}
+
+/** Has the user expressed any expansion intent strictly *below* this item? */
+function subtreeHasIntent(item: ToolTimelineItem): boolean {
+  for (const child of (item.children ?? []) as ToolTimelineItem[]) {
+    if (child.panel !== false && getExpansionIntent(intentIdFor(child.key)) !== undefined) return true
+    if (subtreeHasIntent(child)) return true
+  }
+  return false
+}
+
+/**
+ * Expansion is **continuous in the opening direction, restricted in the
+ * closing one**.
+ *
+ * `auto` is recomputed from live status on every frame, not registered once at
+ * mount. Opening that way is the whole point: a bash call entering `executing`,
+ * an edit going `awaiting-confirmation` — those must pop open the moment they
+ * happen. Closing that way is what ate the user's reading position: a parallel
+ * batch settling flips its group's auto from true to false, and since the group
+ * itself carried no intent it folded — taking the tool call the user had just
+ * expanded inside it out of sight with it.
+ *
+ * So: a container never auto-collapses while anything under it carries a user
+ * record. Rows (no panel children) keep the old continuous behaviour — a
+ * finished bash folding its own output back up is wanted.
+ */
+function collectExpandedKeys(items: ToolTimelineItem[], into: CollapsePanelKey[]): void {
+  for (const item of items) {
+    if (item.panel !== false) {
+      const recorded = getExpansionIntent(intentIdFor(item.key))
+      // `defaultCollapsed` undefined means "expanded" in NestedCollapseGroup —
+      // mirror that here so an uncontrolled→controlled switch changes nothing.
+      const auto = !(item.defaultCollapsed ?? false)
+      const expanded = recorded ?? (auto || subtreeHasIntent(item))
+      if (expanded) into.push(item.key)
+    }
+    if (item.children?.length) collectExpandedKeys(item.children as ToolTimelineItem[], into)
+  }
+}
+
+/** Panel keys on the path from the roots down to `key` (excluding `key`). */
+function findPanelAncestorKeys(
+  items: ToolTimelineItem[],
+  key: CollapsePanelKey,
+  trail: CollapsePanelKey[] = [],
+): CollapsePanelKey[] | null {
+  for (const item of items) {
+    if (item.key === key) return trail
+    const children = item.children as ToolTimelineItem[] | undefined
+    if (!children?.length) continue
+    const found = findPanelAncestorKeys(
+      children,
+      key,
+      item.panel === false ? trail : [...trail, item.key],
+    )
+    if (found) return found
+  }
+  return null
+}
+
+/** `undefined` leaves CollapseGroup uncontrolled — the legacy behaviour. */
+const controlledExpandedKeys = computed<CollapsePanelKey[] | undefined>(() => {
+  if (!props.intentScope) return undefined
+  const keys: CollapsePanelKey[] = []
+  collectExpandedKeys(timelineItems.value, keys)
+  return keys
+})
+
+/**
+ * Expanding something also pins everything it lives inside — the group above
+ * it and any host container that wrapped this panel. Collapsing does not touch
+ * the ancestors (folding one row is not a statement about its group).
+ *
+ * Belt and braces with `subtreeHasIntent`: that one keeps the group open while
+ * the panel is mounted, this one survives a remount and reaches containers
+ * outside the panel entirely.
+ */
+function handleIntentPanelChange(change: NestedCollapsePanelChange): void {
+  if (!props.intentScope) return
+  // 用户点的这一下由 `controlledExpandedKeys` 的 watcher 消费:主动收起不补偿。
+  manualPanelToggle = true
+  setExpansionIntent(intentIdFor(change.item.key), change.expanded)
+  if (!change.expanded) return
+
+  for (const key of findPanelAncestorKeys(timelineItems.value, change.item.key) ?? []) {
+    setExpansionIntent(intentIdFor(key), true)
+  }
+  for (const id of props.parentIntentIds) {
+    setExpansionIntent(id, true)
+  }
+}
+
+// ============ 自动塌缩的滚动补偿(T2) ============
+// 详情面板自己合上(bash 跑完、批次落定)是"自动"塌缩:如果它发生在视口顶
+// 之上,用户正在读的正文会被抽掉那段高度。这里在塌缩前量一次、DOM 落定后把
+// 差值还给 scrollTop。用户点击收起走 `handleIntentPanelChange`,置旗跳过。
+const timelineRef = ref<ComponentPublicInstance | null>(null)
+let manualPanelToggle = false
+
+// 属性值里可能出现引号(toolCallId 来自外部),所以按属性遍历比拼选择器安全。
+function panelElement(key: CollapsePanelKey): HTMLElement | null {
+  const root = timelineRef.value?.$el
+  if (!(root instanceof HTMLElement)) return null
+  const wanted = String(key)
+  if (root.getAttribute('data-activity-panel-key') === wanted) return root
+  for (const el of root.querySelectorAll<HTMLElement>('[data-activity-panel-key]')) {
+    if (el.getAttribute('data-activity-panel-key') === wanted) return el
+  }
+  return null
+}
+
+watch(controlledExpandedKeys, (next, prev) => {
+  const wasManual = manualPanelToggle
+  manualPanelToggle = false
+  if (wasManual || !prev || !next) return
+
+  const stillOpen = new Set(next)
+  const closed = prev.filter(key => !stillOpen.has(key))
+  if (closed.length === 0) return
+
+  // 多行同时合上时锚在**最下面**那一个:把它的下边钉住,所有塌缩之下的内容
+  // 才全都不动(锚最上面那个只能保住第一处塌缩以下、第二处塌缩以上的一段)。
+  let anchor: HTMLElement | null = null
+  let anchorBottom = -Infinity
+  for (const key of closed) {
+    const el = panelElement(key)
+    if (!el) continue
+    const bottom = el.getBoundingClientRect().bottom
+    if (bottom >= anchorBottom) {
+      anchorBottom = bottom
+      anchor = el
+    }
+  }
+  const apply = beginCollapseCompensation(anchor)
+  if (!apply) return
+  void nextTick(() => {
+    apply()
+  })
+})
 
 const fileOpenFlashMap = ref<Record<string, boolean>>({})
 const fileOpenFlashTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -292,7 +477,7 @@ function createGroupTimelineItem(group: StepGroup): ToolTimelineItem {
         group.status,
         { 'workflow-group': true },
       ],
-      attrs: { 'data-tool-activity-row': true },
+      attrs: { 'data-tool-activity-row': true, 'data-activity-panel-key': `group-${group.id}` },
       defaultCollapsed: !isGroupDefaultExpanded(group),
       status: getCollapsePanelStatus(group.status),
       streaming: isStreamingToolStatus(group.status),
@@ -313,13 +498,30 @@ function createGroupTimelineItem(group: StepGroup): ToolTimelineItem {
   }
 }
 
+/**
+ * 批次抑制:并行批次里,**没有一行**因为「正在执行」而自动展开。
+ *
+ * `shouldDefaultExpand` 里唯一由 executing 触发的自动展开是 bash —— 它的实时
+ * 输出行标题概括不了,单发时展开是对的。但一次 10 个并行 bash 会同时弹开 10 个
+ * 图纸框、跑完再一个个自动合上,而 RUNNING 阶段框里只有一行 `$ 命令`,和行标题
+ * 完全重复,零信息增益,纯粹是抖动源。
+ *
+ * 失败(failed)与待审批(awaiting-confirmation)不受批次影响:错误和审批必须
+ * 显眼。所以这里只按 `status === 'executing'` 抑制,不动其他状态。
+ */
+function isActivityDefaultExpanded(group: StepGroup, activity: ToolActivityView): boolean {
+  if (!activity.defaultExpanded) return false
+  if (group.activities.length > 1 && activity.status === 'executing') return false
+  return true
+}
+
 function createActivityTimelineItem(
   group: StepGroup,
   activity: ToolActivityView,
   single: boolean,
 ): ToolTimelineItem {
   return {
-    key: `activity-${activity.id}`,
+    key: `activity-${activityRowId(activity)}`,
     data: { kind: 'activity', group, activity, single },
     class: [
       'operation-block',
@@ -331,7 +533,8 @@ function createActivityTimelineItem(
         'has-details': activity.hasDetails,
       },
     ],
-    defaultCollapsed: !activity.defaultExpanded,
+    attrs: { 'data-activity-panel-key': `activity-${activityRowId(activity)}` },
+    defaultCollapsed: !isActivityDefaultExpanded(group, activity),
     collapsible: activity.hasDetails,
     status: getCollapsePanelStatus(activity.status),
     streaming: isStreamingToolStatus(activity.status),
@@ -630,7 +833,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 
 .group-summary-text {
   color: var(--activity-title-fg);
-  font-size: 12px;
+  font-size: var(--tool-font-size-body);
   font-weight: 500;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -641,7 +844,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   flex: 0 0 auto;
   color: color-mix(in srgb, var(--ui-text-faint-fg, var(--ui-text-muted-fg)) 86%, transparent);
   font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
+  font-size: var(--tool-font-size-meta);
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
   white-space: nowrap;
@@ -651,7 +854,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 .group-stat {
   flex: 0 0 auto;
   font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
+  font-size: var(--tool-font-size-meta);
   font-weight: 560;
   line-height: 1.25;
   white-space: nowrap;
@@ -752,18 +955,34 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   transition: color var(--duration-normal) var(--ease-default);
 }
 
-/* Ledger row number (01, 02, …), counted in DOM order per timeline. */
+/* Ledger row number (01, 02, …), counted in DOM order per timeline.
+   Hidden at rest and faded in while the pointer is anywhere over the
+   timeline: the numbers are an addressing aid for "the third call", not
+   something to read on every row. The column keeps its 20px either way, so
+   nothing shifts — only the ink appears. Counting is untouched. */
 .operation-row::before {
   counter-increment: tool-fig;
   content: counter(tool-fig, decimal-leading-zero);
   flex: 0 0 auto;
   width: 20px;
   padding-top: 1px;
+  opacity: 0;
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
-  font-size: 10px;
+  font-size: var(--tool-font-size-meta);
   line-height: 1.75;
   text-align: left;
+  transition: opacity var(--duration-fast) var(--ease-default);
+}
+
+.tool-activity-timeline:hover .operation-row::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .operation-row::before {
+    transition: none;
+  }
 }
 
 /* The op name is the identity — no icons on the sheet. */
@@ -834,7 +1053,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   min-width: 46px;
   color: var(--activity-title-fg);
   font-family: var(--font-mono, monospace);
-  font-size: 11.5px;
+  font-size: var(--tool-font-size-body);
   font-weight: 620;
   line-height: inherit;
   text-transform: lowercase;
@@ -850,7 +1069,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   margin-left: 10px;
   color: var(--activity-row-fg);
   font-family: var(--font-mono, monospace);
-  font-size: 11.5px;
+  font-size: var(--tool-font-size-body);
   font-weight: 450;
   line-height: inherit;
 }
@@ -922,7 +1141,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 .node-status-badge {
   flex: 0 0 auto;
   font-family: var(--font-mono, monospace);
-  font-size: 10px;
+  font-size: var(--tool-font-size-meta);
   font-weight: 540;
   line-height: 1.3;
   white-space: nowrap;
@@ -943,7 +1162,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   max-width: min(56ch, 100%);
   overflow: hidden;
   color: var(--ui-status-danger-fg);
-  font-size: 11.5px;
+  font-size: var(--tool-font-size-body);
   font-weight: 500;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -968,7 +1187,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   flex: 0 0 auto;
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
-  font-size: 10px;
+  font-size: var(--tool-font-size-meta);
   line-height: 1.25;
 }
 
@@ -979,7 +1198,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   overflow: hidden;
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg));
   font-family: var(--font-mono, monospace);
-  font-size: 10px;
+  font-size: var(--tool-font-size-meta);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
   line-height: 1.25;

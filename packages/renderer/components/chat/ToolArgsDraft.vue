@@ -194,7 +194,7 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
   gap: 6px;
   color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
-  font-size: 9.5px;
+  font-size: var(--tool-font-size-meta);
   font-weight: 600;
   letter-spacing: 1.4px;
   text-transform: uppercase;
@@ -256,11 +256,14 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
   letter-spacing: 1.2px;
 }
 
+/* Ceilings ride the pane's own `--tool-pane-max` (declared on
+   .tool-step-details, inherited here) so one knob moves them all.
+   No `overscroll-behavior`: the pane root's @wheel handler owns the boundary
+   — a contain on a box that does not really overflow is a wheel dead zone. */
 .draft-text {
   margin: 0;
-  max-height: clamp(96px, 18vh, 180px);
+  max-height: calc(var(--tool-pane-max, clamp(148px, 28vh, 240px)) * 0.75);
   overflow: auto;
-  overscroll-behavior: contain;
   padding: 2px 0 2px 10px;
   border-left: 1px dashed color-mix(in srgb, var(--ui-tool-border-border, var(--ui-tool-surface-border)) 60%, transparent);
   font-family: var(--tool-font-mono);
@@ -296,10 +299,9 @@ function isReplacementOpen(replacement: { find: ToolDraftText | null; replace: T
 
 .draft-field-value {
   min-width: 0;
-  max-height: clamp(48px, 12vh, 96px);
+  max-height: calc(var(--tool-pane-max, clamp(148px, 28vh, 240px)) * 0.4);
   margin: 0;
   overflow: auto;
-  overscroll-behavior: contain;
   color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-meta);

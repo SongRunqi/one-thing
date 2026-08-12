@@ -43,18 +43,11 @@
       <div
         ref="bashOutputRef"
         class="bash-output"
+        :class="{ settled: !isPartial }"
         @scroll.passive="handleBashScroll"
       >
-        <button
-          v-if="hiddenBashLineCount > 0"
-          type="button"
-          class="expand-line"
-          @click.stop="bashExpanded = true"
-        >
-          ▸ +{{ hiddenBashLineCount }} lines
-        </button>
         <div
-          v-for="(line, index) in visibleBashLines"
+          v-for="(line, index) in bashLines"
           :key="`${index}-${line.text}`"
           class="bash-line"
           :class="line.kind"
@@ -128,19 +121,23 @@ interface BashLine {
 }
 
 /**
- * Collapsed bash output shows the tail; earlier lines expand on demand.
+ * bash 输出**全量渲染**,不截尾、不设「▸ +N lines」展开钮(2026-08-12)。
  *
- * 这个数**必须让默认态撑满 `.bash-output` 的 max-height**,否则那块等宽面板是
- * 摆着好看的:内容高度够不到 `clamp(148px, 28vh, 240px)` 的下限时
- * `scrollHeight === clientHeight`,`overflow: auto` 一辈子不生效,鼠标滚轮在上面
- * 毫无反应(2026-08-06 真机反馈)。此前是 6 —— 6 行 × 20px 行高 + 展开钮 ≈ 145px,
- * 差 3px 就是滚不动。
+ * 曾经默认只画尾部 20 行:用户想看前面必须先点一下,而那颗按钮本身又长得像一行
+ * 输出。真正需要的护栏不是"少画几行",而是"别让一屏之外的行还占着渲染成本" ——
+ * 那件事交给 CSS:`.bash-output.settled .bash-line { content-visibility: auto }`。
  *
- * 20 行 × 20px = 400px,稳稳越过 240px 的上限,任何字号档下都必然溢出 → 有滚动条、
- * 滚轮有反应。真正的长输出仍然靠「▸ +N lines」一次性展开,不会把上万行铺进 DOM。
+ * 为什么只在 settled(非流式)开:`content-visibility: auto` 会让屏外元素用
+ * `contain-intrinsic-size` 的估算值参与布局,`scrollHeight` 因此是估的,而流式期间
+ * 的 tail-follow 正是靠 `scrollTop = scrollHeight` 跟底 —— 估偏就跟不住底。流式
+ * 期间行数还不大,原样渲染没有成本问题;流一停,护栏才接管。
+ *
+ * 历史:滚不动那次(2026-08-06)的根因是盒子上的 `overscroll-behavior: contain`
+ * 配上够不到 max-height 下限的短内容,`scrollHeight === clientHeight` 的盒子被当成
+ * scroll container、contain 又挡住链滚 → 滚轮死区。contain 早已全面撤除,滚轮边界
+ * 由根上的 `@wheel → chainWheelToScrollableAncestor` 接管(只在真能滚且到边时才
+ * 接管),与这里画多少行无关。
  */
-const BASH_TAIL_LINES = 20
-
 const props = withDefaults(defineProps<{
   result?: ToolPartialResult | null
   isPartial?: boolean
@@ -206,7 +203,6 @@ const isWebSearchResult = computed(() =>
   ),
 )
 const rendererRef = ref<HTMLElement | null>(null)
-const bashExpanded = ref(false)
 
 const BASH_METADATA_BLOCK = /<bash_metadata>\n?([\s\S]*?)\n?<\/bash_metadata>/g
 
@@ -253,14 +249,6 @@ const bashLines = computed<BashLine[]>(() => {
   return rows
 })
 
-const visibleBashLines = computed<BashLine[]>(() =>
-  bashExpanded.value ? bashLines.value : bashLines.value.slice(-BASH_TAIL_LINES),
-)
-
-const hiddenBashLineCount = computed(() =>
-  bashExpanded.value ? 0 : Math.max(0, bashLines.value.length - BASH_TAIL_LINES),
-)
-
 // Live bash output follows the tail (like `tail -f`) until the user scrolls
 // up; scrolling back to the bottom re-engages following.
 const bashOutputRef = ref<HTMLElement | null>(null)
@@ -273,7 +261,7 @@ function handleBashScroll() {
 }
 
 watch(
-  () => [visibleBashLines.value.length, props.isPartial] as const,
+  () => [bashLines.value.length, props.isPartial] as const,
   async () => {
     if (!props.isPartial || !bashFollowing.value) return
     await nextTick()
@@ -304,12 +292,14 @@ function handleWheel(event: WheelEvent) {
   --tool-result-max-height: var(--tool-pane-max, clamp(148px, 28vh, 240px));
 }
 
+/* No `overscroll-behavior: contain` on any scroll box here — see the note in
+   ToolStepDetails: contain on a box that does not really overflow turns the
+   wheel into a dead zone. The root @wheel handler owns the boundary. */
 .tool-result-renderer:has(.variable-row),
 .tool-result-renderer:has(.read-output),
 .tool-result-renderer:has(.tool-result-file) {
   max-height: var(--tool-result-max-height);
   overflow: auto;
-  overscroll-behavior: contain;
 }
 
 .variable-row {
@@ -368,7 +358,6 @@ function handleWheel(event: WheelEvent) {
   margin: 0;
   max-height: var(--tool-result-max-height);
   overflow: auto;
-  overscroll-behavior: contain;
   padding: 2px 0;
   color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
@@ -385,7 +374,6 @@ function handleWheel(event: WheelEvent) {
   gap: 0;
   max-height: var(--tool-result-max-height);
   overflow: auto;
-  overscroll-behavior: contain;
   padding: 2px 0;
   color: var(--ui-tool-text-muted-fg);
   font-family: var(--tool-font-mono);
@@ -411,28 +399,16 @@ function handleWheel(event: WheelEvent) {
   color: var(--ui-tool-text-fg);
 }
 
+/* 全量渲染的性能护栏:输出停下来之后,一屏之外的行不再排版/绘制。
+   流式期间**不开** —— 屏外行改用估算高度会让 scrollHeight 失真,而 tail-follow
+   正靠 scrollHeight 跟底(见脚本顶部的说明)。 */
+.bash-output.settled .bash-line {
+  content-visibility: auto;
+  contain-intrinsic-size: auto calc(var(--tool-font-size-body) * var(--tool-code-line-height));
+}
+
 .bash-line-text {
   min-width: 0;
-}
-
-.expand-line {
-  display: block;
-  width: 100%;
-  padding: 1px 0;
-  border: 0;
-  background: transparent;
-  color: var(--ui-tool-text-faint-fg);
-  font-family: var(--tool-font-mono);
-  font-size: 10px;
-  letter-spacing: 1px;
-  line-height: var(--tool-code-line-height);
-  text-align: left;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.expand-line:hover {
-  color: var(--ui-tool-text-fg);
 }
 
 /* Blueprint dimension note: bare caps annotation, no side bar. */
@@ -441,7 +417,7 @@ function handleWheel(event: WheelEvent) {
   padding: 0;
   color: var(--ui-tool-text-faint-fg);
   font-family: var(--tool-font-mono);
-  font-size: 10px;
+  font-size: var(--tool-font-size-meta);
   letter-spacing: 1px;
   line-height: var(--tool-code-line-height);
   text-transform: uppercase;
@@ -455,7 +431,6 @@ function handleWheel(event: WheelEvent) {
 .read-output {
   max-height: var(--tool-result-max-height);
   overflow: auto;
-  overscroll-behavior: contain;
 }
 
 .read-output pre {
