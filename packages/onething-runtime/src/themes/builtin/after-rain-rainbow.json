@@ -1,0 +1,213 @@
+{
+  "id": "after-rain-rainbow",
+  "name": "雨后彩虹 Rainbow After Rain",
+  "author": "onething",
+  "version": "1.0.0",
+  "type": "full",
+  "colorScheme": "light",
+
+  "defs": {
+    "rain0": "#ecf3f4",
+    "rain1": "#f2f7f7",
+    "rain2": "#fafcfc",
+    "card": "#ffffff",
+    "ink": "#2e3c44",
+    "ink2": "#52646e",
+    "ink3": "#6e7e88",
+    "ink4": "#70808a",
+    "line": "#d5e2e5",
+    "lineSubtle": "#e2ecee",
+    "lineStrong": "#8ca4ae",
+    "white": "#fafcfc",
+    "blue": "#2f6e88",
+    "blueDeep": "#275c73",
+    "cyan": "#4e8a8a",
+    "green": "#4e8a6e",
+    "yellow": "#8a7420",
+    "red": "#a4525c",
+    "purple": "#6f6a9e",
+    "rose": "#a36271",
+    "orange": "#a86a35",
+    "brown": "#7d5040"
+  },
+
+  "theme": {
+    "accent": "blue",
+    "accentMain": "blue",
+    "accentSub": { "dark": "rgba(47, 110, 136, 0.2)", "light": "rgba(47, 110, 136, 0.09)" },
+    "accentRgb": "47, 110, 136",
+
+    "bg": {
+      "app": "rain1",
+      "sidebar": "rain0",
+      "chat": "rain2",
+      "panel": "rain1",
+      "elevated": "card",
+      "floating": "card",
+      "message": {
+        "user": "#e3eff0",
+        "userSolid": "#e3eff0",
+        "ai": "transparent",
+        "system": "rain1",
+        "error": "rgba(164, 82, 92, 0.08)",
+        "hover": "rgba(46, 60, 68, 0.03)"
+      },
+      "toolCall": "rain1",
+      "toolCallHover": "rain0",
+      "toolResult": "rain1",
+      "input": "#e8f0f1",
+      "inputFocus": "#e0eaee",
+      "btn": {
+        "primary": "blue",
+        "primaryHover": "blueDeep",
+        "secondary": "rain0",
+        "secondaryHover": "line",
+        "ghost": "transparent",
+        "ghostHover": "rain1",
+        "danger": "red",
+        "dangerHover": "#923f4a"
+      },
+      "code": {
+        "inline": "rain0",
+        "block": "#eff5f5",
+        "header": "#e6eeef"
+      },
+      "menu": "card",
+      "menuItemHover": "#f0f6f7",
+      "tooltip": "#33434c",
+      "modal": "rain2",
+      "selected": "rgba(47, 110, 136, 0.08)",
+      "selectedHover": "rgba(47, 110, 136, 0.12)",
+      "highlight": "rgba(138, 116, 32, 0.16)",
+      "hover": "rgba(46, 60, 68, 0.04)",
+      "active": "rgba(46, 60, 68, 0.08)"
+    },
+
+    "text": {
+      "primary": "ink",
+      "secondary": "ink2",
+      "muted": "ink3",
+      "faint": "ink4",
+      "error": "red",
+      "warning": "yellow",
+      "success": "green",
+      "info": "blue",
+      "link": "blue",
+      "linkHover": "blueDeep",
+      "user": {
+        "primary": "ink",
+        "secondary": "ink2"
+      },
+      "ai": {
+        "primary": "ink",
+        "secondary": "ink2",
+        "thinking": "ink3"
+      },
+      "tool": {
+        "name": "cyan",
+        "args": "ink3",
+        "result": "ink3",
+        "error": "red"
+      },
+      "sidebar": {
+        "title": "ink",
+        "item": "#5b6e78",
+        "itemActive": "blue",
+        "itemHover": "ink",
+        "muted": "ink3"
+      },
+      "input": "ink",
+      "inputPlaceholder": "ink4",
+      "btn": {
+        "primary": "card",
+        "secondary": "ink2",
+        "ghost": "ink3",
+        "danger": "card"
+      },
+      "code": {
+        "inline": "ink",
+        "block": "ink",
+        "comment": "#6a7c88",
+        "keyword": "#755fa8",
+        "string": "#3f8a5c",
+        "number": "yellow",
+        "function": "blue",
+        "variable": "ink2",
+        "operator": "#6a7c88",
+        "type": "#3e8486",
+        "property": "#a85a72",
+        "punctuation": "#6a7c88"
+      },
+      "menu": {
+        "item": "ink2",
+        "itemHover": "ink",
+        "itemActive": "blue",
+        "header": "ink3"
+      },
+      "label": "ink2",
+      "helper": "ink3"
+    },
+
+    "border": {
+      "default": "line",
+      "subtle": "lineSubtle",
+      "strong": "lineStrong",
+      "accent": "blue",
+      "error": "red",
+      "success": "green",
+      "warning": "yellow",
+      "input": "line",
+      "inputFocus": "blue",
+      "inputError": "red",
+      "message": "lineSubtle",
+      "messageUser": "#c4dce2",
+      "code": "line",
+      "divider": "lineSubtle"
+    },
+
+    "shadow": {
+      "xs": "0 1px 2px rgba(46, 60, 68, 0.05)",
+      "sm": "0 1px 3px rgba(46, 60, 68, 0.06)",
+      "md": "0 4px 12px rgba(46, 60, 68, 0.08)",
+      "lg": "0 8px 24px rgba(46, 60, 68, 0.10)",
+      "xl": "0 16px 44px rgba(46, 60, 68, 0.12)",
+      "inner": "inset 0 1px 2px rgba(46, 60, 68, 0.05)",
+      "glow": {
+        "accent": "0 0 18px rgba(47, 110, 136, 0.16)",
+        "error": "0 0 18px rgba(164, 82, 92, 0.16)"
+      },
+      "elevated": "0 8px 28px rgba(46, 60, 68, 0.09)",
+      "floating": "0 14px 40px rgba(46, 60, 68, 0.13)"
+    },
+
+    "effects": {
+      "gradientUserBubble": "linear-gradient(135deg, #eef6f7 0%, #e3eff0 100%)",
+      "gradientAiBubble": "linear-gradient(135deg, transparent 0%, transparent 100%)",
+      "gradientAccent": "linear-gradient(120deg, #f0cdd3 0%, #f3e2c4 22%, #f2eec9 40%, #cfe8d8 58%, #cde4f2 78%, #ddd6ec 100%)",
+      "overlayHover": "rgba(46, 60, 68, 0.04)",
+      "overlayActive": "rgba(46, 60, 68, 0.08)",
+      "overlayDisabled": "rgba(250, 252, 252, 0.55)",
+      "blurBackdrop": "18px"
+    },
+
+    "diff": {
+      "addBg": "rgba(78, 138, 110, 0.12)",
+      "addText": "ink",
+      "delBg": "rgba(164, 82, 92, 0.10)",
+      "delText": "ink",
+      "hunkBg": "#f0f6f7",
+      "hunkText": "ink3"
+    },
+
+    "color": {
+      "danger": "red",
+      "dangerLight": "rgba(164, 82, 92, 0.10)",
+      "warning": "yellow",
+      "warningLight": "rgba(138, 116, 32, 0.10)",
+      "success": "green",
+      "successLight": "rgba(78, 138, 110, 0.12)",
+      "info": "blue",
+      "infoLight": "rgba(47, 110, 136, 0.10)"
+    }
+  }
+}

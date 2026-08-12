@@ -168,6 +168,42 @@ describe('built-in theme gallery regression', () => {
     expect(gallery).toMatchInlineSnapshot(`
       [
         {
+          "accent": "#6fbcd4",
+          "scheme": "dark",
+          "states": {
+            "composerFocus": "#334B5A",
+            "sidebarActive": "#3C4E5B",
+            "tabActive": "#314856",
+          },
+          "surfaces": {
+            "app": "#1f3340",
+            "chat": "#273d4b",
+            "composer": "#344650",
+            "sidebar": "#1f3340",
+            "tabbar": "#273d4b",
+            "tool": "#304856",
+          },
+          "theme": "雨后夜晚 Night After Rain",
+        },
+        {
+          "accent": "#2f6e88",
+          "scheme": "light",
+          "states": {
+            "composerFocus": "#E5EBEB",
+            "sidebarActive": "#D0D8DA",
+            "tabActive": "#E9EBEB",
+          },
+          "surfaces": {
+            "app": "#f2f7f7",
+            "chat": "#fafcfc",
+            "composer": "#e8f0f1",
+            "sidebar": "#ecf3f4",
+            "tabbar": "#fafcfc",
+            "tool": "#EBF1F1",
+          },
+          "theme": "雨后彩虹 Rainbow After Rain",
+        },
+        {
           "accent": "#8839EF",
           "scheme": "light",
           "states": {

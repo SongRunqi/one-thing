@@ -1,0 +1,210 @@
+{
+  "id": "after-rain-night",
+  "name": "雨后夜晚 Night After Rain",
+  "author": "onething",
+  "version": "1.0.0",
+  "type": "full",
+  "colorScheme": "dark",
+
+  "defs": {
+    "dusk0": "#1b3443",
+    "dusk1": "#234152",
+    "dusk2": "#2c4d5e",
+    "dusk3": "#35596b",
+    "duskCode": "#1f3a49",
+    "mist": "#dde9f0",
+    "mist2": "#adc0cb",
+    "mist3": "#84a0ae",
+    "mist4": "#8ba6b6",
+    "white": "#dde9f0",
+    "blue": "#7cc4dc",
+    "blueDeep": "#82b8dc",
+    "cyan": "#8fcabb",
+    "green": "#86c4a0",
+    "yellow": "#d8be9a",
+    "purple": "#b4abd4",
+    "red": "#e29da0",
+    "apricot": "#e5cfaf",
+    "brown": "#8a5a52"
+  },
+
+  "theme": {
+    "accent": "blue",
+    "accentMain": "blue",
+    "accentSub": { "dark": "rgba(124, 196, 220, 0.14)", "light": "rgba(124, 196, 220, 0.12)" },
+    "accentRgb": "124, 196, 220",
+
+    "bg": {
+      "app": "dusk0",
+      "sidebar": "dusk0",
+      "chat": "dusk1",
+      "panel": "dusk1",
+      "elevated": "dusk2",
+      "floating": "dusk3",
+      "message": {
+        "user": "#2e4d5e",
+        "userSolid": "#2e4d5e",
+        "ai": "transparent",
+        "system": "#2a4858",
+        "error": "rgba(226, 157, 160, 0.14)",
+        "hover": "rgba(221, 233, 240, 0.04)"
+      },
+      "toolCall": "#213c4b",
+      "toolCallHover": "dusk2",
+      "toolResult": "#213c4b",
+      "input": "#2b4a5b",
+      "inputFocus": "#325266",
+      "btn": {
+        "primary": "blue",
+        "primaryHover": "#94cfe2",
+        "secondary": "dusk2",
+        "secondaryHover": "dusk3",
+        "ghost": "transparent",
+        "ghostHover": "dusk2",
+        "danger": "red",
+        "dangerHover": "#ecadb0"
+      },
+      "code": {
+        "inline": "dusk2",
+        "block": "duskCode",
+        "header": "#274252"
+      },
+      "menu": "dusk2",
+      "menuItemHover": "dusk3",
+      "tooltip": "mist",
+      "modal": "dusk1",
+      "selected": "rgba(124, 196, 220, 0.14)",
+      "selectedHover": "rgba(124, 196, 220, 0.19)",
+      "highlight": "rgba(229, 207, 175, 0.16)",
+      "hover": "rgba(221, 233, 240, 0.05)",
+      "active": "rgba(221, 233, 240, 0.10)"
+    },
+
+    "text": {
+      "primary": "mist",
+      "secondary": "mist2",
+      "muted": "mist3",
+      "faint": "mist4",
+      "error": "red",
+      "warning": "yellow",
+      "success": "green",
+      "info": "blueDeep",
+      "link": "blue",
+      "linkHover": "#94cfe2",
+      "user": {
+        "primary": "mist",
+        "secondary": "mist2"
+      },
+      "ai": {
+        "primary": "mist",
+        "secondary": "mist2",
+        "thinking": "mist3"
+      },
+      "tool": {
+        "name": "blueDeep",
+        "args": "mist3",
+        "result": "mist3",
+        "error": "red"
+      },
+      "sidebar": {
+        "title": "mist",
+        "item": "#8ba4b2",
+        "itemActive": "blue",
+        "itemHover": "mist",
+        "muted": "mist4"
+      },
+      "input": "mist",
+      "inputPlaceholder": "mist4",
+      "btn": {
+        "primary": "dusk0",
+        "secondary": "mist",
+        "ghost": "mist3",
+        "danger": "dusk0"
+      },
+      "code": {
+        "inline": "mist",
+        "block": "mist",
+        "comment": "#7e98a8",
+        "keyword": "#7cc4dc",
+        "string": "yellow",
+        "number": "#cda3b0",
+        "function": "#a8d2e4",
+        "variable": "mist2",
+        "operator": "mist3",
+        "type": "cyan",
+        "property": "purple",
+        "punctuation": "mist3"
+      },
+      "menu": {
+        "item": "mist2",
+        "itemHover": "mist",
+        "itemActive": "blue",
+        "header": "mist3"
+      },
+      "label": "mist2",
+      "helper": "mist3"
+    },
+
+    "border": {
+      "default": "dusk3",
+      "subtle": "#29445a",
+      "strong": "#4e7286",
+      "accent": "blue",
+      "error": "red",
+      "success": "green",
+      "warning": "yellow",
+      "input": "dusk3",
+      "inputFocus": "blue",
+      "inputError": "red",
+      "message": "#29445a",
+      "messageUser": "#3e5e70",
+      "code": "dusk3",
+      "divider": "#29445a"
+    },
+
+    "shadow": {
+      "xs": "0 1px 2px rgba(0, 0, 0, 0.25)",
+      "sm": "0 2px 4px rgba(0, 0, 0, 0.3)",
+      "md": "0 4px 12px rgba(0, 0, 0, 0.38)",
+      "lg": "0 8px 24px rgba(0, 0, 0, 0.44)",
+      "xl": "0 16px 48px rgba(0, 0, 0, 0.5)",
+      "inner": "inset 0 2px 4px rgba(0, 0, 0, 0.2)",
+      "glow": {
+        "accent": "0 0 20px rgba(124, 196, 220, 0.26)",
+        "error": "0 0 20px rgba(226, 157, 160, 0.26)"
+      },
+      "elevated": "0 8px 32px rgba(0, 0, 0, 0.48)",
+      "floating": "0 12px 48px rgba(0, 0, 0, 0.58)"
+    },
+
+    "effects": {
+      "gradientUserBubble": "linear-gradient(135deg, #325165 0%, #2e4d5e 100%)",
+      "gradientAiBubble": "linear-gradient(135deg, transparent 0%, transparent 100%)",
+      "gradientAccent": "linear-gradient(120deg, #7cc4dc 0%, #9ccde2 45%, #e5cfaf 100%)",
+      "overlayHover": "rgba(221, 233, 240, 0.05)",
+      "overlayActive": "rgba(221, 233, 240, 0.10)",
+      "overlayDisabled": "rgba(27, 52, 67, 0.55)",
+      "blurBackdrop": "24px"
+    },
+
+    "diff": {
+      "addBg": "rgba(134, 196, 160, 0.14)",
+      "addText": "mist",
+      "delBg": "rgba(226, 157, 160, 0.14)",
+      "delText": "mist",
+      "hunkBg": "#213c4b",
+      "hunkText": "mist3"
+    },
+
+    "color": {
+      "danger": "red",
+      "dangerLight": "rgba(226, 157, 160, 0.15)",
+      "warning": "yellow",
+      "warningLight": "rgba(216, 190, 154, 0.15)",
+      "success": "green",
+      "successLight": "rgba(134, 196, 160, 0.15)",
+      "info": "blueDeep",
+      "infoLight": "rgba(130, 184, 220, 0.15)"
+    }
+  }
+}
