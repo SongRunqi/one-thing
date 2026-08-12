@@ -503,6 +503,8 @@
           @confirm-rename="confirmInlineRename"
           @cancel-rename="cancelInlineRename"
           @overflow-change="handleOverflowChange"
+          @new-session-in-project="startProjectSession"
+          @project-context-menu="openProjectContextMenu"
         />
 
         <div class="sidebar-chat-foot">
@@ -534,6 +536,27 @@
               @click="$emit('create-new-chat')"
             >
               <Plus
+                :size="16"
+                :stroke-width="1.6"
+              />
+            </button>
+          </Tooltip>
+          <!-- 新建项目 = 挑一个目录进项目名册。挑目录要拉系统对话框,
+               web 端的 showOpenDialog 是个恒返回 canceled 的桩 —— 画一颗
+               点了什么都不会发生的钮比不画更糟,所以按能力位隐藏。 -->
+          <Tooltip
+            v-if="canPickProjectDir"
+            text="新建项目"
+            position="top"
+          >
+            <button
+              type="button"
+              class="sidebar-chat-foot-btn"
+              aria-label="新建项目"
+              :disabled="creatingProject"
+              @click="createProject"
+            >
+              <FolderPlus
                 :size="16"
                 :stroke-width="1.6"
               />
@@ -607,6 +630,17 @@
         @close="closeContextMenu"
       />
 
+      <!-- 项目组头右键:把这个项目移出名册(会话不动)。 -->
+      <ContextMenu
+        :show="projectMenu !== null"
+        :x="projectMenu?.x ?? 0"
+        :y="projectMenu?.y ?? 0"
+        :items="projectMenuItems"
+        :min-width="160"
+        @select="onProjectMenuSelect"
+        @close="projectMenu = null"
+      />
+
       <!-- 联系人右键:「打开空间」(= 点头像同一处)与「配置 Agent」。两条都走
            `openAgentSpace`,差别只是停在哪一面。 -->
       <ContextMenu
@@ -631,7 +665,7 @@ import Tooltip from '@/components/common/Tooltip.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
-import { Check, ChevronDown, MoreVertical, Pencil, Pin, Plus, Settings, X } from 'lucide-vue-next'
+import { Check, ChevronDown, FolderPlus, MoreVertical, Pencil, Pin, Plus, Settings, Trash2, X } from 'lucide-vue-next'
 import {
   useWorkspaceNavEntries,
   type WorkspaceNavId,
@@ -661,9 +695,11 @@ import {
 } from './sidebar-recent'
 import { platformApi } from '@/platform'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useProjectsStore } from '@/stores/projects'
 import {
   formatRelativeTime,
   useSessionOrganizer,
+  type SessionGroup,
   type SessionWithBranches,
 } from './useSessionOrganizer'
 
@@ -1165,6 +1201,56 @@ const contextMenu = ref({
   session: null as SessionWithBranches | null,
 })
 
+// ── 项目 ────────────────────────────────────────────────────────────────────
+// 名册(project-dirs)与推导出来的项目在 useSessionOrganizer 里按目录并成一份;
+// 这里只管三件事:挑目录登记、在某个项目里开会话、把某个项目移出名册。
+const projectsStore = useProjectsStore()
+const canPickProjectDir = platformApi.capabilities.desktopWindows
+const creatingProject = ref(false)
+const projectMenu = ref<{ x: number; y: number; path: string; label: string } | null>(null)
+
+const projectMenuItems = computed<ContextMenuItem[]>(() => [
+  { id: 'remove', label: '移出项目列表', icon: Trash2, danger: true },
+])
+
+async function createProject(): Promise<void> {
+  if (creatingProject.value) return
+  creatingProject.value = true
+  try {
+    const result = await platformApi.showOpenDialog({
+      properties: ['openDirectory'],
+      title: '选择项目目录',
+    })
+    const picked = result?.filePaths?.[0]
+    if (result?.canceled || !picked) return
+    await projectsStore.add(picked)
+  } finally {
+    creatingProject.value = false
+  }
+}
+
+/** 组头「＋」:在这个项目里开一条新会话(草稿从出生就带着目录)。 */
+function startProjectSession(projectPath: string): void {
+  sessionsStore.openNewChatDraft('New Chat', { workingDirectory: projectPath })
+}
+
+function openProjectContextMenu(event: MouseEvent, group: SessionGroup): void {
+  // 只有登记过的项目能被「移出」—— 纯推导出来的组没有名册条目可删,
+  // 给它一个点了不响的菜单只会让人以为坏了。
+  if (!group.projectPath || !group.isRegistered) return
+  projectMenu.value = { x: event.clientX, y: event.clientY, path: group.projectPath, label: group.label }
+}
+
+async function onProjectMenuSelect(id: string): Promise<void> {
+  const target = projectMenu.value
+  if (!target) return
+  if (id === 'remove') {
+    // 只取消登记,一条会话都不动:这个目录下还有会话的话,它会退回
+    // 「推导出来的项目」那条路继续成组,只有空项目才真的消失。
+    await projectsStore.remove(target.path)
+  }
+}
+
 // Computed sidebar style
 const sidebarStyle = computed(() => {
   const baseStyle = {
@@ -1227,7 +1313,10 @@ const musicGroup = computed(() => {
 })
 
 const groupedSessions = computed(() => {
-  const groups = sessionOrganizer.getProjectGroupedSessions(filteredSessions.value)
+  const groups = sessionOrganizer.getProjectGroupedSessions(
+    filteredSessions.value,
+    projectsStore.entries,
+  )
   const music = musicGroup.value
   // Music rides on top: the station is a live thing, not an archive.
   return music ? [music, ...groups] : groups
@@ -1340,6 +1429,7 @@ function handleWindowResize() {
 
 onMounted(() => {
   window.addEventListener('resize', handleWindowResize)
+  void projectsStore.load()
 })
 
 onUnmounted(() => {

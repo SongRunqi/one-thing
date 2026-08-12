@@ -50,6 +50,11 @@ vi.mock('@/platform', () => ({
 vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => mocks.sessionsStore,
 }))
+// 项目名册:左栏的项目分组把它与会话推导出来的项目并成一份。这些用例不验
+// 项目,给一份空名册即可(空名册 = 只剩推导那一半,即老口径)。
+vi.mock('@/stores/projects', () => ({
+  useProjectsStore: () => ({ entries: [], load: vi.fn(async () => {}), add: vi.fn(), remove: vi.fn() }),
+}))
 vi.mock('@/stores/chat', () => ({
   useChatStore: () => ({ isSessionGenerating: () => false }),
 }))

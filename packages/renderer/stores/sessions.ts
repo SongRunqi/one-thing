@@ -565,12 +565,24 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 	}
 
-	function openNewChatDraft(name = "New Chat") {
+	/**
+	 * `options.workingDirectory` —— 左栏「在这个项目里新建会话」那条路:草稿从
+	 * 出生就带着目录,于是它**直接落在那个项目组里**,而不是先掉进未归类再跳走。
+	 * 目录随草稿一路走到落盘(materialize → applyDraftSettingsToSession)。
+	 */
+	function openNewChatDraft(
+		name = "New Chat",
+		options?: { workingDirectory?: string },
+	) {
 		const chatStore = useChatStore();
+		const workingDirectory = options?.workingDirectory?.trim() || undefined;
 		const currentDraft = newChatDrafts.value.find(
 			(draft) => draft.id === currentSessionId.value,
 		);
 		if (currentDraft && chatStore.isComposerDraftEmpty(currentDraft.id)) {
+			// 复用那条空草稿时也要改嫁目录:用户点的是「在项目 A 里新建」,
+			// 留着旧目录会让这一行停在别的组里,看起来像什么都没发生。
+			if (workingDirectory) currentDraft.workingDirectory = workingDirectory;
 			currentDraft.updatedAt = Date.now();
 			newChatDrafts.value = [
 				currentDraft,
@@ -589,6 +601,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			updatedAt: now,
 			agentId: DEFAULT_AGENT_ID,
 			messageCount: 0,
+			...(workingDirectory ? { workingDirectory } : {}),
 		};
 		newChatDrafts.value = [draft, ...newChatDrafts.value];
 		chatStore.clearSessionMessages(draft.id);

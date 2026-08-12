@@ -7,6 +7,7 @@
 import { ref, watch } from 'vue'
 import type { SessionMeta } from '@/types'
 import { useSessionsStore } from '@/stores/sessions'
+import { normalizeProjectDir } from '@/utils/project-dir'
 
 // Base session type for organizer - compatible with both metadata-only and full sessions
 // This allows the organizer to work with metadata loaded on startup (no messages)
@@ -41,6 +42,23 @@ export interface SessionGroup {
    */
   kind: 'pinned' | 'project' | 'other'
   sessions: SessionWithBranches[]
+  /**
+   * 仅 `kind === 'project'`:这一组对应的工作目录(规范形)。
+   * 呈现层要拿目录干事(在这个项目里新建会话、把它移出名册)时读这个字段,
+   * **同样不要去解析 `key`** —— 与 `kind` 一个规矩。
+   */
+  projectPath?: string
+  /**
+   * 仅 `kind === 'project'`:这一组在项目名册里登记过(而不是纯从会话 cwd
+   * 推导出来的)。移出名册这类动作只对登记过的项目有意义。
+   */
+  isRegistered?: boolean
+}
+
+/** 项目名册里的一条 —— 只取分组用得上的两个字段(见 stores/projects.ts)。 */
+export interface RegisteredProjectDir {
+  path: string
+  lastUsedAt: number
 }
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
@@ -345,7 +363,17 @@ export function useSessionOrganizer() {
   // Group sessions by their working directory (project). Order:
   // 置顶 → 各项目(按最近活动降序) → 未归类(无 cwd + 草稿)。
   // Each root keeps its branch subtree together inside its section.
-  function getProjectGroupedSessions(filteredSessions: SessionBase[]): SessionGroup[] {
+  //
+  // 项目有两个来源,在这里并成一份:
+  //  - **推导**:会话自己带的 workingDirectory 撞在一起就成一组(老口径);
+  //  - **登记**:项目名册(`stores/projects`)里的目录 —— 它**不靠会话存在**,
+  //    空项目照样占一格。「新建项目 → 在里面开第一个会话」这条路要的就是这个:
+  //    项目先有,会话后有。
+  // 并的键是目录的规范形,所以「登记过 + 已经有会话」不会裂成两组。
+  function getProjectGroupedSessions(
+    filteredSessions: SessionBase[],
+    registeredProjects: readonly RegisteredProjectDir[] = [],
+  ): SessionGroup[] {
     const organized = organizeSessionsWithBranches(filteredSessions)
 
     type Block = { root: SessionWithBranches; rows: SessionWithBranches[] }
@@ -361,32 +389,69 @@ export function useSessionOrganizer() {
     const pinnedBlocks: Block[] = []
     const draftBlocks: Block[] = []
     const uncategorized: Block[] = []
-    const projects = new Map<string, { label: string; blocks: Block[] }>()
+    type ProjectEntry = { label: string; blocks: Block[]; registeredAt?: number }
+    const projects = new Map<string, ProjectEntry>()
+
+    // 名册先落座 —— 空项目也要有一格,而且「登记过」这件事要在会话入座之前
+    // 就已知(见下面 dir 的收留判据)。
+    for (const registered of registeredProjects) {
+      const dir = normalizeProjectDir(registered.path)
+      if (!dir) continue
+      const existing = projects.get(dir)
+      if (existing) existing.registeredAt = registered.lastUsedAt
+      else projects.set(dir, { label: projectLabel(dir), blocks: [], registeredAt: registered.lastUsedAt })
+    }
 
     for (const block of blocks) {
       const root = block.root
-      if (isNewChatDraft(root)) { draftBlocks.push(block); continue }
       if (root.isPinned) { pinnedBlocks.push(block); continue }
-      const dir = (root.workingDirectory || '').trim()
-      if (!dir || !isProjectDir(dir)) { uncategorized.push(block); continue }
-      let entry = projects.get(dir)
-      if (!entry) { entry = { label: projectLabel(dir), blocks: [] }; projects.set(dir, entry) }
+      const dir = normalizeProjectDir(root.workingDirectory || '')
+      // 草稿只有带上目录才进项目组 —— 它是「在这个项目里新建的会话」还没落盘的
+      // 那一刻,该显示在用户刚点过的地方,而不是掉进未归类。裸草稿照旧。
+      if (!dir) {
+        if (isNewChatDraft(root)) draftBlocks.push(block)
+        else uncategorized.push(block)
+        continue
+      }
+      // 登记过的目录一律收留(那是用户显式挑的);没登记的还要过一遍启发式,
+      // 免得工具沙箱、临时目录凭空长出一堆没意义的组。
+      const registeredEntry = projects.get(dir)
+      if (!registeredEntry && !isProjectDir(dir)) {
+        if (isNewChatDraft(root)) draftBlocks.push(block)
+        else uncategorized.push(block)
+        continue
+      }
+      let entry = registeredEntry
+      if (!entry) {
+        entry = { label: projectLabel(dir), blocks: [] }
+        projects.set(dir, entry)
+      }
       entry.blocks.push(block)
     }
 
     const byRecency = (a: Block, b: Block) => b.root.lastBranchUpdate - a.root.lastBranchUpdate
+    // 项目组内草稿浮在最前:刚点「＋」开出来的那一条,不该按时间沉到旧会话之后。
+    const draftFirstByRecency = (a: Block, b: Block) => {
+      const aDraft = isNewChatDraft(a.root) ? 1 : 0
+      const bDraft = isNewChatDraft(b.root) ? 1 : 0
+      if (aDraft !== bDraft) return bDraft - aDraft
+      return byRecency(a, b)
+    }
     pinnedBlocks.sort(byRecency)
     uncategorized.sort(byRecency)
     draftBlocks.sort(byRecency)
-    for (const entry of projects.values()) entry.blocks.sort(byRecency)
+    for (const entry of projects.values()) entry.blocks.sort(draftFirstByRecency)
 
-    // Project sections ordered by their most recently active session
+    // Project sections ordered by their most recently active session.
+    // 空的登记项目没有会话可比,退回名册的 lastUsedAt —— 刚加的项目 lastUsedAt
+    // 是此刻,于是浮到最前(用户刚挑完目录,该看见它),久未使用的自然下沉。
     const projectSections = [...projects.entries()]
       .map(([dir, entry]) => ({
         dir,
         label: entry.label,
         blocks: entry.blocks,
-        recency: entry.blocks[0]?.root.lastBranchUpdate ?? 0,
+        registered: entry.registeredAt !== undefined,
+        recency: entry.blocks[0]?.root.lastBranchUpdate ?? entry.registeredAt ?? 0,
       }))
       .sort((a, b) => b.recency - a.recency)
 
@@ -400,6 +465,8 @@ export function useSessionOrganizer() {
         label: section.label,
         kind: 'project',
         sessions: section.blocks.flatMap(b => b.rows),
+        projectPath: section.dir,
+        isRegistered: section.registered,
       })
     }
     // Drafts and cwd-less sessions share the 未归类 bucket; drafts float first.

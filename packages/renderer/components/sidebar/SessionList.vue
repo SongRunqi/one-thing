@@ -40,7 +40,30 @@
               :stroke-width="1.7"
               aria-hidden="true"
             />
-            <span class="group-label">{{ group.label }}</span>
+            <span
+              class="group-label"
+              @contextmenu="handleGroupContextMenu($event, group)"
+            >{{ group.label }}</span>
+            <!-- 「＋」= 在这个项目里新建会话。
+                 用 span 而不是 <button>:整个组头本身就是一颗 <button>
+                 (SubMenu 的 .app-sub-menu-title),按钮套按钮是非法 HTML。
+                 因此点击/键盘都要自己 stop —— 否则会顺带把组头折叠了。 -->
+            <span
+              v-if="group.projectPath"
+              class="group-new-session"
+              role="button"
+              tabindex="0"
+              :aria-label="`在 ${group.label} 中新建会话`"
+              @click.stop="startProjectSession(group)"
+              @keydown.enter.stop.prevent="startProjectSession(group)"
+              @keydown.space.stop.prevent="startProjectSession(group)"
+            >
+              <Plus
+                :size="13"
+                :stroke-width="1.9"
+                aria-hidden="true"
+              />
+            </span>
           </template>
 
           <div class="session-group-items">
@@ -76,6 +99,14 @@
                 />
               </MenuItem>
             </template>
+            <!-- 刚建、还没开过会话的项目:给一句旁白,而不是一个空抽屉。
+                 只有项目组会空着(别的组没有会话就根本不成组)。 -->
+            <div
+              v-if="group.sessions.length === 0"
+              class="group-empty"
+            >
+              还没有会话
+            </div>
             <!-- 样板那行 `Show more`:一条低调的墨字,不是一颗按钮 —— 它是
                  "还有"这个事实的旁白,不该在列表里抢过会话行。 -->
             <Button
@@ -107,7 +138,7 @@ import AppMenu from '@/components/common/Menu.vue'
 import MenuItem from '@/components/common/MenuItem.vue'
 import SubMenu from '@/components/common/SubMenu.vue'
 import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
-import { Folder } from 'lucide-vue-next'
+import { Folder, Plus } from 'lucide-vue-next'
 import SessionItem from './SessionItem.vue'
 import type { SessionWithBranches, SessionGroup } from './useSessionOrganizer'
 
@@ -128,6 +159,8 @@ interface Emits {
   (e: 'confirm-rename', sessionId: string, name: string): void
   (e: 'cancel-rename'): void
   (e: 'overflow-change', isOverflowing: boolean, hasContentBelow: boolean): void
+  (e: 'new-session-in-project', projectPath: string): void
+  (e: 'project-context-menu', event: MouseEvent, group: SessionGroup): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -202,6 +235,30 @@ function groupKeyFromMenuIndex(index: string): string | null {
 
 function handleMenuSelect(index: string) {
   emit('menu-select', index)
+}
+
+/**
+ * 组头的「＋」:在这个项目里新建会话。
+ *
+ * 先把组展开再报上去 —— 新草稿落在这个组里,组要是收着的,用户点完什么都
+ * 看不见(方案六默认只开当前项目那一格,别的项目全收)。
+ */
+function startProjectSession(group: SessionGroup) {
+  if (!group.projectPath) return
+  if (collapsedGroups.value.has(group.key)) {
+    const next = new Set(collapsedGroups.value)
+    next.delete(group.key)
+    collapsedGroups.value = next
+  }
+  emit('new-session-in-project', group.projectPath)
+}
+
+/** 组头右键 —— 只有项目组有菜单可开(移出名册);别的组沉默,不吞浏览器默认。 */
+function handleGroupContextMenu(event: MouseEvent, group: SessionGroup) {
+  if (!group.projectPath) return
+  event.preventDefault()
+  event.stopPropagation()
+  emit('project-context-menu', event, group)
 }
 
 function handleMenuOpen(index: string) {
@@ -616,6 +673,51 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 项目组头的「＋」：静置隐身，hover 组头才现身 —— 组头是一条常显的静物，
+   一颗常亮的加号会把它变成一条工具栏。键盘焦点落上来同样现身(:focus-visible
+   在 opacity 上生效，否则 tab 过去是一颗看不见的按钮)。 */
+.group-new-session {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  border-radius: var(--radius-sm, 4px);
+  opacity: 0;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg));
+  cursor: pointer;
+  transition:
+    opacity var(--duration-normal) var(--ease-default),
+    color var(--duration-normal) var(--ease-default),
+    background-color var(--duration-normal) var(--ease-default);
+}
+
+.session-group :deep(.app-sub-menu-title:hover) .group-new-session,
+.group-new-session:focus-visible {
+  opacity: 1;
+}
+
+.group-new-session:hover {
+  background-color: var(--sidebar-row-hover-fill, var(--ui-state-hover-bg));
+  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg));
+}
+
+.group-new-session:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring-shadow);
+}
+
+/* 空项目的旁白：与「显示更多」同一条缩进线(x=32)、同一档弱墨，
+   但它不是控件，不给 hover / 下划线。 */
+.group-empty {
+  padding: 3px 12px 6px 32px;
+  color: var(--sidebar-list-meta-fg, var(--ui-text-faint-fg));
+  font-size: 11px;
+  user-select: none;
 }
 
 /* Show-more affordance per section — 文本行，无填充，下划线示意可点 */
