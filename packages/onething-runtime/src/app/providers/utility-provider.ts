@@ -19,6 +19,7 @@ import {
 	getProviderApiType,
 	resolveProviderAuth,
 } from "../engine/stream/provider-helpers.js";
+import { resolveUtilityModel } from "./utility-model.js";
 
 export interface UtilityProviderRef {
 	provider: AgentProvider;
@@ -45,33 +46,10 @@ export interface CreateUtilityProviderOptions {
 	fallbackToChatProvider?: boolean;
 }
 
-/** Which provider/model background work should use, before auth is resolved. */
-function resolveUtilityModel(
-	settings: AppSettings,
-	fallbackToChatProvider: boolean,
-): { providerId: string; model: string } | undefined {
-	const toolCallModel = settings.tools?.toolCallModel;
-	const configuredProviderId = toolCallModel?.providerId?.trim();
-	const configuredModel = toolCallModel?.model?.trim();
-
-	if (configuredProviderId && settings.ai?.providers?.[configuredProviderId]) {
-		const providerConfig = settings.ai.providers[configuredProviderId];
-		const model =
-			configuredModel ||
-			providerConfig?.model ||
-			providerConfig?.selectedModels?.[0] ||
-			"";
-		if (model) return { providerId: configuredProviderId, model };
-	}
-
-	if (!fallbackToChatProvider) return undefined;
-
-	const providerId = settings.ai?.provider;
-	if (!providerId) return undefined;
-	const providerConfig = settings.ai?.providers?.[providerId];
-	const model = providerConfig?.model || providerConfig?.selectedModels?.[0] || "";
-	return model ? { providerId, model } : undefined;
-}
+// The routing question ("which provider/model does background work use?") lives
+// in its own leaf so the plugin LLM surface can ask it without dragging the
+// agent-loop in behind it. See utility-model.ts.
+export { resolveUtilityModel } from "./utility-model.js";
 
 /**
  * Returns undefined whenever the provider cannot be built — unconfigured,

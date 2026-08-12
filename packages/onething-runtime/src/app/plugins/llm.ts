@@ -34,6 +34,7 @@ import {
 
 import { getSettings } from '../stores/settings.js'
 import { resolveProviderApiKey } from '../providers/env.js'
+import { resolveUtilityModel } from '../providers/utility-model.js'
 import { generateChatResponse } from '../providers/index.js'
 import { recordUsage } from '../usage/index.js'
 import type { ProviderConfigWithKey } from '../engine/stream/stream-executor.js'
@@ -70,21 +71,28 @@ interface ResolvedManagedProvider {
 }
 
 /**
- * 走宿主的 provider 解析:当前设置里的默认聊天 provider 与它的模型 / apiKey。
- * 解析不出(没配 provider / 没模型)→ null,调用方抛 `unsupported`。
+ * 走宿主的 provider 解析。解析不出(没配 provider / 没模型)→ null,调用方抛
+ * `unsupported`。
+ *
+ * **路由口径(2026-08-12 用户裁决:整理类的活走工具模型)**:先问
+ * `settings.tools.toolCallModel`,没配才回落当前默认聊天 provider —— 与
+ * `createUtilityProvider` **同一个解析器**(`resolveUtilityModel`),而不是在这里
+ * 再抄一份判据。理由与那份注释里写的一样:插件的 `llm.complete` 是后台工作
+ * (提取、摘要、分类),不该默默烧用户正在聊天的那个贵模型。
+ *
+ * 回落是刻意开着的(`fallbackToChatProvider: true`):没配工具模型时行为与改动前
+ * **逐字节相同**,所以这不是一次会让既有插件失灵的变更。
  */
 function resolveManagedProvider(): ResolvedManagedProvider | null {
   const settings = getSettings()
-  const providerId = settings.ai?.provider
-  if (!providerId) return null
-  const providerConfig = settings.ai?.providers?.[providerId]
+  const resolved = resolveUtilityModel(settings, true)
+  if (!resolved) return null
+  const providerConfig = settings.ai?.providers?.[resolved.providerId]
   if (!providerConfig) return null
-  const model = providerConfig.model || providerConfig.selectedModels?.[0] || ''
-  if (!model) return null
-  const apiKey = resolveProviderApiKey(providerId, providerConfig) || ''
+  const apiKey = resolveProviderApiKey(resolved.providerId, providerConfig) || ''
   return {
-    providerId,
-    config: { ...providerConfig, model, apiKey } as ProviderConfigWithKey,
+    providerId: resolved.providerId,
+    config: { ...providerConfig, model: resolved.model, apiKey } as ProviderConfigWithKey,
   }
 }
 

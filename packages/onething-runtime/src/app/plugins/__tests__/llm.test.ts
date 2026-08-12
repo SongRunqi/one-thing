@@ -118,3 +118,93 @@ describe('pluginLlmComplete (受管三要素)', () => {
       .rejects.toMatchObject({ code: 'provider-error' })
   })
 })
+
+/*
+ * 2026-08-12 用户裁决:插件的受管 LLM 调用是**后台工作**,该走工具模型,而不是
+ * 用户正在聊天的那个贵模型。这一组钉的是路由本身 —— 与 createUtilityProvider
+ * 共用 resolveUtilityModel,回落链保持不变(没配工具模型 = 与改动前一模一样)。
+ */
+describe('pluginLlmComplete 的模型路由(工具模型优先)', () => {
+  it('配了工具模型 → 走它,而不是默认聊天 provider', async () => {
+    settingsRef.current = {
+      ai: {
+        provider: 'anthropic',
+        providers: {
+          anthropic: { model: 'expensive-chat', apiKey: 'sk-chat' },
+          deepseek: { model: 'cheap-utility', apiKey: 'sk-utility' },
+        },
+      },
+      tools: { toolCallModel: { providerId: 'deepseek', model: 'cheap-utility' } },
+    }
+    generateChatResponse.mockResolvedValue('ok')
+    await pluginLlmComplete('memory-wiki', { messages: [{ role: 'user', content: 'x' }] })
+
+    const [providerId, config] = generateChatResponse.mock.calls[0] as [string, { model: string }]
+    expect(providerId).toBe('deepseek')
+    expect(config.model).toBe('cheap-utility')
+  })
+
+  it('工具模型只配了 provider 没配 model → 用该 provider 自己的模型', async () => {
+    settingsRef.current = {
+      ai: {
+        provider: 'anthropic',
+        providers: {
+          anthropic: { model: 'expensive-chat', apiKey: 'sk-chat' },
+          deepseek: { model: 'deepseek-default', apiKey: 'sk-utility' },
+        },
+      },
+      tools: { toolCallModel: { providerId: 'deepseek' } },
+    }
+    generateChatResponse.mockResolvedValue('ok')
+    await pluginLlmComplete('memory-wiki', { messages: [{ role: 'user', content: 'x' }] })
+
+    const [providerId, config] = generateChatResponse.mock.calls[0] as [string, { model: string }]
+    expect(providerId).toBe('deepseek')
+    expect(config.model).toBe('deepseek-default')
+  })
+
+  it('没配工具模型 → 回落聊天 provider(与改动前逐字节同行为)', async () => {
+    withProvider()
+    generateChatResponse.mockResolvedValue('ok')
+    await pluginLlmComplete('memory-wiki', { messages: [{ role: 'user', content: 'x' }] })
+
+    const [providerId, config] = generateChatResponse.mock.calls[0] as [string, { model: string }]
+    expect(providerId).toBe('openai')
+    expect(config.model).toBe('gpt-x')
+  })
+
+  it('工具模型指了一个不存在的 provider → 回落聊天 provider,不是报错', async () => {
+    settingsRef.current = {
+      ai: { provider: 'openai', providers: { openai: { model: 'gpt-x', apiKey: 'sk' } } },
+      tools: { toolCallModel: { providerId: 'ghost', model: 'nope' } },
+    }
+    generateChatResponse.mockResolvedValue('ok')
+    await pluginLlmComplete('memory-wiki', { messages: [{ role: 'user', content: 'x' }] })
+
+    expect((generateChatResponse.mock.calls[0] as [string])[0]).toBe('openai')
+  })
+
+  it('计费记的是**实际用了的**那个模型,不是聊天模型', async () => {
+    settingsRef.current = {
+      ai: {
+        provider: 'anthropic',
+        providers: {
+          anthropic: { model: 'expensive-chat', apiKey: 'sk-chat' },
+          deepseek: { model: 'cheap-utility', apiKey: 'sk-utility' },
+        },
+      },
+      tools: { toolCallModel: { providerId: 'deepseek', model: 'cheap-utility' } },
+    }
+    generateChatResponse.mockImplementation(async (_p, _c, _m, opts: any) => {
+      opts.onUsage({ inputTokens: 10, outputTokens: 5, totalTokens: 15 })
+      return 'ok'
+    })
+    await pluginLlmComplete('memory-wiki', { messages: [{ role: 'user', content: 'x' }] })
+
+    expect(recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+      providerId: 'deepseek',
+      modelId: 'cheap-utility',
+      source: 'plugin:memory-wiki',
+    }))
+  })
+})
