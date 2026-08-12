@@ -300,6 +300,18 @@ export interface CorePluginToolContext<TMetadata = unknown> {
   sessionId: string
   messageId: string
   toolCallId: string
+  /**
+   * F4 身份面:这一回合归属的 agent(纯透传,零新状态)。
+   *
+   * 三处身份口(promptContext / 工具 ctx / afterAssistantResponse)看到的是**同一个**
+   * 值 —— 回合入口解析出来的那一个,不是各自现查 `session.agentId`(群房里那个
+   * 字段会被协调器逐次翻面,现查等于每处各算各的)。
+   *
+   * 缺省 undefined = 这条会话没绑 agent。插件的作用域公式("自己的 scope + global")
+   * 缺席时只剩 global,那是正确的降级。**不可当权限依据**:权限的主体是
+   * `Principal`,它有被证明过的来路,这个字段没有。
+   */
+  agentId?: string
   workingDirectory?: string
   abortSignal?: AbortSignal
   metadata(input: { title?: string; metadata?: Partial<TMetadata> }): void

@@ -32,6 +32,11 @@ export interface OnethingDirectToolContext<
   abortSignal?: CoreAbortSignalLike
   /** Actor behind this call; minted at the engine boundary. */
   principal?: Principal
+  /**
+   * F4:这一回合归属的 agent(纯透传,来源 `preparation.agentId`)。
+   * 见 ToolContext.agentId —— 权限判定只准看 principal,这个字段只作用域用。
+   */
+  agentId?: string
   onMetadata?: (update: TMetadataUpdate) => void
   onPartialResult?: (update: TPartialResultUpdate) => void
   onStepStart?: (step: TStep) => void
@@ -107,6 +112,9 @@ export function createOnethingDirectToolExecutionContext<
     // it from session.agentId (say/board/dm/history/notebook each do their own
     // lookup), and this is the field that lets those collapse into one answer.
     principal: context.principal,
+    // F4:与 principal 并肩透传 —— 插件工具的 ctx 要拿到"这一回合是谁的",
+    // 而不是自己去反查 session.agentId(那会在群房里算成另一个 agent)。
+    agentId: context.agentId,
     onMetadata: context.onMetadata,
     onPartialResult: context.onPartialResult,
     onStepStart: context.onStepStart,

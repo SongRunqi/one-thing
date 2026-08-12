@@ -108,3 +108,73 @@ describe('compactSessionContext + N7-a replacement', () => {
     expect(summaryWrites[0]?.summary).toBe('HOST SUMMARY')
   })
 })
+
+/**
+ * G3a —— "压缩即回放"的**契约钉**
+ * (docs/design/plugin-knowledge-worker-capabilities-2026-08.md §2 G3)。
+ *
+ * memory 插件的第一版采集就靠这一条:压缩前把即将淡出工作记忆的内容整段收进
+ * candidates(CLS 的 replay 机制字面落地)。它依赖的不是"钩子会被调用",而是
+ * **递过去的是全文的 ChatMessage[] 本体** —— 一旦哪天有人在这里加一道"预览化"
+ * (截断 content、只传 id、只传 role),采集端会安静地开始收半截内容,而且没有
+ * 任何东西会红。所以这条契约必须有人守。
+ *
+ * 这里刻意不 mock 计划层:钉的就是"从真实的 selectCompactPlan 到钩子入参"这一段。
+ */
+describe('G3a compact-as-replay — the hook receives the full ChatMessage[] verbatim', () => {
+  it('hands over the message objects themselves, full text, in order', async () => {
+    runBeforeContextCompactHooks.mockResolvedValue(undefined)
+    const session = sessionRef.current
+
+    await compactSessionContext(baseOptions)
+
+    expect(runBeforeContextCompactHooks).toHaveBeenCalledTimes(1)
+    const ctx = runBeforeContextCompactHooks.mock.calls[0][0] as {
+      sessionId: string
+      providerId: string
+      keepRecentTurns?: number
+      messagesToSummarize: ChatMessage[]
+    }
+
+    expect(ctx.sessionId).toBe('s1')
+    expect(ctx.providerId).toBe('openai')
+    expect(ctx.keepRecentTurns).toBe(2)
+
+    const handed = ctx.messagesToSummarize
+    expect(Array.isArray(handed)).toBe(true)
+    expect(handed.length).toBeGreaterThan(0)
+
+    // 1. 是**本体**,不是投影:每一条都能在会话里按引用找回来。
+    for (const item of handed) {
+      expect(session.messages).toContain(item)
+    }
+    // 2. 全文,不是摘要/截断:content 与会话里那一条逐字相同,且 role/id 都在。
+    for (const item of handed) {
+      const source = session.messages.find(candidate => candidate.id === item.id)
+      expect(item.content).toBe(source?.content)
+      expect(item.role).toBe(source?.role)
+    }
+    // 3. 顺序即会话顺序(回放要按时间轴走)。
+    expect(handed.map(item => item.id)).toEqual(
+      session.messages.slice(0, handed.length).map(item => item.id),
+    )
+    // 4. 递的就是"将被压掉的那一段" —— 保留的近几轮不在里面。
+    const keptIds = session.messages.slice(handed.length).map(item => item.id)
+    expect(handed.some(item => keptIds.includes(item.id))).toBe(false)
+  })
+
+  it('a collect-only hook (returns nothing) does not disturb host compaction', async () => {
+    const collected: ChatMessage[] = []
+    runBeforeContextCompactHooks.mockImplementation(async (ctx: { messagesToSummarize: ChatMessage[] }) => {
+      // 5s 预算内只做快照入队 —— 不调 LLM(盲点 #7)。
+      collected.push(...ctx.messagesToSummarize)
+      return undefined
+    })
+
+    const result = await compactSessionContext(baseOptions)
+
+    expect(collected.length).toBeGreaterThan(0)
+    expect(collected.every(item => typeof item.content === 'string' && item.content.length > 0)).toBe(true)
+    expect(result.summary).toBe('HOST SUMMARY')
+  })
+})

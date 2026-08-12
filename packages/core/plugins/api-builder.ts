@@ -12,6 +12,12 @@ import {
   type PluginNotifySound,
 } from './notify-sound.js'
 import { PluginStorageError, type CorePluginMessageStateStore, type CorePluginStorage } from './storage.js'
+import type {
+  CorePluginFileEntry,
+  CorePluginFiles,
+  CorePluginFilesOptions,
+  CorePluginFilesUsage,
+} from './storage-files.js'
 import {
   PLUGIN_PANEL_INIT_ACTION,
   PLUGIN_PANEL_INVOKE_ACTION,
@@ -265,6 +271,11 @@ export interface CreateCorePluginAPIOptions<
    */
   messageState?: CorePluginMessageStateStore
   /**
+   * F1 受管文件树(`api.storage.files`)。宿主注入;不给 = 本宿主没有这条线,
+   * 调用处抛(与 storage / messageState 缺席同规:诚实降级,不假装成功)。
+   */
+  files?: CorePluginFiles
+  /**
    * manifest 里声明过的面板 id(R5)。
    * registerWorkspacePanel 拿它做匹配 —— 声明先于代码,清单是权威。
    */
@@ -330,6 +341,8 @@ export interface CorePluginHostToolContext<TMetadata extends object = object> {
   sessionId: string
   messageId: string
   toolCallId?: string
+  /** F4:回合归属的 agent(纯透传;见 CorePluginToolContext.agentId)。 */
+  agentId?: string
   workingDirectory?: string
   abortSignal?: AbortSignal
   metadata?(input: { title?: string; metadata?: Partial<TMetadata> }): void
@@ -358,6 +371,7 @@ export async function executeCorePluginTool<
     sessionId: hostContext.sessionId,
     messageId: hostContext.messageId,
     toolCallId: hostContext.toolCallId ?? '',
+    agentId: hostContext.agentId,
     workingDirectory: hostContext.workingDirectory,
     abortSignal: hostContext.abortSignal,
     metadata(input: { title?: string; metadata?: Partial<TMetadata> }) {
@@ -436,6 +450,15 @@ export function createCorePluginAPI<
       throw new Error(`Plugin "${pluginId}" has no message-state surface on this host`)
     }
     return options.messageState
+  }
+  const requireFiles = (): CorePluginFiles => {
+    if (!options.files) {
+      throw new PluginStorageError(
+        'unavailable',
+        `Plugin "${pluginId}" has no managed file surface on this host`,
+      )
+    }
+    return options.files
   }
   /**
    * 存储失败进熔断账,然后**继续抛给插件** —— 路径穿越这类错误必须让插件
@@ -1262,6 +1285,63 @@ export function createCorePluginAPI<
        * 宿主在这一刻收到 (sessionId, messageId),结构性归账,零语义解释。
        * 读写语义与 KV 同规:写面抛(配额/不可序列化)、拆除闩、熔断分车道。
        */
+      /**
+       * F1 受管文件树。`api.storage.files.readText('candidates/2026-08.jsonl')`
+       *
+       * 与 KV / message-state 同一套宿主纪律,一条不多一条不少:
+       *  - **拆除闩**:写面在拆除后静默丢弃(不重建被归档的家目录),读面退化;
+       *  - **熔断分车道**:`storage.files.<动词>` 各记各的账,免得 exists 的成功
+       *    不断把 writeText 的连败清掉;
+       *  - **错误继续抛**:路径穿越 / 配额 / 未声明外部根都要让插件当场知道 ——
+       *    静默吞掉只会让它以为写成功了,而记忆已经断流。
+       *
+       * 判据、原子写、O_APPEND、配额记账全在 `storage-files.ts`(它会抛),
+       * 这一层不重复任何一条。
+       */
+      files: {
+        readText(relPath: string, fileOptions?: CorePluginFilesOptions): string | undefined {
+          if (state.disposed && !state.disposing) {
+            rejectLateCall('storage.files.readText')
+            return undefined
+          }
+          return withStorageFailureReport('files.readText', () =>
+            requireFiles().readText(relPath, fileOptions))
+        },
+        writeText(relPath: string, content: string, fileOptions?: CorePluginFilesOptions): void {
+          rejectDisposedWrite('files.writeText')
+          withStorageFailureReport('files.writeText', () =>
+            requireFiles().writeText(relPath, content, fileOptions))
+        },
+        appendText(relPath: string, content: string, fileOptions?: CorePluginFilesOptions): void {
+          rejectDisposedWrite('files.appendText')
+          withStorageFailureReport('files.appendText', () =>
+            requireFiles().appendText(relPath, content, fileOptions))
+        },
+        list(relDir?: string, fileOptions?: CorePluginFilesOptions): CorePluginFileEntry[] {
+          if (state.disposed && !state.disposing) {
+            rejectLateCall('storage.files.list')
+            return []
+          }
+          return withStorageFailureReport('files.list', () =>
+            requireFiles().list(relDir, fileOptions))
+        },
+        exists(relPath: string, fileOptions?: CorePluginFilesOptions): boolean {
+          if (state.disposed && !state.disposing) {
+            rejectLateCall('storage.files.exists')
+            return false
+          }
+          return withStorageFailureReport('files.exists', () =>
+            requireFiles().exists(relPath, fileOptions))
+        },
+        remove(relPath: string, fileOptions?: CorePluginFilesOptions): void {
+          rejectDisposedWrite('files.remove')
+          withStorageFailureReport('files.remove', () =>
+            requireFiles().remove(relPath, fileOptions))
+        },
+        usage(): CorePluginFilesUsage {
+          return withStorageFailureReport('files.usage', () => requireFiles().usage())
+        },
+      },
       message(sessionId: string, messageId: string) {
         return {
           readJson<T = unknown>(fallback?: T): T | undefined {

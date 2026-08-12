@@ -13,7 +13,9 @@ import {
   configurePluginConfigHost,
   describePluginConfig,
   getEffectivePluginConfig,
+  getPluginExternalRoot,
   notifyPluginConfigChange,
+  pluginDeclaresExternalRootField,
   resetPluginConfigListenersForTests,
   setPluginConfig,
   subscribePluginConfigChange,
@@ -258,3 +260,58 @@ describe('R3 onChange — plugin code, therefore soft-isolated', () => {
   })
 })
 
+
+/**
+ * M1 / F1 第二根 —— 宿主怎么定位插件的外部根。
+ *
+ * **寻址靠 schema,不靠一个约定的键名**:魔法键会逼每个插件去猜那个名字,
+ * 猜错就静默没有外部根;而 `format: 'directory-pick'` 本来就是这条声明的唯一
+ * 正门,顺着它找是零约定的。
+ */
+describe('F1 external root — the host locates it through the schema, not a magic key', () => {
+  const WIKI_SCHEMA = {
+    type: 'object',
+    properties: {
+      wikiRoot: { type: 'string', format: 'directory-pick', title: 'Wiki folder' },
+      verbose: { type: 'boolean', default: false },
+    },
+  }
+
+  it('resolves the picked folder from whatever key the plugin named it', () => {
+    installHost({ schema: WIKI_SCHEMA, stored: { wikiRoot: '/Users/x/data/note' } })
+    expect(pluginDeclaresExternalRootField('demo')).toBe(true)
+    expect(getPluginExternalRoot('demo')).toBe('/Users/x/data/note')
+  })
+
+  it('is undefined until the user picks one (an empty value is a waiting state)', () => {
+    installHost({ schema: WIKI_SCHEMA, stored: {} })
+    expect(pluginDeclaresExternalRootField('demo')).toBe(true)
+    expect(getPluginExternalRoot('demo')).toBeUndefined()
+  })
+
+  it('is undefined for a plugin that never declared the control', () => {
+    installHost({})
+    expect(pluginDeclaresExternalRootField('demo')).toBe(false)
+    expect(getPluginExternalRoot('demo')).toBeUndefined()
+  })
+
+  it('follows the user changing it — the host never caches a path of its own', () => {
+    const disk = installHost({ schema: WIKI_SCHEMA, stored: { wikiRoot: '/Users/x/first' } })
+    expect(getPluginExternalRoot('demo')).toBe('/Users/x/first')
+
+    setPluginConfig('demo', { wikiRoot: '/Users/x/second', verbose: false })
+
+    expect(disk.demo.wikiRoot).toBe('/Users/x/second')
+    expect(getPluginExternalRoot('demo')).toBe('/Users/x/second')
+  })
+
+  it('drops a stored relative path (the coercion layer refuses it) rather than resolving it against the CWD', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      installHost({ schema: WIKI_SCHEMA, stored: { wikiRoot: 'notes' } })
+      expect(getPluginExternalRoot('demo')).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})

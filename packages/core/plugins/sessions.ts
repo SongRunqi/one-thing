@@ -122,6 +122,30 @@ export const PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT = 'toolresult:intercept'
 export const PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE =
   'can read and rewrite tool results before the model sees them (including file contents and command output)'
 
+/* ── 用户指定根(F1 files 面第二根)的声明门 ─────────────────────────────── */
+
+/**
+ * `storage:external-root` —— 插件读写**用户亲手指定的一个目录**。
+ *
+ * 常量住这个文件而不是 `storage-files.ts`,理由与 `input:intercept` 逐字相同:
+ * 那边要 `node:fs`,而本文件是渲染层直接按子路径引的**零依赖叶子**
+ * (`@onething/core/plugins/sessions`)。为了一句英文文案把 fs 拖进渲染包是不值的。
+ * `storage-files.ts` 原样再导出这两个名字,读那边代码的人不必跳文件。
+ *
+ * 敏感度:与家目录(宿主发的草稿纸,卸载即回收)**不是一个量级** —— 外部根里
+ * 是用户自己的文件,他会亲手编辑、用别的工具打开、git 提交。所以它必须是一道
+ * 独立的、装前念出来的权限,而不是 files 面附赠的一个参数。
+ */
+export const PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT = 'storage:external-root'
+
+/**
+ * 披露文案。**"你选的"三个字不能省**:用户点头的是"这个插件能读写一个我指定的
+ * 文件夹",不是"这个插件能读写我的磁盘"。具体是哪个文件夹由他在插件设置里选,
+ * 没选之前这条权限一寸地也够不着。
+ */
+export const PLUGIN_STORAGE_EXTERNAL_ROOT_PERMISSION_NOTE =
+  'can read and write files in one folder that you choose'
+
 /* ── 受管 LLM 调用(N7-b)的声明门 ───────────────────────────────────────── */
 
 /**
@@ -142,6 +166,7 @@ export const PLUGIN_PERMISSION_NOTES: Readonly<Record<string, string>> = {
   [PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT]: PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE,
   [PLUGIN_PERMISSION_LLM_COMPLETE]: PLUGIN_LLM_COMPLETE_PERMISSION_NOTE,
   [PLUGIN_PERMISSION_DEEPLINK_HANDLE]: PLUGIN_DEEPLINK_HANDLE_PERMISSION_NOTE,
+  [PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT]: PLUGIN_STORAGE_EXTERNAL_ROOT_PERMISSION_NOTE,
 }
 
 export function describePluginPermission(name: string): string {

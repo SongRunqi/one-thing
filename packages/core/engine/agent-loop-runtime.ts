@@ -334,6 +334,13 @@ export interface CoreAgentLoopDirectToolRuntimeContext {
    * stamped on EVERY session, so its presence proves nothing).
    */
   principal?: Principal
+  /**
+   * F4 身份面:这一回合归属的 agent。**与 principal 分开的两件事** —— principal
+   * 是被证明过的行动主体(权限判定),这个是回合入口一次解析出来的身份归属
+   * (作用域用:插件按 "自己的 scope + global" 读写)。合并成一个字段会让
+   * "权限降级到 system" 顺手把插件的作用域也擦掉。
+   */
+  agentId?: string
 }
 
 export interface CoreAgentLoopDirectToolMetadataUpdate {
@@ -360,6 +367,8 @@ export interface CoreAgentLoopDirectToolExecutionContext<TPartialResultUpdate = 
   workingDirectoryRoots?: string[]
   abortSignal?: AbortSignal
   principal?: Principal
+  /** F4:回合归属的 agent(见 CoreAgentLoopDirectToolRuntimeContext.agentId)。 */
+  agentId?: string
   onMetadata?: (update: CoreAgentLoopDirectToolMetadataUpdate) => void
   onPartialResult?: (update: TPartialResultUpdate) => void
 }
@@ -707,6 +716,7 @@ export function buildAgentLoopDirectToolsWithAdapters<
       workingDirectoryRoots: options.context.workingDirectoryRoots,
       abortSignal: toolCtx.abortSignal ?? options.context.abortSignal,
       principal: options.context.principal,
+      agentId: options.context.agentId,
       onMetadata: toolCtx.onMetadata
         ? update => toolCtx.onMetadata?.({
             title: update.title,

@@ -491,6 +491,10 @@ async function collectPlugins(
 ): Promise<string[]> {
 	const fragments = await collectPluginPromptContext({
 		sessionId: ctx.sessionId,
+		// F4:身份透传。ctx.agentId 是回合入口解析好的那一个,与 persona 取的是
+		// 同一个字段(见 coreOptions/getAgent),所以插件看到的身份与提示词里的
+		// 身份恒一致。
+		agentId: ctx.agentId,
 		providerId: ctx.providerId,
 		model: resolvePromptModelId(ctx),
 		providerConfig: ctx.providerConfig,

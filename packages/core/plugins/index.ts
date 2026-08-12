@@ -242,8 +242,10 @@ export {
   PLUGIN_FILE_PICK_EXTENSIONS,
   PLUGIN_FILE_PICK_MAX_BYTES,
   PLUGIN_IMPORTS_DIR_NAME,
+  PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT,
   PLUGIN_SETTINGS_FILE_IMPORT_FORMAT,
   clampPluginFilePickMaxBytes,
+  describePluginDirectoryPickDeclarationProblem,
   describePluginFileImportDeclarationProblem,
   describePluginFileImportProblem,
   describePluginFilePickNodeProblem,
@@ -578,6 +580,24 @@ export type {
   PluginOrphanArchiveDecision,
   PluginStorageErrorCode,
 } from './storage.js'
+export {
+  PLUGIN_FILES_DEFAULT_QUOTA_BYTES,
+  PLUGIN_FILES_MAX_FILE_BYTES,
+  PLUGIN_FILES_QUOTA_WARNING_EVENT,
+  PLUGIN_FILES_QUOTA_WARNING_RATIO,
+  PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT,
+  PLUGIN_STORAGE_EXTERNAL_ROOT_PERMISSION_NOTE,
+  createCorePluginFiles,
+  describePluginFilesPathProblem,
+} from './storage-files.js'
+export type {
+  CorePluginFileEntry,
+  CorePluginFiles,
+  CorePluginFilesOptions,
+  CorePluginFilesRoot,
+  CorePluginFilesUsage,
+  CreateCorePluginFilesOptions,
+} from './storage-files.js'
 export {
   createCorePluginAPI,
   executeCorePluginTool,

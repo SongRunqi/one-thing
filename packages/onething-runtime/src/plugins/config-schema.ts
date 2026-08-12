@@ -20,8 +20,10 @@
 import {
   clampPluginFilePickMaxBytes,
   deepFreezeCorePluginValue,
+  describePluginDirectoryPickDeclarationProblem,
   describePluginFileImportDeclarationProblem,
   resolvePluginFilePickAccept,
+  PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT,
   PLUGIN_SETTINGS_FILE_IMPORT_FORMAT,
 } from '@onething/core/plugins'
 
@@ -33,6 +35,12 @@ export const PLUGIN_CONFIG_CONTROLS = [
   'select',
   'string-list',
   'file-import',
+  /**
+   * F1 第二根:选一个**用户磁盘上的目录**。宿主画按钮 + 拉原生目录对话框,
+   * 存的是绝对路径。只有同时声明了 `storage:external-root` 的插件才用得上它
+   * (没声明的话 files 面照样拒绝,这个控件只是把一个字符串存进配置)。
+   */
+  'directory-pick',
 ] as const
 
 export type PluginConfigControl = (typeof PLUGIN_CONFIG_CONTROLS)[number]
@@ -59,7 +67,9 @@ const COMPATIBLE_CONTROLS: Record<PluginConfigValueType, readonly PluginConfigCo
   // file-import 在这里合法是因为它存的**就是**一个字符串(`storage:` 地址):
   // 呈现覆盖不许改变值的类型契约,而这一条没有改。声明的正门仍是
   // `format: 'file-import'` —— 只有它能同时带上 accept / maxBytes。
-  string: ['text', 'file-import'],
+  // directory-pick 与 file-import 同理:呈现覆盖不许改变值的类型契约,而它存的
+  // 就是一个字符串(一条绝对路径)。声明的正门仍是 `format: 'directory-pick'`。
+  string: ['text', 'file-import', 'directory-pick'],
   'string-enum': ['select', 'text'],
   number: ['number'],
   integer: ['number'],
@@ -109,6 +119,15 @@ export interface PluginConfigField {
    */
   accept?: string[]
   maxBytes?: number
+  /**
+   * `format: 'directory-pick'` 的值语义标记(F1 第二根)。
+   *
+   * 是**校验依据**而不是呈现提示:带上它的 string 只接受绝对路径或空串。存一个
+   * 相对路径进去,files 面解析出来的会是相对进程 CWD 的一个目录 —— 那是一个
+   * 谁也说不清在哪的位置。存在性不在这里判(产品层不吃 fs),见 core 的
+   * `PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT` 注释里的三层分工。
+   */
+  directoryPick?: boolean
   defaultValue: unknown
 }
 
@@ -230,6 +249,26 @@ function describeField(
       accept: resolvePluginFilePickAccept(schema.accept),
       maxBytes: clampPluginFilePickMaxBytes(schema.maxBytes),
       defaultValue: cloneDefault(schema.default ?? ''),
+    }
+  }
+
+  /**
+   * 目录选择(`format: 'directory-pick'`)—— F1 第二根的入口。
+   *
+   * 与 file-import 同一个位置判(enum/type 之前)、同一个理由:它对 schema 其余
+   * 部分有约束,先判掉才给得出一句说得清的理由,而不是掉进 string 分支变成一个
+   * 自由文本框 —— 那正是"能力缺口把 UX 拽错位置"的翻版(用户手打一条路径,
+   * 打错了没人拦)。
+   */
+  if (schema.format === PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT) {
+    const problem = describePluginDirectoryPickDeclarationProblem(schema, `"${key}"`)
+    if (problem) return problem
+    return {
+      ...base,
+      type: 'string',
+      control: 'directory-pick',
+      directoryPick: true,
+      defaultValue: '',
     }
   }
 
@@ -372,6 +411,13 @@ export function describePluginConfigSchema(
     // `ui.control: 'file-import'` 走的是呈现覆盖这道侧门(正门是 format),
     // 它带不了 accept / maxBytes —— 那就把缺省裁决补齐,别让设置页拿到一个
     // 半张的声明再自己去猜宿主的白名单。
+    // 同理的第二扇侧门:`ui.control: 'directory-pick'` 也必须把**值语义**带上,
+    // 否则它只是长得像目录选择器、校验起来却是自由文本 —— 呈现与校验分家正是
+    // 这一层要消灭的东西。
+    if (control === 'directory-pick' && !described.directoryPick) {
+      fields.push({ ...described, control, directoryPick: true, defaultValue: '' })
+      continue
+    }
     if (control === 'file-import' && described.accept === undefined) {
       fields.push({
         ...described,
@@ -398,6 +444,20 @@ export interface PluginConfigCoercion {
   strippedKeys: string[]
 }
 
+/**
+ * 绝对路径判定 —— **不引 node:path**。
+ *
+ * 这个文件被渲染层直接吃(设置页要同一份归约结果),而 `node:path` 在浏览器包里
+ * 要么不存在要么是一个 posix 垫片:垫片会把 `C:\Users\x` 判成相对路径,于是同一份
+ * 配置在主进程合法、在设置页报错。两个平台形态一共就两条规则,写在这里比拖一个
+ * 会说谎的垫片进来划算。
+ */
+function isAbsolutePathLike(value: string): boolean {
+  if (value.startsWith('/')) return true
+  // Windows:盘符(`C:\` / `C:/`)与 UNC(`\\server\share`)。
+  return /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\')
+}
+
 /** 按 **schema type** 校验 —— control 只管长相,管不着值。 */
 function coerceField(field: PluginConfigField, value: unknown): { value: unknown; error?: string } {
   switch (field.type) {
@@ -405,8 +465,19 @@ function coerceField(field: PluginConfigField, value: unknown): { value: unknown
       if (typeof value === 'boolean') return { value }
       return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be a boolean` }
     case 'string':
-      if (typeof value === 'string') return { value }
-      return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be a string` }
+      if (typeof value !== 'string') {
+        return { value: cloneDefault(field.defaultValue), error: `"${field.key}" must be a string` }
+      }
+      // directory-pick 的值语义(纯形状,不 stat):空串 = 还没选,合法;
+      // 选了就必须是绝对路径 —— 相对路径会被解析成"相对进程 CWD",
+      // 那是一个谁也说不清在哪的目录,而写进去的是用户的笔记。
+      if (field.directoryPick && value !== '' && !isAbsolutePathLike(value)) {
+        return {
+          value: cloneDefault(field.defaultValue),
+          error: `"${field.key}" must be an absolute folder path`,
+        }
+      }
+      return { value }
     case 'string-enum':
       if (typeof value === 'string' && (field.options ?? []).includes(value)) return { value }
       return {

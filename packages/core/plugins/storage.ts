@@ -42,8 +42,16 @@ export type PluginStorageErrorCode =
   | 'not-serializable'
   | 'unavailable'
   | 'io'
-  /** 配额硬顶写超(message-state;Chrome/Figma 先例:配额由宿主持有)。 */
+  /** 配额硬顶写超(message-state / files 面;Chrome/Figma 先例:配额由宿主持有)。 */
   | 'quota'
+  /**
+   * 声明门未过(F1 files 面的外部根)。**与 `unavailable` 分开**:后者是"这个宿主
+   * 没有这条线",插件重试也没用;这一条是"manifest 少写了一行",作者改一行就好。
+   * 两者混成一个 code,插件就只能靠读英文报错来分辨该改代码还是该放弃。
+   */
+  | 'not-declared'
+  /** 声明过但用户还没在设置里选目录 —— 不是错误状态,是等待状态。 */
+  | 'not-configured'
 
 /**
  * 插件存储错误。

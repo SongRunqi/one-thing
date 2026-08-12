@@ -640,6 +640,12 @@ export interface CorePreparedToolNames {
 
 export interface CoreAgentLoopPostResponseSession<TMessage = unknown> {
 	messages: TMessage[];
+	/**
+	 * F4 身份面:会话绑定的 agent。只被 afterAssistantResponse 的 ctx 读一次
+	 * (纯透传,零新状态)。触发器那条 ctx 不加这个字段 —— 它的既有消费者都用
+	 * `session` 本体,再摊平一份只会多一条要保持同步的事实。
+	 */
+	agentId?: string;
 }
 
 export interface CoreAgentLoopPostResponseTriggerContext<
@@ -675,6 +681,8 @@ export interface CoreAgentLoopAfterAssistantResponseContext<
 		TSettings
 	> {
 	assistantMessageId: string;
+	/** F4:回合归属的 agent(源头 `session.agentId`;缺省 = 没绑 agent)。 */
+	agentId?: string;
 }
 
 export interface CoreAgentLoopPostResponseContexts<
@@ -2324,6 +2332,9 @@ export function buildAgentLoopPostResponseContexts<
 		afterAssistantResponseContext: {
 			...triggerContext,
 			assistantMessageId: input.assistantMessageId,
+			// F4:身份透传。会话本体已经带着它,这里只是把它摊到 ctx 的一等字段上,
+			// 免得每个插件各写一遍 `(ctx.session as any).agentId`。
+			...(input.session.agentId ? { agentId: input.session.agentId } : {}),
 		},
 	};
 }

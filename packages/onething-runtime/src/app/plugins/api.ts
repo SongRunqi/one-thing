@@ -11,7 +11,7 @@ import {
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine.js'
 import { z } from 'zod'
-import { PluginStore, createPluginMessageState, createPluginStorage } from './store.js'
+import { PluginStore, createPluginFiles, createPluginMessageState, createPluginStorage } from './store.js'
 import {
   getDeclaredBackground,
   getDeclaredPanelIds,
@@ -28,7 +28,11 @@ import { pluginStorageImageExists } from './file-import.js'
 import { registerIMConnector } from '../channel/connector-registry.js'
 import { registerPluginDeepLinkAction } from '../deeplink/registry.js'
 import { registerPluginSearchProvider } from '../search/plugin-search-registry.js'
-import { forgetUiActionGestures } from '@onething/core/plugins'
+import {
+  forgetUiActionGestures,
+  PLUGIN_FILES_QUOTA_WARNING_EVENT,
+  PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT,
+} from '@onething/core/plugins'
 import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
 import {
@@ -43,6 +47,7 @@ import {
 } from './health.js'
 import {
   getEffectivePluginConfig,
+  getPluginExternalRoot,
   subscribePluginConfigChange,
 } from './config.js'
 import {
@@ -238,6 +243,26 @@ export function createPluginAPI(
       .some(slot => slot.lifetime === 'persistent'),
     isDisposed: () => storageGate.demolished,
   })
+  // F1 受管文件树。三条宿主线:
+  //  - 声明门:`storage:external-root` 在不在 manifest 里(不在 = 外部根一律拒);
+  //  - 外部根:每次调用现取(用户随时可能在设置里改那个目录);
+  //  - 预警:越过 9 成配额发一条**插件自己命名空间**的事件,插件用
+  //    `api.on('plugin:<id>:storage:quota-warning')` 订阅。发在自己的命名空间里,
+  //    是因为配额是每插件的事实 —— 全局事件会让每个插件都收到别人的水位。
+  const declaredPermissionList = options?.declaredPermissions ?? getDeclaredPermissions(pluginId)
+  const files = createPluginFiles(pluginId, {
+    externalRootDeclared: declaredPermissionList.includes(PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT),
+    resolveExternalRoot: () => getPluginExternalRoot(pluginId),
+    isDisposed: () => storageGate.demolished,
+    onQuotaWarning(usage) {
+      eventBus.emitGlobal({
+        type: `plugin:${pluginId}:${PLUGIN_FILES_QUOTA_WARNING_EVENT}`,
+        pluginId,
+        name: PLUGIN_FILES_QUOTA_WARNING_EVENT,
+        payload: usage,
+      } as any)
+    },
+  })
   // 拆除闸要能被 scheduler 看到,而 state 是 createCorePluginAPI 的返回值 ——
   // 用一个后填的引用把两者接上(register 只在调用时读它)。
   const pluginScheduler = createScopedPluginScheduler({
@@ -269,6 +294,8 @@ export function createPluginAPI(
     }),
     // 消息态见上方 messageState 工厂(lifetime 闸门)。
     messageState,
+    // F1 受管文件树(见上方 files 工厂)。
+    files,
     // 声明先于代码:面板注册要跟 manifest 对得上,清单是权威。
     declaredPanelIds: options?.declaredPanelIds ?? getDeclaredPanelIds(pluginId),
     // C 期:webview 面板的 render 挂 `panel:init:<id>`(返回初始化数据而不是树)。
@@ -278,7 +305,7 @@ export function createPluginAPI(
     declaredBackground: options?.declaredBackground ?? getDeclaredBackground(pluginId),
     // N1:api.sendMessage / api.sessions.* / api.isIdle 的门控 —— 同一条
     // "声明先于代码",装前确认页把这几条权限逐条念给用户听。
-    declaredPermissions: options?.declaredPermissions ?? getDeclaredPermissions(pluginId),
+    declaredPermissions: declaredPermissionList,
     // 全进程一本账(R6):清扫按会话进行,每插件一本就扫不干净。
     statusRegistry: getPluginStatusRegistry(),
     scheduler: pluginScheduler,
@@ -330,6 +357,10 @@ export function createPluginAPI(
                 sessionId: ctx.sessionId,
                 messageId: ctx.messageId,
                 toolCallId: ctx.toolCallId,
+                // F4:身份透传。ctx.agentId 由回合入口一次解析后一路带下来
+                // (stream-runtime → direct-tool-execution → 这里),插件不必
+                // 也不该自己反查 session.agentId。
+                agentId: ctx.agentId,
                 workingDirectory: ctx.workingDirectory,
                 abortSignal: ctx.abortSignal,
                 metadata(input: { title?: string; metadata?: Partial<ToolMetadata> }) {

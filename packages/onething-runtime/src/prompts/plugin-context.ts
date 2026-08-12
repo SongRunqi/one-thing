@@ -26,6 +26,16 @@ export interface OnethingPromptSkillDefinition {
 
 export interface OnethingPluginPromptContext {
   sessionId?: string
+  /**
+   * 这一回合归属的 agent(F4 身份面)。**纯透传**:值就是回合入口解析好的那一个
+   * (`preparation.agentId`,源头是会话级 `agentId`),不是在这里现查 ——
+   * 现查会让同一回合的三处身份口径各自漂。
+   *
+   * 缺省 undefined = 这条会话没有绑 agent。插件的 agent scope 读取公式
+   * ("自己的 scope + global")就以它为依据;拿不到 agent 时只剩 global,
+   * 那是正确的降级,不是错误。
+   */
+  agentId?: string
   providerId?: string
   model?: string
   providerConfig?: OnethingPromptProviderConfig

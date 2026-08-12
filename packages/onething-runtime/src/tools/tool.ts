@@ -119,6 +119,13 @@ export interface ToolContext<M extends ToolMetadata = ToolMetadata> {
    * `session.agentId` today; this is the field that lets them share one answer.
    */
   principal?: Principal
+  /**
+   * 这一回合归属的 agent(F4 身份面)。与 `principal` **不是**一回事:principal 是
+   * 被证明过的行动主体(权限判定用,拿不出证明就落到 system),`agentId` 是这一
+   * 回合的身份归属 —— 回合入口解析好的 `preparation.agentId`,提示词与插件看到
+   * 的是同一个值。判权限只准看 principal;分作用域(插件的 agent scope)看这个。
+   */
+  agentId?: string
   metadata(input: { title?: string; metadata?: Partial<M> }): void
   updateResult?(input: ToolPartialResultUpdate): void
   onStepStart?: (step: ToolStep) => void

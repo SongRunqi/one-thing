@@ -117,6 +117,33 @@ export function getEffectivePluginConfig(pluginId: string): Record<string, unkno
   return frozen
 }
 
+/**
+ * F1 第二根:这个插件当前指到哪个用户目录。
+ *
+ * **寻址靠 schema 而不是一个约定的键名。** 让宿主认一个魔法键(`externalRoot`)
+ * 会逼每个插件都去猜那个名字,猜错就静默没有外部根;而 `format: 'directory-pick'`
+ * 本来就是这条声明的唯一正门,顺着它找是零约定的。
+ *
+ * 只认**第一条**:一个插件一个外部根(见 `storage:external-root` 的裁决 ——
+ * 多根会立刻引出"哪个是默认""跨根移动怎么算"这些没有用例支撑的问题)。
+ * 声明了两条 = 第二条不生效,而不是报错:这不值得让插件加载失败。
+ *
+ * 每次调用现取(`getEffectivePluginConfig` 自带缓存,改配置会 invalidate):
+ * 缓存一份路径等于让用户改完设置之后的写还落在旧目录,而界面显示的是新目录。
+ */
+export function getPluginExternalRoot(pluginId: string): string | undefined {
+  const fields = fieldsOf(pluginId)
+  const field = fields?.find(item => item.directoryPick)
+  if (!field) return undefined
+  const value = getEffectivePluginConfig(pluginId)[field.key]
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+/** 这个插件声明过 `format: 'directory-pick'` 吗(设置页要不要画那个按钮)。 */
+export function pluginDeclaresExternalRootField(pluginId: string): boolean {
+  return Boolean(fieldsOf(pluginId)?.some(item => item.directoryPick))
+}
+
 export interface SetPluginConfigResult {
   success: boolean
   config?: Record<string, unknown>

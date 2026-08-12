@@ -418,3 +418,106 @@ describe('file-import — 配置类的"选文件"住设置页', () => {
     expect(coerced.errors[0]).toMatchObject({ key: 'wallpaper', message: expect.stringContaining('must be a string') })
   })
 })
+
+/**
+ * 目录选择控件(`format: 'directory-pick'`,M1 / F1 第二根)。
+ *
+ * **判例**:wiki 要放用户指定的目录且他会亲手编辑,所以那个目录必须由用户选 ——
+ * 而"选一个目录"同样是**配置**,配置的家是设置页(与 file-import 同一条判例)。
+ *
+ * 校验分三层,这里钉的是前两层:声明(core 纯函数)与值的形状(本层纯函数)。
+ * 第三层"目录到底存不存在"在 core 的 files 面用到的那一刻判 —— 用户可能在选完
+ * 之后把它删了,那不是"配置非法",是"现在够不着"。
+ */
+describe('directory-pick — 用户指定根的入口', () => {
+  it('归约成 directory-pick 控件,值语义标记随之带上', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: {
+        wikiRoot: {
+          type: 'string',
+          format: 'directory-pick',
+          title: 'Wiki folder',
+          description: '你的笔记目录',
+        },
+      },
+    })
+    expect(described.supported).toBe(true)
+    if (!described.supported) return
+    expect(described.fields[0]).toMatchObject({
+      key: 'wikiRoot',
+      // 值的类型契约没有变:存的就是一个字符串(一条绝对路径)。
+      type: 'string',
+      control: 'directory-pick',
+      directoryPick: true,
+      label: 'Wiki folder',
+      hint: '你的笔记目录',
+      defaultValue: '',
+    })
+  })
+
+  it('manifest 不许预填目录 —— 这条权限的全部意义就是"目录由用户选"', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: {
+        wikiRoot: { type: 'string', format: 'directory-pick', default: '/Users/x/notes' },
+      },
+    })
+    expect(described.supported).toBe(false)
+    if (described.supported) return
+    expect(described.reasons[0]).toContain('cannot declare a default')
+  })
+
+  it('配 enum / 非 string 一律判不支持,而且说得出理由', () => {
+    const withEnum = describePluginConfigSchema({
+      type: 'object',
+      properties: { wikiRoot: { type: 'string', format: 'directory-pick', enum: ['a'] } },
+    })
+    expect(withEnum.supported).toBe(false)
+    if (!withEnum.supported) expect(withEnum.reasons[0]).toContain('cannot be combined with enum')
+
+    const wrongType = describePluginConfigSchema({
+      type: 'object',
+      properties: { wikiRoot: { type: 'number', format: 'directory-pick' } },
+    })
+    expect(wrongType.supported).toBe(false)
+    if (!wrongType.supported) expect(wrongType.reasons[0]).toContain('only supported on string properties')
+  })
+
+  it('值必须是绝对路径或空串;相对路径回退默认并报错', () => {
+    const described = describePluginConfigSchema({
+      type: 'object',
+      properties: { wikiRoot: { type: 'string', format: 'directory-pick' } },
+    })
+    expect(described.supported).toBe(true)
+    if (!described.supported) return
+
+    // 空 = 还没选,合法(等待状态,不是错误状态)。
+    expect(coercePluginConfig(described.fields, { wikiRoot: '' }).errors).toEqual([])
+    // posix 与 Windows 两种绝对形态都收 —— 同一份配置不该在主进程合法、设置页报错。
+    expect(coercePluginConfig(described.fields, { wikiRoot: '/Users/x/notes' }).config.wikiRoot)
+      .toBe('/Users/x/notes')
+    expect(coercePluginConfig(described.fields, { wikiRoot: 'C:\\Users\\x\\notes' }).config.wikiRoot)
+      .toBe('C:\\Users\\x\\notes')
+
+    const relative = coercePluginConfig(described.fields, { wikiRoot: 'notes' })
+    expect(relative.config.wikiRoot).toBe('')
+    expect(relative.errors[0]).toMatchObject({
+      key: 'wikiRoot',
+      message: expect.stringContaining('absolute folder path'),
+    })
+  })
+
+  it('侧门 ui.control 也必须把值语义带上,否则长得像选目录、校验起来是自由文本', () => {
+    const described = describePluginConfigSchema(
+      { type: 'object', properties: { wikiRoot: { type: 'string' } } },
+      { ui: { wikiRoot: { control: 'directory-pick' } } },
+    )
+    expect(described.supported).toBe(true)
+    if (!described.supported) return
+    expect(described.fields[0]).toMatchObject({ control: 'directory-pick', directoryPick: true })
+
+    const relative = coercePluginConfig(described.fields, { wikiRoot: './notes' })
+    expect(relative.errors[0]?.message).toContain('absolute folder path')
+  })
+})

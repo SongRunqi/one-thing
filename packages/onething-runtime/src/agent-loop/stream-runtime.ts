@@ -867,6 +867,10 @@ export async function buildOnethingAgentLoopStreamRuntime<
 					workingDirectoryRoots: sessionWorkingDirRoots,
 					abortSignal: ctx.abortSignal,
 					principal: ctx.principal,
+					// F4:身份透传。取的是回合入口解析好的那一个 —— 与喂给
+					// buildPrompt 的 `agentId: preparation.agentId` 是同一个值,
+					// 所以提示词、插件 promptContext、插件工具 ctx 三处恒同解。
+					agentId: preparation.agentId,
 				},
 				executeToolDirectly: executeToolDirectlyWithFreshSession,
 			}),

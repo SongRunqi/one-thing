@@ -65,6 +65,14 @@ export interface CoreAfterAssistantResponseContext<
 > {
   sessionId: string
   assistantMessageId: string
+  /**
+   * F4 身份面:这一回合归属的 agent(纯透传,零新状态)。与 promptContext /
+   * 工具 ctx 的同名字段是**同一个语义**。缺省 undefined = 没绑 agent。
+   *
+   * 注意这条钩子在 collab 会话上根本不跑(装配层 isCollabSession 门控),所以
+   * "协调器逐次翻 session.agentId" 那个危险在这条线上不成立。
+   */
+  agentId?: string
   session: TSession
   messages: TMessage[]
   lastUserMessage: string

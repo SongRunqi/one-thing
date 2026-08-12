@@ -20,8 +20,10 @@ import {
   archiveCorePluginData,
   assertSafePluginFileName,
   createCorePluginAPI,
+  createCorePluginFiles,
   createCorePluginStorage,
   decidePluginOrphanArchive,
+  getCorePluginScratchDir,
   disposeCorePluginState,
   findCorePluginDataOrphans,
   getCorePluginDataFootprint,
@@ -757,6 +759,198 @@ describe('R4 uninstall lifecycle', () => {
       warn.mockRestore()
       fs.rmSync(root, { recursive: true, force: true })
       fs.rmSync(pluginsDir, { recursive: true, force: true })
+    }
+  })
+})
+
+/**
+ * M1 / F1 —— 受管文件树接进既有拆除机制
+ * (docs/design/plugin-knowledge-worker-capabilities-2026-08.md §1 F1 "拆除免费")。
+ *
+ * "免费"这个说法要有人验:files 面把数据落在 `plugins/<id>/storage/`,而归档搬的
+ * 是整个家目录 —— 所以它**应该**天然被覆盖。应该不等于是,所以这里钉住它;
+ * 同时钉住反过来的那一半:**卸载绝不动外部根**,那是用户自己的文件。
+ */
+describe('F1 files — teardown covers the storage tree and never the user folder', () => {
+  it('archives the whole storage subtree along with the home directory', () => {
+    const root = tempRoot()
+    try {
+      const files = createCorePluginFiles({ pluginId: 'memory', homeRoot: root })
+      files.appendText('candidates/2026-08.jsonl', '{"a":1}\n')
+      files.writeText('wiki/topics/cls.md', '# CLS\n')
+
+      // 足迹是可枚举的:storage/ 就在家目录里,不是第二个地盘。
+      expect(fs.existsSync(getCorePluginScratchDir(root, 'memory'))).toBe(true)
+
+      const result = archiveCorePluginData(root, 'memory', { now: new Date('2026-08-12T00:00:00') })
+
+      expect(result.archived).toBe(true)
+      expect(fs.existsSync(path.join(root, 'memory'))).toBe(false)
+      expect(
+        fs.readFileSync(path.join(result.archivePath!, 'storage/candidates/2026-08.jsonl'), 'utf-8'),
+      ).toBe('{"a":1}\n')
+      expect(
+        fs.readFileSync(path.join(result.archivePath!, 'storage/wiki/topics/cls.md'), 'utf-8'),
+      ).toBe('# CLS\n')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves every byte of the external root alone when the plugin is torn down', () => {
+    const root = tempRoot()
+    const external = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-user-notes-'))
+    try {
+      const files = createCorePluginFiles({
+        pluginId: 'memory',
+        homeRoot: root,
+        externalRootDeclared: true,
+        resolveExternalRoot: () => external,
+      })
+      files.writeText('wiki/kept.md', '用户的笔记', { root: 'external' })
+      files.writeText('scratch.md', 'plugin scratch')
+
+      archiveCorePluginData(root, 'memory', { now: new Date('2026-08-12T00:00:00') })
+
+      // 家目录被归档走了 —— 那是宿主发的草稿纸。
+      expect(fs.existsSync(path.join(root, 'memory'))).toBe(false)
+      // 外部根一个字节都没动 —— 卸载只该清"插件对它的授权",不该碰用户的文件。
+      expect(fs.readFileSync(path.join(external, 'wiki/kept.md'), 'utf-8')).toBe('用户的笔记')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+      fs.rmSync(external, { recursive: true, force: true })
+    }
+  })
+})
+
+/**
+ * M1 / F1 —— `api.storage.files` 在 api-builder 上的宿主纪律:
+ * 拆除闩 + 熔断分车道 + 错误继续抛(与 KV 逐条同规)。
+ */
+describe('F1 api.storage.files wiring — latch and breaker ledger', () => {
+  function buildFilesApi(homeRoot: string, pluginId = 'memory') {
+    const failures: Array<{ scope: string; error: unknown }> = []
+    const gate = { disposed: false }
+    const result = createCorePluginAPI<
+      {
+        storage: {
+          files: {
+            readText(relPath: string, options?: { root?: 'home' | 'external' }): string | undefined
+            writeText(relPath: string, content: string, options?: { root?: 'home' | 'external' }): void
+            appendText(relPath: string, content: string, options?: { root?: 'home' | 'external' }): void
+            list(relDir?: string): Array<{ path: string }>
+            exists(relPath: string): boolean
+            remove(relPath: string): void
+            usage(): { bytes: number; quotaBytes: number }
+          }
+        }
+      },
+      { name: string },
+      () => void,
+      { name: string },
+      object,
+      () => string,
+      () => void,
+      () => void,
+      () => [],
+      object,
+      object
+    >({
+      pluginId,
+      store: {},
+      files: createCorePluginFiles({
+        pluginId,
+        homeRoot,
+        isDisposed: () => gate.disposed,
+      }),
+      scheduler: {},
+      logger: silentLogger(),
+      onPluginFailure: ({ scope, error }) => failures.push({ scope, error }),
+      host: {
+        registerTool: () => {},
+        subscribeEvent: () => () => {},
+        steer: () => {},
+        followUp: () => {},
+        notify: () => {},
+        registerPromptContextProvider: () => () => {},
+        registerBeforeContextCompactHook: () => () => {},
+        registerAfterAssistantResponseHook: () => () => {},
+        registerSkillRoot: () => () => {},
+      },
+    })
+    return { ...result, failures, gate }
+  }
+
+  it('round-trips all six verbs through the api surface', () => {
+    const root = tempRoot()
+    try {
+      const { api } = buildFilesApi(root)
+      expect(api.storage.files.exists('candidates/a.jsonl')).toBe(false)
+      api.storage.files.appendText('candidates/a.jsonl', '{"n":1}\n')
+      api.storage.files.appendText('candidates/a.jsonl', '{"n":2}\n')
+      api.storage.files.writeText('wiki/a.md', '# a')
+
+      expect(api.storage.files.readText('candidates/a.jsonl')).toBe('{"n":1}\n{"n":2}\n')
+      expect(api.storage.files.list('wiki').map(entry => entry.path)).toEqual(['wiki/a.md'])
+      expect(api.storage.files.usage().bytes).toBeGreaterThan(0)
+
+      api.storage.files.remove('wiki/a.md')
+      expect(api.storage.files.exists('wiki/a.md')).toBe(false)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('books a traversal attempt per verb and still throws at the plugin', () => {
+    const root = tempRoot()
+    try {
+      const { api, failures } = buildFilesApi(root)
+      expect(() => api.storage.files.writeText('../escape.md', 'x')).toThrow(PluginStorageError)
+      expect(() => api.storage.files.appendText('../escape.md', 'x')).toThrow(PluginStorageError)
+
+      // 按操作分车道:appendText 的连败不该被 writeText 的成功清掉。
+      expect(failures.map(item => item.scope)).toEqual([
+        'storage.files.writeText',
+        'storage.files.appendText',
+      ])
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects the external root when the manifest never declared it', () => {
+    const root = tempRoot()
+    try {
+      const { api } = buildFilesApi(root)
+      let error: unknown
+      try {
+        api.storage.files.readText('x.md', { root: 'external' })
+      } catch (caught) {
+        error = caught
+      }
+      expect((error as PluginStorageError).code).toBe('not-declared')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('degrades after dispose: writes throw, reads fall back, nothing resurrects the home directory', () => {
+    const root = tempRoot()
+    try {
+      const { api, state, gate } = buildFilesApi(root)
+      api.storage.files.writeText('a.md', 'v1')
+
+      disposeCorePluginState(state)
+      gate.disposed = true
+
+      expect(() => api.storage.files.writeText('a.md', 'v2')).toThrow(PluginStorageError)
+      expect(api.storage.files.readText('a.md')).toBeUndefined()
+      expect(api.storage.files.list()).toEqual([])
+      expect(api.storage.files.exists('a.md')).toBe(false)
+      // 盘上那一份没被改动 —— 拆除只是让通道停用,不是让数据变形。
+      expect(fs.readFileSync(path.join(getCorePluginScratchDir(root, 'memory'), 'a.md'), 'utf-8')).toBe('v1')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
     }
   })
 })

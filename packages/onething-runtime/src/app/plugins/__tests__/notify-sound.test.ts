@@ -69,7 +69,7 @@ describe('限频 —— 连发只响第一声', () => {
   })
 
   it('被拦下的那一声不记账 —— 静音期间不该悄悄推走限频窗口', () => {
-    let now = 1_000_000
+    const now = 1_000_000
     const clock = { now: () => now }
     settings.plugins = { notifySoundsEnabled: true, notifySoundMutedPluginIds: ['demo'] }
     expect(resolvePluginNotifySound('demo', 'chime', clock)).toBe('none')
@@ -79,7 +79,7 @@ describe('限频 —— 连发只响第一声', () => {
   })
 
   it('拆除插件会清掉它的限频账', () => {
-    let now = 1_000_000
+    const now = 1_000_000
     const clock = { now: () => now }
     expect(resolvePluginNotifySound('demo', 'chime', clock)).toBe('chime')
     expect(resolvePluginNotifySound('demo', 'chime', clock)).toBe('none')

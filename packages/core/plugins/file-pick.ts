@@ -63,6 +63,54 @@ export const PLUGIN_IMPORTS_DIR_NAME = 'imports'
  */
 export const PLUGIN_SETTINGS_FILE_IMPORT_FORMAT = 'file-import'
 
+/**
+ * `contributes.settings.schema` 里声明"选一个目录"控件用的 `format` 值(F1 第二根)。
+ *
+ * **与 `file-import` 同住这个文件**,因为它们是同一件事的两半:宿主拉起一个原生
+ * 对话框、宿主校验、插件只拿到一个**地址**。区别只在拿到的是什么地址:
+ * `file-import` 拿 `storage:imports/<name>`(字节进了插件的家目录),
+ * `directory-pick` 拿一个**用户磁盘上的绝对路径** —— 所以它必须配一道独立权限
+ * (`storage:external-root`),而 file-import 不需要任何权限。
+ *
+ * 落在 `format` 而不是自造的键,理由与 file-import 逐字相同:不认识它的读者按
+ * JSON Schema 规范**忽略**它,于是这条声明在别处退化成一个普通 string 字段,
+ * 而不是一份"非法的 schema"。
+ *
+ * 校验分三层,一层都不能省也一层都不越界:
+ *  1. **声明**(本文件,纯函数):不能配 enum、只能落在 string 上、
+ *     manifest 不许预填一个目录;
+ *  2. **值的形状**(`runtime/plugins/config-schema.ts`,纯函数):必须是绝对路径
+ *     或空串。**这里不 stat** —— 产品层不吃 fs,而设置页也要用同一份校验;
+ *  3. **存在性**(`core/plugins/storage-files.ts`,用到的那一刻):目录必须存在
+ *     且是目录,否则结构化 `not-configured`。用户可能在选完之后把它删了/改名了,
+ *     而那不是"配置非法",是"现在够不着"。
+ */
+export const PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT = 'directory-pick'
+
+/**
+ * 一条 `format: 'directory-pick'` 声明的判据。返回错误字符串 = 整个配置区标不支持
+ * (与 file-import 同规:不炸加载,只把这份 schema 判成渲染不了)。
+ */
+export function describePluginDirectoryPickDeclarationProblem(
+  declaration: { type?: unknown; enum?: unknown; default?: unknown },
+  path: string,
+): string | null {
+  if (declaration.enum !== undefined) {
+    return `${path}: format "${PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT}" cannot be combined with enum`
+  }
+  if (declaration.type !== undefined && declaration.type !== 'string') {
+    return `${path}: format "${PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT}" is only supported on string properties `
+      + '(the stored value is an absolute directory path)'
+  }
+  // **manifest 不许预填目录。** 一个默认值为 `/Users/x/notes` 的字段,等于插件替
+  // 用户选好了一个目录 —— 而这条权限的全部意义就是"目录由用户选"。
+  if (declaration.default !== undefined && declaration.default !== '') {
+    return `${path}: format "${PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT}" cannot declare a default `
+      + '(the folder is the user\'s to choose)'
+  }
+  return null
+}
+
 /** 清洗后文件名主干的长度上限(扩展名另算)。 */
 const MAX_IMPORT_STEM_LENGTH = 64
 
