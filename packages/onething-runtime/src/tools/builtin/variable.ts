@@ -15,7 +15,7 @@ export type VariableAction =
 
 /**
  * 读操作 —— 不写任何东西,因此也不该触发能力变量的审批效果。
- * (`analyze` 里少了这道门,一次 `get ai_note_dir` 就会弹出"重指目录"的审批框。)
+ * (`analyze` 里少了这道门,一次 `get user_note_dir` 就会弹出"重指目录"的审批框。)
  */
 const READ_ACTIONS = new Set<VariableAction>(["list", "get", "keys"]);
 export type { VariableScope, VariableType };

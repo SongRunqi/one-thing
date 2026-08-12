@@ -178,7 +178,6 @@ export function buildCollabMemberPickerItems(options: {
 function makeNoteLabel(value: string, name: string): string {
   const dirName = basename(value)
   if (dirName && dirName !== '/') return `notes/${dirName}`
-  if (name === 'ai_note_dir') return 'notes/ai'
   if (name === 'work_note_dir') return 'notes/work'
   return 'notes/personal'
 }
@@ -446,7 +445,7 @@ export function usePickerOrchestration(
         return
       }
 
-      const noteNames = new Set(['ai_note_dir', 'user_note_dir', 'work_note_dir'])
+      const noteNames = new Set(['user_note_dir', 'work_note_dir'])
       const seen = new Set<string>()
       variableWorkdir.value = result.variables.find(variable => variable.name === 'workdir')?.value || ''
       noteRoots.value = result.variables

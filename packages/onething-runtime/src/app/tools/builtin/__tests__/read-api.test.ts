@@ -36,7 +36,6 @@ describe('ReadTool path API', () => {
     vi.clearAllMocks()
     resetVariablesStoreForTests().hydrateForTests({
       ...createDefaultVariablesFile(),
-      ai_note_dir: '',
       user_note_dir: '',
       work_note_dir: '',
     })
@@ -169,7 +168,6 @@ describe('ReadTool path API', () => {
 
     resetVariablesStoreForTests().hydrateForTests({
       ...createDefaultVariablesFile(),
-      ai_note_dir: '',
       user_note_dir: noteRoot,
       work_note_dir: '',
     })

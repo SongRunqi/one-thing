@@ -35,11 +35,7 @@ export function configureAppToolSandbox(): void {
   getHostPath: name => sandboxHost.getPath?.(name),
   getNoteDirectories: () => {
     const store = getVariablesStore()
-    return [
-      store.getAiNoteDir(),
-      store.getUserNoteDir(),
-      store.getWorkNoteDir(),
-    ]
+    return [store.getUserNoteDir(), store.getWorkNoteDir()]
   },
   // The bash tool's overflow logs ("full output saved to …"): re-reading a
   // tool result already adjudicated by the permission system — never prompt.

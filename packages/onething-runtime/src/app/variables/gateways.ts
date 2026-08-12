@@ -180,9 +180,7 @@ export const notesGateway: NotesGateway = {
     return raw ? expandPath(raw) : ''
   },
   write(which, path) {
-    if (which === 'ai_note_dir') {
-      getVariablesStore().setAiNoteDir(path)
-    } else if (which === 'user_note_dir') {
+    if (which === 'user_note_dir') {
       getVariablesStore().setUserNoteDir(path)
     } else {
       getVariablesStore().setWorkNoteDir(path)
@@ -198,7 +196,6 @@ export const notesGateway: NotesGateway = {
 
 function readNoteFromStore(which: NoteVarName): string {
   const s = getVariablesStore()
-  if (which === 'ai_note_dir') return s.getAiNoteDir()
   if (which === 'user_note_dir') return s.getUserNoteDir()
   return s.getWorkNoteDir()
 }

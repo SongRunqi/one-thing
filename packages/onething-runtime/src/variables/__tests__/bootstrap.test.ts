@@ -39,7 +39,7 @@ describe('registerStandardVariableProviders', () => {
     // their own tests — here the point is that every host gets the same set.
     expect(names).toContain('workdir')
     expect(names).toContain('datetime')
-    expect(names).toContain('ai_note_dir')
+    expect(names).toContain('user_note_dir')
   })
 
   it('wires the agent self-state provider only when the host supplies its gateway', async () => {

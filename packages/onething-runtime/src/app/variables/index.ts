@@ -6,7 +6,6 @@
  *  2. Register the three built-in providers.
  *  3. Bridge registry change events onto the EventBus as
  *     `session:variables-updated` for the renderer.
- *  4. Make sure ai_note_dir's directory exists on disk.
  *
  * Project directories live in their own module — see
  * `src/main/project-dirs/`. Bootstrap order in `src/main/index.ts`
@@ -18,12 +17,10 @@
  * directly with isolated providers.
  */
 
-import * as fs from "fs/promises";
 import path from "node:path";
 import { getEventBus } from "../events/index.js";
 import { getProjectsStore } from "../project-dirs/index.js";
 import * as appStore from "../store.js";
-import { expandPath } from "../tools/core/sandbox.js";
 import { enforcePermissionPolicy } from "../tools/core/permission-policy.js";
 import { getVariableRegistry } from "@onething/runtime/variables/registry";
 import { registerStandardVariableProviders } from "@onething/runtime/variables/bootstrap";
@@ -87,16 +84,6 @@ export function bootstrapVariableSystem(): void {
 			},
 		},
 	});
-
-	// Migrate old ~/.onething/notes to ~/.onething/memory if needed, then make
-	// sure the configured ai_note_dir exists on disk. ensure must run after the
-	// migration or it would recreate the old directory mid-rename.
-	// Fire-and-forget: failure is non-fatal, the AI will get an error
-	// on first write and can fall back to set a different path.
-	migrateAiNoteDir()
-		.catch((err) => console.error("[variables] migrateAiNoteDir failed:", err))
-		.then(() => ensureAiNoteDir())
-		.catch((err) => console.error("[variables] ensureAiNoteDir failed:", err));
 
 	// Bridge registry change events to the EventBus so the renderer
 	// refreshes via the existing session:variables-updated channel.
@@ -179,70 +166,6 @@ export function shutdownVariableSystem(): void {
 	}
 	getVariableRegistry().reset();
 	bootstrapped = false;
-}
-
-/**
- * Migrate legacy ~/.onething/notes to ~/.onething/memory.
- * If the old directory exists and the new one doesn't, rename old → new.
- * Also renames the memory/ subdirectory to daily/ within.
- */
-async function migrateAiNoteDir(): Promise<void> {
-	const OLD_DEFAULT = "~/.onething/notes";
-	const NEW_DEFAULT = "~/.onething/memory";
-	const raw = getVariablesStore().getAiNoteDir();
-	// Migrate when the store still points at the old default, or when it was
-	// never customized (unset, or already normalized to the new default by the
-	// schema fallback) while the old default directory still holds the data.
-	if (raw && raw !== OLD_DEFAULT && raw !== NEW_DEFAULT) return;
-
-	const oldPath = expandPath(OLD_DEFAULT);
-	const newPath = expandPath(NEW_DEFAULT);
-
-	try {
-		const oldStat = await fs.stat(oldPath).catch(() => null);
-		if (!oldStat?.isDirectory()) return;
-		const newStat = await fs.stat(newPath).catch(() => null);
-		if (newStat) return; // new path already exists, skip
-
-		await fs.rename(oldPath, newPath);
-		console.log("[variables] migrated ai_note_dir:", oldPath, "→", newPath);
-
-		// Rename memory/ → daily/ inside the migrated root.
-		const oldMemoryDir = path.join(newPath, "memory");
-		const newDailyDir = path.join(newPath, "daily");
-		const oldMemoryStat = await fs.stat(oldMemoryDir).catch(() => null);
-		if (oldMemoryStat?.isDirectory()) {
-			const newDailyStat = await fs.stat(newDailyDir).catch(() => null);
-			if (!newDailyStat) {
-				await fs.rename(oldMemoryDir, newDailyDir);
-				console.log(
-					"[variables] migrated daily dir:",
-					oldMemoryDir,
-					"→",
-					newDailyDir,
-				);
-			}
-		}
-
-		// Update the variable so future reads use the new path.
-		getVariablesStore().setAiNoteDir(NEW_DEFAULT);
-	} catch (err) {
-		console.warn("[variables] could not migrate ai_note_dir:", err);
-	}
-}
-
-/**
- * Create the configured ai_note_dir directory if it doesn't exist yet.
- */
-async function ensureAiNoteDir(): Promise<void> {
-	const raw = getVariablesStore().getAiNoteDir();
-	if (!raw) return;
-	const resolved = expandPath(raw);
-	try {
-		await fs.mkdir(resolved, { recursive: true });
-	} catch (err) {
-		console.warn("[variables] could not create ai_note_dir:", resolved, err);
-	}
 }
 
 // ── Helpers used by call sites ──────────────────────

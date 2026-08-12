@@ -1365,19 +1365,6 @@ export async function createDevelopmentOnethingServerRuntime(
 			? getOnethingAgentsPath({ storePath })
 			: join(ownerDataRootForContext(context), "agents.json");
 
-	const readDesktopAiNoteDir = (): string => {
-		const variablesPath = getOnethingVariablesPath({ storePath });
-		const raw = readServerRuntimeJsonFile<unknown | undefined>(
-			variablesPath,
-			undefined,
-		);
-		if (raw === undefined) return createDefaultVariablesFile().ai_note_dir;
-		return (
-			parseVariablesFile(raw).data.ai_note_dir ||
-			createDefaultVariablesFile().ai_note_dir
-		);
-	};
-
 	const findSessionIndexMeta = (
 		sessionId: string,
 	): ServerSessionIndexMeta | undefined =>
@@ -8660,8 +8647,6 @@ function sanitizeServerVariablesFile(
 	workspaceRoot: string,
 	context = defaultRequestContext(),
 ): VariablesFile {
-	const sandboxRoot = workspaceSandboxRoot(workspaceRoot, context);
-	const defaultAiNoteDir = join(sandboxRoot, "notes", "assistant");
 	const safeNotePath = (value: string, fallback: string): string => {
 		if (
 			!value ||
@@ -8679,7 +8664,6 @@ function sanitizeServerVariablesFile(
 
 	return {
 		...variablesFile,
-		ai_note_dir: safeNotePath(variablesFile.ai_note_dir, defaultAiNoteDir),
 		user_note_dir: safeNotePath(variablesFile.user_note_dir, ""),
 		work_note_dir: safeNotePath(variablesFile.work_note_dir, ""),
 	};
@@ -8689,7 +8673,6 @@ function readServerNoteVariable(
 	store: VariablesStore,
 	which: NoteVarName,
 ): string {
-	if (which === "ai_note_dir") return store.getAiNoteDir();
 	if (which === "user_note_dir") return store.getUserNoteDir();
 	return store.getWorkNoteDir();
 }
@@ -8699,10 +8682,6 @@ function writeServerNoteVariable(
 	which: NoteVarName,
 	value: string,
 ): void {
-	if (which === "ai_note_dir") {
-		store.setAiNoteDir(value);
-		return;
-	}
 	if (which === "user_note_dir") {
 		store.setUserNoteDir(value);
 		return;

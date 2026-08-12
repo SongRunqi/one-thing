@@ -138,11 +138,12 @@ export interface GeneralSettings {
 	 * @deprecated Migrated to `variables.json` (variables subsystem). The
 	 * field is retained so that older installs can be migrated on first
 	 * boot post-upgrade. New code should NOT read this; consult the
-	 * variables store via `getVariablesStore().getAiNoteDir()` instead.
-	 */
-	aiNoteDir?: string;
-	/**
-	 * @deprecated See `aiNoteDir`.
+	 * variables store via `getVariablesStore().getUserNoteDir()` instead.
+	 *
+	 * (The sibling `aiNoteDir` was dropped with the `ai_note_dir` variable's
+	 * retirement, 2026-08-12 — long-term memory lives in the memory-wiki
+	 * plugin now. Old settings.json files may still carry the key; nothing
+	 * reads it.)
 	 */
 	userNoteDir?: string;
 }

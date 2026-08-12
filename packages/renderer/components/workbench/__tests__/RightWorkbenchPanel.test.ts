@@ -146,7 +146,6 @@ describe('RightWorkbenchPanel', () => {
       success: true,
       variables: [
         { name: 'workdir', value: '/repo', values: ['/repo'], scope: 'session' },
-        { name: 'ai_note_dir', value: '/notes/ai', scope: 'global' },
         { name: 'user_note_dir', value: '/notes/user', scope: 'global' },
         { name: 'work_note_dir', value: '', scope: 'global' },
       ],

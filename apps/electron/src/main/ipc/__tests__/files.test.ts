@@ -49,7 +49,6 @@ describe('files IPC', () => {
     mocks.handlers.clear()
     resetVariablesStoreForTests().hydrateForTests({
       ...createDefaultVariablesFile(),
-      ai_note_dir: '',
       user_note_dir: '',
       work_note_dir: '',
     })
@@ -61,7 +60,6 @@ describe('files IPC', () => {
     const downloadsRoot = getDownloadsDirectory()
     resetVariablesStoreForTests().hydrateForTests({
       ...createDefaultVariablesFile(),
-      ai_note_dir: '',
       user_note_dir: noteRoot,
       work_note_dir: '',
     })

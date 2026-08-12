@@ -12,13 +12,11 @@ describe('file search runtime operations', () => {
       homeDir: '/Users/test',
       downloadsDir: '/Users/test/Downloads',
       noteRoots: {
-        aiNoteDir: '/Users/test/notes/ai',
         userNoteDir: '/Users/test/notes/user',
-        workNoteDir: '/Users/test/notes/ai',
+        workNoteDir: '/Users/test/notes/user',
       },
     })).toEqual([
       { path: '/Users/test/repo', source: 'workdir', label: 'Workspace' },
-      { path: '/Users/test/notes/ai', source: 'note', label: 'AI notes' },
       { path: '/Users/test/notes/user', source: 'note', label: 'Personal notes' },
       { path: '/Users/test/Downloads', source: 'downloads', label: 'Downloads' },
     ])
@@ -36,7 +34,7 @@ describe('file search runtime operations', () => {
       homeDir: '/Users/test',
       downloadsDir: '/Users/test/Downloads',
       noteRoots: {
-        aiNoteDir: '/missing',
+        userNoteDir: '/missing',
       },
       query: 'read',
       limit: 5,

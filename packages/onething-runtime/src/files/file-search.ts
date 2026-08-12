@@ -32,7 +32,6 @@ export interface OnethingFileSearchRoot {
 }
 
 export interface OnethingFileSearchNoteRoots {
-  aiNoteDir?: string | null
   userNoteDir?: string | null
   workNoteDir?: string | null
 }
@@ -67,7 +66,6 @@ function expandOnethingPath(input: string, homeDir: string): string {
 }
 
 function getNoteRootLabel(name: keyof OnethingFileSearchNoteRoots): string {
-  if (name === 'aiNoteDir') return 'AI notes'
   if (name === 'workNoteDir') return 'Work notes'
   return 'Personal notes'
 }
@@ -100,7 +98,6 @@ export function resolveOnethingFileSearchRoots(
 
   const noteRoots = options.noteRoots || {}
   const noteEntries = [
-    ['aiNoteDir', noteRoots.aiNoteDir],
     ['userNoteDir', noteRoots.userNoteDir],
     ['workNoteDir', noteRoots.workNoteDir],
   ] as const

@@ -127,7 +127,6 @@ export const VARIABLE_LIMITS = {
  * docs/design/capability-registry.md.
  */
 export const CAPABILITY_VARIABLE_NAMES = Object.freeze([
-  'ai_note_dir',
   'user_note_dir',
   'work_note_dir',
 ] as const)
@@ -140,7 +139,6 @@ export const RESERVED_NAMES = Object.freeze([
   'workdir',
   'cwd',
   'home',
-  'ai_note_dir',
   'user_note_dir',
   'work_note_dir',
   'datetime',

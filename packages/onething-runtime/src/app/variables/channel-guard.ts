@@ -19,11 +19,7 @@ const SHARED_SCOPES = new Set<VariableScope>(["global", "agent", "project"]);
 
 // Reserved names that write to global state even without scope="global"
 // (NotesProvider claims them regardless of the declared scope).
-const GLOBAL_EFFECT_NAMES = new Set([
-	"ai_note_dir",
-	"user_note_dir",
-	"work_note_dir",
-]);
+const GLOBAL_EFFECT_NAMES = new Set(["user_note_dir", "work_note_dir"]);
 
 export interface ChannelGuardSession {
 	originIdentityKey?: string;

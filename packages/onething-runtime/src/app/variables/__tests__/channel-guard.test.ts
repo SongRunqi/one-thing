@@ -19,12 +19,12 @@ describe('channel session guard', () => {
   it('hides custom global variables from external sessions, keeps reserved ones', () => {
     const variables = [
       v({ name: 'workdir', scope: 'session' }),
-      v({ name: 'ai_note_dir', scope: 'global' }),
+      v({ name: 'user_note_dir', scope: 'global' }),
       v({ name: 'owner_secret_target', scope: 'global' }),
       v({ name: 'task_state', scope: 'session' }),
     ]
     expect(guard.filterVariablesForSession('ext-telegram', variables).map(x => x.name))
-      .toEqual(['workdir', 'ai_note_dir', 'task_state'])
+      .toEqual(['workdir', 'user_note_dir', 'task_state'])
     expect(guard.filterVariablesForSession('desktop-session', variables)).toHaveLength(4)
   })
 
@@ -38,7 +38,7 @@ describe('channel session guard', () => {
   it('blocks note-dir writes even without an explicit global scope', () => {
     // NotesProvider claims these names regardless of the declared scope, so
     // the guard must key off the effective target, not the scope parameter.
-    expect(() => guard.assertExternalWriteAllowed('ext-telegram', 'ai_note_dir', undefined))
+    expect(() => guard.assertExternalWriteAllowed('ext-telegram', 'work_note_dir', undefined))
       .toThrow(/cannot be modified/)
     expect(() => guard.assertExternalWriteAllowed('ext-telegram', 'user_note_dir', 'session'))
       .toThrow(/cannot be modified/)

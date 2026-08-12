@@ -136,7 +136,7 @@ describe('variable tool read actions', () => {
       description: '很长的一段',
     },
     { name: 'alpha', value: '1', type: 'number', scope: 'agent' },
-    { name: 'ai_note_dir', value: '~/.onething/memory', scope: 'global', readonly: true },
+    { name: 'user_note_dir', value: '~/notes/personal', scope: 'global', readonly: true },
   ]
 
   function tool() {
@@ -161,10 +161,10 @@ describe('variable tool read actions', () => {
     const result = await tool().execute({ action: 'keys' }, createContext())
     const lines = result.output.split('\n')
     // 按名字排序 —— 这份清单的用处是被扫读。
-    expect(lines[0]).toBe('ai_note_dir [global] [readonly]')
-    expect(lines[1]).toBe('alpha [number] [agent]')
+    expect(lines[0]).toBe('alpha [number] [agent]')
+    expect(lines[1]).toBe('user_note_dir [global] [readonly]')
     expect(lines[2]).toBe('zulu_notes [session] - 很长的一段')
-    expect(result.output).not.toContain('~/.onething/memory')
+    expect(result.output).not.toContain('~/notes/personal')
     expect(result.output).not.toContain('lll')
   })
 
@@ -174,12 +174,12 @@ describe('variable tool read actions', () => {
   })
 
   it('never raises a capability-approval effect for a read', () => {
-    // 能力变量的审批只该拦写:一次 get ai_note_dir 弹出"重指目录"的框是纯噪音。
+    // 能力变量的审批只该拦写:一次 get user_note_dir 弹出"重指目录"的框是纯噪音。
     for (const action of ['list', 'get', 'keys'] as const) {
-      expect(tool().analyze?.({ action, name: 'ai_note_dir' }, {} as never))
+      expect(tool().analyze?.({ action, name: 'user_note_dir' }, {} as never))
         .toEqual({ effects: [] })
     }
-    expect(tool().analyze?.({ action: 'set', name: 'ai_note_dir', value: '/tmp/x' }, {} as never))
+    expect(tool().analyze?.({ action: 'set', name: 'user_note_dir', value: '/tmp/x' }, {} as never))
       .toMatchObject({ effects: [{ kind: 'capability_change' }] })
   })
 

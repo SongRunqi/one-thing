@@ -28,7 +28,7 @@ describe('variable tool capability gating', () => {
   // The hole this closes: the variable tool had no analyze at all, so the
   // assistant could repoint the recursive skill-discovery root with no prompt.
   describe('capability variables raise a permission effect', () => {
-    it.each(['ai_note_dir', 'user_note_dir', 'work_note_dir'])('set %s', (name) => {
+    it.each(['user_note_dir', 'work_note_dir'])('set %s', (name) => {
       const { effects } = analyze({ action: 'set', name, value: '/anywhere' })
 
       expect(effects).toHaveLength(1)
@@ -38,18 +38,18 @@ describe('variable tool capability gating', () => {
     })
 
     it('gates deleting one too', () => {
-      const { effects } = analyze({ action: 'delete', name: 'ai_note_dir' })
+      const { effects } = analyze({ action: 'delete', name: 'user_note_dir' })
 
       expect(effects).toHaveLength(1)
       expect(effects[0].kind).toBe('capability_change')
     })
 
     it('does not gate merely listing', () => {
-      expect(analyze({ action: 'list', name: 'ai_note_dir' }).effects).toEqual([])
+      expect(analyze({ action: 'list', name: 'user_note_dir' }).effects).toEqual([])
     })
 
     it('is not fooled by surrounding whitespace', () => {
-      expect(analyze({ action: 'set', name: '  ai_note_dir  ', value: '/x' }).effects).toHaveLength(1)
+      expect(analyze({ action: 'set', name: '  user_note_dir  ', value: '/x' }).effects).toHaveLength(1)
     })
   })
 })

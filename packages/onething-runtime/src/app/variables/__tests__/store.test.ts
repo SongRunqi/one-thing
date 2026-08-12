@@ -16,7 +16,6 @@ const persistence = vi.hoisted(() => ({
 vi.mock("../store/persistence.js", () => ({
 	loadFromDisk: () =>
 		persistence.saved ?? {
-			ai_note_dir: "~/.onething/memory",
 			user_note_dir: "",
 			work_note_dir: "",
 			global_variables: [],
@@ -35,21 +34,12 @@ beforeEach(() => {
 });
 
 describe("note directories", () => {
-	it("reads default ai_note_dir", () => {
-		expect(store.getAiNoteDir()).toBe("~/.onething/memory");
-	});
-
 	it("default user_note_dir is empty", () => {
 		expect(store.getUserNoteDir()).toBe("");
 	});
 
 	it("default work_note_dir is empty", () => {
 		expect(store.getWorkNoteDir()).toBe("");
-	});
-
-	it("writes and reads back ai_note_dir", () => {
-		store.setAiNoteDir("/custom/path");
-		expect(store.getAiNoteDir()).toBe("/custom/path");
 	});
 
 	it("writes and reads back user_note_dir", () => {
@@ -67,12 +57,12 @@ describe("subscribe", () => {
 	it("fires after every mutation", () => {
 		let count = 0;
 		const off = store.subscribe(() => count++);
-		store.setAiNoteDir("/x");
+		store.setUserNoteDir("/x");
 		store.setUserNoteDir("/y");
 		store.setWorkNoteDir("/w");
 		expect(count).toBe(3);
 		off();
-		store.setAiNoteDir("/z");
+		store.setUserNoteDir("/z");
 		expect(count).toBe(3); // unsubscribed
 	});
 
@@ -85,7 +75,7 @@ describe("subscribe", () => {
 		const origErr = console.error;
 		console.error = () => undefined;
 		try {
-			store.setAiNoteDir("/x");
+			store.setUserNoteDir("/x");
 		} finally {
 			console.error = origErr;
 		}

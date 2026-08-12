@@ -75,7 +75,6 @@ describe('custom variable state flag', () => {
 
   it('applies the same migration when variables.json is parsed', () => {
     const { data, recovered } = parseVariablesFile({
-      ai_note_dir: '~/.onething/memory',
       user_note_dir: '',
       work_note_dir: '',
       global_variables: [

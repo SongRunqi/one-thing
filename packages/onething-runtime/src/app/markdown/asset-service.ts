@@ -16,11 +16,7 @@ function markdownRuntimeAdapters(): OnethingMarkdownAssetServiceAdapters {
     getEditorSettings: () => getSettings().general.editor || {},
     getNoteRoots: () => {
       const store = getVariablesStore()
-      return [
-        store.getAiNoteDir(),
-        store.getUserNoteDir(),
-        store.getWorkNoteDir(),
-      ]
+      return [store.getUserNoteDir(), store.getWorkNoteDir()]
     },
   }
 }

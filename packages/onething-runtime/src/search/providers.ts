@@ -59,7 +59,6 @@ export interface OnethingSearchPrompt {
 }
 
 export interface OnethingSearchVariablesStore {
-  getAiNoteDir(): string | undefined
   getUserNoteDir(): string | undefined
   getWorkNoteDir(): string | undefined
 }
@@ -361,7 +360,6 @@ function getSearchDirs(adapters: OnethingSearchProvidersAdapters): string[] {
 
   // Global note dirs
   const store = adapters.getVariablesStore()
-  add(store.getAiNoteDir())
   add(store.getUserNoteDir())
   add(store.getWorkNoteDir())
 

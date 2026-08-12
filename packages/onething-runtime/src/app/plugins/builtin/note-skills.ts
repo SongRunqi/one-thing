@@ -2,8 +2,8 @@
  * Built-in Note Skills plugin.
  *
  * Exposes SKILL.md files stored under the configured note directories:
- * ai_note_dir, user_note_dir, and work_note_dir. Roots are recursive so
- * users can organize skills inside nested folders.
+ * user_note_dir and work_note_dir. Roots are recursive so users can
+ * organize skills inside nested folders.
  */
 
 import { getVariablesStore } from '../../variables/index.js'
@@ -30,11 +30,7 @@ export default function noteSkillsPlugin(api: PluginAPI): void {
   registerOnethingNoteSkillsPlugin(api, {
     getDirs: () => {
       const store = getVariablesStore()
-      return [
-        store.getAiNoteDir(),
-        store.getUserNoteDir(),
-        store.getWorkNoteDir(),
-      ]
+      return [store.getUserNoteDir(), store.getWorkNoteDir()]
     },
     getMarkdownNoteAttachmentDirectory: () => getSettings().general.editor?.markdownNoteAttachmentDirectory,
     onVariableChange: handler => getVariablesStore().subscribe(handler),

@@ -123,7 +123,7 @@ type VariableScopeGroup = 'global' | 'session' | 'agent' | 'project'
 function resolveScope(variable: ContextVariable): VariableScopeGroup {
   if (variable.scope === 'global' || variable.scope === 'session'
     || variable.scope === 'agent' || variable.scope === 'project') return variable.scope
-  return ['ai_note_dir', 'user_note_dir', 'work_note_dir'].includes(variable.name) ? 'global' : 'session'
+  return ['user_note_dir', 'work_note_dir'].includes(variable.name) ? 'global' : 'session'
 }
 
 function compactValue(value: string | undefined): string {

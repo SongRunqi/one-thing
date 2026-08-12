@@ -1899,7 +1899,7 @@ describe('createOnethingHttpServer', () => {
       success: true,
       variables: expect.arrayContaining([
         expect.objectContaining({ name: 'workdir', scope: 'session' }),
-        expect.objectContaining({ name: 'ai_note_dir', scope: 'global' }),
+        expect.objectContaining({ name: 'user_note_dir', scope: 'global' }),
       ]),
     }))
 

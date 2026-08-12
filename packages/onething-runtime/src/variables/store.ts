@@ -34,16 +34,6 @@ export class VariablesStore {
     this.state = this.persistence.loadFromDisk()
   }
 
-  getAiNoteDir(): string {
-    this.initialize()
-    return this.state.ai_note_dir
-  }
-
-  setAiNoteDir(value: string): void {
-    this.state = { ...this.state, ai_note_dir: value }
-    this.persistAndNotify()
-  }
-
   getUserNoteDir(): string {
     this.initialize()
     return this.state.user_note_dir

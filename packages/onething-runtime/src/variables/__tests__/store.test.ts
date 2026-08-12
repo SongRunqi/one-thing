@@ -22,15 +22,12 @@ beforeEach(() => {
 
 describe("VariablesStore", () => {
 	it("reads and writes built-in note directories", () => {
-		expect(store.getAiNoteDir()).toBe("~/.onething/memory");
 		expect(store.getUserNoteDir()).toBe("");
 		expect(store.getWorkNoteDir()).toBe("");
 
-		store.setAiNoteDir("/ai");
 		store.setUserNoteDir("/user");
 		store.setWorkNoteDir("/work");
 
-		expect(store.getAiNoteDir()).toBe("/ai");
 		expect(store.getUserNoteDir()).toBe("/user");
 		expect(store.getWorkNoteDir()).toBe("/work");
 	});
@@ -57,7 +54,7 @@ describe("VariablesStore", () => {
 		const originalError = console.error;
 		console.error = () => undefined;
 		try {
-			store.setAiNoteDir("/x");
+			store.setUserNoteDir("/x");
 		} finally {
 			console.error = originalError;
 		}

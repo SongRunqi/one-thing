@@ -138,7 +138,6 @@ function notesGateway(initial: Partial<Record<NoteVarName, string>> = {}): Notes
   state: Map<NoteVarName, string>
 } {
   const state = new Map<NoteVarName, string>([
-    ['ai_note_dir', initial.ai_note_dir ?? ''],
     ['user_note_dir', initial.user_note_dir ?? ''],
     ['work_note_dir', initial.work_note_dir ?? ''],
   ])
@@ -157,10 +156,9 @@ describe('runtime NotesProvider', () => {
     const gateway = notesGateway()
     const provider = new NotesProvider(gateway)
 
-    await provider.set(ctx, { name: 'ai_note_dir', value: tempDir })
-    expect(gateway.state.get('ai_note_dir')).toBe(tempDir)
+    await provider.set(ctx, { name: 'user_note_dir', value: tempDir })
+    expect(gateway.state.get('user_note_dir')).toBe(tempDir)
     expect(provider.list(ctx).map(variable => variable.name)).toEqual([
-      'ai_note_dir',
       'user_note_dir',
       'work_note_dir',
     ])

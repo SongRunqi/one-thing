@@ -601,7 +601,7 @@ function openPluginTab(pluginId: string, panelId: string, title: string): void {
 }
 let variableRequestId = 0
 
-const NOTE_ROOT_VARIABLE_NAMES = new Set(['ai_note_dir', 'user_note_dir', 'work_note_dir'])
+const NOTE_ROOT_VARIABLE_NAMES = new Set(['user_note_dir', 'work_note_dir'])
 
 const editorWorkspace = useEditorWorkspace()
 const configuredWorkspaceRoots = computed(() => uniquePaths([

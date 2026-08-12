@@ -38,7 +38,6 @@ beforeEach(() => {
   const store = resetVariablesStoreForTests()
   store.hydrateForTests({
     ...createDefaultVariablesFile(),
-    ai_note_dir: '',
     user_note_dir: '',
     work_note_dir: '',
   })
@@ -143,7 +142,6 @@ describe('Markdown asset service', () => {
     await fs.writeFile(notePath, '# Personal')
     resetVariablesStoreForTests().hydrateForTests({
       ...createDefaultVariablesFile(),
-      ai_note_dir: '',
       user_note_dir: noteRoot,
       work_note_dir: '',
     })
@@ -167,7 +165,6 @@ describe('Markdown asset service', () => {
     await fs.writeFile(notePath, '# Personal')
     resetVariablesStoreForTests().hydrateForTests({
       ...createDefaultVariablesFile(),
-      ai_note_dir: '',
       user_note_dir: noteRoot,
       work_note_dir: '',
     })

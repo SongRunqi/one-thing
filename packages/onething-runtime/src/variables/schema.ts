@@ -10,7 +10,11 @@ export interface VariablesFileGlobalVariable {
 }
 
 export interface VariablesFile {
-	ai_note_dir: string;
+	/**
+	 * `ai_note_dir` 曾是第三个笔记目录(soul-memory 时代的助手草稿目录),
+	 * 2026-08-12 退役 —— 长期记忆归 memory-wiki 插件。老盘上的该键不再被读取
+	 * 也不再被写回,是一个无读者的孤儿值;~/.onething/memory 目录不动。
+	 */
 	user_note_dir: string;
 	work_note_dir: string;
 	global_variables: VariablesFileGlobalVariable[];
@@ -22,7 +26,6 @@ export interface VariablesFile {
 
 export function createDefaultVariablesFile(): VariablesFile {
 	return {
-		ai_note_dir: "~/.onething/memory",
 		user_note_dir: "",
 		work_note_dir: "",
 		global_variables: [],
@@ -101,10 +104,6 @@ export function parseVariablesFile(raw: unknown): {
 	}
 
 	const data: VariablesFile = {
-		ai_note_dir:
-			typeof raw.ai_note_dir === "string"
-				? raw.ai_note_dir
-				: "~/.onething/memory",
 		user_note_dir:
 			typeof raw.user_note_dir === "string" ? raw.user_note_dir : "",
 		work_note_dir:

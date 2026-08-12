@@ -65,7 +65,7 @@ compatibility.
 | Provider           | Priority | Notes                                  |
 |--------------------|---------:|----------------------------------------|
 | `core`             | 10       | `workdir`                              |
-| `notes`            | 30       | `ai_note_dir`, `user_note_dir`         |
+| `notes`            | 30       | `user_note_dir`, `work_note_dir`       |
 | `session-store`    | 1000     | catch-all for custom names             |
 
 External providers typically pick a value between 50 and 999 — well
@@ -78,7 +78,11 @@ providers `claims()` the same name — then the lower priority wins.
 
 ## Reserved names
 
-`workdir`, `cwd`, `home`, `ai_note_dir`, `user_note_dir` are reserved.
+`workdir`, `cwd`, `home`, `user_note_dir`, `work_note_dir` are reserved.
+
+(`ai_note_dir` was retired 2026-08-12 — long-term memory belongs to the
+memory-wiki plugin's `memory_write` / `memory_document`. The name is no
+longer registered, reserved, or persisted.)
 
 Project directories are managed by their own subsystem (see
 `docs/project-dirs.md`); the `project_dirs` name is no longer

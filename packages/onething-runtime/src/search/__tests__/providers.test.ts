@@ -29,7 +29,6 @@ function adapters(overrides: Partial<OnethingSearchProvidersAdapters> = {}): One
       },
     }),
     getVariablesStore: () => ({
-      getAiNoteDir: () => undefined,
       getUserNoteDir: () => undefined,
       getWorkNoteDir: () => undefined,
     }),
@@ -73,7 +72,6 @@ describe('onething search providers', () => {
       getCurrentSessionId: () => 'session-1',
       getSession: () => ({ workingDirectory: path.join(tmpDir, 'work') }),
       getVariablesStore: () => ({
-        getAiNoteDir: () => undefined,
         getUserNoteDir: () => path.join(tmpDir, 'notes'),
         getWorkNoteDir: () => undefined,
       }),
@@ -108,7 +106,6 @@ describe('onething search providers', () => {
         },
       }),
       getVariablesStore: () => ({
-        getAiNoteDir: () => undefined,
         getUserNoteDir: () => dailyDir,
         getWorkNoteDir: () => undefined,
       }),

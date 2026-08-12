@@ -34,7 +34,6 @@ describe('sandbox', () => {
     vi.clearAllMocks()
     resetVariablesStoreForTests().hydrateForTests({
       ...createDefaultVariablesFile(),
-      ai_note_dir: '',
       user_note_dir: '',
       work_note_dir: '',
     })
@@ -191,7 +190,6 @@ describe('sandbox', () => {
     it('adds note directories and downloads to read sandbox roots', () => {
       resetVariablesStoreForTests().hydrateForTests({
         ...createDefaultVariablesFile(),
-        ai_note_dir: '',
         user_note_dir: '/notes/personal',
         work_note_dir: '/notes/work',
       })
@@ -211,7 +209,6 @@ describe('sandbox', () => {
     it('finds read sandbox roots for note and downloads paths', () => {
       resetVariablesStoreForTests().hydrateForTests({
         ...createDefaultVariablesFile(),
-        ai_note_dir: '',
         user_note_dir: '/notes/personal',
         work_note_dir: '',
       })

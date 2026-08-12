@@ -102,7 +102,6 @@ export function registerFilesHandlers() {
         getNoteRoots: () => {
           const variablesStore = getVariablesStore()
           return {
-            aiNoteDir: variablesStore.getAiNoteDir(),
             userNoteDir: variablesStore.getUserNoteDir(),
             workNoteDir: variablesStore.getWorkNoteDir(),
           }
