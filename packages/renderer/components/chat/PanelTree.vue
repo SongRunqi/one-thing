@@ -47,6 +47,7 @@
     :show-practice-strip="node.id === firstLeafId"
     @pointerdown.capture="$emit('panelEvent', { type: 'focus', leafId: node.id })"
     @split="$emit('panelEvent', { type: 'openSplitSearch', leafId: node.id })"
+    @close="$emit('panelEvent', { type: 'closePanel', leafId: node.id })"
     @equalize="$emit('panelEvent', { type: 'equalize', leafId: node.id })"
     @split-with-branch="(sessionId: string) => $emit('panelEvent', { type: 'splitWithBranch', leafId: node.id, sessionId })"
     @toggle-sidebar="$emit('panelEvent', { type: 'toggleSidebar', leafId: node.id })"

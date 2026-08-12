@@ -248,6 +248,25 @@ function splitPanel(leafId: string, sessionId: string) {
   workspaceStore.splitLeaf(leafId, sessionId, 'right')
 }
 
+/**
+ * 关掉一格分栏。store 拒绝关掉最后一格 —— 工作区永远得留一格在屏幕上(空了就是
+ * 空态屏),窗口的去留归 ⌘W / 主进程菜单管。
+ *
+ * `releasedSessionIds` = 这一格里坐着、且没有别的格子还在显示的会话:草稿直接丢,
+ * 正式会话把主进程那份缓存释放掉(承自页签时代的关页签语义)。
+ */
+async function closePanel(leafId: string) {
+  const result = workspaceStore.closeLeaf(leafId)
+  if (!result) return
+  for (const sessionId of result.releasedSessionIds) {
+    if (sessionsStore.isNewChatDraftId(sessionId)) {
+      sessionsStore.discardNewChatDraft(sessionId)
+    } else {
+      await platformApi.evictSessionCache(sessionId).catch(() => {})
+    }
+  }
+}
+
 async function switchLeafSession(leafId: string, sessionId: string) {
   workspaceStore.openSession(sessionId, { leafId })
 }
@@ -269,6 +288,9 @@ function handlePanelEvent(event: PanelEvent) {
       break
     case 'openSplitSearch':
       openSplitSearch(event.leafId)
+      break
+    case 'closePanel':
+      void closePanel(event.leafId)
       break
     case 'equalize':
       workspaceStore.equalizeSiblings(event.leafId)
@@ -371,8 +393,8 @@ async function jumpToMessage(sessionId: string, messageId: string) {
   return panelRefs.value[leaf.id]?.scrollToMessage?.(messageId) ?? false
 }
 
-// Cmd+1..9: applies to the currently focused panel's tabs only.
-// Cmd+W: applies to the currently focused panel's active tab only.
+// 页签时代那两条快捷键(⌘1..9 切页签、⌘W 关页签)随 U2 一起没了:一格一条会话,
+// 关一格走 header 的 ✕ / ⋯ 菜单,⌘W 回归系统的关窗口。
 // Expose methods
 defineExpose({
   focusInput,

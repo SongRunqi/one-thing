@@ -170,7 +170,7 @@
  * 留下的三颗动作是换房之外真正还需要的:搜索、线程栏开合、⋯(看板 / 房间设置)。
  */
 import { computed, ref } from 'vue'
-import { ClipboardList, MoreVertical, PanelLeft, PanelRight, Search, Settings, Users } from 'lucide-vue-next'
+import { ClipboardList, MoreVertical, PanelLeft, PanelRight, Search, Settings, Users, X } from 'lucide-vue-next'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import ContextMenu from '@/components/common/ContextMenu.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
@@ -188,12 +188,15 @@ const props = defineProps<{
   sessionId?: string
   showSidebarToggle?: boolean
   isInspectorOpen?: boolean
+  /** 屏幕上还有别的分栏 —— 只有这时"关闭分栏"才有意义。 */
+  canClose?: boolean
 }>()
 
 const emit = defineEmits<{
   toggleSidebar: []
   openSearch: []
   toggleInspector: []
+  close: []
 }>()
 
 const sessionsStore = useSessionsStore()
@@ -292,6 +295,11 @@ const moreMenuItems = computed<ContextMenuItem[]>(() => {
     items.push({ id: 'board', label: '看板', icon: ClipboardList })
   }
   items.push({ id: 'settings', label: '房间设置', icon: Settings })
+  // 房头没有那排分栏按钮(§8.2 拿掉了),关分栏就挂在 ⋯ 里 —— 否则房坐进分栏后
+  // 那一格没有任何出口。
+  if (props.canClose) {
+    items.push({ id: 'close-panel', label: '关闭分栏', icon: X, separatorBefore: true })
+  }
   return items
 })
 
@@ -309,6 +317,10 @@ function handleMoreSelect(id: string): void {
   }
   if (id === 'board') {
     window.dispatchEvent(new CustomEvent('onething:collab-open-board'))
+    return
+  }
+  if (id === 'close-panel') {
+    emit('close')
     return
   }
   if (id === 'settings') roomSettingsOpen.value = true

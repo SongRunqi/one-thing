@@ -141,6 +141,26 @@
         </Button>
       </Tooltip>
 
+      <!-- 关掉这一格。`canClose` 就是「屏幕上还有别的格子」,所以只有分栏之后
+           才出现 —— 独栏没有可关的东西(窗口去留归 ⌘W / 主进程菜单)。 -->
+      <Tooltip
+        v-if="showActionButtons && canClose"
+        text="Close panel"
+        position="bottom"
+      >
+        <Button
+          unstyled
+          class="header-btn"
+          aria-label="Close panel"
+          @click="emit('close')"
+        >
+          <X
+            :size="14"
+            :stroke-width="2"
+          />
+        </Button>
+      </Tooltip>
+
       <Tooltip
         v-if="showActionButtons"
         :text="sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel'"
@@ -224,6 +244,7 @@ import {
   Equal,
   ListTree,
   PanelRightOpen,
+  X,
 } from 'lucide-vue-next'
 import AgentSelector from './AgentSelector.vue'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
@@ -260,6 +281,7 @@ const emit = defineEmits<{
   createNewChat: []
   goToParent: []
   split: []
+  close: []
   equalize: []
   toggleInspector: []
   toggleSidePanel: []
@@ -376,6 +398,7 @@ const overflowItems = computed<ContextMenuItem[]>(() => {
   if (props.isBranchSession) items.push({ id: 'parent', label: 'Back to parent chat', icon: ArrowLeft })
   if (props.showSplitButton) items.push({ id: 'split', label: 'Split view', icon: Columns2 })
   if (props.canClose) items.push({ id: 'equalize', label: 'Equalize panels', icon: Equal })
+  if (props.canClose) items.push({ id: 'close', label: 'Close panel', icon: X })
   items.push({
     id: 'side-panel',
     label: props.sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel',
@@ -390,6 +413,7 @@ function onOverflowSelect(action: string) {
     case 'parent': emit('goToParent'); break
     case 'split': emit('split'); break
     case 'equalize': emit('equalize'); break
+    case 'close': emit('close'); break
     case 'side-panel': emit('toggleSidePanel'); break
     case 'inspector': emit('toggleInspector'); break
   }

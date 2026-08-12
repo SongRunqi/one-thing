@@ -152,9 +152,12 @@ describe('ChatWindow 单会话外壳', () => {
 
   /**
    * 多页签与「关闭会话」都已退役(U2,product-two-forms-chatgpt-shell.md D4/D5):
-   * 顶栏上不该再有任何关闭入口,ChatWindow 也不该再暴露页签操作。
+   * 顶栏上不该再有关**页签**的入口,ChatWindow 也不该再暴露页签操作。
+   *
+   * 注意这不含「关闭分栏」—— 那颗按钮由 header 的 `canClose` 画出、走 `close`
+   * 事件(见 SessionHeader.close.test.ts / ChatContainer.search.test.ts)。
    */
-  it('顶栏没有关闭入口,ChatWindow 不再暴露页签操作', async () => {
+  it('顶栏没有关页签的入口,ChatWindow 不再暴露页签操作', async () => {
     const wrapper = mount(ChatWindow)
     await settle()
 

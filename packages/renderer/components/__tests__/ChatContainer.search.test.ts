@@ -34,7 +34,7 @@ vi.mock('@/components/chat/ChatWindow.vue', () => ({
   default: {
     name: 'ChatWindow',
     props: ['panelId'],
-    emits: ['switchSession'],
+    emits: ['switchSession', 'close'],
     setup(props: { panelId?: string }, { expose }: { expose: (exposed: Record<string, unknown>) => void }) {
       expose({
         focusInput: mocks.chatWindowFocusInput,
@@ -43,7 +43,12 @@ vi.mock('@/components/chat/ChatWindow.vue', () => ({
       const workspace = useWorkspaceStore()
       return { workspace }
     },
-    template: '<button class="mock-chat-window" @click="$emit(\'switchSession\', \'session-new\')">{{ workspace.activeSessionIdOf(panelId) }}</button>',
+    template: `
+      <div class="mock-panel" :data-panel="panelId">
+        <button class="mock-chat-window" @click="$emit('switchSession', 'session-new')">{{ workspace.activeSessionIdOf(panelId) }}</button>
+        <button class="mock-close-panel" @click.stop="$emit('close')">close</button>
+      </div>
+    `,
   },
 }))
 
@@ -165,6 +170,43 @@ describe('ChatContainer search navigation', () => {
     expect(panels.map(panel => panel.text())).toEqual(['session-1', 'session-2'])
     // Data loading is owned by switchSession, driven by the workspace effect.
     expect(mocks.sessionsStore.switchSession).toHaveBeenCalledWith('session-2')
+  })
+
+  /**
+   * 分了栏就得能收回去。TabBar 退役(U2)时这条路是搭在页签 ✕ 上被一起带走的:
+   * `workspaceStore.closeLeaf` 变成零调用方,真机上分屏之后关不掉。这条用例钉住
+   * header → panel-event → store 整条链。
+   */
+  it('关掉一格分栏:树收回独栏,并释放那条只坐在这一格的会话', async () => {
+    mocks.sessionsStore.sessions.push({ id: 'session-2', name: 'Split target' })
+    const wrapper = mount(ChatContainer)
+    await settle()
+
+    const vm = wrapper.vm as unknown as { splitPanel: (panelId: string, sessionId: string) => void }
+    vm.splitPanel('main', 'session-2')
+    await settle()
+    expect(wrapper.findAll('.mock-chat-window')).toHaveLength(2)
+
+    // 关掉后开的那一格(session-2 那格)。
+    await wrapper.findAll('.mock-close-panel').at(1)!.trigger('click')
+    await settle()
+
+    const panels = wrapper.findAll('.mock-chat-window')
+    expect(panels).toHaveLength(1)
+    expect(panels[0].text()).toBe('session-1')
+    // 焦点回到活下来的那一格,全局会话跟着回来。
+    expect(mocks.sessionsStore.switchSession).toHaveBeenLastCalledWith('session-1')
+  })
+
+  it('最后一格关不掉 —— 工作区永远留一格在屏幕上', async () => {
+    const wrapper = mount(ChatContainer)
+    await settle()
+
+    await wrapper.find('.mock-close-panel').trigger('click')
+    await settle()
+
+    expect(wrapper.findAll('.mock-chat-window')).toHaveLength(1)
+    expect(wrapper.find('.mock-chat-window').text()).toBe('session-1')
   })
 
   it('interacting with any panel focuses it, so its switches update the global session', async () => {

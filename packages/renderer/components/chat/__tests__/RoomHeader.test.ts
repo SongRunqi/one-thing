@@ -152,6 +152,27 @@ describe('RoomHeader', () => {
     expect(strip.props('openSpaceOnClick')).toBe(true)
   })
 
+  /**
+   * 房头没有 SessionHeader 那排分栏按钮,所以「关闭分栏」只能挂在 ⋯ 里 —— 少了它,
+   * 房坐进分栏之后那一格就没有任何出口(TabBar 退役时丢掉的正是这条路)。
+   */
+  it('分栏之后 ⋯ 里才有「关闭分栏」,点它派 close', async () => {
+    mocks.session = { id: 'room-1', name: '浏览器重构', kind: 'room', room: { memberAgentIds: ['a1', 'a2'] } }
+
+    const solo = mountHeader()
+    await solo.findAll('.room-head-icon').at(-1)!.trigger('click')
+    expect((solo.findComponent({ name: 'ContextMenu' }).props('items') as Array<{ id: string }>)
+      .map(item => item.id)).not.toContain('close-panel')
+
+    const wrapper = mountHeader({ canClose: true })
+    await wrapper.findAll('.room-head-icon').at(-1)!.trigger('click')
+    const menu = wrapper.findComponent({ name: 'ContextMenu' })
+    expect((menu.props('items') as Array<{ id: string }>).map(item => item.id)).toContain('close-panel')
+
+    menu.vm.$emit('select', 'close-panel')
+    expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
   it('侧栏藏起来时才画侧栏开关(房面没有 TabBar,这颗不能丢)', async () => {
     mocks.session = { id: 'room-1', name: '房', kind: 'room', room: { memberAgentIds: ['a1', 'a2'] } }
     expect(mountHeader().find('.room-head-sidebar').exists()).toBe(false)

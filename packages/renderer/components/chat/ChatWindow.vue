@@ -25,9 +25,11 @@
           :session-id="effectiveSessionId"
           :show-sidebar-toggle="showSidebarToggle"
           :is-inspector-open="isInspectorOpen"
+          :can-close="!!canClose"
           @toggle-sidebar="emit('toggleSidebar')"
           @open-search="emit('openSearch')"
           @toggle-inspector="emit('toggleInspector')"
+          @close="emit('close')"
         />
         <SessionHeader
           v-else
@@ -51,6 +53,7 @@
           @create-new-chat="emit('createNewChat')"
           @go-to-parent="goToParentSession"
           @split="emit('split')"
+          @close="emit('close')"
           @equalize="emit('equalize')"
           @toggle-inspector="emit('toggleInspector')"
           @toggle-side-panel="emit('toggleSidePanel')"
@@ -166,6 +169,8 @@ const chatPanelShadowValue = `var(--ui-surface-chat-panel-shadow, ${chatPanelSha
 
 const emit = defineEmits<{
   split: []
+  /** 关掉这一格分栏(只在还有别的格子时才由 header 抛出)。 */
+  close: []
   equalize: []
   splitWithBranch: [sessionId: string]
   toggleSidebar: []

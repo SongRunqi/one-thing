@@ -4,6 +4,7 @@ import type { SplitDirection } from '@/stores/workspace-tree'
 export type PanelEvent =
   | { type: 'focus'; leafId: string }
   | { type: 'openSplitSearch'; leafId: string }
+  | { type: 'closePanel'; leafId: string }
   | { type: 'equalize'; leafId: string }
   | { type: 'splitWithBranch'; leafId: string; sessionId: string }
   | { type: 'toggleSidebar'; leafId: string }
