@@ -67,7 +67,17 @@ export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
   },
   [AIProvider.Kimi]: {
     apiKey: '',
+    kimiApiMode: 'standard',
+    kimiRegion: 'cn',
     model: 'moonshot-v1-8k',
+    selectedModels: [],
+    enabled: false,
+  },
+  // 订阅档:没有 apiKey 这一格 —— 凭证是 OAuth token,存在 token store 里。
+  [AIProvider.KimiCode]: {
+    authType: 'oauth',
+    // 套餐目录(models.dev `kimi-for-coding`)里的 id,与按量那本不重名。
+    model: 'k3',
     selectedModels: [],
     enabled: false,
   },
@@ -277,6 +287,30 @@ export const DEFAULT_ACP_SETTINGS: ACPSettings = {
       enabled: true,
       command: 'codex-acp',
       args: [],
+      permissionMode: 'allow',
+      allowFileSystemAccess: false,
+      allowTerminalAccess: false,
+      idleTimeoutMs: 10 * 60 * 1000,
+      connectTimeoutMs: 30000,
+      promptTimeoutMs: 30 * 60 * 1000,
+      maxBufferedUpdates: 1000,
+      maxSessionRecords: 100,
+      maxTerminals: 32,
+      maxTerminalOutputBytes: 1024 * 1024,
+    },
+    {
+      // Kimi Code 订阅的**登录**只对官方客户端开放(OAuth 走 CLI 的 `/login`),
+      // 第三方直连一律手动 API Key。所以订阅用户要"点一下就登录",路径是驱动
+      // 官方 CLI 而不是直连 —— `kimi acp` 是它的 ACP 模式,建会话时复用 CLI
+      // 已有的登录态,我们这边一把 Key 都不碰。
+      // 直连那一档仍然在(Providers → Kimi → 计费方式 → 编程套餐),两条并存:
+      // 一条要装 CLI 换来免管 Key,一条不装 CLI 但要自己贴 Key。
+      id: 'kimi-code',
+      name: 'Kimi Code',
+      description: 'Kimi Code CLI ACP-compatible local agent (login via `kimi` /login).',
+      enabled: true,
+      command: 'kimi',
+      args: ['acp'],
       permissionMode: 'allow',
       allowFileSystemAccess: false,
       allowTerminalAccess: false,

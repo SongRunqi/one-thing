@@ -26,6 +26,14 @@ import {
 	type OnethingQwenRegion,
 } from "@onething/runtime/providers/qwen";
 import {
+	getOnethingKimiBaseUrl,
+	normalizeOnethingKimiApiMode,
+	normalizeOnethingKimiRegion,
+	onethingKimiRegionApplies,
+	type OnethingKimiApiMode,
+	type OnethingKimiRegion,
+} from "@onething/runtime/providers/kimi";
+import {
 	hasVision,
 	hasImageGeneration,
 	hasTools,
@@ -217,6 +225,55 @@ export function useProviderSettings(
 
 	function updateQwenRegion(region: string) {
 		updateQwenEndpoint({ region: normalizeOnethingQwenRegion(region) });
+	}
+
+	const isKimiProvider = computed(() => viewingProvider.value === "kimi");
+
+	const currentKimiApiMode = computed(() =>
+		normalizeOnethingKimiApiMode(
+			props.settings.ai.providers.kimi?.kimiApiMode,
+		),
+	);
+
+	const currentKimiRegion = computed(() =>
+		normalizeOnethingKimiRegion(props.settings.ai.providers.kimi?.kimiRegion),
+	);
+
+	/**
+	 * 编程套餐(Kimi Code)只有一个地址,不分国内海外 —— 选到它时那一格没有意义,
+	 * 所以设置页据此把「版本」整行收起,而不是留一个拨了不动的选择器。
+	 */
+	const kimiRegionApplies = computed(() =>
+		onethingKimiRegionApplies(currentKimiApiMode.value),
+	);
+
+	/**
+	 * Kimi 有三个地址(开放平台国内/海外 + Kimi Code)。与千问同一条写法:模式和
+	 * 地区一起落盘,base URL 一并写上,让那一栏显示的就是真正在用的地址 ——
+	 * 运行时无论如何都会自己再推一次。
+	 */
+	function updateKimiEndpoint(patch: {
+		mode?: OnethingKimiApiMode;
+		region?: OnethingKimiRegion;
+	}) {
+		const kimiApiMode = patch.mode ?? currentKimiApiMode.value;
+		const kimiRegion = patch.region ?? currentKimiRegion.value;
+		const providers = { ...props.settings.ai.providers };
+		providers.kimi = {
+			...providers.kimi,
+			kimiApiMode,
+			kimiRegion,
+			baseUrl: getOnethingKimiBaseUrl(kimiApiMode, kimiRegion),
+		};
+		updateSettings({ ai: { ...props.settings.ai, providers } });
+	}
+
+	function updateKimiApiMode(mode: string) {
+		updateKimiEndpoint({ mode: normalizeOnethingKimiApiMode(mode) });
+	}
+
+	function updateKimiRegion(region: string) {
+		updateKimiEndpoint({ region: normalizeOnethingKimiRegion(region) });
 	}
 
 	const currentProviderEnvStatus = computed(() => {
@@ -930,6 +987,10 @@ export function useProviderSettings(
 		isQwenProvider,
 		currentQwenApiMode,
 		currentQwenRegion,
+		isKimiProvider,
+		currentKimiApiMode,
+		currentKimiRegion,
+		kimiRegionApplies,
 		currentACPAgent,
 		currentACPAgentState,
 		currentProviderUsesEnvApiKey,
@@ -959,6 +1020,8 @@ export function useProviderSettings(
 		updateZhipuApiMode,
 		updateQwenApiMode,
 		updateQwenRegion,
+		updateKimiApiMode,
+		updateKimiRegion,
 		updateProviderTemperature,
 		resetProviderTemperature,
 		updateModelMaxOutput,

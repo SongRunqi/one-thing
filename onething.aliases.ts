@@ -196,6 +196,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/providers/model-capability', replacement: resolve(projectRoot, 'packages/onething-runtime/src/providers/model-capability.ts') },
   { find: '@onething/runtime/providers/provider-config', replacement: resolve(projectRoot, 'packages/onething-runtime/src/providers/provider-config.ts') },
   { find: '@onething/runtime/providers/qwen', replacement: resolve(projectRoot, 'packages/onething-runtime/src/providers/qwen.ts') },
+  { find: '@onething/runtime/providers/kimi', replacement: resolve(projectRoot, 'packages/onething-runtime/src/providers/kimi.ts') },
   { find: '@onething/runtime/project-dirs/id', replacement: resolve(projectRoot, 'packages/onething-runtime/src/project-dirs/id.ts') },
   { find: '@onething/runtime/project-dirs/persistence', replacement: resolve(projectRoot, 'packages/onething-runtime/src/project-dirs/persistence.ts') },
   { find: '@onething/runtime/project-dirs/prompt', replacement: resolve(projectRoot, 'packages/onething-runtime/src/project-dirs/prompt.ts') },

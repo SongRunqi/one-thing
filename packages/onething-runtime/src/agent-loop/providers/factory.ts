@@ -21,12 +21,18 @@ import type {
 	ExternalAgentConnector,
 	ExternalAgentSessionLink,
 } from "../../external-agents/types.js";
+import {
+	ONETHING_KIMI_CODING_PLAN_BASE_URL,
+	ONETHING_KIMI_DEFAULT_BASE_URL,
+	resolveOnethingKimiBaseUrl,
+} from "../../providers/kimi.js";
 import { resolveOnethingZhipuBaseUrl } from "../../providers/zhipu.js";
 import {
 	ONETHING_QWEN_DEFAULT_BASE_URL,
 	resolveOnethingQwenBaseUrl,
 } from "../../providers/qwen.js";
 import {
+	readOnethingKimiOptions,
 	readOnethingQwenOptions,
 	readOnethingZhipuOptions,
 	type OnethingProviderOptions,
@@ -568,8 +574,35 @@ registerAgentProviderRuntime(
 		createOpenAICompatibleAgentProvider({
 			providerId: "kimi",
 			apiKey: config.apiKey,
-			baseUrl: config.baseUrl,
-			defaultBaseUrl: "https://api.moonshot.cn/v1",
+			// 开放平台(按量,国内/海外)与 Kimi Code(编程套餐)是三个地址、两种
+			// 计费。选错不是报错而是**多扣钱**:订阅用户留着通用地址会照按量再计一次。
+			baseUrl: resolveOnethingKimiBaseUrl({
+				baseUrl: config.baseUrl,
+				...readOnethingKimiOptions(config.providerOptions),
+			}),
+			defaultBaseUrl: ONETHING_KIMI_DEFAULT_BASE_URL,
+			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
+			supportsReasoning: true,
+			includeAssistantReasoning: true,
+			reasoningStyle: "thinking-type",
+		}),
+	{ replace: true },
+);
+
+/**
+ * Kimi Code(订阅)。与 `kimi` 同一套 OpenAI 兼容线材,差别只有两处:
+ * 地址钉死在套餐 host(不吃地区/档位),`apiKey` 是上游换来的 OAuth access_token
+ * (klip-14:「OAuth 模型和 API 兼容性与当前 Bearer key 完全一致」)。
+ */
+registerAgentProviderRuntime(
+	"kimi-code",
+	(config, options) =>
+		createOpenAICompatibleAgentProvider({
+			providerId: "kimi-code",
+			apiKey: config.apiKey,
+			baseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
+			defaultBaseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
 			supportsReasoning: true,

@@ -76,6 +76,8 @@ export interface CoreProviderConfigLike {
   zhipuApiMode?: 'standard' | 'coding-plan'
   qwenApiMode?: 'standard' | 'token-plan' | 'coding-plan'
   qwenRegion?: 'cn' | 'intl'
+  kimiApiMode?: 'standard' | 'coding-plan'
+  kimiRegion?: 'cn' | 'intl'
   /** Runtime-only: packed by withResolvedProviderBaseUrl, never persisted. */
   providerOptions?: OnethingProviderOptions
   temperature?: number

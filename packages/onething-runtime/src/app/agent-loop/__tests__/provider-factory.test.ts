@@ -465,6 +465,55 @@ describe("agent provider runtime factory", () => {
 		).toBe("https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions");
 	});
 
+	it("points the kimi runtime at the host its mode + region select", async () => {
+		async function requestedUrl(
+			providerOptions: Record<string, unknown>,
+			baseUrl?: string,
+		): Promise<string> {
+			let url = "";
+			const provider = createAgentProviderFromRuntime(
+				"kimi",
+				{ apiKey: "k", providerOptions, ...(baseUrl ? { baseUrl } : {}) },
+				{
+					fetchImpl: async (input) => {
+						url = String(input);
+						return new Response("", {
+							status: 200,
+							headers: { "content-type": "text/event-stream" },
+						});
+					},
+				},
+			);
+			for await (const _ of provider!.streamTurn!({
+				turn: 0,
+				model: "kimi-k3",
+				messages: [{ role: "user", content: "hi" }],
+			})) {
+				// drain
+			}
+			return url;
+		}
+
+		expect(await requestedUrl({})).toBe(
+			"https://api.moonshot.cn/v1/chat/completions",
+		);
+		expect(await requestedUrl({ kimiRegion: "intl" })).toBe(
+			"https://api.moonshot.ai/v1/chat/completions",
+		);
+		// 编程套餐是另一个 host(还带一段 /coding 路径),不只是另一把 key。
+		expect(await requestedUrl({ kimiApiMode: "coding-plan" })).toBe(
+			"https://api.kimi.com/coding/v1/chat/completions",
+		);
+		// 套餐不分区:海外也是同一个地址,不是漏了一格。
+		expect(
+			await requestedUrl({ kimiApiMode: "coding-plan", kimiRegion: "intl" }),
+		).toBe("https://api.kimi.com/coding/v1/chat/completions");
+		// 自己写的地址仍然赢过档位。
+		expect(
+			await requestedUrl({ kimiApiMode: "coding-plan" }, "https://kimi.test/v1"),
+		).toBe("https://kimi.test/v1/chat/completions");
+	});
+
 	it("allows additional provider runtimes to register without changing the factory", () => {
 		const unregister = registerAgentProviderRuntime(
 			"plugin-agent",

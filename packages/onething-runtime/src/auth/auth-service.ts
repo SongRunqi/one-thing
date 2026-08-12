@@ -352,9 +352,11 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json',
       },
+      // scope 只在真有的时候带:Kimi Code 的 device 端点不收 scope,发一个空串
+      // 是在问「给我零个权限」—— 不是所有实现都会宽容地忽略它。
       body: new URLSearchParams({
         client_id: definition.clientId,
-        scope: definition.scopes.join(' '),
+        ...(definition.scopes.length > 0 ? { scope: definition.scopes.join(' ') } : {}),
       }).toString(),
     })
 
@@ -373,7 +375,10 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
       state: this.createId(),
       deviceCode: data.device_code,
       userCode: data.user_code,
-      verificationUri: data.verification_uri,
+      // `verification_uri_complete` 里已经带上了 user_code —— 有它就用它,
+      // 用户点开就是确认页,不用再手抄一遍那八位码(RFC 8628 §3.3.1)。
+      // 码本身照旧显示:验证页也会印出来,两边对得上才敢按确认。
+      verificationUri: data.verification_uri_complete || data.verification_uri,
       intervalMs,
       expiresAt: this.now() + expiresIn * 1000,
     }

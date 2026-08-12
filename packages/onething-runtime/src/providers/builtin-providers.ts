@@ -9,6 +9,11 @@ import {
 	ONETHING_CODEX_PROVIDER_ID,
 } from "./codex.js";
 import {
+	ONETHING_KIMI_CODE_DEFAULT_MODEL,
+	ONETHING_KIMI_CODING_PLAN_BASE_URL,
+	ONETHING_KIMI_DEFAULT_BASE_URL,
+} from "./kimi.js";
+import {
 	ONETHING_QWEN_DEFAULT_BASE_URL,
 	ONETHING_QWEN_DEFAULT_MODEL,
 	ONETHING_QWEN_PROVIDER_ID,
@@ -68,7 +73,7 @@ export const kimiBuiltinProvider: OnethingBuiltinProviderDefinition = {
 		id: "kimi",
 		name: "Kimi",
 		description: "Moonshot AI Kimi models with long context support",
-		defaultBaseUrl: "https://api.moonshot.cn/v1",
+		defaultBaseUrl: ONETHING_KIMI_DEFAULT_BASE_URL,
 		defaultModel: "moonshot-v1-128k",
 		icon: "kimi",
 		supportsCustomBaseUrl: true,
@@ -180,6 +185,35 @@ export const grokOAuthBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	},
 };
 
+/**
+ * Kimi Code(编程套餐)—— 订阅走 OAuth,与按量那条 `kimi` 是两个 provider。
+ *
+ * 拆开不是洁癖,是三样东西真的不同:凭证(OAuth token vs API Key)、地址(套餐 host
+ * 固定,不跟 `kimi` 的地区档走)、账目(订阅制 vs 按 token 计费)。与
+ * grok / grok-oauth、openai / codex、claude / claude-code 同一条判例;呈现层再用
+ * provider family 把两张卡并成一张。
+ *
+ * `supportsCustomBaseUrl: false`:套餐只认自己那一个 host,给个能改的框等于给一条
+ * 401 的路。
+ */
+export const kimiCodeBuiltinProvider: OnethingBuiltinProviderDefinition = {
+	id: "kimi-code",
+	info: {
+		id: "kimi-code",
+		name: "Kimi Code (订阅)",
+		description: "Use Kimi Code with your Kimi membership via OAuth",
+		defaultBaseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
+		// 套餐目录里真有的 id。写按量那本的名字(kimi-k2.7-code-highspeed)会 404:
+		// 两本目录一个 id 都不重名。
+		defaultModel: ONETHING_KIMI_CODE_DEFAULT_MODEL,
+		icon: "kimi",
+		supportsCustomBaseUrl: false,
+		requiresApiKey: false,
+		requiresOAuth: true,
+		oauthFlow: "device",
+	},
+};
+
 export const githubCopilotBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	id: "github-copilot",
 	info: {
@@ -259,6 +293,7 @@ export const onethingPortableBuiltinProviders: OnethingBuiltinProviderDefinition
 		claudeCodeBuiltinProvider,
 		grokBuiltinProvider,
 		grokOAuthBuiltinProvider,
+		kimiCodeBuiltinProvider,
 		githubCopilotBuiltinProvider,
 		codexBuiltinProvider,
 	];

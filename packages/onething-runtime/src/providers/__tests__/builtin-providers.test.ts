@@ -4,6 +4,7 @@ import {
 	acpBuiltinProvider,
 	claudeCodeBuiltinProvider,
 	codexBuiltinProvider,
+	kimiCodeBuiltinProvider,
 	onethingBaseBuiltinProviders,
 	onethingPortableBuiltinProviders,
 } from "../builtin-providers.js";
@@ -24,6 +25,7 @@ describe("onething builtin provider metadata", () => {
 			"claude-code",
 			"grok",
 			"grok-oauth",
+			"kimi-code",
 			"github-copilot",
 			"codex",
 		]);
@@ -34,6 +36,14 @@ describe("onething builtin provider metadata", () => {
 			requiresApiKey: false,
 			requiresOAuth: true,
 			oauthFlow: "authorization-code",
+		});
+		// 订阅档:凭证是 OAuth token,地址钉死在套餐 host(给个能改的框 = 给一条 401 的路)。
+		expect(kimiCodeBuiltinProvider.info).toMatchObject({
+			requiresApiKey: false,
+			requiresOAuth: true,
+			oauthFlow: "device",
+			supportsCustomBaseUrl: false,
+			defaultBaseUrl: "https://api.kimi.com/coding/v1",
 		});
 		expect(acpBuiltinProvider.id).toBe(ONETHING_ACP_PROVIDER_ID);
 		expect(codexBuiltinProvider.info).toMatchObject({

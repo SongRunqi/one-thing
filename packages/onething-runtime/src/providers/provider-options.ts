@@ -2,7 +2,7 @@
  * Provider-private runtime knobs.
  *
  * Some providers have dials nobody else understands: zhipu's coding-plan
- * endpoint, qwen's api mode and region. Those used to travel as named fields on
+ * endpoint, qwen's and kimi's api mode and region. Those used to travel as named fields on
  * every config type between the settings store and the provider factory — nine
  * files had to list `zhipuApiMode` by name just to hand it along, including
  * `packages/core`, which is supposed to be provider-agnostic.
@@ -24,6 +24,11 @@
  * carries". See docs/design/provider-abstraction.md §7.1.
  */
 
+import {
+  ONETHING_KIMI_PROVIDER_ID,
+  normalizeOnethingKimiApiMode,
+  normalizeOnethingKimiRegion,
+} from './kimi.js'
 import {
   ONETHING_QWEN_PROVIDER_ID,
   normalizeOnethingQwenApiMode,
@@ -65,6 +70,15 @@ export function pickOnethingProviderOptions(
     }
   }
 
+  if (providerId === ONETHING_KIMI_PROVIDER_ID) {
+    // Same shape as qwen: the endpoint is a lookup on the pair, so the bag is
+    // always present and always complete.
+    return {
+      kimiApiMode: normalizeOnethingKimiApiMode(storedConfig.kimiApiMode),
+      kimiRegion: normalizeOnethingKimiRegion(storedConfig.kimiRegion),
+    }
+  }
+
   return undefined
 }
 
@@ -74,6 +88,19 @@ export function readOnethingZhipuOptions(
 ): { zhipuApiMode?: OnethingZhipuApiMode } {
   const zhipuApiMode = normalizeZhipuApiMode(providerOptions?.zhipuApiMode)
   return zhipuApiMode ? { zhipuApiMode } : {}
+}
+
+/** Unpack + narrow, for the kimi factory. */
+export function readOnethingKimiOptions(
+  providerOptions: OnethingProviderOptions | undefined,
+): {
+  kimiApiMode: ReturnType<typeof normalizeOnethingKimiApiMode>
+  kimiRegion: ReturnType<typeof normalizeOnethingKimiRegion>
+} {
+  return {
+    kimiApiMode: normalizeOnethingKimiApiMode(providerOptions?.kimiApiMode),
+    kimiRegion: normalizeOnethingKimiRegion(providerOptions?.kimiRegion),
+  }
 }
 
 /** Unpack + narrow, for the qwen factory. */

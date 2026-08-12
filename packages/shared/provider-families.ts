@@ -38,6 +38,13 @@ export const PROVIDER_FAMILIES: ProviderFamily[] = [
 		subscriptionProviderId: "claude-code",
 		subscriptionTag: "Claude Code",
 	},
+	{
+		id: "kimi",
+		label: "Kimi",
+		apiProviderId: "kimi",
+		subscriptionProviderId: "kimi-code",
+		subscriptionTag: "Kimi Code",
+	},
 ];
 
 export function providerFamilyOf(providerId: string): ProviderFamily | null {

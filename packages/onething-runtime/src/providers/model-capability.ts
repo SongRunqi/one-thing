@@ -139,7 +139,7 @@ export function resolveOnethingProviderKind(
   if (providerId === 'grok' || providerId === 'grok-oauth') return 'grok'
   if (providerId === 'openrouter') return 'openrouter'
   if (providerId === 'deepseek') return 'deepseek'
-  if (providerId === 'kimi') return 'kimi'
+  if (providerId === 'kimi' || providerId === 'kimi-code') return 'kimi'
   if (providerId === 'codex') return 'codex'
   if (providerId === 'github-copilot') return 'copilot'
   if (providerId === 'acp') return 'acp'

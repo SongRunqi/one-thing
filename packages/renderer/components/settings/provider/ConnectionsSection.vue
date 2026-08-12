@@ -205,6 +205,7 @@
                   <Input
                     :model-value="providerSettings.currentACPAgent.value.command"
                     type="text"
+                    variant="ledger"
                     class="row-input"
                     :spellcheck="false"
                     aria-label="ACP command"
@@ -216,6 +217,7 @@
                   <Input
                     :model-value="(providerSettings.currentACPAgent.value.args || []).join(' ')"
                     type="text"
+                    variant="ledger"
                     class="row-input"
                     :spellcheck="false"
                     aria-label="ACP command arguments"
@@ -227,6 +229,7 @@
                   <Input
                     :model-value="providerSettings.currentACPAgent.value.cwd || ''"
                     type="text"
+                    variant="ledger"
                     class="row-input"
                     :spellcheck="false"
                     aria-label="ACP working directory"
@@ -235,19 +238,17 @@
                 </div>
                 <div class="settings-row">
                   <span class="row-label">Permission</span>
-                  <select
+                  <Select
+                    variant="ledger"
+                    size="small"
+                    teleported
+                    fit-input-width
                     class="row-select"
-                    :value="providerSettings.currentACPAgent.value.permissionMode || 'allow'"
+                    :model-value="providerSettings.currentACPAgent.value.permissionMode || 'allow'"
+                    :options="ACP_PERMISSION_OPTIONS"
                     aria-label="ACP permission mode"
-                    @change="providerSettings.updateACPAgent({ permissionMode: (($event.target as HTMLSelectElement).value === 'reject' ? 'reject' : 'allow') })"
-                  >
-                    <option value="allow">
-                      Allow
-                    </option>
-                    <option value="reject">
-                      Reject
-                    </option>
-                  </select>
+                    @update:model-value="providerSettings.updateACPAgent({ permissionMode: $event === 'reject' ? 'reject' : 'allow' })"
+                  />
                 </div>
                 <div class="settings-row compact-toggle-row">
                   <span class="row-label">Client FS</span>
@@ -304,6 +305,7 @@
                   :model-value="providerApiKeyInputValue(activeMember(card).id)"
                   type="password"
                   show-password
+                  variant="ledger"
                   class="row-input"
                   :placeholder="providerApiKeyPlaceholder(activeMember(card).id, activeMember(card).name)"
                   :spellcheck="false"
@@ -316,6 +318,7 @@
                 <Input
                   :model-value="settings.ai.providers?.[activeMember(card).id]?.baseUrl"
                   type="text"
+                  variant="ledger"
                   class="row-input"
                   :placeholder="providerSettings.getDefaultBaseUrl()"
                   :spellcheck="false"
@@ -328,26 +331,27 @@
                 class="settings-row"
               >
                 <span class="row-label">API mode</span>
-                <select
+                <Select
+                  variant="ledger"
+                  size="small"
+                  teleported
+                  fit-input-width
                   class="row-select"
-                  :value="providerSettings.currentZhipuApiMode.value"
+                  :model-value="providerSettings.currentZhipuApiMode.value"
+                  :options="ZHIPU_API_MODE_OPTIONS"
                   aria-label="Zhipu API mode"
-                  @change="providerSettings.updateZhipuApiMode(($event.target as HTMLSelectElement).value)"
-                >
-                  <option value="standard">
-                    Standard
-                  </option>
-                  <option value="coding-plan">
-                    Coding Plan
-                  </option>
-                </select>
+                  @update:model-value="providerSettings.updateZhipuApiMode(String($event))"
+                />
               </div>
               <template v-if="providerSettings.isQwenProvider.value">
                 <div class="settings-row">
                   <span class="row-label">版本</span>
                   <Select
-                    class="row-select"
+                    variant="ledger"
                     size="small"
+                    teleported
+                    fit-input-width
+                    class="row-select"
                     :model-value="providerSettings.currentQwenRegion.value"
                     :options="QWEN_REGION_OPTIONS"
                     aria-label="Qwen region"
@@ -357,8 +361,11 @@
                 <div class="settings-row">
                   <span class="row-label">计费方式</span>
                   <Select
-                    class="row-select"
+                    variant="ledger"
                     size="small"
+                    teleported
+                    fit-input-width
+                    class="row-select"
                     :model-value="providerSettings.currentQwenApiMode.value"
                     :options="QWEN_API_MODE_OPTIONS"
                     aria-label="Qwen API mode"
@@ -367,6 +374,44 @@
                 </div>
                 <p class="row-note">
                   订阅用户必须选对档位。用通用 Key 和地址调用会走按量计费，在订阅之外额外扣钱。
+                </p>
+              </template>
+              <template v-if="providerSettings.isKimiProvider.value">
+                <!-- 版本只对开放平台成立：编程套餐(Kimi Code)只有一个全球地址，
+                     那一格在这时没有意义，整行收起而不是留个拨了不动的选择器。 -->
+                <div
+                  v-if="providerSettings.kimiRegionApplies.value"
+                  class="settings-row"
+                >
+                  <span class="row-label">版本</span>
+                  <Select
+                    variant="ledger"
+                    size="small"
+                    teleported
+                    fit-input-width
+                    class="row-select"
+                    :model-value="providerSettings.currentKimiRegion.value"
+                    :options="KIMI_REGION_OPTIONS"
+                    aria-label="Kimi region"
+                    @update:model-value="providerSettings.updateKimiRegion(String($event))"
+                  />
+                </div>
+                <div class="settings-row">
+                  <span class="row-label">计费方式</span>
+                  <Select
+                    variant="ledger"
+                    size="small"
+                    teleported
+                    fit-input-width
+                    class="row-select"
+                    :model-value="providerSettings.currentKimiApiMode.value"
+                    :options="KIMI_API_MODE_OPTIONS"
+                    aria-label="Kimi API mode"
+                    @update:model-value="providerSettings.updateKimiApiMode(String($event))"
+                  />
+                </div>
+                <p class="row-note">
+                  编程套餐的 Key 与地址(api.kimi.com)和开放平台不通用：留着按量的那一套调用，会在订阅之外再按量扣一次钱。
                 </p>
               </template>
             </div>
@@ -423,10 +468,30 @@ const QWEN_REGION_OPTIONS = [
   { value: 'intl', label: '海外版 (QwenCloud)' },
 ]
 
+const ACP_PERMISSION_OPTIONS = [
+  { value: 'allow', label: 'Allow' },
+  { value: 'reject', label: 'Reject' },
+]
+
+const ZHIPU_API_MODE_OPTIONS = [
+  { value: 'standard', label: 'Standard' },
+  { value: 'coding-plan', label: 'Coding Plan' },
+]
+
 const QWEN_API_MODE_OPTIONS = [
   { value: 'standard', label: 'API 按量付费 (sk-ws-)' },
   { value: 'token-plan', label: 'Token Plan 订阅 (sk-sp-)' },
   { value: 'coding-plan', label: 'Coding Plan 订阅 (sk-sp-)' },
+]
+
+const KIMI_REGION_OPTIONS = [
+  { value: 'cn', label: '国内版 (moonshot.cn)' },
+  { value: 'intl', label: '海外版 (moonshot.ai)' },
+]
+
+const KIMI_API_MODE_OPTIONS = [
+  { value: 'standard', label: '开放平台 按量付费' },
+  { value: 'coding-plan', label: '编程套餐 Kimi Code 订阅' },
 ]
 import type { AppSettings, ProviderInfo } from '@/types'
 import { providerFamilyOf, type ProviderFamily } from '@shared/provider-families'
@@ -937,9 +1002,6 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 .row-select {
   width: 100%;
   min-width: 0;
-  padding: 0 10px;
-  font: inherit;
-  font-size: 13px;
 }
 /* Full-width note under the two selects it warns about. Deliberately NOT a
    settings-row: the row grid's control column inherits single-line ellipsis,
@@ -979,29 +1041,6 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 .settings-row.compact-toggle-row {
   min-height: 44px;
   padding: 8px 0;
-}
-
-.row-input :deep(.app-input-control) {
-  min-height: 32px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border));
-  border-radius: 0;
-  background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg));
-  box-shadow: none;
-}
-
-.row-input :deep(.app-input-inner) {
-  font-size: 13px;
-  text-align: left;
-}
-
-.row-input.is-focused :deep(.app-input-control) {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg));
-  box-shadow: none;
-}
-
-.row-input :deep(.app-input-inner::placeholder) {
-  color: var(--settings-ink-4, var(--ui-text-muted-fg));
 }
 
 /*

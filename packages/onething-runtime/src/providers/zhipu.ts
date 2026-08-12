@@ -1,4 +1,9 @@
 import {
+  ONETHING_KIMI_PROVIDER_ID,
+  resolveOnethingKimiBaseUrl,
+  type OnethingKimiEndpointConfig,
+} from './kimi.js'
+import {
   ONETHING_QWEN_PROVIDER_ID,
   resolveOnethingQwenBaseUrl,
   type OnethingQwenEndpointConfig,
@@ -42,9 +47,12 @@ export function resolveOnethingZhipuBaseUrl(
 
 export function resolveOnethingProviderBaseUrl(
   providerId: string,
-  config: (OnethingZhipuBaseUrlConfig & OnethingQwenEndpointConfig) | undefined,
+  config:
+    | (OnethingZhipuBaseUrlConfig & OnethingQwenEndpointConfig & OnethingKimiEndpointConfig)
+    | undefined,
 ): string | undefined {
   if (providerId === 'zhipu') return resolveOnethingZhipuBaseUrl(config)
   if (providerId === ONETHING_QWEN_PROVIDER_ID) return resolveOnethingQwenBaseUrl(config)
+  if (providerId === ONETHING_KIMI_PROVIDER_ID) return resolveOnethingKimiBaseUrl(config)
   return normalizeBaseUrl(config?.baseUrl) || undefined
 }

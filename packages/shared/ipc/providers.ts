@@ -6,7 +6,7 @@
 import type { JsonObject } from '../json.js'
 
 // Provider IDs - can be extended by adding new providers
-export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'zhipu' | 'qwen' | 'gemini' | 'codex' | 'acp' | 'custom' | string
+export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'kimi-code' | 'zhipu' | 'qwen' | 'gemini' | 'codex' | 'acp' | 'custom' | string
 
 export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
@@ -16,6 +16,8 @@ export enum AIProvider {
   Claude = 'claude',
   DeepSeek = 'deepseek',
   Kimi = 'kimi',
+  /** Kimi 编程套餐(订阅),凭证走 OAuth device flow —— 与按量的 Kimi 分开。 */
+  KimiCode = 'kimi-code',
   Zhipu = 'zhipu',
   Qwen = 'qwen',
   OpenRouter = 'openrouter',
@@ -108,6 +110,16 @@ export type QwenApiMode = 'standard' | 'token-plan' | 'coding-plan'
 /** 千问: 国内版 (Beijing) vs 海外版 (Singapore) — separate accounts and hosts. */
 export type QwenRegion = 'cn' | 'intl'
 
+/**
+ * Kimi: 开放平台按量付费 vs Kimi Code (编程套餐) — the subscription issues its
+ * own key and lives on its own host (api.kimi.com), so leaving the general one
+ * in place bills pay-as-you-go on top of the subscription.
+ */
+export type KimiApiMode = 'standard' | 'coding-plan'
+/** Kimi: 国内 (api.moonshot.cn) vs 海外 (api.moonshot.ai). Only the
+ *  pay-as-you-go platform is split — Kimi Code has a single global host. */
+export type KimiRegion = 'cn' | 'intl'
+
 // Per-provider configuration
 export interface ProviderConfig {
   apiKey?: string           // Optional for OAuth providers
@@ -117,6 +129,10 @@ export interface ProviderConfig {
   // vs Token Plan (which has its OWN host and its own sk-sp- key).
   qwenApiMode?: QwenApiMode
   qwenRegion?: QwenRegion
+  // Kimi endpoint matrix: region picks the 开放平台 host (国内/海外), mode picks
+  // pay-as-you-go vs Kimi Code (编程套餐), which has its OWN host and key.
+  kimiApiMode?: KimiApiMode
+  kimiRegion?: KimiRegion
   model: string             // Currently active model
   selectedModels: string[]  // List of models user has selected/enabled for quick switching
   enabled?: boolean         // Whether this provider is shown in the chat model selector

@@ -57,7 +57,7 @@ export function registerElectronContentSecurityPolicy(
       // handler 那一侧(已装 + 已启用 + 声明了静态资产),不在这行字符串里。
       "img-src 'self' blob: data: https: file: media: onething-plugin:",
       "font-src 'self' data:",
-      "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepseek.com https://api.moonshot.cn https://open.bigmodel.cn https://*.zhipuai.cn https://*.aliyuncs.com ws://127.0.0.1:* http://127.0.0.1:*",
+      "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepseek.com https://api.moonshot.cn https://api.moonshot.ai https://api.kimi.com https://auth.kimi.com https://open.bigmodel.cn https://*.zhipuai.cn https://*.aliyuncs.com ws://127.0.0.1:* http://127.0.0.1:*",
       "media-src 'self' blob: data: file:",
       "worker-src 'self' blob:",
       // 插件 webview 面板(C 期):父页面必须放行 `onething-plugin:` 这一个
