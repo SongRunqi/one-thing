@@ -98,25 +98,32 @@ export function initializeIPCHub() {
         store.handleStreamStarted({ sessionId, messageId: event.messageId || event.assistantMessageId })
         break
 
-      // Tool events → mapped to stream chunk format for store compatibility
+      // Tool events → mapped to stream chunk format for store compatibility.
+      //
+      // `event.messageId` 是发射器盖的号(core/engine/event-only-emitter.ts),必须
+      // 原样传下去。这里从前一律填空串,store 只好退回 `activeStreams` 去猜「当前
+      // 这条流是谁」—— 而那个绑定丢了(窗口中途重载、第二个窗口、跑起来之后才切
+      // 进会话),整批工具事件就被泊死或丢弃,消息永远长不出那条调用,随后带真号
+      // 来的 permission:request 就只能空等,卡片一张都不出。空串保留为兜底,给的
+      // 是旧重放数据。
       case 'tool:call':
-        store.handleStreamChunk({ type: 'tool_call', sessionId, messageId: '', content: '', toolCall: event.toolCall })
+        store.handleStreamChunk({ type: 'tool_call', sessionId, messageId: event.messageId || '', content: '', toolCall: event.toolCall })
         break
 
       case 'tool:result':
-        store.handleStreamChunk({ type: 'tool_result', sessionId, messageId: '', content: '', toolCall: event.toolCall })
+        store.handleStreamChunk({ type: 'tool_result', sessionId, messageId: event.messageId || '', content: '', toolCall: event.toolCall })
         break
 
       case 'tool:input-start':
         store.handleStreamChunk({
-          type: 'tool_input_start', sessionId, messageId: '', content: '',
+          type: 'tool_input_start', sessionId, messageId: event.messageId || '', content: '',
           toolCallId: event.toolCallId, toolName: event.toolName, toolCall: event.toolCall,
         })
         break
 
       case 'tool:input-end':
         store.handleStreamChunk({
-          type: 'tool_input_end', sessionId, messageId: '', content: '',
+          type: 'tool_input_end', sessionId, messageId: event.messageId || '', content: '',
           toolCallId: event.toolCallId, toolCall: event.toolCall,
         })
         break
@@ -142,13 +149,13 @@ export function initializeIPCHub() {
         store.handleStreamChunk({ type: 'continuation', sessionId, messageId: '', content: '', turnIndex: event.turnIndex })
         break
 
-      // Step events
+      // Step events(同上:认发射器盖的号,不猜活跃流)
       case 'step:added':
-        store.handleStepAdded({ sessionId, messageId: '', step: event.step })
+        store.handleStepAdded({ sessionId, messageId: event.messageId || '', step: event.step })
         break
 
       case 'step:updated':
-        store.handleStepUpdated({ sessionId, messageId: '', stepId: event.stepId, updates: event.updates })
+        store.handleStepUpdated({ sessionId, messageId: event.messageId || '', stepId: event.stepId, updates: event.updates })
         break
 
       // Skill events

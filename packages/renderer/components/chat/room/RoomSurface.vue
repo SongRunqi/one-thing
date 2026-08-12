@@ -80,6 +80,10 @@
         @reject-with-instruction="(toolCall, reason) => handleRejectWithInstruction(toolCall, reason)"
       />
 
+      <!-- 提问栏位:与审批同一格,同一个实现(房面与直聊共用,不是一份拷贝)。
+           自己看账本,欠账为空就零高度。 -->
+      <InteractionPrompt :session-id="effectiveSessionId" />
+
       <CollabTypingLine :session-id="effectiveSessionId" />
 
       <ComposerReplyBar
@@ -156,6 +160,7 @@ import CollabTypingLine from '../CollabTypingLine.vue'
 import ComposerReplyBar from '../ComposerReplyBar.vue'
 import BackgroundJobsStatusBar from '../BackgroundJobsStatusBar.vue'
 import PermissionLedger from '../permission/PermissionLedger.vue'
+import InteractionPrompt from '../interaction/InteractionPrompt.vue'
 import RejectReasonDialog from '../permission/RejectReasonDialog.vue'
 import {
   countQueuedBehind,

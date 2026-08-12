@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * E2 整条链的接缝:`interaction:requested` 事件 → 账本反查 → 卡片渲染 →
+ * E2 整条链的接缝:`interaction:requested` 事件 → 账本反查 → 栏位渲染 →
  * 用户点一下 → `respondInteraction` 的入参形状。
  *
  * 单测各自守着自己那一段;这里守的是**接缝**——历史上出问题的从来不是某一段,
@@ -9,7 +9,7 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import InteractionCard from '@/components/chat/interaction/InteractionCard.vue'
+import InteractionPrompt from '@/components/chat/interaction/InteractionPrompt.vue'
 
 type SessionEventCallback = (envelope: {
   sessionId: string
@@ -84,13 +84,12 @@ describe('IPC hub → 提问账本 → 卡片 → 应答', () => {
     const pending = store.pendingFor('work-1')
     expect(pending.map(item => item.id)).toEqual(['ask-1'])
 
-    const wrapper = mount(InteractionCard, { props: { request: pending[0]! } })
+    // 栏位自己看账本(宿主只给 sessionId),所以这里连 request 都不用喂。
+    const wrapper = mount(InteractionPrompt, { props: { sessionId: 'work-1' } })
     expect(wrapper.text()).toContain('这一版用哪一套配色?')
     await wrapper.findAll('.option')[1]!.trigger('click')
     await wrapper.get('[data-testid="interaction-submit"]').trigger('click')
-
-    const [request, answers] = wrapper.emitted('submit')![0] as [never, never]
-    await store.respond('work-1', request, answers)
+    await settle(0)
 
     expect(respondInteraction).toHaveBeenCalledWith({
       sessionId: 'work-1',
@@ -100,7 +99,7 @@ describe('IPC hub → 提问账本 → 卡片 → 应答', () => {
     })
   })
 
-  it('settled 事件把卡片挪进历史态(超时自结算也一样,没有人点过任何东西)', async () => {
+  it('settled 事件把栏位收走(超时自结算也一样,没有人点过任何东西)', async () => {
     const { initializeIPCHub } = await import('../ipc-hub')
     const { useInteractionsStore } = await import('@/stores/interactions')
     initializeIPCHub()
@@ -124,13 +123,11 @@ describe('IPC hub → 提问账本 → 卡片 → 应答', () => {
 
     const store = useInteractionsStore()
     expect(store.pendingFor('work-1')).toEqual([])
-    const [history] = store.settledFor('work-1')
-    expect(history?.answer.outcome).toBe('timeout')
 
-    const wrapper = mount(InteractionCard, {
-      props: { request: history!.request, answer: history!.answer },
-    })
-    expect(wrapper.get('.interaction-card').attributes('data-state')).toBe('timeout')
+    // 收场之后会话里不留痕:栏位整块不画,连一行已办记录都没有。
+    const wrapper = mount(InteractionPrompt, { props: { sessionId: 'work-1' } })
+    await settle(0)
+    expect(wrapper.find('.session-interaction-panel').exists()).toBe(false)
     expect(wrapper.find('[data-testid="interaction-submit"]').exists()).toBe(false)
   })
 

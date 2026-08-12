@@ -62,6 +62,14 @@
           @reject-with-instruction="(toolCall, reason) => rejectCurrentPermissionWithInstruction(reason)"
         />
 
+        <!-- 提问栏位:与审批同一格「现在轮到你」,答完即收、会话里不留痕。
+             它自己看账本(欠账为空就零高度),所以这里不需要条件 —— 也因此
+             `v-memo` 只需 `effectiveSessionId` 这一枚已有的依赖。 -->
+        <InteractionPrompt
+          data-ambient-anchor="composer.block"
+          :session-id="effectiveSessionId"
+        />
+
         <!-- IM typing line: rides just above the composer in rooms only. It
              self-guards on an empty roster, so a quiet room costs no row. -->
         <CollabTypingLine
@@ -121,6 +129,7 @@ import type { ChatMessage, ChatMessageMention, ChatMessageReplyTo, MessageAttach
 import { filterRoomMessages } from './message/room-grouping'
 import { isAgentExecutionSession as isAgentExecutionSessionKind } from '@/utils/agent-sessions'
 import PermissionLedger from './permission/PermissionLedger.vue'
+import InteractionPrompt from './interaction/InteractionPrompt.vue'
 import type { PermissionResponse } from './permission/permission-ledger'
 
 const props = withDefaults(defineProps<{
@@ -910,7 +919,8 @@ defineExpose({
 .composer-container.is-layout-animating .status-band,
 .composer-container.is-layout-animating :deep(.collab-typing),
 .composer-container.is-layout-animating :deep(.composer-reply),
-.composer-container.is-layout-animating .session-permission-panel {
+.composer-container.is-layout-animating .session-permission-panel,
+.composer-container.is-layout-animating .session-interaction-panel {
   transition:
     width var(--app-sidebar-transition-duration, var(--duration-slow)) var(--app-sidebar-transition-ease, var(--ease-default)),
     margin var(--app-sidebar-transition-duration, var(--duration-slow)) var(--app-sidebar-transition-ease, var(--ease-default));

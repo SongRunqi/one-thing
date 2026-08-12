@@ -30,27 +30,22 @@ import { platformApi } from '@/platform'
  * 「±事件记账 cannot be right even in principle」):事件会丢、会乱序、窗口重载后
  * 一条都不会补发,而「屏幕上有没有这张卡」不允许有第二个答案。
  *
- * ## `settled` 是转达,不是第二本账
+ * ## 结算事件只做一件事:提前摘牌
  *
- * 结算之后内核就把这条从 pending 里摘了 —— 反查再也答不出「用户刚才答了什么」。
- * 而卡片进历史态(答完不消失、能回看)要的正是这个事实,它**只有 `interaction:settled`
- * 事件里有**。这与审批那边「settle 的 decision 由事件转达」是同一条判例:账本回答
- * 「还欠不欠」,事件转达「上一次怎么收的场」,两者不重叠。
+ * 提问收场之后栏位整块撤走、会话里不留痕,所以这里**没有**第二本记「上一次怎么
+ * 收的场」的账 —— 没有人画它。曾经有过一本(`settled`),它存在的唯一理由是流内
+ * 提问卡的历史态;卡改成 composer 上方的栏位之后,那本账连同它的 request 快照
+ * 缓存一起撤掉,免得留一堆只增不减、又没人读的内存。
  *
- * 代价说清楚:历史态**不跨窗口重载存活**(内核没有已结算提问的持久表,补水口
- * 只吐 pending)。重载后卡片消失,而不是显示一份编出来的历史。
+ * `interaction:settled` 到达时仍然当场把这条从 pending 里摘掉,而不是干等那次
+ * 反查:留着它,栏位会在那 200ms 里继续要你回答一条已经结了的提问。
+ *
+ * 「用户刚才答了什么」仍然对得了账 —— 那次 `ask_user` 工具调用的结果里就写着,
+ * 那是内核持久化的真值,不需要渲染层再存一份。
  */
 
 /** 事件到达与反查之间的合并窗口。与审批那条链同一个数,理由也同一条。 */
 const RECONCILE_DEBOUNCE_MS = 200
-
-/** 一次已经收场的提问:问题原文 + 收场方式,卡片的历史态读它。 */
-export interface SettledInteraction {
-  /** 结算时刻手上那一份 request 快照(问题原文要留着,不然历史态没得画)。 */
-  request: InteractionRequest
-  answer: InteractionAnswer
-  settledAt: number
-}
 
 /** ipc-hub 转过来的两条事件的最小形状(整份 request / answer 透传)。 */
 export interface InteractionBusEventLike {
@@ -63,16 +58,6 @@ export interface InteractionBusEventLike {
 export const useInteractionsStore = defineStore('interactions', () => {
   /** sessionId → `getPendingInteractions` 反查回来的那一份**全量**。 */
   const pending = ref<Record<string, InteractionRequest[]>>({})
-  /** sessionId → 本窗口见过的已结算提问,旧的在前。 */
-  const settled = ref<Record<string, SettledInteraction[]>>({})
-
-  /**
-   * interactionId → request 快照的**缓存**(不是账)。
-   *
-   * 结算事件只带 answer,而历史态要画问题原文。摘牌发生在广播之前(core 是先
-   * `pending.delete` 再 `emitSettled`),所以那一刻只有这份缓存还留着原文。
-   */
-  const requestsById = new Map<string, InteractionRequest>()
   const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>()
   /** 每问一次 +1;迟到的答案按号丢弃(与审批账本同一条去序纪律)。 */
   const reconcileGenerations = new Map<string, number>()
@@ -81,10 +66,6 @@ export const useInteractionsStore = defineStore('interactions', () => {
     const next = (reconcileGenerations.get(sessionId) ?? 0) + 1
     reconcileGenerations.set(sessionId, next)
     return next
-  }
-
-  function rememberRequests(requests: InteractionRequest[]): void {
-    for (const request of requests) requestsById.set(request.id, request)
   }
 
   /** 问一次主进程:这个会话此刻还欠哪些回答。 */
@@ -96,7 +77,6 @@ export const useInteractionsStore = defineStore('interactions', () => {
       // 更新的一问已经在路上(或已经答完),这份答案不再是真相。
       if (reconcileGenerations.get(sessionId) !== generation) return
       const requests = response?.success && response.pending ? response.pending : []
-      rememberRequests(requests)
       pending.value = { ...pending.value, [sessionId]: requests }
     } catch (error) {
       // 读失败不是「没有欠账」的证据 —— 保留上一份,否则等于告诉用户相反的话。
@@ -122,34 +102,29 @@ export const useInteractionsStore = defineStore('interactions', () => {
    *
    * 两条事件在这里只有两个身份:
    *  1. 「这个会话的欠账动了」—— 一律合并成一次反查;
-   *  2. settled 额外转达一个只有事件里才有的事实:这次是怎么收的场、答了什么。
+   *  2. settled 额外确定一件反查还要 200ms 才追上的事:这条已经不欠了。
    */
   function noteInteractionEvent(sessionId: string, event: InteractionBusEventLike): void {
-    if (event.type === 'interaction:requested' && event.request) {
-      // 缓存原文:结算广播到达时,pending 里已经没有它了。
-      requestsById.set(event.request.id, event.request)
-    }
     if (event.type === 'interaction:settled' && event.answer) {
-      recordSettled(sessionId, event.answer)
+      dropPending(sessionId, event.answer.id)
     }
     scheduleReconcile(sessionId)
   }
 
-  function recordSettled(sessionId: string, answer: InteractionAnswer): void {
-    const request = requestsById.get(answer.id)
-    // 没见过这条提问(窗口是在它之后才打开的)就不编一张卡出来 —— 历史态画的是
-    // 「你答过什么」,原文都没有的那一张没有内容可言。
-    if (!request) return
-    const previous = settled.value[sessionId] ?? []
-    if (previous.some(entry => entry.answer.id === answer.id)) return
-    settled.value = {
-      ...settled.value,
-      [sessionId]: [...previous, { request, answer, settledAt: Date.now() }],
+  /**
+   * 结了的那条当场摘牌。
+   *
+   * pending 的真值仍然等反查,但摘牌是确定的(core 是先 `pending.delete` 再
+   * `emitSettled`):留着它,栏位会在那 200ms 里继续要你回答一条已经结了的提问 ——
+   * 到点自结算与别处代答走的都是这一支。
+   */
+  function dropPending(sessionId: string, interactionId: string): void {
+    const previous = pending.value[sessionId]
+    if (!previous?.some(item => item.id === interactionId)) return
+    pending.value = {
+      ...pending.value,
+      [sessionId]: previous.filter(item => item.id !== interactionId),
     }
-    // pending 的真值仍然等反查,但摘牌是确定的:留着它,卡片会在那 200ms 里
-    // 同时以「待答」和「已结算」两副面孔出现。
-    const stillPending = (pending.value[sessionId] ?? []).filter(item => item.id !== answer.id)
-    pending.value = { ...pending.value, [sessionId]: stillPending }
   }
 
   /** 一个会话上屏时的补水(冷启动、切会话都走它)。 */
@@ -162,10 +137,6 @@ export const useInteractionsStore = defineStore('interactions', () => {
     return (sessionId && pending.value[sessionId]) || []
   }
 
-  function settledFor(sessionId: string | undefined | null): SettledInteraction[] {
-    return (sessionId && settled.value[sessionId]) || []
-  }
-
   /**
    * 交卷。
    *
@@ -174,7 +145,7 @@ export const useInteractionsStore = defineStore('interactions', () => {
    * 走 `command:interaction-respond`,两条路进的是同一个内核。
    *
    * 应答之后不本地伪造收场:`interaction:settled` 会带着真正的 outcome 回来,
-   * 历史态由它写。这里只把反查往前推一格,让卡片尽快离开「待答」。
+   * 摘牌由它做。这里只把反查往前推一格,让栏位尽快离开「待答」。
    */
   async function respond(
     sessionId: string,
@@ -224,9 +195,7 @@ export const useInteractionsStore = defineStore('interactions', () => {
 
   return {
     pending,
-    settled,
     pendingFor,
-    settledFor,
     ensureForSession,
     reconcile,
     noteInteractionEvent,

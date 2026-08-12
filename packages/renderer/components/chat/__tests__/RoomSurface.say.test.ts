@@ -64,6 +64,15 @@ vi.mock('@/stores/chat', () => ({
   }),
 }))
 
+// 提问账本(E2):composer 上方那条提问栏位自己读它,房面只给 sessionId。
+vi.mock('@/stores/interactions', () => ({
+  useInteractionsStore: () => ({
+    ensureForSession: vi.fn(),
+    pendingFor: () => [],
+    respond: vi.fn(),
+    decline: vi.fn(),
+  }),
+}))
 vi.mock('@/stores/collabBoard', () => ({
   useCollabBoardStore: () => ({ ensureSubscribed: vi.fn(), boardFor: () => mocks.board }),
 }))

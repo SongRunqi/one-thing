@@ -26,18 +26,17 @@ import { Tool } from '../tool.js'
  *    用户回答、用户跳过、或者这一回合被中止 —— 而不是一只表。
  * 2. **回合中止 = 取消这次提问。** `ctx.abortSignal` 一响就把 pending 撤回
  *    (`adapters.abort`),内核结成 `aborted`,工具返回一条 cancelled 结果。不接这条,
- *    停了的回合会留下一张永远等不到人的卡,和一只挂着的 Promise。
+ *    停了的回合会在输入框上方留下一条永远等不到人的提问,和一只挂着的 Promise。
  * 3. **四种收场都是正常返回。** 与 `Interaction.ask` 的契约逐字一致:answered /
  *    declined / timeout / aborted 都翻成工具结果,没有一种走 throw。异常路径会诱使
  *    上层把它当红错冒泡,而那正是这套协议当初要修的病。
  *
- * ## 结果形状(持久面靠它重建已办卡)
+ * ## 结果形状(这是「用户答了什么」唯一的持久记录)
  *
  * `metadata` 里带一份结构化记录(outcome + 逐题答案),`output` 里带同一份 JSON 再
- * 加一行人话摘要。渲染层的 `interaction-history.ts` 重建历史卡时读的是 **metadata**
- * ——判据走结构化字段,而不是把一句人话再逆运算回去(外部那条链只能逆运算,是因为
- * 它的 result 是 CLI 念回来的一句英文;我们自己的工具没有这个限制,就不该继承这个
- * 脆弱点)。
+ * 加一行人话摘要。提问栏位收场之后会话里不留痕(它是 composer 上方的一格,不是流内
+ * 的一张卡),所以回看只有这一份 —— 结构化字段要自洽到能独立读懂,不能指望渲染层
+ * 另存一份。
  */
 
 /**
@@ -87,7 +86,7 @@ export interface AskUserAnswerRecord extends JsonObject {
   freeText?: string
 }
 
-/** 工具结果的结构化面。`interaction-history.ts` 重建已办卡读的就是它。 */
+/** 工具结果的结构化面 —— 收场之后「用户答了什么」只剩它。 */
 export interface AskUserMetadata extends JsonObject {
   /** 结构标记:持久面认它,而不是认工具名的拼写。 */
   interaction: 'ask_user'
@@ -127,8 +126,8 @@ export interface AskUserToolAdapters {
 }
 
 /**
- * 题 id。与 `interaction-history.ts` 从持久化 `arguments` 反推时用的那把**同一个
- * 公式** —— 两边自洽,已办卡才拼得回来。
+ * 题 id。answers 表按它对上题面,所以它必须只由「这次调用 + 第几题」决定 ——
+ * 换一次重放、换一个宿主都要拼回同一把钥匙。
  */
 function questionId(anchor: string, index: number): string {
   return `${anchor}:${index}`
@@ -221,7 +220,7 @@ export function createAskUserTool(
     name: 'AskUser',
     description: `Ask the user a multiple-choice question and wait for their answer.
 
-The question appears as a card in the chat; the user picks an option (or several, or types their own when you allow it) and their choice comes back to you as the tool result.
+The question appears in a panel just above the user's input box; they pick an option (or several, or type their own when you allow it) and their choice comes back to you as the tool result. The panel closes once they answer, so the answer you get here is the only record of it — restate anything you rely on later.
 
 This blocks until the user answers. They may take a long time, or never answer at all — the call then comes back as declined / timeout / aborted, and you must continue on your own judgement, stating the assumption you made.
 
@@ -236,14 +235,9 @@ Use it only when you genuinely need the user to decide: an ambiguous requirement
     renderKind: 'text',
     parameters: AskUserParameters,
     async execute(args, ctx) {
-      // 归位锚:卡片贴在**发起这次调用的那条工具调用所在的消息**之后
-      // (MessageList 的 `interactionAnchorIndex` 按 toolCallId 在 `message.toolCalls`
-      // 里找)。原生链路的 toolCallId 就是 ctx 里这一个,不需要另一条 message-anchor
-      // 反查 —— 那条是外部 / ACP 通路才需要的,因为它们的提问不长在工具执行上下文里。
-      //
-      // `ctx.messageId` 另外**原样带给渲染侧**当第二档锚:流式期间这次调用可能还没
-      // 落进消息,只认 toolCallId 的话那一格就只剩尾泊(= 新消息出现的位置),而卡片
-      // 会在调用落地后从末尾跳回原位。带上消息锚,两件事一起没有。
+      // 题 id 的锚。渲染侧的提问栏位长在 composer 上方,不再需要在消息流里找位置,
+      // 但这两个 id 仍然原样带过去:应答按 toolCallId 回到发起它的那次调用,而
+      // `messageId` 是外部 / ACP 通路(提问不长在工具执行上下文里)唯一的相关键。
       const anchor = ctx.toolCallId || ctx.messageId
       const questions = toInteractionQuestions(args, anchor)
 
@@ -254,7 +248,7 @@ Use it only when you genuinely need the user to decide: an ambiguous requirement
         reason: ASK_USER_ABORTED_REASON,
       }
 
-      // 已经停了就不要再挂一张没人会看的卡。
+      // 已经停了就不要再挂一条没人会看的提问。
       if (ctx.abortSignal?.aborted) return buildResult(questions, abortedAnswer)
 
       const signal = ctx.abortSignal

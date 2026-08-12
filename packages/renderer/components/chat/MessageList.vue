@@ -98,33 +98,10 @@
             :goal="settledGoal"
             @review="emit('reviewGoal', props.sessionId || '')"
           />
-
-          <!-- 提问卡:先按 toolCallId 贴在发起它的那次工具调用所属的消息之后
-               (与审批卡同一条归位键),那次调用还没落进消息就退到 messageId 那条
-               消息之后。答完不消失,进历史态留在原地。 -->
-          <InteractionCard
-            v-for="card in interactionCardsByIndex.get(index)"
-            :key="card.request.id"
-            :request="card.request"
-            :answer="card.answer"
-            :settled-at="card.settledAt"
-            @submit="handleInteractionSubmit"
-            @decline="handleInteractionDecline"
-          />
         </template>
 
-        <!-- 三档锚全落空(两个键都没有,或那两条消息都还没进这一页)才挂会话末尾:
-             一张答不了的卡不如一张位置不完美的卡。这一格现在是**兜底**,不是常态 ——
-             常态走 messageId 那一档,理由见 `interactionAnchorIndex` 上面那段。 -->
-        <InteractionCard
-          v-for="card in tailInteractionCards"
-          :key="card.request.id"
-          :request="card.request"
-          :answer="card.answer"
-          :settled-at="card.settledAt"
-          @submit="handleInteractionSubmit"
-          @decline="handleInteractionDecline"
-        />
+        <!-- agent 提问不画在这里:它是 composer 上方的一条栏位(与审批同一格),
+             答完即收、流里不留痕。见 `interaction/InteractionPrompt.vue`。 -->
 
         <div
           ref="bottomSentinelRef"
@@ -216,16 +193,11 @@ import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdate
 import type {
   ChatMessage,
   ChatMessageReplyTo,
-  InteractionAnswer,
-  InteractionQuestionAnswer,
-  InteractionRequest,
   SessionGoal,
   ToolCall,
 } from '@/types'
 import MessageItem from './MessageItem.vue'
 import GoalSummaryCard from './message/GoalSummaryCard.vue'
-import InteractionCard from './interaction/InteractionCard.vue'
-import { deriveInteractionHistory } from './interaction/interaction-history'
 import RoomTimeCapsule from './message/RoomTimeCapsule.vue'
 import {
   EMPTY_ROOM_LAYOUT,
@@ -249,7 +221,6 @@ import {
 import { ArrowDown } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useCollabBoardStore } from '@/stores/collabBoard'
-import { useInteractionsStore } from '@/stores/interactions'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
@@ -340,7 +311,6 @@ const { reactionHint, react: handleReact } = useCollabReactions(() => effectiveS
 
 const chatStore = useChatStore()
 const collabBoardStore = useCollabBoardStore()
-const interactionsStore = useInteractionsStore()
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 const messageScrollbarRef = ref<InstanceType<typeof Scrollbar> | null>(null)
@@ -987,121 +957,6 @@ function anchorIndexFor(goal: SessionGoal): number {
   }
   return -1
 }
-
-/* ── agent 提问卡(E2)──────────────────────────────────────────────────── */
-
-interface InteractionCardEntry {
-  request: InteractionRequest
-  /** 有它就是历史态。 */
-  answer?: InteractionAnswer
-  /** 收场时刻(已办记录上的那个时间)。 */
-  settledAt?: number
-}
-
-/**
- * 这个会话上要画的所有提问卡,按提问时间排。三个来源,各回答一个不同的问题:
- *
- *  1. `pendingFor` —— 「此刻还欠谁一个回答」,来自反查,唯一真值;
- *  2. `settledFor` —— 「刚才这条是怎么收的场」,来自结算事件的转达,只活在本窗口;
- *  3. `deriveInteractionHistory` —— 「上一次(哪怕是上个月)我答的是什么」,从消息里
- *     那次提问工具调用推出来(外部的 AskUserQuestion 与原生的 ask_user 两族都认),
- *     **跨重载、跨重开会话存活**。
- *
- * 第三个来源补的正是第二个来源的短命:窗口一重载,`settled` 那本账就空了,卡片整张
- * 消失,用户回看不到自己选过哪条路。它不是第四本账 —— 它读的是消息本身,答案本来就
- * 存在那里(见 `interaction-history.ts` 开头)。
- *
- * 活的记录赢:同一次提问在 1/2 里出现过,就不再从消息里推一份重复的。
- */
-const interactionCards = computed<InteractionCardEntry[]>(() => {
-  const sessionId = props.sessionId
-  if (!sessionId) return []
-  const live: InteractionCardEntry[] = [
-    ...interactionsStore.pendingFor(sessionId).map(request => ({ request })),
-    ...interactionsStore.settledFor(sessionId).map(entry => ({
-      request: entry.request,
-      answer: entry.answer,
-      settledAt: entry.settledAt,
-    })),
-  ]
-  const liveKeys = new Set<string>()
-  for (const entry of live) {
-    liveKeys.add(entry.request.id)
-    if (entry.request.toolCallId) liveKeys.add(entry.request.toolCallId)
-  }
-  const derived = deriveInteractionHistory(props.messages, sessionId)
-    .filter(entry => !liveKeys.has(entry.request.id))
-    .map(entry => ({
-      request: entry.request,
-      answer: entry.answer,
-      settledAt: entry.settledAt,
-    }))
-  return [...live, ...derived].sort((a, b) => a.request.createdAt - b.request.createdAt)
-})
-
-/**
- * 归位,**三档,按精度降序**。会话末尾是最后一档,不是第二档 —— 这条次序本身
- * 就是这次修的东西。
- *
- *  1. `toolCallId` 在这一页的某条消息的 `toolCalls` 里 → **原位**(与审批卡同一个
- *     耐久相关键,最精确);
- *  2. 否则 `messageId` 命中这一页的某条消息 → 贴**那条消息**之后。源头(原生取
- *     `ctx.messageId`,外部经 `app/permission/message-anchor.ts` 解析)保证它是
- *     一条渲染侧真的拿得到的消息;
- *  3. 都不行才**尾泊**。
- *
- * 为什么中间这一档非有不可:尾泊的位置正是「下一条新消息出现的地方」,一张挂在
- * 那里的卡在视觉上就是一条冒出来的消息 —— 用户的原话。而且它还会**跳**:流式期间
- * 那次 toolCall 迟落进消息,卡片先尾泊、落地后再跳回原位。第 2 档同时消掉这两件事:
- * messageId 在 ask 那一刻就定死,不随流式推进变化,所以卡片从出现起就不动。
- *
- * 三档都落空(两个键都没有,或那条消息还没进这一页)仍然画,只是画在尾部:一张
- * 位置不完美的卡仍然答得了,一张不画的卡答不了(而不答的代价是走到 deadline)。
- */
-const interactionCardsByIndex = computed<Map<number, InteractionCardEntry[]>>(() => {
-  const byIndex = new Map<number, InteractionCardEntry[]>()
-  for (const entry of interactionCards.value) {
-    const index = interactionAnchorIndex(entry.request)
-    if (index === -1) continue
-    const bucket = byIndex.get(index)
-    if (bucket) bucket.push(entry)
-    else byIndex.set(index, [entry])
-  }
-  return byIndex
-})
-
-const tailInteractionCards = computed<InteractionCardEntry[]>(() =>
-  interactionCards.value.filter(entry => interactionAnchorIndex(entry.request) === -1),
-)
-
-function interactionAnchorIndex(request: InteractionRequest): number {
-  if (request.toolCallId) {
-    const byToolCall = props.messages.findIndex(message =>
-      message.toolCalls?.some(toolCall => toolCall.id === request.toolCallId),
-    )
-    if (byToolCall !== -1) return byToolCall
-  }
-  if (request.messageId) {
-    return props.messages.findIndex(message => message.id === request.messageId)
-  }
-  return -1
-}
-
-async function handleInteractionSubmit(
-  request: InteractionRequest,
-  answers: Record<string, InteractionQuestionAnswer>,
-): Promise<void> {
-  const sessionId = effectiveSessionId.value
-  if (!sessionId) return
-  await interactionsStore.respond(sessionId, request, answers)
-}
-
-async function handleInteractionDecline(request: InteractionRequest): Promise<void> {
-  const sessionId = effectiveSessionId.value
-  if (!sessionId) return
-  await interactionsStore.decline(sessionId, request)
-}
-
 
 // Initialize navigation index when messages change
 // Note: Session switching is handled by ChatWindow's snapshot save/restore.
@@ -2007,9 +1862,6 @@ watch(
     if (msgCount === 0) return  // Messages not loaded yet, wait
 
     await collabBoardStore.ensurePendingForSession(newSessionId)
-    // 提问那条链同一句话:上屏了就去问一次「这个会话还欠哪些回答」。窗口重载
-    // 或切回一个正在等回答的会话时,没有任何事件会补发,补水是唯一的来源。
-    await interactionsStore.ensureForSession(newSessionId)
   },
   { immediate: true }
 )

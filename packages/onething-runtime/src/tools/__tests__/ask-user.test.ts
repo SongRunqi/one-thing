@@ -4,7 +4,7 @@
  * 这个工具全部的难点都在**收场**上,所以测试也全压在那里:
  *   1. 题目数量的闸(0 题没有可问的,5 题是一次审讯);
  *   2. 题 id 的公式 —— 它必须与渲染层从持久化 `arguments` 反推时用的那把**同一个**
- *      公式,否则已办卡拼不回来(`interaction-history.ts` 的 `toQuestions`);
+ *      公式,否则 answers 表对不上题面;
  *   3. 四种收场逐一翻成模型看得懂的工具结果,没有一种走 throw;
  *   4. 回合中止要**真的把 pending 撤回**,不能只让工具自己走开 —— 留一张没人会答的
  *      卡在屏幕上,和留一只挂着的 Promise,是同一个 bug 的两面。
@@ -135,7 +135,7 @@ describe('ask_user 发起提问', () => {
     expect(h.asks).toHaveLength(1)
     expect(h.asks[0].sessionId).toBe(SESSION)
     expect(h.asks[0].toolCallId).toBe(TOOL_CALL)
-    // 渲染层的持久面按同一把公式补 id(interaction-history.ts 的 toQuestions)。
+    // 「这次调用 + 第几题」是这把钥匙的全部输入,重放也要拼出同一个。
     expect(h.asks[0].questions.map(q => q.id)).toEqual([`${TOOL_CALL}:0`, `${TOOL_CALL}:1`])
     // 没有硬超时:表只是兜底,而且必须留在 32 位 setTimeout 的上限之内。
     expect(h.asks[0].timeoutMs).toBe(ASK_USER_TIMEOUT_MS)

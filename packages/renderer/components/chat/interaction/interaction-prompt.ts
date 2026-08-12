@@ -1,15 +1,17 @@
 import type {
-  InteractionOutcome,
   InteractionQuestion,
   InteractionQuestionAnswer,
 } from '@/types'
 
 /**
- * 提问卡片的纯逻辑(claude-code-integration-v2 §4,E2)。
+ * 提问栏位的纯逻辑(claude-code-integration-v2 §4,E2)。
  *
  * 与 `permission/permission-ledger.ts` 同一条分工:`.vue` 只画与收集意图,
  * 「这份草稿算不算答完了」「倒计时该显示成什么」这类判断放在这里 —— 它们是真正
  * 会写错的部分,而写错了要在单测里被看见,不是在真机上。
+ *
+ * 这里**没有**已办态的格式化(答完了什么、几点收的场):提问收场之后栏位整块
+ * 撤走,会话里不留痕,于是也就没有一份「回看用的记录」需要排版。
  */
 
 /** 一题的草稿:选中的 label + 「其他」里写的那句。 */
@@ -96,7 +98,7 @@ export function buildAnswers(
 /**
  * 倒计时的显示文本。
  *
- * **只显示,不结算** —— 到点之后卡片变成不可点的「已超时」,但真正把这条提问
+ * **只显示,不结算** —— 到点之后栏位变成不可点的「已超时」,但真正把这条提问
  * 结成 timeout 的是内核自己挂的那张表(`armDeadline`)。UI 抢着发一次 respond
  * 会变成:一次用户没点过的应答,以及两个都自认为是结算方的地方。
  */
@@ -109,33 +111,19 @@ export function formatCountdown(remainingMs: number): string {
 }
 
 /**
- * 已办记录上的时刻,只到分。
+ * 排队时脚注那句话。
  *
- * 已办态要回答的是「这事什么时候收的场」,不是「第几毫秒」—— 秒以下的精度在一张
- * 回看用的记录上只是噪声。拿不到时刻就返回空串,由模板决定要不要留位。
+ * 同一时刻只画一条提问(位置只有一条栏位),但欠账可能有好几条 —— 不说出来,
+ * 用户答完一条看见又冒出一条,会以为自己刚才那一下没生效。
  */
-export function formatSettledAt(timestamp: number | undefined): string {
-  if (!timestamp || !Number.isFinite(timestamp)) return ''
-  const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
-export function interactionOutcomeLabel(outcome: InteractionOutcome): string {
-  switch (outcome) {
-    case 'answered': return '已回答'
-    case 'declined': return '已跳过'
-    case 'timeout': return '已超时'
-    case 'aborted': return '已中止'
-    default: return String(outcome)
-  }
-}
-
-/** 历史态里那一行「你答的是什么」。答案为空(跳过/超时)时返回空串,由模板决定要不要留行。 */
-export function summarizeAnswer(answer: InteractionQuestionAnswer | undefined): string {
-  if (!answer) return ''
-  const parts = [...(answer.selected ?? [])]
-  const freeText = answer.freeText?.trim()
-  if (freeText) parts.push(freeText)
-  return parts.join('、')
+export function interactionFootHint(options: {
+  expired: boolean
+  answered: number
+  total: number
+  queued: number
+}): string {
+  if (options.expired) return '已超时,等待后端结算'
+  const queueNote = options.queued > 0 ? ` · 还有 ${options.queued} 条提问排队` : ''
+  if (options.total > 1) return `${options.answered}/${options.total} 题已选,全部答完才能发送${queueNote}`
+  return `awaiting your answer${queueNote}`
 }

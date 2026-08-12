@@ -69,7 +69,7 @@ describe('interactions store: 提问账本', () => {
     expect(mocks.getPendingInteractions).toHaveBeenCalledTimes(1)
   })
 
-  it('settled 把卡片挪进历史态 —— 答案只有事件里有,反查答不出', async () => {
+  it('settled 当场摘牌,不等那 200ms —— 否则栏位还在要你答一条已经结了的提问', async () => {
     vi.useFakeTimers()
     const store = useInteractionsStore()
     mocks.getPendingInteractions.mockResolvedValue({ success: true, pending: [request()] })
@@ -84,18 +84,27 @@ describe('interactions store: 提问账本', () => {
       answer: { id: 'ask-1', answers: { q1: { selected: ['暖'] } }, outcome: 'answered' } as never,
     })
 
-    // 摘牌是确定的,不等那 200ms —— 否则同一张卡会同时以两副面孔出现。
     expect(store.pendingFor('work-1')).toEqual([])
-    expect(store.settledFor('work-1')).toHaveLength(1)
-    expect(store.settledFor('work-1')[0]?.answer.answers.q1?.selected).toEqual(['暖'])
-    // 历史态要画问题原文,而那时 pending 里已经没有它了。
-    expect(store.settledFor('work-1')[0]?.request.questions[0]?.question).toBe('用哪一套配色?')
 
     await vi.advanceTimersByTimeAsync(250)
     expect(store.pendingFor('work-1')).toEqual([])
   })
 
-  it('到点自结算(没有任何人点过东西)同样把卡片收干净', async () => {
+  it('答完不留痕:账本里不存第二本「上一次怎么收的场」', async () => {
+    const store = useInteractionsStore()
+    mocks.getPendingInteractions.mockResolvedValue({ success: true, pending: [request()] })
+    await store.ensureForSession('work-1')
+
+    store.noteInteractionEvent('work-1', {
+      type: 'interaction:settled',
+      answer: { id: 'ask-1', answers: { q1: { selected: ['暖'] } }, outcome: 'answered' } as never,
+    })
+    expect(store.pendingFor('work-1')).toEqual([])
+    expect(Object.keys(store)).not.toContain('settled')
+    expect(Object.keys(store)).not.toContain('settledFor')
+  })
+
+  it('到点自结算(没有任何人点过东西)同样把栏位收干净', async () => {
     const store = useInteractionsStore()
     mocks.getPendingInteractions.mockResolvedValue({ success: true, pending: [request()] })
     await store.ensureForSession('work-1')
@@ -105,10 +114,9 @@ describe('interactions store: 提问账本', () => {
       answer: { id: 'ask-1', answers: {}, outcome: 'timeout', reason: '无人应答' } as never,
     })
     expect(store.pendingFor('work-1')).toEqual([])
-    expect(store.settledFor('work-1')[0]?.answer.outcome).toBe('timeout')
   })
 
-  it('同一条结算重复到达不写两行历史', async () => {
+  it('同一条结算重复到达是幂等的', async () => {
     const store = useInteractionsStore()
     mocks.getPendingInteractions.mockResolvedValue({ success: true, pending: [request()] })
     await store.ensureForSession('work-1')
@@ -119,7 +127,7 @@ describe('interactions store: 提问账本', () => {
     }
     store.noteInteractionEvent('work-1', settled)
     store.noteInteractionEvent('work-1', settled)
-    expect(store.settledFor('work-1')).toHaveLength(1)
+    expect(store.pendingFor('work-1')).toEqual([])
   })
 
   it('补水重复调用不会把同一条提问贴两遍', async () => {
@@ -158,7 +166,7 @@ describe('interactions store: 提问账本', () => {
     expect(store.pendingFor('work-1')).toHaveLength(1)
   })
 
-  it('两个会话各记各的,切会话不串卡', async () => {
+  it('两个会话各记各的,切会话不串栏位', async () => {
     const store = useInteractionsStore()
     mocks.getPendingInteractions.mockImplementation(async (sessionId: string) => ({
       success: true,
@@ -169,7 +177,6 @@ describe('interactions store: 提问账本', () => {
 
     expect(store.pendingFor('work-1')).toHaveLength(1)
     expect(store.pendingFor('work-2')).toEqual([])
-    expect(store.settledFor('work-2')).toEqual([])
   })
 
   it('交卷按 interactionId + toolCallId 走专用 IPC 面', async () => {
