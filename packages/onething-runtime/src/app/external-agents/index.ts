@@ -15,14 +15,14 @@ import type {
   ExternalAgentSessionLink,
 } from '@onething/runtime/external-agents'
 import { findAgentExecutorDescriptor } from '@onething/runtime/agents'
-import { isAgentPairDmRoom } from '@onething/runtime/collab'
 import { Interaction } from '@onething/core/interaction'
 import type { InteractionAnswer } from '@onething/core/interaction'
 import {
   recordExternalAgentTool,
   recordExternalAgentTurn,
 } from '../collab/external-observability.js'
-import { getSession, getSettings } from '../store.js'
+import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
+import { getSettings } from '../store.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
 import { getStorePath } from '../stores/paths.js'
 import { enforcePermissionPolicy } from '../tools/core/permission-policy.js'
@@ -206,32 +206,10 @@ export async function askExternalAgentPermission(
 // ---------------------------------------------------------------------------
 
 /**
- * 这次提问所在的房间(执行会话 → 它服务的那间房)。与
- * `permission-policy.ts` 的 collab 提醒桥取法逐字一致。
+ * pair 房那道门(「没有人类在场就当场 declined」)已经搬到
+ * `app/interaction/no-human.ts` —— 原生 `ask_user` 是它的第二个消费者,而这条判据
+ * 不允许有第二份手写:漏掉的那一侧会在一间没有人的房里空等。
  */
-function resolveRoomSessionId(sessionId: string): string | undefined {
-  const session = getSession(sessionId) as
-    | { id: string; kind?: string; collab?: { roomSessionId?: string } }
-    | undefined
-  if (!session) return undefined
-  return session.kind === 'room' ? session.id : session.collab?.roomSessionId
-}
-
-/**
- * pair 房 = 两个 agent 的私聊,**没有人类在场**。在那里发起一次提问就是发起一次
- * 空等:没有人会看见卡片,只能等 deadline 到点。所以当场 declined,并把「这里没人
- * 能回答你」直接写给模型 —— 方案 §4 末段、原则 3。
- */
-function noHumanInTheRoom(sessionId: string): boolean {
-  const roomSessionId = resolveRoomSessionId(sessionId)
-  if (!roomSessionId) return false
-  const room = (getSession(roomSessionId) as { room?: Parameters<typeof isAgentPairDmRoom>[0] } | undefined)?.room
-  return isAgentPairDmRoom(room)
-}
-
-const NO_HUMAN_DECLINE_REASON =
-  '这是两个 agent 的私聊,没有人类在场,没有人能回答你的问题。请不要再提问,按你自己的判断继续,并在回答里说明你替对方做了哪个假设。'
-
 export async function askExternalAgentInteraction(
   ask: ExternalAgentInteractionAsk,
 ): Promise<InteractionAnswer> {

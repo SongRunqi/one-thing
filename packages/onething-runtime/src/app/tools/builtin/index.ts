@@ -25,6 +25,7 @@ import { SayTool, registerCollabSendMessageLegacyAlias } from '../../collab/say-
 import { RadioTool } from './radio.js'
 import { PracticeTool } from './practice.js'
 import { TaskTool } from './task.js'
+import { AskUserTool } from './ask-user.js'
 import { BashOutputTool, FartTool, KillBashTool, TimeTool } from '@onething/runtime/tools'
 
 // Web search
@@ -57,6 +58,9 @@ const builtinTools = [
   // 派工(自举差距审计 P0-3)。只在桌面全量档:它开真会话、真花 token、
   // 真在本机跑工具 —— headless 与 readonly 两档都不该有。
   TaskTool,
+  // 提问(E1/E2 交互协议的原生消费者)。同样只在桌面全量档:headless 与 readonly
+  // 两档没有人在屏幕前,注册一个没人能答的提问工具就是在清单里写谎话。
+  AskUserTool,
   TimeTool,
   FartTool,
   // Web tools

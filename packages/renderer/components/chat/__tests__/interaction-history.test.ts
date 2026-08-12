@@ -14,6 +14,7 @@ import {
   deriveInteractionFromToolCall,
   deriveInteractionHistory,
   parseAnswerPairs,
+  readAskUserRecord,
   toQuestionAnswer,
   type InteractionHistoryToolCall,
 } from '../interaction/interaction-history'
@@ -166,6 +167,159 @@ describe('deriveInteractionFromToolCall', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// 原生 ask_user —— 判据走结构化字段,不做文本逆运算
+// ---------------------------------------------------------------------------
+
+/**
+ * 原生工具的 result **不是字符串**:引擎把 `{title, output, metadata}` 整个存进
+ * `toolCalls[].result`(`core/engine/tool-orchestration.ts:827`,真机 jsonl 里
+ * `read`/`write`/`edit` 都是这个形状)。答案在 `metadata` 里,是结构不是话。
+ */
+function askUserCall(overrides: Partial<InteractionHistoryToolCall> = {}): InteractionHistoryToolCall {
+  return {
+    id: 'toolu_native',
+    toolId: 'ask_user',
+    toolName: 'ask_user',
+    status: 'completed',
+    timestamp: T0,
+    endTime: T0 + 12_000,
+    arguments: {
+      questions: [{
+        question: '这一步要不要先备份?',
+        header: '备份',
+        options: [{ label: '先备份', description: '慢一点但稳' }, { label: '直接改' }],
+      }],
+    },
+    result: {
+      title: '用户已回答',
+      output: '用户已回答:「这一步要不要先备份?」→ 先备份',
+      metadata: {
+        interaction: 'ask_user',
+        outcome: 'answered',
+        answers: [{
+          questionId: 'toolu_native:0',
+          question: '这一步要不要先备份?',
+          selected: ['先备份'],
+        }],
+      },
+    },
+    ...overrides,
+  }
+}
+
+describe('readAskUserRecord', () => {
+  it('认的是 metadata.interaction 这个结构标记,不是那句人话', () => {
+    const record = readAskUserRecord(askUserCall().result)
+    expect(record).toEqual({
+      outcome: 'answered',
+      answers: [{ questionId: 'toolu_native:0', question: '这一步要不要先备份?', selected: ['先备份'] }],
+    })
+  })
+
+  it('字符串结果 / 别的工具的 metadata / 认不出的 outcome 一律不认', () => {
+    expect(readAskUserRecord('用户已回答:「A」→ B')).toBeUndefined()
+    expect(readAskUserRecord({ metadata: { path: '/tmp/x' } })).toBeUndefined()
+    expect(readAskUserRecord({ metadata: { interaction: 'ask_user', outcome: '???' } })).toBeUndefined()
+    expect(readAskUserRecord(undefined)).toBeUndefined()
+  })
+
+  it('answers 是垃圾时退成空表,而不是抛', () => {
+    const record = readAskUserRecord({
+      metadata: { interaction: 'ask_user', outcome: 'timeout', reason: '无人应答', answers: 'nope' },
+    })
+    expect(record).toEqual({ outcome: 'timeout', reason: '无人应答', answers: [] })
+  })
+})
+
+describe('deriveInteractionFromToolCall —— 原生 ask_user', () => {
+  it('从结构化 result 重建一张已办卡,origin 是 host-tool', () => {
+    const derived = deriveInteractionFromToolCall(askUserCall(), 'session-1')!
+    expect(derived.request.origin).toBe('host-tool')
+    expect(derived.request.toolCallId).toBe('toolu_native')
+    expect(derived.request.questions[0].id).toBe('toolu_native:0')
+    expect(derived.request.questions[0].options).toHaveLength(2)
+    expect(derived.settledAt).toBe(T0 + 12_000)
+    expect(derived.answer.outcome).toBe('answered')
+    expect(derived.answer.answers['toolu_native:0']).toEqual({ selected: ['先备份'] })
+  })
+
+  it('多选与自由输入原样还原(数组就是数组,不拼成一句再拆回来)', () => {
+    const derived = deriveInteractionFromToolCall(askUserCall({
+      arguments: {
+        questions: [{
+          question: '带上哪几样?',
+          multiSelect: true,
+          allowFreeText: true,
+          options: [{ label: '钥匙' }, { label: '钱包' }, { label: '伞' }],
+        }],
+      },
+      result: {
+        metadata: {
+          interaction: 'ask_user',
+          outcome: 'answered',
+          answers: [{
+            questionId: 'toolu_native:0',
+            question: '带上哪几样?',
+            selected: ['钥匙', '伞'],
+            freeText: '还有充电宝',
+          }],
+        },
+      },
+    }), 'session-1')!
+    expect(derived.answer.answers['toolu_native:0']).toEqual({
+      selected: ['钥匙', '伞'],
+      freeText: '还有充电宝',
+    })
+  })
+
+  /**
+   * 这是原生这一族相对外部那一族**多出来**的能力:outcome 就写在 metadata 里,
+   * 所以跳过 / 超时 / 中止的卡也能跨重载重建,不必只留「答过」的那一种。
+   */
+  it.each(['declined', 'timeout', 'aborted'] as const)('%s 的卡照样重建得出来', outcome => {
+    const derived = deriveInteractionFromToolCall(askUserCall({
+      result: {
+        metadata: { interaction: 'ask_user', outcome, reason: '就这么定了', answers: [] },
+      },
+    }), 'session-1')!
+    expect(derived.answer.outcome).toBe(outcome)
+    expect(derived.answer.reason).toBe('就这么定了')
+    expect(derived.answer.answers).toEqual({})
+  })
+
+  it('questionId 对不上时退到题面原文认回来', () => {
+    const derived = deriveInteractionFromToolCall(askUserCall({
+      result: {
+        metadata: {
+          interaction: 'ask_user',
+          outcome: 'answered',
+          answers: [{ questionId: '换过公式了:0', question: '这一步要不要先备份?', selected: ['直接改'] }],
+        },
+      },
+    }), 'session-1')!
+    expect(derived.answer.answers['toolu_native:0']).toEqual({ selected: ['直接改'] })
+  })
+
+  it('「答过」却一条都对不上题:不画一张「答了什么不知道」的卡', () => {
+    expect(deriveInteractionFromToolCall(askUserCall({
+      result: {
+        metadata: {
+          interaction: 'ask_user',
+          outcome: 'answered',
+          answers: [{ questionId: '别的题:0', question: '完全不同的题', selected: ['X'] }],
+        },
+      },
+    }), 'session-1')).toBeUndefined()
+  })
+
+  it('还在执行中 / 没有结构化 metadata / 题面缺失都不造卡', () => {
+    expect(deriveInteractionFromToolCall(askUserCall({ status: 'executing' }), 's')).toBeUndefined()
+    expect(deriveInteractionFromToolCall(askUserCall({ result: '用户已回答:「A」→ B' }), 's')).toBeUndefined()
+    expect(deriveInteractionFromToolCall(askUserCall({ arguments: undefined }), 's')).toBeUndefined()
+  })
+})
+
 describe('deriveInteractionHistory', () => {
   it('扫全会话,按提问时间排', () => {
     const messages = [
@@ -176,6 +330,16 @@ describe('deriveInteractionHistory', () => {
     ]
     const history = deriveInteractionHistory(messages, 'session-1')
     expect(history.map(entry => entry.request.id)).toEqual(['early', 'late'])
+  })
+
+  it('两族工具混在一条会话里,同一本历史都收得住', () => {
+    const messages = [
+      { toolCalls: [askCall({ id: 'external', timestamp: T0 })] },
+      { toolCalls: [askUserCall({ id: 'native', timestamp: T0 + 100 })] },
+    ]
+    const history = deriveInteractionHistory(messages, 'session-1')
+    expect(history.map(entry => entry.request.id)).toEqual(['external', 'native'])
+    expect(history.map(entry => entry.request.origin)).toEqual(['external-agent', 'host-tool'])
   })
 
   it('没消息 / 没会话 id 时是空表', () => {

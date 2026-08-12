@@ -23,6 +23,7 @@ export * from "./bash-classifier.js";
 export * from "./builtin/time.js";
 export * from "./builtin/time-runtime.js";
 export * from "./builtin/fart.js";
+export * from "./builtin/ask-user.js";
 export * from "./builtin/variable.js";
 export * from "./builtin/goal.js";
 export * from "./builtin/board.js";

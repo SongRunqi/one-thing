@@ -1002,7 +1002,8 @@ interface InteractionCardEntry {
  *  1. `pendingFor` —— 「此刻还欠谁一个回答」,来自反查,唯一真值;
  *  2. `settledFor` —— 「刚才这条是怎么收的场」,来自结算事件的转达,只活在本窗口;
  *  3. `deriveInteractionHistory` —— 「上一次(哪怕是上个月)我答的是什么」,从消息里
- *     那次 AskUserQuestion 工具调用推出来,**跨重载、跨重开会话存活**。
+ *     那次提问工具调用推出来(外部的 AskUserQuestion 与原生的 ask_user 两族都认),
+ *     **跨重载、跨重开会话存活**。
  *
  * 第三个来源补的正是第二个来源的短命:窗口一重载,`settled` 那本账就空了,卡片整张
  * 消失,用户回看不到自己选过哪条路。它不是第四本账 —— 它读的是消息本身,答案本来就

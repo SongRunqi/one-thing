@@ -328,6 +328,33 @@ export namespace Interaction {
     return true
   }
 
+  /**
+   * **发起方**自己收回一次提问(回合被 abort、工具被取消)。
+   *
+   * 与 respond / decline 的区别是「谁在说话」:那两条是应答方从某条传输面回来的,
+   * 所以必须过通道亲和;这一条是当初调 `ask` 的那段代码自己撤回它,没有第二方
+   * 可冒充 —— 照搬通道亲和只会让「回合已经停了」这件事被自己的通道挡在门外,
+   * 于是工具永远等不到收场。
+   *
+   * 收场是 `aborted`,与会话清理同一种 —— 因为它就是同一件事的更小粒度版本:
+   * 那条回合不在了,等它的这次提问也就没有人会答了。
+   */
+  export function abort(input: {
+    sessionId: string
+    interactionId?: string
+    toolCallId?: string
+    reason?: string
+  }): boolean {
+    const session = getSession(input.sessionId)
+    const pending = resolvePending(session, input)
+    if (!pending) {
+      // 已经收场了(用户抢在 abort 之前答完)—— 幂等的 no-op,不是错误。
+      return false
+    }
+    settle(session, pending, 'aborted', {}, input.reason || DEFAULT_INTERACTION_ABORTED_REASON)
+    return true
+  }
+
   function checkChannelAffinity(pending: PendingEntry, channel?: string): boolean {
     const expectedChannel = pending.request.targetChannel || 'ipc'
     const responseChannel = channel || 'ipc'
