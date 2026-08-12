@@ -65,6 +65,11 @@ jobs:
         run: bun run build && bunx electron-builder --${{ matrix.platform }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macos-latest 是 arm64 runner,只有 7GB 内存,Node 据此把 old-space 定在
+          # ~2GB —— v1.1.7 的 renderer 打包正好撞上去(FATAL: Ineffective
+          # mark-compacts near heap limit,死在 2043MB)。Linux/Windows runner 有
+          # 16GB,默认堆更大,所以只有 mac 挂。显式抬到 4GB,三个平台一视同仁。
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: List release artifacts
         shell: bash
