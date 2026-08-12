@@ -271,9 +271,9 @@ export function createVariableTool(
 ): Tool.Info<typeof VariableParameters, VariableMetadata> {
 	return Tool.define<typeof VariableParameters, VariableMetadata>("variable", {
 		name: "Variable",
-		description: `Manage context variables - a named board of state that outlives this turn.
+		description: `Read and manage context variables - the session's board of named runtime facts and kept settings.
 
-Use this freely and proactively: whenever you learn or decide something later turns will need - what you're working on, a target, a status, a list you're accumulating - set it the moment you have it, and keep it current as things change. Nothing you record has to be rediscovered.
+The board is context to read, not a place to park your own working state. System variables (workdir, note dirs, background_jobs, git_branch, ...) are published by the system; the rest are values the user asked to have kept. Write when the user asks for something to be kept or changed, or when you are operating a lever the board owns such as workdir - not to record your progress, findings, or intermediate results, which belong in your reply or in notes.
 
 state=true is the difference between "on the board" and "in front of you": those variables arrive in full in every <context-update> block from then on. Everything else stays on the board and out of your context until you read it - keys lists every name that exists, get reads one back in full.
 
@@ -288,8 +288,8 @@ A variable has a typed value (string, number, bool, list, map, set), an optional
 
 		parameters: VariableParameters,
 
-		// Ordinary variables are the session's live state board and stay
-		// frictionless — no effect, no prompt. A capability variable is different:
+		// Ordinary variables are plain entries on the session's context board and
+		// stay frictionless — no effect, no prompt. A capability variable is different:
 		// its value is a directory the system acts on, so repointing one is a
 		// proposal the user approves, not something that happens silently.
 		analyze(args) {

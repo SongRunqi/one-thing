@@ -16,12 +16,13 @@ const DEFAULT_OPTIONS = {
 type RenderOptions = { collapseHome: boolean; maxValueLength: number; now: number }
 
 /**
- * state 变量老到这个岁数就带一句常量提醒。它每回合都在模型眼前,忘掉的旧状态
- * 正是污染上下文的那一半。标记文本里**不放实时年龄**:跨过阈值时字节只变一次
- * (一次 `<context-update>` 重发),而不是每天变一次。
+ * state 变量老到这个岁数就带一句常量提醒。它每回合都在模型眼前,一个很久没动过
+ * 的值未必还成立,标出来是为了让模型别把它当既成事实用——**不是**叫模型去维护
+ * 这块板(板上的值归系统与用户,模型不替他们代管)。标记文本里**不放实时年龄**:
+ * 跨过阈值时字节只变一次(一次 `<context-update>` 重发),而不是每天变一次。
  */
 const STALE_AFTER_MS = 14 * 24 * 60 * 60 * 1000
-const STALE_MARKER = 'unchanged for 14+ days — update or delete if no longer true'
+const STALE_MARKER = 'unchanged for 14+ days — may be out of date'
 
 function collapse(value: string, home: string): string {
   if (!home || !value.startsWith(home)) return value

@@ -183,14 +183,14 @@ describe('buildWillingnessPrompt', () => {
 
   /**
    * 判定薄档(collab-turn-protocol-and-identity.md D.1)。判定是一次**零工具**的
-   * 裸 generate:`<your_tools>`、状态板、`<board>` 三段对它而言字字是假话 ——
-   * 它此刻手上一个工具都没有,却被告知"重活立卡、状态板随时可写"。
+   * 裸 generate:`<your_tools>`、变量板、`<board>` 三段对它而言字字是假话 ——
+   * 它此刻手上一个工具都没有,却被告知"重活立卡、变量板随时可读"。
    */
-  it('薄档:判定的 system 里没有工具面、状态板与看板段', () => {
+  it('薄档:判定的 system 里没有工具面、变量板与看板段', () => {
     const { system } = buildWillingnessPrompt(base)
     expect(system).not.toContain('<your_tools>')
     expect(system).not.toContain('<board>')
-    expect(system).not.toContain('state board')
+    expect(system).not.toContain('context-variable board')
     expect(system).not.toContain('`board` tool')
     // 场子、花名册、发送机制仍在:判定要知道自己在哪、有谁、开口意味着什么。
     expect(system).toContain('<where_you_are>')

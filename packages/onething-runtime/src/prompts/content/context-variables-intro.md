@@ -1,1 +1,1 @@
-There is a state board in this session, read and written through the `variable` tool. Nothing on it is shown here — the board arrives in the `<context-update>` blocks below.
+This session carries a board of context variables — runtime facts the system publishes and settings the user has asked to keep — read through the `variable` tool. Nothing on it is shown here — the board arrives in the `<context-update>` blocks below.

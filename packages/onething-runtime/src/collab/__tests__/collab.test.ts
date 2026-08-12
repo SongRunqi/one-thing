@@ -846,7 +846,7 @@ describe('buildCollabRoomContext', () => {
     })
     expect(context).not.toContain('<your_tools>')
     expect(context).not.toContain('<board>')
-    expect(context).not.toContain('state board')
+    expect(context).not.toContain('context-variable board')
     // 场子与花名册仍然要在:判定要知道自己在哪、有谁。
     expect(context).toContain('<where_you_are>')
     expect(context).toContain('<room name="官网改版项目组">')
@@ -866,9 +866,9 @@ describe('buildCollabRoomContext', () => {
  * `<your_cards>` 已退役(agent-self-state-variables.md §4.4):在飞的卡改由
  * `my_cards` 变量承载,格式与"不指挥"的纪律钉在
  * variables/__tests__/agent-self.test.ts。这里守的是它留下的两个洞:
- * 手写那一段真的没了,以及状态板这件事在群房里被说了出来。
+ * 手写那一段真的没了,以及变量板这件事在群房里被说了出来。
  */
-describe('state board fact (P3 群聊解禁变量通道)', () => {
+describe('variable board fact (P3 群聊解禁变量通道)', () => {
   it('no longer hand-writes the in-flight cards into the room note', () => {
     const context = buildCollabRoomContext({
       self: AGENTS[1],
@@ -879,18 +879,21 @@ describe('state board fact (P3 群聊解禁变量通道)', () => {
     expect(context).not.toContain('you are executing it in a work session')
   })
 
-  it('states that the state board exists here, without telling the agent to use it', () => {
+  it('states that the variable board exists here, without telling the agent to use it', () => {
     const context = buildCollabRoomContext({
       self: AGENTS[1],
       members: AGENTS,
       roomName: '官网改版项目组',
     })
-    expect(context).toContain('You have a state board here too')
+    expect(context).toContain('The context-variable board is here too')
     expect(context).toContain('`variable` tool')
     // 只陈述事实,不指挥(roster 铁律 + W22 的教训:督促换来废话行为)。
     expect(context).not.toContain('remember to')
     expect(context).not.toContain('you should')
     expect(context).not.toContain('make sure to')
+    // 变量不再承担状态语义:这句只说板在,不再兜售"存这儿能活过摘要"。
+    expect(context).not.toContain('state board')
+    expect(context).not.toContain('re-sent in full every turn')
   })
 
   it('keeps the persona verbatim in front of the workspace', () => {

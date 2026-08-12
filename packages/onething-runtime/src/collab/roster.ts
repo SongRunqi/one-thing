@@ -4,23 +4,21 @@ import { formatCollabAgentHandle } from "./handles.js";
 import type { CollabAgentLike } from "./types.js";
 
 /**
- * 状态板的一句事实(agent-self-state-variables.md §4.3)。
+ * 变量板的一句事实(agent-self-state-variables.md §4.3)。
  *
  * 群房此前把 `context-variables` 与 `context-update-convention` 一起禁掉了,
  * 于是模型**握着 `variable` 工具、却看不到任何变量的值**——工具在,数据不在。
  * 解禁之后这句话补上另一半:这个场子里那块板也在。
  *
  * 只陈述事实,不指挥(roster 铁律):不写"聊完记得记下来"。W22 的教训是措辞层
- * 的督促换来的是废话行为,而这块板值不值得写,agent 自己看得见就会判断。
+ * 的督促换来的是废话行为,而这块板值不值得读,agent 自己看得见就会判断。
+ *
+ * 曾经还跟了一句「历史长了会被摘要压掉,而板每一轮都整份重发」——那是在卖
+ * 这块板的耐久性,等于变着法儿说"把状态存这儿"。变量不再承担状态语义之后,
+ * 这半句连同它的暗示一并删掉:板是可读的运行时信息,不是 agent 的存档位。
  */
-const STATE_BOARD_FACT =
-	"You have a state board here too — the `variable` tool reads and writes it."
-	// 补的仍然是**属性**,不是指令(roster 铁律)。
-	//
-	// 曾经写的是「唯一一个能原样跨过一个回合的东西」——那在投影时代成立(历史每轮
-	// 重拼、说出去的话一天后退化成摘要),v3 之后不再成立:整条历史都留着。现在留下
-	// 的是那条**仍然为真**的区别:历史长了会被摘要压掉,而状态板每一轮都整份重发。
-	+ " Long history gets folded into summaries; the board is re-sent in full every turn.";
+const VARIABLE_BOARD_FACT =
+	"The context-variable board is here too — the `variable` tool reads it.";
 
 export interface BuildCollabRoomContextOptions {
 	self: CollabAgentLike;
@@ -408,9 +406,9 @@ export function buildCollabRoomContext(
 					// 事实句,不给动作建议:「该 board start」归 `<rules>`(agent-rules.ts),
 					// 两处各写一版动作指引会直接打架(一致性审计 D.2)。
 					"Sizeable work belongs on the board, not inside a room turn.",
-					// 状态板在这个场子里也有(P3 解禁了变量通道)。此前 `<your_cards>` 那段
+					// 变量板在这个场子里也有(P3 解禁了变量通道)。此前 `<your_cards>` 那段
 					// 手写的在飞卡片就在这个位置,现在由 `my_cards` 变量从同一块板上产出。
-					STATE_BOARD_FACT,
+					VARIABLE_BOARD_FACT,
 					"</your_tools>",
 				]),
 	]

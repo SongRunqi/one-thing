@@ -106,7 +106,7 @@ describe('the state flag decides everything', () => {
     ], { now })).toBe([
       '<var name="fresh" state="true">a</var>',
       '<var name="no_timestamp" state="true">c</var>',
-      '<var name="old" state="true" stale="unchanged for 14+ days — update or delete if no longer true">b</var>',
+      '<var name="old" state="true" stale="unchanged for 14+ days — may be out of date">b</var>',
     ].join('\n'))
   })
 })

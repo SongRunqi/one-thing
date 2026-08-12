@@ -1,15 +1,15 @@
 {
   "minimal": {
-    "totalChars": 1233,
-    "totalTokens": 353,
+    "totalChars": 1268,
+    "totalTokens": 363,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 739,
-        "estimatedTokens": 212
+        "chars": 774,
+        "estimatedTokens": 222
       },
       "os": {
         "chars": 184,
@@ -18,16 +18,16 @@
     }
   },
   "desktop-full": {
-    "totalChars": 2876,
-    "totalTokens": 822,
+    "totalChars": 2988,
+    "totalTokens": 854,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 554,
-        "estimatedTokens": 159
+        "chars": 589,
+        "estimatedTokens": 169
       },
       "workdir": {
         "chars": 289,
@@ -42,22 +42,22 @@
         "estimatedTokens": 62
       },
       "skills": {
-        "chars": 1241,
-        "estimatedTokens": 355
+        "chars": 1318,
+        "estimatedTokens": 377
       },
       "os": {
-        "chars": 400,
-        "estimatedTokens": 115
+        "chars": 477,
+        "estimatedTokens": 137
       },
       "context-variables": {
-        "chars": 214,
-        "estimatedTokens": 62
+        "chars": 291,
+        "estimatedTokens": 84
       }
     }
   },
   "codex-split": {
-    "totalChars": 2626,
-    "totalTokens": 751,
+    "totalChars": 2661,
+    "totalTokens": 761,
     "segments": {
       "core": {
         "chars": 492,
@@ -68,8 +68,8 @@
         "estimatedTokens": 15
       },
       "runtime-context": {
-        "chars": 565,
-        "estimatedTokens": 162
+        "chars": 600,
+        "estimatedTokens": 172
       },
       "workdir": {
         "chars": 487,
@@ -86,8 +86,8 @@
     }
   },
   "voice": {
-    "totalChars": 1872,
-    "totalTokens": 535,
+    "totalChars": 1907,
+    "totalTokens": 545,
     "segments": {
       "core": {
         "chars": 492,
@@ -98,8 +98,8 @@
         "estimatedTokens": 15
       },
       "voice": {
-        "chars": 1052,
-        "estimatedTokens": 301
+        "chars": 1087,
+        "estimatedTokens": 311
       },
       "workdir": {
         "chars": 272,
@@ -112,16 +112,16 @@
     }
   },
   "agents-md": {
-    "totalChars": 1721,
-    "totalTokens": 492,
+    "totalChars": 1756,
+    "totalTokens": 502,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 554,
-        "estimatedTokens": 159
+        "chars": 589,
+        "estimatedTokens": 169
       },
       "workdir": {
         "chars": 672,
@@ -134,16 +134,16 @@
     }
   },
   "windows": {
-    "totalChars": 1202,
-    "totalTokens": 344,
+    "totalChars": 1237,
+    "totalTokens": 354,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 538,
-        "estimatedTokens": 154
+        "chars": 573,
+        "estimatedTokens": 164
       },
       "workdir": {
         "chars": 169,
@@ -156,16 +156,16 @@
     }
   },
   "linux": {
-    "totalChars": 1149,
-    "totalTokens": 329,
+    "totalChars": 1184,
+    "totalTokens": 339,
     "segments": {
       "core": {
         "chars": 492,
         "estimatedTokens": 141
       },
       "agent": {
-        "chars": 534,
-        "estimatedTokens": 153
+        "chars": 569,
+        "estimatedTokens": 163
       },
       "workdir": {
         "chars": 120,
