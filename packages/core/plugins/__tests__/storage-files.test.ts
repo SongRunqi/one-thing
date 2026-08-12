@@ -26,6 +26,7 @@ import {
   describePluginFilesPathProblem,
   describePluginPermission,
   getCorePluginScratchDir,
+  getPluginFilesRefusalKind,
   type CorePluginFilesUsage,
   type CreateCorePluginFilesOptions,
 } from '@onething/core/plugins'
@@ -457,6 +458,36 @@ describe('F1 files — the external root is a declared, user-chosen folder', () 
       resolveExternalRoot: () => filePath,
     })
     expect(() => notADir.files.exists('x.md', { root: 'external' })).toThrow(/not a directory/)
+  })
+
+  it('tags not-configured with a refusal kind: unconfigured vs unreachable (审查第 7 条)', () => {
+    const external = tempRoot('onething-plugin-external-')
+    const filePath = path.join(external, 'a-file')
+    fs.writeFileSync(filePath, 'x')
+
+    const kindOf = (make: () => void): string | undefined => {
+      try {
+        make()
+      } catch (error) {
+        return getPluginFilesRefusalKind(error)
+      }
+      throw new Error('expected a throw')
+    }
+
+    // 从没配置:引导去设置里选。
+    const unpicked = makeFiles({ externalRootDeclared: true, resolveExternalRoot: () => undefined })
+    expect(kindOf(() => unpicked.files.exists('x.md', { root: 'external' }))).toBe('unconfigured')
+
+    // 配置过但够不着(目录没了 / 被文件占位):绝不能翻译成"从没配置"——
+    // 那会诱导用户另选新目录,记忆从此分叉。
+    const gone = makeFiles({
+      externalRootDeclared: true,
+      resolveExternalRoot: () => path.join(external, 'does-not-exist'),
+    })
+    expect(kindOf(() => gone.files.exists('x.md', { root: 'external' }))).toBe('unreachable')
+
+    const notADir = makeFiles({ externalRootDeclared: true, resolveExternalRoot: () => filePath })
+    expect(kindOf(() => notADir.files.exists('x.md', { root: 'external' }))).toBe('unreachable')
   })
 
   it('reads and writes the user folder, applies the same path judgement, and does not meter it', () => {

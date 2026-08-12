@@ -589,11 +589,16 @@ export {
   PLUGIN_STORAGE_EXTERNAL_ROOT_PERMISSION_NOTE,
   createCorePluginFiles,
   describePluginFilesPathProblem,
+  getPluginFilesFaultLane,
+  getPluginFilesRefusalKind,
 } from './storage-files.js'
 export type {
   CorePluginFileEntry,
   CorePluginFiles,
+  CorePluginFilesFaultLane,
   CorePluginFilesOptions,
+  CorePluginFilesReadOptions,
+  CorePluginFilesRefusalKind,
   CorePluginFilesRoot,
   CorePluginFilesUsage,
   CorePluginStorageWithFiles,

@@ -863,6 +863,16 @@ describe('memory_document —— 正文整块替换', () => {
     expect(unconfigured.files.list()).toEqual([])
   })
 
+  it('配置过但够不着 ≠ 从没配置:不引导重选目录(审查第 7 条)', async () => {
+    // 外接盘未挂载/目录被移动的形态:配置值在,statSync 失败。
+    const unreachable = createHarness({ external: path.join(makeTempDir('memory-wiki-'), 'unmounted') })
+    const refused = await write(unreachable, { topic: 'p', content: 'x' })
+    expect(refused.output).toContain('访问不到')
+    expect(refused.output).toContain('不要另选新目录')
+    // 旧文案(引导去设置里"选一个")绝不能出现 —— 那正是记忆分叉的诱因。
+    expect(refused.output).not.toContain('记忆目录还没配置')
+  })
+
   it('写正文让注入缓存失效 —— 下一轮就看得见这个主题', async () => {
     const external = makeTempDir('memory-wiki-')
     const harness = createHarness({ external })

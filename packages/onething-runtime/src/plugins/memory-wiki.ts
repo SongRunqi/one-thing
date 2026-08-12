@@ -33,6 +33,7 @@
 import { z } from 'zod'
 import {
   describePluginFilesPathProblem,
+  getPluginFilesRefusalKind,
   type CorePluginFiles,
   type CorePluginFilesOptions,
 } from '@onething/core/plugins'
@@ -940,6 +941,16 @@ export function describeOnethingMemoryStorageRefusal(error: unknown): string | n
   const detail = error instanceof Error ? error.message : String(error)
   switch (code) {
     case 'not-configured':
+      /**
+       * 同一个 code 两种真相(2026-08-12 审查第 7 条):「从没配置」引导去设置里选;
+       * 「配置过但此刻够不着」(外接盘未挂载/目录被移动)**绝不能**引导重选 ——
+       * 新根一开张记忆就分叉:新事实进新根,旧根挂载回来后静默回归,两套各自漂移。
+       */
+      if (getPluginFilesRefusalKind(error) === 'unreachable') {
+        return `记忆目录配置过,但此刻访问不到(${detail})。`
+          + '常见原因是外接盘/同步盘未挂载,或目录被移动改名。**不要另选新目录**(会让记忆分叉):'
+          + '目录恢复可及后记忆自动回来;确实搬家了,再到「设置 → 插件 → Memory」把路径改成新家。'
+      }
       return '记忆目录还没配置。请先在「设置 → 插件 → Memory → 记忆目录」里选一个目录,'
         + '再重新调用 —— 在那之前不会写到任何别的地方(不做家目录兜底,免得将来搬家时记忆散在两处)。'
     case 'not-declared':

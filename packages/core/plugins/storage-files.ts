@@ -273,6 +273,34 @@ export function getPluginFilesFaultLane(error: unknown): CorePluginFilesFaultLan
 }
 
 /**
+ * `not-configured` 的两种真相(2026-08-12 审查第 7 条):
+ *
+ *  - `unconfigured`:**从没配置过**(或配置值不成形)。正确的出路是让用户去
+ *    设置里选目录。
+ *  - `unreachable`:**配置过但此刻够不着**(外接盘未挂载、目录被移动/换名)。
+ *    此时诱导用户"重新选一个"是最坏的建议 —— 新根一开张记忆就分叉了。
+ *
+ * 同一个 code 走两条人话,靠这个标分流。机制与 fault-lane 同款(Symbol.for,
+ * 不进序列化、不与插件自挂字段撞名)。
+ */
+export type CorePluginFilesRefusalKind = 'unconfigured' | 'unreachable'
+
+const FILES_REFUSAL_KIND = Symbol.for('onething.plugin.files.refusal-kind')
+
+function withRefusalKind<E>(error: E, kind: CorePluginFilesRefusalKind): E {
+  if (!error || typeof error !== 'object') return error
+  Object.defineProperty(error, FILES_REFUSAL_KIND, { value: kind, configurable: true })
+  return error
+}
+
+/** 读标。未标记 → `undefined`(老错误/别处抛的 not-configured 按 unconfigured 的旧文案走)。 */
+export function getPluginFilesRefusalKind(error: unknown): CorePluginFilesRefusalKind | undefined {
+  if (!error || typeof error !== 'object') return undefined
+  const kind = (error as Record<symbol, unknown>)[FILES_REFUSAL_KIND]
+  return kind === 'unconfigured' || kind === 'unreachable' ? kind : undefined
+}
+
+/**
  * 插件侧过错的快捷抛法。**与根无关**:路径穿越、软链逃逸、未声明权限、参数写错 ——
  * 这些在用户的目录里也一样是插件的行为,不能借"外根 = 用户地盘"混过熔断账。
  */
@@ -475,27 +503,40 @@ export function createCorePluginFiles(options: CreateCorePluginFilesOptions): Co
     }
     const configured = options.resolveExternalRoot?.()
     if (typeof configured !== 'string' || !configured.trim()) {
-      throw new PluginStorageError(
+      throw withRefusalKind(new PluginStorageError(
         'not-configured',
         `Plugin "${pluginId}" has no external folder selected yet (the user picks it in the plugin settings)`,
-      )
+      ), 'unconfigured')
     }
     const resolved = path.resolve(configured.trim())
     if (!path.isAbsolute(resolved)) {
-      throw new PluginStorageError('not-configured', `The external folder for "${pluginId}" must be an absolute path`)
+      throw withRefusalKind(
+        new PluginStorageError('not-configured', `The external folder for "${pluginId}" must be an absolute path`),
+        'unconfigured',
+      )
     }
     let stat: fs.Stats
     try {
       stat = fs.statSync(resolved)
     } catch (error) {
-      throw new PluginStorageError(
+      /**
+       * **「配置过但现在够不着」≠「从没配置过」**(2026-08-12 审查第 7 条)。
+       * 外接盘未挂载、目录被移动时走的是这一支 —— 把它说成"还没配置,请去
+       * 设置里选一个"会诱导用户另选新目录,记忆从此分叉(新事实进新根,旧根
+       * 挂载回来后静默回归)。code 维持 not-configured(下游 catch 口径不变、
+       * 熔断豁免不变),但打上 kind 标让消息层分得开两种真相。
+       */
+      throw withRefusalKind(new PluginStorageError(
         'not-configured',
         `The external folder for "${pluginId}" does not exist: ${resolved}`,
         { cause: error },
-      )
+      ), 'unreachable')
     }
     if (!stat.isDirectory()) {
-      throw new PluginStorageError('not-configured', `The external folder for "${pluginId}" is not a directory: ${resolved}`)
+      throw withRefusalKind(
+        new PluginStorageError('not-configured', `The external folder for "${pluginId}" is not a directory: ${resolved}`),
+        'unreachable',
+      )
     }
     return resolved
   }
