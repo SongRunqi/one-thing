@@ -115,6 +115,40 @@ describe('ask_user 装配接线', () => {
     expect(Interaction.getPending(SESSION)).toEqual([])
   })
 
+  /**
+   * 答案的**唯一**去处是工具结果与那张卡,不是聊天流里的一条 user message。
+   *
+   * 这条钉的是一个「没有」:普通会话里作答,总线上只该出现 `interaction:*` 两条,
+   * 一条 `message:*` 都不许有。合成一条消息会同时坏两件事 —— 屏幕上冒出一句用户
+   * 从没打过的话,而模型那一侧会把同一个答案读两遍(tool result 里已经有了)。
+   *
+   * 协作房那条链不在这里:房里的系统行走 `postSystemLine`(display-only,不进模型
+   * 投影),它是一盏灯不是一句发言,与本条不冲突。
+   */
+  it('作答不往聊天流里合成消息:总线上只有 interaction:* 两条', async () => {
+    const registry = await registryWithAskUser()
+    const pending = registry.executeTool('ask_user', ARGS, {
+      sessionId: SESSION,
+      messageId: MESSAGE,
+      toolCallId: TOOL_CALL,
+    })
+
+    await waitForPending()
+    Interaction.respond({
+      sessionId: SESSION,
+      toolCallId: TOOL_CALL,
+      answers: { [`${TOOL_CALL}:0`]: { selected: ['先备份'] } },
+    })
+    const result = await pending
+
+    expect(emitted.map(entry => entry.event.type))
+      .toEqual(['interaction:requested', 'interaction:settled'])
+    // 一条 message:* 都没有 —— 「答案变成一条用户消息气泡」在这里就被挡住。
+    expect(emitted.some(entry => entry.event.type.startsWith('message:'))).toBe(false)
+    // 而模型那一侧不缺这个答案:它写在工具结果的正文里(下一轮请求体读的就是它)。
+    expect((result.data as { output: string }).output).toContain('先备份')
+  })
+
   it('用户跳过:declined 是一次正常的工具成功,理由写给模型', async () => {
     const registry = await registryWithAskUser()
     const pending = registry.executeTool('ask_user', ARGS, {
