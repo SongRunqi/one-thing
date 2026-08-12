@@ -121,9 +121,10 @@ afterEach(() => {
 })
 
 describe('memory 插件 —— 真内核集成', () => {
-  it('装上真 api 就有两个工具与一个注入面', () => {
+  it('装上真 api 就有三个工具与一个注入面', () => {
     const kernel = createRealApi({ external: makeTempDir('memory-int-wiki-') })
-    expect([...kernel.registered.keys()].sort()).toEqual(['memory_query', 'memory_write'])
+    expect([...kernel.registered.keys()].sort())
+      .toEqual(['memory_document', 'memory_query', 'memory_write'])
     expect(kernel.inject()).toMatchObject({ role: 'developer' })
   })
 
@@ -150,6 +151,31 @@ describe('memory 插件 —— 真内核集成', () => {
 
     // 索引注入看得见它。
     expect(kernel.inject()!.content).toContain('people/张三')
+  })
+
+  it('走宿主执行路径写正文:两区结构真落盘,便签仍追加得进去', async () => {
+    const external = makeTempDir('memory-int-wiki-')
+    const kernel = createRealApi({ external })
+
+    await kernel.run('memory_write', { topic: 'arch', content: '老便签' })
+    const written = await kernel.run('memory_document', { topic: 'arch', content: '# 全貌\n\n三层。' })
+    expect(written.output).toContain('整块替换')
+
+    const page = fs.readFileSync(path.join(external, 'arch.md'), 'utf-8')
+    expect(page).toContain('# 全貌')
+    expect(page).toContain('## 便签')
+    expect(page).toContain('- 老便签(')          // 升级没弄丢它
+    expect(page.indexOf('# 全貌')).toBeLessThan(page.indexOf('## 便签'))
+
+    // 便签区仍在末尾 —— 追加落得进去,而且落在最后一行。
+    await kernel.run('memory_write', { topic: 'arch', content: '新便签' })
+    const after = fs.readFileSync(path.join(external, 'arch.md'), 'utf-8')
+    expect(after.trimEnd().split('\n').at(-1)).toContain('- 新便签(')
+
+    // 索引标了"有正文",query 把正文放在便签前面。
+    expect(fs.readFileSync(path.join(external, ONETHING_MEMORY_INDEX_FILE), 'utf-8')).toContain('〔正文〕全貌')
+    const found = await kernel.run('memory_query', { query: 'arch' })
+    expect(found.output.indexOf('三层。')).toBeLessThan(found.output.indexOf('新便签'))
   })
 
   it('manifest 少了 storage:external-root 就写不进去 —— 声明门是真的', async () => {

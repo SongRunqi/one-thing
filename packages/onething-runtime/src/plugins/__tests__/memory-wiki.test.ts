@@ -19,25 +19,42 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createCorePluginFiles, type CorePluginFiles } from '@onething/core/plugins'
 import {
   ONETHING_MEMORY_INDEX_CACHE_TTL_MS,
+  ONETHING_MEMORY_INDEX_DOC_MARKER,
   ONETHING_MEMORY_INDEX_FILE,
   ONETHING_MEMORY_INDEX_INJECTION_MAX_BYTES,
   ONETHING_MEMORY_INDEX_SUMMARY_ITEMS,
   ONETHING_MEMORY_MANIFEST,
   ONETHING_MEMORY_MAX_CONTENT_CHARS,
+  ONETHING_MEMORY_MAX_DOCUMENT_CHARS,
+  ONETHING_MEMORY_NOTES_HEADING,
   ONETHING_MEMORY_QUERY_LOG_FILE,
+  ONETHING_MEMORY_QUERY_MAX_BODY_CHARS,
+  ONETHING_MEMORY_SCHEMA_DOC,
+  ONETHING_MEMORY_SCHEMA_DOC_V1,
+  ONETHING_MEMORY_SCHEMA_DOC_V2_SECTION,
   ONETHING_MEMORY_SCHEMA_FILE,
+  ONETHING_MEMORY_SCHEMA_VERSION,
   buildOnethingMemoryIndexFragment,
+  buildOnethingMemoryQuerySection,
+  buildOnethingMemorySchemaUpgrade,
   clampOnethingMemoryUtf8,
   condenseOnethingMemoryIndexItem,
+  countOnethingMemoryNotes,
+  describeOnethingMemoryDocumentProblem,
   describeOnethingMemoryTopicProblem,
   formatOnethingMemoryDate,
   formatOnethingMemoryNoteLine,
   normalizeOnethingMemoryTopic,
   parseOnethingMemoryIndex,
+  parseOnethingMemoryPage,
+  parseOnethingMemorySchemaVersion,
   registerOnethingMemoryPlugin,
   renderOnethingMemoryIndex,
+  renderOnethingMemoryPage,
   selectOnethingMemoryTopics,
+  summarizeOnethingMemoryDocument,
   tokenizeOnethingMemoryQuery,
+  upsertOnethingMemoryIndexDoc,
   upsertOnethingMemoryIndexEntry,
   type OnethingMemoryPluginApi,
   type OnethingMemoryPromptContextFragment,
@@ -134,6 +151,11 @@ async function write(
 ) {
   const tool = harness.tools.get('memory_write')!
   return tool.execute(args, { sessionId: 's1', messageId: 'm1', toolCallId: 't1', ...ctx })
+}
+
+async function document(harness: Harness, args: { topic: string; content: string }) {
+  const tool = harness.tools.get('memory_document')!
+  return tool.execute(args, { sessionId: 's1', messageId: 'm1', toolCallId: 't1' })
 }
 
 async function query(harness: Harness, q: string) {
@@ -312,6 +334,180 @@ describe('注入体积与文案', () => {
   })
 })
 
+/* ── 一页两区 ─────────────────────────────────────────────────────────────── */
+
+describe('页面结构:正文区 + 便签区', () => {
+  it('新形态:标题 / 正文 / 便签三段各就各位', () => {
+    const page = parseOnethingMemoryPage(
+      `# p\n\n三层架构:核心、装配、宿主。\n\n${ONETHING_MEMORY_NOTES_HEADING}\n\n- 一(2026-08-12)\n`,
+    )
+    expect(page.title).toBe('# p')
+    expect(page.body).toBe('三层架构:核心、装配、宿主。')
+    expect(page.notes).toBe('- 一(2026-08-12)')
+    expect(page.structured).toBe(true)
+  })
+
+  it('旧形态(裸便签、无节标题):整页算便签,正文为空', () => {
+    const page = parseOnethingMemoryPage('# p\n\n- 一(2026-08-12)\n- 二(2026-08-12)\n')
+    expect(page.structured).toBe(false)
+    expect(page.body).toBe('')
+    expect(page.notes).toBe('- 一(2026-08-12)\n- 二(2026-08-12)')
+  })
+
+  it('旧形态里用户手写的散文也算便签 —— 分不清就不猜,选不丢字节的那一边', () => {
+    // 猜错了把它当正文,下一次 memory_document 就会整块替换掉它。
+    const page = parseOnethingMemoryPage('# p\n\n这段是我自己写的。\n\n- 一(2026-08-12)\n')
+    expect(page.body).toBe('')
+    expect(page.notes).toContain('这段是我自己写的。')
+    expect(page.notes).toContain('- 一(2026-08-12)')
+  })
+
+  it('空页 / 无标题页不炸', () => {
+    expect(parseOnethingMemoryPage('')).toMatchObject({ title: null, body: '', notes: '', structured: false })
+    expect(parseOnethingMemoryPage('- 裸行\n')).toMatchObject({ title: null, notes: '- 裸行' })
+    expect(parseOnethingMemoryPage(undefined).notes).toBe('')
+  })
+
+  it('重写:便签节标题永远写出来,便签区永远在文件末尾(追加才落得进去)', () => {
+    const rendered = renderOnethingMemoryPage({ topic: 'p', body: '正文', notes: '' })
+    expect(rendered).toBe(`# p\n\n正文\n\n${ONETHING_MEMORY_NOTES_HEADING}\n\n`)
+    // 末尾留空行:追加进来的第一条便签不会贴在节标题上。
+    expect(`${rendered}- 新(2026-08-12)\n`).toContain(`${ONETHING_MEMORY_NOTES_HEADING}\n\n- 新`)
+  })
+
+  it('重写保留用户改过的标题行,没有标题才按 topic 补一行', () => {
+    expect(renderOnethingMemoryPage({ topic: 'p', title: '# 我改的标题', body: 'b', notes: '' }))
+      .toContain('# 我改的标题')
+    expect(renderOnethingMemoryPage({ topic: 'p', title: null, body: 'b', notes: '' }))
+      .toContain('# p')
+  })
+
+  it('往返:重写之后再解析,三段原样', () => {
+    const rendered = renderOnethingMemoryPage({ topic: 'p', body: '正\n文', notes: '- 一\n- 二' })
+    expect(parseOnethingMemoryPage(rendered)).toMatchObject({
+      title: '# p', body: '正\n文', notes: '- 一\n- 二', structured: true,
+    })
+  })
+
+  it('数便签条数(回执用)', () => {
+    expect(countOnethingMemoryNotes('- 一\n- 二\n\n随口一句')).toBe(2)
+    expect(countOnethingMemoryNotes('')).toBe(0)
+  })
+})
+
+describe('正文判据', () => {
+  it('空正文被拒,并指路便签', () => {
+    expect(describeOnethingMemoryDocumentProblem('')).toMatch(/memory_write/)
+  })
+
+  it(`超 ${ONETHING_MEMORY_MAX_DOCUMENT_CHARS} 字符被拒,提示精炼或拆主题`, () => {
+    const problem = describeOnethingMemoryDocumentProblem('x'.repeat(ONETHING_MEMORY_MAX_DOCUMENT_CHARS + 1))
+    expect(problem).toMatch(/太长/)
+    expect(problem).toMatch(/精炼或拆主题/)
+    // 边界值本身放行。
+    expect(describeOnethingMemoryDocumentProblem('x'.repeat(ONETHING_MEMORY_MAX_DOCUMENT_CHARS))).toBeNull()
+  })
+
+  it('正文里不许出现便签节标题那一行 —— 否则这一页下次被读错', () => {
+    expect(describeOnethingMemoryDocumentProblem(`前面\n${ONETHING_MEMORY_NOTES_HEADING}\n后面`))
+      .toMatch(/分界线/)
+    // 同名的行内文字不受影响(判据是"整行相等")。
+    expect(describeOnethingMemoryDocumentProblem(`提到 ${ONETHING_MEMORY_NOTES_HEADING} 这四个字`)).toBeNull()
+  })
+
+  it('多行正文放行 —— 正文的换行是它的一部分,不折成一行', () => {
+    expect(describeOnethingMemoryDocumentProblem('# 标题\n\n- 列表\n- 列表')).toBeNull()
+  })
+})
+
+describe('索引:正文标记', () => {
+  it('摘要第一条带标记 = 有正文;解析与重写严格互逆', () => {
+    const index = upsertOnethingMemoryIndexDoc({ entries: [] }, 'p', '三层架构')
+    const text = renderOnethingMemoryIndex(index)
+    expect(text).toContain(`- p — ${ONETHING_MEMORY_INDEX_DOC_MARKER}三层架构`)
+    expect(parseOnethingMemoryIndex(text).entries[0]).toEqual({ topic: 'p', items: [], doc: '三层架构' })
+  })
+
+  it('正文摘要取首行,剥掉 Markdown 标题记号', () => {
+    expect(summarizeOnethingMemoryDocument('# onething 架构\n\n三层:核心、装配、宿主。')).toBe('onething 架构')
+    expect(summarizeOnethingMemoryDocument('\n\n- 第一条\n第二行')).toBe('第一条')
+  })
+
+  it('写便签不吃掉正文标记,写正文也不吃掉便签要点', () => {
+    let index = upsertOnethingMemoryIndexEntry({ entries: [] }, 'p', '便签一')
+    index = upsertOnethingMemoryIndexDoc(index, 'p', '正文首行')
+    index = upsertOnethingMemoryIndexEntry(index, 'p', '便签二')
+    expect(index.entries[0]).toEqual({ topic: 'p', items: ['便签一', '便签二'], doc: '正文首行' })
+
+    // 重写正文只换那一格。
+    index = upsertOnethingMemoryIndexDoc(index, 'p', '新的首行')
+    expect(index.entries[0]).toEqual({ topic: 'p', items: ['便签一', '便签二'], doc: '新的首行' })
+  })
+
+  it('一条正好以标记开头的便签会被剥掉标记 —— 歧义不留', () => {
+    const item = condenseOnethingMemoryIndexItem(`${ONETHING_MEMORY_INDEX_DOC_MARKER}我是便签`)
+    expect(item).toBe('我是便签')
+    const index = upsertOnethingMemoryIndexEntry({ entries: [] }, 'p', `${ONETHING_MEMORY_INDEX_DOC_MARKER}我是便签`)
+    expect(parseOnethingMemoryIndex(renderOnethingMemoryIndex(index)).entries[0].doc).toBeUndefined()
+  })
+
+  it('正文摘要也参与检索打分', () => {
+    const entries = parseOnethingMemoryIndex(
+      `- 架构页 — ${ONETHING_MEMORY_INDEX_DOC_MARKER}三层:核心装配宿主`,
+    ).entries
+    expect(selectOnethingMemoryTopics('装配', entries)).toEqual(['架构页'])
+  })
+})
+
+describe('query 分段:正文优先保全', () => {
+  it('有正文的页:正文在前、便签在后,各带小标题', () => {
+    const section = buildOnethingMemoryQuerySection(
+      'p',
+      renderOnethingMemoryPage({ topic: 'p', body: '全貌说明', notes: '- 流水(2026-08-12)' }),
+    )
+    expect(section).toContain('## p')
+    expect(section.indexOf('### 正文')).toBeLessThan(section.indexOf('### 便签'))
+    expect(section).toContain('全貌说明')
+    expect(section).toContain('- 流水(2026-08-12)')
+  })
+
+  it('没有正文的旧页面走原路:整页尾部截断,一个字节的行为都没变', () => {
+    const legacy = `# p\n\n${'- 老便签\n'.repeat(2000)}`
+    const section = buildOnethingMemoryQuerySection('p', legacy)
+    expect(section).not.toContain('### 正文')
+    expect(section).toContain('较早的内容已略去')
+    expect(section.endsWith('- 老便签')).toBe(true)
+  })
+
+  it('正文从头读、便签从尾读 —— 两边的信息分布相反', () => {
+    const body = `开头${'正'.repeat(500)}结尾`
+    const notes = `${'- 老\n'.repeat(2000)}- 最新一条`
+    const section = buildOnethingMemoryQuerySection('p', renderOnethingMemoryPage({ topic: 'p', body, notes }))
+    expect(section).toContain('开头')          // 正文保头
+    expect(section).toContain('- 最新一条')     // 便签保尾
+    expect(section).toContain('较早的便签已略去')
+  })
+
+  it('正文吃满预算时便签被略去,而且明说了 —— 不是安静少给', () => {
+    const body = '正'.repeat(ONETHING_MEMORY_QUERY_MAX_BODY_CHARS + 100)
+    const section = buildOnethingMemoryQuerySection(
+      'p',
+      renderOnethingMemoryPage({ topic: 'p', body, notes: '- 会被略去的便签' }),
+    )
+    expect(section).toContain('正文已截断')
+    expect(section).toContain('便签已略去')
+    expect(section).not.toContain('会被略去的便签')
+  })
+
+  it('正文 + 便签合计不超一页预算', () => {
+    const body = '正'.repeat(1000)
+    const notes = '- 便签\n'.repeat(5000)
+    const section = buildOnethingMemoryQuerySection('p', renderOnethingMemoryPage({ topic: 'p', body, notes }))
+    // 预算之外只允许小标题与省略号那点固定开销。
+    expect(section.length).toBeLessThan(ONETHING_MEMORY_QUERY_MAX_BODY_CHARS + 200)
+  })
+})
+
 /* ── memory_write ─────────────────────────────────────────────────────────── */
 
 describe('memory_write —— 追加式直写', () => {
@@ -392,6 +588,151 @@ describe('memory_write —— 追加式直写', () => {
       .toContain('content 太长')
     // 一条都没落地。
     expect(fs.existsSync(path.join(external, 'p.md'))).toBe(false)
+  })
+})
+
+/* ── memory_document ──────────────────────────────────────────────────────── */
+
+describe('memory_document —— 正文整块替换', () => {
+  it('新主题:一次调用写出两区结构,索引标记有正文', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+
+    const result = await document(harness, {
+      topic: 'projects/onething',
+      content: '# 架构\n\n三层:核心、装配、宿主。',
+    })
+    expect(result.output).toContain('projects/onething.md')
+    expect(result.output).toContain('整块替换')
+
+    expect(readExternal(external, 'projects/onething.md'))
+      .toBe(`# projects/onething\n\n# 架构\n\n三层:核心、装配、宿主。\n\n${ONETHING_MEMORY_NOTES_HEADING}\n\n`)
+    expect(readExternal(external, ONETHING_MEMORY_INDEX_FILE))
+      .toContain(`- projects/onething — ${ONETHING_MEMORY_INDEX_DOC_MARKER}架构`)
+  })
+
+  it('整块替换:新正文换掉旧正文,便签一条不动', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    await document(harness, { topic: 'p', content: '第一版正文' })
+    await write(harness, { topic: 'p', content: '便签一' })
+    await write(harness, { topic: 'p', content: '便签二' })
+
+    await document(harness, { topic: 'p', content: '第二版正文' })
+
+    const page = readExternal(external, 'p.md')
+    expect(page).toContain('第二版正文')
+    expect(page).not.toContain('第一版正文')
+    expect(page).toContain('- 便签一(2026-08-12)')
+    expect(page).toContain('- 便签二(2026-08-12)')
+    expect(countOnethingMemoryNotes(parseOnethingMemoryPage(page).notes)).toBe(2)
+  })
+
+  it('写正文之后便签仍然追加得进去(便签区在文件末尾)', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    await document(harness, { topic: 'p', content: '正文' })
+    await write(harness, { topic: 'p', content: '后来的便签' })
+
+    const page = parseOnethingMemoryPage(readExternal(external, 'p.md'))
+    expect(page.body).toBe('正文')
+    expect(page.notes).toContain('- 后来的便签(2026-08-12)')
+    // 追加没有把标题重建一遍。
+    expect(readExternal(external, 'p.md').split('\n').filter(l => l.startsWith('# '))).toHaveLength(1)
+  })
+
+  it('旧文件升级:便签零丢失,结构就地补上,回执如实说了升级', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    // 先造一个 v1 形态的页面(裸便签 + 用户手写的散文)。
+    await write(harness, { topic: 'p', content: '老便签一' })
+    await write(harness, { topic: 'p', content: '老便签二' })
+    fs.appendFileSync(path.join(external, 'p.md'), '我手写的一句。\n')
+    const before = readExternal(external, 'p.md')
+    expect(before).not.toContain(ONETHING_MEMORY_NOTES_HEADING)
+
+    const result = await document(harness, { topic: 'p', content: '新写的正文' })
+    expect(result.output).toContain('已升级')
+
+    const page = parseOnethingMemoryPage(readExternal(external, 'p.md'))
+    expect(page.structured).toBe(true)
+    expect(page.body).toBe('新写的正文')
+    // 老内容一个字节不丢 —— 便签与散文都原样留在便签区。
+    expect(page.notes).toContain('- 老便签一(2026-08-12)')
+    expect(page.notes).toContain('- 老便签二(2026-08-12)')
+    expect(page.notes).toContain('我手写的一句。')
+    expect(result.output).toContain('原样保留 2 条')
+  })
+
+  it('升级不动索引里已有的便签要点', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    await write(harness, { topic: 'p', content: '便签一' })
+    await document(harness, { topic: 'p', content: '正文首行\n第二行' })
+
+    const entry = parseOnethingMemoryIndex(readExternal(external, ONETHING_MEMORY_INDEX_FILE)).entries[0]
+    expect(entry).toEqual({ topic: 'p', items: ['便签一'], doc: '正文首行' })
+  })
+
+  it(`超 ${ONETHING_MEMORY_MAX_DOCUMENT_CHARS} 字符:结构化拒绝,一个字节都没落地`, async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    const result = await document(harness, {
+      topic: 'p',
+      content: 'x'.repeat(ONETHING_MEMORY_MAX_DOCUMENT_CHARS + 1),
+    })
+    expect(result.output).toContain('太长')
+    expect(result.output).toContain('精炼或拆主题')
+    expect(fs.existsSync(path.join(external, 'p.md'))).toBe(false)
+  })
+
+  it('拒绝时既有正文与便签毫发无损', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    await document(harness, { topic: 'p', content: '好的正文' })
+    await write(harness, { topic: 'p', content: '好的便签' })
+    const before = readExternal(external, 'p.md')
+
+    await document(harness, { topic: 'p', content: 'x'.repeat(ONETHING_MEMORY_MAX_DOCUMENT_CHARS + 1) })
+    await document(harness, { topic: 'p', content: '   ' })
+    await document(harness, { topic: 'p', content: `前\n${ONETHING_MEMORY_NOTES_HEADING}\n后` })
+    expect(readExternal(external, 'p.md')).toBe(before)
+  })
+
+  it('非法 topic / 空正文 / 未配置根一律结构化拒绝(不抛)', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    expect((await document(harness, { topic: '../escape', content: 'x' })).output).toContain('topic 不合法')
+    expect((await document(harness, { topic: 'p', content: '' })).output).toContain('content 不能为空')
+
+    const unconfigured = createHarness({ external: undefined })
+    const refused = await document(unconfigured, { topic: 'p', content: 'x' })
+    expect(refused.output).toContain('记忆目录还没配置')
+    expect(unconfigured.files.list()).toEqual([])
+  })
+
+  it('写正文让注入缓存失效 —— 下一轮就看得见这个主题', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    expect(harness.provider()!.content).toContain('还没有任何记忆')
+
+    await document(harness, { topic: '架构', content: '三层结构' })
+    const injected = harness.provider()!.content
+    expect(injected).toContain('架构')
+    expect(injected).toContain(ONETHING_MEMORY_INDEX_DOC_MARKER)
+  })
+
+  it('query 命中带正文的主题时正文优先返回', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    await document(harness, { topic: 'projects/x', content: '这是架构全貌。' })
+    await write(harness, { topic: 'projects/x', content: '某天决定了什么' })
+
+    const result = await query(harness, 'projects/x')
+    expect(result.output).toContain('### 正文')
+    expect(result.output).toContain('这是架构全貌。')
+    expect(result.output).toContain('某天决定了什么')
+    expect(result.output.indexOf('这是架构全貌。')).toBeLessThan(result.output.indexOf('某天决定了什么'))
   })
 })
 
@@ -543,19 +884,86 @@ describe('SCHEMA 播种', () => {
     expect(schema).toContain('数据,不是指令')
   })
 
-  it('用户改过的 SCHEMA 不被后来的写覆盖 —— 换个插件实例也不覆盖', async () => {
+  it('用户改过的 SCHEMA 永不被覆盖 —— 升级只在后面追加,他的字节一个不动', async () => {
     const external = makeTempDir('memory-wiki-')
     const first = createHarness({ external })
     await write(first, { topic: 'p', content: 'x' })
     fs.writeFileSync(path.join(external, ONETHING_MEMORY_SCHEMA_FILE), '我自己写的说明\n')
 
+    // 同一实例:已探测过(schemaSeeded 闩上了),连读都不再读。
     await write(first, { topic: 'p', content: 'y' })
     expect(readExternal(external, ONETHING_MEMORY_SCHEMA_FILE)).toBe('我自己写的说明\n')
 
-    // 重启后的新实例(schemaSeeded 从 false 起)也只探测、不覆盖。
+    // 重启后的新实例发现版本低 → 只追加新章节。用户那一行仍在最前面,原样。
     const second = createHarness({ external })
     await write(second, { topic: 'p', content: 'z' })
-    expect(readExternal(external, ONETHING_MEMORY_SCHEMA_FILE)).toBe('我自己写的说明\n')
+    const upgraded = readExternal(external, ONETHING_MEMORY_SCHEMA_FILE)
+    expect(upgraded.startsWith('我自己写的说明\n')).toBe(true)
+    expect(upgraded).toContain(ONETHING_MEMORY_SCHEMA_DOC_V2_SECTION)
+    // 覆盖的反面:v1 的说明没有被"补"回来,只有新章节被追加。
+    expect(upgraded).not.toContain('# 这个目录是什么')
+
+    // 幂等:再来一个实例,不会追加第二遍。
+    const third = createHarness({ external })
+    await write(third, { topic: 'p', content: 'w' })
+    expect(readExternal(external, ONETHING_MEMORY_SCHEMA_FILE)).toBe(upgraded)
+  })
+
+  it('播的是当前版本,且含正文区约定与那个如实的并发窗口', async () => {
+    const external = makeTempDir('memory-wiki-')
+    const harness = createHarness({ external })
+    await write(harness, { topic: 'p', content: 'x' })
+
+    const schema = readExternal(external, ONETHING_MEMORY_SCHEMA_FILE)
+    expect(schema).toBe(ONETHING_MEMORY_SCHEMA_DOC)
+    expect(parseOnethingMemorySchemaVersion(schema)).toBe(ONETHING_MEMORY_SCHEMA_VERSION)
+    expect(schema).toContain('正文放「是什么」')
+    expect(schema).toContain('整块替换')
+    expect(schema).toContain('并发窗口')
+    // 已是最新 = 没有可追加的东西。
+    expect(buildOnethingMemorySchemaUpgrade(schema)).toBeNull()
+  })
+
+  it('全新播种 == v1 + 升级追加的那一段 —— 两条路得到同一份文件', () => {
+    expect(parseOnethingMemorySchemaVersion(ONETHING_MEMORY_SCHEMA_DOC_V1)).toBe(1)
+    const upgrade = buildOnethingMemorySchemaUpgrade(ONETHING_MEMORY_SCHEMA_DOC_V1)!
+    expect(upgrade).toContain(ONETHING_MEMORY_SCHEMA_DOC_V2_SECTION)
+    expect(ONETHING_MEMORY_SCHEMA_DOC_V1 + upgrade).toBe(ONETHING_MEMORY_SCHEMA_DOC)
+  })
+
+  it('版本号:无标记 = v1,取全文最大值,没有文件 = 0', () => {
+    expect(parseOnethingMemorySchemaVersion('随便什么说明')).toBe(1)
+    expect(parseOnethingMemorySchemaVersion('')).toBe(1)
+    expect(parseOnethingMemorySchemaVersion(undefined)).toBe(0)
+    expect(parseOnethingMemorySchemaVersion('<!-- onething-memory-schema: v2 -->')).toBe(2)
+    // 标记可以在任何位置 —— 升级正是靠"在末尾追加一段带新标记的章节"完成的。
+    expect(parseOnethingMemorySchemaVersion('前面\n<!-- onething-memory-schema: v7 -->\n后面')).toBe(7)
+    expect(parseOnethingMemorySchemaVersion('<!-- onething-memory-schema: v2 -->\n<!-- onething-memory-schema: v5 -->')).toBe(5)
+  })
+
+  it('老用户(v1 已播种)重启后自动升到 v2,v1 的正文一个字节没动', async () => {
+    const external = makeTempDir('memory-wiki-')
+    // 造一个 v1 时代播下的 SCHEMA。
+    fs.writeFileSync(path.join(external, ONETHING_MEMORY_SCHEMA_FILE), ONETHING_MEMORY_SCHEMA_DOC_V1)
+
+    const harness = createHarness({ external })
+    await write(harness, { topic: 'p', content: 'x' })
+
+    const schema = readExternal(external, ONETHING_MEMORY_SCHEMA_FILE)
+    expect(schema).toBe(ONETHING_MEMORY_SCHEMA_DOC)
+    expect(schema.startsWith(ONETHING_MEMORY_SCHEMA_DOC_V1)).toBe(true)
+    expect(parseOnethingMemorySchemaVersion(schema)).toBe(ONETHING_MEMORY_SCHEMA_VERSION)
+  })
+
+  it('升级读不动也不许把用户这次的写入变成失败', async () => {
+    const external = makeTempDir('memory-wiki-')
+    fs.writeFileSync(path.join(external, ONETHING_MEMORY_SCHEMA_FILE), ONETHING_MEMORY_SCHEMA_DOC_V1)
+    const harness = createHarness({ external })
+    const boom = vi.spyOn(harness.files, 'readText').mockImplementationOnce(() => { throw new Error('读不动') })
+
+    const result = await write(harness, { topic: 'p', content: 'x' })
+    expect(result.output).toContain('已记入 p.md')
+    expect(boom).toHaveBeenCalled()
   })
 
   it('query 也会播种(第一件事可能是"我以前记过什么")', async () => {
@@ -569,9 +977,10 @@ describe('SCHEMA 播种', () => {
 /* ── 装载与拆除 ───────────────────────────────────────────────────────────── */
 
 describe('装载 / 拆除', () => {
-  it('装载注册两个工具与一个 promptContext provider,别的面一概不碰', () => {
+  it('装载注册三个工具与一个 promptContext provider,别的面一概不碰', () => {
     const harness = createHarness({ external: makeTempDir('memory-wiki-') })
-    expect([...harness.tools.keys()].sort()).toEqual(['memory_query', 'memory_write'])
+    expect([...harness.tools.keys()].sort())
+      .toEqual(['memory_document', 'memory_query', 'memory_write'])
     expect(harness.provider()).not.toBeUndefined()
   })
 
