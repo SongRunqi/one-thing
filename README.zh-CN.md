@@ -23,7 +23,7 @@ onething 是一款基于 Electron 的桌面 AI 应用。它把十余家模型接
 ## 下载安装
 
 macOS(Apple Silicon)、Windows、Linux 安装包见
-[GitHub Releases](https://github.com/SongRunqi/one-thing/releases);
+[GitHub Releases](https://github.com/monotasking/one-thing/releases);
 国内高速下载见官网(源码在 [`site/`](./site),部署方式见
 [部署手册](./docs/deploy/website-tencent-hk.md))。
 

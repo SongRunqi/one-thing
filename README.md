@@ -25,7 +25,7 @@ onething is an Electron-based desktop application that brings together multiple 
 ## Download
 
 Prebuilt installers for macOS (Apple Silicon), Windows, and Linux are published on
-[GitHub Releases](https://github.com/SongRunqi/one-thing/releases). A download site
+[GitHub Releases](https://github.com/monotasking/one-thing/releases). A download site
 with China-friendly mirrors lives in [`site/`](./site) (see
 [deployment guide](./docs/deploy/website-tencent-hk.md)).
 

@@ -7,7 +7,7 @@ set -euo pipefail
 TAG="${1:?用法: mirror-release.sh <tag>,例如 v1.1.6}"
 BUCKET="${ONETHING_DL_BUCKET:?请设置 ONETHING_DL_BUCKET,例如 onething-dl-1250000000}"
 REGION="${ONETHING_COS_REGION:-ap-hongkong}"
-REPO="SongRunqi/one-thing"
+REPO="monotasking/one-thing"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
