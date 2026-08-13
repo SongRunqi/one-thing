@@ -62,7 +62,14 @@ jobs:
         run: bun run typecheck
 
       - name: Build application
-        run: bun run build && bunx electron-builder --${{ matrix.platform }} --publish never
+        # 必须走 scripts/run-electron-builder.mjs,不能直接 bunx electron-builder。
+        # 本仓库 bun.lock 与 package-lock.json 并存,electron-builder 26.x 于是退到
+        # 环境变量判定包管理器,而 bunx 带进 npm_config_user_agent=bun → 选中
+        # BunNodeModulesCollector。那个采集器会漏掉传递依赖(实测收了 cross-spawn
+        # 却丢掉它的 which / shebang-command),打出来的 asar 一开就
+        # "Cannot find module 'which'"。包装脚本抹掉包管理器指纹强制走 npm 采集器,
+        # 并在打包前拿真实 prod 闭包做完整性预检,缺一个就让构建红掉。
+        run: bun run build && node scripts/run-electron-builder.mjs --${{ matrix.platform }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macos-latest 是 arm64 runner,只有 7GB 内存,Node 据此把 old-space 定在
