@@ -247,6 +247,8 @@ export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
   // Tool defaults come from each ToolDefinition, so new tools do not require
   // editing this settings file.
   tools: {},
+  // 接入目录默认空 —— 空列表下五个接线点的行为与没有这个功能时完全一致。
+  connectedDirectories: [],
   bash: {
     enableSandbox: true,
     defaultWorkingDirectory: '',
@@ -565,6 +567,10 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...defaults.tools.bash,
         ...settings.tools?.bash,
       },
+      // 显式归一而不是靠上面那次展开兜住:这份清单是**可写沙箱根**的来源,
+      // 脏值的代价不是界面难看,而是权限面 —— 一个相对路径进了根列表,
+      // `isCorePathContained` 会拿它当前缀去比对绝对路径,判定结果无从预期。
+      connectedDirectories: normalizeConnectedDirectories(settings.tools?.connectedDirectories),
     },
     network: {
       ...defaults.network!,
@@ -594,6 +600,27 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
   }
 
   return merged as AppSettings
+}
+
+/**
+ * 接入目录清单的归一。挡住四种脏值:非数组、数组里的非字符串、空白串、重复项。
+ *
+ * **只收绝对路径**,判据与 `apps/electron/src/main/ipc/skills.ts` 的
+ * `validateSkillDirectoryPath` 同款。理由不是洁癖:这份清单会进
+ * `getCoreSandboxRoots`,而 `isCorePathContained` 是纯前缀比对 —— 相对路径
+ * 在那里既不会报错也不会匹配,只会变成一条永远不生效的授权,用户以为加上了。
+ * 宁可在入口挡掉,也不要一条静默失效的权限。
+ *
+ * 目录**存在与否不在这里判**:盘可以后挂、目录可以后建,写settings的那一刻
+ * 不存在不代表这条配置是错的。存在性是运行期的事(各接线点温和跳过)。
+ */
+export function normalizeConnectedDirectories(dirs?: string[]): string[] {
+  if (!Array.isArray(dirs)) return []
+  const cleaned = dirs
+    .filter((dir): dir is string => typeof dir === 'string')
+    .map(dir => dir.trim())
+    .filter(dir => dir.length > 0 && (dir.startsWith('/') || /^[A-Za-z]:[\\/]/.test(dir)))
+  return Array.from(new Set(cleaned))
 }
 
 /**

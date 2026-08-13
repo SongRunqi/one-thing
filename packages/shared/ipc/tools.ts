@@ -188,6 +188,17 @@ export interface ToolSettings {
   enableToolCalls: boolean   // Master switch for tool calls
   permissionMode?: PermissionMode // Session/runtime permission mode (global default for now)
   toolCallModel?: ToolCallModelSettings
+  /**
+   * 「接入目录」——用户在设置里亲手加的绝对路径清单。加入即五件套全开:
+   * 可被 @ 引用、被搜索、**直接编辑(免逐次确认)**、其中的 SKILL.md 被自动
+   * 发现,markdown 附件也认这些根。
+   *
+   * 第三条是权限面语义,不是便利开关:这些目录进入**可写沙箱根**
+   * (`getCoreSandboxRoots`),于是 write/edit 的 effect 不再标 `external`,
+   * `auto-accept-edits` 模式下就不弹卡(`core/permission/permission-policy.ts:146`)。
+   * 所以只有用户显式添加的目录能进来 —— 默认空列表,行为与没有这个功能时逐字节一致。
+   */
+  connectedDirectories?: string[]
   // Per-tool settings (toolId -> settings)
   tools: Record<string, {
     enabled: boolean

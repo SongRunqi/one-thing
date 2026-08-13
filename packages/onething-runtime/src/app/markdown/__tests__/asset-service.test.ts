@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 import { resetVariablesStoreForTests } from '../../variables/store/index.js'
-import { updateSettingsInMemory } from '../../stores/settings.js'
+import { getSettings, updateSettingsInMemory } from '../../stores/settings.js'
 import { resolveMarkdownAsset, saveMarkdownAttachments } from '../asset-service.js'
 
 const tempRoots: string[] = []
@@ -23,6 +23,18 @@ function configureEditor(editor: Partial<ReturnType<typeof createDefaultSettings
     ...editor,
   }
   updateSettingsInMemory(settings)
+}
+
+/**
+ * 在**当前**设置上改,不从 defaults 重建 —— 否则它和 configureEditor 会互相
+ * 抹掉对方(两个测试都要同时配 editor 和接入目录)。
+ */
+function configureConnectedDirectories(dirs: string[]): void {
+  const settings = getSettings()
+  updateSettingsInMemory({
+    ...settings,
+    tools: { ...settings.tools, connectedDirectories: dirs },
+  })
 }
 
 function fileInput(fileName: string, mimeType = 'image/png') {
@@ -179,6 +191,51 @@ describe('Markdown asset service', () => {
     expect(result.success).toBe(true)
     expect(result.insertText).toBe('[receipt](../assets/receipt.pdf)')
     expect(result.attachments?.[0]?.absolutePath).toBe(path.join(noteRoot, 'assets', 'receipt.pdf'))
+  })
+
+  /**
+   * 接入目录(五件套之五:markdown 附件根)。判据与笔记根完全同款 ——
+   * 一个目录被接入之后,它下面的 .md 写附件时走 note 语义(需要
+   * markdownNoteAttachmentDirectory),而不是退回"项目根"那条路。
+   */
+  describe('connected directories as note roots', () => {
+    it('接入目录里的笔记按 note 语义存附件', async () => {
+      const connected = await makeTempRoot()
+      const notePath = path.join(connected, 'personal', 'today.md')
+      await fs.mkdir(path.dirname(notePath), { recursive: true })
+      await fs.writeFile(notePath, '# Personal')
+      // configureEditor 会从 defaults 重建,所以接入目录必须后写。
+      configureEditor({ markdownNoteAttachmentDirectory: 'assets' })
+      configureConnectedDirectories([connected])
+
+      const result = await saveMarkdownAttachments({
+        documentPath: notePath,
+        workspaceRoot: connected,
+        files: [fileInput('receipt.pdf', 'application/pdf')],
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.insertText).toBe('[receipt](../assets/receipt.pdf)')
+      expect(result.attachments?.[0]?.absolutePath).toBe(path.join(connected, 'assets', 'receipt.pdf'))
+    })
+
+    it('空列表时同一个目录退回项目语义(与没有这个功能时一致)', async () => {
+      const plain = await makeTempRoot()
+      const notePath = path.join(plain, 'docs', 'readme.md')
+      await fs.mkdir(path.dirname(notePath), { recursive: true })
+      await fs.writeFile(notePath, '# Project')
+      configureConnectedDirectories([])
+
+      const result = await saveMarkdownAttachments({
+        documentPath: notePath,
+        workspaceRoot: plain,
+        files: [fileInput('diagram.png')],
+      })
+
+      // 项目语义:不需要 markdownNoteAttachmentDirectory 也能存,落在工作区根下。
+      expect(result.success).toBe(true)
+      expect(result.attachments?.[0]?.absolutePath).toBe(path.join(plain, 'diagram.png'))
+    })
   })
 
   it('defaults project Markdown attachments to the workspace root', async () => {

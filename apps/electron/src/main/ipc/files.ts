@@ -44,6 +44,7 @@ import { applyFileMutationUndo } from '@onething/runtime/tools'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { listFiles } from '@onething/app/utils/ripgrep.js'
 import { getVariablesStore } from '@onething/app/variables/store/index.js'
+import { getConnectedDirectories } from '@onething/app/stores/connected-directories.js'
 import { getDownloadsDirectory } from '@onething/app/tools/core/sandbox.js'
 
 export interface ListFilesRequest extends OnethingListFilesRequest {}
@@ -106,6 +107,7 @@ export function registerFilesHandlers() {
             workNoteDir: variablesStore.getWorkNoteDir(),
           }
         },
+        getConnectedDirs: () => getConnectedDirectories(),
         listFiles: root => listFiles({ cwd: root.path, hidden: false, noIgnore: true }),
         logger: console,
       })

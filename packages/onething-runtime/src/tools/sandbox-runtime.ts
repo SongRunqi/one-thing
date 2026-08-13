@@ -25,6 +25,13 @@ export interface OnethingToolSandboxRuntimeAdapters {
   getHostPath?: (name: string) => string | undefined
   getNoteDirectories?: () => Array<string | undefined>
   /**
+   * 「接入目录」。它们已经是**可写**根(经 `CoreSandboxRootsOptions.connectedDirectories`
+   * 进 `getCoreSandboxRoots`),这里再列一次是为了让**不带工作目录语境**的读路径
+   * (read 工具走的是 `getOnethingDefaultReadRoots`)也认得它们 —— 否则会出现
+   * 「能改却要为读弹卡」这种自相矛盾的权限面。
+   */
+  getConnectedDirectories?: () => Array<string | undefined>
+  /**
    * Directories of app-generated artifacts the model is already entitled to —
    * e.g. the bash tool's overflow logs ("Output truncated… full output saved
    * to"). Reading those back is re-reading a tool result the permission system
@@ -114,10 +121,13 @@ export function getOnethingDefaultReadRoots(
   const adapters = adaptersWith(adaptersOverride)
   const noteDirectories = (adapters.getNoteDirectories?.() ?? [])
     .filter((dir): dir is string => typeof dir === 'string')
+  const connectedDirectories = (adapters.getConnectedDirectories?.() ?? [])
+    .filter((dir): dir is string => typeof dir === 'string')
   const artifactDirectories = (adapters.getAppArtifactDirectories?.() ?? [])
     .filter((dir): dir is string => typeof dir === 'string')
   return uniqueCorePaths([
     ...noteDirectories,
+    ...connectedDirectories,
     ...artifactDirectories,
     getOnethingDownloadsDirectory(adapters),
   ])

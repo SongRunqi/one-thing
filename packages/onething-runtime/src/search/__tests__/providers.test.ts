@@ -39,6 +39,46 @@ function adapters(overrides: Partial<OnethingSearchProvidersAdapters> = {}): One
 }
 
 describe('onething search providers', () => {
+  /**
+   * 接入目录(五件套之二:搜索根)。用真实临时目录 + 真实 listFiles,
+   * 证据落在「搜得到 / 搜不到」这个用户可见的层面上,而不是内部数组。
+   */
+  describe('connected directories as search roots', () => {
+    it('接入目录里的文件能被搜到', async () => {
+      await fs.writeFile(path.join(tmpDir, 'deploy-notes.md'), '# notes')
+
+      const providers = createOnethingSearchProviders(adapters({
+        getConnectedDirectories: () => [tmpDir],
+        async *listFiles(options) {
+          for (const name of await fs.readdir(options.cwd)) yield name
+        },
+      }))
+
+      const results = await providers.executeSearch('deploy', 'files', 10)
+      expect(results).toHaveLength(1)
+      expect(results[0]).toMatchObject({
+        type: 'file',
+        title: 'deploy-notes.md',
+        filePath: path.join(tmpDir, 'deploy-notes.md'),
+      })
+    })
+
+    it('空列表(以及缺席适配器)时搜不出接入目录的东西 —— 行为与今天一致', async () => {
+      await fs.writeFile(path.join(tmpDir, 'deploy-notes.md'), '# notes')
+
+      for (const getConnectedDirectories of [() => [], undefined]) {
+        const providers = createOnethingSearchProviders(adapters({
+          getConnectedDirectories,
+          async *listFiles(options) {
+            for (const name of await fs.readdir(options.cwd)) yield name
+          },
+        }))
+
+        await expect(providers.executeSearch('deploy', 'files', 10)).resolves.toEqual([])
+      }
+    })
+  })
+
   it('searches prompts through injected adapters', async () => {
     const providers = createOnethingSearchProviders(adapters({
       listPrompts: () => [

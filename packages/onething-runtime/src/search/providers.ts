@@ -91,6 +91,8 @@ export interface OnethingSearchProvidersAdapters {
   getCurrentSessionId(): string | undefined
   getSettings(): OnethingSearchSettings
   getVariablesStore(): OnethingSearchVariablesStore
+  /** 用户配置的「接入目录」;缺席/空数组 = 搜索根与没有这个功能时一致。 */
+  getConnectedDirectories?(): string[]
   listFiles(options: OnethingSearchListFilesOptions): AsyncIterable<string>
   listPrompts(): OnethingSearchPrompt[]
 }
@@ -362,6 +364,11 @@ function getSearchDirs(adapters: OnethingSearchProvidersAdapters): string[] {
   const store = adapters.getVariablesStore()
   add(store.getUserNoteDir())
   add(store.getWorkNoteDir())
+
+  // 接入目录。`add` 自带去重,所以与会话工作目录/笔记根重合时不会搜两遍。
+  for (const dir of adapters.getConnectedDirectories?.() ?? []) {
+    add(dir)
+  }
 
   return dirs
 }

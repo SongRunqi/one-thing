@@ -46,6 +46,8 @@ const MAX_REVALIDATION_ATTEMPTS = 5;
 export interface WriteToolAdapters {
 	getDefaultWorkingDirectory?(): string | undefined;
 	getFileMutationsDir(): string;
+	/** 用户配置的「接入目录」= 额外的可写沙箱根;缺席 = 现状不变。 */
+	getConnectedDirectories?(): string[];
 }
 
 export interface WriteResultMetadata {
@@ -162,6 +164,7 @@ export function createWriteTool(
 			const matchedRoot = findCoreSandboxRootForPath(resolvedPath, {
 				workingDirectory: ctx.workingDirectory,
 				workingDirectoryRoots: ctx.workingDirectoryRoots,
+				connectedDirectories: adapters.getConnectedDirectories?.(),
 				defaultWorkingDirectory,
 			});
 			const bytesWritten = Buffer.byteLength(args.content, "utf-8");

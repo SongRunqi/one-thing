@@ -1,5 +1,6 @@
 import { classifyCommand, createBashTool, parseCommand } from '@onething/runtime/tools'
 import { getSettings } from '../../stores/settings.js'
+import { getConnectedDirectories } from '../../stores/connected-directories.js'
 import { getToolOutputsDir } from '../../stores/paths.js'
 import { createLocalBashOperations } from '../core/bash-executor.js'
 
@@ -23,6 +24,7 @@ export const BashTool = createBashTool({
   getDefaultWorkingDirectory: () => getSettings().tools?.bash?.defaultWorkingDirectory,
   getToolOutputsDir,
   getShellPath: configuredShellPath,
+  getConnectedDirectories,
   createOperations: options => createLocalBashOperations({
     ...options,
     envAllowlist: configuredEnvAllowlist(),

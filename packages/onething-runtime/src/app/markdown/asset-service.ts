@@ -9,6 +9,7 @@ import {
   type OnethingMarkdownAssetServiceAdapters,
 } from '@onething/runtime/markdown'
 import { getSettings } from '../stores/settings.js'
+import { getConnectedDirectories } from '../stores/connected-directories.js'
 import { getVariablesStore } from '../variables/store/index.js'
 
 function markdownRuntimeAdapters(): OnethingMarkdownAssetServiceAdapters {
@@ -16,7 +17,11 @@ function markdownRuntimeAdapters(): OnethingMarkdownAssetServiceAdapters {
     getEditorSettings: () => getSettings().general.editor || {},
     getNoteRoots: () => {
       const store = getVariablesStore()
-      return [store.getUserNoteDir(), store.getWorkNoteDir()]
+      return [
+        store.getUserNoteDir(),
+        store.getWorkNoteDir(),
+        ...getConnectedDirectories(),
+      ]
     },
   }
 }

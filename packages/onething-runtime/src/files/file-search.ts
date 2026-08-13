@@ -3,7 +3,7 @@ import path from 'node:path'
 type MaybePromise<T> = T | Promise<T>
 
 export type OnethingFileSearchEntryType = 'file' | 'directory'
-export type OnethingFileSearchEntrySource = 'workdir' | 'downloads' | 'note'
+export type OnethingFileSearchEntrySource = 'workdir' | 'downloads' | 'note' | 'connected'
 
 export interface OnethingFileSearchEntry {
   path: string
@@ -41,6 +41,8 @@ export interface ResolveOnethingFileSearchRootsOptions {
   homeDir: string
   downloadsDir?: string | null
   noteRoots?: OnethingFileSearchNoteRoots
+  /** 用户在设置里加的「接入目录」;缺席/空数组 = 与没有这个功能时完全一致。 */
+  connectedDirs?: readonly string[]
 }
 
 export interface ListOnethingFileSearchEntriesOptions extends ResolveOnethingFileSearchRootsOptions {
@@ -54,8 +56,9 @@ export interface OnethingFilesIpcLogger {
 }
 
 export interface ListOnethingFileSearchEntriesForIpcOptions
-  extends Omit<ListOnethingFileSearchEntriesOptions, 'noteRoots'> {
+  extends Omit<ListOnethingFileSearchEntriesOptions, 'noteRoots' | 'connectedDirs'> {
   getNoteRoots?(): MaybePromise<OnethingFileSearchNoteRoots>
+  getConnectedDirs?(): MaybePromise<readonly string[]>
   logger?: OnethingFilesIpcLogger
 }
 
@@ -103,6 +106,12 @@ export function resolveOnethingFileSearchRoots(
   ] as const
   for (const [name, value] of noteEntries) {
     add(value, 'note', getNoteRootLabel(name))
+  }
+
+  // 接入目录排在笔记根之后、Downloads 之前。`add` 自带去重,所以一个既是
+  // 笔记根又被加进接入目录的路径只会出现一次(先到的那个标签胜出)。
+  for (const dir of options.connectedDirs ?? []) {
+    add(dir, 'connected', path.basename(path.resolve(expandOnethingPath(dir, options.homeDir))) || dir)
   }
 
   add(options.downloadsDir, 'downloads', 'Downloads')
@@ -182,6 +191,7 @@ export async function listOnethingFileSearchEntriesForIpc(
       homeDir: options.homeDir,
       downloadsDir: options.downloadsDir,
       noteRoots: await options.getNoteRoots?.(),
+      connectedDirs: await options.getConnectedDirs?.(),
       listFiles: options.listFiles,
     })
   } catch (error) {

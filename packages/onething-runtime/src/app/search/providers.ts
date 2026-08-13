@@ -9,6 +9,7 @@ import type {
 } from '@shared/ipc/search.js'
 import { listPrompts } from '../prompts/store.js'
 import { getCurrentSessionId } from '../stores/app-state.js'
+import { getConnectedDirectories } from '../stores/connected-directories.js'
 import { getSession, getSessionRaw, getSessionsList } from '../stores/sessions.js'
 import { getSettings } from '../stores/settings.js'
 import { listFiles } from '../utils/ripgrep.js'
@@ -30,6 +31,7 @@ export function configureAppSearchProviders(): void {
     getCurrentSessionId,
     getSettings,
     getVariablesStore,
+    getConnectedDirectories,
     listFiles,
     listPrompts,
   })

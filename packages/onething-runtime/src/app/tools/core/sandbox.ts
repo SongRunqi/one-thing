@@ -14,6 +14,7 @@ import {
   type CoreFileAccessTargetType,
 } from '@onething/runtime/tools/sandbox-runtime'
 import { getSettings } from '../../stores/settings.js'
+import { getConnectedDirectories } from '../../stores/connected-directories.js'
 import { getToolOutputsDir } from '../../stores/paths.js'
 import { getVariablesStore } from '../../variables/store/index.js'
 
@@ -37,6 +38,7 @@ export function configureAppToolSandbox(): void {
     const store = getVariablesStore()
     return [store.getUserNoteDir(), store.getWorkNoteDir()]
   },
+  getConnectedDirectories,
   // The bash tool's overflow logs ("full output saved to …"): re-reading a
   // tool result already adjudicated by the permission system — never prompt.
   getAppArtifactDirectories: () => [getToolOutputsDir()],

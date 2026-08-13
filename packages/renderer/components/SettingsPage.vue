@@ -367,7 +367,7 @@ const navItems = [
     label: 'Tools',
     hint: 'Built-in capabilities and search keys',
     icon: Wrench,
-    sections: ['Tool Settings', 'Tool Call Model', 'Available Tools', 'Web Search', 'Bash'],
+    sections: ['Tool Settings', 'Tool Call Model', 'Available Tools', 'Web Search', 'Connected Directories', 'Bash'],
   },
   {
     id: 'network',

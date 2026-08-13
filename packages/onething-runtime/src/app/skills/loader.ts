@@ -14,6 +14,9 @@ import {
 import {
   getSettings,
 } from '../stores/settings.js'
+import {
+  listConnectedSkillRoots,
+} from '../stores/connected-directories.js'
 
 /** Every provider's CLI skill dir; only the active provider's is exposed. */
 const musicSkillDirs = new Set(
@@ -46,7 +49,13 @@ export function configureAppSkillsLoader(): void {
   configureOnethingSkillsLoaderRuntime({
     getStorePath,
     listPluginSkillRoots,
-    listCustomSkillRoots: () => getSettings().skills?.customDirectories ?? [],
+    // 技能页手工加的自定义目录 + 接入目录(后者投影成同款根,复用同一条
+    // 扫描/去重/id 链路,不另起一套)。技能设置页读的是 settings 原始值,
+    // 不经过这个适配器,所以接入目录不会漏进那个可编辑列表里。
+    listCustomSkillRoots: () => [
+      ...(getSettings().skills?.customDirectories ?? []),
+      ...listConnectedSkillRoots(),
+    ],
     isPackaged: () => envPorts.isPackaged?.() ?? false,
     getResourcesPath: () => envPorts.getResourcesPath?.(),
     getCwd: () => process.cwd(),

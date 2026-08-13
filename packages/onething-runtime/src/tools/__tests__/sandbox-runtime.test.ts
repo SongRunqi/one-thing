@@ -50,6 +50,32 @@ describe('onething tool sandbox runtime', () => {
     expect(findOnethingReadSandboxRootForPath('/notes/personal/today.md', '/repo')).toBe('/notes/personal')
   })
 
+  it('接入目录也进默认读根 —— 不出现「能改却要为读弹卡」', () => {
+    configureOnethingToolSandboxRuntime({
+      getHostPath: name => name === 'downloads' ? '/host/Downloads' : undefined,
+      getNoteDirectories: () => ['/notes/personal'],
+      getConnectedDirectories: () => ['', '/Users/me/vault', '/Users/me/vault'],
+    })
+
+    expect(getOnethingDefaultReadRoots()).toEqual([
+      '/notes/personal',
+      '/Users/me/vault',
+      '/host/Downloads',
+    ])
+    expect(findOnethingReadSandboxRootForPath('/Users/me/vault/note.md', '/repo')).toBe('/Users/me/vault')
+  })
+
+  it('接入目录缺席/空数组时,默认读根与没有这个功能时一致', () => {
+    configureOnethingToolSandboxRuntime({
+      getHostPath: name => name === 'downloads' ? '/host/Downloads' : undefined,
+      getNoteDirectories: () => ['/notes/personal'],
+      getConnectedDirectories: () => [],
+    })
+
+    expect(getOnethingDefaultReadRoots()).toEqual(['/notes/personal', '/host/Downloads'])
+    expect(findOnethingReadSandboxRootForPath('/Users/me/vault/note.md', '/repo')).toBeUndefined()
+  })
+
   it('falls back to the user Downloads directory when the host path adapter fails', () => {
     expect(getOnethingDownloadsDirectory({
       homeDir: '/home/tester',

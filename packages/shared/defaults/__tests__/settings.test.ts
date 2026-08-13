@@ -292,6 +292,57 @@ describe('mergeWithDefaults 白名单漏键审计', () => {
   })
 
   /**
+   * 接入目录清单。它挂在 `tools` 下,靠 `{...defaults.tools, ...settings.tools}`
+   * 那次展开活下来 —— 但上面那条探针只数**顶层**键,看不见它。而这条清单是
+   * **可写沙箱根**的唯一来源:一旦被 merge 静默吞掉,用户加的目录保存即消失,
+   * 界面上只表现为"加了没反应"。所以单独钉住往返。
+   */
+  it('tools.connectedDirectories 活过 merge(保存即丢的老坑不再重演)', () => {
+    const merged = mergeWithDefaults({
+      tools: {
+        ...createDefaultSettings().tools,
+        connectedDirectories: ['/Users/me/vault', '/Users/me/work'],
+      },
+    } as Partial<AppSettings>)
+
+    expect(merged.tools.connectedDirectories).toEqual(['/Users/me/vault', '/Users/me/work'])
+
+    // 往返一次(保存路径上 normalize 会再跑一遍)仍然一字不差。
+    expect(mergeWithDefaults(merged).tools.connectedDirectories)
+      .toEqual(['/Users/me/vault', '/Users/me/work'])
+  })
+
+  it('接入目录默认空,且脏值被挡在入口外', () => {
+    expect(mergeWithDefaults({}).tools.connectedDirectories).toEqual([])
+
+    const dirty = mergeWithDefaults({
+      tools: {
+        ...createDefaultSettings().tools,
+        // 非字符串、空白、重复、以及**相对路径**(进了沙箱根只会变成一条
+        // 永远不生效的授权,必须在入口挡掉)。
+        connectedDirectories: [
+          '/Users/me/vault',
+          '/Users/me/vault',
+          '  ',
+          'relative/path',
+          42 as unknown as string,
+          '/Users/me/other',
+        ],
+      },
+    } as Partial<AppSettings>)
+
+    expect(dirty.tools.connectedDirectories).toEqual(['/Users/me/vault', '/Users/me/other'])
+
+    // 非数组也不炸,退回空列表。
+    expect(mergeWithDefaults({
+      tools: {
+        ...createDefaultSettings().tools,
+        connectedDirectories: 'nope' as unknown as string[],
+      },
+    } as Partial<AppSettings>).tools.connectedDirectories).toEqual([])
+  })
+
+  /**
    * `general` 走的是 `{...defaults.general, ...settings.general}` 展开,所以它的
    * 子键天然幸存 —— 但上面那条探针只数**顶层**键,`userProfile` 这种"零默认值、
    * 只有用户写了才存在"的子键在它眼里是不可见的。身份是 dm/署名/@ 三条链的入口,

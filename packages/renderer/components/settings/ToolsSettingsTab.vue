@@ -159,6 +159,12 @@
       </SettingsGroup>
     </SettingsSection>
 
+    <!-- Connected Directories -->
+    <ConnectedDirectoriesPanel
+      :settings="settings"
+      @update:settings="$emit('update:settings', $event)"
+    />
+
     <!-- Bash Tool Settings -->
     <BashSettingsPanel
       v-if="settings.tools.enableToolCalls && hasBashTool"
@@ -183,6 +189,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { isProviderConfigEnabled } from '@/stores/helpers/provider-model'
 import BashSettingsPanel from './BashSettingsPanel.vue'
 import BackgroundJobsPanel from './BackgroundJobsPanel.vue'
+import ConnectedDirectoriesPanel from './ConnectedDirectoriesPanel.vue'
 import {
   SettingRow,
   SettingsEmptyState,
